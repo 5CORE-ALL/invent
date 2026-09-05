@@ -3,6 +3,7 @@
 namespace App\Support\Marketplace;
 
 use App\Models\AmazonListingRaw;
+use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\ShopifyApiService;
 use Illuminate\Support\Facades\DB;
@@ -172,7 +173,7 @@ class ListingManagerAmazonHydrator
 
         $images = self::collectImages($listing, $raw, $pm, $sku);
         $images = ListingManagerImageStore::applyToList($images);
-        $dims = self::dimensions($listing?->item_dimensions, $pm);
+        $dims = self::dimensions($listing?->item_dimensions, $pm, $sku);
 
         $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
         $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
@@ -181,11 +182,7 @@ class ListingManagerAmazonHydrator
 
         $upc = self::upcFromCpMaster($sku, $pm, $listing, $raw);
 
-        $condition = self::firstNonEmpty([
-            $listing?->condition_type_display,
-            self::mapCondition(self::rawGet($raw, 'item-condition', 'condition')),
-            'New',
-        ]);
+        $condition = trim((string) config('listing_manager.default_condition', 'New')) ?: 'New';
 
         return [
             'title' => $title,
@@ -246,10 +243,11 @@ class ListingManagerAmazonHydrator
 
         $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
         $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
+        $defaultCondition = trim((string) config('listing_manager.default_condition', 'New')) ?: 'New';
         $sku = trim((string) ($hydrated['sku'] ?? $hydrated['mpn'] ?? ''));
-        $brand = trim((string) ($existingDetails['brand'] ?? '')) ?: $defaultBrand;
-        $manufacturer = trim((string) ($existingDetails['manufacturer'] ?? ($hydrated['manufacturer'] ?? ''))) ?: $defaultManufacturer;
-        $mpn = trim((string) ($existingDetails['mpn'] ?? '')) ?: $sku;
+        $brand = $defaultBrand;
+        $manufacturer = $defaultManufacturer;
+        $mpn = $sku;
         $upc = trim((string) ($existingDetails['upc'] ?? ''));
         if ($upc === '' || self::looksLikeAsin($upc)) {
             $upc = trim((string) ($hydrated['upc'] ?? ''));
@@ -271,7 +269,7 @@ class ListingManagerAmazonHydrator
         $bullets = $hydrated['bullets'] ?? [];
         $merged = array_merge($existingDetails, [
             'description' => $hydrated['description'] ?: ($existingDetails['description'] ?? ''),
-            'condition' => $hydrated['condition'] ?: ($existingDetails['condition'] ?? 'New'),
+            'condition' => $defaultCondition,
             'brand' => $brand,
             'manufacturer' => $manufacturer,
             'mpn' => $mpn,
@@ -285,11 +283,11 @@ class ListingManagerAmazonHydrator
             'bullet_4' => $bullets[3] ?? ($existingDetails['bullet_4'] ?? ''),
             'bullet_5' => $bullets[4] ?? ($existingDetails['bullet_5'] ?? ''),
             'item_specifics' => $specifics,
-            'package_length' => $hydrated['package_length'] ?: ($existingDetails['package_length'] ?? ''),
-            'package_width' => $hydrated['package_width'] ?: ($existingDetails['package_width'] ?? ''),
-            'package_height' => $hydrated['package_height'] ?: ($existingDetails['package_height'] ?? ''),
-            'package_weight_lb' => $hydrated['package_weight_lb'] ?: ($existingDetails['package_weight_lb'] ?? ''),
-            'package_weight_oz' => $hydrated['package_weight_oz'] ?: ($existingDetails['package_weight_oz'] ?? ''),
+            'package_length' => $hydrated['package_length'] !== '' ? $hydrated['package_length'] : ($existingDetails['package_length'] ?? ''),
+            'package_width' => $hydrated['package_width'] !== '' ? $hydrated['package_width'] : ($existingDetails['package_width'] ?? ''),
+            'package_height' => $hydrated['package_height'] !== '' ? $hydrated['package_height'] : ($existingDetails['package_height'] ?? ''),
+            'package_weight_lb' => $hydrated['package_weight_lb'] !== '' ? $hydrated['package_weight_lb'] : ($existingDetails['package_weight_lb'] ?? ''),
+            'package_weight_oz' => $hydrated['package_weight_oz'] !== '' ? $hydrated['package_weight_oz'] : ($existingDetails['package_weight_oz'] ?? ''),
             'warehouse_id' => trim((string) ($existingDetails['warehouse_id'] ?? ''))
                 ?: (in_array($key, ['tiktok2', 'tiktokshop2', 'tiktoktwo'], true)
                     ? trim((string) config('services.tiktok2.warehouse_id', ''))
@@ -308,7 +306,75 @@ class ListingManagerAmazonHydrator
             $merged = self::applyReverbListingFields($merged, self::productMaster($sku), $hydrated);
         }
 
-        return ListingManagerPublishStatus::normalizeDetails($merged);
+        return self::applyMarketplaceConstants($merged, $sku);
+    }
+
+    /**
+     * Brand, model, condition, and Dim/Wt package are the same for every marketplace.
+     *
+     * @param  array<string, mixed>  $details
+     * @return array<string, mixed>
+     */
+    public static function applyMarketplaceConstants(array $details, string $sku): array
+    {
+        $sku = trim($sku);
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
+        $manufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
+        $condition = trim((string) config('listing_manager.default_condition', 'New')) ?: 'New';
+        $reverbCondition = trim((string) config('listing_manager.default_reverb_condition', 'Brand New')) ?: 'Brand New';
+
+        $details['brand'] = $brand;
+        $details['manufacturer'] = $manufacturer;
+        $details['mpn'] = $sku;
+        $details['make'] = $brand;
+        $details['model'] = $sku;
+        $details['condition'] = $condition;
+        $details['condition_name'] = $reverbCondition;
+        $brandNewUuid = self::reverbBrandNewConditionUuid();
+        if ($brandNewUuid !== '') {
+            $details['condition_uuid'] = $brandNewUuid;
+        }
+
+        $specifics = is_array($details['item_specifics'] ?? null) ? $details['item_specifics'] : [];
+        $specifics['Brand'] = $brand;
+        $specifics['Manufacturer'] = $manufacturer;
+        $specifics['MPN'] = $sku;
+        $details['item_specifics'] = $specifics;
+
+        if ($sku !== '') {
+            $pkg = self::dimWtPackage($sku);
+            foreach (['package_length' => 'length', 'package_width' => 'width', 'package_height' => 'height', 'package_weight_lb' => 'weight_lb', 'package_weight_oz' => 'weight_oz'] as $field => $key) {
+                $value = trim((string) ($pkg[$key] ?? ''));
+                if ($value !== '' && (float) $value >= 0) {
+                    $hasWeight = $key === 'weight_lb' || $key === 'weight_oz';
+                    if (! $hasWeight || ((float) ($pkg['weight_lb'] ?? 0) + ((float) ($pkg['weight_oz'] ?? 0) / 16)) > 0) {
+                        $details[$field] = $value;
+                    }
+                }
+            }
+        }
+
+        return ListingManagerPublishStatus::normalizeDetails($details);
+    }
+
+    /**
+     * Package L/W/H and weight from Dim/Wt Master (product_master Values).
+     *
+     * @return array{length: string, width: string, height: string, weight_lb: string, weight_oz: string}
+     */
+    public static function dimWtPackage(string $sku): array
+    {
+        $sku = trim($sku);
+        $out = ['length' => '', 'width' => '', 'height' => '', 'weight_lb' => '', 'weight_oz' => ''];
+        if ($sku === '') {
+            return $out;
+        }
+
+        $pm = self::productMaster($sku);
+        self::applyProductMasterDimWt($out, $pm, true);
+        self::applyComboDimWt($out, $sku, $pm);
+
+        return $out;
     }
 
     /**
@@ -321,26 +387,22 @@ class ListingManagerAmazonHydrator
      */
     private static function applyReverbListingFields(array $merged, array $pm, array $hydrated): array
     {
-        $brand = trim((string) ($merged['brand'] ?? ''));
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
         $sku = trim((string) ($hydrated['sku'] ?? $merged['mpn'] ?? ''));
-        $merged['make'] = trim((string) ($merged['make'] ?? ''))
-            ?: trim((string) ($pm['reverb_make'] ?? ''))
-            ?: $brand;
-        $merged['model'] = trim((string) ($merged['model'] ?? ''))
-            ?: trim((string) ($pm['reverb_model'] ?? ''))
-            ?: $sku;
+        $reverbCondition = trim((string) config('listing_manager.default_reverb_condition', 'Brand New')) ?: 'Brand New';
+        $merged['make'] = $brand;
+        $merged['model'] = $sku;
         $merged['finish'] = trim((string) ($merged['finish'] ?? ''))
             ?: trim((string) ($pm['reverb_finish'] ?? ''));
         $merged['year'] = trim((string) ($merged['year'] ?? ''))
             ?: trim((string) ($pm['reverb_year'] ?? ''));
 
-        $conditionName = trim((string) ($merged['condition_name'] ?? ''))
-            ?: trim((string) ($pm['reverb_condition'] ?? ''));
-        if ($conditionName !== '') {
-            $merged['condition_name'] = $conditionName;
-            $merged['condition'] = $conditionName;
-        }
-        $merged['condition_uuid'] = trim((string) ($merged['condition_uuid'] ?? ''));
+        $merged['condition_name'] = $reverbCondition;
+        $merged['condition'] = trim((string) config('listing_manager.default_condition', 'New')) ?: 'New';
+        $brandNewUuid = self::reverbBrandNewConditionUuid();
+        $merged['condition_uuid'] = $brandNewUuid !== ''
+            ? $brandNewUuid
+            : trim((string) ($merged['condition_uuid'] ?? ''));
 
         $merged['shipping_profile_id'] = trim((string) ($merged['shipping_profile_id'] ?? ''))
             ?: trim((string) ($pm['reverb_shipping_profile_id'] ?? ''));
@@ -1027,6 +1089,13 @@ class ListingManagerAmazonHydrator
         if (! Schema::hasTable('product_master')) {
             return [];
         }
+        try {
+            $found = ProductMaster::findByCompactSku($sku);
+            if ($found) {
+                return $found->toArray();
+            }
+        } catch (\Throwable) {
+        }
         $row = DB::table('product_master')->where('sku', $sku)->first();
         if (! $row) {
             try {
@@ -1042,36 +1111,49 @@ class ListingManagerAmazonHydrator
     }
 
     /**
+     * Dim/Wt Master first, then Amazon item dimensions, then package blurb.
+     *
      * @param  array<string, mixed>  $pm
      * @return array{length: string, width: string, height: string, weight_lb: string, weight_oz: string}
      */
-    private static function dimensions(mixed $itemDimensions, array $pm): array
+    private static function dimensions(mixed $itemDimensions, array $pm, string $sku = ''): array
     {
         $out = ['length' => '', 'width' => '', 'height' => '', 'weight_lb' => '', 'weight_oz' => ''];
+        self::applyProductMasterDimWt($out, $pm, true);
+        if ($sku !== '') {
+            self::applyComboDimWt($out, $sku, $pm);
+        }
+
+        $hasDims = (float) $out['length'] > 0 && (float) $out['width'] > 0 && (float) $out['height'] > 0;
+        $hasWeight = ((float) $out['weight_lb'] + ((float) $out['weight_oz'] / 16)) > 0;
+
         $dims = $itemDimensions;
         if (is_string($dims)) {
             $decoded = json_decode($dims, true);
             $dims = is_array($decoded) ? $decoded : null;
         }
-        if (is_array($dims)) {
-            $out['length'] = self::dimValue($dims['length'] ?? $dims['Length'] ?? null);
-            $out['width'] = self::dimValue($dims['width'] ?? $dims['Width'] ?? null);
-            $out['height'] = self::dimValue($dims['height'] ?? $dims['Height'] ?? null);
-            $weight = $dims['weight'] ?? $dims['Weight'] ?? null;
-            if (is_array($weight)) {
-                $w = (float) ($weight['value'] ?? 0);
-                $unit = strtolower((string) ($weight['unit'] ?? 'pounds'));
-                if (str_contains($unit, 'ounce')) {
-                    $out['weight_lb'] = (string) (int) floor($w / 16);
-                    $out['weight_oz'] = (string) round(fmod($w, 16), 1);
-                } else {
-                    $out['weight_lb'] = (string) (int) floor($w);
-                    $out['weight_oz'] = (string) round(($w - floor($w)) * 16, 1);
+        if (is_array($dims) && (! $hasDims || ! $hasWeight)) {
+            if (! $hasDims) {
+                $out['length'] = $out['length'] !== '' ? $out['length'] : self::dimValue($dims['length'] ?? $dims['Length'] ?? null);
+                $out['width'] = $out['width'] !== '' ? $out['width'] : self::dimValue($dims['width'] ?? $dims['Width'] ?? null);
+                $out['height'] = $out['height'] !== '' ? $out['height'] : self::dimValue($dims['height'] ?? $dims['Height'] ?? null);
+            }
+            if (! $hasWeight) {
+                $weight = $dims['weight'] ?? $dims['Weight'] ?? null;
+                if (is_array($weight)) {
+                    $w = (float) ($weight['value'] ?? 0);
+                    $unit = strtolower((string) ($weight['unit'] ?? 'pounds'));
+                    if (str_contains($unit, 'ounce')) {
+                        $out['weight_lb'] = (string) (int) floor($w / 16);
+                        $out['weight_oz'] = (string) round(fmod($w, 16), 1);
+                    } else {
+                        $out['weight_lb'] = (string) (int) floor($w);
+                        $out['weight_oz'] = (string) round(($w - floor($w)) * 16, 1);
+                    }
                 }
             }
         }
 
-        // Optional package blurb from product_master
         $pkg = trim((string) ($pm['description_v2_package'] ?? ''));
         if ($pkg !== '' && ($out['length'] === '' || $out['weight_lb'] === '')) {
             if (preg_match('/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)/', $pkg, $m)) {
@@ -1087,18 +1169,16 @@ class ListingManagerAmazonHydrator
             }
         }
 
-        self::applyProductMasterDimWt($out, $pm);
-
         return $out;
     }
 
     /**
-     * Dim / Wt from product_master.Values (l, w, h, wt_decl) used by Temu/TikTok publish.
+     * Dim / Wt from product_master.Values (l, w, h, wt_act) used by /dim-wt-master.
      *
      * @param  array{length: string, width: string, height: string, weight_lb: string, weight_oz: string}  $out
      * @param  array<string, mixed>  $pm
      */
-    private static function applyProductMasterDimWt(array &$out, array $pm): void
+    private static function applyProductMasterDimWt(array &$out, array $pm, bool $overwrite = false): void
     {
         $values = $pm['Values'] ?? $pm['values'] ?? [];
         if (is_string($values)) {
@@ -1115,6 +1195,9 @@ class ListingManagerAmazonHydrator
                     if ($raw === null || $raw === '') {
                         continue;
                     }
+                    if (is_string($raw)) {
+                        $raw = str_replace(',', '', trim($raw));
+                    }
                     if (is_numeric($raw) && (float) $raw > 0) {
                         return (float) $raw;
                     }
@@ -1124,30 +1207,30 @@ class ListingManagerAmazonHydrator
             return null;
         };
 
-        if ($out['length'] === '' || (float) $out['length'] <= 0) {
-            $n = $num(['l_decl', 'l', 'L', 'length', 'l1']);
+        if ($overwrite || $out['length'] === '' || (float) $out['length'] <= 0) {
+            $n = $num(['l', 'L', 'length', 'l1', 'l_decl']);
             if ($n !== null) {
                 $out['length'] = (string) $n;
             }
         }
-        if ($out['width'] === '' || (float) $out['width'] <= 0) {
-            $n = $num(['w_decl', 'w', 'W', 'width', 'w1']);
+        if ($overwrite || $out['width'] === '' || (float) $out['width'] <= 0) {
+            $n = $num(['w', 'W', 'width', 'w1', 'w_decl']);
             if ($n !== null) {
                 $out['width'] = (string) $n;
             }
         }
-        if ($out['height'] === '' || (float) $out['height'] <= 0) {
-            $n = $num(['h_decl', 'h', 'H', 'height', 'h1']);
+        if ($overwrite || $out['height'] === '' || (float) $out['height'] <= 0) {
+            $n = $num(['h', 'H', 'height', 'h1', 'h_decl']);
             if ($n !== null) {
                 $out['height'] = (string) $n;
             }
         }
 
         $hasWeight = ((float) $out['weight_lb'] + ((float) $out['weight_oz'] / 16)) > 0;
-        if ($hasWeight) {
+        if ($hasWeight && ! $overwrite) {
             return;
         }
-        $lb = $num(['wt_decl', 'wt_act', 'weight_lb', 'wt']);
+        $lb = $num(['wt_act', 'wt_decl', 'weight_lb', 'wt']);
         if ($lb !== null) {
             $out['weight_lb'] = (string) (int) floor($lb);
             $out['weight_oz'] = (string) round(($lb - floor($lb)) * 16, 1);
@@ -1160,6 +1243,89 @@ class ListingManagerAmazonHydrator
             $out['weight_lb'] = (string) (int) floor($w);
             $out['weight_oz'] = (string) round(($w - floor($w)) * 16, 1);
         }
+    }
+
+    /**
+     * Combo SKUs store L/W/H and weight on component rows in Dim/Wt Master.
+     *
+     * @param  array{length: string, width: string, height: string, weight_lb: string, weight_oz: string}  $out
+     * @param  array<string, mixed>  $pm
+     */
+    private static function applyComboDimWt(array &$out, string $sku, array $pm): void
+    {
+        $parent = trim((string) ($pm['parent'] ?? $pm['parent_sku'] ?? ''));
+        if (! ProductMaster::isComboSku($sku, $parent)) {
+            return;
+        }
+
+        $hasDims = (float) $out['length'] > 0 && (float) $out['width'] > 0 && (float) $out['height'] > 0;
+        $hasWeight = ((float) $out['weight_lb'] + ((float) $out['weight_oz'] / 16)) > 0;
+        if ($hasDims && $hasWeight) {
+            return;
+        }
+
+        $parts = ProductMaster::parseComboComponentSkus($sku);
+        if (count($parts) < 2) {
+            return;
+        }
+
+        $sumLb = 0.0;
+        $foundWt = 0;
+        $bestCbm = 0.0;
+        $best = null;
+        foreach ($parts as $part) {
+            $component = ProductMaster::findByCompactSku($part);
+            if (! $component) {
+                continue;
+            }
+            $compOut = ['length' => '', 'width' => '', 'height' => '', 'weight_lb' => '', 'weight_oz' => ''];
+            self::applyProductMasterDimWt($compOut, $component->toArray(), true);
+            $wt = (float) $compOut['weight_lb'] + ((float) $compOut['weight_oz'] / 16);
+            if ($wt > 0) {
+                $sumLb += $wt;
+                $foundWt++;
+            }
+            $cbm = ProductMaster::cbmFromRowDims([
+                'l' => $compOut['length'],
+                'w' => $compOut['width'],
+                'h' => $compOut['height'],
+            ]);
+            if ($cbm !== null && $cbm > $bestCbm) {
+                $bestCbm = $cbm;
+                $best = $compOut;
+            }
+        }
+
+        if (! $hasDims && is_array($best)) {
+            $out['length'] = $best['length'];
+            $out['width'] = $best['width'];
+            $out['height'] = $best['height'];
+        }
+        if (! $hasWeight && $foundWt > 0 && $sumLb > 0) {
+            $out['weight_lb'] = (string) (int) floor($sumLb);
+            $out['weight_oz'] = (string) round(($sumLb - floor($sumLb)) * 16, 1);
+        }
+    }
+
+    private static function reverbBrandNewConditionUuid(): string
+    {
+        $cached = \Illuminate\Support\Facades\Cache::get('reverb_listing_conditions_v1');
+        if (! is_array($cached)) {
+            return '';
+        }
+        $wanted = strtolower(trim((string) config('listing_manager.default_reverb_condition', 'Brand New')) ?: 'Brand New');
+        foreach ($cached as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $name = strtolower(trim((string) ($row['name'] ?? '')));
+            $id = trim((string) ($row['id'] ?? ''));
+            if ($id !== '' && ($name === $wanted || str_contains($name, $wanted) || str_contains($wanted, $name))) {
+                return $id;
+            }
+        }
+
+        return '';
     }
 
     private static function dimValue(mixed $v): string

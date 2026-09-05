@@ -74,4 +74,6 @@ return [
     */
     'default_brand' => env('LISTING_MANAGER_DEFAULT_BRAND', '5 Core Inc.'),
     'default_manufacturer' => env('LISTING_MANAGER_DEFAULT_MANUFACTURER', '5 Core Inc.'),
+    'default_condition' => env('LISTING_MANAGER_DEFAULT_CONDITION', 'New'),
+    'default_reverb_condition' => env('LISTING_MANAGER_DEFAULT_REVERB_CONDITION', 'Brand New'),
 ];

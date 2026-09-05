@@ -371,19 +371,17 @@ class ListingManagerMasterLoader
         if ($upc === '') {
             $upc = trim((string) ($pm['upc'] ?? $pm['barcode'] ?? $values['upc'] ?? $values['gtin'] ?? ''));
         }
-        $brand = trim((string) ($pm['brand'] ?? $values['brand'] ?? ''));
-        $manufacturer = trim((string) ($pm['manufacturer'] ?? $values['manufacturer'] ?? $brand));
-        if ($upc === '' && $brand === '') {
-            return ['success' => false, 'message' => 'No identifier fields found on Product Master.', 'source' => 'identifiers'];
-        }
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
+        $manufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
 
         return [
             'success' => true,
-            'message' => 'Identifiers loaded from Product Master.',
+            'message' => 'Identifiers loaded. Brand is 5 Core Inc. and model/MPN is the SKU.',
             'source' => 'identifiers',
             'upc' => $upc,
-            'brand' => $brand !== '' ? $brand : (trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.'),
-            'manufacturer' => $manufacturer !== '' ? $manufacturer : (trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.'),
+            'brand' => $brand,
+            'manufacturer' => $manufacturer,
+            'mpn' => $sku,
         ];
     }
 
@@ -430,23 +428,23 @@ class ListingManagerMasterLoader
      */
     private static function package(string $sku): array
     {
-        $hydrated = ListingManagerAmazonHydrator::hydrate($sku, false);
-        $has = trim((string) ($hydrated['package_length'] ?? '')) !== ''
-            || trim((string) ($hydrated['package_weight_lb'] ?? '')) !== ''
-            || trim((string) ($hydrated['package_weight_oz'] ?? '')) !== '';
+        $pkg = ListingManagerAmazonHydrator::dimWtPackage($sku);
+        $has = trim((string) ($pkg['length'] ?? '')) !== ''
+            || trim((string) ($pkg['weight_lb'] ?? '')) !== ''
+            || trim((string) ($pkg['weight_oz'] ?? '')) !== '';
         if (! $has) {
-            return ['success' => false, 'message' => 'No package size or weight found on Product Master.', 'source' => 'package'];
+            return ['success' => false, 'message' => 'No package size or weight found on Dim/Wt Master.', 'source' => 'package'];
         }
 
         return [
             'success' => true,
-            'message' => 'Package details loaded from Product Master.',
+            'message' => 'Package details loaded from Dim/Wt Master.',
             'source' => 'package',
-            'package_length' => $hydrated['package_length'] ?? '',
-            'package_width' => $hydrated['package_width'] ?? '',
-            'package_height' => $hydrated['package_height'] ?? '',
-            'package_weight_lb' => $hydrated['package_weight_lb'] ?? '',
-            'package_weight_oz' => $hydrated['package_weight_oz'] ?? '',
+            'package_length' => $pkg['length'] ?? '',
+            'package_width' => $pkg['width'] ?? '',
+            'package_height' => $pkg['height'] ?? '',
+            'package_weight_lb' => $pkg['weight_lb'] ?? '',
+            'package_weight_oz' => $pkg['weight_oz'] ?? '',
         ];
     }
 
@@ -456,21 +454,18 @@ class ListingManagerMasterLoader
     private static function reverb(string $sku): array
     {
         $pm = self::productMaster($sku);
-        $values = self::values($pm);
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
         $payload = [
             'success' => true,
-            'message' => 'Reverb details loaded from Reverb Listing Master.',
+            'message' => 'Reverb details loaded. Make is 5 Core Inc., model is the SKU, condition is Brand New.',
             'source' => 'reverb',
-            'make' => trim((string) ($pm['reverb_make'] ?? $values['brand'] ?? '')),
-            'model' => trim((string) ($pm['reverb_model'] ?? $sku)),
+            'make' => $brand,
+            'model' => $sku,
             'finish' => trim((string) ($pm['reverb_finish'] ?? '')),
             'year' => trim((string) ($pm['reverb_year'] ?? '')),
-            'condition_name' => trim((string) ($pm['reverb_condition'] ?? $values['condition'] ?? '')),
+            'condition_name' => trim((string) config('listing_manager.default_reverb_condition', 'Brand New')) ?: 'Brand New',
             'shipping_profile_id' => trim((string) ($pm['reverb_shipping_profile_id'] ?? '')),
         ];
-        if ($payload['make'] === '' && $payload['shipping_profile_id'] === '' && $payload['condition_name'] === '') {
-            return ['success' => false, 'message' => 'No Reverb Listing Master fields found for this SKU.', 'source' => 'reverb'];
-        }
 
         return $payload;
     }

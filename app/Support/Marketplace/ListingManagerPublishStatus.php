@@ -343,8 +343,9 @@ class ListingManagerPublishStatus
         }
         $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
         $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
-        $brand = trim((string) ($details['brand'] ?? ($specifics['Brand'] ?? ''))) ?: $defaultBrand;
-        $manufacturer = trim((string) ($details['manufacturer'] ?? ($specifics['Manufacturer'] ?? ''))) ?: $defaultManufacturer;
+        $defaultCondition = trim((string) config('listing_manager.default_condition', 'New')) ?: 'New';
+        $brand = $defaultBrand;
+        $manufacturer = $defaultManufacturer;
         $mpn = trim((string) ($details['mpn'] ?? ($specifics['MPN'] ?? '')));
         $upc = trim((string) ($details['upc'] ?? ($specifics['UPC'] ?? '')));
         if ($brand !== '') {
@@ -429,7 +430,11 @@ class ListingManagerPublishStatus
             'image_url' => $imageUrl,
             'images' => $images,
             'item_specifics' => $specifics,
-            'condition_id' => self::conditionId(trim((string) ($details['condition'] ?? 'New'))),
+            'condition' => $defaultCondition,
+            'condition_id' => self::conditionId($defaultCondition),
+            'condition_name' => trim((string) ($details['condition_name'] ?? ''))
+                ?: (trim((string) config('listing_manager.default_reverb_condition', 'Brand New')) ?: 'Brand New'),
+            'make' => trim((string) ($details['make'] ?? '')) ?: $brand,
         ]);
 
         foreach ([

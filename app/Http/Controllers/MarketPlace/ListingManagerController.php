@@ -436,7 +436,7 @@ class ListingManagerController extends Controller
                     ? 'Product Master'
                     : (($shopify['success'] ?? false) ? 'Main Store' : 'Amazon'),
                 'upc' => (string) ($hydrated['upc'] ?? ListingManagerAmazonHydrator::upcFromCpMaster($sku, $pm, $listing, $raw)),
-                'mpn' => (string) ($pm['mpn'] ?? $pm['part_number'] ?? $listing?->part_number ?? ''),
+                'mpn' => $sku,
                 'vendor' => (string) ($hydrated['brand'] ?: config('listing_manager.default_brand', '5 Core Inc.')),
             'manufacturer' => (string) ($hydrated['manufacturer'] ?: config('listing_manager.default_manufacturer', '5 Core Inc.')),
             'parent' => ListingManagerFamily::parentKey($sku),
@@ -848,6 +848,7 @@ class ListingManagerController extends Controller
             }
         }
 
+        $details = $this->ensureIdentifierDefaults($details, (string) $draft->seller_sku);
         $draft->listing_details = $details;
         $ready = ListingManagerPublishStatus::readiness(
             $draft->title,
@@ -2260,7 +2261,8 @@ class ListingManagerController extends Controller
      * @return array<string, mixed>
      */
     /**
-     * Brand / Manufacturer = 5 Core Inc, MPN = SKU, UPC from CP Master (product_master).
+     * Brand / Manufacturer = 5 Core Inc., model/MPN = SKU, condition = New / Brand New,
+     * package from Dim/Wt Master, UPC from CP Master.
      *
      * @param  array<string, mixed>  $details
      * @return array<string, mixed>
@@ -2268,11 +2270,6 @@ class ListingManagerController extends Controller
     private function ensureIdentifierDefaults(array $details, string $sku): array
     {
         $sku = trim($sku);
-        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
-        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
-        $brand = trim((string) ($details['brand'] ?? '')) ?: $defaultBrand;
-        $manufacturer = trim((string) ($details['manufacturer'] ?? '')) ?: $defaultManufacturer;
-        $mpn = trim((string) ($details['mpn'] ?? '')) ?: $sku;
         $specifics = is_array($details['item_specifics'] ?? null) ? $details['item_specifics'] : [];
         $upc = trim((string) ($details['upc'] ?? ''));
         $specificsUpc = trim((string) ($specifics['UPC'] ?? ''));
@@ -2282,20 +2279,13 @@ class ListingManagerController extends Controller
         if (($upc === '' || ListingManagerAmazonHydrator::looksLikeAsin($upc)) && $sku !== '') {
             $upc = ListingManagerAmazonHydrator::upcFromCpMaster($sku);
         }
-        $specifics['Brand'] = $brand;
-        $specifics['Manufacturer'] = $manufacturer;
-        $specifics['MPN'] = $mpn;
         if ($upc !== '') {
+            $details['upc'] = $upc;
             $specifics['UPC'] = $upc;
+            $details['item_specifics'] = $specifics;
         }
 
-        $details['brand'] = $brand;
-        $details['manufacturer'] = $manufacturer;
-        $details['mpn'] = $mpn;
-        $details['upc'] = $upc;
-        $details['item_specifics'] = $specifics;
-
-        return ListingManagerPublishStatus::normalizeDetails($details);
+        return ListingManagerAmazonHydrator::applyMarketplaceConstants($details, $sku);
     }
 
     public function media(string $file)
@@ -2304,7 +2294,7 @@ class ListingManagerController extends Controller
     }
 
     /**
-     * Fill missing TikTok/Temu images and package weight from Product Master / Amazon when the editor opens.
+     * Fill missing images and apply Dim/Wt package + listing constants when the editor opens.
      */
     private function ensureDraftMediaAndPackage(?ListingManagerChannelDraft $draft): void
     {
@@ -2312,16 +2302,15 @@ class ListingManagerController extends Controller
             return;
         }
 
-        $details = ListingManagerPublishStatus::normalizeDetails(
-            is_array($draft->listing_details) ? $draft->listing_details : []
+        $details = $this->ensureIdentifierDefaults(
+            ListingManagerPublishStatus::normalizeDetails(
+                is_array($draft->listing_details) ? $draft->listing_details : []
+            ),
+            (string) $draft->seller_sku
         );
         $images = is_array($details['images'] ?? null) ? $details['images'] : [];
-        $weightOk = ((float) ($details['package_weight_lb'] ?? 0) + ((float) ($details['package_weight_oz'] ?? 0) / 16)) > 0;
         $family = ListingManagerEditorProfile::family(ListingChannelCounts::normalize((string) ($draft->channel->channel ?? '')));
         $needsImages = $images === [] && trim((string) ($details['image_url'] ?? '')) === '';
-        if (! $needsImages && $weightOk) {
-            return;
-        }
 
         if ($needsImages) {
             $fetched = ListingManagerAmazonHydrator::imageMasterUrls((string) $draft->seller_sku);
@@ -2342,18 +2331,7 @@ class ListingManagerController extends Controller
             }
         }
 
-        if (! $weightOk) {
-            $hydrated = ListingManagerAmazonHydrator::hydrate((string) $draft->seller_sku, false);
-            $channelName = (string) ($draft->channel->channel ?? '');
-            $merged = ListingManagerAmazonHydrator::detailsFromHydration($hydrated, $details, $channelName);
-            foreach (['package_length', 'package_width', 'package_height', 'package_weight_lb', 'package_weight_oz'] as $key) {
-                if (trim((string) ($details[$key] ?? '')) === '' || ($key === 'package_weight_lb' && ! $weightOk)) {
-                    $details[$key] = $merged[$key] ?? $details[$key] ?? '';
-                }
-            }
-        }
-
-        $draft->listing_details = ListingManagerPublishStatus::normalizeDetails($details);
+        $draft->listing_details = $this->ensureIdentifierDefaults($details, (string) $draft->seller_sku);
         if ($draft->status !== 'listed') {
             $ready = ListingManagerPublishStatus::readiness(
                 $draft->title,
