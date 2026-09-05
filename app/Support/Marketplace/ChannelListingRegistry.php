@@ -349,8 +349,24 @@ class ChannelListingRegistry
     public static function get(string $key): ?array
     {
         $all = self::all();
+        $normalized = ListingChannelCounts::normalize($key);
+        $aliases = [
+            'ebay1' => 'ebay',
+            'ebayone' => 'ebay',
+            'ebay2' => 'ebaytwo',
+            'ebay3' => 'ebaythree',
+            'tiktok' => 'tiktokshop',
+            'tiktok2' => 'tiktokshop2',
+            'shopify' => 'shopifyb2c',
+            'bestbuy' => 'bestbuyusa',
+            'temutwo' => 'temu2',
+            'facebookmarketplace' => 'fbmarketplace',
+            'shopifyb2b' => 'shopifywholesale',
+            'shopifywholesaleds' => 'shopifywholesale',
+        ];
+        $resolved = $aliases[$normalized] ?? $normalized;
 
-        return $all[strtolower(trim($key))] ?? null;
+        return $all[$resolved] ?? $all[strtolower(trim($key))] ?? null;
     }
 
     /**
@@ -431,18 +447,50 @@ class ChannelListingRegistry
             return [];
         }
 
-        $map = [];
+        $wantedNorm = [];
+        foreach ($skus as $raw) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $raw);
+            if ($norm !== '') {
+                $wantedNorm[$norm] = true;
+            }
+        }
+        if ($wantedNorm === []) {
+            return [];
+        }
+
+        $byNorm = [];
         FaireMetric::query()
-            ->whereIn('sku', $skus)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
             ->get(['sku', 'product_id'])
-            ->each(function ($row) use (&$map) {
+            ->each(function ($row) use (&$byNorm, $wantedNorm) {
                 $sku = trim((string) $row->sku);
                 if ($sku === '') {
                     return;
                 }
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm === '' || ! isset($wantedNorm[$norm]) || isset($byNorm[$norm])) {
+                    return;
+                }
                 $id = trim((string) ($row->product_id ?? ''));
-                $map[strtolower($sku)] = $id !== '' ? $id : $sku;
+                $byNorm[$norm] = $id !== '' ? $id : $sku;
             });
+
+        $map = [];
+        foreach ($skus as $raw) {
+            $sku = trim((string) $raw);
+            if ($sku === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm === '' || ! isset($byNorm[$norm])) {
+                continue;
+            }
+            $id = $byNorm[$norm];
+            $map[strtolower($sku)] = $id;
+            $map[$norm] = $id;
+            $map[strtolower($norm)] = $id;
+        }
 
         return $map;
     }

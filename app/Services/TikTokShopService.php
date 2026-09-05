@@ -4709,4 +4709,267 @@ class TikTokShopService
 
         return $leaves;
     }
+
+    public function isConfigured(): bool
+    {
+        return trim((string) $this->clientKey) !== ''
+            && trim((string) $this->clientSecret) !== ''
+            && trim((string) $this->accessToken) !== '';
+    }
+
+    /**
+     * @param  list<string>  $urls
+     * @return list<array{uri: string}>
+     */
+    public function uploadListingImageUris(array $urls): array
+    {
+        $uris = [];
+        foreach (array_slice(array_values($urls), 0, 9) as $url) {
+            $uri = $this->tiktokUploadImageFromUrl((string) $url, 'MAIN_IMAGE');
+            if ($uri !== null && $uri !== '') {
+                $uris[] = ['uri' => $uri];
+            }
+        }
+
+        return $uris;
+    }
+
+    public function listingWarehouseId(): ?string
+    {
+        $this->ensureShopCipher(false);
+
+        return $this->resolveDefaultWarehouseId();
+    }
+
+    /**
+     * @return array{id: string, path: string}
+     */
+    public function productCategory(string $productId): array
+    {
+        $empty = ['id' => '', 'path' => ''];
+        $productId = trim($productId);
+        if ($productId === '') {
+            return $empty;
+        }
+
+        try {
+            $data = $this->fetchProductData($productId);
+        } catch (\Throwable) {
+            return $empty;
+        }
+
+        $id = $this->tiktokCategoryIdFromProduct($data);
+        $path = '';
+        $chains = $data['category_chains'] ?? $data['categories'] ?? [];
+        if (is_array($chains)) {
+            $names = [];
+            foreach ($chains as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $name = trim((string) ($row['local_name'] ?? $row['name'] ?? $row['category_name'] ?? ''));
+                if ($name !== '') {
+                    $names[] = $name;
+                }
+            }
+            $path = implode(' - ', $names);
+        }
+
+        return ['id' => $id, 'path' => $path];
+    }
+
+    public function searchBrandId(string $categoryId, string $brandName): string
+    {
+        $categoryId = trim($categoryId);
+        $brandName = trim($brandName);
+        if ($categoryId === '' || $brandName === '' || ! $this->accessToken) {
+            return '';
+        }
+
+        $this->ensureShopCipher(false);
+        foreach (['/product/202309/brands', '/product/202502/brands'] as $path) {
+            try {
+                $data = $this->tiktokOpenApi('GET', $path, [
+                    'category_id' => $categoryId,
+                    'brand_name' => $brandName,
+                    'page_size' => '20',
+                ], null, 20);
+            } catch (\Throwable) {
+                continue;
+            }
+            foreach (($data['brands'] ?? $data['brand_list'] ?? []) as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $id = trim((string) ($row['id'] ?? $row['brand_id'] ?? ''));
+                if ($id !== '') {
+                    return $id;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return list<array{id: string, values: list<array<string, string>>}>
+     */
+    public function requiredAttributesForCategory(string $categoryId): array
+    {
+        $categoryId = trim($categoryId);
+        if ($categoryId === '' || ! $this->accessToken) {
+            return [];
+        }
+
+        $this->ensureShopCipher(false);
+        $data = [];
+        foreach (["/product/202309/categories/{$categoryId}/attributes", "/product/202509/categories/{$categoryId}/attributes"] as $path) {
+            try {
+                $data = $this->tiktokOpenApi('GET', $path, ['locale' => 'en-US'], null, 20);
+                if ($data !== []) {
+                    break;
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        $list = $data['attributes'] ?? $data['category_attributes'] ?? [];
+        if (! is_array($list)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($list as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $type = strtoupper((string) ($attr['type'] ?? $attr['attribute_type'] ?? $attr['attribute_type_name'] ?? ''));
+            if (str_contains($type, 'SALES')) {
+                continue;
+            }
+            $required = ! empty($attr['is_required'])
+                || ! empty($attr['is_requried'])
+                || ! empty($attr['is_mandatory'])
+                || strtoupper((string) ($attr['is_required'] ?? '')) === 'TRUE';
+            if (! $required) {
+                continue;
+            }
+            $id = trim((string) ($attr['id'] ?? $attr['attribute_id'] ?? ''));
+            $values = $attr['values'] ?? $attr['value_list'] ?? [];
+            if ($id === '' || ! is_array($values) || $values === []) {
+                continue;
+            }
+            $picked = $this->pickPreferredAttributeValue($values);
+            if (! is_array($picked)) {
+                $first = $values[0] ?? null;
+                $picked = is_array($first) ? $first : null;
+            }
+            if (! is_array($picked)) {
+                continue;
+            }
+            $valueId = trim((string) ($picked['id'] ?? $picked['value_id'] ?? ''));
+            $valueName = trim((string) ($picked['name'] ?? $picked['value_name'] ?? ''));
+            if ($valueId === '' && $valueName === '') {
+                continue;
+            }
+            $value = [];
+            if ($valueId !== '') {
+                $value['id'] = $valueId;
+            }
+            if ($valueName !== '') {
+                $value['name'] = $valueName;
+            }
+            $out[] = ['id' => $id, 'values' => [$value]];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{success: bool, message: string, product_id?: string, sku_id?: string, skus?: list<array<string, mixed>>}
+     */
+    public function createListingProduct(array $payload): array
+    {
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'message' => 'TikTok Shop is not connected. Open Connect and authorize the shop.'];
+        }
+
+        $this->client->setAccessToken($this->accessToken);
+        $this->ensureShopCipher(true);
+
+        $paths = [
+            '/product/202309/products',
+            '/product/202502/products',
+            '/product/202509/products',
+        ];
+        $lastError = '';
+        foreach ($paths as $path) {
+            try {
+                $data = $this->tiktokOpenApi('POST', $path, [], $payload, 90);
+                $productId = trim((string) ($data['product_id'] ?? $data['id'] ?? ''));
+                $skus = is_array($data['skus'] ?? null) ? $data['skus'] : [];
+                $skuId = '';
+                foreach ($skus as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $skuId = trim((string) ($row['id'] ?? $row['sku_id'] ?? ''));
+                    if ($skuId !== '') {
+                        break;
+                    }
+                }
+                if ($productId !== '') {
+                    $this->activateProducts([$productId]);
+                }
+
+                return [
+                    'success' => true,
+                    'message' => $productId !== '' ? 'Published to TikTok Shop ('.$productId.').' : 'Published to TikTok Shop.',
+                    'product_id' => $productId !== '' ? $productId : null,
+                    'sku_id' => $skuId !== '' ? $skuId : null,
+                    'skus' => $skus,
+                ];
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                Log::warning('TikTok create product failed', [
+                    'channel' => $this->configKey,
+                    'path' => $path,
+                    'error' => $lastError,
+                ]);
+            }
+        }
+
+        return [
+            'success' => false,
+            'message' => $lastError !== '' ? $lastError : 'TikTok create product failed.',
+        ];
+    }
+
+    /**
+     * @param  list<string>  $productIds
+     */
+    public function activateProducts(array $productIds): void
+    {
+        $ids = [];
+        foreach ($productIds as $id) {
+            $id = trim((string) $id);
+            if ($id !== '') {
+                $ids[] = $id;
+            }
+        }
+        if ($ids === []) {
+            return;
+        }
+
+        foreach (['/product/202309/products/activate', '/product/202509/products/activate'] as $path) {
+            try {
+                $this->tiktokOpenApi('POST', $path, [], ['product_ids' => $ids], 30);
+                return;
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+    }
 }

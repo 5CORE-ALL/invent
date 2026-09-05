@@ -15,6 +15,11 @@ class ListingTiktokShopTwoController extends Controller
 {
     use HandlesListingPublishActions;
 
+    protected function listingPublishChannel(): string
+    {
+        return 'tiktokshop2';
+    }
+
     public function listingTiktokShopTwo(Request $request)
     {
         $mode = $request->query('mode');

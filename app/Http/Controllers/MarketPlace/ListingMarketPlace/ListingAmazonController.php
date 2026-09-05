@@ -9,6 +9,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ProductStockMapping;
 use App\Support\Marketplace\AmazonListingCounts;
+use App\Support\Marketplace\ListingCountsEngine;
 use Illuminate\Http\Request;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonListingDailyMetric;
@@ -41,29 +42,19 @@ class ListingAmazonController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
 
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
+        $shopifyData = ListingCountsEngine::shopifyMap($skus);
 
-        // Links only — NRL/REQ + Listed are automated (same pattern as /listing-ebaytwo)
-        $statusData = AmazonDataView::whereIn('sku', $skus)
-            ->get(['sku', 'value'])
-            ->mapWithKeys(function ($row) {
-                return [strtoupper(trim((string) $row->sku)) => $row->value];
-            });
-
-        // Listed / Missing L from amazon_listings_raw (SP-API), not datasheet
+        $nrlSet = AmazonListingCounts::nrlSetForSkus($skus);
         $listingsByNorm = AmazonListingCounts::listingsByNormalizedSku();
 
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $listingsByNorm) {
+        $processedData = $productMasters->map(function ($item) use ($shopifyData, $nrlSet, $listingsByNorm) {
             $childSku = (string) $item->sku;
-            $skuUpper = strtoupper(trim($childSku));
+            $shopify = ListingCountsEngine::shopifyRow($shopifyData, $childSku);
 
-            $item->INV = $shopifyData[$childSku]->inv ?? 0;
-            $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
+            $item->INV = ListingCountsEngine::shopifyInv($shopify);
+            $item->L30 = $shopify?->quantity ?? 0;
 
-            $raw = $statusData->has($skuUpper) ? $statusData->get($skuUpper) : null;
-
-            // NRL/REQ from AmazonDataView (same as amazon-tabulator / AmazonListingCounts)
-            $item->nr_req = AmazonListingCounts::nrReqFromDataView($raw);
+            $item->nr_req = AmazonListingCounts::skuIsNrl($childSku, $nrlSet) ? 'NR' : 'REQ';
             $item->NR = $item->nr_req;
 
             $listing = AmazonListingCounts::pickListingForProductSku($childSku, $listingsByNorm);

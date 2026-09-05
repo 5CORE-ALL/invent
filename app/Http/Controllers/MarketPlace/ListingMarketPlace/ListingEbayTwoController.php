@@ -4,11 +4,11 @@ namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
-use App\Models\ShopifySku;
 use App\Models\EbayTwoListingStatus;
 use App\Models\EbayTwoDataView;
 use App\Models\Ebay2Metric;
 use App\Support\Marketplace\EbayTwoListingCounts;
+use App\Support\Marketplace\ListingCountsEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -17,6 +17,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class ListingEbayTwoController extends Controller
 {
     use HandlesListingPublishActions;
+
+    protected function listingPublishChannel(): string
+    {
+        return 'ebaytwo';
+    }
 
     public function listingEbayTwo(Request $request)
     {
@@ -38,7 +43,7 @@ class ListingEbayTwoController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
 
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
+        $shopifyData = ListingCountsEngine::shopifyMap($skus);
 
         // Links only — NRL/REQ + Listed are automated (same sources as /ebay2-tabulator-view)
         $statusData = EbayTwoListingStatus::whereIn('sku', $skus)
@@ -48,11 +53,7 @@ class ListingEbayTwoController extends Controller
             });
 
         // NRL column — same source as ebay2-tabulator-view (EbayTwoDataView.value.NRL)
-        $nrValues = EbayTwoDataView::whereIn('sku', $skus)
-            ->get(['sku', 'value'])
-            ->mapWithKeys(function ($row) {
-                return [strtoupper(trim((string) $row->sku)) => $row->value];
-            });
+        $nrValues = ListingCountsEngine::loadNrValues(EbayTwoDataView::class, $skus);
 
         // Missing Listing / Listed — same rule as ebay2-tabulator-view Missing L (ebay_2_metrics.item_id)
         $ebayMetrics = \App\Support\Marketplace\ListingCountsEngine::listedIdsFromColumn(
@@ -64,10 +65,10 @@ class ListingEbayTwoController extends Controller
         $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $ebayMetrics) {
             $childSku = (string) $item->sku;
             $skuLower = strtolower(trim($childSku));
-            $skuUpper = strtoupper(trim($childSku));
 
-            $item->INV = $shopifyData[$childSku]->inv ?? 0;
-            $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
+            $shopify = ListingCountsEngine::shopifyRow($shopifyData, $childSku);
+            $item->INV = ListingCountsEngine::shopifyInv($shopify);
+            $item->L30 = $shopify?->quantity ?? 0;
 
             // Links from listing status table (buyer/seller only)
             $item->buyer_link = null;
@@ -83,7 +84,7 @@ class ListingEbayTwoController extends Controller
 
             // NRL/REQ from EbayTwoDataView (same as ebay2 NRL column / EbayTwoListingCounts)
             $item->nr_req = EbayTwoListingCounts::nrReqFromDataView(
-                $nrValues->has($skuUpper) ? $nrValues->get($skuUpper) : null
+                ListingCountsEngine::lookupNrValue($nrValues, $childSku)
             );
 
             // Listed / Not Listed from ebay_2_metrics.item_id (Missing Listing logic)

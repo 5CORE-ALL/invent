@@ -10,6 +10,7 @@ use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
+use App\Support\Marketplace\EbaySellAccountPolicies;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -1757,4 +1758,28 @@ class EbayThreeApiService
         }
     }
 
+    /**
+     * @return array{
+     *   success: bool,
+     *   shipping: list<array{id: string, name: string}>,
+     *   payment: list<array{id: string, name: string}>,
+     *   return: list<array{id: string, name: string}>,
+     *   message?: string
+     * }
+     */
+    public function getBusinessPolicies(string $marketplaceId = 'EBAY_US'): array
+    {
+        return EbaySellAccountPolicies::list($this->generateBearerToken(), $marketplaceId);
+    }
+
+    /**
+     * @return array{shipping: string, payment: string, return: string}
+     */
+    public function policyIds(): array
+    {
+        return EbaySellAccountPolicies::resolve(
+            $this->generateBearerToken(),
+            EbaySellAccountPolicies::defaultsForChannel('ebaythree')
+        );
+    }
 }

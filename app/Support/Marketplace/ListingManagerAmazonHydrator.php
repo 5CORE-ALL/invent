@@ -240,7 +240,7 @@ class ListingManagerAmazonHydrator
         $defaults = [];
         $key = ListingChannelCounts::normalize((string) $channelKey);
         if (in_array($key, ['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'], true)) {
-            $defaults = (array) config('listing_manager.ebay2_defaults', []);
+            $defaults = EbaySellAccountPolicies::defaultsForChannel($key);
         }
 
         $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';

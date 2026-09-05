@@ -209,6 +209,9 @@ class ListingManagerEditorProfile
         if (in_array($normalizedKey, ['reverb', 'reverbcom'], true)) {
             return 'reverb';
         }
+        if ($normalizedKey === 'shein') {
+            return 'shein';
+        }
 
         return 'default';
     }

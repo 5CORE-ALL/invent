@@ -1761,7 +1761,7 @@ class AliExpressApiService
      * @param  list<string>  $imageUrls
      * @return array{success:bool,product_id?:string,message?:string}
      */
-    public function addSkusToExistingProduct(string $productId, array $newSkuRows, ?int $categoryId = null, array $imageUrls = []): array
+    public function addSkusToExistingProduct(string $productId, array $newSkuRows, ?int $categoryId = null, array $imageUrls = [], string $title = ''): array
     {
         $productId = trim($productId);
         if ($productId === '' || $newSkuRows === []) {
@@ -1848,65 +1848,65 @@ class AliExpressApiService
 
         $deduct = $this->listedProductReduceStrategy($infoData);
         $images = $this->editImageFields($this->mergeEditImages($imageUrls, $infoData));
-        $base = array_merge([
+        $subjects = $this->editSubjectFields($infoData, $title);
+        $aeopSkus = $this->aeopSkuListFromOfficial($skuInfoList);
+        $official = array_merge([
             'product_id' => $productId,
             'sku_info_list' => $skuInfoList,
-        ], $deduct, $images);
-        $withCategory = $base;
+            'inventory_deduction_strategy' => $deduct['inventory_deduction_strategy'] ?? 'place_order_withhold',
+        ], $this->officialEditImageFields($images), $this->officialEditSubjectFields($subjects), $this->listedProductEditLogistics($infoData));
         if ($categoryId > 0) {
-            $withCategory['aliexpress_category_id'] = $categoryId;
+            $official['aliexpress_category_id'] = $categoryId;
         }
-        $withLogistics = array_merge($withCategory, $this->listedProductEditLogistics($infoData));
 
         $last = ['success' => false, 'message' => 'Could not add SKU to listed product '.$productId.'.'];
-        foreach ([$base, $withCategory, $withLogistics] as $payload) {
-            $encoded = $this->encodeRequestPayload($payload);
-            $editParams = array_merge(['edit_product_request' => $encoded], $deduct, $images);
-            $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
-                'rest' => $editParams,
-                'sync' => $editParams,
-            ]);
-            if (! empty($res['success'])) {
-                return [
-                    'success' => true,
-                    'product_id' => $productId,
-                    'message' => 'Added '.$added.' SKU(s) to listed product '.$productId.'.',
-                ];
-            }
-            $last = $res;
-            if ($this->isAliExpressSchemaPathError((string) ($res['message'] ?? ''))) {
-                continue;
-            }
+        $encoded = $this->encodeRequestPayload($official);
+        $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
+            'rest' => ['edit_product_request' => $encoded],
+            'sync' => ['edit_product_request' => $encoded],
+        ]);
+        if (! empty($res['success'])) {
+            return [
+                'success' => true,
+                'product_id' => $productId,
+                'message' => 'Added '.$added.' SKU(s) to listed product '.$productId.'.',
+            ];
         }
+        $last = $res;
 
-        $old = array_merge([
+        $legacy = array_merge([
             'product_id' => $productId,
-            'aeop_ae_product_s_k_us' => [
-                'aeop_ae_product_sku' => $this->aeopSkuListFromOfficial($skuInfoList),
-            ],
-        ], $deduct, $images);
+            'reduce_strategy' => $deduct['reduce_strategy'] ?? 'place_order_withhold',
+            'aeop_ae_product_s_k_us' => ['aeop_ae_product_sku' => $aeopSkus],
+        ], array_intersect_key($images, array_flip(['image_u_r_ls', 'main_image_url'])), array_intersect_key($subjects, array_flip(['subject', 'subject_list'])));
         if ($categoryId > 0) {
-            $old['category_id'] = $categoryId;
+            $legacy['category_id'] = $categoryId;
         }
-        $oldEncoded = $this->encodeRequestPayload($old);
+        $legacyEncoded = $this->encodeRequestPayload($legacy);
+        $skuEncoded = $this->encodeRequestPayload(['aeop_ae_product_sku' => $aeopSkus]);
         foreach ([
             'aliexpress.postproduct.redefining.editaeproduct',
             'aliexpress.offer.product.edit',
         ] as $method) {
-            $oldParams = array_merge(['aeop_a_e_product' => $oldEncoded], $deduct, $images);
-            $res = $this->callApiFlexible($method, [
-                'rest' => $oldParams,
-                'sync' => $oldParams,
-            ]);
-            if (! empty($res['success'])) {
-                return [
-                    'success' => true,
-                    'product_id' => $productId,
-                    'message' => 'Added '.$added.' SKU(s) to listed product '.$productId.'.',
-                ];
-            }
-            if (! $this->isAliExpressSchemaPathError((string) ($res['message'] ?? ''))) {
-                $last = $res;
+            foreach ([
+                ['aeopAeProduct' => $legacyEncoded, 'aeop_ae_product_s_k_us' => $skuEncoded],
+                ['aeop_a_e_product' => $legacyEncoded, 'aeop_ae_product_s_k_us' => $skuEncoded],
+            ] as $oldParams) {
+                $res = $this->callApiFlexible($method, [
+                    'rest' => $oldParams,
+                    'sync' => $oldParams,
+                ]);
+                if (! empty($res['success'])) {
+                    return [
+                        'success' => true,
+                        'product_id' => $productId,
+                        'message' => 'Added '.$added.' SKU(s) to listed product '.$productId.'.',
+                    ];
+                }
+                $msg = (string) ($res['message'] ?? '');
+                if ($msg !== '' && ! $this->isAliExpressSchemaPathError($msg) && ! str_contains($msg, 'aeop_ae_product_s_k_us')) {
+                    $last = $res;
+                }
             }
         }
 
@@ -1914,6 +1914,40 @@ class AliExpressApiService
             'success' => false,
             'message' => $this->extractPostFailureMessage($last)
                 ?: 'Could not add SKU to listed product '.$productId.'.',
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $images
+     * @return array<string, mixed>
+     */
+    private function officialEditImageFields(array $images): array
+    {
+        $urls = is_array($images['main_image_urls_list'] ?? null) ? $images['main_image_urls_list'] : [];
+        if ($urls === []) {
+            return [];
+        }
+
+        return [
+            'main_image_urls_list' => $urls,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $subjects
+     * @return array<string, mixed>
+     */
+    private function officialEditSubjectFields(array $subjects): array
+    {
+        $title = trim((string) ($subjects['subject'] ?? ''));
+        if ($title === '') {
+            return [];
+        }
+
+        return [
+            'multi_language_subject_list' => [
+                ['language' => 'en', 'subject' => $title],
+            ],
         ];
     }
 
@@ -1995,6 +2029,54 @@ class AliExpressApiService
         }
 
         return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $info
+     * @return array<string, mixed>
+     */
+    private function editSubjectFields(array $info, string $fallbackTitle): array
+    {
+        $title = trim((string) ($this->extractProductName($info) ?? ''));
+        if ($title === '') {
+            foreach ([$info['multi_language_subject_list'] ?? null, $info['subject_list'] ?? null] as $list) {
+                foreach ($this->normalizeList($list) as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $title = trim((string) ($row['subject'] ?? $row['value'] ?? $row['title'] ?? ''));
+                    if ($title !== '') {
+                        break 2;
+                    }
+                }
+            }
+        }
+        if ($title === '') {
+            $title = trim($fallbackTitle);
+        }
+        $title = mb_substr($title, 0, 128);
+        if ($title === '') {
+            return [];
+        }
+
+        $subjectList = $info['subject_list'] ?? null;
+        if (! is_array($subjectList) || $subjectList === []) {
+            $subjectList = $info['multi_language_subject_list'] ?? null;
+        }
+        if (! is_array($subjectList) || $subjectList === []) {
+            $subjectList = [
+                ['language' => 'en', 'subject' => $title],
+                ['locale' => 'en', 'value' => $title],
+            ];
+        }
+
+        return [
+            'subject' => $title,
+            'subject_list' => $subjectList,
+            'multi_language_subject_list' => [
+                ['language' => 'en', 'subject' => $title],
+            ],
+        ];
     }
 
     /**

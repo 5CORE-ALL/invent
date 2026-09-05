@@ -43,6 +43,30 @@ return [
         'return_policy_name' => env('LISTING_MANAGER_EBAY2_RETURN_POLICY_NAME', '30 days money back'),
     ],
 
+    'ebay1_defaults' => [
+        'location_city' => env('LISTING_MANAGER_EBAY1_CITY', env('LISTING_MANAGER_EBAY2_CITY', 'Bellefontaine')),
+        'location_country' => env('LISTING_MANAGER_EBAY1_COUNTRY', env('LISTING_MANAGER_EBAY2_COUNTRY', 'US')),
+        'location_postal_code' => env('LISTING_MANAGER_EBAY1_POSTAL', env('LISTING_MANAGER_EBAY2_POSTAL', '43311')),
+        'shipping_policy_id' => env('LISTING_MANAGER_EBAY1_SHIPPING_POLICY_ID', ''),
+        'shipping_policy_name' => env('LISTING_MANAGER_EBAY1_SHIPPING_POLICY_NAME', 'As Per Weight'),
+        'payment_policy_id' => env('LISTING_MANAGER_EBAY1_PAYMENT_POLICY_ID', ''),
+        'payment_policy_name' => env('LISTING_MANAGER_EBAY1_PAYMENT_POLICY_NAME', 'eBay Managed Payments'),
+        'return_policy_id' => env('LISTING_MANAGER_EBAY1_RETURN_POLICY_ID', ''),
+        'return_policy_name' => env('LISTING_MANAGER_EBAY1_RETURN_POLICY_NAME', '30 days money back'),
+    ],
+
+    'ebay3_defaults' => [
+        'location_city' => env('LISTING_MANAGER_EBAY3_CITY', env('LISTING_MANAGER_EBAY2_CITY', 'Bellefontaine')),
+        'location_country' => env('LISTING_MANAGER_EBAY3_COUNTRY', env('LISTING_MANAGER_EBAY2_COUNTRY', 'US')),
+        'location_postal_code' => env('LISTING_MANAGER_EBAY3_POSTAL', env('LISTING_MANAGER_EBAY2_POSTAL', '43311')),
+        'shipping_policy_id' => env('LISTING_MANAGER_EBAY3_SHIPPING_POLICY_ID', ''),
+        'shipping_policy_name' => env('LISTING_MANAGER_EBAY3_SHIPPING_POLICY_NAME', 'As Per Weight'),
+        'payment_policy_id' => env('LISTING_MANAGER_EBAY3_PAYMENT_POLICY_ID', ''),
+        'payment_policy_name' => env('LISTING_MANAGER_EBAY3_PAYMENT_POLICY_NAME', 'eBay Managed Payments'),
+        'return_policy_id' => env('LISTING_MANAGER_EBAY3_RETURN_POLICY_ID', ''),
+        'return_policy_name' => env('LISTING_MANAGER_EBAY3_RETURN_POLICY_NAME', '30 days money back'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Required item specifics defaults (Ebay publish)

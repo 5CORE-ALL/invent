@@ -218,6 +218,12 @@
     let lastPreviewGroups = [];
     let reverbCatTimer = null;
     let reverbCatXhr = null;
+    let ebayCatTimer = null;
+    let ebayCatXhr = null;
+    let tiktokCatTimer = null;
+    let tiktokCatXhr = null;
+    let sheinCatTimer = null;
+    let sheinCatXhr = null;
 
     function selectedPublishMode() {
         const checked = document.querySelector('input[name="listing-publish-mode"]:checked');
@@ -243,10 +249,39 @@
         return c === 'reverb' || c === 'reverbcom';
     }
 
+    function isEbayChannel() {
+        const c = String(cfg().channel || '').toLowerCase().replace(/[\s_-]/g, '');
+        return c === 'ebay' || c === 'ebay1' || c === 'ebayone'
+            || c === 'ebay2' || c === 'ebaytwo'
+            || c === 'ebay3' || c === 'ebaythree';
+    }
+
+    function isTiktokChannel() {
+        const c = String(cfg().channel || '').toLowerCase().replace(/[\s_-]/g, '');
+        return c === 'tiktok' || c === 'tiktokshop' || c === 'tiktok1'
+            || c === 'tiktok2' || c === 'tiktokshop2' || c === 'tiktoktwo';
+    }
+
+    function isSheinChannel() {
+        return String(cfg().channel || '').toLowerCase().replace(/[\s_-]/g, '') === 'shein';
+    }
+
     function selectedCategoryId() {
         if (isWayfairChannel()) {
             const wf = document.getElementById('listing-publish-wayfair-class-id');
             if (wf) return String(wf.value || '').replace(/\D+/g, '');
+        }
+        if (isEbayChannel()) {
+            const ebayId = document.getElementById('listing-publish-ebay-category-id');
+            if (ebayId) return String(ebayId.value || '').replace(/\D+/g, '');
+        }
+        if (isTiktokChannel()) {
+            const tt = document.getElementById('listing-publish-tiktok-category-id');
+            if (tt) return String(tt.value || '').replace(/\D+/g, '');
+        }
+        if (isSheinChannel()) {
+            const shein = document.getElementById('listing-publish-shein-category-id');
+            if (shein) return String(shein.value || '').replace(/\D+/g, '');
         }
         const el = document.getElementById('listing-publish-category-id');
         return el ? String(el.value || '').replace(/\D+/g, '') : '';
@@ -256,6 +291,18 @@
         if (isReverbChannel()) {
             const reverbEl = document.getElementById('listing-publish-reverb-category-name');
             if (reverbEl) return String(reverbEl.value || '').trim();
+        }
+        if (isEbayChannel()) {
+            const ebayEl = document.getElementById('listing-publish-ebay-category-name');
+            if (ebayEl) return String(ebayEl.value || '').trim();
+        }
+        if (isTiktokChannel()) {
+            const tt = document.getElementById('listing-publish-tiktok-category-name');
+            if (tt) return String(tt.value || '').trim();
+        }
+        if (isSheinChannel()) {
+            const shein = document.getElementById('listing-publish-shein-category-name');
+            if (shein) return String(shein.value || '').trim();
         }
         const el = document.getElementById('listing-publish-category-name');
         return el ? String(el.value || '').trim() : '';
@@ -383,6 +430,300 @@
             : 'No class matched yet. Enter the Wayfair class ID from Partner Home or a listed sibling.');
     }
 
+    function applySuggestedEbayCategory(suggested) {
+        const pathEl = document.getElementById('listing-publish-ebay-category-path');
+        const idEl = document.getElementById('listing-publish-ebay-category-id');
+        const nameEl = document.getElementById('listing-publish-ebay-category-name');
+        const typed = nameEl && nameEl.dataset.userTyped === '1'
+            ? String(nameEl.value || '').trim()
+            : '';
+        if (typed.length >= 2) {
+            searchEbayCategories(typed);
+            return;
+        }
+        const path = String((suggested && suggested.path) || '').trim();
+        const id = String((suggested && suggested.id) || '').replace(/\D+/g, '');
+        const name = String((suggested && suggested.name) || '').trim();
+        const leaf = path.split(/[>\/|]/).pop().trim();
+        if (idEl && id) idEl.value = id;
+        if (nameEl && !String(nameEl.value || '').trim()) nameEl.value = name || leaf || '';
+        if (pathEl) {
+            pathEl.textContent = path || (id
+                ? 'eBay category matched from a listed sibling or title.'
+                : 'No category matched yet. Type an eBay category name, or publish and we will try from the title.');
+        }
+        const query = String((nameEl && nameEl.value) || name || leaf || '').trim();
+        if (query.length >= 2) searchEbayCategories(query);
+        else hideEbayCategoryResults();
+    }
+
+    function hideEbayCategoryResults() {
+        const box = document.getElementById('listing-publish-ebay-category-results');
+        if (!box) return;
+        box.classList.remove('is-open');
+        box.innerHTML = '';
+    }
+
+    function showEbayCategoryResults(html) {
+        const box = document.getElementById('listing-publish-ebay-category-results');
+        if (!box) return;
+        box.innerHTML = html;
+        box.classList.add('is-open');
+        box.hidden = false;
+    }
+
+    function searchEbayCategories(query) {
+        query = String(query || '').trim();
+        const box = document.getElementById('listing-publish-ebay-category-results');
+        if (!box || !isEbayChannel()) return;
+        if (query.length < 2) {
+            hideEbayCategoryResults();
+            return;
+        }
+        showEbayCategoryResults('<div class="listing-publish-cat-empty">Searching eBay categories…</div>');
+        if (ebayCatXhr && ebayCatXhr.abort) ebayCatXhr.abort();
+        ebayCatXhr = $.ajax({
+            url: cfg().categorySearchUrl || '/listing-manager/ebay/categories',
+            type: 'GET',
+            data: {
+                q: query,
+                channel: cfg().channel || 'ebaytwo',
+                title: query
+            },
+            dataType: 'json',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            success: function (res) {
+                const rows = (res && res.categories) || [];
+                if (!rows.length) {
+                    showEbayCategoryResults('<div class="listing-publish-cat-empty">' +
+                        escapeHtml((res && res.message) || 'No eBay categories matched.') + '</div>');
+                    return;
+                }
+                showEbayCategoryResults(rows.map(function (row) {
+                    return '<button type="button" class="listing-publish-cat-item listing-publish-ebay-cat-item" data-id="' +
+                        escapeHtml(row.id || '') + '" data-path="' + escapeHtml(row.path || '') + '">' +
+                        escapeHtml(row.path || row.id || '') + '</button>';
+                }).join(''));
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') return;
+                showEbayCategoryResults('<div class="listing-publish-cat-empty">' +
+                    escapeHtml(ajaxError(xhr) || 'Category search failed.') + '</div>');
+            }
+        });
+    }
+
+    function scheduleEbayCategorySearch(query) {
+        clearTimeout(ebayCatTimer);
+        ebayCatTimer = setTimeout(function () { searchEbayCategories(query); }, 280);
+    }
+
+    function pickEbayCategory(id, path) {
+        const idEl = document.getElementById('listing-publish-ebay-category-id');
+        const nameEl = document.getElementById('listing-publish-ebay-category-name');
+        const pathEl = document.getElementById('listing-publish-ebay-category-path');
+        if (idEl) idEl.value = String(id || '').replace(/\D+/g, '');
+        if (nameEl) nameEl.value = String(path || '').trim();
+        if (pathEl) pathEl.textContent = String(path || '').trim() || 'eBay category selected.';
+        hideEbayCategoryResults();
+    }
+
+    function applySuggestedTiktokCategory(suggested) {
+        const pathEl = document.getElementById('listing-publish-tiktok-category-path');
+        const idEl = document.getElementById('listing-publish-tiktok-category-id');
+        const nameEl = document.getElementById('listing-publish-tiktok-category-name');
+        const typed = nameEl && nameEl.dataset.userTyped === '1'
+            ? String(nameEl.value || '').trim()
+            : '';
+        if (typed.length >= 2) {
+            searchTiktokCategories(typed);
+            return;
+        }
+        const path = String((suggested && suggested.path) || '').trim();
+        const id = String((suggested && suggested.id) || '').replace(/\D+/g, '');
+        const name = String((suggested && suggested.name) || '').trim();
+        const leaf = path.split(/[>\-\/|]/).pop().trim();
+        if (idEl && id) idEl.value = id;
+        if (nameEl && !String(nameEl.value || '').trim()) nameEl.value = name || leaf || '';
+        if (pathEl) {
+            pathEl.textContent = path || (id
+                ? 'TikTok category matched from a listed sibling or title.'
+                : 'No category matched yet. Type a TikTok category name, or publish and we will try from the title.');
+        }
+        const query = String((nameEl && nameEl.value) || name || leaf || '').trim();
+        if (query.length >= 2) searchTiktokCategories(query);
+        else hideTiktokCategoryResults();
+    }
+
+    function hideTiktokCategoryResults() {
+        const box = document.getElementById('listing-publish-tiktok-category-results');
+        if (!box) return;
+        box.classList.remove('is-open');
+        box.innerHTML = '';
+    }
+
+    function showTiktokCategoryResults(html) {
+        const box = document.getElementById('listing-publish-tiktok-category-results');
+        if (!box) return;
+        box.innerHTML = html;
+        box.classList.add('is-open');
+        box.hidden = false;
+    }
+
+    function searchTiktokCategories(query) {
+        query = String(query || '').trim();
+        const box = document.getElementById('listing-publish-tiktok-category-results');
+        if (!box || !isTiktokChannel()) return;
+        if (query.length < 2) {
+            hideTiktokCategoryResults();
+            return;
+        }
+        showTiktokCategoryResults('<div class="listing-publish-cat-empty">Searching TikTok categories…</div>');
+        if (tiktokCatXhr && tiktokCatXhr.abort) tiktokCatXhr.abort();
+        tiktokCatXhr = $.ajax({
+            url: cfg().categorySearchUrl || '/listing-manager/ebay/categories',
+            type: 'GET',
+            data: {
+                q: query,
+                channel: cfg().channel || 'tiktokshop2',
+                title: query
+            },
+            dataType: 'json',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            success: function (res) {
+                const rows = (res && res.categories) || [];
+                if (!rows.length) {
+                    showTiktokCategoryResults('<div class="listing-publish-cat-empty">' +
+                        escapeHtml((res && res.message) || 'No TikTok categories matched.') + '</div>');
+                    return;
+                }
+                showTiktokCategoryResults(rows.map(function (row) {
+                    return '<button type="button" class="listing-publish-cat-item listing-publish-tiktok-cat-item" data-id="' +
+                        escapeHtml(row.id || '') + '" data-path="' + escapeHtml(row.path || '') + '">' +
+                        escapeHtml(row.path || row.id || '') + '</button>';
+                }).join(''));
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') return;
+                showTiktokCategoryResults('<div class="listing-publish-cat-empty">' +
+                    escapeHtml(ajaxError(xhr) || 'Category search failed.') + '</div>');
+            }
+        });
+    }
+
+    function scheduleTiktokCategorySearch(query) {
+        clearTimeout(tiktokCatTimer);
+        tiktokCatTimer = setTimeout(function () { searchTiktokCategories(query); }, 280);
+    }
+
+    function pickTiktokCategory(id, path) {
+        const idEl = document.getElementById('listing-publish-tiktok-category-id');
+        const nameEl = document.getElementById('listing-publish-tiktok-category-name');
+        const pathEl = document.getElementById('listing-publish-tiktok-category-path');
+        if (idEl) idEl.value = String(id || '').replace(/\D+/g, '');
+        if (nameEl) nameEl.value = String(path || '').trim();
+        if (pathEl) pathEl.textContent = String(path || '').trim() || 'TikTok category selected.';
+        hideTiktokCategoryResults();
+    }
+
+    function applySuggestedSheinCategory(suggested) {
+        const pathEl = document.getElementById('listing-publish-shein-category-path');
+        const idEl = document.getElementById('listing-publish-shein-category-id');
+        const nameEl = document.getElementById('listing-publish-shein-category-name');
+        const typed = nameEl && nameEl.dataset.userTyped === '1'
+            ? String(nameEl.value || '').trim()
+            : '';
+        if (typed.length >= 2) {
+            searchSheinCategories(typed);
+            return;
+        }
+        const path = String((suggested && suggested.path) || '').trim();
+        const id = String((suggested && suggested.id) || '').replace(/\D+/g, '');
+        const name = String((suggested && suggested.name) || '').trim();
+        const leaf = path.split(/[>\-\/|]/).pop().trim();
+        if (idEl && id) idEl.value = id;
+        if (nameEl && !String(nameEl.value || '').trim()) nameEl.value = name || leaf || '';
+        if (pathEl) {
+            pathEl.textContent = path || (id
+                ? 'Shein category matched from a listed sibling or title.'
+                : 'No category matched yet. Type a Shein category name, or publish and we will try from the title.');
+        }
+        const query = String((nameEl && nameEl.value) || name || leaf || '').trim();
+        if (query.length >= 2) searchSheinCategories(query);
+        else hideSheinCategoryResults();
+    }
+
+    function hideSheinCategoryResults() {
+        const box = document.getElementById('listing-publish-shein-category-results');
+        if (!box) return;
+        box.classList.remove('is-open');
+        box.innerHTML = '';
+    }
+
+    function showSheinCategoryResults(html) {
+        const box = document.getElementById('listing-publish-shein-category-results');
+        if (!box) return;
+        box.innerHTML = html;
+        box.classList.add('is-open');
+        box.hidden = false;
+    }
+
+    function searchSheinCategories(query) {
+        query = String(query || '').trim();
+        const box = document.getElementById('listing-publish-shein-category-results');
+        if (!box || !isSheinChannel()) return;
+        if (query.length < 2) {
+            hideSheinCategoryResults();
+            return;
+        }
+        showSheinCategoryResults('<div class="listing-publish-cat-empty">Searching Shein categories…</div>');
+        if (sheinCatXhr && sheinCatXhr.abort) sheinCatXhr.abort();
+        sheinCatXhr = $.ajax({
+            url: cfg().categorySearchUrl || '/listing-manager/ebay/categories',
+            type: 'GET',
+            data: {
+                q: query,
+                channel: cfg().channel || 'shein',
+                title: query
+            },
+            dataType: 'json',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            success: function (res) {
+                const rows = (res && res.categories) || [];
+                if (!rows.length) {
+                    showSheinCategoryResults('<div class="listing-publish-cat-empty">' +
+                        escapeHtml((res && res.message) || 'No Shein categories matched.') + '</div>');
+                    return;
+                }
+                showSheinCategoryResults(rows.map(function (row) {
+                    return '<button type="button" class="listing-publish-cat-item listing-publish-shein-cat-item" data-id="' +
+                        escapeHtml(row.id || '') + '" data-path="' + escapeHtml(row.path || '') + '">' +
+                        escapeHtml(row.path || row.id || '') + '</button>';
+                }).join(''));
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') return;
+                showSheinCategoryResults('<div class="listing-publish-cat-empty">' +
+                    escapeHtml(ajaxError(xhr) || 'Category search failed.') + '</div>');
+            }
+        });
+    }
+
+    function scheduleSheinCategorySearch(query) {
+        clearTimeout(sheinCatTimer);
+        sheinCatTimer = setTimeout(function () { searchSheinCategories(query); }, 280);
+    }
+
+    function pickSheinCategory(id, path) {
+        const idEl = document.getElementById('listing-publish-shein-category-id');
+        const nameEl = document.getElementById('listing-publish-shein-category-name');
+        const pathEl = document.getElementById('listing-publish-shein-category-path');
+        if (idEl) idEl.value = String(id || '').replace(/\D+/g, '');
+        if (nameEl) nameEl.value = String(path || '').trim();
+        if (pathEl) pathEl.textContent = String(path || '').trim() || 'Shein category selected.';
+        hideSheinCategoryResults();
+    }
+
     function applySuggestedAliexpressCategory(suggested) {
         const pathEl = document.getElementById('listing-publish-aliexpress-category-path');
         const idEl = document.getElementById('listing-publish-category-id');
@@ -396,6 +737,18 @@
     }
 
     function selectedWeightLb() {
+        if (isTiktokChannel()) {
+            const tt = document.getElementById('listing-publish-tiktok-weight-lb');
+            const raw = tt ? String(tt.value || '').replace(',', '.').trim() : '';
+            const n = parseFloat(raw);
+            return n > 0 ? String(n) : '';
+        }
+        if (isSheinChannel()) {
+            const shein = document.getElementById('listing-publish-shein-weight-lb');
+            const raw = shein ? String(shein.value || '').replace(',', '.').trim() : '';
+            const n = parseFloat(raw);
+            return n > 0 ? String(n) : '';
+        }
         const el = document.getElementById('listing-publish-weight-lb');
         const raw = el ? String(el.value || '').replace(',', '.').trim() : '';
         const n = parseFloat(raw);
@@ -456,6 +809,15 @@
             applySuggestedAliexpressPackage(null);
         }
         if (isWayfairChannel()) applySuggestedWayfairCategory(null);
+        const ebayBox = document.getElementById('listing-publish-ebay-category');
+        if (ebayBox) ebayBox.hidden = !isEbayChannel();
+        if (isEbayChannel()) applySuggestedEbayCategory(null);
+        const tiktokBox = document.getElementById('listing-publish-tiktok-category');
+        if (tiktokBox) tiktokBox.hidden = !isTiktokChannel();
+        if (isTiktokChannel()) applySuggestedTiktokCategory(null);
+        const sheinBox = document.getElementById('listing-publish-shein-category');
+        if (sheinBox) sheinBox.hidden = !isSheinChannel();
+        if (isSheinChannel()) applySuggestedSheinCategory(null);
         updateModalCopy();
     }
 
@@ -670,6 +1032,9 @@
                     applySuggestedAliexpressPackage(response && response.suggested_package);
                 }
                 if (isWayfairChannel()) applySuggestedWayfairCategory(response && response.suggested_category);
+                if (isEbayChannel()) applySuggestedEbayCategory(response && response.suggested_category);
+                if (isTiktokChannel()) applySuggestedTiktokCategory(response && response.suggested_category);
+                if (isSheinChannel()) applySuggestedSheinCategory(response && response.suggested_category);
             },
             error: function (xhr) {
                 hideModal();
@@ -707,10 +1072,10 @@
                 channel: c.channel || '',
                 mode: selectedPublishMode(),
                 parent: parent || '',
-                category_id: isWayfairChannel() ? selectedCategoryId() : (selectedCategoryName() ? '' : selectedCategoryId()),
+                category_id: (isWayfairChannel() || isEbayChannel() || isTiktokChannel() || isSheinChannel()) ? selectedCategoryId() : (selectedCategoryName() ? '' : selectedCategoryId()),
                 category_name: selectedCategoryName(),
                 category_uuid: selectedCategoryUuid(),
-                weight_lb: isAliexpressChannel() ? selectedWeightLb() : ''
+                weight_lb: (isAliexpressChannel() || isTiktokChannel() || isSheinChannel()) ? selectedWeightLb() : ''
             },
             headers: { 'X-CSRF-TOKEN': csrf() },
             timeout: 300000
@@ -929,6 +1294,11 @@
 
         $(document).off('click.listingPageTools', '.listing-publish-cat-item')
             .on('click.listingPageTools', '.listing-publish-cat-item', function (e) {
+                if (this.classList.contains('listing-publish-ebay-cat-item')
+                    || this.classList.contains('listing-publish-tiktok-cat-item')
+                    || this.classList.contains('listing-publish-shein-cat-item')) {
+                    return;
+                }
                 e.preventDefault();
                 e.stopPropagation();
                 pickReverbCategory($(this).attr('data-id'), $(this).attr('data-path'));
@@ -938,11 +1308,145 @@
             .on('mousedown.listingPageTools.reverbCat', function (e) {
                 if (!e.target.closest || e.target.closest('.listing-publish-cat-wrap')) return;
                 hideReverbCategoryResults();
+                hideEbayCategoryResults();
+                hideTiktokCategoryResults();
+                hideSheinCategoryResults();
+            });
+    }
+
+    function bindTiktokCategorySearch() {
+        function onTiktokCategoryTyped(el) {
+            if (!el) return;
+            el.dataset.userTyped = '1';
+            const idEl = document.getElementById('listing-publish-tiktok-category-id');
+            if (idEl) idEl.value = '';
+            const pathEl = document.getElementById('listing-publish-tiktok-category-path');
+            const q = String(el.value || '').trim();
+            if (pathEl) {
+                pathEl.textContent = q
+                    ? 'Searching TikTok for “' + q + '”…'
+                    : 'Type a TikTok category name, then pick one from the list.';
+            }
+            scheduleTiktokCategorySearch(q);
+        }
+
+        $(document).off('input.listingPageToolsTiktok', '#listing-publish-tiktok-category-name')
+            .on('input.listingPageToolsTiktok', '#listing-publish-tiktok-category-name', function () {
+                onTiktokCategoryTyped(this);
+            });
+
+        $(document).off('focus.listingPageToolsTiktok', '#listing-publish-tiktok-category-name')
+            .on('focus.listingPageToolsTiktok', '#listing-publish-tiktok-category-name', function () {
+                const q = String(this.value || '').trim();
+                if (q.length >= 2) searchTiktokCategories(q);
+            });
+
+        $('#listingPublishModal').off('shown.bs.modal.listingPageToolsTiktok')
+            .on('shown.bs.modal.listingPageToolsTiktok', function () {
+                const nameEl = document.getElementById('listing-publish-tiktok-category-name');
+                if (nameEl) nameEl.dataset.userTyped = '';
+            });
+
+        $(document).off('click.listingPageToolsTiktok', '.listing-publish-tiktok-cat-item')
+            .on('click.listingPageToolsTiktok', '.listing-publish-tiktok-cat-item', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                pickTiktokCategory($(this).attr('data-id'), $(this).attr('data-path'));
+            });
+    }
+
+    function bindSheinCategorySearch() {
+        function onSheinCategoryTyped(el) {
+            if (!el) return;
+            el.dataset.userTyped = '1';
+            const idEl = document.getElementById('listing-publish-shein-category-id');
+            if (idEl) idEl.value = '';
+            const pathEl = document.getElementById('listing-publish-shein-category-path');
+            const q = String(el.value || '').trim();
+            if (pathEl) {
+                pathEl.textContent = q
+                    ? 'Searching Shein for “' + q + '”…'
+                    : 'Type a Shein category name, then pick one from the list.';
+            }
+            scheduleSheinCategorySearch(q);
+        }
+
+        $(document).off('input.listingPageToolsShein', '#listing-publish-shein-category-name')
+            .on('input.listingPageToolsShein', '#listing-publish-shein-category-name', function () {
+                onSheinCategoryTyped(this);
+            });
+
+        $(document).off('focus.listingPageToolsShein', '#listing-publish-shein-category-name')
+            .on('focus.listingPageToolsShein', '#listing-publish-shein-category-name', function () {
+                const q = String(this.value || '').trim();
+                if (q.length >= 2) searchSheinCategories(q);
+            });
+
+        $('#listingPublishModal').off('shown.bs.modal.listingPageToolsShein')
+            .on('shown.bs.modal.listingPageToolsShein', function () {
+                const nameEl = document.getElementById('listing-publish-shein-category-name');
+                if (nameEl) nameEl.dataset.userTyped = '';
+            });
+
+        $(document).off('click.listingPageToolsShein', '.listing-publish-shein-cat-item')
+            .on('click.listingPageToolsShein', '.listing-publish-shein-cat-item', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                pickSheinCategory($(this).attr('data-id'), $(this).attr('data-path'));
+            });
+    }
+
+    function bindEbayCategorySearch() {
+        function onEbayCategoryTyped(el) {
+            if (!el) return;
+            el.dataset.userTyped = '1';
+            const idEl = document.getElementById('listing-publish-ebay-category-id');
+            if (idEl) idEl.value = '';
+            const pathEl = document.getElementById('listing-publish-ebay-category-path');
+            const q = String(el.value || '').trim();
+            if (pathEl) {
+                pathEl.textContent = q
+                    ? 'Searching eBay for “' + q + '”…'
+                    : 'Type an eBay category name, then pick one from the list.';
+            }
+            scheduleEbayCategorySearch(q);
+        }
+
+        $(document).off('input.listingPageToolsEbay', '#listing-publish-ebay-category-name')
+            .on('input.listingPageToolsEbay', '#listing-publish-ebay-category-name', function () {
+                onEbayCategoryTyped(this);
+            });
+
+        $(document).off('keyup.listingPageToolsEbay', '#listing-publish-ebay-category-name')
+            .on('keyup.listingPageToolsEbay', '#listing-publish-ebay-category-name', function () {
+                onEbayCategoryTyped(this);
+            });
+
+        $(document).off('focus.listingPageToolsEbay', '#listing-publish-ebay-category-name')
+            .on('focus.listingPageToolsEbay', '#listing-publish-ebay-category-name', function () {
+                const q = String(this.value || '').trim();
+                if (q.length >= 2) searchEbayCategories(q);
+            });
+
+        $('#listingPublishModal').off('shown.bs.modal.listingPageToolsEbay')
+            .on('shown.bs.modal.listingPageToolsEbay', function () {
+                const nameEl = document.getElementById('listing-publish-ebay-category-name');
+                if (nameEl) nameEl.dataset.userTyped = '';
+            });
+
+        $(document).off('click.listingPageToolsEbay', '.listing-publish-ebay-cat-item')
+            .on('click.listingPageToolsEbay', '.listing-publish-ebay-cat-item', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                pickEbayCategory($(this).attr('data-id'), $(this).attr('data-path'));
             });
     }
 
     $(function () {
         bindReverbCategorySearch();
+        bindEbayCategorySearch();
+        bindTiktokCategorySearch();
+        bindSheinCategorySearch();
         $(document).off('click.listingPageTools', '#listing-publish-status-close')
             .on('click.listingPageTools', '#listing-publish-status-close', function () {
                 hidePublishStatus();

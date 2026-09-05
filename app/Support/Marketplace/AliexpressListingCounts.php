@@ -30,13 +30,8 @@ class AliexpressListingCounts
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
 
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-
-        $nrValues = AliexpressDataView::whereIn('sku', $skus)
-            ->get(['sku', 'value'])
-            ->mapWithKeys(function ($row) {
-                return [strtoupper(trim((string) $row->sku)) => $row->value];
-            });
+        $shopifyData = ListingCountsEngine::shopifyMap($skus);
+        $nrValues = ListingCountsEngine::loadNrValues(AliexpressDataView::class, $skus);
 
         $metricsByNorm = self::metricsByNormalizedSku();
         $pricingByNorm = self::pricingSkusByNormalizedSku();
@@ -52,12 +47,12 @@ class AliexpressListingCounts
                 continue;
             }
 
-            $inv = (float) ($shopifyData[$sku]->inv ?? 0);
+            $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, (string) $item->sku));
             if ($inv <= 0) {
                 continue;
             }
 
-            $nrReq = self::nrReqFromDataView($nrValues->get(strtoupper($sku)));
+            $nrReq = self::nrReqFromDataView(ListingCountsEngine::lookupNrValue($nrValues, $sku));
             if ($nrReq === 'REQ') {
                 $reqCount++;
             } else {

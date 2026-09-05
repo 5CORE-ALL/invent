@@ -23,7 +23,7 @@ class AutomatedListingPage
 
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
+        $shopifyData = ListingCountsEngine::shopifyMap($skus);
 
         $statusClass = $cfg['status'] ?? null;
         $statusData = collect();
@@ -57,8 +57,9 @@ class AutomatedListingPage
             $childSku = (string) $item->sku;
             $skuLower = strtolower(trim($childSku));
 
-            $item->INV = $shopifyData[$childSku]->inv ?? 0;
-            $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
+            $shopify = ListingCountsEngine::shopifyRow($shopifyData, $childSku);
+            $item->INV = ListingCountsEngine::shopifyInv($shopify);
+            $item->L30 = $shopify?->quantity ?? 0;
 
             $item->buyer_link = null;
             $item->seller_link = null;

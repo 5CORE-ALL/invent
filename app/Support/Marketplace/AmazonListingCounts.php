@@ -29,14 +29,8 @@ class AmazonListingCounts
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
 
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-
-        $nrValues = AmazonDataView::whereIn('sku', $skus)
-            ->get(['sku', 'value'])
-            ->mapWithKeys(function ($row) {
-                return [strtoupper(trim((string) $row->sku)) => $row->value];
-            });
-
+        $shopifyData = ListingCountsEngine::shopifyMap($skus);
+        $nrlSet = self::nrlSetForSkus($skus);
         $listingsByNorm = self::listingsByNormalizedSku();
 
         $reqCount = 0;
@@ -50,12 +44,12 @@ class AmazonListingCounts
                 continue;
             }
 
-            $inv = (float) ($shopifyData[$sku]->inv ?? 0);
+            $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, (string) $item->sku));
             if ($inv <= 0) {
                 continue;
             }
 
-            $nrReq = self::nrReqFromDataView($nrValues->get(strtoupper($sku)));
+            $nrReq = self::skuIsNrl($sku, $nrlSet) ? 'NR' : 'REQ';
             if ($nrReq === 'REQ') {
                 $reqCount++;
             } else {

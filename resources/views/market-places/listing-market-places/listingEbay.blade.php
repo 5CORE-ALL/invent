@@ -592,7 +592,7 @@
                         </div>
                     </div>
 
-                    @include('market-places.listing-market-places._listing_publish_modal')
+                    @include('market-places.listing-market-places._listing_publish_modal', ['publishChannel' => 'ebay'])
 
 
                     <div id="ebay-listing-wrap">
@@ -1100,5 +1100,5 @@
             publishUrl: '/listing_ebay/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=6"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=18"></script>
 @endsection

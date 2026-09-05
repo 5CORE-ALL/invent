@@ -21,6 +21,11 @@ class ListingEbayController extends Controller
 {
     use HandlesListingPublishActions;
 
+    protected function listingPublishChannel(): string
+    {
+        return 'ebay';
+    }
+
     public function listingEbay(Request $request)
     {
         $mode = $request->query('mode');

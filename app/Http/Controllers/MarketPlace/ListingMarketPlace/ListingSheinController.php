@@ -20,6 +20,11 @@ class ListingSheinController extends Controller
 {
     use HandlesListingPublishActions;
 
+    protected function listingPublishChannel(): string
+    {
+        return 'shein';
+    }
+
     public function listingShein(Request $request)
     {
         $mode = $request->query('mode');

@@ -592,7 +592,7 @@
                         </div>
                     </div>
 
-                    @include('market-places.listing-market-places._listing_publish_modal')
+                    @include('market-places.listing-market-places._listing_publish_modal', ['publishChannel' => 'tiktokshop2'])
 
 
                     <div id="tiktokshop2-listing-wrap">
@@ -1090,5 +1090,5 @@
             publishUrl: '/listing_tiktokshop2/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=6"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=19"></script>
 @endsection

@@ -5,7 +5,6 @@ namespace App\Support\Marketplace;
 use App\Models\Ebay2Metric;
 use App\Models\EbayTwoDataView;
 use App\Models\ProductMaster;
-use App\Models\ShopifySku;
 
 /**
  * EbayTwo listing status counts — same source as /listing-ebaytwo.
@@ -27,13 +26,8 @@ class EbayTwoListingCounts
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
 
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-
-        $nrValues = EbayTwoDataView::whereIn('sku', $skus)
-            ->get(['sku', 'value'])
-            ->mapWithKeys(function ($row) {
-                return [strtoupper(trim((string) $row->sku)) => $row->value];
-            });
+        $shopifyData = ListingCountsEngine::shopifyMap($skus);
+        $nrValues = ListingCountsEngine::loadNrValues(EbayTwoDataView::class, $skus);
 
         $listedIds = ListingCountsEngine::listedIdsFromColumn(Ebay2Metric::class, $skus, 'item_id');
 
@@ -48,12 +42,12 @@ class EbayTwoListingCounts
                 continue;
             }
 
-            $inv = (float) ($shopifyData[$sku]->inv ?? 0);
+            $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, (string) $item->sku));
             if ($inv <= 0) {
                 continue;
             }
 
-            $nrReq = self::nrReqFromDataView($nrValues->get(strtoupper($sku)));
+            $nrReq = self::nrReqFromDataView(ListingCountsEngine::lookupNrValue($nrValues, $sku));
             if ($nrReq === 'REQ') {
                 $reqCount++;
             } else {
