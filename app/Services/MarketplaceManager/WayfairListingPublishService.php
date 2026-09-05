@@ -11,6 +11,7 @@ use App\Services\WayfairApiService;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
+use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -1109,6 +1110,15 @@ class WayfairListingPublishService
      */
     private function productImages(ProductMaster $product, string $sku = ''): array
     {
+        $fromMaster = ListingManagerAmazonHydrator::publishImageUrls(
+            $sku !== '' ? $sku : trim((string) $product->sku),
+            (string) ($product->parent ?? ''),
+            8
+        );
+        if ($fromMaster !== []) {
+            return $fromMaster;
+        }
+
         $urls = [];
         $push = function (string $raw) use (&$urls): void {
             $url = $this->absoluteImageUrl($raw);

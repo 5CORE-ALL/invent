@@ -6,6 +6,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingCountsEngine;
+use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use Illuminate\Support\Collection;
 
 class ListingVariationPreviewService
@@ -274,8 +275,9 @@ class ListingVariationPreviewService
         if ($nrReq === 'NR') {
             return ['status' => 'skipped_nrl', 'reason' => 'NRL'];
         }
-        if ($this->productMasterImages($product) === []) {
-            return ['status' => 'skipped_no_image', 'reason' => 'No images on product master'];
+        if ($this->productMasterImages($product) === []
+            && ListingManagerAmazonHydrator::imageMasterUrls($sku) === []) {
+            return ['status' => 'skipped_no_image', 'reason' => 'No images on Image Master'];
         }
 
         return ['status' => 'will_publish', 'reason' => ''];

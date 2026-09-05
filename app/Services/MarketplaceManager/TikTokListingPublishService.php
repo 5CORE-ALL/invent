@@ -95,7 +95,7 @@ class TikTokListingPublishService
         if ($images === []) {
             return [
                 'success' => false,
-                'message' => 'No public image URL for '.$primarySku.'. Add an https image on CP Master (or Image Master).',
+                'message' => 'No Image Master photo for '.$primarySku.'. Add images on Image Master, then try Publish again.',
             ];
         }
 
@@ -122,7 +122,7 @@ class TikTokListingPublishService
 
         $uris = $api->uploadListingImageUris($images);
         if ($uris === []) {
-            return ['success' => false, 'message' => 'TikTok image upload failed for '.$primarySku.'. Check that CP Master images are public https URLs.'];
+            return ['success' => false, 'message' => 'TikTok image upload failed for '.$primarySku.'. Check Image Master photos (public https or Shopify CDN).'];
         }
 
         $skuRows = $mode === 'variation' && count($publishSkus) > 1
@@ -587,6 +587,11 @@ class TikTokListingPublishService
      */
     private function publicImages(mixed $images, ProductMaster $product, string $sku): array
     {
+        $fromMaster = ListingManagerAmazonHydrator::publishImageUrls($sku, (string) ($product->parent ?? ''));
+        if ($fromMaster !== []) {
+            return $fromMaster;
+        }
+
         $urls = [];
         $push = function (string $raw) use (&$urls): void {
             $raw = trim($raw);

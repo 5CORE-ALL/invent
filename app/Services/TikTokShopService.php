@@ -2159,27 +2159,8 @@ class TikTokShopService
             return null;
         }
 
-        try {
-            $imgResp = Http::withoutVerifying()->timeout(90)->get($imageUrl);
-            if (! $imgResp->successful()) {
-                Log::warning('TikTok image download failed', [
-                    'channel' => $this->configKey,
-                    'url' => mb_substr($imageUrl, 0, 300),
-                    'status' => $imgResp->status(),
-                ]);
-
-                return null;
-            }
-            $bytes = $imgResp->body();
-            if ($bytes === '') {
-                return null;
-            }
-        } catch (\Throwable $e) {
-            Log::warning('TikTok image download exception', [
-                'channel' => $this->configKey,
-                'error' => $e->getMessage(),
-            ]);
-
+        $bytes = $this->listingImageBytes($imageUrl);
+        if ($bytes === null || $bytes === '') {
             return null;
         }
 
@@ -2246,6 +2227,86 @@ class TikTokShopService
                         'error' => $e->getMessage(),
                     ]);
                 }
+            }
+        }
+
+        return null;
+    }
+
+    private function listingImageBytes(string $imageUrl): ?string
+    {
+        $local = $this->localListingImagePath($imageUrl);
+        if ($local !== null && is_readable($local)) {
+            $bytes = @file_get_contents($local);
+            if (is_string($bytes) && $bytes !== '') {
+                return $bytes;
+            }
+        }
+
+        $candidates = [$imageUrl];
+        $stripped = preg_replace('/\?.*$/', '', $imageUrl);
+        if (is_string($stripped) && $stripped !== $imageUrl) {
+            $candidates[] = $stripped;
+        }
+
+        foreach (array_values(array_unique($candidates)) as $try) {
+            try {
+                $imgResp = Http::withoutVerifying()
+                    ->withHeaders([
+                        'User-Agent' => 'Mozilla/5.0 (compatible; 5CORE-ListingPublish/1.0)',
+                        'Accept' => 'image/jpeg,image/jpg,image/png,image/webp,image/*,*/*;q=0.8',
+                    ])
+                    ->timeout(90)
+                    ->get($try);
+                if (! $imgResp->successful()) {
+                    Log::warning('TikTok image download failed', [
+                        'channel' => $this->configKey,
+                        'url' => mb_substr($try, 0, 300),
+                        'status' => $imgResp->status(),
+                    ]);
+                    continue;
+                }
+                $bytes = $imgResp->body();
+                if ($bytes !== '') {
+                    return $bytes;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TikTok image download exception', [
+                    'channel' => $this->configKey,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return null;
+    }
+
+    private function localListingImagePath(string $imageUrl): ?string
+    {
+        $imageUrl = trim($imageUrl);
+        if ($imageUrl === '') {
+            return null;
+        }
+        $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?: $imageUrl);
+        $path = urldecode($path);
+
+        if (preg_match('#/storage/(.+)$#', $path, $match)) {
+            $full = storage_path('app/public/'.ltrim(str_replace('\\', '/', $match[1]), '/'));
+            if (is_file($full)) {
+                return $full;
+            }
+        }
+        if (preg_match('#/listing-manager/media/([^/?]+)#', $path, $match)) {
+            $full = storage_path('app/public/listing-manager/images/'.basename($match[1]));
+            if (is_file($full)) {
+                return $full;
+            }
+        }
+        $rel = ltrim(str_replace('\\', '/', $path), '/');
+        if (preg_match('#^(products|product_images|image_master)/#i', $rel)) {
+            $full = storage_path('app/public/'.$rel);
+            if (is_file($full)) {
+                return $full;
             }
         }
 

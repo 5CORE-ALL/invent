@@ -689,6 +689,50 @@ class ListingManagerAmazonHydrator
     }
 
     /**
+     * Public Image Master URLs for listing-page publish (SKU, then parent).
+     * Prefers Shopify CDN copies so marketplaces can fetch the photos.
+     *
+     * @return list<string>
+     */
+    public static function publishImageUrls(string $sku, ?string $parentSku = null, int $limit = 9): array
+    {
+        $urls = self::imageMasterUrls($sku);
+        $parentSku = trim((string) $parentSku);
+        if ($parentSku !== '' && strcasecmp($parentSku, $sku) !== 0) {
+            foreach (self::imageMasterUrls($parentSku) as $url) {
+                if (! in_array($url, $urls, true)) {
+                    $urls[] = $url;
+                }
+            }
+        }
+
+        $published = ListingManagerImageStore::publishUrls($urls, $urls);
+        $out = [];
+        foreach ($published as $url) {
+            $url = trim((string) $url);
+            if ($url === '') {
+                continue;
+            }
+            if (str_starts_with($url, '//')) {
+                $url = 'https:'.$url;
+            }
+            if (! preg_match('#^https?://#i', $url) && str_starts_with($url, '/')) {
+                $base = rtrim((string) config('app.url'), '/');
+                $url = $base !== '' ? $base.$url : $url;
+            }
+            if (! preg_match('#^https?://#i', $url) || in_array($url, $out, true)) {
+                continue;
+            }
+            $out[] = $url;
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Full Shopify product gallery stored on shopify_catalog_products.image_urls.
      *
      * @return list<string>
