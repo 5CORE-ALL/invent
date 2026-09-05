@@ -114,6 +114,18 @@
             background: #ffedd5;
             white-space: nowrap;
         }
+        .dim-wt-package-component {
+            display: block;
+            margin-top: 2px;
+            font-size: 9px;
+            font-weight: 600;
+            color: #0369a1;
+            line-height: 1.2;
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         #dim-wt-master-datatable tbody tr.dim-wt-package-row-2 td {
             background-color: #fff7ed !important;
         }
@@ -1676,6 +1688,36 @@
                 return parseInt(labelQtyRaw, 10);
             }
 
+            const COMBO_PACKAGE_DIM_FIELDS = [
+                'wt_act_kg', 'wt_act', 'wt_decl',
+                'l', 'w', 'h', 'l_decl', 'w_decl', 'h_decl', 'l_cm', 'w_cm', 'h_cm',
+                'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_qty', 'image_path', 'label_type',
+            ];
+
+            function isComboSkuItem(item) {
+                const sku = String(item?.SKU || '');
+                const parent = String(item?.Parent || '');
+                return /combo/i.test(sku) || /combo/i.test(parent) || sku.includes('+');
+            }
+
+            function parseComboComponentSkus(sku) {
+                if (sku == null || String(sku).trim() === '') return [];
+                return String(sku)
+                    .split('+')
+                    .map(part => part.replace(/\u00a0/g, ' ').trim())
+                    .filter(Boolean);
+            }
+
+            function findProductBySkuKey(sku) {
+                const key = dimWtSkuKey(sku);
+                if (!key) return null;
+                const compact = key.replace(/\s+/g, '');
+                return (tableData || []).find(d => {
+                    const other = dimWtSkuKey(d.SKU);
+                    return other === key || other.replace(/\s+/g, '') === compact;
+                }) || null;
+            }
+
             function dimWtPackageRowBgClass(packageIndex, packageCount) {
                 if (!(Number.isFinite(packageCount) && packageCount >= 2)) return '';
                 if (packageIndex === 2) return 'dim-wt-package-row-2';
@@ -1685,21 +1727,38 @@
                 return '';
             }
 
-            /** Label QTY >= 2 ⇒ one visual row per package (same behavior as shipping-master). */
+            /** Label QTY >= 2 ⇒ one visual row per package. Combo SKUs use each "+" component's dim/wt. */
             function buildDimWtPackageRows(sourceItem) {
                 const isParentRow = !!(sourceItem.SKU && String(sourceItem.SKU).toUpperCase().includes('PARENT'));
                 const labelQtyNum = getLabelQtyNumber(sourceItem);
                 const packageCount = (!isParentRow && Number.isFinite(labelQtyNum) && labelQtyNum >= 2)
                     ? labelQtyNum
                     : 1;
+                const isCombo = !isParentRow && isComboSkuItem(sourceItem);
+                const components = isCombo ? parseComboComponentSkus(sourceItem.SKU) : [];
                 const rows = [];
                 for (let i = 0; i < packageCount; i++) {
                     const packageIndex = i + 1;
+                    const componentSku = components[i] || null;
+                    const componentItem = componentSku ? findProductBySkuKey(componentSku) : null;
+                    let displayItem = sourceItem;
+                    if (componentItem) {
+                        displayItem = Object.assign({}, sourceItem);
+                        COMBO_PACKAGE_DIM_FIELDS.forEach(field => {
+                            if (Object.prototype.hasOwnProperty.call(componentItem, field)) {
+                                displayItem[field] = componentItem[field];
+                            }
+                        });
+                    }
                     rows.push({
                         sourceItem,
+                        displayItem,
                         packageIndex,
                         packageCount,
                         isExtraPackage: i > 0,
+                        isCombo,
+                        componentSku,
+                        componentItem,
                         bgClass: dimWtPackageRowBgClass(packageIndex, packageCount)
                     });
                 }
@@ -1834,7 +1893,7 @@
                 data.forEach(sourceItem => {
                     const packageRows = buildDimWtPackageRows(sourceItem);
                     packageRows.forEach(pkg => {
-                    const item = sourceItem;
+                    const item = pkg.displayItem || sourceItem;
                     const row = document.createElement('tr');
                     const isParentRow = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
                     if (isParentRow) row.classList.add('parent-row');
@@ -1892,12 +1951,27 @@
                     parentCell.textContent = parentDisplay ? escapeHtml(parentDisplay) : '-';
                     row.appendChild(parentCell);
 
-                    // SKU column – display with spaces, limited characters; full name in tooltip
+                    // SKU column – Combo package rows also show the component SKU used for dims
                     const skuCell = document.createElement('td');
                     skuCell.className = 'td-sku-col';
-                    skuCell.title = escapeHtml(item.SKU) || '';
-                    const skuDisplay = formatSkuDisplayLimited(item.SKU);
-                    skuCell.textContent = skuDisplay ? escapeHtml(skuDisplay) : '-';
+                    const comboSkuFull = sourceItem.SKU != null ? String(sourceItem.SKU) : '';
+                    const componentSkuFull = pkg.componentSku ? String(pkg.componentSku) : '';
+                    skuCell.title = componentSkuFull
+                        ? `${comboSkuFull} — Package ${pkg.packageIndex}/${pkg.packageCount}: ${componentSkuFull}`
+                        : (pkg.packageCount >= 2
+                            ? `${comboSkuFull} — Package ${pkg.packageIndex}/${pkg.packageCount}`
+                            : comboSkuFull);
+                    const skuDisplay = formatSkuDisplayLimited(sourceItem.SKU);
+                    const skuMain = document.createElement('span');
+                    skuMain.textContent = skuDisplay ? skuDisplay : '-';
+                    skuCell.appendChild(skuMain);
+                    if (componentSkuFull) {
+                        const compEl = document.createElement('span');
+                        compEl.className = 'dim-wt-package-component';
+                        compEl.textContent = formatSkuDisplayLimited(componentSkuFull) || componentSkuFull;
+                        compEl.title = componentSkuFull;
+                        skuCell.appendChild(compEl);
+                    }
                     row.appendChild(skuCell);
 
                     // Status column – colored dot (not shown for parent rows)
@@ -2171,9 +2245,10 @@
                                 <span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:${historyDotColor};"></span>
                             </button>`
                         : '';
+                    const editTarget = pkg.componentItem || sourceItem;
                     const editBtnHtml = isParentRow
                         ? ''
-                        : `<button class="btn btn-sm edit-btn p-0 border-0 bg-transparent" data-sku="${escapeHtml(item.SKU)}" title="Edit" style="color:#1a56b7;">
+                        : `<button class="btn btn-sm edit-btn p-0 border-0 bg-transparent" data-sku="${escapeHtml(editTarget.SKU || '')}" title="Edit" style="color:#1a56b7;">
                                 <i class="fas fa-edit"></i>
                             </button>`;
                     actionCell.innerHTML = `
@@ -2207,7 +2282,7 @@
                     const editBtn = actionCell.querySelector('.edit-btn');
                     if (editBtn) editBtn.addEventListener('click', function() {
                         const sku = this.getAttribute('data-sku');
-                        const product = tableData.find(d => d.SKU === sku);
+                        const product = tableData.find(d => dimWtSkuKey(d.SKU) === dimWtSkuKey(sku));
                         if (!product) return;
                         const selected = getSelectedNonParentProducts();
                         const clickedInSelection = selected.some(p =>
@@ -2551,13 +2626,17 @@
                         return; // Skip parent SKUs
                     }
                     
-                    // Count missing data for each column (only for child SKUs)
-                    if (isMissing(item.wt_act_kg)) wtActKgMissingCount++;
-                    if (isMissing(item.wt_act)) wtActMissingCount++;
-                    if (isMissing(item.wt_decl)) wtDeclMissingCount++;
-                    if (isMissing(item.l)) lMissingCount++;
-                    if (isMissing(item.w)) wMissingCount++;
-                    if (isMissing(item.h)) hMissingCount++;
+                    // Combo package rows count the component dim/wt shown on the grid
+                    const packageRows = buildDimWtPackageRows(item);
+                    packageRows.forEach(pkg => {
+                        const shown = pkg.displayItem || item;
+                        if (isMissing(shown.wt_act_kg)) wtActKgMissingCount++;
+                        if (isMissing(shown.wt_act)) wtActMissingCount++;
+                        if (isMissing(shown.wt_decl)) wtDeclMissingCount++;
+                        if (isMissing(shown.l)) lMissingCount++;
+                        if (isMissing(shown.w)) wMissingCount++;
+                        if (isMissing(shown.h)) hMissingCount++;
+                    });
 
                     // Verified (green) / not verified (red) — child SKUs only
                     const isVerified = item.verified_data === 1 || item.verified_data === true ||
@@ -2780,19 +2859,22 @@
                         return normalizeLabelType(item.label_type);
                     }
                     if (key === 'org_l' || key === 'org_w' || key === 'org_h' || key === 'girth' || key === 'girth_plus_l') {
-                        const d = getOrganizedItemDims(item);
+                        const shown = (buildDimWtPackageRows(item)[0] || {}).displayItem || item;
+                        const d = getOrganizedItemDims(shown);
                         if (key === 'org_l') return d.length;
                         if (key === 'org_w') return d.width;
                         if (key === 'org_h') return d.height;
                         if (key === 'girth') return d.girth;
                         return d.girthPlusL;
                     }
-                    if (key === 'wt_decl') return itemDeclValue(item, 'wt_decl', 'wt_act');
-                    if (key === 'l_decl') return itemDeclValue(item, 'l_decl', 'l');
-                    if (key === 'w_decl') return itemDeclValue(item, 'w_decl', 'w');
-                    if (key === 'h_decl') return itemDeclValue(item, 'h_decl', 'h');
-                    if (key === 'cbm') {
-                        return getItemCbm(item);
+                    if (key === 'wt_decl' || key === 'l_decl' || key === 'w_decl' || key === 'h_decl' || key === 'cbm' || key === 'wt_act' || key === 'wt_act_kg') {
+                        const shown = (buildDimWtPackageRows(item)[0] || {}).displayItem || item;
+                        if (key === 'wt_decl') return itemDeclValue(shown, 'wt_decl', 'wt_act');
+                        if (key === 'l_decl') return itemDeclValue(shown, 'l_decl', 'l');
+                        if (key === 'w_decl') return itemDeclValue(shown, 'w_decl', 'w');
+                        if (key === 'h_decl') return itemDeclValue(shown, 'h_decl', 'h');
+                        if (key === 'cbm') return getItemCbm(shown);
+                        return shown[key];
                     }
                     if (key === 'verified_data') {
                         let v = item.verified_data;
