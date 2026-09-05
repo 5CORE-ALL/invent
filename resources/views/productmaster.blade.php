@@ -1575,6 +1575,90 @@
             // Store the loaded data globally
             let tableData = [];
             let productMap = new Map(); // Fast lookup by SKU
+
+            function pmSkuKey(sku) {
+                return String(sku || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+            }
+
+            function pmSkuCompact(sku) {
+                return pmSkuKey(sku).replace(/\s+/g, '');
+            }
+
+            function isComboSkuItem(item) {
+                const sku = String(item?.SKU || item?.sku || '');
+                const parent = String(item?.Parent || item?.parent || '');
+                return sku.includes('+') || /combo/i.test(sku) || /combo/i.test(parent);
+            }
+
+            function parseComboComponentSkus(sku) {
+                if (sku == null || String(sku).trim() === '') return [];
+                return String(sku)
+                    .split('+')
+                    .map(part => part.replace(/\u00a0/g, ' ').trim())
+                    .filter(Boolean);
+            }
+
+            function findPmProductBySku(sku) {
+                const key = pmSkuKey(sku);
+                const compact = pmSkuCompact(sku);
+                if (!key) return null;
+                const mapped = productMap.get(sku) || productMap.get(key);
+                if (mapped) return mapped;
+                return (tableData || []).find(d => {
+                    const other = pmSkuKey(d.SKU || d.sku);
+                    return other === key || other.replace(/\s+/g, '') === compact;
+                }) || null;
+            }
+
+            function itemCbmFromDims(item) {
+                if (!item) return null;
+                const l = parseFloat(item.l);
+                const w = parseFloat(item.w);
+                const h = parseFloat(item.h);
+                if (![l, w, h].every(n => Number.isFinite(n) && n > 0)) return null;
+                return (l * 2.54) * (w * 2.54) * (h * 2.54) / 1000000;
+            }
+
+            function resolveComboComponentFreight(item) {
+                if (!item || !isComboSkuItem(item)) return null;
+                const sku = String(item.SKU || item.sku || '');
+                if (sku.toUpperCase().includes('PARENT')) return null;
+                const parts = parseComboComponentSkus(sku);
+                if (parts.length < 2) return null;
+                let totalCbm = 0;
+                let found = 0;
+                parts.forEach(part => {
+                    const cbm = itemCbmFromDims(findPmProductBySku(part));
+                    if (cbm != null) {
+                        totalCbm += cbm;
+                        found++;
+                    }
+                });
+                if (found < 2 || totalCbm <= 0) return null;
+                return { cbm: totalCbm, frght: totalCbm * 200, fromCombo: true };
+            }
+
+            function resolveItemDimFreight(item) {
+                const own = itemCbmFromDims(item);
+                if (own != null) {
+                    return { cbm: own, frght: own * 200, fromCombo: false };
+                }
+                return resolveComboComponentFreight(item);
+            }
+
+            function hydrateComboFreightOnTableData() {
+                (tableData || []).forEach(item => {
+                    const resolved = resolveComboComponentFreight(item);
+                    if (!resolved || itemCbmFromDims(item) != null) return;
+                    item.cbm = parseFloat(resolved.cbm.toFixed(4));
+                    item.frght = parseFloat(resolved.frght.toFixed(2));
+                    const cp = parseFloat(item.cp);
+                    const storedLp = parseFloat(item.lp);
+                    if (Number.isFinite(cp) && (!Number.isFinite(storedLp) || Math.abs(storedLp - cp) < 0.009)) {
+                        item.lp = parseFloat((cp + resolved.frght).toFixed(2));
+                    }
+                });
+            }
             let productUniqueParents = [];
             let isProductNavigationActive = false;
             let currentProductParentIndex = -1;
@@ -1682,6 +1766,7 @@
                                     productMap.set(product.SKU, product);
                                 }
                             });
+                            hydrateComboFreightOnTableData();
                             
                             // If callback is provided, use it for custom rendering (e.g., with filters)
                             // Otherwise check if filters are active and apply them
@@ -1817,6 +1902,7 @@
                     tableData.push(row);
                     productMap.set(sku, tableData[tableData.length - 1]);
                 }
+                hydrateComboFreightOnTableData();
             }
 
             /** After create/update store JSON: merge rows, re-sort, refresh counts and table without refetching */
@@ -2142,17 +2228,13 @@
                         row.appendChild(checkboxCell);
                     }
 
-                    // Calculate CBM and FRGHT using the formulas
-                    const l = parseFloat(item.l);
-                    const w = parseFloat(item.w);
-                    const h = parseFloat(item.h);
+                    // Calculate CBM and FRGHT: own L/W/H, or sum of combo component packages
+                    const resolvedFreight = resolveItemDimFreight(item);
                     let cbm = '';
                     let frght = '';
-                    if (!isNaN(l) && !isNaN(w) && !isNaN(h)) {
-                        cbm = (((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000);
-                        frght = cbm * 200;
-                        cbm = cbm.toFixed(4);
-                        frght = frght.toFixed(2);
+                    if (resolvedFreight) {
+                        cbm = resolvedFreight.cbm.toFixed(4);
+                        frght = resolvedFreight.frght.toFixed(2);
                     }
 
                     // Render only visible columns
@@ -2260,11 +2342,19 @@
                             }
                             case "LP":
                                 cell.className = 'text-center';
-                                isMissing = isDataMissing(item.lp, true);
+                                let displayLp = item.lp;
+                                if (resolvedFreight && resolvedFreight.fromCombo) {
+                                    const cpNum = parseFloat(item.cp);
+                                    const storedLp = parseFloat(item.lp);
+                                    if (Number.isFinite(cpNum) && (!Number.isFinite(storedLp) || Math.abs(storedLp - cpNum) < 0.009)) {
+                                        displayLp = (cpNum + resolvedFreight.frght).toFixed(2);
+                                    }
+                                }
+                                isMissing = isDataMissing(displayLp, true);
                                 if (isMissing) {
                                     cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
                                 } else {
-                                    const formatted = formatNumber(item.lp, 2);
+                                    const formatted = formatNumber(displayLp, 2);
                                     if (formatted === '-') {
                                         cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
                                     } else {
@@ -4293,6 +4383,21 @@
                                     value = values[fieldName];
                                 }
                             }
+
+                            if (['frght', 'cbm', 'lp'].includes(fieldName)) {
+                                const resolved = resolveItemDimFreight(item);
+                                if (resolved) {
+                                    if (fieldName === 'frght') value = resolved.frght;
+                                    if (fieldName === 'cbm') value = resolved.cbm;
+                                    if (fieldName === 'lp' && resolved.fromCombo) {
+                                        const cpNum = parseFloat(item.cp);
+                                        const storedLp = parseFloat(value);
+                                        if (Number.isFinite(cpNum) && (!Number.isFinite(storedLp) || Math.abs(storedLp - cpNum) < 0.009)) {
+                                            value = cpNum + resolved.frght;
+                                        }
+                                    }
+                                }
+                            }
                             
                             // Determine if numeric based on column
                             const numericColumns = ['LP', 'CP$', 'FRGHT', 'SHIP', 'TEMU SHIP', 'MOQ', 'EBAY2 SHIP', 'Label QTY', 'WT ACT', 'WT DECL', 'Length', 'Width', 'Height', 'CBM', 'UPC', 'Inventory', 'OV L30'];
@@ -6083,6 +6188,21 @@
                                 // Try to get from Values JSON
                                 if (values[fieldName] !== undefined && values[fieldName] !== null) {
                                     value = values[fieldName];
+                                }
+                            }
+
+                            if (['frght', 'cbm', 'lp'].includes(fieldName)) {
+                                const resolved = resolveItemDimFreight(item);
+                                if (resolved) {
+                                    if (fieldName === 'frght') value = resolved.frght;
+                                    if (fieldName === 'cbm') value = resolved.cbm;
+                                    if (fieldName === 'lp' && resolved.fromCombo) {
+                                        const cpNum = parseFloat(item.cp);
+                                        const storedLp = parseFloat(value);
+                                        if (Number.isFinite(cpNum) && (!Number.isFinite(storedLp) || Math.abs(storedLp - cpNum) < 0.009)) {
+                                            value = cpNum + resolved.frght;
+                                        }
+                                    }
                                 }
                             }
                             

@@ -194,8 +194,17 @@ class ProductMasterController extends Controller
         $row['shopify_inv'] = $shopifySku?->inv ?? null;
         $row['shopify_quantity'] = $shopifySku?->quantity ?? null;
         $row['Values'] = $product->Values;
+        $row = $this->applyFreightAlias($row);
 
-        return $this->applyFreightAlias($row);
+        return ProductMaster::applyComboFreightToRow($row, static function (string $componentSku) {
+            $component = ProductMaster::findByCompactSku($componentSku);
+            if (! $component) {
+                return null;
+            }
+            $values = is_array($component->Values) ? $component->Values : [];
+
+            return array_merge(['SKU' => $component->sku], $values);
+        });
     }
 
     /**
@@ -400,6 +409,8 @@ class ProductMasterController extends Controller
 
             $result[] = $row;
         }
+
+        $result = ProductMaster::applyComboFreightToRows($result);
 
         return response()->json([
             'message' => 'Data loaded from database',
