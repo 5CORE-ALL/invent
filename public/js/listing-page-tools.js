@@ -438,15 +438,16 @@
         const rawId = String((suggested && suggested.id) || '').replace(/\D+/g, '');
         const id = rawId === '0' ? '' : rawId;
         const name = String((suggested && suggested.name) || '').trim();
+        const hint = String((suggested && suggested.query) || '').trim();
         const leaf = path.split(/[>\-\/|]/).pop().trim();
         if (idEl && id) idEl.value = id;
-        if (nameEl && !String(nameEl.value || '').trim()) nameEl.value = name || leaf || '';
+        if (nameEl && !String(nameEl.value || '').trim()) nameEl.value = name || leaf || hint || '';
         if (pathEl) {
             pathEl.textContent = path || (id
                 ? 'Wayfair class matched from a listed sibling or title.'
                 : 'No class matched yet. Type a Wayfair class name, then pick one from the list.');
         }
-        const query = String((nameEl && nameEl.value) || name || leaf || '').trim();
+        const query = String((nameEl && nameEl.value) || name || leaf || hint || '').trim();
         if (query.length >= 2) searchWayfairClasses(query);
         else hideWayfairClassResults();
     }

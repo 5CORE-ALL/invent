@@ -2213,58 +2213,73 @@ XML;
      */
     public function searchTaxonomyClass(string $title): ?array
     {
-        $title = trim($title);
-        if (strlen($title) < 3) {
-            return null;
-        }
-
-        $fromSearch = $this->searchListingClasses($title, $title);
-        $ranked = $fromSearch['categories'] ?? [];
-        foreach (array_slice($ranked, 0, 5) as $row) {
+        foreach ($this->classSearchHints($title) as $hint) {
+            $fromSearch = $this->searchListingClasses($hint, $hint);
+            $row = $fromSearch['categories'][0] ?? null;
+            if (! is_array($row)) {
+                continue;
+            }
             $classId = (int) ($row['id'] ?? 0);
             if ($classId <= 0) {
                 continue;
             }
-            if ($this->productAdditionClassExists($classId)) {
-                return [
-                    'class_id' => $classId,
-                    'class_name' => trim((string) ($row['name'] ?? '')),
-                ];
-            }
-        }
 
-        $categories = $this->taxonomyCategories();
-        if ($categories === []) {
-            return null;
-        }
-
-        $hay = strtolower($title);
-        $ranked = [];
-        foreach ($categories as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            $classId = (int) ($row['taxonomyCategoryId'] ?? $row['classId'] ?? $row['class_id'] ?? 0);
-            $className = trim((string) ($row['name'] ?? $row['className'] ?? ''));
-            if ($classId <= 0 || $className === '') {
-                continue;
-            }
-            $score = $this->taxonomyNameScore($hay, strtolower($className));
-            if ($score >= 20) {
-                $ranked[] = ['class_id' => $classId, 'class_name' => $className, '_score' => $score];
-            }
-        }
-        usort($ranked, static fn ($a, $b) => ($b['_score'] ?? 0) <=> ($a['_score'] ?? 0));
-        foreach (array_slice($ranked, 0, 5) as $candidate) {
-            if ($this->productAdditionClassExists((int) $candidate['class_id'])) {
-                return [
-                    'class_id' => (int) $candidate['class_id'],
-                    'class_name' => (string) $candidate['class_name'],
-                ];
-            }
+            return [
+                'class_id' => $classId,
+                'class_name' => trim((string) ($row['name'] ?? '')),
+            ];
         }
 
         return null;
+    }
+
+    /**
+     * Title plus SKU tokens (FLD → folder stand) for Wayfair class search.
+     *
+     * @return list<string>
+     */
+    public function classSearchHints(string ...$parts): array
+    {
+        $hints = [];
+        $blob = '';
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if ($part === '') {
+                continue;
+            }
+            $blob .= ' '.$part;
+            if (mb_strlen($part) >= 3 && ! preg_match('/^[A-Z0-9][A-Z0-9 \-]{1,20}$/', $part)) {
+                $hints[] = $part;
+            }
+        }
+        $upper = strtoupper($blob);
+        $extra = [];
+        if (preg_match('/\bFLD\b|FOLDER/', $upper)) {
+            $extra = array_merge($extra, ['folder stand', 'music stand', 'guitar stand', 'sheet music stand', 'stand']);
+        }
+        if (preg_match('/\bTRI\b/', $upper) && preg_match('/\bFLD\b/', $upper)) {
+            $extra[] = 'folding stand';
+        }
+        if (preg_match('/\bHANGER\b|\bHNG\b/', $upper)) {
+            $extra = array_merge($extra, ['guitar hanger', 'hanger']);
+        }
+        if (preg_match('/\bCAPO\b/', $upper)) {
+            $extra[] = 'capo';
+        }
+        if (preg_match('/\bAMP\b|AMPLIFIER/', $upper)) {
+            $extra = array_merge($extra, ['amplifier', 'guitar amp']);
+        }
+        if (preg_match('/\bMIC\b|MICROPHONE/', $upper)) {
+            $extra[] = 'microphone stand';
+        }
+        if (preg_match('/\bSTAND\b/', $upper)) {
+            $extra[] = 'stand';
+        }
+        foreach ($extra as $hint) {
+            $hints[] = $hint;
+        }
+
+        return array_values(array_unique(array_filter($hints, static fn ($h) => mb_strlen($h) >= 2)));
     }
 
     /**
