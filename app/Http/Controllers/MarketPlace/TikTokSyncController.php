@@ -264,7 +264,11 @@ class TikTokSyncController extends Controller
         if (! empty($line->shopify_order_id)) {
             try {
                 $shopifyTracking = app(TikTokTrackingSyncService::class)
-                    ->fetchShopifyTracking((string) $line->shopify_order_id);
+                    ->fetchShopifyTracking(
+                        (string) $line->shopify_order_id,
+                        (string) $line->order_id,
+                        (string) ($line->seller_sku ?? '')
+                    );
             } catch (\Throwable) {
                 // Keep empty Shopify tracking block.
             }

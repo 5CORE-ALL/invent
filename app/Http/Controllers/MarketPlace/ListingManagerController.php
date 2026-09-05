@@ -1806,6 +1806,12 @@ class ListingManagerController extends Controller
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }
 
+        if ($family === 'amazon') {
+            $result = app(AmazonSpApiService::class)->searchProductTypes($q, $title);
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        }
+
         if (mb_strlen($q) < 2) {
             return response()->json(['success' => true, 'categories' => []]);
         }

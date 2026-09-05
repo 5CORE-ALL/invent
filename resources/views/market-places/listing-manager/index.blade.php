@@ -809,8 +809,8 @@
 
                     <div class="lc-amazon-only d-none mb-3">
                         <label class="form-label">Amazon Product Type <span class="lc-req">*</span></label>
-                        <input id="lc-amazon-product-type" class="form-control" placeholder="e.g. LIGHTING_ACCESSORY">
-                        <p class="lc-help mb-0">Required to create a new Amazon SKU. Copy the product type from a sibling that already exists in Seller Central.</p>
+                        <input id="lc-amazon-product-type" class="form-control" placeholder="Type a keyword (e.g. light stand)" autocomplete="off">
+                        <p class="lc-help mb-0">Type a keyword below or here. Pick a suggested Amazon product type such as LIGHTING_ACCESSORY.</p>
                     </div>
 
                     <div class="mb-2 lc-mp-category-selected">
@@ -2192,7 +2192,7 @@
             location_city: $('#lc-location-city').val() || '',
             location_country: $('#lc-location-country').val() || '',
             location_postal_code: $('#lc-location-postal').val() || '',
-            product_type: $('#lc-amazon-product-type').val() || '',
+            product_type: $('#lc-amazon-product-type').val() || $('#lc-category-id').val() || '',
             package_length: $('#lc-pkg-l').val() || '',
             package_width: $('#lc-pkg-w').val() || '',
             package_height: $('#lc-pkg-h').val() || '',
@@ -2552,7 +2552,7 @@
         const family = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
         const channel = (currentDraft && currentDraft.channel) || '';
         const title = String($('#lc-title').val() || (currentDraft && currentDraft.title) || '').trim();
-        if (family !== 'tiktok' && family !== 'reverb' && (!q || q.length < 2)) {
+        if (family !== 'tiktok' && family !== 'reverb' && family !== 'amazon' && (!q || q.length < 2)) {
             $box.html('<div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>');
             return;
         }
@@ -2560,9 +2560,13 @@
             $box.html('<div class="text-muted small p-3">Type a keyword such as speaker, or keep the product title to load TikTok suggestions.</div>');
             return;
         }
+        if (family === 'amazon' && (!q || q.length < 2) && !title) {
+            $box.html('<div class="text-muted small p-3">Type a keyword such as light stand to load Amazon product types.</div>');
+            return;
+        }
         const searchingLabel = family === 'tiktok'
             ? 'Searching TikTok Shop categories…'
-            : (family === 'reverb' ? 'Searching Reverb categories…' : 'Searching…');
+            : (family === 'reverb' ? 'Searching Reverb categories…' : (family === 'amazon' ? 'Searching Amazon product types…' : 'Searching…'));
         $box.html('<div class="text-muted small p-3">' + searchingLabel + '</div>');
         const desc = String(getDescriptionValue() || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
         if (window._lcCatXhr && window._lcCatXhr.abort) {
@@ -2593,8 +2597,11 @@
             },
             error: function (xhr, status) {
                 if (status === 'abort') return;
+                const timeoutMsg = family === 'amazon'
+                    ? 'Amazon product type search timed out. Try again.'
+                    : (family === 'tiktok' ? 'TikTok category search timed out. Try again.' : 'Category search timed out. Try again.');
                 const msg = (xhr.responseJSON && xhr.responseJSON.message)
-                    || (status === 'timeout' ? 'TikTok category search timed out. Try again.' : 'Category search failed.');
+                    || (status === 'timeout' ? timeoutMsg : 'Category search failed.');
                 $box.html(`<div class="text-danger small p-3">${escapeHtml(msg)}</div>`);
             }
         });
@@ -2624,8 +2631,8 @@
         $('.lc-reverb-only').toggleClass('d-none', !ed.reverb);
         $('.lc-amazon-only').toggleClass('d-none', !ed.amazon);
         $('.lc-mp-category-manual').toggleClass('d-none', !ed.temu);
-        $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.reverb));
-        $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb));
+        $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.reverb || ed.amazon));
+        $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon));
         $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
         $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.reverb ? 'Reverb Category' : 'Category'))));
@@ -2737,7 +2744,14 @@
             ? 'single'
             : ((savedMode === 'variation' || familyKids.length > 1) ? 'variation' : 'single'));
         $('#lc-warehouse-id').val(d.warehouse_id || '');
-        $('#lc-amazon-product-type').val(d.product_type || d.category || '');
+        const amazonType = String(d.product_type || d.category || '').trim();
+        $('#lc-amazon-product-type').val(amazonType);
+        if (amazonType && (draft.editor && draft.editor.amazon) && !String($('#lc-category-id').val() || '').trim()) {
+            $('#lc-category-id').val(amazonType);
+            if (!String($('#lc-category-path-input').val() || '').trim()) {
+                $('#lc-category-path-input').val(amazonType);
+            }
+        }
         $('#lc-category-id-visible').val(d.primary_category_id || d.category_uuid || '');
         $('#lc-category-path-visible').val(d.primary_category_path || d.category_name || d.category || '');
         if (d.category_uuid && !$('#lc-category-id').val()) {
@@ -2766,8 +2780,9 @@
             const family = (draft.editor && draft.editor.family) || '';
             if ((family === 'tiktok' || family === 'reverb') && !String($('#lc-category-id').val() || '').trim()) {
                 searchCategories(family === 'reverb' ? String($('#lc-title').val() || '').trim() : '');
-            } else if (family === 'reverb') {
-                searchCategories(String($('#lc-category-search').val() || $('#lc-title').val() || '').trim());
+            } else if (family === 'reverb' || family === 'amazon') {
+                const amazonQ = String($('#lc-category-search').val() || $('#lc-amazon-product-type').val() || $('#lc-title').val() || '').trim();
+                searchCategories(family === 'amazon' ? amazonQ : String($('#lc-category-search').val() || $('#lc-title').val() || '').trim());
             }
             if (!editorImages.length && draft.id) {
                 $.ajax({
@@ -3697,8 +3712,8 @@
             $(this).addClass('active');
             $('#lmListingEditorModal .lc-pane').removeClass('active');
             $(`#lmListingEditorModal .lc-pane[data-pane="${pane}"]`).addClass('active');
-            if (pane === 'category' && currentDraft && currentDraft.editor && (currentDraft.editor.tiktok || currentDraft.editor.reverb)) {
-                const q = String($('#lc-category-search').val() || '').trim();
+            if (pane === 'category' && currentDraft && currentDraft.editor && (currentDraft.editor.tiktok || currentDraft.editor.reverb || currentDraft.editor.amazon)) {
+                const q = String($('#lc-category-search').val() || (currentDraft.editor.amazon ? ($('#lc-amazon-product-type').val() || $('#lc-title').val() || '') : '') || '').trim();
                 searchCategories(q);
             }
         });
@@ -3932,7 +3947,7 @@
                 }
             });
         });
-        $('#lc-category-search').on('input', function () {
+        $('#lc-category-search, #lc-amazon-product-type').on('input', function () {
             const q = String($(this).val() || '').trim();
             clearTimeout(categoryTimer);
             categoryTimer = setTimeout(() => searchCategories(q), 350);
@@ -3944,9 +3959,12 @@
             $('#lc-category-path-input').val(path);
             $('#lc-category-id-visible').val(id);
             $('#lc-category-path-visible').val(path);
+            if (currentDraft && currentDraft.editor && currentDraft.editor.amazon) {
+                $('#lc-amazon-product-type').val(id);
+            }
             dirty = true;
             refreshEditorUi(currentDraft);
-            toast('Category selected.', 'success');
+            toast((currentDraft && currentDraft.editor && currentDraft.editor.amazon) ? 'Amazon product type selected.' : 'Category selected.', 'success');
         });
         $('#lc-refresh-policies').on('click', function () {
             loadPolicies({

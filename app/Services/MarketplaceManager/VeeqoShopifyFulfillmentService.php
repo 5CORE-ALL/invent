@@ -75,7 +75,10 @@ class VeeqoShopifyFulfillmentService
             (string) $ctx['shopify_order_id'],
             (array) $ctx['shopify_config'],
             (array) $ctx['refs'],
-            is_array($ctx['local_tracking'] ?? null) ? $ctx['local_tracking'] : null
+            is_array($ctx['local_tracking'] ?? null) ? $ctx['local_tracking'] : null,
+            (string) ($ctx['sku'] ?? ''),
+            is_array($ctx['marketplace_order_ids'] ?? null) ? $ctx['marketplace_order_ids'] : [],
+            $marketplace
         );
         $tn = trim((string) ($result['tracking'] ?? ''));
         if ($tn !== '') {
@@ -105,8 +108,15 @@ class VeeqoShopifyFulfillmentService
      *   carrier?: string|null
      * }
      */
-    public function fulfillShopifyFromLabels(string $shopifyOrderId, array $shopifyConfig, array $refs, ?array $localTracking = null): array
-    {
+    public function fulfillShopifyFromLabels(
+        string $shopifyOrderId,
+        array $shopifyConfig,
+        array $refs,
+        ?array $localTracking = null,
+        string $sku = '',
+        array $marketplaceOrderIds = [],
+        string $marketplace = ''
+    ): array {
         $shopifyOrderId = trim($shopifyOrderId);
         if ($shopifyOrderId === '' || str_starts_with($shopifyOrderId, 'manual')) {
             return [
@@ -117,12 +127,69 @@ class VeeqoShopifyFulfillmentService
             ];
         }
 
-        $refs = array_values(array_unique(array_filter(array_merge(
-            $refs,
-            $this->shopifyDisplayNameRefs($shopifyConfig, $shopifyOrderId)
-        ))));
+        $strict = in_array(strtolower(trim($marketplace)), ['ebay2', 'tiktok', 'aliexpress'], true);
+        $marketplaceOrderIds = app(ShopifyFulfillmentTrackingMatcher::class)->uniqueIds(
+            $marketplaceOrderIds !== [] ? $marketplaceOrderIds : $refs
+        );
+        $sku = app(ShopifyFulfillmentTrackingMatcher::class)->normalizeSku($sku);
 
-        $existing = $this->existingShopifyTracking($shopifyConfig, $shopifyOrderId);
+        if ($strict && $marketplaceOrderIds === []) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'action' => 'order_id_required',
+                'message' => 'Marketplace order id missing — tracking not attached.',
+            ];
+        }
+        if ($strict && ($sku === '' || in_array($sku, ['__ORDER__', '__UNKNOWN__'], true))) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'action' => 'sku_required',
+                'message' => 'Marketplace SKU missing — tracking not attached.',
+            ];
+        }
+
+        if ($strict) {
+            $orderCheck = $this->shopifyOrderPayload($shopifyConfig, $shopifyOrderId);
+            if ($orderCheck === null) {
+                return [
+                    'success' => false,
+                    'skipped' => true,
+                    'action' => 'shopify_order_missing',
+                    'message' => 'Could not load the Shopify order to match marketplace order id + SKU.',
+                ];
+            }
+            $matchedOrderId = app(ShopifyFulfillmentTrackingMatcher::class)
+                ->matchFullOrderId($orderCheck, $marketplaceOrderIds);
+            if ($matchedOrderId === null) {
+                Log::info('VeeqoShopifyFulfillmentService: skip fulfill — Shopify order id mismatch', [
+                    'marketplace' => $marketplace,
+                    'shopify_order_id' => $shopifyOrderId,
+                    'wanted' => $marketplaceOrderIds,
+                ]);
+
+                return [
+                    'success' => false,
+                    'skipped' => true,
+                    'action' => 'order_id_mismatch',
+                    'message' => 'Shopify order does not contain the full marketplace order id.',
+                ];
+            }
+            $refs = $this->strongMarketplaceRefs($marketplaceOrderIds);
+        } else {
+            $refs = array_values(array_unique(array_filter(array_merge(
+                $refs,
+                $this->shopifyDisplayNameRefs($shopifyConfig, $shopifyOrderId)
+            ))));
+        }
+
+        $existing = $this->existingShopifyTracking(
+            $shopifyConfig,
+            $shopifyOrderId,
+            $sku,
+            $marketplaceOrderIds
+        );
         if ($existing !== null) {
             $this->cacheTrackingOnShopifyRawOrder(
                 $shopifyOrderId,
@@ -168,7 +235,8 @@ class VeeqoShopifyFulfillmentService
             $shopifyConfig,
             $shopifyOrderId,
             $found['tracking'],
-            $carrier
+            $carrier,
+            $sku
         );
 
         if (empty($written['success'])) {
@@ -850,7 +918,9 @@ class VeeqoShopifyFulfillmentService
                 $refs[] = $ref;
             }
         }
-        if ($shopifyOrderId !== '' && ! str_starts_with($shopifyOrderId, 'manual')) {
+        $marketplaceOrderIds = $refs;
+        $strict = in_array($marketplace, ['ebay2', 'tiktok', 'aliexpress'], true);
+        if ($shopifyOrderId !== '' && ! str_starts_with($shopifyOrderId, 'manual') && ! $strict) {
             $refs[] = $shopifyOrderId;
             foreach ($this->shopifyOrderNumberRefs($shopifyOrderId) as $num) {
                 if (! in_array($num, $refs, true)) {
@@ -858,19 +928,13 @@ class VeeqoShopifyFulfillmentService
                 }
             }
         }
-        if ($shopifyOrderId === '' || $refs === []) {
-            return [
-                'shopify_order_id' => $shopifyOrderId,
-                'shopify_config' => $this->shopifyConfigFor($marketplace),
-                'refs' => $refs,
-                'local_tracking' => is_array($row['local_tracking'] ?? null) ? $row['local_tracking'] : null,
-            ];
-        }
 
         return [
             'shopify_order_id' => $shopifyOrderId,
             'shopify_config' => $this->shopifyConfigFor($marketplace),
             'refs' => $refs,
+            'marketplace_order_ids' => $marketplaceOrderIds,
+            'sku' => trim((string) ($row['sku'] ?? '')),
             'local_tracking' => is_array($row['local_tracking'] ?? null) ? $row['local_tracking'] : null,
         ];
     }
@@ -894,6 +958,7 @@ class VeeqoShopifyFulfillmentService
                     (string) $order->amazon_order_id,
                     $seller,
                 ]),
+                'sku' => $this->skuFromMarketplaceModel('amazon', $order),
                 'local_tracking' => $this->trackingFromMixed($raw),
             ];
         }
@@ -965,8 +1030,19 @@ class VeeqoShopifyFulfillmentService
         return [
             'shopify_order_id' => (string) ($model->shopify_order_id ?? ''),
             'refs' => $refs,
+            'sku' => $this->skuFromMarketplaceModel($marketplace, $model),
             'local_tracking' => $local,
         ];
+    }
+
+    protected function skuFromMarketplaceModel(string $marketplace, object $model): string
+    {
+        $sku = match ($marketplace) {
+            'tiktok', 'tiktok2' => (string) ($model->seller_sku ?? ''),
+            default => (string) ($model->sku ?? ''),
+        };
+
+        return trim($sku);
     }
 
     /**
@@ -1402,7 +1478,13 @@ class VeeqoShopifyFulfillmentService
      * @param  array{store_url?: string, token?: string}  $config
      * @return array{success: bool, already?: bool, message: string}
      */
-    protected function createShopifyFulfillment(array $config, string $shopifyOrderId, string $tracking, string $carrier): array
+    protected function createShopifyFulfillment(
+        array $config,
+        string $shopifyOrderId,
+        string $tracking,
+        string $carrier,
+        string $sku = ''
+    ): array
     {
         $storeUrl = trim((string) ($config['store_url'] ?? ''));
         $token = trim((string) ($config['token'] ?? ''));
@@ -1443,12 +1525,18 @@ class VeeqoShopifyFulfillmentService
                 }
             }
 
-            $prepared = $this->prepareShopifyFulfillmentOrders($storeUrl, $token, $shopifyOrderId, false);
+            $prepared = $this->prepareShopifyFulfillmentOrders($storeUrl, $token, $shopifyOrderId, false, $sku);
             if (($prepared['error'] ?? null) !== null) {
                 return ['success' => false, 'message' => (string) $prepared['error']];
             }
             $lineItems = $prepared['line_items'] ?? [];
             if ($lineItems === []) {
+                if (trim($sku) !== '') {
+                    return [
+                        'success' => false,
+                        'message' => 'No open Shopify fulfillment lines match this marketplace SKU.',
+                    ];
+                }
                 $updated = $this->updateExistingShopifyFulfillmentTracking($storeUrl, $token, $shopifyOrderId, $tracking, $carrier);
                 if (! empty($updated['success'])) {
                     return $updated;
@@ -1473,7 +1561,7 @@ class VeeqoShopifyFulfillmentService
 
             $post = $this->shopifyApi($storeUrl, $token, 'POST', 'fulfillments.json', $payload);
             if (! $post->successful() && $post->status() === 422 && $this->shopifyFulfillmentNeedsLocationRetry((string) $post->body())) {
-                $retried = $this->prepareShopifyFulfillmentOrders($storeUrl, $token, $shopifyOrderId, true);
+                $retried = $this->prepareShopifyFulfillmentOrders($storeUrl, $token, $shopifyOrderId, true, $sku);
                 if (($retried['line_items'] ?? []) !== []) {
                     $payload['fulfillment']['line_items_by_fulfillment_order'] = $retried['line_items'];
                     $post = $this->shopifyApi($storeUrl, $token, 'POST', 'fulfillments.json', $payload);
@@ -1613,7 +1701,13 @@ class VeeqoShopifyFulfillmentService
      *
      * @return array{line_items: list<array<string, mixed>>, error: string|null}
      */
-    protected function prepareShopifyFulfillmentOrders(string $storeUrl, string $token, string $shopifyOrderId, bool $forceMove = false): array
+    protected function prepareShopifyFulfillmentOrders(
+        string $storeUrl,
+        string $token,
+        string $shopifyOrderId,
+        bool $forceMove = false,
+        string $sku = ''
+    ): array
     {
         $foRes = $this->shopifyApi($storeUrl, $token, 'GET', "orders/{$shopifyOrderId}/fulfillment_orders.json");
         if (! $foRes->successful()) {
@@ -1642,6 +1736,24 @@ class VeeqoShopifyFulfillmentService
             $foRes = $this->shopifyApi($storeUrl, $token, 'GET', "orders/{$shopifyOrderId}/fulfillment_orders.json");
             if ($foRes->successful() && is_array($foRes->json('fulfillment_orders'))) {
                 $orders = $foRes->json('fulfillment_orders');
+            }
+        }
+
+        $orderLines = [];
+        if (trim($sku) !== '') {
+            try {
+                $orderRes = $this->shopifyApi(
+                    $storeUrl,
+                    $token,
+                    'GET',
+                    "orders/{$shopifyOrderId}.json",
+                    ['fields' => 'id,line_items']
+                );
+                if ($orderRes->successful() && is_array($orderRes->json('order.line_items'))) {
+                    $orderLines = $orderRes->json('order.line_items');
+                }
+            } catch (\Throwable) {
+                $orderLines = [];
             }
         }
 
@@ -1680,7 +1792,7 @@ class VeeqoShopifyFulfillmentService
             }
 
             $rawLines = $fo['line_items'] ?? null;
-            $items = is_array($rawLines) ? $this->shopifyFulfillmentOrderLineItems($fo) : [];
+            $items = is_array($rawLines) ? $this->shopifyFulfillmentOrderLineItems($fo, $sku, $orderLines) : [];
             if (is_array($rawLines) && $rawLines !== [] && $items === []) {
                 continue;
             }
@@ -1714,14 +1826,35 @@ class VeeqoShopifyFulfillmentService
 
     /**
      * @param  array<string, mixed>  $fo
+     * @param  list<array<string, mixed>>  $orderLines
      * @return list<array{id: int, quantity: int}>
      */
-    protected function shopifyFulfillmentOrderLineItems(array $fo): array
+    protected function shopifyFulfillmentOrderLineItems(array $fo, string $sku = '', array $orderLines = []): array
     {
         $items = [];
+        $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
+        $want = $matcher->normalizeSku($sku);
         foreach ($fo['line_items'] ?? [] as $li) {
             if (! is_array($li) || empty($li['id'])) {
                 continue;
+            }
+            if ($want !== '') {
+                $lineSku = $matcher->normalizeSku((string) ($li['sku'] ?? ''));
+                if ($lineSku === '') {
+                    $lineItemId = (string) ($li['line_item_id'] ?? '');
+                    foreach ($orderLines as $orderLine) {
+                        if (! is_array($orderLine)) {
+                            continue;
+                        }
+                        if ($lineItemId !== '' && (string) ($orderLine['id'] ?? '') === $lineItemId) {
+                            $lineSku = $matcher->normalizeSku((string) ($orderLine['sku'] ?? ''));
+                            break;
+                        }
+                    }
+                }
+                if ($lineSku === '' || ! $matcher->skusEqual($lineSku, $want)) {
+                    continue;
+                }
             }
             $qty = (int) ($li['fulfillable_quantity'] ?? 0);
             if ($qty < 1) {
@@ -2029,12 +2162,37 @@ class VeeqoShopifyFulfillmentService
      * @param  array{store_url?: string, token?: string}  $config
      * @return array{tracking: string, carrier: string}|null
      */
-    protected function existingShopifyTracking(array $config, string $shopifyOrderId): ?array
-    {
+    protected function existingShopifyTracking(
+        array $config,
+        string $shopifyOrderId,
+        string $sku = '',
+        array $marketplaceOrderIds = []
+    ): ?array {
         $storeUrl = trim((string) ($config['store_url'] ?? ''));
         $token = trim((string) ($config['token'] ?? ''));
         if ($storeUrl === '' || $token === '') {
             return null;
+        }
+
+        $sku = app(ShopifyFulfillmentTrackingMatcher::class)->normalizeSku($sku);
+        $orderIds = app(ShopifyFulfillmentTrackingMatcher::class)->uniqueIds($marketplaceOrderIds);
+        if ($sku !== '' && $orderIds !== []) {
+            $matched = app(ShopifyFulfillmentTrackingMatcher::class)->match(
+                $config,
+                $shopifyOrderId,
+                (string) $orderIds[0],
+                $sku,
+                array_slice($orderIds, 1),
+                'VeeqoShopifyFulfillmentService'
+            );
+            if (empty($matched['tracking'])) {
+                return null;
+            }
+
+            return [
+                'tracking' => strtoupper(preg_replace('/\s+/', '', (string) $matched['tracking']) ?? (string) $matched['tracking']),
+                'carrier' => trim((string) ($matched['carrier'] ?? '')) ?: 'Other',
+            ];
         }
 
         try {
@@ -2075,6 +2233,36 @@ class VeeqoShopifyFulfillmentService
         }
 
         return null;
+    }
+
+    /**
+     * @param  array{store_url?: string, token?: string}  $config
+     * @return array<string, mixed>|null
+     */
+    protected function shopifyOrderPayload(array $config, string $shopifyOrderId): ?array
+    {
+        $storeUrl = trim((string) ($config['store_url'] ?? ''));
+        $token = trim((string) ($config['token'] ?? ''));
+        $shopifyOrderId = trim($shopifyOrderId);
+        if ($storeUrl === '' || $token === '' || $shopifyOrderId === '') {
+            return null;
+        }
+
+        try {
+            $response = Http::withoutVerifying()->withHeaders([
+                'X-Shopify-Access-Token' => $token,
+            ])->timeout(30)->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json", [
+                'fields' => 'id,name,tags,note,note_attributes,source_identifier,line_items,fulfillments',
+            ]);
+            if (! $response->successful()) {
+                return null;
+            }
+            $order = $response->json('order');
+
+            return is_array($order) ? $order : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

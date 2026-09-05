@@ -65,7 +65,26 @@ class TikTokTrackingSyncService
             return ['success' => false, 'skipped' => true, 'message' => 'Order not linked to Shopify yet.'];
         }
 
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, (string) ($line->seller_sku ?? ''));
+        $skus = TiktokOrder::query()
+            ->where('order_id', $orderId)
+            ->pluck('seller_sku')
+            ->map(static fn ($sku) => trim((string) $sku))
+            ->filter(static fn ($sku) => $sku !== '' && ! in_array($sku, ['__order__', '__unknown__'], true))
+            ->unique()
+            ->values();
+        if ($skus->isEmpty() && trim((string) ($line->seller_sku ?? '')) !== '') {
+            $skus = collect([trim((string) $line->seller_sku)]);
+        }
+
+        $shopifyFulfillment = ['tracking' => null, 'carrier' => null, 'error' => 'Marketplace SKU missing — tracking not attached.'];
+        foreach ($skus as $sku) {
+            $hit = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
+            if (! empty($hit['tracking'])) {
+                $shopifyFulfillment = $hit;
+                break;
+            }
+            $shopifyFulfillment = $hit;
+        }
         if (! empty($shopifyFulfillment['error'])) {
             return [
                 'success' => false,
@@ -153,7 +172,7 @@ class TikTokTrackingSyncService
             ->whereIn('order_status', self::TRACKING_ELIGIBLE_STATUSES)
             ->orderBy('id')
             ->limit($limit * 12)
-            ->get(['id', 'order_id', 'shopify_order_id', 'order_status', 'tracking_pushed_at']);
+            ->get(['id', 'order_id', 'shopify_order_id', 'order_status', 'tracking_pushed_at', 'seller_sku']);
 
         $unique = [];
         foreach ($rows as $row) {
