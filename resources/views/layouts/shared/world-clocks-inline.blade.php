@@ -94,8 +94,8 @@
     </div>
     <div class="wc-divider" aria-hidden="true"></div>
     <div class="wc-zone">
-        <div class="wc-flag-row" role="img" aria-label="IN, India">
-            <span class="wc-code">IN</span>
+        <div class="wc-flag-row" role="img" aria-label="Shobha Time, India">
+            <span class="wc-code wc-place-name">Shobha</span>
             <img class="wc-flag-img" src="https://flagcdn.com/w40/in.png" width="18" height="14" alt="" decoding="async" loading="eager">
         </div>
         <div class="wc-time" id="wc-in-time">—</div>
@@ -129,17 +129,21 @@
         { prefix: 'wc-cn', tz: 'Asia/Shanghai' }
     ];
     function tzAbbrev(now, timeZone) {
-        var style = timeZone === 'Asia/Kolkata' ? 'longOffset' : 'short';
-        var parts = new Intl.DateTimeFormat('en-US', {
-            timeZone: timeZone,
-            timeZoneName: style
-        }).formatToParts(now);
-        for (var i = 0; i < parts.length; i++) {
-            if (parts[i].type === 'timeZoneName') {
-                return parts[i].value;
-            }
+        var styles = timeZone === 'Asia/Kolkata' ? ['longOffset', 'short'] : ['short'];
+        for (var s = 0; s < styles.length; s++) {
+            try {
+                var parts = new Intl.DateTimeFormat('en-US', {
+                    timeZone: timeZone,
+                    timeZoneName: styles[s]
+                }).formatToParts(now);
+                for (var i = 0; i < parts.length; i++) {
+                    if (parts[i].type === 'timeZoneName') {
+                        return parts[i].value;
+                    }
+                }
+            } catch (e) { /* try next style */ }
         }
-        return '';
+        return timeZone === 'Asia/Kolkata' ? 'IST' : '';
     }
     function tick() {
         var now = new Date();
@@ -149,22 +153,28 @@
             if (!timeEl || !metaEl) {
                 return;
             }
-            var timeStr = new Intl.DateTimeFormat('en-US', {
-                timeZone: z.tz,
-                hour: 'numeric',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true
-            }).format(now);
-            var dateStr = new Intl.DateTimeFormat('en-US', {
-                timeZone: z.tz,
-                weekday: 'short',
-                month: 'short',
-                day: 'numeric'
-            }).format(now);
-            var tz = tzAbbrev(now, z.tz);
-            timeEl.textContent = timeStr;
-            metaEl.textContent = dateStr + (tz ? ' · ' + tz : '');
+            try {
+                var timeStr = new Intl.DateTimeFormat('en-US', {
+                    timeZone: z.tz,
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                }).format(now);
+                var dateStr = new Intl.DateTimeFormat('en-US', {
+                    timeZone: z.tz,
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                }).format(now);
+                var tz = tzAbbrev(now, z.tz);
+                timeEl.textContent = timeStr;
+                metaEl.textContent = dateStr + (tz ? ' · ' + tz : '');
+            } catch (e) {
+                if (z.tz === 'Asia/Kolkata') {
+                    timeEl.textContent = timeEl.textContent === '—' ? 'IST' : timeEl.textContent;
+                }
+            }
         });
     }
     tick();

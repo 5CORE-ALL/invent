@@ -10,16 +10,30 @@ use Illuminate\Support\Facades\Auth;
 
 class DarController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $users = User::orderBy('name')->get(['id', 'name', 'email']);
+        $filterUserId = (int) $request->query('user_id', 0);
+        $filterDays = (int) $request->query('days', 0);
 
-        return view('purchase-master.dar.index', compact('users'));
+        return view('purchase-master.dar.index', compact('users', 'filterUserId', 'filterDays'));
     }
 
-    public function data()
+    public function data(Request $request)
     {
-        $rows = Dar::with('user:id,name,email')
+        $query = Dar::with('user:id,name,email');
+
+        $userId = (int) $request->query('user_id', 0);
+        if ($userId > 0) {
+            $query->where('user_id', $userId);
+        }
+
+        $days = (int) $request->query('days', 0);
+        if ($days > 0) {
+            $query->whereDate('report_date', '>=', now()->subDays(max($days, 1) - 1)->toDateString());
+        }
+
+        $rows = $query
             ->orderByDesc('report_date')
             ->orderByDesc('updated_at')
             ->get()

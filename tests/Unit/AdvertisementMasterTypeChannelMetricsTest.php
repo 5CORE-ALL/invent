@@ -73,6 +73,59 @@ class AdvertisementMasterTypeChannelMetricsTest extends TestCase
         $this->assertFalse($rows[0]['has_tcos']);
     }
 
+    public function test_leaf_total_gets_a_type_row_with_channel_name_and_ads_metrics(): void
+    {
+        $rows = [[
+            'channel' => 'Aliexpress Total',
+            'channel_key' => 'Aliexpress Total',
+            'channel_group' => 'Aliexpress',
+            'marketplace' => 'aliexpress',
+            'is_sum_row' => true,
+            'is_group_total' => true,
+            'spend' => 25.5,
+            'clicks' => 10,
+            'sold' => 2,
+            'sales' => 80.0,
+            'cvr' => 20.0,
+            'acos' => 32,
+            'active' => 1,
+        ]];
+
+        $this->invoke('ensureDefaultTypeRows', $rows);
+
+        $this->assertCount(1, $rows[0]['_children']);
+        $type = $rows[0]['_children'][0];
+        $this->assertSame('Aliexpress', $type['channel_group']);
+        $this->assertSame('Aliexpress', $type['channel']);
+        $this->assertTrue($type['is_sub_row']);
+        $this->assertTrue($type['is_default_type']);
+        $this->assertFalse($type['is_sum_row']);
+        $this->assertSame(25.5, $type['spend']);
+        $this->assertSame(80.0, $type['sales']);
+        $this->assertFalse($type['has_t_sales']);
+    }
+
+    public function test_channel_with_type_rows_is_not_given_an_extra_default_type(): void
+    {
+        $rows = [[
+            'channel' => 'Amazon Total',
+            'channel_key' => 'Amazon',
+            'channel_group' => 'Amazon',
+            'is_sum_row' => true,
+            '_children' => [[
+                'channel' => 'Amazon · KW',
+                'channel_key' => 'Amazon · KW',
+                'channel_group' => 'Amazon',
+                'is_sub_row' => true,
+            ]],
+        ]];
+
+        $this->invoke('ensureDefaultTypeRows', $rows);
+
+        $this->assertCount(1, $rows[0]['_children']);
+        $this->assertSame('Amazon · KW', $rows[0]['_children'][0]['channel_key']);
+    }
+
     /**
      * @param  array<int, array<string, mixed>>  $rows
      * @param  mixed  ...$extra

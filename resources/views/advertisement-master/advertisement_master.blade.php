@@ -327,10 +327,10 @@
                             <span class="adm-stat-badge adm-stat-badge--ssales adm-badge-link" data-metric="ssales" data-label="Total Sales" title="Combined Amz + eBay + eBay 2 + eBay 3 + Shopify + TikTok 1 L30 store sales — click for trend">TOTAL SALES: <span id="adm-badge-ssales">$0</span></span>
                         </div>
                         <div class="d-flex align-items-center gap-1" style="flex-shrink:0;">
-                            <select id="adm-filter-kind" class="form-select form-select-sm" style="width:110px;" aria-label="Showing type rows" title="Showing type rows">
+                            <select id="adm-filter-kind" class="form-select form-select-sm" style="width:140px;" aria-label="Row view" title="Row view">
                                 <option value="">All</option>
-                                <option value="total">Total</option>
-                                <option value="types" selected>Types</option>
+                                <option value="total">Channel Total</option>
+                                <option value="types" selected>Ads Types</option>
                             </select>
                         </div>
                         <div class="d-flex align-items-center gap-1" style="flex-shrink:0;">
@@ -506,6 +506,7 @@
 
             function admIsTypeMetricRow(row) {
                 if (!row) return false;
+                if (row.is_default_type) return true;
                 if (row.is_custom && !row.is_sum_row && !row.is_group_total) return true;
                 const name = String(row.channel_key || row.channel || '');
                 return name.indexOf(' · ') !== -1;
@@ -687,10 +688,10 @@
                             copy.channel = typeName + ' Total';
                         }
                     }
-                    flat.push(copy);
                     if (children.length) {
                         Array.prototype.push.apply(flat, flattenAdmRows(children, group));
                     }
+                    flat.push(copy);
                 });
                 return flat;
             }
@@ -710,10 +711,6 @@
 
             function groupFormatter(cell) {
                 const name = cell.getValue() || '';
-                const row = cell.getRow().getData() || {};
-                if (admFilterKind() !== 'types' && row.is_sub_row && !row.is_sum_row) {
-                    return '';
-                }
                 return '<span style="font-weight:600;color:#1e3a8a;">' + admEsc(name) + '</span>';
             }
 
@@ -767,8 +764,8 @@
                         const cmp = admCompareField(field, admGroupSortValue(ga, field), admGroupSortValue(gb, field));
                         return cmp !== 0 ? cmp : admStringSorter(ga, gb);
                     }
-                    const sa = da.is_sum_row ? 0 : 1;
-                    const sb = db.is_sum_row ? 0 : 1;
+                    const sa = da.is_sum_row ? 1 : 0;
+                    const sb = db.is_sum_row ? 1 : 0;
                     if (sa !== sb) {
                         const cmp = sa - sb;
                         return dir === 'desc' ? -cmp : cmp;
@@ -797,8 +794,8 @@
                 const flat = [];
                 order.forEach(function (g) {
                     groups[g].sort(function (a, b) {
-                        const sa = a.is_sum_row ? 0 : 1;
-                        const sb = b.is_sum_row ? 0 : 1;
+                        const sa = a.is_sum_row ? 1 : 0;
+                        const sb = b.is_sum_row ? 1 : 0;
                         if (sa !== sb) return sa - sb;
                         return String(a.channel || '').localeCompare(String(b.channel || ''));
                     });
@@ -1175,13 +1172,18 @@
             function admInsertCustomRow(payload) {
                 const group = payload.channel_group;
                 const rows = table.getRows();
-                let lastMatch = null;
+                let totalRow = null;
                 rows.forEach(function (row) {
                     const d = row.getData() || {};
-                    if (String(d.channel_group || '') === group) lastMatch = row;
+                    if (String(d.channel_group || '') === group && d.is_sum_row) {
+                        totalRow = row;
+                    }
                 });
-                const next = lastMatch && lastMatch.getNextRow ? lastMatch.getNextRow() : null;
-                table.addRow(payload, next || false);
+                if (totalRow) {
+                    table.addRow(payload, true, totalRow);
+                    return;
+                }
+                table.addRow(payload, false);
             }
 
             document.getElementById('adm-edit-form').addEventListener('submit', function (e) {

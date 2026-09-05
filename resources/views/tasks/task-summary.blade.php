@@ -117,6 +117,68 @@
             color: #831843 !important;
             font-weight: 600;
         }
+        /* DAR (days/25) and ATT (hours/200) — last 30 days.
+             > 90%  → pink
+             80–90% → green
+             else   → red */
+        .task-summary-col-dar {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .task-summary-col-dar.is-dar-high,
+        .task-summary-col-att.is-att-high {
+            background-color: #fce7f3 !important;
+            color: #831843 !important;
+        }
+        .task-summary-col-dar.is-dar-mid,
+        .task-summary-col-att.is-att-mid {
+            background-color: #dcfce7 !important;
+            color: #166534 !important;
+        }
+        .task-summary-col-dar.is-dar-low,
+        .task-summary-col-att.is-att-low {
+            background-color: #fee2e2 !important;
+            color: #991b1b !important;
+        }
+        .task-summary-col-att {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .task-summary-dar-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.28rem;
+        }
+        .task-summary-dar-pct {
+            min-width: 2.4em;
+        }
+        .task-summary-dar-spark {
+            display: block;
+            flex: 0 0 auto;
+        }
+        .task-summary-dar-arrow {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.05rem;
+            height: 1.05rem;
+            border-radius: 50%;
+            color: inherit;
+            text-decoration: none;
+            font-size: 0.78rem;
+            line-height: 1;
+            opacity: 0.85;
+        }
+        .task-summary-dar-arrow:hover {
+            opacity: 1;
+            background: rgba(15, 23, 42, 0.08);
+            color: inherit;
+        }
+        .task-summary-dar-arrow.is-disabled {
+            opacity: 0.35;
+            pointer-events: none;
+        }
         /* "A Task H" column hidden by request — kept in markup so sort key
            stays addressable from JS; remove these rules to bring it back. */
         .task-summary-table th.task-summary-col-a-task-h,
@@ -404,7 +466,9 @@
             box-shadow: inset 3px 0 0 #2563eb;
         }
         .task-summary-table th.task-summary-col-snooze,
-        .task-summary-table td.task-summary-col-snooze {
+        .task-summary-table td.task-summary-col-snooze,
+        .task-summary-table th.task-summary-col-minimize,
+        .task-summary-table td.task-summary-col-minimize {
             width: 1%;
             padding-left: 0.25rem;
             padding-right: 0.25rem;
@@ -1014,7 +1078,7 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="task" data-sort-type="number" title="Sort by assignee task count" role="button" tabindex="0">
                                         Task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="l30_hrs" data-sort-type="number" title="Attendance — current month work hours from Team Logger ({{ \Carbon\Carbon::now()->format('M Y') }})" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="l30_hrs" data-sort-type="number" title="Attendance — today's hours from the in-app logger (Shobha and Mariya use Team Logger) as a % of 200" role="button" tabindex="0">
                                         ATT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="assignor_task" data-sort-type="number" title="Task Given — sort by tasks this member has assigned to others" role="button" tabindex="0">
@@ -1025,6 +1089,9 @@
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="overdue" data-sort-type="number" title="Overdue — number of overdue tasks (sortable)" role="button" tabindex="0">
                                         O-Due <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="dar_l30" data-sort-type="number" title="DAR — unique daily reports submitted in the last 30 days, as a % of the 25-day target" role="button" tabindex="0">
+                                        DAR <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="tat_l30" data-sort-type="float" title="TAT — average Turn-Around Time in days (task start → completion) over the last 30 days" role="button" tabindex="0">
                                         TAT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
@@ -1050,6 +1117,9 @@
                                     <th scope="col" title="Incentives — rupee bag rewards for this team member">
                                         Inc
                                     </th>
+                                    <th scope="col" class="task-summary-col-minimize" title="Minimize — hide this member until midnight PST">
+                                        <i class="ri-subtract-line" aria-hidden="true"></i>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1070,9 +1140,10 @@
                                         data-sort-designation="{{ e($row['designation'] ?? '') }}"
                                         data-sort-org_level="{{ e($row['org_level'] ?? '') }}"
                                         data-sort-task="{{ (int) ($row['task'] ?? 0) }}"
-                                        data-sort-l30_hrs="{{ (float) ($row['l30_hrs'] ?? 0) }}"
+                                        data-sort-l30_hrs="{{ (int) ($row['att_l30_pct'] ?? 0) }}"
                                         data-sort-assignor_task="{{ (int) ($row['assignor_task'] ?? 0) }}"
                                         data-sort-overdue="{{ (int) ($row['overdue'] ?? 0) }}"
+                                        data-sort-dar_l30="{{ (int) ($row['dar_l30_pct'] ?? 0) }}"
                                         data-sort-tat_l30="{{ $row['tat_l30_days'] !== null ? (float) $row['tat_l30_days'] : -1 }}"
                                         data-sort-missed_l30="{{ (int) ($row['missed_l30'] ?? 0) }}"
                                         data-sort-a_task="{{ (int) ($row['a_task'] ?? 0) }}"
@@ -1320,16 +1391,69 @@
                                             @endif
                                         </td>
                                         <td class="task-summary-num">{{ $row['task'] }}</td>
-                                        <td class="task-summary-num" style="background-color: #e8f5e9;">
-                                            @php
-                                                $hours = $row['l30_hrs'] ?? 0;
-                                                $roundedHours = round($hours);
-                                            @endphp
-                                            {{ $roundedHours > 0 ? $roundedHours . 'h' : '—' }}
+                                        @php
+                                            $attHours = (float) ($row['l30_hrs'] ?? 0);
+                                            $attHoursDisplay = (int) round($attHours);
+                                            $attTarget = (int) ($row['att_l30_target'] ?? 200);
+                                            $attPct = (int) ($row['att_l30_pct'] ?? 0);
+                                            $attBand = (string) ($row['att_l30_band'] ?? 'low');
+                                            $attBandClass = $attBand === 'high'
+                                                ? 'is-att-high'
+                                                : ($attBand === 'mid' ? 'is-att-mid' : 'is-att-low');
+                                        @endphp
+                                        <td class="task-summary-num task-summary-col-att {{ $attBandClass }}"
+                                            title="{{ $attHoursDisplay }}/{{ $attTarget }} hours today ({{ $attPct }}%)">
+                                            {{ $attHoursDisplay }}/{{ $attTarget }} · {{ $attPct }}%
                                         </td>
                                         <td class="task-summary-num">{{ $row['assignor_task'] }}</td>
                                         <td class="task-summary-num task-summary-col-done">{{ $row['done'] }}</td>
                                         <td class="task-summary-num task-summary-col-overdue">{{ $row['overdue'] }}</td>
+                                        @php
+                                            $darCount = (int) ($row['dar_l30_count'] ?? 0);
+                                            $darTarget = (int) ($row['dar_l30_target'] ?? 25);
+                                            $darPct = (int) ($row['dar_l30_pct'] ?? 0);
+                                            $darBand = (string) ($row['dar_l30_band'] ?? 'low');
+                                            $darSeries = $row['dar_l30_series'] ?? [];
+                                            $darUserId = (int) ($row['user_id'] ?? 0);
+                                            $darBandClass = $darBand === 'high'
+                                                ? 'is-dar-high'
+                                                : ($darBand === 'mid' ? 'is-dar-mid' : 'is-dar-low');
+                                            $darFileUrl = $darUserId > 0
+                                                ? route('dar.index', ['user_id' => $darUserId, 'days' => 30])
+                                                : '';
+                                        @endphp
+                                        <td class="task-summary-num task-summary-col-dar {{ $darBandClass }}"
+                                            title="{{ $darCount }}/{{ $darTarget }} unique DAR days in the last 30 days ({{ $darPct }}%)">
+                                            <span class="task-summary-dar-cell">
+                                                <span class="task-summary-dar-pct">{{ $darCount }}/{{ $darTarget }} · {{ $darPct }}%</span>
+                                                {!! \App\Support\DarL30Metrics::sparklineSvg(is_array($darSeries) ? $darSeries : []) !!}
+                                                <button type="button"
+                                                        class="cl-history-dot is-dar task-summary-dar-history-btn"
+                                                        data-user-name="{{ e($row['team_member']) }}"
+                                                        data-dar-count="{{ $darCount }}"
+                                                        data-dar-target="{{ $darTarget }}"
+                                                        data-dar-pct="{{ $darPct }}"
+                                                        data-series="{{ e(json_encode($darSeries)) }}"
+                                                        title="Rolling last-30-days DAR history for {{ e($row['team_member']) }}"
+                                                        aria-label="DAR history for {{ e($row['team_member']) }}">
+                                                    <i class="ri-line-chart-line" aria-hidden="true"></i>
+                                                </button>
+                                                @if($darFileUrl !== '')
+                                                    <a href="{{ $darFileUrl }}"
+                                                       target="_blank"
+                                                       rel="noopener noreferrer"
+                                                       class="task-summary-dar-arrow"
+                                                       title="Open last 30 days of DAR for {{ e($row['team_member']) }} (latest first)"
+                                                       aria-label="Open last 30 days of DAR for {{ e($row['team_member']) }}">
+                                                        <i class="ri-arrow-right-up-line" aria-hidden="true"></i>
+                                                    </a>
+                                                @else
+                                                    <span class="task-summary-dar-arrow is-disabled" aria-hidden="true">
+                                                        <i class="ri-arrow-right-up-line"></i>
+                                                    </span>
+                                                @endif
+                                            </span>
+                                        </td>
                                         @php
                                             $tat = $row['tat_l30_days'] ?? null;
                                             $tatClass = '';
@@ -1404,10 +1528,20 @@
                                                 <i class="ri-hand-coin-fill" style="font-size:1.2rem;" aria-hidden="true"></i>@if((int) ($row['incentive_count'] ?? 0) > 0)<span class="incentive-bag-count">{{ (int) $row['incentive_count'] }}</span>@endif
                                             </button>
                                         </td>
+                                        <td class="task-summary-col-minimize text-center">
+                                            <span class="ts-member-actions" role="group" aria-label="Minimize {{ e($row['team_member']) }}">
+                                                <button type="button"
+                                                        class="ts-member-minimize-btn"
+                                                        title="Minimize until midnight PST"
+                                                        aria-label="Minimize {{ e($row['team_member']) }} until midnight PST">
+                                                    <i class="ri-subtract-line" aria-hidden="true"></i>
+                                                </button>
+                                            </span>
+                                        </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="24" class="text-center text-muted py-4">
+                                        <td colspan="26" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -1418,7 +1552,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="24" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="26" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -1440,6 +1574,7 @@
     @include('partials.mgr-tags')
     @include('partials.user-dashboard')
     @include('partials.score-history')
+    @include('partials.dar-history')
     @include('partials.team-member-profile')
     @include('partials.user-kpis')
 
@@ -2826,16 +2961,8 @@
             }
 
             function minimizeMember(key) {
-                if (!key) return;
-                var list = getMinimized().filter(function (id) { return id !== key; });
-                list.push(key);
-                setMinimized(list);
-                var snoozed = getSnoozed();
-                if (snoozed[key]) {
-                    delete snoozed[key];
-                    setSnoozed(snoozed);
-                }
-                applyVisibility();
+                // Minimize = hide this row until the next midnight in America/Los_Angeles (PST/PDT).
+                snoozeMember(key);
             }
 
             function snoozeMember(key) {
@@ -3104,7 +3231,7 @@
                 tr.setAttribute('data-level', level); // 'director' | 'mgr' | 'others'
                 tr.setAttribute('data-collapsed', 'false');
                 var td = document.createElement('td');
-                td.setAttribute('colspan', '24');
+                td.setAttribute('colspan', '26');
                 td.innerHTML =
                     '<div class="task-summary-group-header-inner">'
                     + '<button type="button" class="task-summary-group-chevron" data-action="toggle-group" aria-label="Toggle group">'
@@ -6255,7 +6382,12 @@
             }
 
             function renderMetricsGrid(m) {
-                var l30 = m.l30_hrs ? Math.round(m.l30_hrs) + 'h' : '—';
+                var attHours = Math.round(Number(m.l30_hrs) || 0);
+                var attTarget = parseInt(m.att_l30_target, 10) || 200;
+                var attPct = (m.att_l30_pct !== undefined && m.att_l30_pct !== null)
+                    ? parseInt(m.att_l30_pct, 10)
+                    : Math.round((attHours / attTarget) * 100);
+                var l30 = attHours + '/' + attTarget + ' · ' + attPct + '%';
                 var tat = (m.tat_l30_days === null || m.tat_l30_days === undefined)
                     ? '—'
                     : (Number(m.tat_l30_days).toFixed(1) + 'd');
@@ -6610,6 +6742,156 @@
         })();
 
         // -------------------------------------------------------------------
+        // DAR L30 rolling history (dot beside the DAR % cell)
+        // -------------------------------------------------------------------
+        (function () {
+            var chartInstance = null;
+
+            function el(id) { return document.getElementById(id); }
+            function getModalEl() { return document.getElementById('taskSummaryDarHistoryModal'); }
+            function getBsModal() {
+                var m = getModalEl();
+                if (!m) return null;
+                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    return bootstrap.Modal.getOrCreateInstance(m);
+                }
+                return null;
+            }
+            function fallbackShow(modalEl) {
+                modalEl.classList.add('show');
+                modalEl.style.display = 'block';
+                modalEl.removeAttribute('aria-hidden');
+                modalEl.setAttribute('aria-modal', 'true');
+                document.body.classList.add('modal-open');
+                if (!document.getElementById('ts-darhist-fallback-backdrop')) {
+                    var bd = document.createElement('div');
+                    bd.id = 'ts-darhist-fallback-backdrop';
+                    bd.className = 'modal-backdrop fade show';
+                    document.body.appendChild(bd);
+                    bd.addEventListener('click', function () { fallbackHide(modalEl); });
+                }
+                modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach(function (b) {
+                    b.addEventListener('click', function () { fallbackHide(modalEl); }, { once: true });
+                });
+            }
+            function fallbackHide(modalEl) {
+                modalEl.classList.remove('show');
+                modalEl.style.display = 'none';
+                modalEl.setAttribute('aria-hidden', 'true');
+                modalEl.removeAttribute('aria-modal');
+                document.body.classList.remove('modal-open');
+                var bd = document.getElementById('ts-darhist-fallback-backdrop');
+                if (bd) bd.remove();
+            }
+            function showModal() {
+                var m = getModalEl();
+                if (!m) return;
+                var bs = getBsModal();
+                if (bs) bs.show(); else fallbackShow(m);
+            }
+            function destroyChart() {
+                if (chartInstance) {
+                    try { chartInstance.destroy(); } catch (e) {}
+                    chartInstance = null;
+                }
+                var mount = el('ts-darhist-chart');
+                if (mount) mount.innerHTML = '';
+            }
+            function parseSeries(raw) {
+                if (!raw) return [];
+                try {
+                    var parsed = JSON.parse(raw);
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch (e) {
+                    return [];
+                }
+            }
+            function barColor(pt) {
+                if (pt && Number(pt.submitted) === 1) return '#0f766e';
+                if (pt && pt.weekend) return '#d1d5db';
+                return '#f87171';
+            }
+            function renderChart(points) {
+                destroyChart();
+                var mount = el('ts-darhist-chart');
+                if (!mount || typeof ApexCharts === 'undefined') return;
+                var categories = points.map(function (p) { return p.label || p.date || ''; });
+                var submitted = points.map(function (p) {
+                    return {
+                        x: p.label || p.date || '',
+                        y: Number(p.submitted) ? 1 : 0,
+                        fillColor: barColor(p)
+                    };
+                });
+                var rolling = [];
+                var run = 0;
+                points.forEach(function (p) {
+                    run += Number(p.submitted) ? 1 : 0;
+                    rolling.push(Math.round((run / 25) * 100));
+                });
+                chartInstance = new ApexCharts(mount, {
+                    chart: { type: 'line', height: 320, toolbar: { show: false }, fontFamily: 'inherit' },
+                    series: [
+                        { name: 'Submitted', type: 'column', data: submitted },
+                        { name: 'Rolling % of 25', type: 'line', data: rolling }
+                    ],
+                    colors: ['#0f766e', '#7c3aed'],
+                    stroke: { width: [0, 3], curve: 'smooth' },
+                    markers: { size: [0, 4], colors: ['#7c3aed'], strokeWidth: 0, hover: { size: 6 } },
+                    plotOptions: { bar: { columnWidth: '70%' } },
+                    fill: { opacity: [0.95, 1] },
+                    xaxis: {
+                        categories: categories,
+                        labels: { rotate: -45, rotateAlways: true, style: { fontSize: '10px' } },
+                        tooltip: { enabled: false }
+                    },
+                    yaxis: [
+                        { min: 0, max: 1, tickAmount: 1, labels: { formatter: function (v) { return Number(v) ? 'Yes' : 'No'; } }, title: { text: 'Day' } },
+                        { opposite: true, min: 0, labels: { formatter: function (v) { return v + '%'; } }, title: { text: 'Rolling /25' } }
+                    ],
+                    legend: { position: 'top' },
+                    dataLabels: { enabled: false }
+                });
+                chartInstance.render();
+            }
+            function open(btn) {
+                var name = btn.getAttribute('data-user-name') || 'Team member';
+                var count = parseInt(btn.getAttribute('data-dar-count'), 10) || 0;
+                var target = parseInt(btn.getAttribute('data-dar-target'), 10) || 25;
+                var pct = parseInt(btn.getAttribute('data-dar-pct'), 10) || 0;
+                var points = parseSeries(btn.getAttribute('data-series'));
+                var userEl = el('ts-darhist-user');
+                var curEl = el('ts-darhist-current');
+                var emptyEl = el('ts-darhist-empty');
+                var content = el('ts-darhist-content');
+                if (userEl) userEl.textContent = name + ' — DAR';
+                if (curEl) curEl.textContent = count + '/' + target + ' · ' + pct + '%';
+                showModal();
+                if (!points.length) {
+                    if (emptyEl) emptyEl.classList.remove('d-none');
+                    if (content) content.classList.add('d-none');
+                    return;
+                }
+                if (emptyEl) emptyEl.classList.add('d-none');
+                if (content) content.classList.remove('d-none');
+                renderChart(points);
+            }
+
+            document.addEventListener('click', function (e) {
+                var btn = e.target && e.target.closest && e.target.closest('.task-summary-dar-history-btn');
+                if (!btn) return;
+                e.preventDefault();
+                e.stopPropagation();
+                open(btn);
+            });
+
+            var modalEl = getModalEl();
+            if (modalEl) {
+                modalEl.addEventListener('hidden.bs.modal', destroyChart);
+            }
+        })();
+
+        // -------------------------------------------------------------------
         // Team Member Profile modal (magnifier in the Team Member column)
         // -------------------------------------------------------------------
         (function () {
@@ -6701,7 +6983,12 @@
             }
             function renderMetrics(m) {
                 m = m || {};
-                var l30 = m.l30_hrs ? Math.round(m.l30_hrs) + 'h' : '—';
+                var attHours = Math.round(Number(m.l30_hrs) || 0);
+                var attTarget = parseInt(m.att_l30_target, 10) || 200;
+                var attPct = (m.att_l30_pct !== undefined && m.att_l30_pct !== null)
+                    ? parseInt(m.att_l30_pct, 10)
+                    : Math.round((attHours / attTarget) * 100);
+                var l30 = attHours + '/' + attTarget + ' · ' + attPct + '%';
                 var tat = (m.tat_l30_days === null || m.tat_l30_days === undefined) ? '—' : (Number(m.tat_l30_days).toFixed(1) + 'd');
                 return ''
                     + renderTile('Task', m.task || 0)

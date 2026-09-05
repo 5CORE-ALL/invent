@@ -16688,6 +16688,7 @@ class ChannelMasterController extends Controller
                 'l7_sales' => 'l7_sales',
                 'p_sales' => 'l7_sales',
                 'p_npft' => null,    // computed: GPFT% − (ad spend / P-Sales) on L7 pace
+                'p_groi_pct' => null, // computed: (P-Sales × GPFT%) ÷ projected COGS
                 'y_pft' => null,     // computed: Y Sales × GPFT%
                 'y_npft_amt' => null, // computed: Y Sales × NPFT%
                 'y_npft_pct' => null, // computed: NPFT% weighted by Y Sales
@@ -16926,14 +16927,18 @@ class ChannelMasterController extends Controller
                             $totalPft += $channelPft;
                             $totalSales += $channelL30Sales;
                             $totalSpend += $channelAdSpend;
-                        } elseif ($metric === 'p_npft') {
+                        } elseif ($metric === 'p_npft' || $metric === 'p_groi_pct') {
                             if (array_key_exists('l7_sales', $sd)) {
                                 $hasMetricData = true;
                             }
                             $pSales = $this->projectedSalesFromL7($sd['l7_sales'] ?? 0);
                             $totalPft += ($channelGprofit / 100) * $pSales;
                             $totalSales += $pSales;
-                            $totalSpend += $channelAdSpend;
+                            if ($metric === 'p_groi_pct') {
+                                $totalCogs += $this->yCogsDollars($pSales, $channelL30Sales, $channelGprofit, $channelCogs);
+                            } else {
+                                $totalSpend += $channelAdSpend;
+                            }
                         } elseif ($metric === 'y_pft' || $metric === 'y_npft_amt' || $metric === 'y_npft_pct' || $metric === 'y_groi_pct') {
                             if (array_key_exists('y_sales', $sd)) {
                                 $hasMetricData = true;
@@ -17007,6 +17012,11 @@ class ChannelMasterController extends Controller
                         $gpft = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
                         $adsPct = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
                         $value = round($gpft - $adsPct, 1);
+                    } elseif ($metric === 'p_groi_pct') {
+                        if (! $hasMetricData) {
+                            continue;
+                        }
+                        $value = $totalCogs > 0 ? round(($totalPft / $totalCogs) * 100, 1) : 0;
                     } elseif ($metric === 'y_pft' || $metric === 'y_npft_amt') {
                         if (! $hasMetricData) {
                             continue;
@@ -17120,6 +17130,12 @@ class ChannelMasterController extends Controller
                             continue;
                         }
                         $value = round($pNpft, 1);
+                    } elseif ($metric === 'p_groi_pct') {
+                        $pGroi = $this->pGroiPercentFromSummary($summaryData);
+                        if ($pGroi === null) {
+                            continue;
+                        }
+                        $value = $pGroi;
                     } elseif ($metric === 'y_pft' || $metric === 'y_npft_amt' || $metric === 'y_npft_pct' || $metric === 'y_groi_pct') {
                         $yVal = $this->getMetricValueFromSummaryData($channel, $metric, $summaryData, $metricMap, true);
                         if ($yVal === null) {
@@ -17506,6 +17522,7 @@ class ChannelMasterController extends Controller
                 'l7_sales' => 'l7_sales',
                 'p_sales' => 'l7_sales',
                 'p_npft' => null,
+                'p_groi_pct' => null,
                 'y_pft' => null,
                 'y_npft_amt' => null,
                 'y_npft_pct' => null,
@@ -17526,7 +17543,7 @@ class ChannelMasterController extends Controller
                 'inv_at_lp' => 'inv_at_lp',
                 'tat' => 'tat',
             ];
-            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'y_pft', 'y_npft_amt', 'l7_sales', 'p_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'p_npft', 'y_npft_pct', 'y_groi_pct', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'y_pft', 'y_npft_amt', 'l7_sales', 'p_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'p_npft', 'p_groi_pct', 'y_npft_pct', 'y_groi_pct', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
             $out = [];
             $processedByChannel = [];
 
@@ -18028,6 +18045,9 @@ class ChannelMasterController extends Controller
                 $summaryData['total_ad_spend'] ?? 0
             );
         }
+        if ($metric === 'p_groi_pct') {
+            return $this->pGroiPercentFromSummary($summaryData);
+        }
         if ($metric === 'y_pft' || $metric === 'y_npft_amt' || $metric === 'y_npft_pct' || $metric === 'y_groi_pct') {
             if (! array_key_exists('y_sales', $summaryData)) {
                 return null;
@@ -18073,6 +18093,19 @@ class ChannelMasterController extends Controller
             }
 
             return $pSales > 0 ? round((($pGross - $spend) / $pSales) * 100, 1) : null;
+        }
+
+        if ($metric === 'p_groi_pct') {
+            $pGross = 0.0;
+            $pCogs = 0.0;
+            foreach (\App\Models\ChannelMasterCalculatedData::query()->get(['l7_sales', 'gprofit_pct', 'l30_sales', 'cogs']) as $row) {
+                $ps = $this->projectedSalesFromL7($row->l7_sales);
+                $gp = (float) ($row->gprofit_pct ?? 0);
+                $pGross += ($gp / 100) * $ps;
+                $pCogs += $this->yCogsDollars($ps, (float) ($row->l30_sales ?? 0), $gp, (float) ($row->cogs ?? 0));
+            }
+
+            return $pCogs > 0 ? round(($pGross / $pCogs) * 100, 1) : null;
         }
 
         if (in_array($metric, ['y_pft', 'y_npft_amt', 'y_npft_pct', 'y_groi_pct'], true)) {
@@ -18537,7 +18570,7 @@ class ChannelMasterController extends Controller
 
     private function metricDotEpsilon(string $metric): float
     {
-        return in_array($metric, ['cvr', 'ads_cvr', 'gprofit', 'groi', 'npft', 'p_npft', 'y_npft_pct', 'y_groi_pct', 'nroi', 'ads_pct', 'acos'], true)
+        return in_array($metric, ['cvr', 'ads_cvr', 'gprofit', 'groi', 'npft', 'p_npft', 'p_groi_pct', 'y_npft_pct', 'y_groi_pct', 'nroi', 'ads_pct', 'acos'], true)
             ? 0.005
             : 0.01;
     }
@@ -18561,6 +18594,44 @@ class ChannelMasterController extends Controller
         }
 
         return round((float) $gprofitPercent - ((float) $adSpend / $pSales) * 100, 2);
+    }
+
+    /**
+     * Projected GROI% at L7 sales pace: (P-Sales × GPFT%) ÷ projected COGS.
+     * Projected COGS is L30 COGS scaled by P-Sales ÷ L30 Sales.
+     */
+    private function pGroiPercentFromL7(mixed $l7Sales, mixed $gprofitPercent, mixed $l30Sales, mixed $cogs, mixed $groiFallback = null): ?float
+    {
+        $pSales = $this->projectedSalesFromL7($l7Sales);
+        if ($pSales <= 0) {
+            return null;
+        }
+
+        $gp = (float) $gprofitPercent;
+        $pCogs = $this->yCogsDollars($pSales, (float) $l30Sales, $gp, (float) $cogs);
+        if ($pCogs > 0) {
+            return round(((($gp / 100) * $pSales) / $pCogs) * 100, 1);
+        }
+
+        return $groiFallback !== null ? round((float) $groiFallback, 1) : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $summaryData
+     */
+    private function pGroiPercentFromSummary(array $summaryData): ?float
+    {
+        if (! array_key_exists('l7_sales', $summaryData)) {
+            return null;
+        }
+
+        return $this->pGroiPercentFromL7(
+            $summaryData['l7_sales'],
+            $summaryData['gprofit_percent'] ?? 0,
+            $summaryData['l30_sales'] ?? 0,
+            $summaryData['cogs'] ?? 0,
+            $summaryData['groi_percent'] ?? null
+        );
     }
 
     private function yProfitDollars(mixed $ySales, mixed $percent): float
@@ -19519,6 +19590,7 @@ class ChannelMasterController extends Controller
             'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
             'p_sales' => $row->l7_sales !== null ? $this->projectedSalesFromL7($row->l7_sales) : null,
             'p_npft' => $row->l7_sales !== null ? $this->projectedNpftFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,
+            'p_groi_pct' => $row->l7_sales !== null ? $this->pGroiPercentFromL7($row->l7_sales, $row->gprofit_pct, $row->l30_sales, $row->cogs, $row->g_roi) : null,
             'y_pft' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->gprofit_pct) : null,
             'y_npft_amt' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->n_pft) : null,
             'y_npft_pct' => $row->n_pft !== null ? (float) $row->n_pft : null,
@@ -19572,6 +19644,7 @@ class ChannelMasterController extends Controller
                 'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
                 'p_sales' => $row->l7_sales !== null ? $this->projectedSalesFromL7($row->l7_sales) : null,
                 'p_npft' => $row->l7_sales !== null ? $this->projectedNpftFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,
+                'p_groi_pct' => $row->l7_sales !== null ? $this->pGroiPercentFromL7($row->l7_sales, $row->gprofit_pct, $row->l30_sales, $row->cogs, $row->g_roi) : null,
                 'y_pft' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->gprofit_pct) : null,
                 'y_npft_amt' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->n_pft) : null,
                 'y_npft_pct' => $row->n_pft !== null ? (float) $row->n_pft : null,
@@ -19630,6 +19703,7 @@ class ChannelMasterController extends Controller
             'gprofit' => 'l30_sales',
             'npft' => 'l30_sales',
             'p_npft' => 'p_sales',
+            'p_groi_pct' => 'p_sales',
             'y_npft_pct' => 'y_sales',
             'y_groi_pct' => 'y_sales',
             'ads_pct' => 'l30_sales',

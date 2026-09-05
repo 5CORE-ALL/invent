@@ -1322,6 +1322,44 @@
             if (!pSales || pSales <= 0) return null;
             return parseNumber(gprofitPercent) - (parseNumber(adSpend) / pSales) * 100;
         }
+        function pSalesFromRow(row) {
+            return projectedSalesFromL7(row['L7 Sales'] || 0);
+        }
+        function rowAdSpendFromRow(row) {
+            let spend = parseNumber(row['Total Ad Spend'] || 0);
+            const chName = (row['Channel '] || '').trim().toLowerCase();
+            if (spend <= 0 && chName.indexOf('reverb') !== -1) {
+                const bumpPct = parseNumber(row['Ads%'] != null ? row['Ads%'] : row['TACOS']) || 0;
+                const l30 = parseNumber(row['L30 Sales'] || 0);
+                if (bumpPct > 0 && l30 > 0) spend = (bumpPct / 100) * l30;
+            }
+            return spend;
+        }
+        function pCogsFromRow(row) {
+            const pSales = pSalesFromRow(row);
+            if (!pSales) return 0;
+            const l30 = parseNumber(row['L30 Sales'] || 0);
+            const cogs = parseNumber(row['cogs'] || 0);
+            if (l30 > 0 && cogs > 0) return cogs * (pSales / l30);
+            const gp = parseNumber(row['Gprofit%'] || 0);
+            return pSales * Math.max(0, 1 - gp / 100);
+        }
+        function pGrossPftFromRow(row) {
+            return (pSalesFromRow(row) * parseNumber(row['Gprofit%'] || 0)) / 100;
+        }
+        function pGroiPctFromRow(row) {
+            const pSales = pSalesFromRow(row);
+            if (!pSales) return null;
+            const pCogs = pCogsFromRow(row);
+            if (pCogs > 0) return (pGrossPftFromRow(row) / pCogs) * 100;
+            const groi = parseNumber(row['G Roi'] || 0);
+            return groi || null;
+        }
+        function pNpftPctFromRow(row) {
+            const l7 = parseNumber(row['L7 Sales'] || 0);
+            if (!l7) return null;
+            return projectedNpftFromL7(l7, parseNumber(row['Gprofit%'] || 0), rowAdSpendFromRow(row));
+        }
         function yGrossPftFromRow(row) {
             return (parseNumber(row['Y Sales'] || 0) * parseNumber(row['Gprofit%'] || 0)) / 100;
         }
@@ -1337,8 +1375,21 @@
             const gp = parseNumber(row['Gprofit%'] || 0);
             return ySales * Math.max(0, 1 - gp / 100);
         }
+        function yGroiPctFromRow(row) {
+            const ySales = parseNumber(row['Y Sales'] || 0);
+            if (!ySales) return null;
+            const yCogs = yCogsFromRow(row);
+            if (yCogs > 0) return (yGrossPftFromRow(row) / yCogs) * 100;
+            const groi = parseNumber(row['G Roi'] || 0);
+            return groi || null;
+        }
+        function yNpftPctFromRow(row) {
+            const ySales = parseNumber(row['Y Sales'] || 0);
+            if (!ySales) return null;
+            return parseNumber(row['N PFT'] || 0);
+        }
         var METRIC_DIFF_PCT = {
-            gprofit: 1, groi: 1, npft: 1, p_npft: 1, y_npft_pct: 1, y_groi_pct: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
+            gprofit: 1, groi: 1, npft: 1, p_npft: 1, p_groi_pct: 1, y_npft_pct: 1, y_groi_pct: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
         };
 
         function formatMetricDiffText(metric, diff) {
@@ -1598,7 +1649,7 @@
             var lastDotPairByKey = {};
             var invertedDotMetrics = ['acos', 'ads_pct'];
             var ySalesAllChartPrefetch = null;
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','y_pft','y_npft_amt','p_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','y_npft_pct','y_groi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','y_pft','y_npft_amt','p_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','y_npft_pct','y_groi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
             var dotTrendsPrefetch = null;
 
             function getMetricDotColor(channelName, metricKey) {
@@ -1643,7 +1694,7 @@
             function colorFromDotPair(v1, v2, metric) {
                 if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return DEFAULT_DOT_GRAY;
                 var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
-                    || metric === 'npft' || metric === 'p_npft' || metric === 'y_npft_pct' || metric === 'y_groi_pct'
+                    || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct'
                     || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
                 if (Math.abs(v2 - v1) <= eps) return DEFAULT_DOT_GRAY;
                 var isInverted = invertedDotMetrics.indexOf(metric) >= 0;
@@ -1677,18 +1728,10 @@
                         const l7 = n(row['L7 Sales']);
                         return l7 == null ? null : projectedSalesFromL7(l7);
                     }
-                    case 'p_npft': {
-                        const l7 = n(row['L7 Sales']);
-                        if (l7 == null) return null;
-                        let spend = n(row['Total Ad Spend']) || 0;
-                        const chName = (row['Channel '] || '').trim().toLowerCase();
-                        if (spend <= 0 && chName.indexOf('reverb') !== -1) {
-                            const bumpPct = n(row['Ads%'] != null ? row['Ads%'] : row['TACOS']) || 0;
-                            const l30 = n(row['L30 Sales']) || 0;
-                            if (bumpPct > 0 && l30 > 0) spend = (bumpPct / 100) * l30;
-                        }
-                        return projectedNpftFromL7(l7, n(row['Gprofit%']) || 0, spend);
-                    }
+                    case 'p_npft':
+                        return pNpftPctFromRow(row);
+                    case 'p_groi_pct':
+                        return pGroiPctFromRow(row);
                     case 'l60_sales': return n(row['L-60 Sales']);
                     case 'ad_spend': return n(row['Total Ad Spend']);
                     case 'total_views': return views > 0 ? views : null;
@@ -1809,6 +1852,10 @@
                             row['P-Sales'] = projectedSalesFromL7(row['L7 Sales'] || 0);
                             row['Y PFT'] = yGrossPftFromRow(row);
                             row['Y NPFT'] = yNetPftFromRow(row);
+                            row['Y GROI%'] = yGroiPctFromRow(row);
+                            row['YNPFT%'] = yNpftPctFromRow(row);
+                            row['P GROI%'] = pGroiPctFromRow(row);
+                            row['PNPFT%'] = pNpftPctFromRow(row);
                         });
                         updateSummaryStats(response.data);
                         function setCompactInvBadge(elId, rawVal, titlePrefix) {
@@ -2297,8 +2344,119 @@
                         }
                     },
                     {
+                        title: "Y GROI%",
+                        field: "Y GROI%",
+                        headerTooltip: "Yesterday GROI% = Y PFT $ ÷ yesterday COGS. Yesterday COGS is L30 COGS × (Y Sales ÷ L30 Sales), falling back to Y Sales × (1 − GPFT%).",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 80,
+                        mutator: function(value, data) {
+                            return yGroiPctFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const ySales = parseNumber(row['Y Sales'] || 0);
+                            const value = parseNumber(cell.getValue());
+                            const channel = (row['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'y_groi_pct');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="y_groi_pct" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            if (!ySales) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>${chartIcon}`;
+                            }
+                            let style = '';
+                            if (value <= 50) {
+                                style = 'color:#a00211;';
+                            } else if (value > 50 && value <= 75) {
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
+                            } else if (value > 75 && value <= 125) {
+                                style = 'color:#28a745;';
+                            } else {
+                                style = 'color:#8000ff;';
+                            }
+                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let yGross = 0, yCogs = 0;
+                            data.forEach(function(row) {
+                                yGross += yGrossPftFromRow(row);
+                                yCogs += yCogsFromRow(row);
+                            });
+                            return yCogs > 0 ? (yGross / yCogs) * 100 : null;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;" title="No Yesterday Sales">NYS</strong>';
+                            }
+                            return `<strong>${parseNumber(value).toFixed(1)}%</strong>`;
+                        }
+                    },
+                    {
+                        title: "YNPFT%",
+                        field: "YNPFT%",
+                        headerTooltip: "Yesterday NPFT% = (Y Sales × NPFT%) ÷ Y Sales. Same blended rate as the yNprft% badge; NYS when a channel had no yesterday sales.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 80,
+                        mutator: function(value, data) {
+                            return yNpftPctFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const ySales = parseNumber(row['Y Sales'] || 0);
+                            const value = parseNumber(cell.getValue());
+                            const channel = (row['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'y_npft_pct');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="y_npft_pct" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            if (!ySales) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>${chartIcon}`;
+                            }
+                            let style = '';
+                            if (value >= 0 && value <= 10) {
+                                style = 'color:#a00211;';
+                            } else if (value > 10 && value <= 18) {
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
+                            } else if (value > 18 && value <= 25) {
+                                style = 'color:#3591dc;';
+                            } else if (value > 25 && value <= 40) {
+                                style = 'color:#28a745;';
+                            } else {
+                                style = 'color:#e83e8c;';
+                            }
+                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let yNet = 0, ySales = 0;
+                            data.forEach(function(row) {
+                                yNet += yNetPftFromRow(row);
+                                ySales += parseNumber(row['Y Sales'] || 0);
+                            });
+                            return ySales > 0 ? (yNet / ySales) * 100 : null;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;" title="No Yesterday Sales">NYS</strong>';
+                            }
+                            return `<strong>${parseNumber(value).toFixed(1)}%</strong>`;
+                        }
+                    },
+                    {
                         title: "Y PFT",
                         field: "Y PFT",
+                        visible: false,
                         headerTooltip: "Yesterday gross profit $ = Y Sales × GPFT%. Uses the Y Sales column, not rolling L30 Sales.",
                         hozAlign: "center",
                         sorter: "number",
@@ -2338,6 +2496,7 @@
                     {
                         title: "Y NPFT",
                         field: "Y NPFT",
+                        visible: false,
                         headerTooltip: "Yesterday net profit $ = Y Sales × NPFT%. Uses the Y Sales column, not rolling L30 Sales.",
                         hozAlign: "center",
                         sorter: "number",
@@ -2455,6 +2614,118 @@
                             const value = cell.getValue();
                             if (!value || value === 0) return '<strong style="color:#adb5bd;">-</strong>';
                             return `<strong style="color:#0d6efd;">$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "P GROI%",
+                        field: "P GROI%",
+                        headerTooltip: "Projected GROI% from last-7-day pace. P-Sales = (L7 ÷ 7) × 30. P GROI% = (P-Sales × GPFT%) ÷ projected COGS. Projected COGS is L30 COGS × (P-Sales ÷ L30 Sales).",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 80,
+                        mutator: function(value, data) {
+                            return pGroiPctFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const l7 = parseNumber(row['L7 Sales'] || 0);
+                            const value = parseNumber(cell.getValue());
+                            const channel = (row['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'p_groi_pct');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_groi_pct" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            if (!l7) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
+                            }
+                            let style = '';
+                            if (value <= 50) {
+                                style = 'color:#a00211;';
+                            } else if (value > 50 && value <= 75) {
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
+                            } else if (value > 75 && value <= 125) {
+                                style = 'color:#28a745;';
+                            } else {
+                                style = 'color:#8000ff;';
+                            }
+                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let pGross = 0, pCogs = 0;
+                            data.forEach(function(row) {
+                                pGross += pGrossPftFromRow(row);
+                                pCogs += pCogsFromRow(row);
+                            });
+                            return pCogs > 0 ? (pGross / pCogs) * 100 : null;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;">-</strong>';
+                            }
+                            return `<strong>${parseNumber(value).toFixed(1)}%</strong>`;
+                        }
+                    },
+                    {
+                        title: "PNPFT%",
+                        field: "PNPFT%",
+                        headerTooltip: "Projected NPFT% from last-7-day pace — same formula as the P-Npft% badge: GPFT% − (ad spend ÷ P-Sales) × 100. P-Sales = (L7 ÷ 7) × 30.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 80,
+                        mutator: function(value, data) {
+                            return pNpftPctFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const l7 = parseNumber(row['L7 Sales'] || 0);
+                            const value = cell.getValue();
+                            const channel = (row['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'p_npft');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_npft" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            if (!l7 || value === null || value === undefined) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
+                            }
+                            const pct = parseNumber(value);
+                            let style = '';
+                            if (pct >= 0 && pct <= 10) {
+                                style = 'color:#a00211;';
+                            } else if (pct > 10 && pct <= 18) {
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
+                            } else if (pct > 18 && pct <= 25) {
+                                style = 'color:#3591dc;';
+                            } else if (pct > 25 && pct <= 40) {
+                                style = 'color:#28a745;';
+                            } else {
+                                style = 'color:#e83e8c;';
+                            }
+                            return `<span style="${style}font-weight:600;">${pct.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let pGross = 0, pSales = 0, spend = 0;
+                            data.forEach(function(row) {
+                                pGross += pGrossPftFromRow(row);
+                                pSales += pSalesFromRow(row);
+                                spend += rowAdSpendFromRow(row);
+                            });
+                            return pSales > 0 ? ((pGross - spend) / pSales) * 100 : null;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;">-</strong>';
+                            }
+                            return `<strong>${parseNumber(value).toFixed(1)}%</strong>`;
                         }
                     },
                     {
@@ -4290,14 +4561,14 @@
                     reviews: 1, l60_sales: 1, l60_orders: 1
                 };
                 var weightBy = {
-                    gprofit: 'l30_sales', npft: 'l30_sales', p_npft: 'p_sales', y_npft_pct: 'y_sales', y_groi_pct: 'y_sales', ads_pct: 'l30_sales',
+                    gprofit: 'l30_sales', npft: 'l30_sales', p_npft: 'p_sales', p_groi_pct: 'p_sales', y_npft_pct: 'y_sales', y_groi_pct: 'y_sales', ads_pct: 'l30_sales',
                     groi: 'l30_sales', nroi: 'l30_sales',
                     cvr: 'total_views', ads_cvr: 'clicks', acos: 'ad_sales'
                 };
                 function pairClass(v1, v2, metric) {
                     if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return 'none';
                     var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
-                        || metric === 'npft' || metric === 'p_npft' || metric === 'y_npft_pct' || metric === 'y_groi_pct'
+                        || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct'
                         || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
                     if (Math.abs(v2 - v1) <= eps) return 'flat';
                     var isInv = inverted.indexOf(metric) >= 0;
@@ -4764,6 +5035,8 @@
             // PT / PMT / SERP / KW / HL breakdowns removed from page + Columns menu.
             const PERMANENTLY_HIDDEN_FIELDS = [
                 'L7 Sales',
+                'Y PFT',
+                'Y NPFT',
                 'L-60 Sales', 'L60 Orders', 'NP$', 'D30 Sales',
                 'PT Spent', 'PMT Spent', 'SERP Spent',
                 'PT Clicks', 'PMT Clicks', 'SERP Clicks',
@@ -5490,9 +5763,10 @@
                 'ads_pct': 'TAcos %',
                 'pft': 'Total Pft',
                 'npft': 'N PFT%',
-                'p_npft': 'P-Npft%',
-                'y_npft_pct': 'yNprft%',
-                'y_groi_pct': 'YGroi%',
+                'p_npft': 'PNPFT%',
+                'p_groi_pct': 'P GROI%',
+                'y_npft_pct': 'YNPFT%',
+                'y_groi_pct': 'Y GROI%',
                 'nroi': 'N ROI%',
                 'missing_l': 'Missing L',
                 'map': 'Map',
@@ -5857,7 +6131,7 @@
                     if (m === 'cvr' || m === 'ads_cvr') {
                         return v.toFixed(2) + '%';
                     }
-                    if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'y_npft_pct' || m === 'y_groi_pct' || m === 'nroi') {
+                    if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'p_groi_pct' || m === 'y_npft_pct' || m === 'y_groi_pct' || m === 'nroi') {
                         return v.toFixed(1) + '%';
                     }
                     if (m === 'tat') return v.toFixed(2);

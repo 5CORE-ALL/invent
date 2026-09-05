@@ -246,8 +246,10 @@ class AdvertisementMasterController extends Controller
             $this->applyChannelLabels($rows);
             $this->wrapStandaloneChannelTotals($rows);
             $this->ensureSumRowTotalSuffix($rows);
-            $this->attachCustomRows($rows);
             $this->attachMissingChannelMasterTotals($rows);
+            $this->attachCustomRows($rows);
+            $this->ensureDefaultTypeRows($rows);
+            $this->persistMissingTypeRowLabels($rows);
             $this->removeHiddenRows($rows);
             $this->attachChannelHrefs($rows);
             $this->attachNrReqs($rows);
@@ -492,13 +494,20 @@ class AdvertisementMasterController extends Controller
         $this->applyChannelLabelsWalk($rows, $labels);
     }
 
+    /** @var array<string, array{group_name: string, channel_name: string}>|null */
+    private ?array $channelLabelMapCache = null;
+
     /**
      * @return array<string, array{group_name: string, channel_name: string}>
      */
     private function channelLabelMap(): array
     {
+        if ($this->channelLabelMapCache !== null) {
+            return $this->channelLabelMapCache;
+        }
+
         if (! Schema::hasTable('advertisement_master_channel_labels')) {
-            return [];
+            return $this->channelLabelMapCache = [];
         }
 
         $map = [];
@@ -513,7 +522,7 @@ class AdvertisementMasterController extends Controller
             ];
         }
 
-        return $map;
+        return $this->channelLabelMapCache = $map;
     }
 
     /**
@@ -809,6 +818,155 @@ class AdvertisementMasterController extends Controller
             'is_group_total' => true,
             'is_sum_row' => true,
         ];
+    }
+
+    /**
+     * Every yellow Total needs at least one Type row so ads data is visible
+     * when the Types filter is on, and so Channel filter/sort can match it.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function ensureDefaultTypeRows(array &$rows): void
+    {
+        foreach ($rows as &$row) {
+            $children = is_array($row['_children'] ?? null) ? $row['_children'] : [];
+            if ($children !== []) {
+                $this->ensureDefaultTypeRows($children);
+                $row['_children'] = $children;
+
+                continue;
+            }
+
+            if (empty($row['is_sum_row']) && empty($row['is_group_total'])) {
+                continue;
+            }
+
+            $child = $this->makeDefaultTypeRow($row);
+            $this->applySavedLabelToRow($child);
+            $row['_children'] = [$child];
+        }
+        unset($row);
+    }
+
+    /**
+     * @param  array<string, mixed>  $parent
+     * @return array<string, mixed>
+     */
+    private function makeDefaultTypeRow(array $parent): array
+    {
+        $group = trim((string) ($parent['channel_group'] ?? ''));
+        if ($group === '') {
+            $group = $this->stripTotalSuffix((string) ($parent['channel'] ?? $parent['channel_key'] ?? ''));
+        }
+        if ($group === '') {
+            $group = 'Other';
+        }
+        $typeName = $this->stripTotalSuffix((string) ($parent['channel'] ?? $group));
+        if ($typeName === '') {
+            $typeName = $group;
+        }
+
+        return [
+            'channel' => $typeName,
+            'channel_key' => 'default-type:'.$this->normalizeChannelMatchKey($group),
+            'channel_group' => $group,
+            'source' => 'default_type',
+            'marketplace' => (string) ($parent['marketplace'] ?? ''),
+            'href' => $parent['href'] ?? null,
+            'spend' => (float) ($parent['spend'] ?? 0),
+            'clicks' => (int) ($parent['clicks'] ?? 0),
+            'sold' => (int) ($parent['sold'] ?? 0),
+            'sales' => (float) ($parent['sales'] ?? 0),
+            'cvr' => (float) ($parent['cvr'] ?? 0),
+            'acos' => (float) ($parent['acos'] ?? 0),
+            'tcos' => 0,
+            'has_tcos' => false,
+            't_sales' => 0.0,
+            'has_t_sales' => false,
+            'active' => (int) ($parent['active'] ?? 0),
+            'views' => 0,
+            'is_sub_row' => true,
+            'is_default_type' => true,
+            'is_custom' => false,
+            'is_sum_row' => false,
+            'is_group_total' => false,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function applySavedLabelToRow(array &$row): void
+    {
+        $key = trim((string) ($row['channel_key'] ?? ''));
+        if ($key === '') {
+            return;
+        }
+        $labels = $this->channelLabelMap();
+        if (! isset($labels[$key])) {
+            return;
+        }
+        if ($labels[$key]['channel_name'] !== '') {
+            $row['channel'] = $labels[$key]['channel_name'];
+        }
+        if ($labels[$key]['group_name'] !== '') {
+            $row['channel_group'] = $labels[$key]['group_name'];
+        }
+    }
+
+    /**
+     * Persist Channel names on Type rows so All-view Channel filter/sort
+     * keeps working after reload.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function persistMissingTypeRowLabels(array $rows): void
+    {
+        if (app()->runningUnitTests()) {
+            return;
+        }
+        if (! Schema::hasTable('advertisement_master_channel_labels')) {
+            return;
+        }
+
+        try {
+            $have = [];
+            foreach (AdvertisementMasterChannelLabel::query()->pluck('channel_key') as $key) {
+                $key = trim((string) $key);
+                if ($key !== '') {
+                    $have[$key] = true;
+                }
+            }
+
+            $walk = function (array $list) use (&$walk, &$have): void {
+                foreach ($list as $row) {
+                    if (! empty($row['_children']) && is_array($row['_children'])) {
+                        $walk($row['_children']);
+                    }
+                    if (empty($row['is_sub_row']) || ! empty($row['is_sum_row']) || ! empty($row['is_group_total'])) {
+                        continue;
+                    }
+                    $key = trim((string) ($row['channel_key'] ?? ''));
+                    $group = trim((string) ($row['channel_group'] ?? ''));
+                    $type = trim((string) ($row['channel'] ?? ''));
+                    if ($key === '' || $group === '' || isset($have[$key]) || str_starts_with($key, 'custom:')) {
+                        continue;
+                    }
+
+                    AdvertisementMasterChannelLabel::query()->updateOrCreate(
+                        ['channel_key' => $key],
+                        [
+                            'group_name' => $group,
+                            'channel_name' => $type !== '' ? $type : $group,
+                        ]
+                    );
+                    $have[$key] = true;
+                }
+            };
+            $walk($rows);
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master type-row label save failed: '.$e->getMessage());
+        }
     }
 
     /**
@@ -1151,6 +1309,7 @@ class AdvertisementMasterController extends Controller
     private function shouldHideTypeChannelMetrics(array $row): bool
     {
         return $this->isAdTypeRow($row)
+            || ! empty($row['is_default_type'])
             || (! empty($row['is_custom']) && empty($row['is_sum_row']) && empty($row['is_group_total']));
     }
 

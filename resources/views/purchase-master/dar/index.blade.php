@@ -174,10 +174,15 @@
                             <select id="darUserFilter" class="form-select form-select-sm" title="Filter by user">
                                 <option value="">All Users</option>
                                 @foreach($users as $u)
-                                    <option value="{{ $u->id }}">{{ $u->name }}</option>
+                                    <option value="{{ $u->id }}" @selected((int) ($filterUserId ?? 0) === (int) $u->id)>{{ $u->name }}</option>
                                 @endforeach
                             </select>
                         </div>
+                        @if((int) ($filterDays ?? 0) > 0)
+                            <span class="dar-count-badge" title="Filtered to the last {{ (int) $filterDays }} days, latest first">
+                                Last {{ (int) $filterDays }} days · latest first
+                            </span>
+                        @endif
                         <span class="dar-count-badge" id="darCountBadge" title="Total DAR entries out of a target of 25">
                             <i class="fas fa-list-check me-1"></i>
                             Total Count: <strong id="darCountValue">0</strong>/25
@@ -202,6 +207,15 @@
             const csrf       = $('meta[name="csrf-token"]').attr('content');
             const dataUrl    = @json(route('dar.data'));
             const deleteBase = @json(url('dar/delete'));
+            const initialDays = {{ (int) ($filterDays ?? 0) }};
+
+            function ajaxParams() {
+                const params = {};
+                const uid = $('#darUserFilter').val();
+                if (uid) params.user_id = uid;
+                if (initialDays > 0) params.days = initialDays;
+                return params;
+            }
 
             const DAR_TARGET = 25;
             function updateCountBadge(count) {
@@ -281,6 +295,8 @@
             // ---- Build the Tabulator table ----
             const table = new Tabulator('#darTable', {
                 ajaxURL: dataUrl,
+                ajaxParams: ajaxParams,
+                initialSort: [{ column: 'report_date', dir: 'desc' }],
                 ajaxResponse: function (url, params, response) {
                     return (response && response.data) ? response.data : [];
                 },
@@ -397,18 +413,10 @@
                 if (window.DarModal) window.DarModal.open();
             });
 
-            // User filter — show only the selected user's DAR rows, and update the
-            // reports count badge to reflect the filtered (visible) rows.
+            // User filter — refetch so the executive deep-link and All Users
+            // stay consistent with the optional last-N-days window.
             $('#darUserFilter').on('change', function () {
-                const val = $(this).val();
-                if (!val) {
-                    table.clearFilter();
-                } else {
-                    table.setFilter(function (rowData) {
-                        return String(rowData.user_id) === String(val);
-                    });
-                }
-                updateCountBadge(table.getDataCount('active'));
+                table.setData(dataUrl, ajaxParams());
             });
 
             function deleteRow(id) {

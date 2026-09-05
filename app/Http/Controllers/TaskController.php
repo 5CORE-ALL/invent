@@ -2,9 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AttendanceDailySummary;
+use App\Models\AttendanceSession;
+use App\Models\TeamLoggerDailyHours;
+use App\Services\TeamLoggerService;
+use App\Services\TeamSalaryCalculator;
 use App\Models\AutomateTaskChecklistForm;
 use App\Models\AutomateTaskChecklistSubmission;
 use App\Models\Badge;
+use App\Models\Dar;
 use App\Models\DesignationMgrCheckpoint;
 use App\Models\DesignationRrCheckpoint;
 use App\Models\DesignationRrItem;
@@ -25,8 +31,10 @@ use App\Models\UserScoreHistory;
 use App\Models\DeletedTask;
 use App\Policies\TaskPolicy;
 use App\Services\TaskWhatsAppNotificationService;
+use App\Support\AttL30Metrics;
 use App\Support\AutomatedTaskChecklistIds;
 use App\Support\Badges\BadgeDataCatalog;
+use App\Support\DarL30Metrics;
 use App\Support\OpenAiRequest;
 use App\Support\TaskBusinessTime;
 use Illuminate\Database\Eloquent\Builder;
@@ -625,15 +633,7 @@ class TaskController extends Controller
             );
         }
 
-        // Fetch TeamLogger data for current month
-        $teamLoggerData = [];
-        try {
-            $teamLoggerService = new \App\Services\TeamLoggerService();
-            $currentMonth = \Carbon\Carbon::now()->format('F Y'); // e.g., "May 2026"
-            $teamLoggerData = $teamLoggerService->fetchByMonth($currentMonth);
-        } catch (\Exception $e) {
-            \Log::error('Failed to fetch TeamLogger data for task summary: ' . $e->getMessage());
-        }
+        $attHoursByUser = $this->getTaskSummaryAttendanceHours($members->pluck('id')->all());
 
         $kpiByUser = TeamMemberKpi::query()
             ->whereIn('user_id', $members->pluck('id'))
@@ -647,16 +647,30 @@ class TaskController extends Controller
             ->groupBy('user_id')
             ->pluck('incentive_count', 'user_id');
 
+        $darDatesByUser = [];
+        if (Schema::hasTable('dars') && $members->isNotEmpty()) {
+            $darCutoff = \Carbon\Carbon::now()->subDays(DarL30Metrics::WINDOW_DAYS - 1)->toDateString();
+            Dar::query()
+                ->whereIn('user_id', $members->pluck('id'))
+                ->whereDate('report_date', '>=', $darCutoff)
+                ->get(['user_id', 'report_date'])
+                ->each(function ($row) use (&$darDatesByUser) {
+                    $uid = (int) $row->user_id;
+                    $ymd = optional($row->report_date)->format('Y-m-d');
+                    if ($ymd === null) {
+                        return;
+                    }
+                    $darDatesByUser[$uid][$ymd] = $ymd;
+                });
+        }
+
         $rows = [];
         foreach ($members as $member) {
             $email = $member->email;
             $counts = $byEmail[$email] ?? $defaultCounts;
             
-            // Get TeamLogger hours for this user (current month)
-            $l30Hours = 0;
-            if (isset($teamLoggerData[$email])) {
-                $l30Hours = $teamLoggerData[$email]['hours'] ?? 0;
-            }
+            $attMetrics = AttL30Metrics::forHours((float) ($attHoursByUser[(int) $member->id] ?? 0));
+            $l30Hours = $attMetrics['att_l30_hours'];
             
             $tatCount = (int) $counts['tat_count'];
             $tatAvgDays = $tatCount > 0 ? round($counts['tat_sum_days'] / $tatCount, 1) : null;
@@ -692,6 +706,8 @@ class TaskController extends Controller
                 }
             }
 
+            $darMetrics = DarL30Metrics::forUser(array_values($darDatesByUser[$member->id] ?? []));
+
             $rows[] = array_merge([
                 'user_id' => $member->id,
                 'team_member' => $member->name,
@@ -700,9 +716,17 @@ class TaskController extends Controller
                 'designation' => $member->designation,
                 'org_level' => $member->org_level,
                 'task' => $counts['task'],
-                'l30_hrs' => round($l30Hours, 1),
+                'l30_hrs' => $l30Hours,
+                'att_l30_target' => $attMetrics['att_l30_target'],
+                'att_l30_pct' => $attMetrics['att_l30_pct'],
+                'att_l30_band' => $attMetrics['att_l30_band'],
                 'assignor_task' => $counts['assignor_task'],
                 'overdue' => $counts['overdue'],
+                'dar_l30_count' => $darMetrics['dar_l30_count'],
+                'dar_l30_target' => $darMetrics['dar_l30_target'],
+                'dar_l30_pct' => $darMetrics['dar_l30_pct'],
+                'dar_l30_band' => $darMetrics['dar_l30_band'],
+                'dar_l30_series' => $darMetrics['dar_l30_series'],
                 'tat_l30_days' => $tatAvgDays,
                 'tat_l30_count' => $tatCount,
                 'missed_l30' => (int) $counts['missed_l30'],
@@ -730,6 +754,142 @@ class TaskController extends Controller
         });
 
         return $rows;
+    }
+
+    /**
+     * Today's work hours only (in-app attendance, then Team Logger for people
+     * who do not use the desktop agent).
+     *
+     * @param  array<int, int|string>  $userIds
+     * @return array<int, float>
+     */
+    protected function getTaskSummaryAttendanceHours(array $userIds): array
+    {
+        $userIds = array_values(array_filter(array_map('intval', $userIds)));
+        if ($userIds === []) {
+            return [];
+        }
+
+        $tz = \App\Services\Attendance\AttendanceTimelineService::defaultTimezone();
+        $ptToday = now()->timezone($tz)->toDateString();
+        $istToday = now('Asia/Kolkata')->toDateString();
+        $todayDates = array_values(array_unique([$ptToday, $istToday]));
+        $hours = [];
+
+        if (Schema::hasTable('attendance_daily_summaries')) {
+            $byUserDay = [];
+            AttendanceDailySummary::query()
+                ->whereIn('user_id', $userIds)
+                ->whereIn('work_date', $todayDates)
+                ->get(['user_id', 'work_date', 'total_work_seconds', 'active_seconds'])
+                ->each(function ($row) use (&$byUserDay) {
+                    $uid = (int) $row->user_id;
+                    $day = optional($row->work_date)->format('Y-m-d') ?: (string) $row->work_date;
+                    $seconds = max((int) ($row->total_work_seconds ?? 0), (int) ($row->active_seconds ?? 0));
+                    $byUserDay[$uid][$day] = ($byUserDay[$uid][$day] ?? 0) + $seconds;
+                });
+            foreach ($byUserDay as $uid => $days) {
+                $hours[(int) $uid] = (max($days) ?: 0) / 3600;
+            }
+        }
+
+        if (Schema::hasTable('attendance_sessions')) {
+            $ptStart = now()->timezone($tz)->startOfDay();
+            $istStart = now('Asia/Kolkata')->startOfDay();
+            $windowStart = $ptStart->lt($istStart) ? $ptStart->copy() : $istStart->copy();
+            $ptEnd = $ptStart->copy()->addDay();
+            $istEnd = $istStart->copy()->addDay();
+            $windowEnd = $ptEnd->gt($istEnd) ? $ptEnd : $istEnd;
+            AttendanceSession::query()
+                ->whereIn('user_id', $userIds)
+                ->where('started_at', '>=', $windowStart)
+                ->where('started_at', '<', $windowEnd)
+                ->selectRaw('user_id, SUM(COALESCE(total_active_seconds, 0) + COALESCE(total_idle_seconds, 0)) as work_seconds')
+                ->groupBy('user_id')
+                ->get()
+                ->each(function ($row) use (&$hours) {
+                    $uid = (int) $row->user_id;
+                    $sessionHours = ((int) $row->work_seconds) / 3600;
+                    $hours[$uid] = max($hours[$uid] ?? 0, $sessionHours);
+                });
+        }
+
+        $this->applyTeamLoggerHoursFallback($userIds, $hours);
+
+        return $hours;
+    }
+
+    /**
+     * Today's Team Logger hours for Shobha and Mariya only.
+     *
+     * @param  array<int, int>  $userIds
+     * @param  array<int, float>  $hours
+     */
+    protected function applyTeamLoggerHoursFallback(array $userIds, array &$hours): void
+    {
+        $users = User::query()
+            ->whereIn('id', $userIds)
+            ->get(['id', 'name', 'email'])
+            ->filter(fn (User $user) => AttL30Metrics::usesTeamLogger($user->name, $user->email))
+            ->values();
+        if ($users->isEmpty()) {
+            return;
+        }
+        $mapper = new TeamSalaryCalculator();
+        $byEmail = [];
+
+        // Team Logger work-day rolls at 12:00 IST (see TeamLoggerService).
+        $ist = now('Asia/Kolkata');
+        $tlDay = $ist->hour < 12
+            ? $ist->copy()->subDay()->toDateString()
+            : $ist->toDateString();
+
+        if (Schema::hasTable('team_logger_daily_hours')) {
+            TeamLoggerDailyHours::query()
+                ->whereDate('work_date', $tlDay)
+                ->selectRaw('employee_email, SUM(COALESCE(productive_hours, active_hours, 0)) as hours')
+                ->groupBy('employee_email')
+                ->get()
+                ->each(function ($row) use (&$byEmail) {
+                    $email = strtolower(trim((string) $row->employee_email));
+                    if ($email !== '') {
+                        $byEmail[$email] = max($byEmail[$email] ?? 0, (float) $row->hours);
+                    }
+                });
+        }
+
+        try {
+            $api = (new TeamLoggerService())->fetchByDay($tlDay, true);
+            foreach ($api as $email => $row) {
+                $key = strtolower(trim((string) $email));
+                if ($key === '') {
+                    continue;
+                }
+                $byEmail[$key] = max($byEmail[$key] ?? 0, (float) ($row['hours'] ?? 0));
+            }
+        } catch (\Throwable $e) {
+            \Log::error('Task summary TeamLogger today fallback failed: '.$e->getMessage());
+        }
+
+        foreach ($users as $user) {
+            $appEmail = strtolower(trim((string) $user->email));
+            $tlEmail = strtolower($mapper->teamLoggerEmail((string) $user->email));
+            $found = $byEmail[$tlEmail] ?? $byEmail[$appEmail] ?? 0;
+            if ($found <= 0 && (
+                str_contains($appEmail, 'shobha')
+                || str_contains(strtolower((string) $user->name), 'shobha')
+            )) {
+                foreach ($byEmail as $key => $value) {
+                    if ($value > 0 && str_contains($key, 'shobha')) {
+                        $found = $value;
+                        break;
+                    }
+                }
+            }
+            if ($found > 0) {
+                $hours[(int) $user->id] = $found;
+            }
+        }
     }
 
     /**
@@ -7089,6 +7249,8 @@ class TaskController extends Controller
             'metrics' => $row ? [
                 'task' => (int) ($row['task'] ?? 0),
                 'l30_hrs' => (float) ($row['l30_hrs'] ?? 0),
+                'att_l30_pct' => (int) ($row['att_l30_pct'] ?? 0),
+                'att_l30_target' => (int) ($row['att_l30_target'] ?? 200),
                 'assignor_task' => (int) ($row['assignor_task'] ?? 0),
                 'done' => (int) ($row['done'] ?? 0),
                 'overdue' => (int) ($row['overdue'] ?? 0),
@@ -7099,7 +7261,7 @@ class TaskController extends Controller
                 'a_task_h' => (int) ($row['a_task_h'] ?? 0),
                 'need_approval' => (int) ($row['need_approval'] ?? 0),
             ] : [
-                'task' => 0, 'l30_hrs' => 0, 'assignor_task' => 0,
+                'task' => 0, 'l30_hrs' => 0, 'att_l30_pct' => 0, 'att_l30_target' => 200, 'assignor_task' => 0,
                 'done' => 0, 'overdue' => 0, 'tat_l30_days' => null, 'tat_l30_count' => 0,
                 'missed_l30' => 0, 'a_task' => 0, 'a_task_h' => 0, 'need_approval' => 0,
             ],
