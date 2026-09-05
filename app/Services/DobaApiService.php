@@ -654,6 +654,55 @@ class DobaApiService
         }
     }
 
+    /**
+     * Live listing Delivery / Pick Up prices from goods/get/item.
+     *
+     * @return array{anticipatedIncome: float, selfPickAnticipatedIncome: float}|array{errors: string}
+     */
+    public function pullLiveItemPrices(string $itemId): array
+    {
+        $detail = $this->getItemDetail($itemId);
+        if (isset($detail['errors'])) {
+            return $detail;
+        }
+
+        $found = ['anticipatedIncome' => 0.0, 'selfPickAnticipatedIncome' => 0.0];
+        $this->collectDobaLivePrices($detail, $found);
+        if ($found['anticipatedIncome'] <= 0 && $found['selfPickAnticipatedIncome'] <= 0) {
+            return ['errors' => 'Live Doba price not returned'];
+        }
+
+        return $found;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @param  array{anticipatedIncome: float, selfPickAnticipatedIncome: float}  $found
+     */
+    private function collectDobaLivePrices($node, array &$found): void
+    {
+        if (! is_array($node)) {
+            return;
+        }
+        if (isset($node['anticipatedIncome']) && is_numeric($node['anticipatedIncome'])) {
+            $n = (float) $node['anticipatedIncome'];
+            if ($n > 0) {
+                $found['anticipatedIncome'] = $n;
+            }
+        }
+        if (isset($node['selfPickAnticipatedIncome']) && is_numeric($node['selfPickAnticipatedIncome'])) {
+            $n = (float) $node['selfPickAnticipatedIncome'];
+            if ($n > 0) {
+                $found['selfPickAnticipatedIncome'] = $n;
+            }
+        }
+        foreach ($node as $child) {
+            if (is_array($child)) {
+                $this->collectDobaLivePrices($child, $found);
+            }
+        }
+    }
+
     private function getMillisecond()
     {
         list($s1, $s2) = explode(' ', microtime());

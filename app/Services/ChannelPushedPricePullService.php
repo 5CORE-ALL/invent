@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\DobaMetric;
 use App\Models\NeweggPricing;
 use App\Models\ShopifySku;
 use App\Models\StoreListingPrice;
@@ -60,6 +61,10 @@ class ChannelPushedPricePullService
 
         if (in_array($channel, ['tiktok', 'tiktok2'], true)) {
             return $this->pullTikTok($skus, $channel);
+        }
+
+        if (in_array($channel, ['doba', 'doba_withoutship'], true)) {
+            return $this->pullDoba($skus, $channel);
         }
 
         return array_map(static fn ($sku) => [
@@ -453,6 +458,106 @@ class ChannelPushedPricePullService
                 ];
             } catch (\Throwable $e) {
                 Log::warning('Channel pushed-price TikTok pull failed', [
+                    'sku' => $sku,
+                    'channel' => $channel,
+                    'error' => $e->getMessage(),
+                ]);
+                $out[] = [
+                    'success' => false,
+                    'sku' => $sku,
+                    'marketplace' => $channel,
+                    'price' => null,
+                    'sprice' => null,
+                    'message' => $e->getMessage(),
+                ];
+            }
+
+            if ($i < count($skus) - 1) {
+                usleep(150000);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Live Doba Delivery (anticipatedIncome) / Pick Up (selfPickAnticipatedIncome).
+     *
+     * @param  list<string>  $skus
+     * @return list<array{success:bool,sku:string,marketplace:string,price:?float,self_pick_price?:?float,sprice:?float,message:string}>
+     */
+    private function pullDoba(array $skus, string $channel): array
+    {
+        $api = app(DobaApiService::class);
+        $out = [];
+        foreach ($skus as $i => $sku) {
+            try {
+                $metric = DobaMetric::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                    ->first()
+                    ?: DobaMetric::query()->where('sku', $sku)->first();
+                $itemId = $metric ? trim((string) ($metric->item_id ?? '')) : '';
+                if ($itemId === '') {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $sku,
+                        'marketplace' => $channel,
+                        'price' => null,
+                        'sprice' => null,
+                        'message' => 'Item ID not found for this SKU',
+                    ];
+                    continue;
+                }
+
+                $live = $api->pullLiveItemPrices($itemId);
+                if (isset($live['errors'])) {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $sku,
+                        'marketplace' => $channel,
+                        'price' => null,
+                        'sprice' => null,
+                        'message' => (string) $live['errors'],
+                    ];
+                    continue;
+                }
+
+                $delivery = round((float) ($live['anticipatedIncome'] ?? 0), 2);
+                $pickup = round((float) ($live['selfPickAnticipatedIncome'] ?? 0), 2);
+                $price = $channel === 'doba_withoutship' ? $pickup : $delivery;
+                if (! ($price > 0)) {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $sku,
+                        'marketplace' => $channel,
+                        'price' => null,
+                        'sprice' => null,
+                        'message' => 'Live Doba price not returned',
+                    ];
+                    continue;
+                }
+
+                if ($metric) {
+                    if ($delivery > 0) {
+                        $metric->anticipated_income = $delivery;
+                    }
+                    if ($pickup > 0) {
+                        $metric->self_pick_price = $pickup;
+                    }
+                    $metric->save();
+                }
+
+                $out[] = [
+                    'success' => true,
+                    'sku' => $sku,
+                    'marketplace' => $channel,
+                    'price' => $price,
+                    'self_pick_price' => $pickup > 0 ? $pickup : null,
+                    'sprice' => null,
+                    'message' => 'Pulled Doba Price $'.number_format($price, 2),
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Channel pushed-price Doba pull failed', [
                     'sku' => $sku,
                     'channel' => $channel,
                     'error' => $e->getMessage(),

@@ -1419,6 +1419,128 @@
                 });
             }
 
+            function dobaFindRowBySku(sku) {
+                const want = String(sku || '').trim().toUpperCase();
+                if (!want || !table) return null;
+                let found = null;
+                try {
+                    (table.getRows() || []).forEach(function(r) {
+                        if (found || !r || typeof r.getData !== 'function') return;
+                        const d = r.getData() || {};
+                        if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) found = r;
+                    });
+                } catch (e) { /* ignore */ }
+                return found;
+            }
+
+            function dobaApplyPulledLivePrice(sku, live) {
+                const p = Math.round((Number(live) || 0) * 100) / 100;
+                if (!(p > 0)) return;
+                const shipOf = function(d) { return parseFloat(d && d.Ship_productmaster) || 0; };
+                const row = dobaFindRowBySku(sku);
+                if (row) {
+                    const d = row.getData() || {};
+                    row.update({
+                        'doba Price': p,
+                        self_pick_price: Math.max(0, +(p - shipOf(d)).toFixed(2)),
+                    });
+                    try { row.reformat(); } catch (e) { /* ignore */ }
+                }
+                const want = String(sku || '').trim().toUpperCase();
+                try {
+                    (allTableData || []).forEach(function(d) {
+                        if (!d) return;
+                        if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) {
+                            d['doba Price'] = p;
+                            d.self_pick_price = Math.max(0, +(p - shipOf(d)).toFixed(2));
+                        }
+                    });
+                } catch (e) { /* ignore */ }
+                if (typeof updateSummary === 'function') updateSummary();
+            }
+
+            /** After a successful push, GET live Delivery price from Doba and write PRICE. */
+            function dobaPullAfterPush(skus) {
+                const list = [];
+                const seen = {};
+                (skus || []).forEach(function(sku) {
+                    const s = String(sku || '').trim();
+                    const key = s.toUpperCase();
+                    if (!s || seen[key]) return;
+                    seen[key] = true;
+                    list.push(s);
+                });
+                if (!list.length) return;
+                const expectedBySku = {};
+                list.forEach(function(sku) {
+                    const row = dobaFindRowBySku(sku);
+                    const d = row && typeof row.getData === 'function' ? (row.getData() || {}) : {};
+                    const want = Number(d.sprice || d.SPRICE) || 0;
+                    if (want > 0) expectedBySku[String(sku).toUpperCase()] = want;
+                });
+                const csrf = $('meta[name="csrf-token"]').attr('content');
+                const retryMs = [1500, 3000, 5000];
+                function runPull(attempt, pending) {
+                    if (!pending || !pending.length) return;
+                    $.ajax({
+                        url: '/channel-push-sprice/doba/pull',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                        data: { _token: csrf, skus: pending },
+                        timeout: 300000,
+                    }).done(function(resp) {
+                        const results = (resp && resp.results) || [];
+                        const stale = [];
+                        let pulled = 0;
+                        results.forEach(function(r) {
+                            if (!r || !r.success || !(Number(r.price) > 0) || !r.sku) return;
+                            const want = Number(expectedBySku[String(r.sku).toUpperCase()]) || 0;
+                            if (want > 0 && Math.abs(Number(r.price) - want) > 0.05) {
+                                stale.push(r.sku);
+                                return;
+                            }
+                            dobaApplyPulledLivePrice(r.sku, r.price);
+                            pulled++;
+                        });
+                        if (stale.length && attempt + 1 < retryMs.length) {
+                            dobaPullAfterPush._t = setTimeout(function() {
+                                runPull(attempt + 1, stale);
+                            }, retryMs[attempt + 1]);
+                            return;
+                        }
+                        if (stale.length && attempt + 1 >= retryMs.length) {
+                            stale.forEach(function(sku) {
+                                const match = results.find(function(r) {
+                                    return r && String(r.sku || '').toUpperCase() === String(sku).toUpperCase()
+                                        && r.success && Number(r.price) > 0;
+                                });
+                                if (match) dobaApplyPulledLivePrice(match.sku, match.price);
+                            });
+                        }
+                        if (pulled > 0 && !stale.length) {
+                            showToast('success', 'Pulled live Price for ' + pulled + ' SKU(s)');
+                        } else if (stale.length) {
+                            showToast('success', 'Pushed ' + list.length + ' SKU(s) — live Price still catching up');
+                        } else if (!(Number(resp && resp.skip_count) > 0)) {
+                            showToast('danger', (resp && resp.message) || 'Doba Price pull failed');
+                        }
+                    }).fail(function(xhr) {
+                        if (attempt + 1 < retryMs.length) {
+                            dobaPullAfterPush._t = setTimeout(function() {
+                                runPull(attempt + 1, pending);
+                            }, retryMs[attempt + 1]);
+                            return;
+                        }
+                        showToast('danger', (xhr.responseJSON && xhr.responseJSON.message) || 'Doba Price pull failed');
+                    });
+                }
+                showToast('success', 'Pulling live Price for ' + list.length + ' SKU(s)…');
+                clearTimeout(dobaPullAfterPush._t);
+                dobaPullAfterPush._t = setTimeout(function() {
+                    runPull(0, list.slice());
+                }, retryMs[0]);
+            }
+
             // Push price to Doba API with retry functionality (5 retries, 1 minute gap)
             function pushPriceToDobaWithRetry(sku, price, selfPickPrice = null, maxRetries = 5, delay = 5000) {
                 return new Promise((resolve, reject) => {
@@ -1529,6 +1651,7 @@
                 let currentIndex = 0;
                 let successCount = 0;
                 let errorCount = 0;
+                const pushedOkSkus = [];
                 
                 function processNextSku() {
                     if (currentIndex >= skusWithSprice.length) {
@@ -1542,6 +1665,7 @@
                         } else {
                             showToast('danger', `Failed to push prices for ${errorCount} SKU(s)`);
                         }
+                        if (pushedOkSkus.length) dobaPullAfterPush(pushedOkSkus);
                         return;
                     }
                     
@@ -1557,6 +1681,7 @@
                     pushPriceToDobaWithRetry(sku, price, selfPickPrice, 5, 5000)
                         .then((result) => {
                             successCount++;
+                            pushedOkSkus.push(sku);
                             console.log(`SKU ${sku}: Price pushed successfully`);
                             row.update({ push_status: 'pushed', apply_status: null });
                             
@@ -1684,6 +1809,7 @@
                             });
                         
                         showToast('success', `Price pushed successfully for ${sku}`);
+                        dobaPullAfterPush([sku]);
                     })
                     .catch((error) => {
                         // Failed after all retries - update row
@@ -2820,18 +2946,61 @@
             }
 
             /**
-             * Column visibility persistence — matches /ebay3-tabulator-view.
-             *
-             * Flow on page load:
-             *   tableBuilt  → applyColumnVisibilityFromServer() (hides any
-             *                  columns the user previously turned off)
-             *               → buildColumnDropdown() (reflects current state
-             *                  in the dropdown checkboxes)
-             *
-             * Flow on user toggle / "Show All Columns":
-             *   show() / hide() the column, then saveColumnVisibilityToServer().
+             * Column visibility persistence — same as /shopify-b2c-pricing / TikTok.
+             * Restore must show() checked columns and hide() unchecked ones.
+             * Hiding-only left "checked" columns hidden after refresh when the
+             * column def default is visible:false or after table.redraw(true).
              */
-            function buildColumnDropdown() {
+            let dobaColumnVisibilityMap = {};
+
+            function dobaColumnField(col) {
+                if (!col) return '';
+                const def = (typeof col.getDefinition === 'function') ? (col.getDefinition() || {}) : {};
+                return def.field || (typeof col.getField === 'function' ? col.getField() : '') || '';
+            }
+
+            function dobaVisibilityIsOn(v) {
+                return v === true || v === 1 || v === '1' || v === 'true';
+            }
+
+            function readDobaColumnVisibilityLocal() {
+                try {
+                    const raw = localStorage.getItem(COLUMN_VIS_KEY);
+                    const parsed = raw ? JSON.parse(raw) : {};
+                    return (parsed && typeof parsed === 'object') ? parsed : {};
+                } catch (e) {
+                    return {};
+                }
+            }
+
+            function writeDobaColumnVisibilityLocal(map) {
+                try { localStorage.setItem(COLUMN_VIS_KEY, JSON.stringify(map || {})); } catch (e) {}
+            }
+
+            function applyDobaColumnVisibilityMap(map) {
+                if (!table || !map || typeof map !== 'object') return;
+                dobaColumnVisibilityMap = map;
+                table.getColumns().forEach(function(col) {
+                    const field = dobaColumnField(col);
+                    if (!field || field === '_select' || field === 'sl_no') return;
+                    if (!Object.prototype.hasOwnProperty.call(map, field)) return;
+                    if (dobaVisibilityIsOn(map[field])) col.show();
+                    else col.hide();
+                });
+            }
+
+            function collectDobaColumnVisibility() {
+                const visibility = {};
+                if (!table) return visibility;
+                table.getColumns().forEach(function(col) {
+                    const field = dobaColumnField(col);
+                    if (!field || field === '_select' || field === 'sl_no') return;
+                    visibility[field] = !!col.isVisible();
+                });
+                return visibility;
+            }
+
+            function buildColumnDropdown(savedVisibility) {
                 if (window.AnalyticsColVis) {
                     window.AnalyticsColVis.install({
                         getTable: function() { return table; },
@@ -2842,28 +3011,31 @@
                             if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
                         }
                     });
-                    window.AnalyticsColVis.rebuild();
+                    window.AnalyticsColVis.rebuild(savedVisibility || dobaColumnVisibilityMap || null);
                     return;
                 }
                 const menu = document.getElementById("column-dropdown-menu");
                 if (!menu) return;
+                const map = (savedVisibility && typeof savedVisibility === 'object')
+                    ? savedVisibility
+                    : dobaColumnVisibilityMap;
 
                 const existingItems = menu.querySelectorAll('.column-toggle-item');
                 existingItems.forEach(item => item.remove());
 
-                const columns = table.getColumns();
-                columns.forEach(column => {
-                    if (column.getField() === 'sl_no') return; // Skip sl_no column
+                table.getColumns().forEach(column => {
+                    const field = dobaColumnField(column);
+                    if (!field || field === 'sl_no' || field === '_select') return;
 
-                    const field = column.getField();
-                    if (!field) return;
-
+                    const isVisible = Object.prototype.hasOwnProperty.call(map, field)
+                        ? dobaVisibilityIsOn(map[field])
+                        : column.isVisible();
                     const item = document.createElement('label');
                     item.className = 'dropdown-item column-toggle-item d-flex align-items-center';
                     item.innerHTML = `
                         <input type="checkbox" class="form-check-input me-2"
-                               data-column="${field}"
-                               ${column.isVisible() ? 'checked' : ''}>
+                               data-column="${field}" data-field="${field}"
+                               ${isVisible ? 'checked' : ''}>
                         ${column.getDefinition().title}
                     `;
                     menu.appendChild(item);
@@ -2872,18 +3044,15 @@
 
             function saveColumnVisibilityToServer() {
                 if (!table) return;
-                const visibility = {};
-                table.getColumns().forEach(col => {
-                    const def = col.getDefinition();
-                    if (def.field) {
-                        visibility[def.field] = col.isVisible();
-                    }
-                });
+                const visibility = collectDobaColumnVisibility();
+                dobaColumnVisibilityMap = visibility;
+                writeDobaColumnVisibilityLocal(visibility);
 
                 fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Accept': 'application/json',
                         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                     },
                     body: JSON.stringify({
@@ -2899,31 +3068,31 @@
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
                             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                         }
                     })
                     .then(response => response.json())
                     .then(savedVisibility => {
-                        if (!savedVisibility || typeof savedVisibility !== 'object') return;
-                        table.getColumns().forEach(col => {
-                            const def = col.getDefinition();
-                            if (def.field && savedVisibility[def.field] === false) {
-                                col.hide();
-                            }
-                        });
+                        const serverMap = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+                        const localMap = readDobaColumnVisibilityLocal();
+                        const map = Object.assign({}, serverMap, localMap);
+                        applyDobaColumnVisibilityMap(map);
+                        buildColumnDropdown(map);
                     })
-                    .catch(err => console.error('Column visibility load failed:', err));
+                    .catch(err => {
+                        console.error('Column visibility load failed:', err);
+                        const localMap = readDobaColumnVisibilityLocal();
+                        applyDobaColumnVisibilityMap(localMap);
+                        buildColumnDropdown(localMap);
+                    });
             }
 
             // SPRICE is not editable — auto-saved from Sprc Dil (same as TikTok).
 
             // Wait for table to be built
             table.on('tableBuilt', function() {
-                // Apply user's saved visibility from the server, then build
-                // the dropdown so its checkboxes reflect the current state.
-                Promise.resolve(applyColumnVisibilityFromServer()).then(function() {
-                    buildColumnDropdown();
-                });
+                Promise.resolve(applyColumnVisibilityFromServer());
                 updateSummary();
                 applyFilters(); // Apply default INV > 0 filter
             });
@@ -2958,6 +3127,10 @@
                 if (typeof ebayScheduleSprcDilAutoApply === 'function') {
                     ebayScheduleSprcDilAutoApply();
                 }
+                setTimeout(function() {
+                    applyDobaColumnVisibilityMap(dobaColumnVisibilityMap);
+                    buildColumnDropdown(dobaColumnVisibilityMap);
+                }, 800);
                 setTimeout(() => {
                     updateSummary();
                     updateVisibleRowsCount();
@@ -3007,20 +3180,24 @@
                 }
             }
 
-            // Toggle column from dropdown — persist choice to server (same as /ebay3-tabulator-view).
+            // Toggle column from dropdown — persist choice (AnalyticsColVis handles its own checkboxes).
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-                if (e.target.type === 'checkbox') {
-                    const columnField = e.target.getAttribute('data-column');
-                    const column = table.getColumn(columnField);
-                    if (!column) return;
-
-                    if (e.target.checked) {
-                        column.show();
-                    } else {
-                        column.hide();
-                    }
-                    saveColumnVisibilityToServer();
+                if (!e.target || e.target.type !== 'checkbox') return;
+                if (e.target.classList.contains('col-vis-field-toggle')
+                    || e.target.classList.contains('col-vis-group-toggle')) {
+                    return;
                 }
+                const columnField = e.target.getAttribute('data-field')
+                    || e.target.getAttribute('data-column');
+                const column = columnField ? table.getColumn(columnField) : null;
+                if (!column) return;
+
+                if (e.target.checked) {
+                    column.show();
+                } else {
+                    column.hide();
+                }
+                saveColumnVisibilityToServer();
             });
 
             // Show All Columns button — also persists.
