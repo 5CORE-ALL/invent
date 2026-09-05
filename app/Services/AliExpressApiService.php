@@ -180,7 +180,7 @@ class AliExpressApiService
                 is_array($weightFill['fields']['category_attributes'] ?? null) ? $weightFill['fields']['category_attributes'] : []
             );
         }
-        $instance = $this->forceUsLogisticsWeightObjects($instance, $weight, $lb);
+        $instance = $this->forceUsLogisticsWeightObjects($instance, $weight, $lb, 'string');
         $instance = $this->sanitizeCategoryAttributeKeys($instance);
         unset($instance['category_attributes']);
 
@@ -220,6 +220,29 @@ class AliExpressApiService
             'message' => $this->extractPostFailureMessage($res),
             'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? null,
         ];
+
+        if (str_contains(strtolower((string) ($last['message'] ?? '')), 'package weight')) {
+            $instance = $this->forceUsLogisticsWeightObjects($instance, $weight, $lb, 'string');
+            $encodedInstance = $this->encodeRequestPayload($instance);
+            $res = $this->callApiFlexible('aliexpress.solution.schema.product.instance.post', [
+                'rest' => ['product_instance_request' => $encodedInstance],
+                'sync' => ['product_instance_request' => $encodedInstance],
+            ]);
+            $productId = $this->extractPostedProductId($res['data'] ?? [])
+                ?: $this->extractPostedProductId($res['result'] ?? [])
+                ?: $this->extractPostedProductId($res);
+            if ($productId !== '') {
+                $res['success'] = true;
+                $res['product_id'] = $productId;
+
+                return $res;
+            }
+            $last = [
+                'success' => false,
+                'message' => $this->extractPostFailureMessage($res) ?: $last['message'],
+                'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? $last['data'] ?? null,
+            ];
+        }
 
         $official = $this->officialProductPostRequest($request, $weightFill['fields']);
         $encodedPost = $this->encodeRequestPayload($official);
@@ -1317,8 +1340,8 @@ class AliExpressApiService
             $keys = ['package_weight', 'aeLogisticsWeight', 'usLogisticsWeight'];
             $fields = [
                 'package_weight' => $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number'),
-                'aeLogisticsWeight' => $this->usPackageWeightObject($kg, $lb),
-                'usLogisticsWeight' => $this->usPackageWeightObject($kg, $lb),
+                'aeLogisticsWeight' => $this->usPackageWeightObject($kg, $lb, 'string'),
+                'usLogisticsWeight' => $this->usPackageWeightObject($kg, $lb, 'string'),
             ];
         }
 
@@ -1494,6 +1517,10 @@ class AliExpressApiService
      */
     private function fillSchemaNode(array $node, float $kg, float $lb, string $path = ''): mixed
     {
+        if ($this->isPackageWeightLeaf($path)) {
+            return $this->packageWeightLeafValue($node, $kg, $lb);
+        }
+
         $type = $this->schemaNodeType($node);
         $props = is_array($node['properties'] ?? null) ? $node['properties'] : [];
         if ($props === [] && is_array($node['fields'] ?? null)) {
@@ -1521,7 +1548,7 @@ class AliExpressApiService
                     : $this->fillSchemaNode($child, $kg, $lb, $childPath);
             }
             if ($out === [] || ($this->isUsLogisticsWeightParent($path) && ! $this->hasPackageWeightKey($out))) {
-                $out = array_merge($out, $this->usPackageWeightObject($kg, $lb));
+                $out = array_merge($out, $this->usPackageWeightObject($kg, $lb, 'string'));
             }
 
             return $out;
@@ -1595,12 +1622,12 @@ class AliExpressApiService
     }
 
     /**
-     * US overlay wants only {"Package weight":"3.35"}. Extra keys fail schema checks
-     * and AliExpress then reports Package weight as CHK_BASIC_REQUIRED.
+     * US overlay wants only {"Package weight":"3.35"}. A nested
+     * {"Package weight":{"value":"3.35"}} fails CHK_BASIC_REQUIRED.
      *
-     * @return array{Package weight: array{value: string}|float|string}
+     * @return array{Package weight: float|int|string}
      */
-    private function usPackageWeightObject(float $kg, float $lb, string $kind = 'value'): array
+    private function usPackageWeightObject(float $kg, float $lb, string $kind = 'string'): array
     {
         $pounds = $this->usPackageWeightPounds($kg, $lb);
         $text = number_format($pounds, 2, '.', '');
@@ -1610,11 +1637,8 @@ class AliExpressApiService
         if ($kind === 'number') {
             return ['Package weight' => $pounds];
         }
-        if ($kind === 'string') {
-            return ['Package weight' => $text];
-        }
 
-        return ['Package weight' => ['value' => $text]];
+        return ['Package weight' => $text];
     }
 
     private function usPackageWeightPounds(float $kg, float $lb): float
@@ -1639,17 +1663,17 @@ class AliExpressApiService
         if ($kg <= 0 && $lb <= 0) {
             return $fields;
         }
-        return $this->applyLogisticsWeightShape($fields, $this->usPackageWeightObject($kg, $lb, 'value'), $kg, $lb);
+        return $this->applyLogisticsWeightShape($fields, $this->usPackageWeightObject($kg, $lb, $this->packageWeightSchemaKind($nodes)), $kg, $lb);
     }
 
     /**
-     * AliExpress US checks usLogisticsWeight.Package weight. A bare "4.00" string
-     * is treated as missing and returns CHK_BASIC_REQUIRED.
+     * AliExpress US checks usLogisticsWeight.Package weight as a scalar string.
+     * Nested {"value":"..."} is treated as missing and returns CHK_BASIC_REQUIRED.
      *
      * @param  array<string, mixed>  $fields
      * @return array<string, mixed>
      */
-    private function forceUsLogisticsWeightObjects(array $fields, float $kg, float $lb, string $kind = 'value'): array
+    private function forceUsLogisticsWeightObjects(array $fields, float $kg, float $lb, string $kind = 'string'): array
     {
         $kg = abs($kg);
         $lb = abs($lb);
@@ -1667,10 +1691,11 @@ class AliExpressApiService
      */
     private function applyLogisticsWeightShape(array $fields, mixed $usObject, float $kg, float $lb): array
     {
-        $object = is_array($usObject) ? $usObject : $this->usPackageWeightObject($kg, $lb);
+        $object = is_array($usObject) ? $usObject : $this->usPackageWeightObject($kg, $lb, 'string');
         if (! $this->hasPackageWeightKey($object)) {
-            $object = array_merge($this->usPackageWeightObject($kg, $lb), $object);
+            $object = array_merge($this->usPackageWeightObject($kg, $lb, 'string'), $object);
         }
+        $object = $this->flattenPackageWeightObject($object);
         foreach (['usLogisticsWeight', 'aeLogisticsWeight', 'LogisticsWeight', 'logisticsWeight'] as $key) {
             $fields[$key] = $this->mergePackageWeightObject($fields[$key] ?? null, $object);
         }
@@ -1699,10 +1724,45 @@ class AliExpressApiService
             }
         }
         if (! is_array($current)) {
-            return $object;
+            return $this->flattenPackageWeightObject($object);
         }
 
-        return array_merge($current, $object);
+        return $this->flattenPackageWeightObject(array_merge($current, $object));
+    }
+
+    /**
+     * @param  array<string, mixed>  $object
+     * @return array<string, mixed>
+     */
+    private function flattenPackageWeightObject(array $object): array
+    {
+        foreach (['Package weight', 'package_weight'] as $key) {
+            if (! array_key_exists($key, $object)) {
+                continue;
+            }
+            $object[$key] = $this->unwrapWeightScalar($object[$key]);
+        }
+
+        return $object;
+    }
+
+    private function unwrapWeightScalar(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+        $inner = $value['value'] ?? $value['Value'] ?? $value['package_weight'] ?? null;
+        if (is_array($inner)) {
+            return $this->unwrapWeightScalar($inner);
+        }
+        if ($inner === null || $inner === '') {
+            return $value;
+        }
+        if (is_numeric($inner)) {
+            return number_format((float) $inner, 2, '.', '');
+        }
+
+        return is_scalar($inner) ? (string) $inner : $value;
     }
 
     /**
@@ -2516,7 +2576,7 @@ class AliExpressApiService
         if ($asObject) {
             $current = is_array($current) ? $current : [];
 
-            return array_merge($current, $this->usPackageWeightObject($kg, $lb));
+            return $this->flattenPackageWeightObject(array_merge($current, $this->usPackageWeightObject($kg, $lb, 'string')));
         }
         if (is_array($current)) {
             $current = $current['Package weight'] ?? $current['weight'] ?? $current['value'] ?? null;
