@@ -24,17 +24,29 @@ class ListingManagerPublishDispatcher
         $key = ListingChannelCounts::normalize($channelName);
         $sku = trim((string) $draft->seller_sku);
 
+        if (in_array($key, ['amazon', 'amazonfba', 'amz', 'amzfbm'], true)) {
+            return $this->publishAmazon($draft, $details);
+        }
         if (in_array($key, ['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'], true)) {
             return $this->publishEbay($key, $draft, $details);
         }
-        if (in_array($key, ['temu2', 'temutwo'], true)) {
-            return $this->publishTemu2($sku);
-        }
-        if ($key === 'faire') {
-            return $this->publishFaire($sku);
-        }
-        if (in_array($key, ['reverb', 'reverbcom'], true)) {
-            return $this->publishReverb($sku);
+        if (self::supportsListingApi($channelName)) {
+            $result = app(ListingVariationPreviewService::class)->publishSkus(
+                [$sku],
+                $key,
+                false,
+                'single'
+            );
+            if (! ($result['success'] ?? false)) {
+                return $result;
+            }
+
+            return [
+                'success' => true,
+                'message' => $result['message'] ?? ('Published to '.$channelName.'.'),
+                'item_id' => $result['goods_id'] ?? $result['item_id'] ?? null,
+                'sibling_skus' => is_array($result['skus'] ?? null) ? $result['skus'] : [$sku],
+            ];
         }
 
         $url = ListingChannelCounts::listingUrl($channelName);
@@ -51,16 +63,56 @@ class ListingManagerPublishDispatcher
 
     public static function canDirectPublish(string $channelName): bool
     {
+        return self::supportsListingApi($channelName);
+    }
+
+    /**
+     * Channels that can create a new listing or update an existing one via API.
+     */
+    public static function supportsListingApi(string $channelName): bool
+    {
         $key = ListingChannelCounts::normalize($channelName);
 
         return in_array($key, [
+            'amazon', 'amazonfba', 'amz', 'amzfbm',
             'ebay', 'ebay1', 'ebayone',
             'ebay2', 'ebaytwo',
             'ebay3', 'ebaythree',
+            'temu', 'temu1',
             'temu2', 'temutwo',
             'faire',
             'reverb', 'reverbcom',
+            'wayfair',
+            'aliexpress',
+            'tiktok', 'tiktokshop',
+            'tiktok2', 'tiktokshop2', 'tiktoktwo',
+            'shein',
         ], true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     * @return array{success: bool, message: string, item_id?: string|null, sibling_skus?: list<string>}
+     */
+    private function publishAmazon(ListingManagerChannelDraft $draft, array $details): array
+    {
+        $sku = trim((string) $draft->seller_sku);
+        $result = app(AmazonListingPublishService::class)->publishSku(
+            $sku,
+            $details,
+            (string) $draft->title,
+            $draft->quantity !== null ? (int) $draft->quantity : null
+        );
+        if (! ($result['success'] ?? false)) {
+            return $result;
+        }
+
+        return [
+            'success' => true,
+            'message' => $result['message'] ?? 'Published to Amazon.',
+            'item_id' => $result['goods_id'] ?? null,
+            'sibling_skus' => is_array($result['skus'] ?? null) ? $result['skus'] : [$sku],
+        ];
     }
 
     /**

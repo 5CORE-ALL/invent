@@ -21,6 +21,8 @@ class ShopifyCatalogProduct extends Model
         'body_html',
         'vendor',
         'product_type',
+        'image_src',
+        'image_urls',
         'synced_at',
     ];
 

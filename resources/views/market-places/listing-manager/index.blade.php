@@ -411,6 +411,7 @@
         <div class="lm-actions" id="lm-header-actions-products">
             <button type="button" class="btn-lc btn-lc-ghost" id="lm-manage-channels-btn"><i class="fas fa-store me-1"></i>Add Marketplaces</button>
             <button type="button" class="btn-lc btn-lc-primary" id="lm-import-amazon-btn"><i class="fas fa-cloud-download-alt me-1"></i>Import from Amz</button>
+            <button type="button" class="btn-lc btn-lc-primary" id="lm-import-shopify-btn"><i class="fas fa-cloud-download-alt me-1"></i>Import from Shopify</button>
         </div>
         <div class="lm-actions d-none" id="lm-header-actions-drafts">
             <button type="button" class="btn-lc btn-lc-primary" id="lm-quick-list-btn"><i class="fas fa-bolt me-1"></i><span id="lm-quick-list-label">Quick/Auto List</span></button>
@@ -983,10 +984,10 @@
                 </div>
                 <div class="lm-channel-list" id="lm-channel-list"></div>
                 <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" id="lm-include-siblings" checked>
-                    <label class="form-check-label" for="lm-include-siblings">Include parent variations (sibling SKUs)</label>
+                    <input class="form-check-input" type="checkbox" id="lm-include-siblings">
+                    <label class="form-check-label" for="lm-include-siblings">Also add sibling SKUs from the same parent</label>
                 </div>
-                <div class="lm-info-box mx-0">Select only the marketplace you want (for example Temu 2). Products go to <strong>Drafts</strong>. Then open Channel Listings, complete required fields, and Save &amp; Publish.</div>
+                <div class="lm-info-box mx-0">Only marketplaces with a connected listing API are shown (create or update). Select the ones you want. Products go to <strong>Drafts</strong>. Then open Channel Listings and Save &amp; Publish.</div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-lc btn-lc-ghost" data-bs-dismiss="modal">Cancel</button>
@@ -1004,7 +1005,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted small mb-3">Choose which marketplaces appear when listing products from Amz.</p>
+                <p class="text-muted small mb-3">Choose which connected listing APIs appear when you add drafts. Amazon, eBay, Temu, TikTok, Reverb, Faire, Wayfair, AliExpress, and Shein can create or update listings.</p>
                 <div class="lm-channel-list" id="lm-manage-channel-list"></div>
             </div>
             <div class="modal-footer">
@@ -1468,6 +1469,7 @@
             const enabled = allChannels.filter(c => c.enabled);
             renderChannelRows('#lm-channel-list', enabled, false, []);
             $('#lm-select-all-channels').prop('checked', false);
+            $('#lm-include-siblings').prop('checked', false);
             bootstrap.Modal.getOrCreateInstance(document.getElementById('lmListChannelModal')).show();
         });
     }
@@ -2691,7 +2693,7 @@
         table = new Tabulator('#lm-products-table', {
             layout: 'fitColumns',
             height: Math.max(360, window.innerHeight - 280),
-            placeholder: 'No listings found. Click Import from Amz.',
+            placeholder: 'No listings found. Click Import from Amz or Import from Shopify.',
             selectableRows: true,
             pagination: true,
             paginationSize: 100,
@@ -2903,6 +2905,7 @@
             $.ajax({
                 url: "{{ route('listing.manager.import') }}",
                 method: 'POST',
+                timeout: 0,
                 success: function (res) {
                     toast(res.message || 'Import complete.', res.success ? 'success' : 'error');
                     loadProductTypes();
@@ -2910,6 +2913,24 @@
                 },
                 error: xhr => toast(xhr.responseJSON?.message || 'Import failed.', 'error'),
                 complete: () => $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt me-1"></i>Import from Amz'),
+            });
+        });
+
+        $('#lm-import-shopify-btn').on('click', function () {
+            const $btn = $(this);
+            if (!confirm('Import all Shopify products? This may take a few minutes.')) return;
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Importing…');
+            $.ajax({
+                url: "{{ route('listing.manager.import.shopify') }}",
+                method: 'POST',
+                timeout: 0,
+                success: function (res) {
+                    toast(res.message || 'Import complete.', res.success ? 'success' : 'error');
+                    loadProductTypes();
+                    loadTable();
+                },
+                error: xhr => toast(xhr.responseJSON?.message || 'Shopify import failed.', 'error'),
+                complete: () => $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt me-1"></i>Import from Shopify'),
             });
         });
 

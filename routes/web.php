@@ -4016,6 +4016,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-manager/product/sync-prefs', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'syncFamilyPrefs'])->name('listing.manager.product.sync-prefs');
     Route::post('/listing-manager/product/sync-prefs', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveSyncFamilyPrefs'])->name('listing.manager.product.sync-prefs.save');
     Route::post('/listing-manager/import-amazon', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'importFromAmazon'])->name('listing.manager.import');
+    Route::post('/listing-manager/import-shopify', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'importFromShopify'])->name('listing.manager.import.shopify');
     Route::get('/listing-manager/channels', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'channels'])->name('listing.manager.channels');
     Route::post('/listing-manager/channels/save', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveEnabledChannels'])->name('listing.manager.channels.save');
     Route::post('/listing-manager/drafts/add', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'addToChannelDrafts'])->name('listing.manager.drafts.add');

@@ -16,6 +16,7 @@ use App\Services\SheinApiService;
 use App\Services\WayfairApiService;
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
 use App\Services\ShopifyApiService;
+use App\Services\ShopifyCatalogSyncService;
 use App\Services\Support\MarketplaceApiConfigService;
 use App\Services\TikTok2ShopService;
 use App\Services\TikTokShopService;
@@ -53,19 +54,13 @@ class ListingManagerController extends Controller
     public function data(Request $request)
     {
         try {
-            if (! Schema::hasTable('amazon_listings_raw')) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [],
-                    'meta' => ['in_stock' => 0, 'out_of_stock' => 0, 'total' => 0],
-                ]);
-            }
-
             $qName = trim((string) $request->input('q_name', ''));
             $qSku = trim((string) $request->input('q_sku', ''));
             $status = trim((string) $request->input('status', 'all'));
             $productType = trim((string) $request->input('product_type', 'all'));
 
+            $rows = collect();
+            if (Schema::hasTable('amazon_listings_raw')) {
             $query = AmazonListingRaw::query()
                 ->whereNotNull('seller_sku')
                 ->where('seller_sku', '!=', '');
@@ -99,6 +94,7 @@ class ListingManagerController extends Controller
                 'report_imported_at',
                 'updated_at',
             ]);
+            }
 
             $draftCounts = [];
             $shopifyQty = [];
@@ -115,6 +111,14 @@ class ListingManagerController extends Controller
                 }
             }
             $imageLookups = $this->imageLookupsForSkus($skus);
+
+            $amazonNorm = [];
+            foreach ($skus as $sku) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+                if ($norm !== '') {
+                    $amazonNorm[$norm] = true;
+                }
+            }
 
             $data = $rows->map(function (AmazonListingRaw $row) use ($draftCounts, $imageLookups, $shopifyQty) {
                 $raw = is_array($row->raw_data) ? $row->raw_data : [];
@@ -162,6 +166,28 @@ class ListingManagerController extends Controller
                     'draft_channels' => (int) ($draftCounts[$sku] ?? 0),
                 ];
             })->values();
+
+            $shopifyOnly = $this->shopifyListingManagerRows($qName, $qSku, $productType, $status, $amazonNorm);
+            if ($shopifyOnly !== []) {
+                $shopifySkus = array_values(array_unique(array_column($shopifyOnly, 'sku')));
+                $shopifyImages = $this->imageLookupsForSkus($shopifySkus);
+                $shopifyDrafts = [];
+                if (Schema::hasTable('listing_manager_channel_drafts') && $shopifySkus !== []) {
+                    $shopifyDrafts = ListingManagerChannelDraft::query()
+                        ->whereIn('seller_sku', $shopifySkus)
+                        ->selectRaw('seller_sku, COUNT(*) as draft_count')
+                        ->groupBy('seller_sku')
+                        ->pluck('draft_count', 'seller_sku')
+                        ->all();
+                }
+                foreach ($shopifyOnly as $row) {
+                    $sku = (string) $row['sku'];
+                    $hero = $shopifyImages['hero'][$sku] ?? $row['thumbnail'];
+                    $row['hero_image'] = $hero;
+                    $row['draft_channels'] = (int) ($shopifyDrafts[$sku] ?? 0);
+                    $data->push($row);
+                }
+            }
 
             return response()->json([
                 'success' => true,
@@ -999,6 +1025,148 @@ class ListingManagerController extends Controller
     }
 
     /**
+     * Shopify products that are not already in the Amazon catalog grid.
+     *
+     * @param  array<string, bool>  $excludeNormSkus
+     * @return list<array<string, mixed>>
+     */
+    private function shopifyListingManagerRows(string $qName, string $qSku, string $productType, string $status, array $excludeNormSkus): array
+    {
+        $status = strtolower(trim($status));
+        if ($status !== '' && $status !== 'all' && $status !== 'new') {
+            return [];
+        }
+
+        $out = [];
+        $seen = $excludeNormSkus;
+
+        if (Schema::hasTable('shopify_catalog_variants') && Schema::hasTable('shopify_catalog_products')) {
+            $query = DB::table('shopify_catalog_variants as v')
+                ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+                ->where('p.store', 'main')
+                ->whereNotNull('v.sku')
+                ->where('v.sku', '!=', '')
+                ->whereRaw("LOWER(v.sku) NOT LIKE '%parent%'");
+            if ($qSku !== '') {
+                $query->where('v.sku', 'like', '%'.$qSku.'%');
+            }
+            if ($qName !== '') {
+                $query->where('p.title', 'like', '%'.$qName.'%');
+            }
+            if ($productType !== '' && strtolower($productType) !== 'all') {
+                $query->where('p.product_type', $productType);
+            }
+            $rows = $query->orderBy('p.title')->orderBy('v.sku')->get([
+                'v.sku',
+                'p.title',
+                'v.variant_title',
+                'v.price',
+                'v.inventory_quantity',
+                'p.product_type',
+                'p.vendor',
+            ]);
+            $skuImages = [];
+            $skus = $rows->pluck('sku')->map(fn ($s) => trim((string) $s))->filter()->unique()->values()->all();
+            if ($skus !== [] && Schema::hasTable('shopify_skus')) {
+                $skuImages = ShopifySku::query()
+                    ->whereIn('sku', $skus)
+                    ->whereNotNull('image_src')
+                    ->where('image_src', '!=', '')
+                    ->pluck('image_src', 'sku')
+                    ->all();
+            }
+            foreach ($rows as $row) {
+                $sku = trim((string) ($row->sku ?? ''));
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($sku === '' || ($norm !== '' && isset($seen[$norm]))) {
+                    continue;
+                }
+                if ($norm !== '') {
+                    $seen[$norm] = true;
+                }
+                $qty = (int) ($row->inventory_quantity ?? 0);
+                $thumb = trim((string) ($skuImages[$sku] ?? ''));
+                $out[] = [
+                    'id' => 'shopify-'.$sku,
+                    'thumbnail' => $thumb !== '' ? $thumb : null,
+                    'hero_image' => $thumb !== '' ? $thumb : null,
+                    'name' => trim((string) ($row->title ?: $sku)),
+                    'sku' => $sku,
+                    'asin' => null,
+                    'origin' => 'Shopify',
+                    'manage_stock' => 'Yes',
+                    'in_stock' => $qty > 0 ? 'Yes' : 'No',
+                    'total_available' => $qty,
+                    'qty_source' => 'shopify',
+                    'variants' => 0,
+                    'price' => $row->price !== null ? (float) $row->price : null,
+                    'sale_price' => null,
+                    'list_price' => null,
+                    'product_type' => $row->product_type,
+                    'condition' => 'New',
+                    'brand' => $row->vendor,
+                    'draft_channels' => 0,
+                ];
+            }
+
+            return $out;
+        }
+
+        if (! Schema::hasTable('shopify_skus')) {
+            return [];
+        }
+
+        $query = ShopifySku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereRaw("LOWER(sku) NOT LIKE '%parent%'");
+        if ($qSku !== '') {
+            $query->where('sku', 'like', '%'.$qSku.'%');
+        }
+        if ($qName !== '') {
+            $query->where('product_title', 'like', '%'.$qName.'%');
+        }
+        $rows = $query->orderBy('product_title')->orderBy('sku')->get([
+            'id', 'sku', 'product_title', 'image_src', 'price', 'available_to_sell', 'inv',
+        ]);
+        foreach ($rows as $row) {
+            $sku = trim((string) $row->sku);
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($sku === '' || ($norm !== '' && isset($seen[$norm]))) {
+                continue;
+            }
+            if ($norm !== '') {
+                $seen[$norm] = true;
+            }
+            $qty = (int) ($row->available_to_sell ?? $row->inv ?? 0);
+            $thumb = trim((string) ($row->image_src ?? ''));
+            $out[] = [
+                'id' => 'shopify-'.$row->id,
+                'thumbnail' => $thumb !== '' ? $thumb : null,
+                'hero_image' => $thumb !== '' ? $thumb : null,
+                'name' => trim((string) ($row->product_title ?: $sku)),
+                'sku' => $sku,
+                'asin' => null,
+                'origin' => 'Shopify',
+                'manage_stock' => 'Yes',
+                'in_stock' => $qty > 0 ? 'Yes' : 'No',
+                'total_available' => $qty,
+                'qty_source' => 'shopify',
+                'variants' => 0,
+                'price' => $row->price !== null ? (float) $row->price : null,
+                'sale_price' => null,
+                'list_price' => null,
+                'product_type' => null,
+                'condition' => 'New',
+                'brand' => null,
+                'draft_channels' => 0,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * Import / refresh all Amazon listing details into amazon_listings_raw.
      */
     public function importFromAmazon(Request $request)
@@ -1033,6 +1201,39 @@ class ListingManagerController extends Controller
     }
 
     /**
+     * Import / refresh all Shopify main-store products into listing manager.
+     */
+    public function importFromShopify(Request $request)
+    {
+        try {
+            set_time_limit(0);
+            $result = app(ShopifyCatalogSyncService::class)->syncCatalog('main');
+            $variants = (int) ($result['variants'] ?? 0);
+            $products = (int) ($result['products'] ?? 0);
+            if ($products === 0 && $variants === 0 && ! ($result['completed'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Shopify import failed. Check Shopify API credentials and try again.',
+                ], 422);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Imported {$products} Shopify products ({$variants} variants).",
+                'count' => $variants,
+                'products' => $products,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('ListingManager importFromShopify failed: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Channels available for "List Products On Channel" modal.
      */
     public function channels(Request $request)
@@ -1044,12 +1245,10 @@ class ListingManagerController extends Controller
             ->orderBy('channel')
             ->get(['id', 'channel', 'logo'])
             ->filter(function ($c) {
-                $key = ListingChannelCounts::normalize((string) $c->channel);
-                if (in_array($key, ['amazon', 'amazonfba'], true)) {
-                    return false;
-                }
+                $name = (string) $c->channel;
 
-                return $this->channelHasConnectedListingApi((string) $c->channel);
+                return ListingManagerPublishDispatcher::supportsListingApi($name)
+                    && $this->channelHasConnectedListingApi($name);
             })
             ->values();
 
@@ -1064,9 +1263,17 @@ class ListingManagerController extends Controller
         $availableIds = $allActive->pluck('id')->map(fn ($id) => (int) $id)->all();
         $enabledIds = array_values(array_intersect(array_map('intval', $enabledIds), $availableIds));
 
-        // Default: every connected listing API (Amazon is the origin catalog, not a push target).
         if ($enabledIds === []) {
             $enabledIds = $availableIds;
+        } else {
+            foreach ($allActive as $c) {
+                $key = ListingChannelCounts::normalize((string) $c->channel);
+                if (in_array($key, ['amazon', 'amazonfba', 'amz', 'amzfbm'], true)) {
+                    $enabledIds[] = (int) $c->id;
+                }
+            }
+            $enabledIds = array_values(array_unique(array_map('intval', $enabledIds)));
+            $enabledIds = array_values(array_intersect($enabledIds, $availableIds));
         }
 
         $enabledSet = array_fill_keys(array_map('intval', $enabledIds), true);
@@ -2150,20 +2357,31 @@ class ListingManagerController extends Controller
 
     public function productTypes()
     {
-        if (! Schema::hasTable('amazon_listings_raw')) {
-            return response()->json(['success' => true, 'types' => []]);
+        $types = collect();
+        if (Schema::hasTable('amazon_listings_raw')) {
+            $types = $types->merge(AmazonListingRaw::query()
+                ->whereNotNull('product_type')
+                ->where('product_type', '!=', '')
+                ->distinct()
+                ->orderBy('product_type')
+                ->limit(200)
+                ->pluck('product_type'));
+        }
+        if (Schema::hasTable('shopify_catalog_products')) {
+            $types = $types->merge(DB::table('shopify_catalog_products')
+                ->where('store', 'main')
+                ->whereNotNull('product_type')
+                ->where('product_type', '!=', '')
+                ->distinct()
+                ->orderBy('product_type')
+                ->limit(200)
+                ->pluck('product_type'));
         }
 
-        $types = AmazonListingRaw::query()
-            ->whereNotNull('product_type')
-            ->where('product_type', '!=', '')
-            ->distinct()
-            ->orderBy('product_type')
-            ->limit(200)
-            ->pluck('product_type')
-            ->values();
-
-        return response()->json(['success' => true, 'types' => $types]);
+        return response()->json([
+            'success' => true,
+            'types' => $types->filter()->unique()->sort()->values(),
+        ]);
     }
 
     /**
