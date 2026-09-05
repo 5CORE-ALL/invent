@@ -4026,7 +4026,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing-manager/drafts/{id}/publish', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'publishDraft'])->name('listing.manager.drafts.publish');
     Route::post('/listing-manager/drafts/{id}/copy-siblings', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'copyToSiblings'])->name('listing.manager.drafts.copy-siblings');
     Route::post('/listing-manager/drafts/{id}/reload-store', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'reloadDraftFromStore'])->name('listing.manager.drafts.reload');
-    Route::post('/listing-manager/drafts/{id}/fetch-shopify', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'fetchDraftFromShopify'])->name('listing.manager.drafts.fetch-shopify');
+    Route::match(['get', 'post'], '/listing-manager/drafts/{id}/fetch-shopify', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'fetchDraftFromShopify'])->name('listing.manager.drafts.fetch-shopify')->whereNumber('id');
     Route::post('/listing-manager/drafts/{id}/load-description', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadDescriptionFromStore'])->name('listing.manager.drafts.load-description');
     Route::post('/listing-manager/drafts/{id}/images', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'uploadDraftImage'])->name('listing.manager.drafts.images');
     Route::post('/listing-manager/drafts/{id}/load-images', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadDraftImages'])->name('listing.manager.drafts.load-images');

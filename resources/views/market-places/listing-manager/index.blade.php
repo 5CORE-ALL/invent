@@ -3756,8 +3756,9 @@
             const idleHtml = $btn.html();
             $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Fetching…');
             $.ajax({
-                url: "{{ url('/listing-manager/drafts') }}/" + id + '/fetch-shopify',
+                url: "{{ url('/listing-manager/drafts') }}/" + id + '/load-master',
                 method: 'POST',
+                data: { source: 'shopify' },
                 timeout: 45000,
                 success: function (res) {
                     if (!res.success) {
