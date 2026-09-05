@@ -212,6 +212,9 @@ class ListingManagerEditorProfile
         if ($normalizedKey === 'shein') {
             return 'shein';
         }
+        if ($normalizedKey === 'wayfair') {
+            return 'wayfair';
+        }
 
         return 'default';
     }

@@ -1292,8 +1292,9 @@
             channel: 'wayfair',
             channelLabel: "Wayfair",
             previewUrl: '/listing_wayfair/save-status',
-            publishUrl: '/listing_wayfair/save-status'
+            publishUrl: '/listing_wayfair/save-status',
+            categorySearchUrl: '/listing-manager/ebay/categories'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=11"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=21"></script>
 @endsection

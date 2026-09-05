@@ -2118,6 +2118,97 @@ XML;
     }
 
     /**
+     * Search Wayfair taxonomy classes by name or ID for the listing-page picker.
+     *
+     * @return array{success: bool, categories: list<array{id: string, path: string, name: string}>, message?: string}
+     */
+    public function searchListingClasses(string $query, string $title = ''): array
+    {
+        $q = trim($query !== '' ? $query : $title);
+        $categories = $this->taxonomyCategories();
+        if ($categories === []) {
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => 'Wayfair taxonomy is empty. Confirm catalog API access, or type a class ID from Partner Home.',
+            ];
+        }
+
+        $scored = [];
+        if (preg_match('/^\d{2,}$/', $q)) {
+            $want = (int) $q;
+            foreach ($categories as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $id = (int) ($row['taxonomyCategoryId'] ?? $row['classId'] ?? $row['class_id'] ?? 0);
+                if ($id !== $want) {
+                    continue;
+                }
+                $name = trim((string) ($row['name'] ?? $row['className'] ?? ''));
+
+                return [
+                    'success' => true,
+                    'categories' => [[
+                        'id' => (string) $id,
+                        'path' => ($name !== '' ? $name : 'Class '.$id).' ('.$id.')',
+                        'name' => $name !== '' ? $name : ('Class '.$id),
+                    ]],
+                ];
+            }
+        }
+
+        if (mb_strlen($q) < 2) {
+            return ['success' => true, 'categories' => []];
+        }
+
+        $qLower = mb_strtolower($q);
+        $words = preg_split('/\s+/', $qLower) ?: [];
+        foreach ($categories as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $id = (int) ($row['taxonomyCategoryId'] ?? $row['classId'] ?? $row['class_id'] ?? 0);
+            $name = trim((string) ($row['name'] ?? $row['className'] ?? ''));
+            if ($id <= 0 || $name === '') {
+                continue;
+            }
+            $hay = mb_strtolower($name);
+            $score = 0;
+            if ($hay === $qLower) {
+                $score += 40;
+            }
+            if (str_contains($hay, $qLower)) {
+                $score += 16;
+            }
+            foreach ($words as $word) {
+                if (mb_strlen($word) >= 2 && str_contains($hay, $word)) {
+                    $score += 5;
+                }
+            }
+            $score += $this->taxonomyNameScore($qLower, $hay);
+            if ($score <= 0) {
+                continue;
+            }
+            $scored[] = [
+                'id' => (string) $id,
+                'path' => $name.' ('.$id.')',
+                'name' => $name,
+                '_score' => $score,
+            ];
+        }
+        usort($scored, static fn ($a, $b) => ($b['_score'] ?? 0) <=> ($a['_score'] ?? 0));
+
+        $out = [];
+        foreach (array_slice($scored, 0, 25) as $row) {
+            unset($row['_score']);
+            $out[] = $row;
+        }
+
+        return ['success' => true, 'categories' => $out];
+    }
+
+    /**
      * @return array{class_id: int, class_name: string}|null
      */
     public function searchTaxonomyClass(string $title): ?array
@@ -2127,14 +2218,28 @@ XML;
             return null;
         }
 
+        $fromSearch = $this->searchListingClasses($title, $title);
+        $ranked = $fromSearch['categories'] ?? [];
+        foreach (array_slice($ranked, 0, 5) as $row) {
+            $classId = (int) ($row['id'] ?? 0);
+            if ($classId <= 0) {
+                continue;
+            }
+            if ($this->productAdditionClassExists($classId)) {
+                return [
+                    'class_id' => $classId,
+                    'class_name' => trim((string) ($row['name'] ?? '')),
+                ];
+            }
+        }
+
         $categories = $this->taxonomyCategories();
         if ($categories === []) {
             return null;
         }
 
         $hay = strtolower($title);
-        $best = null;
-        $bestScore = 0;
+        $ranked = [];
         foreach ($categories as $row) {
             if (! is_array($row)) {
                 continue;
@@ -2145,19 +2250,21 @@ XML;
                 continue;
             }
             $score = $this->taxonomyNameScore($hay, strtolower($className));
-            if ($score > $bestScore) {
-                $bestScore = $score;
-                $best = ['class_id' => $classId, 'class_name' => $className];
+            if ($score >= 20) {
+                $ranked[] = ['class_id' => $classId, 'class_name' => $className, '_score' => $score];
             }
         }
-        if ($best === null || $bestScore < 50) {
-            return null;
-        }
-        if (! $this->productAdditionClassExists((int) $best['class_id'])) {
-            return null;
+        usort($ranked, static fn ($a, $b) => ($b['_score'] ?? 0) <=> ($a['_score'] ?? 0));
+        foreach (array_slice($ranked, 0, 5) as $candidate) {
+            if ($this->productAdditionClassExists((int) $candidate['class_id'])) {
+                return [
+                    'class_id' => (int) $candidate['class_id'],
+                    'class_name' => (string) $candidate['class_name'],
+                ];
+            }
         }
 
-        return $best;
+        return null;
     }
 
     /**
@@ -2236,6 +2343,11 @@ XML;
         if ((str_contains($title, 'in wall') || str_contains($title, 'in-wall'))
             && (str_contains($name, 'in wall') || str_contains($name, 'in-wall') || str_contains($name, 'inwall'))) {
             $score += 30;
+        }
+        foreach (['folder', 'stand', 'capo', 'guitar', 'microphone', 'mixer', 'amp', 'pedal', 'cable'] as $word) {
+            if (str_contains($title, $word) && str_contains($name, $word)) {
+                $score += 35;
+            }
         }
 
         return $score;

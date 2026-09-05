@@ -166,7 +166,7 @@ class WayfairListingPublishService
         if ($resolvedClass <= 0) {
             return [
                 'success' => false,
-                'message' => 'Wayfair class ID is required. Type the class ID in the publish window (from a listed sibling or Partner Home).',
+                'message' => 'Wayfair class is required. Type a class name in the publish window and pick one from the list.',
             ];
         }
 
@@ -278,8 +278,25 @@ class WayfairListingPublishService
             return $classId;
         }
         $name = trim((string) $className);
-        if ($name !== '' && preg_match('/(\d{2,})/', $name, $match)) {
+        if ($name !== '' && preg_match('/^\d{2,}$/', $name)) {
+            return (int) $name;
+        }
+        if ($name !== '' && preg_match('/\((\d{2,})\)\s*$/', $name, $match)) {
             return (int) $match[1];
+        }
+        if ($name !== '') {
+            try {
+                $fromName = $this->api->searchListingClasses($name, $name);
+                $picked = (int) ($fromName['categories'][0]['id'] ?? 0);
+                if ($picked > 0) {
+                    return $picked;
+                }
+            } catch (\Throwable) {
+            }
+            $fromTaxonomy = $this->api->searchTaxonomyClass($name);
+            if ($fromTaxonomy && ($fromTaxonomy['class_id'] ?? 0) > 0) {
+                return (int) $fromTaxonomy['class_id'];
+            }
         }
         $fromStatus = $this->classIdFromListingStatuses($skus);
         if ($fromStatus > 0) {

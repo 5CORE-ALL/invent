@@ -13,6 +13,7 @@ use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\ReverbApiService;
 use App\Services\SheinApiService;
+use App\Services\WayfairApiService;
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
 use App\Services\ShopifyApiService;
 use App\Services\Support\MarketplaceApiConfigService;
@@ -1442,6 +1443,12 @@ class ListingManagerController extends Controller
 
         if ($family === 'shein') {
             $result = app(SheinApiService::class)->searchListingCategories($q, $title);
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        }
+
+        if ($family === 'wayfair') {
+            $result = app(WayfairApiService::class)->searchListingClasses($q, $title);
 
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }
