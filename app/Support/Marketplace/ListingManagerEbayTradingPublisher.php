@@ -5,8 +5,10 @@ namespace App\Support\Marketplace;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use SimpleXMLElement;
 
 /**
@@ -190,6 +192,7 @@ class ListingManagerEbayTradingPublisher
             if ($upc !== '') {
                 $specifics['UPC'] = $upc;
             }
+            $specifics = self::ensureRequiredItemSpecifics($specifics, $payload);
 
             if ($specifics !== []) {
                 $itemSpecifics = $item->addChild('ItemSpecifics');
@@ -376,5 +379,118 @@ class ListingManagerEbayTradingPublisher
         foreach (array_values(array_unique($labels)) as $label) {
             $setList->addChild('Value', htmlspecialchars($label, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
         }
+    }
+
+    /**
+     * eBay categories reject AddFixedPriceItem when Type is omitted.
+     *
+     * @param  array<string, mixed>  $specifics
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public static function ensureRequiredItemSpecifics(array $specifics, array $payload = []): array
+    {
+        $hasType = false;
+        foreach ($specifics as $name => $value) {
+            if (strcasecmp(trim((string) $name), 'Type') === 0 && trim((string) $value) !== '') {
+                $hasType = true;
+                break;
+            }
+        }
+        if (! $hasType) {
+            $type = self::resolveTypeValue($payload, $specifics);
+            if ($type !== '') {
+                $specifics['Type'] = $type;
+            }
+        }
+
+        return $specifics;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $specifics
+     */
+    public static function resolveTypeValue(array $payload, array $specifics = []): string
+    {
+        foreach (['Type', 'type', 'product_type'] as $key) {
+            $value = trim((string) ($specifics[$key] ?? $payload[$key] ?? ''));
+            if ($value !== '' && ! preg_match('/^\d+$/', $value)) {
+                return $value;
+            }
+        }
+
+        $haystack = trim(implode(' ', array_filter([
+            (string) ($payload['title'] ?? ''),
+            (string) ($payload['primary_category_path'] ?? ''),
+            (string) ($payload['category'] ?? ''),
+            (string) ($payload['category_name'] ?? ''),
+        ])));
+        $inferred = self::inferTypeFromText($haystack);
+        if ($inferred !== '') {
+            return $inferred;
+        }
+
+        $sku = trim((string) ($payload['sku'] ?? ''));
+        if ($sku !== '' && Schema::hasTable('product_master')) {
+            $row = DB::table('product_master')->where('sku', $sku)->first();
+            if ($row) {
+                foreach (['category', 'group'] as $col) {
+                    $value = trim((string) ($row->{$col} ?? ''));
+                    if ($value === '') {
+                        continue;
+                    }
+                    $fromMaster = self::inferTypeFromText($value);
+                    if ($fromMaster !== '') {
+                        return $fromMaster;
+                    }
+                    if (! preg_match('/^\d+$/', $value)) {
+                        return $value;
+                    }
+                }
+            }
+        }
+
+        return trim((string) config('services.ebay.type_fallback_value', ''));
+    }
+
+    public static function inferTypeFromText(string $text): string
+    {
+        $t = strtolower($text);
+        if ($t === '') {
+            return '';
+        }
+
+        $rules = [
+            'light stand' => 'Light Stand',
+            'lighting stand' => 'Light Stand',
+            'speaker stand' => 'Speaker Stand',
+            'keyboard stand' => 'Keyboard Stand',
+            'guitar stand' => 'Guitar Stand',
+            'mic stand' => 'Microphone Stand',
+            'microphone stand' => 'Microphone Stand',
+            'amp stand' => 'Amplifier Stand',
+            'tripod' => 'Tripod',
+            'capo' => 'Capo',
+            'guitar speaker' => 'Guitar Speaker',
+            'subwoofer' => 'Subwoofer',
+            'tweeter' => 'Tweeter',
+            'speaker' => 'Speaker',
+            'amplifier' => 'Amplifier',
+            'mixer' => 'Mixer',
+            'cable' => 'Cable',
+            'connector' => 'Audio Connector',
+            'microphone' => 'Microphone',
+            'headset' => 'Headset',
+            'headphone' => 'Headphones',
+        ];
+
+        foreach ($rules as $needle => $type) {
+            if (str_contains($t, $needle)) {
+                return $type;
+            }
+        }
+
+        return '';
     }
 }

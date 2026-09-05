@@ -339,6 +339,10 @@ class ListingManagerAmazonHydrator
         $specifics['Brand'] = $brand;
         $specifics['Manufacturer'] = $manufacturer;
         $specifics['MPN'] = $sku;
+        $specifics = ListingManagerEbayTradingPublisher::ensureRequiredItemSpecifics($specifics, array_merge($details, [
+            'sku' => $sku,
+            'title' => (string) ($details['title'] ?? ''),
+        ]));
         $details['item_specifics'] = $specifics;
 
         if ($sku !== '') {
