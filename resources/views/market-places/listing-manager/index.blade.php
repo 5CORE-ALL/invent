@@ -406,6 +406,21 @@
         .lm-var-current { background: #eef5ff; }
         .lm-var-label { display: inline-block; background: #e8f1ff; color: #2b56b3; border-radius: 999px; padding: .1rem .5rem; font-size: .72rem; font-weight: 700; }
         .lm-family-bar { display: flex; justify-content: space-between; gap: .75rem; align-items: center; flex-wrap: wrap; margin-bottom: .85rem; }
+        .lc-parent-pick {
+            display: grid;
+            grid-template-columns: minmax(180px, 240px) 1fr;
+            gap: .85rem;
+            align-items: stretch;
+            margin: 0 0 14px;
+            padding: .85rem;
+            border: 1px solid #dbeafe;
+            border-radius: 10px;
+            background: #f8fbff;
+        }
+        .lc-parent-current { display: flex; flex-direction: column; justify-content: center; }
+        .lc-parent-current-kicker { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #2563eb; }
+        .lc-parent-current-name { font-size: 1.05rem; font-weight: 750; color: #0f172a; line-height: 1.25; }
+        @media (max-width: 720px) { .lc-parent-pick { grid-template-columns: 1fr; } }
         .listing-publish-mode {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -642,6 +657,21 @@
                             <i class="fas fa-copy me-1"></i>Copy listing details to siblings
                         </button>
                     </div>
+                    <div class="lc-parent-pick">
+                        <div class="lc-parent-current">
+                            <div class="lc-parent-current-kicker">Parent group</div>
+                            <div class="lc-parent-current-name" id="lc-parent-group-label">—</div>
+                            <div class="text-muted small" id="lc-parent-group-meta"></div>
+                        </div>
+                        <div>
+                            <label class="form-label mb-1" for="lc-parent-group">List under this parent</label>
+                            <input type="search" id="lc-parent-group-search" class="form-control form-control-sm mb-2" placeholder="Search parent groups (e.g. DJ LGT Stand)" autocomplete="off">
+                            <select id="lc-parent-group" class="form-select">
+                                <option value="">Loading parent groups…</option>
+                            </select>
+                            <p class="lc-help mb-0 mt-2">Variation listings publish under this Product Master parent. Change it to group this SKU with a different family.</p>
+                        </div>
+                    </div>
                     <div class="listing-publish-mode" id="lc-publish-mode-box" role="radiogroup" aria-label="How do you want to list?">
                         <label class="listing-publish-mode-card">
                             <input type="radio" name="lc-publish-mode" value="single" checked>
@@ -654,7 +684,7 @@
                             <input type="radio" name="lc-publish-mode" value="variation">
                             <span>
                                 <strong>Variation listing</strong>
-                                <em>One listing with the parent and every child SKU from Product Master.</em>
+                                <em>One listing under the selected parent, with the child SKUs checked below.</em>
                             </span>
                         </label>
                     </div>
@@ -1067,7 +1097,7 @@
                         <input type="radio" name="lc-publish-mode-footer" value="variation">
                         <span>
                             <strong>Variation listing</strong>
-                            <em>One listing with the SKUs checked on Variations.</em>
+                            <em>One listing under the selected parent, with the SKUs checked on Variations.</em>
                         </span>
                     </label>
                 </div>
@@ -2233,6 +2263,7 @@
             bullet_5: ($('#lc-bullets').val() || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)[4] || '',
             publish_mode: selectedPublishMode(),
             variation_skus: selectedVariationSkus(),
+            parent_group: String($('#lc-parent-group').val() || (currentDraft && currentDraft.family && currentDraft.family.parent) || '').trim(),
         };
     }
 
@@ -2281,11 +2312,11 @@
         $('#lc-family-table').toggleClass('lm-family-single', !isVariation);
         $('input[name="lc-publish-mode"][value="variation"], input[name="lc-publish-mode-footer"][value="variation"]')
             .prop('disabled', listed || !canVary);
-        const parent = String($('#lc-family-parent').text() || '—').trim() || '—';
+        const parent = String($('#lc-parent-group').val() || $('#lc-family-parent').text() || '—').trim() || '—';
         if (isVariation) {
-            $('#lc-family-help').html('Siblings share <code id="lc-family-parent">' + escapeHtml(parent) + '</code> from Product Master. All child SKUs are included on one eBay variation listing. Uncheck a SKU only if you do not want it on this listing.');
+            $('#lc-family-help').html('This listing publishes under parent <code id="lc-family-parent">' + escapeHtml(parent) + '</code>. All checked child SKUs go on one variation listing. Uncheck a SKU only if you do not want it on this listing.');
         } else {
-            $('#lc-family-help').html('Siblings share <code id="lc-family-parent">' + escapeHtml(parent) + '</code> from Product Master. Single listing publishes only this SKU. Choose Variation listing to publish the parent with all children.');
+            $('#lc-family-help').html('This SKU belongs to parent <code id="lc-family-parent">' + escapeHtml(parent) + '</code>. Single listing publishes only this SKU. Choose Variation listing to publish the selected parent with its children.');
         }
     }
 
@@ -2552,7 +2583,7 @@
         const family = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
         const channel = (currentDraft && currentDraft.channel) || '';
         const title = String($('#lc-title').val() || (currentDraft && currentDraft.title) || '').trim();
-        if (family !== 'tiktok' && family !== 'reverb' && family !== 'amazon' && (!q || q.length < 2)) {
+        if (family !== 'tiktok' && family !== 'reverb' && family !== 'amazon' && family !== 'temu' && (!q || q.length < 2)) {
             $box.html('<div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>');
             return;
         }
@@ -2564,9 +2595,13 @@
             $box.html('<div class="text-muted small p-3">Type a keyword such as light stand to load Amazon product types.</div>');
             return;
         }
+        if (family === 'temu' && (!q || q.length < 2) && !title) {
+            $box.html('<div class="text-muted small p-3">Type a keyword such as light stand to load Temu category suggestions.</div>');
+            return;
+        }
         const searchingLabel = family === 'tiktok'
             ? 'Searching TikTok Shop categories…'
-            : (family === 'reverb' ? 'Searching Reverb categories…' : (family === 'amazon' ? 'Searching Amazon product types…' : 'Searching…'));
+            : (family === 'reverb' ? 'Searching Reverb categories…' : (family === 'amazon' ? 'Searching Amazon product types…' : (family === 'temu' ? 'Searching Temu categories…' : 'Searching…')));
         $box.html('<div class="text-muted small p-3">' + searchingLabel + '</div>');
         const desc = String(getDescriptionValue() || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
         if (window._lcCatXhr && window._lcCatXhr.abort) {
@@ -2599,7 +2634,8 @@
                 if (status === 'abort') return;
                 const timeoutMsg = family === 'amazon'
                     ? 'Amazon product type search timed out. Try again.'
-                    : (family === 'tiktok' ? 'TikTok category search timed out. Try again.' : 'Category search timed out. Try again.');
+                    : (family === 'temu' ? 'Temu category search timed out. Try again.'
+                    : (family === 'tiktok' ? 'TikTok category search timed out. Try again.' : 'Category search timed out. Try again.'));
                 const msg = (xhr.responseJSON && xhr.responseJSON.message)
                     || (status === 'timeout' ? timeoutMsg : 'Category search failed.');
                 $box.html(`<div class="text-danger small p-3">${escapeHtml(msg)}</div>`);
@@ -2631,7 +2667,7 @@
         $('.lc-reverb-only').toggleClass('d-none', !ed.reverb);
         $('.lc-amazon-only').toggleClass('d-none', !ed.amazon);
         $('.lc-mp-category-manual').toggleClass('d-none', !ed.temu);
-        $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.reverb || ed.amazon));
+        $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.reverb || ed.amazon || ed.temu));
         $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon));
         $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
@@ -2777,10 +2813,12 @@
             $('#lc-editor-loading').hide();
             $('#lc-editor-body').show();
             refreshEditorUi(draft);
+            const savedParent = String((d.parent_group || (draft.family && (draft.family.parent || draft.family.parent_label)) || '')).trim();
+            loadParentGroups(savedParent);
             const family = (draft.editor && draft.editor.family) || '';
             if ((family === 'tiktok' || family === 'reverb') && !String($('#lc-category-id').val() || '').trim()) {
                 searchCategories(family === 'reverb' ? String($('#lc-title').val() || '').trim() : '');
-            } else if (family === 'reverb' || family === 'amazon') {
+            } else if (family === 'reverb' || family === 'amazon' || family === 'temu') {
                 const amazonQ = String($('#lc-category-search').val() || $('#lc-amazon-product-type').val() || $('#lc-title').val() || '').trim();
                 searchCategories(family === 'amazon' ? amazonQ : String($('#lc-category-search').val() || $('#lc-title').val() || '').trim());
             }
@@ -2829,10 +2867,97 @@
         });
     }
 
+    let lcParentGroups = [];
+
+    function selectedParentGroup(draft) {
+        const details = (draft && draft.listing_details) || {};
+        const family = (draft && draft.family) || {};
+        return String($('#lc-parent-group').val() || details.parent_group || family.parent || family.parent_label || '').trim();
+    }
+
+    function updateParentGroupLabel(draft) {
+        const parent = selectedParentGroup(draft) || '—';
+        const family = (draft && draft.family) || (currentDraft && currentDraft.family) || {};
+        const group = lcParentGroups.find(g => String(g.id || '').toLowerCase() === parent.toLowerCase());
+        const count = group ? Number(group.child_count || 0) : ((family.children || family.skus || []).length || 0);
+        const parentSku = (group && group.parent_sku) || family.parent_sku || '';
+        $('#lc-parent-group-label').text(parent || '—');
+        $('#lc-family-parent').text(parent || '—');
+        const bits = [];
+        if (parentSku) bits.push(parentSku);
+        if (count) bits.push(count + (count === 1 ? ' child SKU' : ' child SKUs'));
+        $('#lc-parent-group-meta').text(bits.join(' · '));
+    }
+
+    function renderParentGroupSelect(selected) {
+        selected = String(selected || '').trim();
+        const q = String($('#lc-parent-group-search').val() || '').trim().toLowerCase();
+        const rows = !q ? lcParentGroups : lcParentGroups.filter(g => {
+            const name = String(g.name || '').toLowerCase();
+            const id = String(g.id || '').toLowerCase();
+            return name.includes(q) || id.includes(q);
+        });
+        const opts = rows.map(g => {
+            const sel = selected && String(g.id).toLowerCase() === selected.toLowerCase() ? ' selected' : '';
+            const count = g.child_count != null ? ' (' + g.child_count + ' SKUs)' : '';
+            return `<option value="${escapeHtml(g.id)}"${sel}>${escapeHtml(g.name)}${count}</option>`;
+        });
+        if (selected && !rows.some(g => String(g.id).toLowerCase() === selected.toLowerCase())) {
+            opts.unshift(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>`);
+        }
+        $('#lc-parent-group').html(opts.join('') || '<option value="">No parent groups found</option>');
+        if (selected) $('#lc-parent-group').val(selected);
+        updateParentGroupLabel(currentDraft);
+    }
+
+    function loadParentGroups(selected, done) {
+        selected = String(selected || '').trim();
+        if (lcParentGroups.length) {
+            renderParentGroupSelect(selected);
+            if (done) done();
+            return;
+        }
+        $.getJSON("{{ route('listing.manager.parent.groups') }}", function (res) {
+            lcParentGroups = res.groups || [];
+            renderParentGroupSelect(selected);
+            if (done) done();
+        }).fail(function () {
+            if (selected) {
+                $('#lc-parent-group').html(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>`);
+                updateParentGroupLabel(currentDraft);
+            }
+            if (done) done();
+        });
+    }
+
+    function applyParentGroup(parent) {
+        parent = String(parent || '').trim();
+        const sku = String($('#lc-sku').val() || (currentDraft && currentDraft.sku) || '').trim();
+        if (!parent || !currentDraft) return;
+        $.getJSON("{{ route('listing.manager.family') }}", { parent, sku }, function (res) {
+            if (!res.success) {
+                toast(res.message || 'Could not load that parent group.', 'error');
+                return;
+            }
+            currentDraft.family = res.family;
+            currentDraft.variations = res.variations || [];
+            if (!currentDraft.listing_details) currentDraft.listing_details = {};
+            currentDraft.listing_details.parent_group = parent;
+            renderFamilyRows(currentDraft);
+            updateParentGroupLabel(currentDraft);
+            dirty = true;
+            toast('Parent group set to ' + parent + '.', 'success');
+        }).fail(function (xhr) {
+            toast((xhr.responseJSON && xhr.responseJSON.message) || 'Could not load that parent group.', 'error');
+        });
+    }
+
     function renderFamilyRows(draft) {
         const family = (draft && draft.family) || {};
         const kids = (draft && draft.variations && draft.variations.length) ? draft.variations : (family.children || []);
-        $('#lc-family-parent').text(family.parent || (draft && draft.sku) || '—');
+        const parentName = family.parent_label || family.parent || (draft && draft.sku) || '—';
+        $('#lc-family-parent').text(parentName);
+        updateParentGroupLabel(draft);
         const currentSku = String((draft && draft.sku) || $('#lc-sku').val() || '').trim();
         const existing = [];
         $('#lc-family-rows input.lc-var-sku:checked').each(function () { existing.push(String($(this).val() || '').trim()); });
@@ -3712,8 +3837,8 @@
             $(this).addClass('active');
             $('#lmListingEditorModal .lc-pane').removeClass('active');
             $(`#lmListingEditorModal .lc-pane[data-pane="${pane}"]`).addClass('active');
-            if (pane === 'category' && currentDraft && currentDraft.editor && (currentDraft.editor.tiktok || currentDraft.editor.reverb || currentDraft.editor.amazon)) {
-                const q = String($('#lc-category-search').val() || (currentDraft.editor.amazon ? ($('#lc-amazon-product-type').val() || $('#lc-title').val() || '') : '') || '').trim();
+            if (pane === 'category' && currentDraft && currentDraft.editor && (currentDraft.editor.tiktok || currentDraft.editor.reverb || currentDraft.editor.amazon || currentDraft.editor.temu)) {
+                const q = String($('#lc-category-search').val() || (currentDraft.editor.amazon ? ($('#lc-amazon-product-type').val() || $('#lc-title').val() || '') : (currentDraft.editor.temu ? ($('#lc-title').val() || '') : '')) || '').trim();
                 searchCategories(q);
             }
         });
@@ -3946,6 +4071,12 @@
                     $btn.data('loading', false).prop('disabled', false).html(idleHtml);
                 }
             });
+        });
+        $('#lc-parent-group-search').on('input', function () {
+            renderParentGroupSelect($('#lc-parent-group').val());
+        });
+        $('#lc-parent-group').on('change', function () {
+            applyParentGroup($(this).val());
         });
         $('#lc-category-search, #lc-amazon-product-type').on('input', function () {
             const q = String($(this).val() || '').trim();

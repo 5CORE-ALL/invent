@@ -89,7 +89,7 @@ class ListingManagerEditorProfile
                     ['id' => 'policies', 'label' => 'Package'],
                 ],
                 'identifier_fields' => ['sku', 'asin', 'brand', 'manufacturer', 'upc'],
-                'category_placeholder' => 'Temu leaf category ID',
+                'category_placeholder' => 'Search Temu categories (e.g. light stand)',
                 'optimize_label' => 'Optimize Description for Temu',
                 'header_quick' => 'Quick/Auto List to Temu',
                 'header_import' => 'Import from Temu',
@@ -97,7 +97,7 @@ class ListingManagerEditorProfile
                 'title_heading' => 'Title & Description',
                 'identifier_help' => 'Brand is always 5 Core Inc. Model/MPN is the SKU. Condition is New.',
                 'images_help' => 'Temu needs at least one Image Master photo. First image is the main photo.',
-                'category_help' => 'Enter the Temu leaf category ID. Required before publish.',
+                'category_help' => 'Type a keyword such as light stand. Click a Temu suggestion to fill the leaf category ID before you publish.',
                 'policies_help' => 'Package weight and dimensions come from Dim/Wt Master and are required for Temu.',
             ],
             'reverb' => [
@@ -223,7 +223,7 @@ class ListingManagerEditorProfile
         if (in_array($normalizedKey, ['tiktok', 'tiktokshop', 'tiktok2', 'tiktokshop2', 'tiktoktwo'], true)) {
             return 'tiktok';
         }
-        if (in_array($normalizedKey, ['temu', 'temu2', 'temutwo'], true)) {
+        if (in_array($normalizedKey, ['temu', 'temu1', 'temu2', 'temutwo'], true)) {
             return 'temu';
         }
         if ($normalizedKey === 'faire') {

@@ -4027,6 +4027,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing-manager/drafts/refresh-status', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'refreshDraftStatuses'])->name('listing.manager.drafts.refresh');
     Route::delete('/listing-manager/drafts/{id}', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'deleteDraft'])->name('listing.manager.drafts.delete');
     Route::get('/listing-manager/product-types', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'productTypes'])->name('listing.manager.product.types');
+    Route::get('/listing-manager/parent-groups', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'parentGroups'])->name('listing.manager.parent.groups');
+    Route::get('/listing-manager/family', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'familyByParent'])->name('listing.manager.family');
 
     // Variations Verify Masters — active channel_master rows (Channel Image + Channels)
     Route::get('/variations-verify-masters', [\App\Http\Controllers\MarketPlace\VariationsVerifyMasterController::class, 'index'])->name('variations.verify.masters');
