@@ -3046,8 +3046,11 @@ PROMPT;
             'sku' => 'nullable|string',
             'title_150' => 'required|string',
             'current_title_80' => 'nullable|string',
+            'current_title_75' => 'nullable|string',
             'category' => 'nullable|string',
             'additional_details' => 'nullable|string',
+            'min_length' => 'nullable|integer|min:50|max:170',
+            'max_length' => 'nullable|integer|min:50|max:170',
         ]);
 
         $apiKey = config('services.anthropic.key');
@@ -3061,33 +3064,44 @@ PROMPT;
         }
 
         $title150 = trim($request->input('title_150', ''));
-        $currentTitle80 = trim($request->input('current_title_80', ''));
+        $currentTitle80 = trim((string) ($request->input('current_title_80') ?: $request->input('current_title_75', '')));
         $sku = $request->input('sku', '');
         $category = $request->input('category', '');
         $additionalDetails = trim((string) $request->input('additional_details', ''));
         $detailsLine = $additionalDetails !== '' ? "\nAdditional details / keywords the user wants included: {$additionalDetails}" : '';
 
         $model = 'claude-sonnet-4-20250514';
-        $minLen = 75;
-        $maxLen = 85;
+        $minLen = (int) $request->input('min_length', 75);
+        $maxLen = (int) $request->input('max_length', 85);
+        if ($minLen < 50 || $minLen > 170) {
+            $minLen = 75;
+        }
+        if ($maxLen < $minLen || $maxLen > 170) {
+            $maxLen = 85;
+        }
+        $isAmazon75 = $maxLen <= 75;
+        $marketplaceLine = $isAmazon75
+            ? 'Marketplace: Amazon (75-character title limit)'
+            : 'Marketplace: eBay';
 
         $prompt = <<<PROMPT
-Generate 4 eBay product titles that are between 75-85 characters.
+Generate 4 product titles that are between {$minLen}-{$maxLen} characters.
 
 Original title: "{$title150}"
 SKU: {$sku}
+{$marketplaceLine}
 Category: {$category}{$detailsLine}
-Existing Title 80 (if any): "{$currentTitle80}"
+Existing title (if any): "{$currentTitle80}"
 
 REQUIREMENTS:
-- Length: MUST be between 75-85 characters
+- Length: MUST be between {$minLen}-{$maxLen} characters
 - Include brand "5 Core" at beginning
-- Focus on key features for eBay marketplace
+- Focus on key features
 - Include important keywords
 - No promotional text
 - Return 4 variations with character counts
 
-For each title, provide a success score out of 100 (based on: character count 75-85 = high, brand inclusion, keyword density, eBay best practices).
+For each title, provide a success score out of 100 (based on: character count {$minLen}-{$maxLen} = high, brand inclusion, keyword density).
 
 Technical requirement: Return ONLY a JSON array of exactly 4 objects. No markdown, no code block, no explanations. Each object must have "title" (string) and "score" (integer 1-100).
 Example format: [{"title": "5 Core First title here 75-85 chars...", "score": 94}, {"title": "5 Core Second title...", "score": 87}, ...]
@@ -3150,7 +3164,7 @@ PROMPT;
                 }
                 $scoreFromAi = (is_array($raw) && isset($raw['score'])) ? max(1, min(100, (int) $raw['score'])) : null;
                 if ($scoreFromAi === null) {
-                    $scoreFromAi = ($len >= 75 && $len <= 85) ? 94 : 70;
+                    $scoreFromAi = ($len >= $minLen && $len <= $maxLen) ? 94 : 70;
                 }
                 $validItems[] = ['title' => $t, 'score' => $scoreFromAi];
             }
@@ -3158,7 +3172,7 @@ PROMPT;
             if (count($validItems) === 0) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'All 4 titles were out of range (75-85 characters). Please click Regenerate to try again.',
+                    'message' => "All 4 titles were out of range ({$minLen}-{$maxLen} characters). Please click Regenerate to try again.",
                 ], 422);
             }
 
@@ -3181,138 +3195,18 @@ PROMPT;
 
     /**
      * Generate 4 Title 75 options (70-75 chars) for Amazon.
+     * Delegates to the Title 80 generator with a 70-75 band so production
+     * still works if only the older generate-title-80 route is cached.
      */
     public function generateTitle75WithAI(Request $request)
     {
-        $request->validate([
-            'sku' => 'nullable|string',
-            'title_150' => 'required|string',
-            'current_title_75' => 'nullable|string',
-            'category' => 'nullable|string',
-            'additional_details' => 'nullable|string',
+        $request->merge([
+            'min_length' => 70,
+            'max_length' => 75,
+            'current_title_80' => $request->input('current_title_75', $request->input('current_title_80')),
         ]);
 
-        $apiKey = config('services.anthropic.key');
-        if (! $apiKey) {
-            Log::warning('AI generate title 75: ANTHROPIC_API_KEY not configured');
-
-            return response()->json([
-                'success' => false,
-                'message' => 'ANTHROPIC_API_KEY is not configured.',
-            ], 503);
-        }
-
-        $title150 = trim($request->input('title_150', ''));
-        $currentTitle75 = trim($request->input('current_title_75', ''));
-        $sku = $request->input('sku', '');
-        $category = $request->input('category', '');
-        $additionalDetails = trim((string) $request->input('additional_details', ''));
-        $detailsLine = $additionalDetails !== '' ? "\nAdditional details / keywords the user wants included: {$additionalDetails}" : '';
-
-        $model = 'claude-sonnet-4-20250514';
-        $minLen = 70;
-        $maxLen = 75;
-
-        $prompt = <<<PROMPT
-Generate 4 Amazon product titles that are between 70-75 characters.
-
-Original title: "{$title150}"
-SKU: {$sku}
-Marketplace: Amazon (75-character title limit)
-Category: {$category}{$detailsLine}
-Existing Title 75 (if any): "{$currentTitle75}"
-
-REQUIREMENTS:
-- Length: MUST be between 70-75 characters
-- Include brand "5 Core" at beginning or naturally near beginning
-- Front-load the most important search keywords
-- No promotional text, no trailing SKU unless it fits naturally
-- Return 4 distinct variations
-
-For each title, provide a success score out of 100 (based on: character count 70-75, brand inclusion, keyword density, Amazon best practices).
-
-Technical requirement: Return ONLY a JSON array of exactly 4 objects. No markdown, no code block, no explanations. Each object must have "title" (string) and "score" (integer 1-100).
-Example format: [{"title":"5 Core ...","score":95}, {"title":"5 Core ...","score":91}, {"title":"5 Core ...","score":89}, {"title":"5 Core ...","score":93}]
-PROMPT;
-
-        try {
-            Log::info('🤖 AI Title 75 generation started', ['sku' => $sku]);
-
-            $response = Http::timeout(90)
-                ->withHeaders([
-                    'x-api-key' => $apiKey,
-                    'anthropic-version' => '2023-06-01',
-                    'content-type' => 'application/json',
-                ])
-                ->post('https://api.anthropic.com/v1/messages', [
-                    'model' => $model,
-                    'max_tokens' => 1024,
-                    'messages' => [['role' => 'user', 'content' => $prompt]],
-                ]);
-
-            if (! $response->successful()) {
-                $bodyJson = $response->json();
-                $errorMsg = $bodyJson['error']['message'] ?? $response->body();
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'AI service error: '.$errorMsg,
-                ], 502);
-            }
-
-            $body = $response->json();
-            $text = trim($body['content'][0]['text'] ?? '');
-            $text = preg_replace('/^```\w*\s*|\s*```$/m', '', $text);
-            $arr = json_decode($text, true);
-
-            if (! is_array($arr) || count($arr) < 4) {
-                Log::warning('AI generate title 75: invalid response format', ['preview' => mb_substr($text, 0, 300)]);
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid AI response: expected 4 titles with scores.',
-                ], 422);
-            }
-
-            $validItems = [];
-            $invalidCount = 0;
-            for ($i = 0; $i < 4; $i++) {
-                $raw = $arr[$i] ?? null;
-                $t = is_array($raw) && ! empty($raw['title'])
-                    ? trim((string) $raw['title'])
-                    : trim(is_string($raw) ? $raw : (string) ($raw ?? ''));
-                $len = mb_strlen($t);
-                if ($len < $minLen || $len > $maxLen) {
-                    $invalidCount++;
-
-                    continue;
-                }
-                $scoreFromAi = (is_array($raw) && isset($raw['score'])) ? max(1, min(100, (int) $raw['score'])) : 90;
-                $validItems[] = ['title' => $t, 'score' => $scoreFromAi];
-            }
-
-            if (count($validItems) === 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'All 4 titles were out of range (70-75 characters). Please click Regenerate to try again.',
-                ], 422);
-            }
-
-            Log::info('✅ AI Title 75 generation success', ['sku' => $sku, 'titles' => count($validItems)]);
-
-            return response()->json([
-                'success' => true,
-                'titles' => $validItems,
-                'invalid_count' => $invalidCount,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('AI generate title 75: exception', ['message' => $e->getMessage()]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error: '.$e->getMessage(),
-            ], 500);
-        }
+        return $this->generateTitle80WithAI($request);
     }
 
     /**

@@ -3048,21 +3048,62 @@
                     btn.disabled = true;
                     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Generating 75-char titles...';
 
+                    const title75Payload = {
+                        sku: sku,
+                        title_150: title150,
+                        current_title_75: currentTitle75,
+                        current_title_80: currentTitle75,
+                        additional_details: titleMasterAiDetails(),
+                        category: category,
+                        min_length: 70,
+                        max_length: 75
+                    };
+                    const title75Headers = {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    };
+
+                    function titleMasterReadAiJson(response) {
+                        return response.text().then(function(text) {
+                            const body = (text || '').trim();
+                            if (!body || body.charAt(0) === '<') {
+                                const err = new Error('html');
+                                err.status = response.status;
+                                throw err;
+                            }
+                            try {
+                                return JSON.parse(body);
+                            } catch (e) {
+                                const err = new Error('html');
+                                err.status = response.status;
+                                throw err;
+                            }
+                        });
+                    }
+
                     fetch('/title-master/ai/generate-title-75', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken
-                        },
-                        body: JSON.stringify({
-                            sku: sku,
-                            title_150: title150,
-                            current_title_75: currentTitle75,
-                            additional_details: titleMasterAiDetails(),
-                            category: category
-                        })
+                        headers: title75Headers,
+                        body: JSON.stringify(title75Payload)
                     })
-                    .then(response => response.json())
+                    .then(function(response) {
+                        if (response.status === 404 || response.status === 405) {
+                            return Promise.reject({ fallback: true });
+                        }
+                        return titleMasterReadAiJson(response);
+                    })
+                    .catch(function(err) {
+                        if ((err && err.message === 'html') || (err && err.fallback) || (err && err.status === 404)) {
+                            return fetch('/title-master/ai/generate-title-80', {
+                                method: 'POST',
+                                headers: title75Headers,
+                                body: JSON.stringify(title75Payload)
+                            }).then(titleMasterReadAiJson);
+                        }
+                        throw err;
+                    })
                     .then(data => {
                         if (data.success && data.titles && data.titles.length >= 1) {
                             showTitle75Popup(data.titles, data.invalid_count || 0);
@@ -3072,7 +3113,9 @@
                     })
                     .catch(err => {
                         console.error('AI generate title 75 error:', err);
-                        alert('Error: ' + (err.message || 'Network or server error'));
+                        alert((err && err.message && err.message !== 'html')
+                            ? ('Error: ' + err.message)
+                            : 'Title 75 AI failed. Hard-refresh the page and try Change again.');
                     })
                     .finally(function() {
                         btn.disabled = false;
