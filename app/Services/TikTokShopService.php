@@ -5154,7 +5154,7 @@ class TikTokShopService
         }
 
         $this->ensureShopCipher(false);
-        foreach (['/product/202309/brands', '/product/202502/brands'] as $path) {
+        foreach (['/product/202309/brands', '/product/202509/brands'] as $path) {
             try {
                 $data = $this->tiktokOpenApi('GET', $path, [
                     'category_id' => $categoryId,
@@ -5265,52 +5265,88 @@ class TikTokShopService
 
         $this->client->setAccessToken($this->accessToken);
         $this->ensureShopCipher(true);
+        if (is_string($this->shopCipher) && $this->shopCipher !== '') {
+            $this->client->setShopCipher($this->shopCipher);
+        }
 
-        $paths = [
-            '/product/202309/products',
-            '/product/202502/products',
-            '/product/202509/products',
-        ];
         $lastError = '';
-        foreach ($paths as $path) {
+        $versionError = '';
+        foreach (['202309', '202509'] as $version) {
+            try {
+                $data = $this->client->Product->useVersion($version)->createProduct($payload);
+                $parsed = $this->listingCreateSuccess(is_array($data) ? $data : []);
+                if ($parsed['success'] ?? false) {
+                    return $parsed;
+                }
+            } catch (\Throwable $e) {
+                $msg = $this->sanitizeTikTokClientError($e->getMessage());
+                Log::warning('TikTok SDK create product failed', [
+                    'channel' => $this->configKey,
+                    'version' => $version,
+                    'error' => $msg,
+                ]);
+                if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
+                    $versionError = $msg;
+                    continue;
+                }
+                $lastError = $msg !== '' ? $msg : $e->getMessage();
+            }
+        }
+
+        foreach (['/product/202309/products', '/product/202509/products'] as $path) {
             try {
                 $data = $this->tiktokOpenApi('POST', $path, [], $payload, 90);
-                $productId = trim((string) ($data['product_id'] ?? $data['id'] ?? ''));
-                $skus = is_array($data['skus'] ?? null) ? $data['skus'] : [];
-                $skuId = '';
-                foreach ($skus as $row) {
-                    if (! is_array($row)) {
-                        continue;
-                    }
-                    $skuId = trim((string) ($row['id'] ?? $row['sku_id'] ?? ''));
-                    if ($skuId !== '') {
-                        break;
-                    }
-                }
-                if ($productId !== '') {
-                    $this->activateProducts([$productId]);
-                }
 
-                return [
-                    'success' => true,
-                    'message' => $productId !== '' ? 'Published to TikTok Shop ('.$productId.').' : 'Published to TikTok Shop.',
-                    'product_id' => $productId !== '' ? $productId : null,
-                    'sku_id' => $skuId !== '' ? $skuId : null,
-                    'skus' => $skus,
-                ];
+                return $this->listingCreateSuccess(is_array($data) ? $data : []);
             } catch (\Throwable $e) {
-                $lastError = $e->getMessage();
+                $msg = $this->sanitizeTikTokClientError($e->getMessage());
                 Log::warning('TikTok create product failed', [
                     'channel' => $this->configKey,
                     'path' => $path,
-                    'error' => $lastError,
+                    'error' => $msg,
                 ]);
+                if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
+                    $versionError = $msg;
+                    continue;
+                }
+                $lastError = $msg !== '' ? $msg : $e->getMessage();
             }
         }
 
         return [
             'success' => false,
-            'message' => $lastError !== '' ? $lastError : 'TikTok create product failed.',
+            'message' => $lastError !== '' ? $lastError : ($versionError !== '' ? $versionError : 'TikTok create product failed.'),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{success: bool, message: string, product_id?: string|null, sku_id?: string|null, skus?: list<array<string, mixed>>}
+     */
+    private function listingCreateSuccess(array $data): array
+    {
+        $productId = trim((string) ($data['product_id'] ?? $data['id'] ?? ''));
+        $skus = is_array($data['skus'] ?? null) ? $data['skus'] : [];
+        $skuId = '';
+        foreach ($skus as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $skuId = trim((string) ($row['id'] ?? $row['sku_id'] ?? ''));
+            if ($skuId !== '') {
+                break;
+            }
+        }
+        if ($productId !== '') {
+            $this->activateProducts([$productId]);
+        }
+
+        return [
+            'success' => true,
+            'message' => $productId !== '' ? 'Published to TikTok Shop ('.$productId.').' : 'Published to TikTok Shop.',
+            'product_id' => $productId !== '' ? $productId : null,
+            'sku_id' => $skuId !== '' ? $skuId : null,
+            'skus' => $skus,
         ];
     }
 
