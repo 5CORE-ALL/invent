@@ -2140,20 +2140,15 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Grid values come from channel_master_calculated_data. Today Sales is
-     * intra-day, so overlay live Eastern totals after restoring the snapshot
-     * (hourly calculate-data otherwise leaves the column stale at $0).
+     * Page load is table-only. Live Shopify / Shein / Today Sales overlays
+     * belong in channel:calculate-data, not /channels-master-data.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
     private function applyFastPathLiveSalesOverlays(array $rows): array
     {
-        $rows = $this->restoreSavedTableMetricsOnChannelRows($rows);
-        $rows = $this->overlayLiveShopifyDirectMetricsOnChannelRows($rows);
-        $rows = $this->overlayLiveSheinYSalesOnChannelRows($rows);
-
-        return $this->overlayLiveTodaySalesOnChannelRows($rows);
+        return $this->restoreSavedTableMetricsOnChannelRows($rows);
     }
 
     /**
@@ -6775,12 +6770,16 @@ class ChannelMasterController extends Controller
         try {
             $hasCalculatedRows = \App\Models\ChannelMasterCalculatedData::query()->exists();
 
-            // Never recalculate the full channel matrix on a web request when any
-            // pre-calculated rows exist — that path OOMs at 128M. Serve stale data
-            // and let channel:calculate-data refresh it.
+            // Never recalculate or save the channel matrix on a page load.
+            // Serve the saved table (or an empty grid) and let
+            // channel:calculate-data refresh it.
             if (! $hasCalculatedRows) {
-                \Log::warning('Channel calculated data is empty; falling back to live calculation. Run: php artisan channel:calculate-data --force');
-                return $this->getViewChannelData($request);
+                \Log::warning('Channel calculated data is empty; serving empty grid. Run: php artisan channel:calculate-data --force');
+                return response()->json([
+                    'status' => 200,
+                    'message' => 'Channel calculated data is empty. Run php artisan channel:calculate-data --force',
+                    'data' => [],
+                ]);
             }
 
             if (!\App\Models\ChannelMasterCalculatedData::isDataFresh()) {
@@ -7005,7 +7004,7 @@ class ChannelMasterController extends Controller
             })->toArray();
 
             // Grid metrics come only from channel_master_calculated_data.
-            // Live order/API overlays run inside channel:calculate-data, not here.
+            // Do not live-compute or save the table on this web request.
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
             $formattedData = $this->applyFastPathLiveSalesOverlays($formattedData);
             $formattedData = $this->scaleReverbViewsForAllMarketplaceMaster($formattedData);
@@ -7050,16 +7049,12 @@ class ChannelMasterController extends Controller
             \Log::error('Error fetching fast channel data: '.$e->getMessage(), [
                 'exception' => $e,
             ]);
-            // Only fall back to the heavy live path when the cache table is empty.
-            if (\App\Models\ChannelMasterCalculatedData::query()->exists()) {
-                return response()->json([
-                    'status' => 500,
-                    'message' => 'Error loading channel data: '.$e->getMessage(),
-                    'data' => [],
-                ], 500);
-            }
 
-            return $this->getViewChannelData($request);
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error loading channel data: '.$e->getMessage(),
+                'data' => [],
+            ], 500);
         }
     }
 
@@ -16743,6 +16738,19 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => $chartData]);
             }
 
+            if (! $isAll && $metric === 'l30_sales' && $channel === 'temu3') {
+                $chartData = $this->buildTemu3LiveRollingSalesChart($days, 30);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
             // All-channel Y Sales badge: snapshots only (no per-channel live order
             // lookups). The old path called realPacificDayYSales for every channel
             // × day and made the badge take many seconds to open.
@@ -17329,7 +17337,8 @@ class ChannelMasterController extends Controller
             }, explode(',', $channelsParam)))));
 
             $requestedWindow = intval($request->input('window', 0));
-            $all = $this->rememberChannelMetricDotTrends($requestedWindow);
+            // Serve the warmed cache only. Computing here blocks /all-marketplace-master.
+            $all = $this->rememberChannelMetricDotTrends($requestedWindow, false);
             $filtered = $this->filterCachedDotTrends($all, $channelKeys);
 
             return response()->json(['success' => true, 'channels' => $filtered === [] ? (object) [] : $filtered]);
@@ -19815,22 +19824,24 @@ class ChannelMasterController extends Controller
         $dataStart = $chartStart->copy()->subDays(max(1, $windowDays) - 1);
         $byDay = TemuShopifySalesService::temu2DailySalesByDate($dataStart->copy()->startOfDay(), $end->copy()->endOfDay());
 
-        $out = [];
-        $cursor = $chartStart->copy();
-        while ($cursor->lte($end)) {
-            $sum = 0.0;
-            for ($i = 0; $i < $windowDays; $i++) {
-                $d = $cursor->copy()->subDays($i)->toDateString();
-                $sum += (float) ($byDay[$d]['sales'] ?? 0);
-            }
-            $out[] = [
-                'date' => $cursor->format('M d'),
-                'value' => round($sum, 2),
-            ];
-            $cursor->addDay();
-        }
+        return TemuShopifySalesService::rollingSalesSeries($byDay, $chartStart, $end, $windowDays);
+    }
 
-        return $out;
+    /**
+     * Temu 3 Sales chart from temu3_orders, not channel_master snapshots.
+     * Sheet L30 includes Pacific today, so Sep 3/4/5 stay on the axis even
+     * when calculate-data has not saved those snapshot days.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildTemu3LiveRollingSalesChart(int $days, int $windowDays): array
+    {
+        $end = now('America/Los_Angeles');
+        $chartStart = $end->copy()->subDays(max(1, $days) - 1);
+        $dataStart = $chartStart->copy()->subDays(max(1, $windowDays) - 1);
+        $byDay = TemuShopifySalesService::temu3DailySalesByDate($dataStart->copy()->startOfDay(), $end->copy()->endOfDay());
+
+        return TemuShopifySalesService::rollingSalesSeries($byDay, $chartStart, $end, $windowDays);
     }
 
     /**
