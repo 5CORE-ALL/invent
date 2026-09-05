@@ -494,6 +494,17 @@
                         escapeHtml((res && res.message) || 'No Wayfair classes matched.') + '</div>');
                     return;
                 }
+                const idEl = document.getElementById('listing-publish-wayfair-class-id');
+                const nameEl = document.getElementById('listing-publish-wayfair-class-name');
+                const pathEl = document.getElementById('listing-publish-wayfair-category-path');
+                const first = rows[0] || {};
+                const firstId = String(first.id || '').replace(/\D+/g, '');
+                if (firstId && idEl && !String(idEl.value || '').replace(/\D+/g, '')) {
+                    idEl.value = firstId;
+                    if (nameEl) nameEl.value = String(first.path || first.name || '').trim();
+                    if (pathEl) pathEl.textContent = String(first.path || first.name || '') +
+                        ' — selected. Click another class to change.';
+                }
                 showWayfairClassResults(rows.map(function (row) {
                     return '<button type="button" class="listing-publish-cat-item listing-publish-wayfair-cat-item" data-id="' +
                         escapeHtml(row.id || '') + '" data-path="' + escapeHtml(row.path || '') + '">' +

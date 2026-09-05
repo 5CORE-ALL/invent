@@ -2125,6 +2125,17 @@ XML;
     public function searchListingClasses(string $query, string $title = ''): array
     {
         $q = trim($query !== '' ? $query : $title);
+        if (mb_strlen($q) > 40) {
+            foreach ($this->classSearchHints($q, $title) as $hint) {
+                if (mb_strlen($hint) > 40) {
+                    continue;
+                }
+                $found = $this->searchListingClasses($hint, $hint);
+                if (($found['categories'] ?? []) !== []) {
+                    return $found;
+                }
+            }
+        }
         $categories = $this->taxonomyCategories();
         if ($categories === []) {
             return [
@@ -2248,12 +2259,30 @@ XML;
                 continue;
             }
             $blob .= ' '.$part;
-            if (mb_strlen($part) >= 3 && ! preg_match('/^[A-Z0-9][A-Z0-9 \-]{1,20}$/', $part)) {
+            if (mb_strlen($part) >= 3 && mb_strlen($part) <= 40
+                && ! preg_match('/^[A-Z0-9][A-Z0-9 \-]{1,20}$/', $part)) {
                 $hints[] = $part;
+            }
+            if (mb_strlen($part) > 40) {
+                if (preg_match('/guitar\s+stool/i', $part)) {
+                    $hints[] = 'guitar stool';
+                }
+                if (preg_match('/drum\s+throne/i', $part)) {
+                    $hints[] = 'drum throne';
+                }
+                if (preg_match('/\bstool\b/i', $part)) {
+                    $hints[] = 'stool';
+                }
+                if (preg_match('/\bthrone\b/i', $part)) {
+                    $hints[] = 'throne';
+                }
             }
         }
         $upper = strtoupper($blob);
         $extra = [];
+        if (preg_match('/\bGSTOOL\b|\bSTOOL\b|\bTHRONE\b/', $upper)) {
+            $extra = array_merge($extra, ['guitar stool', 'drum throne', 'stool', 'throne']);
+        }
         if (preg_match('/\bFLD\b|FOLDER/', $upper)) {
             $extra = array_merge($extra, ['folder stand', 'music stand', 'guitar stand', 'sheet music stand', 'stand']);
         }
@@ -2279,7 +2308,7 @@ XML;
             $hints[] = $hint;
         }
 
-        return array_values(array_unique(array_filter($hints, static fn ($h) => mb_strlen($h) >= 2)));
+        return array_values(array_unique(array_filter($hints, static fn ($h) => mb_strlen($h) >= 2 && mb_strlen($h) <= 40)));
     }
 
     /**

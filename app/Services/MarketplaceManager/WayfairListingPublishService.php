@@ -109,8 +109,8 @@ class WayfairListingPublishService
         return [
             'id' => 0,
             'path' => '',
-            'name' => $hints[0] ?? '',
-            'query' => $hints[0] ?? 'stand',
+            'name' => '',
+            'query' => $hints[0] ?? 'stool',
         ];
     }
 
@@ -295,38 +295,33 @@ class WayfairListingPublishService
         if ($name !== '' && preg_match('/\((\d{2,})\)\s*$/', $name, $match)) {
             return (int) $match[1];
         }
-        if ($name !== '') {
+        $suggested = $this->suggestClassForSku($skus[0] ?? '');
+        if ((int) ($suggested['id'] ?? 0) > 0) {
+            return (int) $suggested['id'];
+        }
+        $searchParts = [$name];
+        foreach ($skus as $sku) {
+            $product = $this->findProduct($sku);
+            $searchParts[] = $sku;
+            $searchParts[] = $product ? $this->resolveTitle($product, $sku) : '';
+            $searchParts[] = $product ? trim((string) ($product->parent ?? '')) : '';
+        }
+        foreach ($this->api->classSearchHints(...$searchParts) as $hint) {
             try {
-                $fromName = $this->api->searchListingClasses($name, $name);
+                $fromName = $this->api->searchListingClasses($hint, $hint);
                 $picked = (int) ($fromName['categories'][0]['id'] ?? 0);
                 if ($picked > 0) {
                     return $picked;
                 }
             } catch (\Throwable) {
             }
-            $fromTaxonomy = $this->api->searchTaxonomyClass($name);
+            $fromTaxonomy = $this->api->searchTaxonomyClass($hint);
             if ($fromTaxonomy && ($fromTaxonomy['class_id'] ?? 0) > 0) {
                 return (int) $fromTaxonomy['class_id'];
             }
         }
-        $fromStatus = $this->classIdFromListingStatuses($skus);
-        if ($fromStatus > 0) {
-            return $fromStatus;
-        }
-        foreach ($skus as $sku) {
-            $product = $this->findProduct($sku);
-            $title = $product ? $this->resolveTitle($product, $sku) : $sku;
-            $parent = $product ? trim((string) ($product->parent ?? '')) : '';
-            foreach ($this->api->classSearchHints($title, $sku, $parent, $name) as $hint) {
-                $fromTaxonomy = $this->api->searchTaxonomyClass($hint);
-                if ($fromTaxonomy && ($fromTaxonomy['class_id'] ?? 0) > 0) {
-                    return (int) $fromTaxonomy['class_id'];
-                }
-            }
-        }
-        $suggested = $this->suggestClassForSku($skus[0] ?? '');
 
-        return (int) ($suggested['id'] ?? 0);
+        return 0;
     }
 
     /**
@@ -1022,6 +1017,9 @@ class WayfairListingPublishService
     {
         if ($need === [] || $have === []) {
             return false;
+        }
+        if (isset($need[0], $have[0]) && $need[0] === $have[0] && mb_strlen($need[0]) >= 4) {
+            return true;
         }
         foreach ($need as $token) {
             if (! in_array($token, $have, true)) {
