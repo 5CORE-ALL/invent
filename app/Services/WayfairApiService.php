@@ -123,6 +123,16 @@ class WayfairApiService
     }
 
     /**
+     * Short, no-retry client for class/taxonomy lookups so publish cannot sit on a 502.
+     */
+    private function lookupHttpClient(): \Illuminate\Http\Client\PendingRequest
+    {
+        return Http::withoutVerifying()
+            ->connectTimeout(8)
+            ->timeout(15);
+    }
+
+    /**
      * Get token for Product Catalog API (title updates). Uses catalog_scope when set.
      */
     protected function getTokenForCatalog(): string
@@ -2367,6 +2377,10 @@ XML;
      */
     private function fetchTaxonomyCategoryPages(): array
     {
+        if (Cache::get('wayfair.taxonomy_unavailable')) {
+            return [];
+        }
+
         $query = <<<'GRAPHQL'
         query taxonomyCategories($marketContext: MarketContextInput!, $paginationOptions: PaginationOptions) {
           taxonomyCategories(marketContext: $marketContext, paginationOptions: $paginationOptions) {
@@ -2382,11 +2396,14 @@ XML;
                 'marketContext' => $this->marketContext(),
                 'paginationOptions' => ['page' => $page, 'pageSize' => 50],
             ]);
-            if ($this->graphqlDenied($json) || ! empty($json['errors'])) {
+            if ($this->graphqlDenied($json) || ! empty($json['errors']) || $json === []) {
                 Log::info('Wayfair taxonomyCategories failed', [
                     'page' => $page,
                     'errors' => $json['errors'] ?? null,
                 ]);
+                if ($page === 1) {
+                    Cache::put('wayfair.taxonomy_unavailable', true, 600);
+                }
                 break;
             }
             $pageRows = $json['data']['taxonomyCategories']['taxonomyCategories'] ?? [];
@@ -2481,7 +2498,7 @@ XML;
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->orderByDesc('id')
-            ->limit(250)
+            ->limit(50)
             ->pluck('sku')
             ->all();
 
@@ -2723,21 +2740,26 @@ XML;
         } catch (\Throwable) {
         }
         $last = [];
+        $headerVariants = ($supplierId !== '' && $supplierId !== '0') ? [true] : [false];
         foreach ($tokens as $token) {
-            foreach ([true, false] as $withSupplierHeader) {
+            foreach ($headerVariants as $withSupplierHeader) {
                 $headers = [
                     'Content-Type' => 'application/json',
                     'Accept' => 'application/json',
                 ];
-                if ($withSupplierHeader && $supplierId !== '' && $supplierId !== '0') {
+                if ($withSupplierHeader) {
                     $headers['X-SELECTED-SUPPLIER-ID'] = $supplierId;
                 }
-                $response = $this->apiHttpClient()
-                    ->withToken($token)
-                    ->withHeaders($headers)
-                    ->post($url, $variables === [] ? ['query' => $query] : ['query' => $query, 'variables' => $variables]);
-                $json = $response->json();
-                $json = is_array($json) ? $json : [];
+                try {
+                    $response = $this->lookupHttpClient()
+                        ->withToken($token)
+                        ->withHeaders($headers)
+                        ->post($url, $variables === [] ? ['query' => $query] : ['query' => $query, 'variables' => $variables]);
+                    $json = $response->json();
+                    $json = is_array($json) ? $json : [];
+                } catch (\Throwable) {
+                    return $last;
+                }
                 if (empty($json['errors']) && ($json['data'] ?? null) !== null) {
                     return $json;
                 }

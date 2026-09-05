@@ -64,7 +64,8 @@ class WayfairListingPublishService
             return ['id' => $cached, 'path' => 'Class '.$cached.' (from a listed sibling)', 'name' => ''];
         }
 
-        $hit = $this->api->lookupCatalogClassForSkus($candidates);
+        $catalogSkus = array_values(array_unique(array_merge([$sku], $this->listedFamilySkus($sku))));
+        $hit = $this->api->lookupCatalogClassForSkus(array_slice($catalogSkus, 0, 20));
         if ($hit && ($hit['class_id'] ?? 0) > 0) {
             $name = trim((string) ($hit['class_name'] ?? ''));
             $this->rememberClassId($candidates, (int) $hit['class_id'], $name);
@@ -1019,6 +1020,9 @@ class WayfairListingPublishService
             return false;
         }
         if (isset($need[0], $have[0]) && $need[0] === $have[0] && mb_strlen($need[0]) >= 4) {
+            return true;
+        }
+        if (count($need) >= 2 && count($have) >= 2 && $need[0] === $have[0] && $need[1] === $have[1]) {
             return true;
         }
         foreach ($need as $token) {

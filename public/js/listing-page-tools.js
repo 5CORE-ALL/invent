@@ -73,7 +73,7 @@
         if (titleEl) {
             titleEl.textContent = title || (state === 'loading' ? 'Publishing…' : (state === 'success' ? 'Published' : 'Publish failed'));
         }
-        if (msgEl) msgEl.textContent = String(message || '');
+        if (msgEl) msgEl.textContent = withChannelName(String(message || ''));
         if (closeBtn) closeBtn.hidden = state === 'loading';
         if (el.parentNode !== document.body) {
             document.body.appendChild(el);
@@ -1058,9 +1058,17 @@
         return out;
     }
 
+    function channelLabel() {
+        return String(cfg().channelLabel || 'The marketplace').trim() || 'The marketplace';
+    }
+
+    function withChannelName(text) {
+        return String(text || '').replace(/AliExpress/gi, channelLabel());
+    }
+
     function ajaxError(xhr) {
         if (!xhr) return 'Request failed.';
-        const marketplace = String(cfg().channelLabel || 'The marketplace').trim() || 'The marketplace';
+        const marketplace = channelLabel();
         if (xhr.statusText === 'timeout') {
             return marketplace + ' took too long to respond. Refresh Missing L before trying again — the listing may already be created.';
         }
@@ -1069,7 +1077,7 @@
         if (!json && xhr.responseText) {
             try { json = JSON.parse(xhr.responseText); } catch (e) { json = null; }
         }
-        if (json && (json.message || json.error)) return String(json.message || json.error);
+        if (json && (json.message || json.error)) return withChannelName(String(json.message || json.error));
         if (xhr.status === 419) return 'Session expired. Refresh the page.';
         if (xhr.status === 405) return 'Publish route is blocked. Hard-refresh the page and try again.';
         if (xhr.status === 502 || xhr.status === 504) {

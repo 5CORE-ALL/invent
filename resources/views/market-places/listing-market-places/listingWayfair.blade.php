@@ -1296,5 +1296,21 @@
             categorySearchUrl: '/listing-manager/ebay/categories'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=24"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=25-{{ filemtime(public_path('js/listing-page-tools.js')) }}"></script>
+    <script>
+        (function () {
+            var label = (window.listingPageConfig && window.listingPageConfig.channelLabel) || 'Wayfair';
+            var rewrite = function () {
+                var msg = document.getElementById('listing-publish-status-message');
+                if (msg && msg.textContent && msg.textContent.indexOf('AliExpress') !== -1) {
+                    msg.textContent = msg.textContent.split('AliExpress').join(label);
+                }
+            };
+            new MutationObserver(rewrite).observe(document.documentElement, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+        })();
+    </script>
 @endsection
