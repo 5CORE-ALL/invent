@@ -719,7 +719,7 @@
                         </li>
                         <li>
                             <a href="{{ route('shopify.index') }}">
-                                <i class="ri-shopify-line me-2"></i>Shopify
+                                <i class="ri-shopify-line me-2"></i>Shopify Sales
                             </a>
                         </li>
                     </ul>

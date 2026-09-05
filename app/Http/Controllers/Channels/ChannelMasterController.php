@@ -2150,6 +2150,7 @@ class ChannelMasterController extends Controller
     private function applyFastPathLiveSalesOverlays(array $rows): array
     {
         $rows = $this->restoreSavedTableMetricsOnChannelRows($rows);
+        $rows = $this->overlayLiveShopifyDirectMetricsOnChannelRows($rows);
         $rows = $this->overlayLiveSheinYSalesOnChannelRows($rows);
 
         return $this->overlayLiveTodaySalesOnChannelRows($rows);
@@ -3436,10 +3437,29 @@ class ChannelMasterController extends Controller
                 continue;
             }
 
-            $l30Sales = (float) $live['l30_sales'];
-            $l60Sales = (float) $live['l60_sales'];
-            $totalPft  = (float) ($live['total_pft']  ?? 0);
+            // Sales + units match /shopify (Shopify Sales) Net Sales / Orders / Qty.
+            $l30Sales = (float) ($live['l30_sales'] ?? 0);
+            $l60Sales = (float) ($live['l60_sales'] ?? 0);
+            $totalPft = (float) ($live['total_pft'] ?? 0);
             $totalCogs = (float) ($live['total_cogs'] ?? 0);
+            if ($l30Sales > 0) {
+                $row['L30 Sales'] = (int) round($l30Sales);
+                $row['L30 Orders'] = (int) ($live['l30_orders'] ?? 0);
+                $row['Qty'] = (int) ($live['qty'] ?? 0);
+                $row['L-60 Sales'] = (int) round($l60Sales);
+                $row['L60 Orders'] = (int) ($live['l60_orders'] ?? 0);
+                $row['sales_page_link'] = '/shopify';
+
+                $gpftPct = $l30Sales > 0 ? ($totalPft / $l30Sales) * 100 : 0.0;
+                $groi = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+                $row['Total PFT'] = round($totalPft, 2);
+                $row['cogs'] = round($totalCogs, 2);
+                $row['Gprofit%'] = round($gpftPct, 1).'%';
+                $row['G Roi'] = round($groi, 1);
+                if ($l60Sales > 0) {
+                    $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
+                }
+            }
 
             // Spend + TCOS match /shopify-ads-master SPEND (2nd badge) and TCOS badges.
             // Live $0 must not wipe a persisted Spend the same way Today Sales is protected.
@@ -3451,59 +3471,16 @@ class ChannelMasterController extends Controller
             $shoppingSpend = (float) ($live['shopping_spent'] ?? 0);
             $serpSpend     = (float) ($live['serp_spent']     ?? 0);
 
-            // Legacy row named "Shopify" has no dedicated sales handler — fill sales/profit.
-            // "Shopify B2C" already comes from getShopifyB2CChannelData; only stabilize Spend.
-            if (strcasecmp($name, 'Shopify') === 0) {
-                $row['L30 Sales']  = (int) round($l30Sales);
-                $row['L30 Orders'] = (int) $live['l30_orders'];
-                $row['Qty']        = (int) $live['qty'];
-                $row['L-60 Sales'] = (int) round($l60Sales);
-                $row['L60 Orders'] = (int) $live['l60_orders'];
-
-                $gpftPct  = $l30Sales  > 0 ? ($totalPft / $l30Sales) * 100 : 0.0;
-                $groi     = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
-                $tacosPct = (float) ($live['tcos_pct'] ?? 0);
-                if ($tacosPct <= 0 && $l30Sales > 0) {
-                    $tacosPct = ($totalAdSpend / $l30Sales) * 100;
-                }
-                $nPftPct  = $gpftPct - $tacosPct;
-                $netPft   = $totalPft - $totalAdSpend;
-                $nRoi     = $totalCogs > 0 ? ($netPft / $totalCogs) * 100 : 0.0;
-
-                $row['Total PFT']      = round($totalPft, 2);
-                $row['cogs']           = round($totalCogs, 2);
-                $row['Gprofit%']       = round($gpftPct, 1) . '%';
-                $row['G Roi']          = round($groi, 1);
-                $row['N PFT']          = round($nPftPct, 1) . '%';
-                $row['N ROI']          = round($nRoi, 1);
-                $row['Ads%']           = round($tacosPct, 1) . '%';
-                $row['TACOS %']        = round($tacosPct, 1) . '%';
-
-                if ($l60Sales > 0) {
-                    $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2) . '%';
-                }
-
-                $ySales = $this->computeShopifyDirectYSalesLikeAmazon();
-                if ($ySales !== null) {
-                    $this->applyLiveYSalesAllowZero($row, $ySales);
-                }
-
-                $l7Sales = $this->computeShopifyDirectL7SalesLikeAmazon();
-                if ($l7Sales !== null) {
-                    $row['L7 Sales'] = $l7Sales;
-                }
-            } else {
-                $rowL30 = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
-                $gpftPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Gprofit%'] ?? 0));
-                $cogs = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['cogs'] ?? 0));
-                $pft = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total PFT'] ?? 0));
-                $tacosPct = $rowL30 > 0 ? ($totalAdSpend / $rowL30) * 100 : 0.0;
-                $row['Ads%'] = round($tacosPct, 1).'%';
-                $row['TACOS %'] = round($tacosPct, 1).'%';
-                $row['N PFT'] = round($gpftPct - $tacosPct, 1).'%';
-                if ($cogs > 0) {
-                    $row['N ROI'] = round((($pft - $totalAdSpend) / $cogs) * 100, 1);
-                }
+            $rowL30 = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
+            $gpftPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Gprofit%'] ?? 0));
+            $cogs = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['cogs'] ?? 0));
+            $pft = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total PFT'] ?? 0));
+            $tacosPct = $rowL30 > 0 ? ($totalAdSpend / $rowL30) * 100 : 0.0;
+            $row['Ads%'] = round($tacosPct, 1).'%';
+            $row['TACOS %'] = round($tacosPct, 1).'%';
+            $row['N PFT'] = round($gpftPct - $tacosPct, 1).'%';
+            if ($cogs > 0) {
+                $row['N ROI'] = round((($pft - $totalAdSpend) / $cogs) * 100, 1);
             }
 
             $row['Total Ad Spend'] = round($totalAdSpend, 2);
@@ -15067,6 +15044,12 @@ class ChannelMasterController extends Controller
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
         $totalQuantity = $metrics->total_quantity ?? 0;
+        $shopifySales = $this->getShopifyDirectL30Snapshot();
+        if ((float) ($shopifySales['l30_sales'] ?? 0) > 0) {
+            $l30Sales = $shopifySales['l30_sales'];
+            $l30Orders = $shopifySales['l30_orders'];
+            $totalQuantity = $shopifySales['qty'];
+        }
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -15131,6 +15114,7 @@ class ChannelMasterController extends Controller
 
         $result[] = [
             'Channel '   => 'Shopify B2C',
+            'sales_page_link' => '/shopify',
             'L-60 Sales' => intval($l60Sales),
             'L30 Sales'  => intval($l30Sales),
             'Growth'     => round($growth, 2) . '%',

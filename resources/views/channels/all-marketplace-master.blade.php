@@ -1637,6 +1637,14 @@
             window.open(missingLink + sep + 'badge=' + encodeURIComponent(badge), '_blank');
         }
 
+        function shopifyB2cDailySalesPage(channel) {
+            var key = (channel || '').toLowerCase().replace(/[\s\-&\/]/g, '');
+            if (key === 'shopifyb2c' || key === 'shopify') {
+                return '/shopify';
+            }
+            return '';
+        }
+
         function acPricingHoverCellHtml(channel, chartMetric, filterBadge, valueHtml, extraStyle) {
             if (!AC_PRICING_FILTER_CHANNELS.includes(channel)) {
                 return `<span style="${extraStyle || ''}">${valueHtml}</span>`;
@@ -2190,15 +2198,21 @@
                         width: 136,
                         formatter: function(cell) {
                             const value = Math.round(parseNumber(cell.getValue()));
-                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             const dotColor = getMetricDotColor(channel, 'l30_sales');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l30_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
-                            return `<span style="font-weight: 600;">$${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                            const fmt = `$${value.toLocaleString('en-US')}`;
+                            const salesPage = (rowData['sales_page_link'] || '').trim() || shopifyB2cDailySalesPage(channel);
+                            const valueHtml = salesPage
+                                ? `<a href="${salesPage}" target="_blank" rel="noopener noreferrer" class="shopify-b2c-sales-link" style="font-weight:600;color:inherit;text-decoration:none;" title="Open Shopify Sales">${fmt}</a>`
+                                : `<span style="font-weight: 600;">${fmt}</span>`;
+                            return valueHtml + chartIcon;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                                var cv = cell.getElement().querySelector('span, a'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         },
                         bottomCalc: "sum",
