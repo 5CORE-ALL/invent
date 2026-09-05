@@ -65,7 +65,26 @@ class AliexpressTrackingSyncService
             ];
         }
 
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, (string) ($line->sku ?? ''));
+        $skus = AliexpressOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->pluck('sku')
+            ->map(static fn ($sku) => trim((string) $sku))
+            ->filter(static fn ($sku) => $sku !== '' && ! in_array($sku, ['__order__', '__unknown__'], true))
+            ->unique()
+            ->values();
+        if ($skus->isEmpty() && trim((string) ($line->sku ?? '')) !== '') {
+            $skus = collect([trim((string) $line->sku)]);
+        }
+
+        $shopifyFulfillment = ['tracking' => null, 'carrier' => null, 'tracking_url' => null, 'error' => null];
+        foreach ($skus as $sku) {
+            $hit = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
+            if (! empty($hit['tracking'])) {
+                $shopifyFulfillment = $hit;
+                break;
+            }
+            $shopifyFulfillment = $hit;
+        }
         if (empty($shopifyFulfillment['tracking'])) {
             return [
                 'success' => false,

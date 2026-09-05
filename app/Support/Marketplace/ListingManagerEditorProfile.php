@@ -153,7 +153,7 @@ class ListingManagerEditorProfile
                     ['id' => 'policies', 'label' => 'Packaging'],
                 ],
                 'identifier_fields' => ['sku', 'asin', 'brand', 'manufacturer', 'upc'],
-                'category_placeholder' => 'Amazon product type (e.g. LIGHTING_ACCESSORY)',
+                'category_placeholder' => 'Search Amazon product types (e.g. light stand)',
                 'optimize_label' => 'Optimize Description for Amazon',
                 'header_quick' => 'Quick/Auto List to Amazon',
                 'header_import' => 'Import from Amazon',
@@ -161,7 +161,7 @@ class ListingManagerEditorProfile
                 'title_heading' => 'Title & Description',
                 'identifier_help' => 'Brand is always 5 Core Inc. Model/MPN is the SKU. Condition is New. UPC is required to create a new Amazon SKU.',
                 'images_help' => 'Load photos from Image Master. Amazon uses the first 9 HTTPS images.',
-                'category_help' => 'Amazon needs a product type to create or complete a listing. Use the type from a sibling SKU in Seller Central when this SKU is new.',
+                'category_help' => 'Type a keyword such as light stand. Amazon suggestions appear below — pick the product type (for example LIGHTING_ACCESSORY) before you publish.',
                 'policies_help' => 'Package size and weight come from Dim/Wt Master. Amazon will not show a new SKU in Manage Inventory until Product Type, Packaging, images, and a UPC (or existing ASIN) are complete.',
             ],
             'default' => [

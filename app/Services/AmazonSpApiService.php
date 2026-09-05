@@ -6066,6 +6066,180 @@ class AmazonSpApiService
     }
 
     /**
+     * Search Amazon Product Type Definitions for listing-manager suggestions.
+     *
+     * @return array{success: bool, categories: list<array{id: string, path: string, name: string, suggested?: bool}>, message?: string}
+     */
+    public function searchProductTypes(string $keywords, string $itemName = ''): array
+    {
+        $keywords = trim($keywords);
+        $itemName = trim($itemName);
+        if ($keywords === '' && $itemName === '') {
+            return ['success' => true, 'categories' => []];
+        }
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => 'Amazon SP-API is not connected. Set Amazon client id, secret, refresh token, and seller id.',
+            ];
+        }
+
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['success' => false, 'categories' => [], 'message' => 'Could not obtain Amazon access token.'];
+        }
+
+        $marketplaceId = (string) ($this->marketplaceId ?: 'ATVPDKIKX0DER');
+        $query = [
+            'marketplaceIds' => $marketplaceId,
+            'locale' => 'en_US',
+            'searchLocale' => 'en_US',
+        ];
+        // Amazon rejects keywords and itemName on the same request.
+        if ($keywords !== '') {
+            $parts = preg_split('/[\s,]+/', $keywords, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $query['keywords'] = implode(',', array_slice($parts, 0, 8));
+        } elseif ($itemName !== '') {
+            $query['itemName'] = mb_substr($itemName, 0, 200);
+        }
+
+        try {
+            $response = Http::withoutVerifying()->timeout(30)->withHeaders([
+                'x-amz-access-token' => $token,
+                'Accept' => 'application/json',
+            ])->get($this->endpoint.'/definitions/2020-09-01/productTypes', $query);
+
+            $json = $response->json();
+            $json = is_array($json) ? $json : [];
+            if (! $response->successful()) {
+                $local = $this->localProductTypeSuggestions($keywords !== '' ? $keywords : $itemName);
+                if ($local !== []) {
+                    return ['success' => true, 'categories' => $local];
+                }
+                $msg = trim((string) ($json['errors'][0]['message'] ?? $json['message'] ?? ''));
+
+                return [
+                    'success' => false,
+                    'categories' => [],
+                    'message' => $msg !== ''
+                        ? $msg
+                        : ('Amazon product type search failed (HTTP '.$response->status().').'),
+                ];
+            }
+
+            $categories = [];
+            $seen = [];
+            foreach ($json['productTypes'] ?? [] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $name = trim((string) ($row['name'] ?? ''));
+                $display = trim((string) ($row['displayName'] ?? $name));
+                if ($name === '' || isset($seen[strtoupper($name)])) {
+                    continue;
+                }
+                $seen[strtoupper($name)] = true;
+                $categories[] = [
+                    'id' => $name,
+                    'path' => $display !== '' && strcasecmp($display, $name) !== 0
+                        ? $display.' ('.$name.')'
+                        : $name,
+                    'name' => $display !== '' ? $display : $name,
+                    'suggested' => true,
+                ];
+            }
+
+            foreach ($this->localProductTypeSuggestions($keywords !== '' ? $keywords : $itemName) as $row) {
+                $name = strtoupper((string) ($row['id'] ?? ''));
+                if ($name === '' || isset($seen[$name])) {
+                    continue;
+                }
+                $seen[$name] = true;
+                $categories[] = $row;
+            }
+
+            return [
+                'success' => true,
+                'categories' => $categories,
+                'message' => $categories === [] ? 'No Amazon product types matched. Try a shorter keyword (e.g. light, stand, tripod).' : null,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('AmazonSpApiService: searchProductTypes failed', [
+                'keywords' => $keywords,
+                'error' => $e->getMessage(),
+            ]);
+            $local = $this->localProductTypeSuggestions($keywords !== '' ? $keywords : $itemName);
+            if ($local !== []) {
+                return ['success' => true, 'categories' => $local];
+            }
+
+            return ['success' => false, 'categories' => [], 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Product types already used on existing Amazon catalog rows (siblings / similar titles).
+     *
+     * @return list<array{id: string, path: string, name: string, suggested: bool}>
+     */
+    protected function localProductTypeSuggestions(string $keywords): array
+    {
+        $keywords = trim($keywords);
+        if ($keywords === '' || ! Schema::hasTable('amazon_listings_raw') || ! Schema::hasColumn('amazon_listings_raw', 'product_type')) {
+            return [];
+        }
+
+        try {
+            $query = AmazonListingRaw::query()
+                ->whereNotNull('product_type')
+                ->where('product_type', '!=', '')
+                ->select('product_type')
+                ->distinct()
+                ->limit(40);
+
+            $parts = preg_split('/[\s,]+/', $keywords, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $parts = array_slice(array_values(array_unique($parts)), 0, 6);
+            if ($parts !== []) {
+                $query->where(function ($outer) use ($parts, $keywords) {
+                    $outer->where('product_type', 'like', '%'.$keywords.'%')
+                        ->orWhere('item_name', 'like', '%'.$keywords.'%');
+                    foreach ($parts as $part) {
+                        if (mb_strlen($part) < 3) {
+                            continue;
+                        }
+                        $outer->orWhere('product_type', 'like', '%'.$part.'%')
+                            ->orWhere('item_name', 'like', '%'.$part.'%');
+                    }
+                });
+            }
+
+            $out = [];
+            $seen = [];
+            foreach ($query->pluck('product_type') as $type) {
+                $name = trim((string) $type);
+                $key = strtoupper($name);
+                if ($name === '' || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $out[] = [
+                    'id' => $name,
+                    'path' => $name.' (from existing Amazon listings)',
+                    'name' => $name,
+                    'suggested' => true,
+                ];
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::debug('AmazonSpApiService: localProductTypeSuggestions skipped', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
      * Create a new listings item (PUT). Used when the SKU is not yet in Seller Central.
      *
      * @param  array<string, mixed>  $attributes
