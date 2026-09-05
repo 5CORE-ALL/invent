@@ -107,6 +107,7 @@ class ListingManagerEbayTradingPublisher
             $images = [];
         }
         $images = array_values(array_filter(array_map(fn ($u) => trim((string) $u), $images)));
+        $payload = self::stripUpcFromPayload($payload);
         $variations = self::normalizeVariations($payload['variations'] ?? []);
 
         if ($title === '' || $description === '' || $categoryId === '' || $images === []) {
@@ -183,34 +184,25 @@ class ListingManagerEbayTradingPublisher
             $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
             $manufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
             $mpn = $sku;
-            $upc = trim((string) ($payload['upc'] ?? ''));
-
             $specifics = is_array($payload['item_specifics'] ?? null) ? $payload['item_specifics'] : [];
             $specifics['Brand'] = $brand;
             $specifics['Manufacturer'] = $manufacturer;
             $specifics['MPN'] = $mpn;
-            if ($upc !== '') {
-                $specifics['UPC'] = $upc;
-            }
             $specifics = self::ensureRequiredItemSpecifics($specifics, $payload);
+            $specifics = self::withoutUpcKeys($specifics);
 
             if ($specifics !== []) {
                 $itemSpecifics = $item->addChild('ItemSpecifics');
                 foreach ($specifics as $name => $value) {
                     $name = trim((string) $name);
                     $value = trim((string) $value);
-                    if ($name === '' || $value === '') {
+                    if ($name === '' || $value === '' || strcasecmp($name, 'UPC') === 0) {
                         continue;
                     }
                     $nvl = $itemSpecifics->addChild('NameValueList');
                     $nvl->addChild('Name', htmlspecialchars($name, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
                     $nvl->addChild('Value', htmlspecialchars($value, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
                 }
-            }
-
-            if ($upc !== '' && $variations === []) {
-                $pld = $item->addChild('ProductListingDetails');
-                $pld->addChild('UPC', htmlspecialchars($upc, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
             }
 
             $length = (float) ($payload['package_length'] ?? 0);
@@ -343,7 +335,7 @@ class ListingManagerEbayTradingPublisher
                 'price' => (float) ($row['price'] ?? 0),
                 'quantity' => (int) ($row['quantity'] ?? 0),
                 'variation_label' => $label,
-                'upc' => trim((string) ($row['upc'] ?? '')),
+                'upc' => '',
             ];
         }
 
@@ -367,10 +359,6 @@ class ListingManagerEbayTradingPublisher
             $nvl = $vs->addChild('NameValueList');
             $nvl->addChild('Name', $aspect);
             $nvl->addChild('Value', htmlspecialchars($row['variation_label'], ENT_XML1 | ENT_COMPAT, 'UTF-8'));
-            if (($row['upc'] ?? '') !== '') {
-                $pld = $variation->addChild('VariationProductListingDetails');
-                $pld->addChild('UPC', htmlspecialchars($row['upc'], ENT_XML1 | ENT_COMPAT, 'UTF-8'));
-            }
             $labels[] = $row['variation_label'];
         }
 
@@ -509,6 +497,42 @@ class ListingManagerEbayTradingPublisher
             'X-EBAY-API-SITEID' => (string) ($ctx['site_id'] ?? '0'),
             'Content-Type' => 'text/xml',
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public static function stripUpcFromPayload(array $payload): array
+    {
+        $payload['upc'] = '';
+        if (isset($payload['item_specifics']) && is_array($payload['item_specifics'])) {
+            $payload['item_specifics'] = self::withoutUpcKeys($payload['item_specifics']);
+        }
+        if (isset($payload['variations']) && is_array($payload['variations'])) {
+            foreach ($payload['variations'] as $i => $row) {
+                if (is_array($row)) {
+                    $payload['variations'][$i]['upc'] = '';
+                }
+            }
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param  array<string, mixed>  $specifics
+     * @return array<string, mixed>
+     */
+    public static function withoutUpcKeys(array $specifics): array
+    {
+        foreach (array_keys($specifics) as $name) {
+            if (strcasecmp(trim((string) $name), 'UPC') === 0) {
+                unset($specifics[$name]);
+            }
+        }
+
+        return $specifics;
     }
 
     /**

@@ -24,6 +24,7 @@ use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerImageStore;
 use App\Support\Marketplace\ListingManagerEbayDescriptionBuilder;
+use App\Support\Marketplace\ListingManagerEbayTradingPublisher;
 use App\Support\Marketplace\ListingManagerEditorProfile;
 use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\ListingManagerMasterLoader;
@@ -2324,7 +2325,17 @@ class ListingManagerController extends Controller
         $draft->listing_details = $details;
         $draft->save();
 
-        $result = app(ListingManagerPublishDispatcher::class)->publish($draft, $details);
+        $publishDetails = $details;
+        $editorFamily = ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName));
+        if (in_array($editorFamily, ['ebay', 'reverb', 'temu'], true)) {
+            $publishDetails['upc'] = '';
+            $publishDetails['upc_does_not_apply'] = true;
+            if (is_array($publishDetails['item_specifics'] ?? null)) {
+                $publishDetails['item_specifics'] = ListingManagerEbayTradingPublisher::withoutUpcKeys($publishDetails['item_specifics']);
+            }
+        }
+
+        $result = app(ListingManagerPublishDispatcher::class)->publish($draft, $publishDetails);
 
         if (! ($result['success'] ?? false)) {
             if (! empty($result['queued'])) {

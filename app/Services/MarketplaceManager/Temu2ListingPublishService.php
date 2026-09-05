@@ -2166,6 +2166,9 @@ class Temu2ListingPublishService
     private function fillPropertyEntry(array $prop, array $selectedVidByRefPid, array $allProps): ?array
     {
         $name = trim((string) ($prop['attributeName'] ?? $prop['name'] ?? ''));
+        if ($this->isUpcAttributeName($name)) {
+            return null;
+        }
         $required = (bool) ($prop['required'] ?? $prop['isRequired'] ?? false);
         $isKeyword = $this->isKeywordAttribute($name, $prop);
         $isSale = ! empty($prop['isSale']);
@@ -2447,9 +2450,22 @@ class Temu2ListingPublishService
             || str_contains($lower, 'voltage');
     }
 
+    private function isUpcAttributeName(string $name): bool
+    {
+        $lower = strtolower(trim($name));
+        if ($lower === '') {
+            return false;
+        }
+
+        return (bool) preg_match('/\b(upc|gtin|ean|isbn|barcode)\b/i', $lower);
+    }
+
     private function inputValueFromHints(string $name): string
     {
         $lower = strtolower($name);
+        if ($this->isUpcAttributeName($name)) {
+            return '';
+        }
         if (str_contains($lower, 'brand')) {
             return self::BRAND_NAME;
         }

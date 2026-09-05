@@ -295,7 +295,7 @@ class ListingManagerPublishDispatcher
                 'price' => $price,
                 'quantity' => $qty,
                 'variation_label' => (string) ($child['variation_label'] ?? $sku),
-                'upc' => (string) ($hydrated['upc'] ?? ($details['upc'] ?? '')),
+                'upc' => '',
             ];
         }
 

@@ -1539,15 +1539,14 @@ class ReverbApiService
 
         $payload = [];
 
-        foreach (['title', 'make', 'model', 'finish', 'year', 'sku', 'upc'] as $key) {
+        foreach (['title', 'make', 'model', 'finish', 'year', 'sku'] as $key) {
             if (array_key_exists($key, $fields) && $fields[$key] !== null) {
                 $payload[$key] = is_string($fields[$key]) ? trim((string) $fields[$key]) : $fields[$key];
             }
         }
 
-        if (array_key_exists('upc_does_not_apply', $fields)) {
-            $payload['upc_does_not_apply'] = filter_var($fields['upc_does_not_apply'], FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false';
-        }
+        $payload['upc_does_not_apply'] = 'true';
+        unset($payload['upc']);
 
         if (array_key_exists('description', $fields) && is_string($fields['description'])) {
             $desc = trim($fields['description']);
@@ -1698,13 +1697,8 @@ class ReverbApiService
             }
         }
 
-        $skipUpc = filter_var($fields['upc_does_not_apply'] ?? false, FILTER_VALIDATE_BOOLEAN)
-            || trim((string) ($fields['upc'] ?? '')) === '';
-        if ($skipUpc) {
-            $payload['upc_does_not_apply'] = true;
-        } else {
-            $payload['upc'] = trim((string) $fields['upc']);
-        }
+        $payload['upc_does_not_apply'] = true;
+        unset($payload['upc']);
 
         $desc = trim((string) ($fields['description'] ?? ''));
         if ($desc !== '') {
