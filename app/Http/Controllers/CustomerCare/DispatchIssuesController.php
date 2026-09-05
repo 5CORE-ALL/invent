@@ -143,6 +143,14 @@ class DispatchIssuesController extends IssueBoardControllerBase
             // Replacement / Alternate Sent tracking input is capped at 40 chars in the UI;
             // we reuse `replacement_tracking` (varchar 50 in DB) but enforce 40 here.
             'replacement_tracking'   => 'nullable|string|max:40',
+            'replacement_extra_lines'                          => 'nullable|array|max:15',
+            'replacement_extra_lines.*.sku'                    => 'nullable|string|max:128',
+            'replacement_extra_lines.*.qty'                    => 'nullable|numeric|min:0',
+            'replacement_extra_lines.*.tracking'               => 'nullable|string|max:40',
+            'replacement_extra_lines.*.outgoing_needed'        => 'nullable',
+            'replacement_extra_lines.*.outgoing_warehouse_id'  => 'nullable|integer',
+            'replacement_extra_lines.*.outgoing_processed_at'  => 'nullable|string|max:40',
+            'replacement_extra_lines.*.outgoing_inventory_id'  => 'nullable|integer',
             // Carrier dropdown shown on Carrier Claims / Carrier Scan Issues. Persisted
             // on dispatch_issue_issues.issue_carrier (also the column edited inline from
             // the table). Final allow-list (USPS / UPS / FEDEX / GOFO) is enforced after
@@ -210,10 +218,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'refund_type'             => $isRefund && in_array($rtype, ['partial', 'full'], true) ? $rtype : null,
             'tracking_number'         => $tn !== '' ? $tn : null,
             'issue_link'              => $il !== '' ? $il : null,
-            'replacement_sku'         => $isReplacement && $rsku !== '' ? $rsku : null,
-            'replacement_qty_sending' => $isReplacement && isset($validated['replacement_qty_sending']) ? (float) $validated['replacement_qty_sending'] : null,
-            'outgoing_needed'         => $isReplacement ? (bool) ($validated['outgoing_needed'] ?? false) : false,
-            'outgoing_warehouse_id'   => $isReplacement && (bool) ($validated['outgoing_needed'] ?? false) && isset($validated['outgoing_warehouse_id'])
+            'replacement_sku'         => $rsku !== '' ? $rsku : null,
+            'replacement_qty_sending' => isset($validated['replacement_qty_sending']) && $validated['replacement_qty_sending'] !== ''
+                ? (float) $validated['replacement_qty_sending']
+                : null,
+            'outgoing_needed'         => (bool) ($validated['outgoing_needed'] ?? false),
+            'outgoing_warehouse_id'   => (bool) ($validated['outgoing_needed'] ?? false) && isset($validated['outgoing_warehouse_id'])
                 ? (int) $validated['outgoing_warehouse_id']
                 : null,
             // Issue? sub-fields:
@@ -223,6 +233,11 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'qty_sent'                => $isWrongQty && isset($validated['qty_sent']) && $validated['qty_sent'] !== '' ? (float) $validated['qty_sent'] : null,
             'qty_ordered'             => $isWrongQty && isset($validated['qty_ordered']) && $validated['qty_ordered'] !== '' ? (float) $validated['qty_ordered'] : null,
         ];
+
+        if (Schema::hasColumn($this->issuesTable(), 'replacement_extra_lines')) {
+            $extraLines = $this->parseReplacementExtraLines($validated['replacement_extra_lines'] ?? null);
+            $payload['replacement_extra_lines'] = $extraLines === [] ? null : json_encode($extraLines);
+        }
 
         // Wrong Item Sent → outgoing pipeline (independent of Replacement
         // outgoing). Only persist these when Wrong Item Sent is the active
@@ -327,6 +342,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'outgoing_warehouse_name' => $this->warehouseNameById($row->outgoing_warehouse_id ?? null),
                 'outgoing_processed_at'   => $row->outgoing_processed_at ?? null,
                 'outgoing_inventory_id'   => isset($row->outgoing_inventory_id) && $row->outgoing_inventory_id !== null ? (int) $row->outgoing_inventory_id : null,
+                'replacement_extra_lines' => $this->presentReplacementExtraLines($row->replacement_extra_lines ?? null),
                 // Issue? sub-fields:
                 'wrong_sent_sku'          => $row->wrong_sent_sku ?? null,
                 'issue_notes'             => $row->issue_notes ?? null,
@@ -1850,6 +1866,18 @@ class DispatchIssuesController extends IssueBoardControllerBase
             $outgoingWarning = 'Issue saved, but outgoing failed: ' . $e->getMessage();
         }
 
+        $extraOutgoing = $this->fireExtraReplacementOutgoings(
+            $rowIds,
+            $request->input('order_number'),
+            (string) $request->input('action_1')
+        );
+        foreach ($extraOutgoing['messages'] as $msg) {
+            $outgoingMsg = $outgoingMsg ? ($outgoingMsg . ' ' . $msg) : $msg;
+        }
+        foreach ($extraOutgoing['warnings'] as $warn) {
+            $outgoingWarning = $outgoingWarning ? ($outgoingWarning . ' | ' . $warn) : $warn;
+        }
+
         // Wrong Item Sent → outgoing trigger (independent from the Replacement
         // outgoing above). Fires only when the user ticked the new
         // "Outgoing needed?" checkbox inside the Wrong Item Sent sub-section.
@@ -1955,6 +1983,14 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'issue_date'           => isset($validated['issue_date']) ? trim((string) $validated['issue_date']) : null,
         ];
         $fieldPayload = array_merge($fieldPayload, $this->buildExtraPayload($validated));
+        if (Schema::hasColumn($this->issuesTable(), 'replacement_extra_lines')
+            && array_key_exists('replacement_extra_lines', $fieldPayload)
+        ) {
+            $fieldPayload['replacement_extra_lines'] = $this->mergeReplacementExtraLineProcessed(
+                $fieldPayload['replacement_extra_lines'],
+                $existing->replacement_extra_lines ?? null
+            );
+        }
 
         $now = now();
 
@@ -2215,17 +2251,29 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $shouldFireRepl  = $request->boolean('outgoing_needed');
         $shouldFireWrong = $request->boolean('wrong_sent_outgoing_needed');
 
-        if ($shouldFireRepl || $shouldFireWrong) {
-            $rowIds = DB::table($this->issuesTable())
-                ->where('group_id', $groupId)
-                ->where('sku', $sku)
-                ->where(function ($q) {
-                    $q->whereNull('is_archived')->orWhere('is_archived', false);
-                })
-                ->pluck('id')
-                ->all();
-            $rowIds = array_map('intval', $rowIds);
+        $rowIds = DB::table($this->issuesTable())
+            ->where('group_id', $groupId)
+            ->where('sku', $sku)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->pluck('id')
+            ->all();
+        $rowIds = array_map('intval', $rowIds);
 
+        $extraOutgoing = $this->fireExtraReplacementOutgoings(
+            $rowIds,
+            $request->input('order_number'),
+            (string) $request->input('action_1')
+        );
+        foreach ($extraOutgoing['messages'] as $msg) {
+            $outgoingMsg = $outgoingMsg ? ($outgoingMsg . ' ' . $msg) : $msg;
+        }
+        foreach ($extraOutgoing['warnings'] as $warn) {
+            $outgoingWarning = $outgoingWarning ? ($outgoingWarning . ' | ' . $warn) : $warn;
+        }
+
+        if ($shouldFireRepl || $shouldFireWrong) {
             if ($shouldFireRepl) {
                 try {
                     $outgoing = $this->fireOutgoingForIssue($request, [
@@ -2301,10 +2349,8 @@ class DispatchIssuesController extends IssueBoardControllerBase
             return ['success' => false, 'error' => 'No issue rows to mark.', 'inventory_id' => null];
         }
 
-        $action  = isset($validated['action_1']) ? trim((string) $validated['action_1']) : '';
-        $isReplacement = strcasecmp($action, 'Replacement') === 0 || strcasecmp($action, 'Alternate Sent') === 0;
         $needed  = (bool) ($validated['outgoing_needed'] ?? false);
-        if (! $isReplacement || ! $needed) {
+        if (! $needed) {
             return ['success' => false, 'error' => 'Outgoing not requested.', 'inventory_id' => null];
         }
 
@@ -2418,5 +2464,181 @@ class DispatchIssuesController extends IssueBoardControllerBase
         }
 
         return $outgoing;
+    }
+
+    /**
+     * Normalize extra Replacement / Alternate Sent SKU rows from the modal.
+     *
+     * @param  mixed  $raw
+     * @return list<array{sku: string, qty: float, tracking: ?string, outgoing_needed: bool, outgoing_warehouse_id: ?int, outgoing_processed_at: ?string, outgoing_inventory_id: ?int}>
+     */
+    private function parseReplacementExtraLines($raw): array
+    {
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($raw as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $sku = trim((string) ($line['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $tracking = trim((string) ($line['tracking'] ?? ''));
+            if (strlen($tracking) > 40) {
+                $tracking = substr($tracking, 0, 40);
+            }
+            $neededRaw = $line['outgoing_needed'] ?? false;
+            $needed = $neededRaw === true
+                || $neededRaw === 1
+                || $neededRaw === '1'
+                || $neededRaw === 'true'
+                || $neededRaw === 'on';
+            $whRaw = $line['outgoing_warehouse_id'] ?? null;
+            $whId = ($whRaw !== null && $whRaw !== '') ? (int) $whRaw : null;
+            $processedAt = isset($line['outgoing_processed_at']) ? trim((string) $line['outgoing_processed_at']) : '';
+            $invRaw = $line['outgoing_inventory_id'] ?? null;
+
+            $out[] = [
+                'sku' => $sku,
+                'qty' => isset($line['qty']) && $line['qty'] !== '' ? (float) $line['qty'] : 0.0,
+                'tracking' => $tracking !== '' ? $tracking : null,
+                'outgoing_needed' => $needed,
+                'outgoing_warehouse_id' => $needed ? $whId : null,
+                'outgoing_processed_at' => $processedAt !== '' ? $processedAt : null,
+                'outgoing_inventory_id' => ($invRaw !== null && $invRaw !== '') ? (int) $invRaw : null,
+            ];
+            if (count($out) >= 15) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return list<array<string, mixed>>
+     */
+    private function presentReplacementExtraLines($raw): array
+    {
+        $lines = $this->parseReplacementExtraLines($raw);
+        foreach ($lines as $i => $line) {
+            $lines[$i]['outgoing_warehouse_name'] = $this->warehouseNameById($line['outgoing_warehouse_id'] ?? null);
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Keep Shopify processed flags when an edit resubmits extra SKU rows.
+     */
+    private function mergeReplacementExtraLineProcessed(?string $incomingJson, $existingRaw): ?string
+    {
+        $incoming = $this->parseReplacementExtraLines($incomingJson);
+        if ($incoming === []) {
+            return null;
+        }
+        $existing = $this->parseReplacementExtraLines($existingRaw);
+        foreach ($incoming as $i => $line) {
+            if (! empty($line['outgoing_processed_at'])) {
+                continue;
+            }
+            $prev = $existing[$i] ?? null;
+            if ($prev
+                && strcasecmp((string) ($prev['sku'] ?? ''), $line['sku']) === 0
+                && ! empty($prev['outgoing_processed_at'])
+            ) {
+                $incoming[$i]['outgoing_processed_at'] = $prev['outgoing_processed_at'];
+                $incoming[$i]['outgoing_inventory_id'] = $prev['outgoing_inventory_id'] ?? null;
+            }
+        }
+
+        return json_encode(array_values($incoming));
+    }
+
+    /**
+     * Fire /outgoing-view for each extra replacement SKU that has
+     * "Outgoing needed?" checked and has not already been processed.
+     *
+     * @param  int[]  $issueRowIds
+     * @return array{messages: list<string>, warnings: list<string>}
+     */
+    private function fireExtraReplacementOutgoings(array $issueRowIds, ?string $orderNumber, string $action): array
+    {
+        $messages = [];
+        $warnings = [];
+        if ($issueRowIds === [] || ! Schema::hasColumn($this->issuesTable(), 'replacement_extra_lines')) {
+            return ['messages' => $messages, 'warnings' => $warnings];
+        }
+
+        $first = DB::table($this->issuesTable())->whereIn('id', $issueRowIds)->first();
+        if (! $first) {
+            return ['messages' => $messages, 'warnings' => $warnings];
+        }
+
+        $lines = $this->parseReplacementExtraLines($first->replacement_extra_lines ?? null);
+        if ($lines === []) {
+            return ['messages' => $messages, 'warnings' => $warnings];
+        }
+
+        $changed = false;
+        foreach ($lines as $i => $line) {
+            if (empty($line['outgoing_needed'])) {
+                continue;
+            }
+            if (! empty($line['outgoing_processed_at'])) {
+                continue;
+            }
+            $sku = trim((string) ($line['sku'] ?? ''));
+            $qty = (int) ($line['qty'] ?? 0);
+            $whId = (int) ($line['outgoing_warehouse_id'] ?? 0);
+            $label = $sku !== '' ? $sku : ('SKU ' . ($i + 2));
+            if ($sku === '' || $qty <= 0 || $whId <= 0) {
+                $warnings[] = 'Extra replacement ' . $label . ': SKU, qty and warehouse are required.';
+                continue;
+            }
+
+            try {
+                $outgoing = app(OutgoingController::class)->processOutgoingFromIssue($sku, $qty, [
+                    'warehouse_id' => $whId,
+                    'reason' => 'Replacement (All Issues)',
+                    'comment' => 'Auto extra SKU from All Issues #' . implode(',', $issueRowIds),
+                    'replacement_tracking' => $line['tracking'] ?? null,
+                    'order_id' => $orderNumber,
+                ]);
+            } catch (\Throwable $e) {
+                $warnings[] = 'Extra replacement ' . $label . ': ' . $e->getMessage();
+                continue;
+            }
+
+            if (! empty($outgoing['success'])) {
+                $lines[$i]['outgoing_processed_at'] = now()->toDateTimeString();
+                $lines[$i]['outgoing_inventory_id'] = $outgoing['inventory_id'] ?? null;
+                $changed = true;
+                $messages[] = 'Extra SKU ' . $label . ': Shopify inventory adjusted by -' . $qty
+                    . ' and a row was added to /outgoing-view.';
+            } elseif (! empty($outgoing['error'])) {
+                $warnings[] = 'Extra replacement ' . $label . ': ' . $outgoing['error'];
+            }
+        }
+
+        if ($changed) {
+            DB::table($this->issuesTable())
+                ->whereIn('id', $issueRowIds)
+                ->update([
+                    'replacement_extra_lines' => json_encode(array_values($lines)),
+                    'updated_at' => now(),
+                ]);
+        }
+
+        return ['messages' => $messages, 'warnings' => $warnings];
     }
 }

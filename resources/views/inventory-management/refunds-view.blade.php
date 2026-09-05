@@ -517,7 +517,20 @@
                                 </div>
                                 <div class="modal-body">
                                     <input type="hidden" id="editInventoryId">
-                                    <p class="mb-2"><strong>SKU:</strong> <span id="editSkuDisplay"></span></p>
+                                    <div class="row g-2">
+                                        <div class="col-md-6 mb-3">
+                                            <label for="editSku" class="form-label">SKU <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control" id="editSku" required>
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <label for="editQty" class="form-label">Quantity <span class="text-danger">*</span></label>
+                                            <input type="number" class="form-control" id="editQty" min="1" step="1" required>
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <label for="editRefundAmt" class="form-label">Refund Amt <span class="text-danger">*</span></label>
+                                            <input type="number" class="form-control" id="editRefundAmt" min="0" step="0.01" required>
+                                        </div>
+                                    </div>
                                     <div class="mb-3">
                                         <label for="editReason" class="form-label">Reason</label>
                                         <select class="form-select" id="editReason">
@@ -624,7 +637,7 @@
                         <div class="modal-dialog">
                             <div class="modal-content">
                                 <div class="modal-header">
-                                    <h5 class="modal-title">Manage refund reasons</h5>
+                                    <h5 class="modal-title">Manage refund reasons (add / edit / delete)</h5>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                 </div>
                                 <div class="modal-body">
@@ -639,8 +652,14 @@
                                     <hr>
                                     <label class="form-label">Current reasons</label>
                                     <ul id="reasonsList" class="list-group list-group-flush mb-0">
-                                        @foreach($reasons ?? [] as $r)
-                                            <li class="list-group-item d-flex justify-content-between align-items-center">{{ $r }}</li>
+                                        @foreach(($reasonItems ?? collect()) as $ri)
+                                            <li class="list-group-item d-flex justify-content-between align-items-center gap-2" data-id="{{ $ri->id }}">
+                                                <span class="reason-name">{{ $ri->name }}</span>
+                                                <span class="d-flex gap-1">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary edit-reason-option-btn" data-id="{{ $ri->id }}" data-name="{{ $ri->name }}" title="Edit reason"><i class="fas fa-edit"></i></button>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger delete-reason-option-btn" data-id="{{ $ri->id }}" data-name="{{ $ri->name }}" title="Delete reason"><i class="fas fa-trash"></i></button>
+                                                </span>
+                                            </li>
                                         @endforeach
                                     </ul>
                                 </div>
@@ -1355,32 +1374,44 @@
                 headerFilterTimer = setTimeout(function() { loadData(); }, 450);
             });
 
-            function refreshReasonsDropdowns(reasons) {
-                if (!reasons) return;
+            function reasonListItemHtml(item) {
+                var id = item.id;
+                var name = item.name || '';
+                return $('<li class="list-group-item d-flex justify-content-between align-items-center gap-2"></li>')
+                    .attr('data-id', id)
+                    .append($('<span class="reason-name"></span>').text(name))
+                    .append(
+                        $('<span class="d-flex gap-1"></span>')
+                            .append($('<button type="button" class="btn btn-sm btn-outline-primary edit-reason-option-btn" title="Edit reason"><i class="fas fa-edit"></i></button>').attr('data-id', id).attr('data-name', name))
+                            .append($('<button type="button" class="btn btn-sm btn-outline-danger delete-reason-option-btn" title="Delete reason"><i class="fas fa-trash"></i></button>').attr('data-id', id).attr('data-name', name))
+                    );
+            }
+
+            function refreshReasonsDropdowns(reasons, items) {
+                if (!reasons && !items) return;
+                var names = reasons || [];
+                if ((!names || !names.length) && items && items.length) {
+                    names = items.map(function(i) { return i.name; });
+                }
                 var $filter = $('#filterReason');
                 $filter.find('option:not([value=""])').remove();
-                reasons.forEach(function(r) { $filter.append($('<option></option>').val(r).text(r)); });
+                names.forEach(function(r) { $filter.append($('<option></option>').val(r).text(r)); });
                 var $reason = $('#reason');
                 $reason.find('option:not(:first)').remove();
-                reasons.forEach(function(r) { $reason.append($('<option></option>').val(r).text(r)); });
+                names.forEach(function(r) { $reason.append($('<option></option>').val(r).text(r)); });
                 var $editReason = $('#editReason');
                 $editReason.find('option').remove();
-                reasons.forEach(function(r) { $editReason.append($('<option></option>').val(r).text(r)); });
-                var $list = $('#reasonsList');
-                $list.empty();
-                reasons.forEach(function(r) {
-                    $list.append($('<li class="list-group-item d-flex justify-content-between align-items-center"></li>').text(r));
-                });
+                names.forEach(function(r) { $editReason.append($('<option></option>').val(r).text(r)); });
+                if (items && items.length) {
+                    var $list = $('#reasonsList');
+                    $list.empty();
+                    items.forEach(function(item) { $list.append(reasonListItemHtml(item)); });
+                }
             }
 
             $(document).on('click', '#manageReasonsBtn', function() {
                 $.get('/refunds-reasons', function(res) {
-                    if (res.reasons && res.reasons.length) {
-                        $('#reasonsList').empty();
-                        res.reasons.forEach(function(r) {
-                            $('#reasonsList').append($('<li class="list-group-item d-flex justify-content-between align-items-center"></li>').text(r));
-                        });
-                    }
+                    refreshReasonsDropdowns(res.reasons, res.items);
                 });
                 $('#newReasonName').val('');
                 $('#newReasonError').hide().text('');
@@ -1402,8 +1433,8 @@
                     contentType: 'application/json',
                     data: JSON.stringify({ name: name }),
                     success: function(res) {
-                        if (res.success && res.reasons) {
-                            refreshReasonsDropdowns(res.reasons);
+                        if (res.success && (res.reasons || res.items)) {
+                            refreshReasonsDropdowns(res.reasons, res.items);
                             $('#newReasonName').val('');
                         }
                     },
@@ -1427,7 +1458,9 @@
                         rec = currentDisplayData.find(function(r) { return parseInt(r.id, 10) === idNum; });
                     }
                     $('#editInventoryId').val(id);
-                    $('#editSkuDisplay').text(sku);
+                    $('#editSku').val(sku !== '-' ? sku : '');
+                    $('#editQty').val(rec && rec.verified_stock != null && rec.verified_stock !== '' ? rec.verified_stock : '');
+                    $('#editRefundAmt').val(rec && rec.refund_amt != null && rec.refund_amt !== '' ? rec.refund_amt : '');
                     $('#editReason').val(reason);
                     $('#editComment').val(remarks);
                     var $epr = $('#editPersonResponsible');
@@ -1464,12 +1497,27 @@
 
                 $(document).on('click', '#saveEditReasonCommentBtn', function() {
                     var id = $('#editInventoryId').val();
+                    var sku = ($('#editSku').val() || '').trim();
+                    var qty = $('#editQty').val();
+                    var refundAmt = $('#editRefundAmt').val();
                     var reason = $('#editReason').val();
                     var comment = $('#editComment').val();
                     var personResponsible = $('#editPersonResponsible').val();
                     var supplierId = $('#editSupplierId').val();
                     var $err = $('#editReasonCommentError');
                     $err.hide().text('');
+                    if (!sku) {
+                        $err.text('SKU is required.').show();
+                        return;
+                    }
+                    if (qty === '' || isNaN(Number(qty)) || Number(qty) < 1) {
+                        $err.text('Quantity must be at least 1.').show();
+                        return;
+                    }
+                    if (refundAmt === '' || isNaN(Number(refundAmt)) || Number(refundAmt) < 0) {
+                        $err.text('Refund amt must be 0 or more.').show();
+                        return;
+                    }
                     if (!reason) {
                         $err.text('Reason is required.').show();
                         return;
@@ -1485,6 +1533,9 @@
                         contentType: 'application/json',
                         data: JSON.stringify({
                             id: id,
+                            sku: sku,
+                            qty: parseInt(qty, 10),
+                            refund_amt: refundAmt,
                             reason: reason,
                             comment: comment,
                             person_responsible: personResponsible,
@@ -1497,6 +1548,9 @@
                                 var idNum = parseInt(id, 10);
                                 function patchRow(r) {
                                     if (!r) return;
+                                    r.sku = res.record.sku;
+                                    r.verified_stock = res.record.verified_stock;
+                                    r.refund_amt = res.record.refund_amt;
                                     r.reason = res.record.reason;
                                     r.remarks = res.record.remarks;
                                     r.person_responsible = res.record.person_responsible;
@@ -1513,12 +1567,92 @@
                                     patchRow(currentDisplayData[dx]);
                                 }
                                 renderTable(currentDisplayData.length ? currentDisplayData : tableData);
+                                if (typeof loadRefund30dBadge === 'function') loadRefund30dBadge();
                                 bootstrap.Modal.getInstance(document.getElementById('editReasonCommentModal')).hide();
                             }
                         },
                         error: function(xhr) {
                             var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Update failed.';
                             $err.text(msg).show();
+                        }
+                    });
+                });
+
+                $(document).on('click', '.delete-refund-btn', function() {
+                    var id = $(this).data('id');
+                    var sku = $(this).data('sku') || '';
+                    if (!id) return;
+                    if (!confirm('Delete refund record' + (sku ? ' for SKU ' + sku : '') + '? This cannot be undone.')) {
+                        return;
+                    }
+                    $.ajax({
+                        url: '/refunds-delete',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        contentType: 'application/json',
+                        data: JSON.stringify({ id: parseInt(id, 10) }),
+                        success: function(res) {
+                            if (res.success) {
+                                var idNum = parseInt(id, 10);
+                                tableData = tableData.filter(function(r) { return parseInt(r.id, 10) !== idNum; });
+                                currentDisplayData = currentDisplayData.filter(function(r) { return parseInt(r.id, 10) !== idNum; });
+                                renderTable(currentDisplayData.length ? currentDisplayData : tableData);
+                                if (typeof loadRefund30dBadge === 'function') loadRefund30dBadge();
+                            } else {
+                                alert(res.message || 'Delete failed.');
+                            }
+                        },
+                        error: function(xhr) {
+                            alert(xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Delete failed.');
+                        }
+                    });
+                });
+
+                $(document).on('click', '.edit-reason-option-btn', function() {
+                    var id = $(this).data('id');
+                    var current = $(this).attr('data-name') || '';
+                    var name = prompt('Edit reason name', current);
+                    if (name == null) return;
+                    name = String(name).trim();
+                    if (!name) {
+                        alert('Reason name is required.');
+                        return;
+                    }
+                    $.ajax({
+                        url: '/refunds-reasons/' + encodeURIComponent(id),
+                        method: 'PUT',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        contentType: 'application/json',
+                        data: JSON.stringify({ name: name }),
+                        success: function(res) {
+                            if (res.success) {
+                                refreshReasonsDropdowns(res.reasons, res.items);
+                                loadData();
+                            }
+                        },
+                        error: function(xhr) {
+                            alert(xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Could not update reason.');
+                        }
+                    });
+                });
+
+                $(document).on('click', '.delete-reason-option-btn', function() {
+                    var id = $(this).data('id');
+                    var name = $(this).attr('data-name') || '';
+                    if (!confirm('Delete reason' + (name ? ' "' + name + '"' : '') + '? Existing refund rows keep the old text.')) {
+                        return;
+                    }
+                    $.ajax({
+                        url: '/refunds-reasons/' + encodeURIComponent(id),
+                        method: 'DELETE',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        success: function(res) {
+                            if (res.success) {
+                                refreshReasonsDropdowns(res.reasons, res.items);
+                            }
+                        },
+                        error: function(xhr) {
+                            alert(xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Could not delete reason.');
                         }
                     });
                 });
@@ -1632,6 +1766,7 @@
                         <td>
                             <button type="button" class="btn btn-sm btn-outline-primary edit-reason-btn" data-id="${item.id}" data-sku="${(item.sku || '').replace(/"/g, '&quot;')}" data-reason="${(item.reason || '').replace(/"/g, '&quot;')}" data-remarks="${(item.remarks || '').replace(/"/g, '&quot;')}" data-person-responsible="${prVal}" data-supplier-id="${supId}" title="Edit"><i class="fas fa-edit"></i></button>
                             <button type="button" class="btn btn-sm btn-outline-secondary history-btn" data-id="${item.id}" data-sku="${(item.sku || '').replace(/"/g, '&quot;')}" title="View history"><i class="fas fa-history"></i></button>
+                            <button type="button" class="btn btn-sm btn-outline-danger delete-refund-btn" data-id="${item.id}" data-sku="${(item.sku || '').replace(/"/g, '&quot;')}" title="Delete"><i class="fas fa-trash"></i></button>
                         </td>
                     `;
                     tbody.appendChild(row);

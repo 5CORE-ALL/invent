@@ -406,6 +406,14 @@
             padding: 4px;
         }
 
+        .repl-extra-row {
+            position: relative;
+        }
+
+        .repl-extra-row .remove-repl-extra-row {
+            font-size: 0.65rem;
+        }
+
         .issue-modal-thumb {
             max-height: 48px;
             max-width: 72px;
@@ -1127,14 +1135,14 @@
                                 </div>
 
                                 {{-- Replacement / Alternate Sent (identical schema, single shared form block) --}}
-                                <div class="border rounded p-3 d-none" id="replacementSubsection" data-action-key="replacement">
+                                <div class="border rounded p-3 mt-2 d-none" id="replacementSubsection" data-action-key="replacement">
                                     <div class="fw-semibold mb-2 small text-uppercase text-muted" id="replacementSubsectionTitle">
                                         Replacement details
                                     </div>
                                     <div class="row g-2 align-items-end">
                                         <div class="col-md-6">
                                             <label for="hold_issue_replacement_sku" class="form-label small mb-1">
-                                                Replacement SKU <span class="text-danger">*</span>
+                                                Replacement SKU <span id="replacementSkuRequiredStar" class="text-danger">*</span>
                                             </label>
                                             <input type="text" class="form-control" id="hold_issue_replacement_sku"
                                                 name="replacement_sku" list="hold_issue_replacement_sku_datalist"
@@ -1152,7 +1160,7 @@
                                         </div>
                                         <div class="col-md-3">
                                             <label for="hold_issue_replacement_qty_sending" class="form-label small mb-1">
-                                                Qty sending <span class="text-danger">*</span>
+                                                Qty sending <span id="replacementQtyRequiredStar" class="text-danger">*</span>
                                             </label>
                                             <input type="number" min="0" step="1" class="form-control"
                                                 id="hold_issue_replacement_qty_sending" name="replacement_qty_sending"
@@ -1194,7 +1202,14 @@
                                                 Saving will deduct <strong>Quantity sending</strong> from Shopify inventory and create an <a href="/outgoing-view" target="_blank">/outgoing-view</a> row (reason: <em>Replacement (All Issues)</em>).
                                             </div>
                                         </div>
+                                        <div class="col-12" id="replacement-add-sku-wrap">
+                                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                                id="btn-add-replacement-sku">
+                                                <i class="fas fa-plus-circle me-1"></i> Add another replacement SKU
+                                            </button>
+                                        </div>
                                     </div>
+                                    <div id="replacement-extra-sku-rows" class="mt-2"></div>
                                 </div>
 
                                 {{-- Other --}}
@@ -1469,6 +1484,9 @@
             const skuSearchUrl = @json(route('customer.care.followups.skus'));
             const skuDetailsUrl = @json(route('customer.care.dispatch.issues.sku.details'));
             const replacementSkuDetailsUrl = @json(route('customer.care.dispatch.issues.replacement.sku.details'));
+            const outgoingWarehouseOptions = @json(
+                ($outgoingWarehouses ?? collect())->map(fn ($w) => ['id' => (int) $w->id, 'name' => (string) $w->name])->values()
+            );
             const recordsListUrl = @json(route('customer.care.dispatch.issues.list.index'));
             const recordsStoreUrl = @json(route('customer.care.dispatch.issues.list.store'));
             const recordsUpdateBaseUrl = @json(route('customer.care.dispatch.issues.list.index', [], false));
@@ -2066,6 +2084,27 @@
                 if (d.replacement_qty_sending != null && String(d.replacement_qty_sending).trim() !== '') {
                     replacementParts.push(detailsTextRow('Qty sending', d.replacement_qty_sending));
                 }
+                const extraReplLines = Array.isArray(d.replacement_extra_lines) ? d.replacement_extra_lines : [];
+                extraReplLines.forEach((line, idx) => {
+                    const n = idx + 2;
+                    if (String(line?.sku || '').trim() !== '') {
+                        replacementParts.push(detailsTextRow('Replacement SKU ' + n, line.sku));
+                    }
+                    if (line?.qty != null && String(line.qty).trim() !== '') {
+                        replacementParts.push(detailsTextRow('Qty sending ' + n, line.qty));
+                    }
+                    if (String(line?.tracking || '').trim() !== '') {
+                        replacementParts.push(detailsTrackingRow('Track R ' + n, line.tracking));
+                    }
+                    const extraOutProcessed = !!line?.outgoing_processed_at;
+                    const extraOutNeeded = line?.outgoing_needed === true || line?.outgoing_needed === 1 || String(line?.outgoing_needed) === '1';
+                    if (extraOutProcessed || extraOutNeeded) {
+                        replacementParts.push(detailsTextRow('Outgoing needed ' + n, (extraOutProcessed || extraOutNeeded) ? 'Yes' : 'No'));
+                    }
+                    if (extraOutProcessed) {
+                        replacementParts.push(detailsTextRow('Outgoing processed at ' + n, line.outgoing_processed_at));
+                    }
+                });
                 // Treat a processed outgoing as "Yes" even when the outgoing_needed
                 // flag wasn't persisted (legacy rows created before create saved
                 // the outgoing_* fields). The processed timestamp is the source of
@@ -2984,6 +3023,7 @@
                     refund_amount: row?.refund_amount ?? null,
                     replacement_sku: row?.replacement_sku ?? '',
                     replacement_qty_sending: row?.replacement_qty_sending ?? '',
+                    replacement_extra_lines: Array.isArray(row?.replacement_extra_lines) ? row.replacement_extra_lines : [],
                     outgoing_needed: !!row?.outgoing_needed,
                     outgoing_warehouse_id: row?.outgoing_warehouse_id ?? '',
                     outgoing_processed_at: row?.outgoing_processed_at ?? null,
@@ -3444,12 +3484,241 @@
                 if (preview) preview.classList.add('d-none');
                 if (qtyAv) qtyAv.textContent = '—';
                 if (img) img.setAttribute('src', '');
+                clearReplacementExtraRows();
+                setReplacementExtraRowsLocked(false);
             }
 
             // Show/hide the warehouse picker when "Outgoing needed?" is toggled.
             function toggleOutgoingWarehouseVisibility() {
                 const checked = !!document.getElementById('hold_issue_outgoing_needed')?.checked;
                 document.getElementById('outgoingWarehouseWrap')?.classList.toggle('d-none', !checked);
+            }
+
+            let replacementExtraRowSeq = 0;
+            let replacementExtraRowsLocked = false;
+
+            function outgoingWarehouseSelectHtml(selectedId) {
+                const sel = selectedId != null && selectedId !== '' ? String(selectedId) : '';
+                const opts = (Array.isArray(outgoingWarehouseOptions) ? outgoingWarehouseOptions : [])
+                    .map(w => {
+                        const id = String(w.id);
+                        return '<option value="' + escAttr(id) + '"' + (id === sel ? ' selected' : '') + '>'
+                            + escapeHtml(w.name) + '</option>';
+                    })
+                    .join('');
+                return '<option value="">— Select warehouse —</option>' + opts;
+            }
+
+            function setReplacementExtraRowsLocked(locked) {
+                replacementExtraRowsLocked = !!locked;
+                const addBtn = document.getElementById('btn-add-replacement-sku');
+                const addWrap = document.getElementById('replacement-add-sku-wrap');
+                if (addBtn) addBtn.disabled = replacementExtraRowsLocked;
+                if (addWrap) addWrap.classList.toggle('d-none', replacementExtraRowsLocked);
+                document.querySelectorAll('#replacement-extra-sku-rows .repl-extra-row').forEach(lockReplacementExtraRow);
+            }
+
+            function lockReplacementExtraRow(rowEl) {
+                if (!rowEl) return;
+                const lock = replacementExtraRowsLocked;
+                rowEl.querySelectorAll('input, select, button.remove-repl-extra-row').forEach(el => {
+                    if (el.classList.contains('remove-repl-extra-row')) {
+                        el.classList.toggle('d-none', lock);
+                        el.disabled = lock;
+                        return;
+                    }
+                    if (el.type === 'checkbox' || el.tagName === 'SELECT') {
+                        el.disabled = lock;
+                    } else {
+                        el.readOnly = lock;
+                    }
+                });
+            }
+
+            function clearReplacementExtraRows() {
+                const box = document.getElementById('replacement-extra-sku-rows');
+                if (box) box.innerHTML = '';
+            }
+
+            function toggleReplacementExtraOutgoing(rowEl) {
+                if (!rowEl) return;
+                const checked = !!rowEl.querySelector('.repl-extra-outgoing')?.checked;
+                rowEl.querySelector('.repl-extra-wh-wrap')?.classList.toggle('d-none', !checked);
+            }
+
+            async function fillReplacementExtraSkuDetails(rowEl) {
+                if (!rowEl) return;
+                const skuInp = rowEl.querySelector('.repl-extra-sku');
+                const preview = rowEl.querySelector('.repl-extra-preview');
+                const qtyAv = rowEl.querySelector('.repl-extra-qty-available');
+                const img = rowEl.querySelector('.repl-extra-image');
+                const sku = String(skuInp?.value || '').trim();
+                if (!sku) {
+                    preview?.classList.add('d-none');
+                    if (qtyAv) qtyAv.textContent = '—';
+                    if (img) img.setAttribute('src', '');
+                    return;
+                }
+                try {
+                    const res = await fetch(replacementSkuDetailsUrl + '?sku=' + encodeURIComponent(sku), {
+                        headers: getHeaders,
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.found) {
+                        preview?.classList.add('d-none');
+                        if (qtyAv) qtyAv.textContent = '—';
+                        if (img) img.setAttribute('src', '');
+                        return;
+                    }
+                    if (img && data.image_url) img.setAttribute('src', data.image_url);
+                    if (qtyAv) qtyAv.textContent = (data.qty_available != null) ? Number(data.qty_available) : '—';
+                    preview?.classList.remove('d-none');
+                } catch (e) { /* ignore */ }
+            }
+
+            function wireReplacementExtraRow(rowEl) {
+                const skuInp = rowEl.querySelector('.repl-extra-sku');
+                let timer = null;
+                skuInp?.addEventListener('input', function () {
+                    clearTimeout(timer);
+                    timer = setTimeout(function () {
+                        const q = String(skuInp.value || '').trim();
+                        const dl = document.getElementById('hold_issue_replacement_sku_datalist');
+                        if (!dl) return;
+                        if (q.length < 1) return;
+                        fetch(skuSearchUrl + '?q=' + encodeURIComponent(q), { headers: getHeaders })
+                            .then(r => r.json())
+                            .then(data => {
+                                const list = Array.isArray(data?.skus) ? data.skus : [];
+                                dl.innerHTML = list.map(item => {
+                                    const sku = item?.sku ?? '';
+                                    const parent = item?.parent ?? '';
+                                    const label = parent ? (parent + ' · ' + sku) : sku;
+                                    return '<option value="' + escAttr(sku) + '" label="' + escAttr(label) + '"></option>';
+                                }).join('');
+                            })
+                            .catch(() => { /* ignore */ });
+                    }, 220);
+                });
+                skuInp?.addEventListener('change', () => fillReplacementExtraSkuDetails(rowEl));
+                skuInp?.addEventListener('blur', () => fillReplacementExtraSkuDetails(rowEl));
+                rowEl.querySelector('.repl-extra-outgoing')
+                    ?.addEventListener('change', () => toggleReplacementExtraOutgoing(rowEl));
+            }
+
+            function addReplacementExtraRow(prefill, locked) {
+                const container = document.getElementById('replacement-extra-sku-rows');
+                if (!container) return null;
+                if (container.querySelectorAll('.repl-extra-row').length >= 15) {
+                    showAlert('You can add at most 15 extra replacement SKUs.');
+                    return null;
+                }
+                replacementExtraRowSeq += 1;
+                const idx = replacementExtraRowSeq;
+                const line = prefill && typeof prefill === 'object' ? prefill : {};
+                const sku = String(line.sku || '');
+                const qty = (line.qty != null && line.qty !== '') ? String(line.qty) : '';
+                const tracking = String(line.tracking || '');
+                const needed = line.outgoing_needed === true || line.outgoing_needed === 1 || String(line.outgoing_needed) === '1';
+                const processed = !!line.outgoing_processed_at;
+                const rowEl = document.createElement('div');
+                rowEl.className = 'repl-extra-row border rounded p-2 mt-2';
+                rowEl.innerHTML =
+                    '<button type="button" class="btn-close position-absolute top-0 end-0 m-1 remove-repl-extra-row" title="Remove this SKU"></button>' +
+                    '<div class="row g-2 align-items-end">' +
+                    '<div class="col-md-5">' +
+                    '<label class="form-label small mb-1">Replacement SKU <span class="text-danger">*</span></label>' +
+                    '<input type="text" class="form-control repl-extra-sku" list="hold_issue_replacement_sku_datalist" placeholder="Search SKU" autocomplete="off" value="' + escAttr(sku) + '">' +
+                    '<div class="d-flex align-items-center gap-2 mt-1 d-none repl-extra-preview">' +
+                    '<img src="" alt="Replacement SKU" class="sku-image-preview repl-extra-image" style="width:48px;height:48px;">' +
+                    '<div class="small text-muted">Available: <span class="fw-semibold text-dark repl-extra-qty-available">—</span></div>' +
+                    '</div></div>' +
+                    '<div class="col-md-2">' +
+                    '<label class="form-label small mb-1">Qty sending <span class="text-danger">*</span></label>' +
+                    '<input type="number" min="0" step="1" class="form-control repl-extra-qty" placeholder="Qty" value="' + escAttr(qty) + '">' +
+                    '</div>' +
+                    '<div class="col-md-5">' +
+                    '<label class="form-label small mb-1">Tracking ID</label>' +
+                    '<input type="text" class="form-control repl-extra-tracking" maxlength="40" placeholder="Up to 40 chars" value="' + escAttr(tracking) + '">' +
+                    '</div>' +
+                    '<div class="col-12">' +
+                    '<div class="form-check">' +
+                    '<input class="form-check-input repl-extra-outgoing" type="checkbox" id="repl_extra_out_' + idx + '"' + (needed || processed ? ' checked' : '') + '>' +
+                    '<label class="form-check-label" for="repl_extra_out_' + idx + '">Outgoing needed?</label>' +
+                    (processed
+                        ? '<div class="form-text mt-1 repl-extra-processed-notice"><i class="bi bi-check-circle-fill text-success me-1"></i>Already processed — Shopify inventory was decremented. Re-saves will not double-decrement.</div>'
+                        : '') +
+                    '</div></div>' +
+                    '<div class="col-md-6' + (needed || processed ? '' : ' d-none') + ' repl-extra-wh-wrap">' +
+                    '<label class="form-label small mb-1">Outgoing warehouse <span class="text-danger">*</span></label>' +
+                    '<select class="form-select repl-extra-warehouse">' + outgoingWarehouseSelectHtml(line.outgoing_warehouse_id) + '</select>' +
+                    '<div class="form-text small">Saving will deduct this line\'s qty from Shopify and create an <a href="/outgoing-view" target="_blank">/outgoing-view</a> row.</div>' +
+                    '</div>' +
+                    '<input type="hidden" class="repl-extra-processed-at" value="' + escAttr(line.outgoing_processed_at || '') + '">' +
+                    '<input type="hidden" class="repl-extra-inventory-id" value="' + escAttr(line.outgoing_inventory_id || '') + '">' +
+                    '</div>';
+                container.appendChild(rowEl);
+                const whSel = rowEl.querySelector('.repl-extra-warehouse');
+                if (whSel) {
+                    ensureWarehouseOptionPresent(whSel, line.outgoing_warehouse_id, line.outgoing_warehouse_name);
+                    if (line.outgoing_warehouse_id) whSel.value = String(line.outgoing_warehouse_id);
+                }
+                wireReplacementExtraRow(rowEl);
+                if (sku) fillReplacementExtraSkuDetails(rowEl);
+                if (locked || replacementExtraRowsLocked) lockReplacementExtraRow(rowEl);
+                return rowEl;
+            }
+
+            function collectReplacementExtraLines() {
+                const rows = document.querySelectorAll('#replacement-extra-sku-rows .repl-extra-row');
+                const lines = [];
+                for (const rowEl of rows) {
+                    const sku = rowEl.querySelector('.repl-extra-sku')?.value?.trim() || '';
+                    const qty = rowEl.querySelector('.repl-extra-qty')?.value;
+                    const tracking = rowEl.querySelector('.repl-extra-tracking')?.value?.trim() || '';
+                    const outgoingNeeded = !!rowEl.querySelector('.repl-extra-outgoing')?.checked;
+                    const warehouseId = rowEl.querySelector('.repl-extra-warehouse')?.value || '';
+                    const processedAt = rowEl.querySelector('.repl-extra-processed-at')?.value || '';
+                    const inventoryId = rowEl.querySelector('.repl-extra-inventory-id')?.value || '';
+                    if (!sku && (qty === '' || qty == null) && !tracking && !outgoingNeeded) {
+                        continue;
+                    }
+                    if (!sku) {
+                        showAlert('Replacement SKU is required on every extra SKU row.');
+                        rowEl.querySelector('.repl-extra-sku')?.focus();
+                        return null;
+                    }
+                    if (qty === '' || isNaN(Number(qty)) || Number(qty) < 0) {
+                        showAlert('Quantity sending is required on every extra SKU row.');
+                        rowEl.querySelector('.repl-extra-qty')?.focus();
+                        return null;
+                    }
+                    if (tracking.length > 40) {
+                        showAlert('Tracking ID must be at most 40 characters.');
+                        rowEl.querySelector('.repl-extra-tracking')?.focus();
+                        return null;
+                    }
+                    if (outgoingNeeded && !warehouseId) {
+                        showAlert('Please pick an outgoing warehouse for each extra SKU with Outgoing needed.');
+                        rowEl.querySelector('.repl-extra-warehouse')?.focus();
+                        return null;
+                    }
+                    if (outgoingNeeded && (isNaN(Number(qty)) || Number(qty) <= 0)) {
+                        showAlert('Qty sending must be greater than 0 to deduct from Shopify.');
+                        rowEl.querySelector('.repl-extra-qty')?.focus();
+                        return null;
+                    }
+                    lines.push({
+                        sku: sku,
+                        qty: qty,
+                        tracking: tracking,
+                        outgoing_needed: outgoingNeeded ? '1' : '0',
+                        outgoing_warehouse_id: outgoingNeeded ? warehouseId : '',
+                        outgoing_processed_at: processedAt,
+                        outgoing_inventory_id: inventoryId,
+                    });
+                }
+                return lines;
             }
 
             function clearRefundSubsection() {
@@ -3467,33 +3736,41 @@
             }
 
             function toggleActionSubsection() {
-                const key = actionSubsectionKey(action1Input?.value);
+                const action = String(action1Input?.value || '').trim();
+                const key = actionSubsectionKey(action);
                 const wrap = document.getElementById('actionSubsection');
                 const refund = document.getElementById('refundSubsection');
                 const repl = document.getElementById('replacementSubsection');
                 const other = document.getElementById('otherSubsection');
                 const replTitle = document.getElementById('replacementSubsectionTitle');
+                const showAny = action !== '';
 
                 if (!wrap) return;
 
-                // Show the wrapper only if any sub-section is active.
-                wrap.classList.toggle('d-none', !key);
+                // Any selected Action shows outgoing + extra SKUs. Refund / Other
+                // keep their own panels above that shared block.
+                wrap.classList.toggle('d-none', !showAny);
                 refund?.classList.toggle('d-none', key !== 'refund');
-                repl?.classList.toggle('d-none', key !== 'replacement');
+                repl?.classList.toggle('d-none', !showAny);
                 other?.classList.toggle('d-none', key !== 'other');
 
-                // Customise the Replacement panel title for "Alternate Sent".
                 if (replTitle) {
-                    const action = String(action1Input?.value || '').trim();
-                    replTitle.textContent = (action.toLowerCase() === 'alternate sent')
-                        ? 'Alternate Sent details'
-                        : 'Replacement details';
+                    const v = action.toLowerCase();
+                    if (v === 'alternate sent') replTitle.textContent = 'Alternate Sent details';
+                    else if (v === 'replacement') replTitle.textContent = 'Replacement details';
+                    else replTitle.textContent = 'Outgoing / extra SKUs';
                 }
 
-                // Wipe data from any sub-section that's no longer active so we
-                // don't accidentally save stale values from a previous selection.
+                document.getElementById('replacementSkuRequiredStar')?.classList.toggle('d-none', key !== 'replacement');
+                document.getElementById('replacementQtyRequiredStar')?.classList.toggle('d-none', key !== 'replacement');
+
+                if (!showAny) {
+                    clearRefundSubsection();
+                    clearReplacementSubsection();
+                    clearOtherSubsection();
+                    return;
+                }
                 if (key !== 'refund') clearRefundSubsection();
-                if (key !== 'replacement') clearReplacementSubsection();
                 if (key !== 'other') clearOtherSubsection();
             }
 
@@ -4320,7 +4597,10 @@
                     if (rt === 'full') document.getElementById('refundType_full').checked = true;
                     document.getElementById('hold_issue_refund_amount').value =
                         (record.refund_amount != null && record.refund_amount !== '') ? record.refund_amount : '';
-                } else if (subKey === 'replacement') {
+                } else if (subKey === 'other') {
+                    document.getElementById('hold_issue_other_notes').value = record.action_1_remark || '';
+                }
+                if (String(record.action_1 || '').trim() !== '') {
                     document.getElementById('hold_issue_replacement_sku').value = record.replacement_sku || '';
                     document.getElementById('hold_issue_replacement_qty_sending').value =
                         (record.replacement_qty_sending != null && record.replacement_qty_sending !== '')
@@ -4333,10 +4613,6 @@
                         whSel.value = record.outgoing_warehouse_id ? String(record.outgoing_warehouse_id) : '';
                     }
                     toggleOutgoingWarehouseVisibility();
-                    // On EDIT the whole Replacement Details block is view-only /
-                    // locked — a replacement (and its outgoing) shouldn't be
-                    // altered after the issue was created. Create/new-entry stays
-                    // editable because clearReplacementSubsection() unlocks first.
                     {
                         const rSku = document.getElementById('hold_issue_replacement_sku');
                         const rQty = document.getElementById('hold_issue_replacement_qty_sending');
@@ -4348,8 +4624,6 @@
                         if (rCb) rCb.disabled = true;
                         if (whSel) whSel.disabled = true;
                     }
-                    // Show the "already processed" notice when Shopify was
-                    // decremented for this issue.
                     if (record.outgoing_processed_at) {
                         const notice = document.getElementById('outgoingProcessedNotice');
                         const cb = document.getElementById('hold_issue_outgoing_needed');
@@ -4357,8 +4631,10 @@
                         if (notice) notice.classList.remove('d-none');
                     }
                     if (record.replacement_sku) fillReplacementSkuDetails();
-                } else if (subKey === 'other') {
-                    document.getElementById('hold_issue_other_notes').value = record.action_1_remark || '';
+                    clearReplacementExtraRows();
+                    const extraLines = Array.isArray(record.replacement_extra_lines) ? record.replacement_extra_lines : [];
+                    extraLines.forEach(line => addReplacementExtraRow(line, true));
+                    setReplacementExtraRowsLocked(true);
                 }
                 if (trackingNumberInput) trackingNumberInput.value = record.tracking_number || '';
                 if (issueLinkInput) issueLinkInput.value = record.issue_link || '';
@@ -4484,7 +4760,7 @@
             // ── Build FormData (images + multi-sku) ────────────────────────────
             function fillIssueFormData(fd, payload, isMultiSku) {
                 for (const k of Object.keys(payload)) {
-                    if (k === 'skus') continue;
+                    if (k === 'skus' || k === 'replacement_extra_lines') continue;
                     const v = payload[k];
                     if (k === 'department' && Array.isArray(v)) {
                         v.forEach(d => fd.append('department[]', d));
@@ -4501,6 +4777,17 @@
                         fd.append('skus[' + i + '][order_qty]', row.order_qty == null || row.order_qty === '' ?
                             '' : String(row.order_qty));
                         fd.append('skus[' + i + '][parent]', row.parent ?? '');
+                    });
+                }
+                if (Array.isArray(payload.replacement_extra_lines)) {
+                    payload.replacement_extra_lines.forEach((row, i) => {
+                        fd.append('replacement_extra_lines[' + i + '][sku]', row.sku ?? '');
+                        fd.append('replacement_extra_lines[' + i + '][qty]', String(row.qty ?? ''));
+                        fd.append('replacement_extra_lines[' + i + '][tracking]', row.tracking ?? '');
+                        fd.append('replacement_extra_lines[' + i + '][outgoing_needed]', row.outgoing_needed ?? '0');
+                        fd.append('replacement_extra_lines[' + i + '][outgoing_warehouse_id]', row.outgoing_warehouse_id ?? '');
+                        fd.append('replacement_extra_lines[' + i + '][outgoing_processed_at]', row.outgoing_processed_at ?? '');
+                        fd.append('replacement_extra_lines[' + i + '][outgoing_inventory_id]', row.outgoing_inventory_id ?? '');
                     });
                 }
                 const img1 = document.getElementById('hold_issue_image_1');
@@ -4574,6 +4861,7 @@
                 let replacementQtySending = '';
                 let replacementTrackingValue = (replacementTrackingInput?.value || '').trim();
                 let outgoingNeeded = false;
+                let replacementExtraLines = [];
                 let otherNotes = '';
 
                 if (subKey === 'refund') {
@@ -4587,20 +4875,27 @@
                     }
                     refundType = rt;
                     refundAmount = amt;
-                } else if (subKey === 'replacement') {
+                } else if (subKey === 'other') {
+                    otherNotes = document.getElementById('hold_issue_other_notes').value.trim();
+                }
+
+                if (actionVal) {
                     const rsku = document.getElementById('hold_issue_replacement_sku').value.trim();
                     const rqty = document.getElementById('hold_issue_replacement_qty_sending').value;
                     const rtrk = document.getElementById('hold_issue_replacement_tracking_40').value.trim();
                     const rout = document.getElementById('hold_issue_outgoing_needed').checked;
-                    if (!rsku) {
-                        showAlert('Replacement SKU is required.');
-                        document.getElementById('hold_issue_replacement_sku').focus();
-                        return;
-                    }
-                    if (rqty === '' || isNaN(Number(rqty)) || Number(rqty) < 0) {
-                        showAlert('Quantity sending is required.');
-                        document.getElementById('hold_issue_replacement_qty_sending').focus();
-                        return;
+                    const requireSkuQty = subKey === 'replacement';
+                    if (requireSkuQty || rsku || rqty !== '' || rtrk || rout) {
+                        if ((requireSkuQty || rout || rqty !== '') && !rsku) {
+                            showAlert('Replacement SKU is required.');
+                            document.getElementById('hold_issue_replacement_sku').focus();
+                            return;
+                        }
+                        if ((requireSkuQty || rout) && (rqty === '' || isNaN(Number(rqty)) || Number(rqty) < 0)) {
+                            showAlert('Quantity sending is required.');
+                            document.getElementById('hold_issue_replacement_qty_sending').focus();
+                            return;
+                        }
                     }
                     if (rtrk.length > 40) {
                         showAlert('Tracking ID must be at most 40 characters.');
@@ -4609,11 +4904,8 @@
                     }
                     replacementSku = rsku;
                     replacementQtySending = rqty;
-                    // Replacement tracking ID for this action lives in the same column
-                    // as the existing Replacement Tracking field, but capped at 40 chars.
                     if (rtrk) replacementTrackingValue = rtrk;
                     outgoingNeeded = rout;
-                    // If Outgoing needed is checked, a warehouse must be picked.
                     if (rout) {
                         const whSel = document.getElementById('hold_issue_outgoing_warehouse_id');
                         if (!whSel || !whSel.value) {
@@ -4622,8 +4914,8 @@
                             return;
                         }
                     }
-                } else if (subKey === 'other') {
-                    otherNotes = document.getElementById('hold_issue_other_notes').value.trim();
+                    replacementExtraLines = collectReplacementExtraLines();
+                    if (replacementExtraLines === null) return;
                 }
 
                 // Issue? sub-section validation + payload assembly.
@@ -4764,6 +5056,7 @@
                         refund_amount: refundAmount,
                         replacement_sku: replacementSku,
                         replacement_qty_sending: replacementQtySending,
+                        replacement_extra_lines: replacementExtraLines,
                         outgoing_needed: outgoingNeeded ? '1' : '0',
                         outgoing_warehouse_id: outgoingNeeded
                             ? (document.getElementById('hold_issue_outgoing_warehouse_id')?.value || '')
@@ -5517,6 +5810,17 @@
 
                 // Outgoing needed checkbox: reveal warehouse picker when on.
                 document.getElementById('hold_issue_outgoing_needed')?.addEventListener('change', toggleOutgoingWarehouseVisibility);
+                document.getElementById('btn-add-replacement-sku')?.addEventListener('click', function () {
+                    if (replacementExtraRowsLocked) return;
+                    const row = addReplacementExtraRow();
+                    row?.querySelector('.repl-extra-sku')?.focus();
+                });
+                document.getElementById('replacement-extra-sku-rows')?.addEventListener('click', function (e) {
+                    const btn = e.target.closest('.remove-repl-extra-row');
+                    if (btn && !replacementExtraRowsLocked) {
+                        btn.closest('.repl-extra-row')?.remove();
+                    }
+                });
                 // Wrong Item Sent → its own outgoing checkbox + warehouse picker.
                 document.getElementById('hold_issue_wrong_sent_outgoing_needed')
                     ?.addEventListener('change', toggleWrongSentOutgoingWarehouseVisibility);

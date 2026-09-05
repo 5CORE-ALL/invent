@@ -60,7 +60,6 @@ use App\Http\Controllers\Campaigns\WalmartRunningAdsController;
 use App\Http\Controllers\Campaigns\WalmartUtilisationController;
 use App\Http\Controllers\Catalouge\CatalougeManagerController;
 use App\Http\Controllers\Channels\AccountHealthMasterController;
-use App\Http\Controllers\Channels\ShippingHealthController;
 use App\Http\Controllers\Channels\EscalatedClaimsController;
 use App\Http\Controllers\Channels\ApiVsSheetController;
 use App\Http\Controllers\Channels\ShippingHealthOverviewController;
@@ -940,18 +939,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/account-health-master/scope-link/save', 'saveScopeLinkInline')->name('account.health.master.scope.link.save');
         Route::post('/account-health-master/cc-audit/save', 'saveCcAudit')->name('account.health.master.cc.audit.save');
         Route::get('/account-health-master/cc-audit/history', 'ccAuditHistory')->name('account.health.master.cc.audit.history');
-    });
-
-    // Shipping Health (separate tables: shipping_health_values, shipping_audit_logs, shipping_scope_links)
-    Route::controller(ShippingHealthController::class)->group(function () {
-        Route::get('/shipping-health/tabulator', 'tabulator')->name('shipping.health.tabulator');
-        Route::get('/shipping-health/tabulator-data', 'tabulatorChannelData')->name('shipping.health.tabulator.data');
-        Route::post('/shipping-health/value/save', 'saveValue')->name('shipping.health.value.save');
-        Route::get('/shipping-health/history', 'history')->name('shipping.health.history');
-        Route::get('/shipping-health/daily-average', 'dailyAverage')->name('shipping.health.daily.average');
-        Route::post('/shipping-health/scope-link/save', 'saveScopeLink')->name('shipping.health.scope.link.save');
-        Route::post('/shipping-health/audit/save', 'saveAudit')->name('shipping.health.audit.save');
-        Route::get('/shipping-health/audit/history', 'auditHistory')->name('shipping.health.audit.history');
     });
 
     // Escalated Claims (Account Health Master)
@@ -3261,6 +3248,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/refunds-reasons', [RefundController::class, 'getReasons']);
     Route::post('/refunds-reasons', [RefundController::class, 'storeReason']);
     Route::put('/refunds-update-reason-comment', [RefundController::class, 'updateReasonAndComment']);
+    Route::post('/refunds-delete', [RefundController::class, 'destroy']);
+    Route::put('/refunds-reasons/{id}', [RefundController::class, 'updateReason']);
+    Route::delete('/refunds-reasons/{id}', [RefundController::class, 'destroyReason']);
     Route::get('/refunds-history/{id}', [RefundController::class, 'getHistory']);
     Route::post('/refunds-archive', [RefundController::class, 'archive']);
     Route::post('/refunds-import-csv', [RefundController::class, 'importCsv'])->name('refunds.import.csv');

@@ -32,7 +32,8 @@ class RefundController extends Controller
             ->orderBy('product_master.sku')
             ->get();
 
-        $reasons = RefundReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray();
+        $reasonItems = RefundReason::orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
+        $reasons = $reasonItems->pluck('name')->toArray();
         $suppliers = Supplier::where('type', 'Supplier')->orderBy('name')->get(['id', 'name']);
         $personResponsibleOptions = self::PERSON_RESPONSIBLE_OPTIONS;
         $channels = ChannelMaster::query()
@@ -44,6 +45,7 @@ class RefundController extends Controller
         return view('inventory-management.refunds-view', compact(
             'skus',
             'reasons',
+            'reasonItems',
             'suppliers',
             'personResponsibleOptions',
             'channels'
@@ -179,8 +181,7 @@ class RefundController extends Controller
 
     public function getReasons()
     {
-        $reasons = RefundReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray();
-        return response()->json(['reasons' => $reasons]);
+        return response()->json($this->reasonPayload());
     }
 
     public function storeReason(Request $request)
@@ -200,7 +201,61 @@ class RefundController extends Controller
             'name' => $name,
             'sort_order' => $maxOrder + 1,
         ]);
-        return response()->json(['success' => true, 'reasons' => RefundReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray()]);
+        return response()->json(['success' => true] + $this->reasonPayload());
+    }
+
+    public function updateReason(Request $request, int $id)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+        $reason = RefundReason::find($id);
+        if (! $reason) {
+            return response()->json(['success' => false, 'message' => 'Reason not found.'], 404);
+        }
+        $name = trim((string) $request->name);
+        if ($name === '') {
+            return response()->json(['success' => false, 'message' => 'Reason name is required.'], 422);
+        }
+        $exists = RefundReason::where('name', $name)->where('id', '!=', $id)->exists();
+        if ($exists) {
+            return response()->json(['success' => false, 'message' => 'This reason already exists.'], 422);
+        }
+        $old = $reason->name;
+        $reason->name = $name;
+        $reason->save();
+        if ($old !== $name) {
+            RefundRecord::where('reason', $old)->update(['reason' => $name]);
+        }
+
+        return response()->json(['success' => true] + $this->reasonPayload());
+    }
+
+    public function destroyReason(int $id)
+    {
+        $reason = RefundReason::find($id);
+        if (! $reason) {
+            return response()->json(['success' => false, 'message' => 'Reason not found.'], 404);
+        }
+        $reason->delete();
+
+        return response()->json(['success' => true] + $this->reasonPayload());
+    }
+
+    /**
+     * @return array{reasons: list<string>, items: list<array{id: int, name: string}>}
+     */
+    private function reasonPayload(): array
+    {
+        $items = RefundReason::orderBy('sort_order')->orderBy('name')->get(['id', 'name'])
+            ->map(fn ($r) => ['id' => (int) $r->id, 'name' => (string) $r->name])
+            ->values()
+            ->all();
+
+        return [
+            'reasons' => array_column($items, 'name'),
+            'items' => $items,
+        ];
     }
 
     public function store(Request $request)
@@ -283,6 +338,9 @@ class RefundController extends Controller
 
         $request->validate([
             'id' => 'required|integer|exists:refund_records,id',
+            'sku' => 'required|string|max:255',
+            'qty' => 'required|integer|min:1',
+            'refund_amt' => 'required|numeric|min:0',
             'reason' => 'required|string|max:255',
             'comment' => 'nullable|string',
             'person_responsible' => ['required', Rule::in(self::PERSON_RESPONSIBLE_OPTIONS)],
@@ -306,6 +364,9 @@ class RefundController extends Controller
             return response()->json(['success' => false, 'message' => 'Record not found.'], 404);
         }
 
+        $sku = trim((string) $request->sku);
+        $qty = (int) $request->qty;
+        $refundAmt = round((float) $request->refund_amt, 2);
         $reason = trim($request->reason);
         $comment = $request->filled('comment') ? trim($request->comment) : null;
         $personResponsible = $request->person_responsible;
@@ -317,6 +378,19 @@ class RefundController extends Controller
         $channelMasterId = $request->filled('channel_master_id') ? (int) $request->channel_master_id : null;
         $user = Auth::user()->name ?? 'N/A';
         $now = Carbon::now('America/New_York');
+
+        if ((string) $rec->sku !== $sku) {
+            $this->logHistory($rec, 'sku', $rec->sku, $sku, $user, $now);
+            $rec->sku = $sku;
+        }
+        if ((int) $rec->qty !== $qty) {
+            $this->logHistory($rec, 'qty', (string) $rec->qty, (string) $qty, $user, $now);
+            $rec->qty = $qty;
+        }
+        if (round((float) $rec->refund_amt, 2) !== $refundAmt) {
+            $this->logHistory($rec, 'refund_amt', (string) $rec->refund_amt, (string) $refundAmt, $user, $now);
+            $rec->refund_amt = $refundAmt;
+        }
 
         if ($rec->reason !== $reason) {
             $this->logHistory($rec, 'reason', $rec->reason, $reason, $user, $now);
@@ -363,6 +437,8 @@ class RefundController extends Controller
             'record' => [
                 'id' => $rec->id,
                 'sku' => $rec->sku,
+                'verified_stock' => (int) $rec->qty,
+                'refund_amt' => (float) $rec->refund_amt,
                 'reason' => $rec->reason,
                 'remarks' => $rec->comment,
                 'person_responsible' => $rec->person_responsible,
@@ -372,6 +448,24 @@ class RefundController extends Controller
                 'channel_master_id' => $rec->channel_master_id,
                 'channel_name' => $rec->channelMaster?->channel ?? '',
             ],
+        ]);
+    }
+
+    public function destroy(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|integer|exists:refund_records,id',
+        ]);
+
+        $rec = RefundRecord::find($request->id);
+        if (! $rec) {
+            return response()->json(['success' => false, 'message' => 'Record not found.'], 404);
+        }
+        $rec->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Refund record deleted.',
         ]);
     }
 
@@ -406,6 +500,9 @@ class RefundController extends Controller
         }
 
         $labels = [
+            'sku' => 'SKU',
+            'qty' => 'Quantity',
+            'refund_amt' => 'Refund amt',
             'reason' => 'Reason',
             'comment' => 'Corrective action required',
             'person_responsible' => 'Person responsible',
@@ -505,12 +602,13 @@ class RefundController extends Controller
             ];
         })->values()->all();
 
-        $reasons = RefundReason::orderBy('sort_order')->orderBy('name')->pluck('name')->toArray();
+        $reasonPayload = $this->reasonPayload();
         $persons = RefundRecord::query()->distinct()->pluck('created_by')->filter()->values()->all();
 
         return response()->json([
             'data' => $data,
-            'reasons' => $reasons,
+            'reasons' => $reasonPayload['reasons'],
+            'items' => $reasonPayload['items'],
             'persons' => $persons,
         ]);
     }

@@ -22,10 +22,7 @@
     'hideDepartmentFieldInModal' => true,
     'singleEntryIssueBoard' => true,
     'hideDepartmentColumnAndFilter' => true,
-    // Render the Department column AFTER the Created By column instead of
-    // its default position, so the user can see which department(s) the
-    // ticket belongs to without bringing back the dropdown filter.
-    'showDepartmentColumnAfterCreatedBy' => true,
+    'showDepartmentColumnAfterCreatedBy' => false,
     'hideRootCauseAndInstructionsCtnColumns' => true,
     'requireRootCauseFound' => false,
     'createdAtColumnAfterTrack' => true,

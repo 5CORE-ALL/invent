@@ -388,9 +388,6 @@
                         </li>
 
                         <li>
-                            <a href="{{ route('shipping.health.tabulator') }}">Shipping Audit</a>
-                        </li>
-                        <li>
                             <a href="{{ route('odr.rate') }}">ODR Rate</a>
                         </li>
                         <li>
