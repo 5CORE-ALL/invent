@@ -3000,7 +3000,7 @@
             rowHeight: 36,
             pagination: true,
             paginationSize: 100,
-            paginationSizeSelector: [10, 25, 50, 100, 200],
+            paginationSizeSelector: [10, 25, 50, 100, 200, true],
             paginationCounter: "rows",
             renderVertical: "virtual",
             langs: {
@@ -3676,7 +3676,7 @@
                     }
                 },
                 {
-                    title: "Sroi",
+                    title: "SGROI",
                     field: "SROI",
                     hozAlign: "center",
                     sorter: "number",
