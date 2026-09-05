@@ -2256,21 +2256,32 @@ class TikTokShopService
         }
 
         $this->ensureShopCipher();
+        $viaSdk = $this->tiktokUploadImageViaSdk($bytes, $filename, $useCase);
+        if (($viaSdk['uri'] ?? null) !== null && $viaSdk['uri'] !== '') {
+            return $viaSdk;
+        }
+
         $hosts = $this->tiktokImageUploadHosts();
-        $paths = [
-            '/product/202309/images/upload',
-            '/product/202502/images/upload',
-        ];
-        $apiError = '';
+        $tries = [];
+        foreach (['202509', '202309', '202405'] as $ver) {
+            foreach ([
+                '/product/'.$ver.'/images/upload',
+                '/product/'.$ver.'/products/upload_files',
+            ] as $path) {
+                $tries[] = ['path' => $path, 'query' => []];
+                $tries[] = ['path' => $path, 'query' => ['version' => $ver]];
+            }
+        }
+        $apiError = $this->sanitizeTikTokClientError((string) ($viaSdk['message'] ?? ''));
         $networkError = '';
 
         foreach ($hosts as $base) {
-            $hostAnswered = false;
-            foreach ($paths as $path) {
-                $query = [
+            foreach ($tries as $try) {
+                $path = $try['path'];
+                $query = array_merge([
                     'app_key' => (string) $this->clientKey,
                     'timestamp' => (string) time(),
-                ];
+                ], $try['query']);
                 if (is_string($this->shopCipher) && $this->shopCipher !== '') {
                     $query['shop_cipher'] = $this->shopCipher;
                 }
@@ -2285,7 +2296,6 @@ class TikTokShopService
                         ->post($base.$path.'?'.http_build_query($query), [
                             'use_case' => $useCase,
                         ]);
-                    $hostAnswered = true;
                     $json = $response->json() ?? [];
                     if ((int) ($json['code'] ?? -1) === 0) {
                         $uri = trim((string) (
@@ -2298,14 +2308,19 @@ class TikTokShopService
                             return ['uri' => $uri, 'message' => ''];
                         }
                     }
-                    $apiError = $this->sanitizeTikTokClientError((string) ($json['message'] ?? $response->body()));
+                    $msg = $this->sanitizeTikTokClientError((string) ($json['message'] ?? $response->body()));
                     Log::info('TikTok image upload attempt failed', [
                         'channel' => $this->configKey,
                         'base' => $base,
                         'path' => $path,
                         'code' => $json['code'] ?? null,
-                        'message' => $apiError,
+                        'message' => $msg,
                     ]);
+                    if ($msg !== '' && ! $this->isInvalidApiVersionError($msg)) {
+                        $apiError = $msg;
+                    } elseif ($apiError === '') {
+                        $apiError = $msg;
+                    }
                 } catch (\Throwable $e) {
                     $msg = $this->sanitizeTikTokClientError($e->getMessage());
                     Log::info('TikTok image upload exception', [
@@ -2318,15 +2333,73 @@ class TikTokShopService
                         $networkError = $msg;
                         break;
                     }
-                    $apiError = $msg;
+                    if ($msg !== '' && ! $this->isInvalidApiVersionError($msg)) {
+                        $apiError = $msg;
+                    } elseif ($apiError === '') {
+                        $apiError = $msg;
+                    }
                 }
-            }
-            if ($hostAnswered) {
-                break;
             }
         }
 
         return ['uri' => null, 'message' => $apiError !== '' ? $apiError : $networkError];
+    }
+
+    /**
+     * @return array{uri: ?string, message: string}
+     */
+    private function tiktokUploadImageViaSdk(string $bytes, string $filename, string $useCase): array
+    {
+        $ext = strtolower((string) pathinfo($filename, PATHINFO_EXTENSION)) ?: 'jpg';
+        $tmp = tempnam(sys_get_temp_dir(), 'tts_img_');
+        if (! is_string($tmp) || $tmp === '') {
+            return ['uri' => null, 'message' => ''];
+        }
+        $path = $tmp.'.'.$ext;
+        @unlink($tmp);
+        if (@file_put_contents($path, $bytes) === false) {
+            return ['uri' => null, 'message' => ''];
+        }
+
+        $lastError = '';
+        try {
+            $this->client->setAccessToken($this->accessToken);
+            if (is_string($this->shopCipher) && $this->shopCipher !== '') {
+                $this->client->setShopCipher($this->shopCipher);
+            }
+            foreach (['202509', '202309', '202405'] as $version) {
+                try {
+                    $product = $this->client->Product->useVersion($version);
+                    $data = [];
+                    if (method_exists($product, 'uploadProductImage')) {
+                        $data = $product->uploadProductImage($path, $useCase);
+                    } elseif (method_exists($product, 'uploadImage')) {
+                        $data = $product->uploadImage($path, 1);
+                    } else {
+                        break;
+                    }
+                    $data = is_array($data) ? $data : [];
+                    $uri = trim((string) ($data['uri'] ?? $data['url'] ?? $data['image_uri'] ?? ''));
+                    if ($uri !== '') {
+                        return ['uri' => $uri, 'message' => ''];
+                    }
+                } catch (\Throwable $e) {
+                    $lastError = $this->sanitizeTikTokClientError($e->getMessage());
+                    Log::info('TikTok SDK image upload failed', [
+                        'channel' => $this->configKey,
+                        'version' => $version,
+                        'error' => $lastError,
+                    ]);
+                    if (! $this->isInvalidApiVersionError($e->getMessage()) && ! $this->isNoSchemaError($e->getMessage())) {
+                        continue;
+                    }
+                }
+            }
+        } finally {
+            @unlink($path);
+        }
+
+        return ['uri' => null, 'message' => $lastError];
     }
 
     /**
