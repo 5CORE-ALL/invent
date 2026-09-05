@@ -421,6 +421,10 @@
             background: #eff6ff;
             box-shadow: 0 0 0 1px #0d6efd;
         }
+        .listing-publish-mode-card:has(input:disabled) {
+            opacity: .55;
+            cursor: not-allowed;
+        }
         .listing-publish-mode-card strong { display: block; font-size: 13px; color: #0f172a; }
         .listing-publish-mode-card em {
             display: block;
@@ -566,7 +570,12 @@
                     <span id="lc-editor-title">Listing</span>
                     <span id="lc-editor-channel-badge"></span>
                 </h5>
-                <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lc-reload-amazon-btn">Reload from Main Store</button>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-fetch-shopify-btn" id="lc-fetch-shopify-btn">
+                        <i class="fab fa-shopify me-1"></i>Fetch from Shopify
+                    </button>
+                    <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lc-reload-amazon-btn">Reload from Main Store</button>
+                </div>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="lc-draft-id">
@@ -732,6 +741,9 @@
                     <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                         <div class="lc-section-title mb-0" id="lc-pricing-heading">Pricing</div>
                         <div class="d-flex gap-2">
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-fetch-shopify-btn">
+                                <i class="fab fa-shopify me-1"></i>Fetch from Shopify
+                            </button>
                             <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="pricing">
                                 <i class="fas fa-database me-1"></i>Load from Product Master
                             </button>
@@ -2250,13 +2262,14 @@
     }
 
     function canPublishVariation() {
-        const channelKey = String((currentDraft && currentDraft.channel) || '').toLowerCase();
-        if (/amazon|amzfba|\bamz\b/.test(channelKey)) return false;
         const family = (currentDraft && currentDraft.family) || {};
         const kids = (currentDraft && currentDraft.variations && currentDraft.variations.length)
             ? currentDraft.variations
             : (family.children || []);
-        return kids.length > 1;
+        if (kids.length > 1) return true;
+        return $('#lc-family-rows tr').filter(function () {
+            return $(this).find('td').length > 1;
+        }).length > 1;
     }
 
     function applyMasterPayload(res) {
@@ -2420,14 +2433,9 @@
 
         const ready = !Object.values(err).some(a => a.length);
         const listed = serverDraft && serverDraft.status === 'listed';
-        const channelKey = String((serverDraft && serverDraft.channel) || '').toLowerCase();
-        const amazonOnly = /amazon|amzfba|\bamz\b/.test(channelKey);
-        if (amazonOnly && selectedPublishMode() === 'variation') {
-            setPublishMode('single');
-        }
         $('input[name="lc-publish-mode"], input[name="lc-publish-mode-footer"]').prop('disabled', !!listed);
         $('input[name="lc-publish-mode"][value="variation"], input[name="lc-publish-mode-footer"][value="variation"]')
-            .prop('disabled', !!listed || amazonOnly);
+            .prop('disabled', !!listed || !canPublishVariation());
         $('#lc-publish-btn, #lc-save-close-btn, #lc-save-btn').prop('disabled', !!listed);
         if (!ready) $('#lc-publish-btn').prop('disabled', true);
         if (listed) {
@@ -3740,6 +3748,36 @@
                 }
             });
         });
+        $(document).on('click', '.lc-fetch-shopify-btn', function () {
+            const id = $('#lc-draft-id').val();
+            if (!id) { toast('Open a draft first.', 'error'); return; }
+            const $btn = $(this);
+            if ($btn.data('loading')) return;
+            const idleHtml = $btn.html();
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Fetching…');
+            $.ajax({
+                url: "{{ url('/listing-manager/drafts') }}/" + id + '/fetch-shopify',
+                method: 'POST',
+                timeout: 45000,
+                success: function (res) {
+                    if (!res.success) {
+                        toast(res.message || 'Shopify fetch failed.', 'error');
+                        return;
+                    }
+                    if (res.draft) {
+                        fillEditor(res.draft);
+                        setDescMode('preview');
+                    } else {
+                        applyMasterPayload(res);
+                    }
+                    toast(res.message || 'Fetched from Shopify.', 'success');
+                },
+                error: xhr => toast(xhr.responseJSON?.message || 'Could not fetch from Shopify.', 'error'),
+                complete: function () {
+                    $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                }
+            });
+        });
         $('#lc-reload-amazon-btn').on('click', function () {
             const id = $('#lc-draft-id').val();
             if (!id) return;
@@ -3876,6 +3914,13 @@
             });
         });
         $('#lc-publish-btn').on('click', publishDraft);
+        $(document).on('click', '.listing-publish-mode-card', function (e) {
+            const $input = $(this).find('input[type="radio"]');
+            if (!$input.length || $input.prop('disabled')) return;
+            e.preventDefault();
+            setPublishMode($input.val());
+            dirty = true;
+        });
         $(document).on('change', 'input[name="lc-publish-mode"], input[name="lc-publish-mode-footer"]', function () {
             setPublishMode($(this).val());
             dirty = true;

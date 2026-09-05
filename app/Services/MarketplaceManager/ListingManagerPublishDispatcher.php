@@ -108,21 +108,46 @@ class ListingManagerPublishDispatcher
     private function publishAmazon(ListingManagerChannelDraft $draft, array $details): array
     {
         $sku = trim((string) $draft->seller_sku);
-        $result = app(AmazonListingPublishService::class)->publishSku(
-            $sku,
-            $details,
-            (string) $draft->title,
-            $draft->quantity !== null ? (int) $draft->quantity : null
-        );
-        if (! ($result['success'] ?? false)) {
-            return $result;
+        $skus = $this->publishSkusForMode($draft, $details);
+        if ($skus === []) {
+            $skus = $sku !== '' ? [$sku] : [];
+        }
+
+        $ok = [];
+        $errors = [];
+        $last = null;
+        foreach ($skus as $rowSku) {
+            $result = app(AmazonListingPublishService::class)->publishSku(
+                $rowSku,
+                $details,
+                $rowSku === $sku ? (string) $draft->title : null,
+                $rowSku === $sku && $draft->quantity !== null ? (int) $draft->quantity : null
+            );
+            if (! ($result['success'] ?? false)) {
+                $errors[] = $rowSku.': '.trim((string) ($result['message'] ?? 'failed'));
+                continue;
+            }
+            $ok[] = $rowSku;
+            $last = $result;
+        }
+
+        if ($ok === []) {
+            return $last ?? [
+                'success' => false,
+                'message' => $errors !== [] ? implode(' ', $errors) : 'Amazon publish failed.',
+            ];
+        }
+
+        $message = $last['message'] ?? 'Published to Amazon.';
+        if (count($ok) > 1) {
+            $message = 'Published '.count($ok).' Amazon SKUs'.($errors !== [] ? ' (some siblings failed)' : '').'.';
         }
 
         return [
             'success' => true,
-            'message' => $result['message'] ?? 'Published to Amazon.',
-            'item_id' => $result['goods_id'] ?? null,
-            'sibling_skus' => is_array($result['skus'] ?? null) ? $result['skus'] : [$sku],
+            'message' => $message,
+            'item_id' => $last['goods_id'] ?? $last['item_id'] ?? null,
+            'sibling_skus' => $ok,
         ];
     }
 

@@ -126,8 +126,8 @@ class TitleMasterDataService
     }
 
     /**
-     * Distinct SKUs for Title Master: mappings table plus product_master rows that are not in mappings
-     * (so titles can be edited even before inventory sync creates a psm row).
+     * Distinct SKUs for Title Master: every CP Master (product_master) row.
+     * Inventory / Shopify joins stay display-only and must not hide catalog SKUs.
      */
     private function titleMasterSkuUnion()
     {
@@ -139,19 +139,17 @@ class TitleMasterDataService
         $shopifyKey = $this->isMysql() ? $this->sqlTitleMasterShopifySkuNormKey('sku') : 'sku';
         $snapKey = $this->isMysql() ? $this->sqlSkuKeyForSnapshotJoin('sku') : 'sku';
 
-        $fromMappings = DB::table('product_stock_mappings')
-            ->select('sku', DB::raw($shopifyKey.' as tm_norm_sku'), DB::raw($snapKey.' as tm_snap_key'))
-            ->whereNotNull('sku')
-            ->whereRaw($notParent);
-        $this->applyExcludeOpenBoxSuffixSku($fromMappings, 'sku');
-
         $fromMaster = DB::table('product_master')
             ->select('sku', DB::raw($shopifyKey.' as tm_norm_sku'), DB::raw($snapKey.' as tm_snap_key'))
             ->whereNotNull('sku')
+            ->where('sku', '!=', '')
             ->whereRaw($notParent);
+        if (Schema::hasColumn('product_master', 'deleted_at')) {
+            $fromMaster->whereNull('deleted_at');
+        }
         $this->applyExcludeOpenBoxSuffixSku($fromMaster, 'sku');
 
-        return $fromMappings->union($fromMaster);
+        return $fromMaster;
     }
 
     public function getList(Request $request)
@@ -496,7 +494,13 @@ class TitleMasterDataService
             if ($this->isMysql()) {
                 $colKey = $this->sqlWhitespaceCollapsed('COALESCE(skus.sku, \'\')');
                 $pattern = $this->likeContainsPattern($qSku);
-                $query->whereRaw("LOWER({$colKey}) LIKE LOWER(?)", [$pattern]);
+                $compact = strtoupper(preg_replace('/\s+/u', '', $qSku) ?? '');
+                $query->where(function ($q) use ($colKey, $pattern, $compact) {
+                    $q->whereRaw("LOWER({$colKey}) LIKE LOWER(?)", [$pattern]);
+                    if ($compact !== '') {
+                        $q->orWhereRaw("REPLACE(UPPER({$colKey}), ' ', '') LIKE ?", ['%'.$compact.'%']);
+                    }
+                });
             } else {
                 $safe = addcslashes($qSku, '%_\\');
                 $query->where('skus.sku', 'like', '%'.$safe.'%');
@@ -521,9 +525,13 @@ class TitleMasterDataService
             $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_short_name', 'all'), 'st.short_title');
         }
 
-        $fInv = strtolower(trim((string) $request->query('filter_inv', 'gt_zero')));
+        $fInv = strtolower(trim((string) $request->query('filter_inv', 'all')));
         if ($fInv === '') {
-            $fInv = 'gt_zero';
+            $fInv = 'all';
+        }
+        // A SKU search should always find the CP Master row, even when Inv > 0 is selected.
+        if ($qSku !== '') {
+            $fInv = 'all';
         }
         if ($fInv !== 'all') {
             $invExpr = $this->sqlTitleMasterEffectiveInvExpr($hasPricingCvrSnapshot);
