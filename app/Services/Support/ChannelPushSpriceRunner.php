@@ -239,6 +239,13 @@ class ChannelPushSpriceRunner
                     ? ($payload['ebay_price'] ?? $payload['price'] ?? $price)
                     : $price;
                 $ok = true;
+                if (in_array($this->channel, ['tiktok', 'tiktok2'], true)
+                    && (! is_numeric($live) || abs((float) $live - (float) $price) >= 0.05)) {
+                    $pulled = $this->pullTikTokLivePriceAfterPush($sku, (float) $price);
+                    if ($pulled > 0) {
+                        $live = $pulled;
+                    }
+                }
             } catch (\Throwable $e) {
                 $ok = false;
                 $error = $e->getMessage();
@@ -285,6 +292,34 @@ class ChannelPushSpriceRunner
             $store->appendMessage(($ok ? 'OK ' : 'Fail ').$sku.($error ? (': '.$error) : ''), $ok);
             usleep(250000);
         }
+    }
+
+    private function pullTikTokLivePriceAfterPush(string $sku, float $expected): float
+    {
+        $last = 0.0;
+        foreach ([400000, 1200000, 2000000] as $waitUs) {
+            usleep($waitUs);
+            try {
+                $rows = app(\App\Services\ChannelPushedPricePullService::class)
+                    ->pullSkus($this->channel, [$sku]);
+            } catch (\Throwable $e) {
+                Log::warning('TikTok live price pull after S PRC push failed', [
+                    'channel' => $this->channel,
+                    'sku' => $sku,
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
+            }
+            $price = (float) ($rows[0]['price'] ?? 0);
+            if ($price > 0) {
+                $last = round($price, 2);
+                if (abs($last - $expected) < 0.05) {
+                    return $last;
+                }
+            }
+        }
+
+        return $last;
     }
 
     private function markListingEndedIfNeeded(string $sku, ?string $error): void

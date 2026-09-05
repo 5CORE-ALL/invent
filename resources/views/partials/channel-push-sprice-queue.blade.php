@@ -77,7 +77,8 @@
                 faire: 1, pls: 1, newegg: 1, wayfair: 1, aliexpress: 1, shein: 1,
             })[CH_PUSH_SPRICE_CHANNEL] === 1;
             const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2)$/.test(CH_PUSH_SPRICE_CHANNEL);
-            const CH_PUSH_SPRICE_PULL_DELAY_MS = 0;
+            const CH_PUSH_SPRICE_IS_TIKTOK = /^(tiktok|tiktok2)$/.test(CH_PUSH_SPRICE_CHANNEL);
+            const CH_PUSH_SPRICE_PULL_DELAY_MS = CH_PUSH_SPRICE_IS_TIKTOK ? 1500 : 0;
             const CH_PUSH_SPRICE_CHUNK = 200;
             const CH_PUSH_SPRICE_PUSH_URL = ({
                 ebay1: '/push-ebay-price-tabulator',
@@ -394,7 +395,7 @@
                 });
                 return out;
             }
-            function applyChannelPushSpricePullResults(results, expectedBySku) {
+            function applyChannelPushSpricePullResults(results, expectedBySku, applyStale) {
                 if (!Array.isArray(results) || !results.length) return [];
                 const stale = [];
                 const tasks = [];
@@ -403,9 +404,9 @@
                     const live = Number(r.price);
                     const key = String(r.sku || '').toUpperCase();
                     const expected = expectedBySku && key ? Number(expectedBySku[key]) : 0;
-                    if (expected > 0 && Math.abs(live - expected) > 0.05) {
+                    if (!applyStale && expected > 0 && Math.abs(live - expected) > 0.05) {
                         stale.push(r.sku);
-                        return;
+                        if (!CH_PUSH_SPRICE_IS_TIKTOK) return;
                     }
                     tasks.push({ sku: r.sku, status: 'ok', ebay_price: live, price: live });
                 });
@@ -451,7 +452,8 @@
                         timeout: 300000,
                     }).done(function(resp) {
                         const results = resp && Array.isArray(resp.results) ? resp.results : [];
-                        const stale = applyChannelPushSpricePullResults(results, expectedBySku);
+                        const lastTry = attempt + 1 >= retryMs.length;
+                        const stale = applyChannelPushSpricePullResults(results, expectedBySku, lastTry && CH_PUSH_SPRICE_IS_TIKTOK);
                         const pulled = Number(resp && resp.ok_count) || 0;
                         const skipped = Number(resp && resp.skip_count) || 0;
                         if (stale.length && attempt + 1 < retryMs.length) {

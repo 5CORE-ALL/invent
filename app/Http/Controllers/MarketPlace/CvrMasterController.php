@@ -8904,11 +8904,19 @@ class CvrMasterController extends Controller
 
             if (! empty($result['success'])) {
                 $pushedPrice = round((float) $price, 2);
-                $pulled = $service->pullLiveSkuPrice($sku, $pushedProductId, $pushedSkuId);
-                $livePrice = ($pulled['price'] ?? 0) > 0 ? round((float) $pulled['price'], 2) : 0.0;
-                $savePrice = ($livePrice > 0 && abs($livePrice - $pushedPrice) < 0.05)
-                    ? $livePrice
-                    : $pushedPrice;
+                $pulled = null;
+                $livePrice = 0.0;
+                foreach ([0, 800000] as $waitUs) {
+                    if ($waitUs > 0) {
+                        usleep($waitUs);
+                    }
+                    $pulled = $service->pullLiveSkuPrice($sku, $pushedProductId, $pushedSkuId);
+                    $livePrice = ($pulled['price'] ?? 0) > 0 ? round((float) $pulled['price'], 2) : 0.0;
+                    if ($livePrice > 0 && abs($livePrice - $pushedPrice) < 0.05) {
+                        break;
+                    }
+                }
+                $savePrice = $livePrice > 0 ? $livePrice : $pushedPrice;
                 if ($pulled) {
                     $product = $this->persistTikTokActiveListing($channel, $sku, $pulled, $product);
                 }
