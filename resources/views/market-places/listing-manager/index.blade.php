@@ -987,7 +987,7 @@
                     <input class="form-check-input" type="checkbox" id="lm-include-siblings" checked>
                     <label class="form-check-label" for="lm-include-siblings">Include parent variations (sibling SKUs)</label>
                 </div>
-                <div class="lm-info-box mx-0">Select only the marketplace you want (for example Temu 2). Products go to <strong>Drafts</strong>. Then open Channel Listings, complete required fields, and Save &amp; Publish.</div>
+                <div class="lm-info-box mx-0">Only marketplaces with a connected listing API are shown (create or update). Select the ones you want. Products go to <strong>Drafts</strong>. Then open Channel Listings and Save &amp; Publish.</div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-lc btn-lc-ghost" data-bs-dismiss="modal">Cancel</button>
@@ -1005,7 +1005,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted small mb-3">Choose which marketplaces appear when listing products from Amz.</p>
+                <p class="text-muted small mb-3">Choose which connected listing APIs appear when you add drafts. Amazon, eBay, Temu, TikTok, Reverb, Faire, Wayfair, AliExpress, and Shein can create or update listings.</p>
                 <div class="lm-channel-list" id="lm-manage-channel-list"></div>
             </div>
             <div class="modal-footer">

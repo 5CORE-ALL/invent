@@ -1245,12 +1245,10 @@ class ListingManagerController extends Controller
             ->orderBy('channel')
             ->get(['id', 'channel', 'logo'])
             ->filter(function ($c) {
-                $key = ListingChannelCounts::normalize((string) $c->channel);
-                if (in_array($key, ['amazon', 'amazonfba'], true)) {
-                    return false;
-                }
+                $name = (string) $c->channel;
 
-                return $this->channelHasConnectedListingApi((string) $c->channel);
+                return ListingManagerPublishDispatcher::supportsListingApi($name)
+                    && $this->channelHasConnectedListingApi($name);
             })
             ->values();
 
@@ -1265,9 +1263,17 @@ class ListingManagerController extends Controller
         $availableIds = $allActive->pluck('id')->map(fn ($id) => (int) $id)->all();
         $enabledIds = array_values(array_intersect(array_map('intval', $enabledIds), $availableIds));
 
-        // Default: every connected listing API (Amazon is the origin catalog, not a push target).
         if ($enabledIds === []) {
             $enabledIds = $availableIds;
+        } else {
+            foreach ($allActive as $c) {
+                $key = ListingChannelCounts::normalize((string) $c->channel);
+                if (in_array($key, ['amazon', 'amazonfba', 'amz', 'amzfbm'], true)) {
+                    $enabledIds[] = (int) $c->id;
+                }
+            }
+            $enabledIds = array_values(array_unique(array_map('intval', $enabledIds)));
+            $enabledIds = array_values(array_intersect($enabledIds, $availableIds));
         }
 
         $enabledSet = array_fill_keys(array_map('intval', $enabledIds), true);

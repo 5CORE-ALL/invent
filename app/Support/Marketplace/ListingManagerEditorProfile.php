@@ -142,6 +142,26 @@ class ListingManagerEditorProfile
                 'category_help' => '',
                 'policies_help' => '',
             ],
+            'amazon' => [
+                'tabs' => [
+                    ['id' => 'identifiers', 'label' => 'Product Identifiers'],
+                    ['id' => 'variations', 'label' => 'Variations'],
+                    ['id' => 'title', 'label' => 'Title & Description'],
+                    ['id' => 'images', 'label' => 'Images'],
+                    ['id' => 'pricing', 'label' => 'Price & Stock'],
+                ],
+                'identifier_fields' => ['sku', 'asin', 'brand', 'manufacturer', 'upc'],
+                'category_placeholder' => 'Amazon product type',
+                'optimize_label' => 'Optimize Description for Amazon',
+                'header_quick' => 'Quick/Auto List to Amazon',
+                'header_import' => 'Import from Amazon',
+                'pricing_title' => 'Price & Stock',
+                'title_heading' => 'Title & Description',
+                'identifier_help' => 'Brand is always 5 Core Inc. Model/MPN is the SKU. Condition is New.',
+                'images_help' => 'Load photos from Image Master. Amazon uses the first 9 HTTPS images.',
+                'category_help' => '',
+                'policies_help' => 'Save & Publish updates an existing Amazon listing (title, quantity, images). New SKUs must exist in Seller Central first.',
+            ],
             'default' => [
                 'tabs' => [
                     ['id' => 'identifiers', 'label' => 'Product Identifiers'],
@@ -208,6 +228,9 @@ class ListingManagerEditorProfile
         }
         if (in_array($normalizedKey, ['reverb', 'reverbcom'], true)) {
             return 'reverb';
+        }
+        if (in_array($normalizedKey, ['amazon', 'amazonfba', 'amz', 'amzfbm'], true)) {
+            return 'amazon';
         }
         if ($normalizedKey === 'shein') {
             return 'shein';
