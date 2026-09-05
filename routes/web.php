@@ -513,6 +513,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/{search}/enrich', [GoogleMapsDataExtractorController::class, 'enrich'])->name('enrich');
         Route::post('/{search}/enrich-batch', [GoogleMapsDataExtractorController::class, 'enrichBatch'])->name('enrich-batch');
         Route::get('/{search}/export', [GoogleMapsDataExtractorController::class, 'export'])->name('export');
+        Route::post('/{search}/add-to-customers', [GoogleMapsDataExtractorController::class, 'addToCustomers'])->name('add-to-customers');
     });
 
     Route::get('/amazon-summary-data', [OverallAmazonController::class, 'getAmazonDataSummary']);

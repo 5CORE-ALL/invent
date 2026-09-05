@@ -17,6 +17,12 @@
             vertical-align: top;
         }
 
+        .extractor-table .extractor-select-col {
+            text-align: center;
+            vertical-align: middle;
+            width: 42px;
+        }
+
         .extractor-url {
             max-width: 260px;
             word-break: break-word;
@@ -479,6 +485,15 @@
                                     <i class="ri-links-line me-1"></i>Enrich Website Data
                                 </button>
 
+                                <button type="button"
+                                    class="btn btn-dark"
+                                    id="add-to-customers-btn"
+                                    data-add-url="{{ route('google-maps-data-extractor.add-to-customers', $activeSearch) }}"
+                                    data-customers-url="{{ route('crm.shopify.customers.index') }}"
+                                    disabled>
+                                    <i class="ri-user-add-line me-1"></i>Add selected to Shopify customers
+                                </button>
+
                                 <a href="{{ route('google-maps-data-extractor.export', $activeSearch) }}"
                                     class="btn btn-success"
                                     id="export-results-link"
@@ -492,7 +507,9 @@
                     @if ($results->isNotEmpty())
                         <div class="small text-muted mt-2">
                             Enrichment crawls saved websites in controlled batches and shows progress in the overlay.
+                            Selected leads are added to Shopify customers with this search as a tag and source <strong>Google</strong>.
                         </div>
+                        <div id="add-to-customers-alert" class="alert d-none mt-3 mb-0" role="alert"></div>
                     @endif
 
                     @if ($activeSearch->error_message)
@@ -515,12 +532,16 @@
                                 <option value="social">Has social links</option>
                             </select>
                             <span class="small text-muted" id="lead-filter-count"></span>
+                            <span class="small text-muted" id="lead-selected-count"></span>
                             <span class="small text-muted ms-auto" id="lead-pagination-summary"></span>
                         </div>
                         <div class="table-responsive">
                             <table class="table table-bordered table-hover extractor-table">
                                 <thead>
                                     <tr>
+                                        <th class="extractor-select-col">
+                                            <input type="checkbox" class="form-check-input" id="lead-select-all" title="Select all filtered leads" aria-label="Select all filtered leads">
+                                        </th>
                                         <th>Name</th>
                                         <th>Email</th>
                                         <th>Phone</th>
@@ -534,11 +555,19 @@
                                 <tbody>
                                     @forelse ($results as $result)
                                         <tr class="extractor-result-row"
+                                            data-result-id="{{ $result->id }}"
+                                            data-added="{{ $result->shopify_customer_id ? '1' : '0' }}"
                                             data-has-email="{{ $result->email ? '1' : '0' }}"
                                             data-has-phone="{{ $result->phone ? '1' : '0' }}"
                                             data-has-social="{{ ! empty($result->social_links) ? '1' : '0' }}">
+                                            <td class="extractor-select-col">
+                                                <input type="checkbox" class="form-check-input lead-select-box" value="{{ $result->id }}" aria-label="Select {{ $result->name }}">
+                                            </td>
                                             <td>
                                                 <strong>{{ $result->name }}</strong>
+                                                @if ($result->shopify_customer_id)
+                                                    <span class="badge bg-success-subtle text-success border ms-1 lead-added-badge">Added</span>
+                                                @endif
                                                 @if ($result->category)
                                                     <div class="small text-muted">{{ $result->category }}</div>
                                                 @endif
@@ -580,7 +609,7 @@
                                         </tr>
                                     @empty
                                         <tr>
-                                            <td colspan="8" class="text-center text-muted py-4">
+                                            <td colspan="9" class="text-center text-muted py-4">
                                                 No extracted leads for this search.
                                             </td>
                                         </tr>
@@ -1734,11 +1763,57 @@
             const filter = document.getElementById('lead-filter');
             const rows = Array.from(document.querySelectorAll('.extractor-result-row'));
             const filterCount = document.getElementById('lead-filter-count');
+            const selectedCount = document.getElementById('lead-selected-count');
+            const selectAllLeads = document.getElementById('lead-select-all');
+            const addToCustomersBtn = document.getElementById('add-to-customers-btn');
+            const addToCustomersAlert = document.getElementById('add-to-customers-alert');
             const paginationSummary = document.getElementById('lead-pagination-summary');
             const paginationWrap = document.getElementById('lead-client-pagination');
             const exportLink = document.getElementById('export-results-link');
             const rowsPerPage = 100;
             let currentLeadPage = 1;
+            const selectedLeadIds = new Set();
+
+            function matchingLeadRows() {
+                if (!filter) {
+                    return rows;
+                }
+                return rows.filter(row => rowMatchesLeadFilter(row, filter.value));
+            }
+
+            function updateLeadSelectionUi() {
+                const matching = matchingLeadRows();
+                const matchingIds = matching.map(row => row.dataset.resultId).filter(Boolean);
+                const selectedMatching = matchingIds.filter(id => selectedLeadIds.has(id));
+                if (selectAllLeads) {
+                    selectAllLeads.checked = matchingIds.length > 0 && selectedMatching.length === matchingIds.length;
+                    selectAllLeads.indeterminate = selectedMatching.length > 0 && selectedMatching.length < matchingIds.length;
+                }
+                if (selectedCount) {
+                    selectedCount.textContent = selectedLeadIds.size ? `${selectedLeadIds.size} selected` : '';
+                }
+                if (addToCustomersBtn) {
+                    addToCustomersBtn.disabled = selectedLeadIds.size === 0;
+                }
+            }
+
+            function showAddToCustomersAlert(type, message, customersUrl) {
+                if (!addToCustomersAlert) {
+                    return;
+                }
+                addToCustomersAlert.className = `alert alert-${type} mt-3 mb-0`;
+                addToCustomersAlert.textContent = '';
+                const text = document.createElement('span');
+                text.textContent = message + ' ';
+                addToCustomersAlert.appendChild(text);
+                if (customersUrl) {
+                    const link = document.createElement('a');
+                    link.href = customersUrl;
+                    link.className = 'alert-link';
+                    link.textContent = 'Open Shopify customers';
+                    addToCustomersAlert.appendChild(link);
+                }
+            }
 
             function rowMatchesLeadFilter(row, value) {
                 const hasEmail = row.dataset.hasEmail === '1';
@@ -1861,7 +1936,89 @@
                 }
 
                 renderLeadPagination(totalPages);
+                updateLeadSelectionUi();
             }
+
+            rows.forEach(function (row) {
+                const box = row.querySelector('.lead-select-box');
+                if (!box) {
+                    return;
+                }
+                box.addEventListener('change', function () {
+                    if (box.checked) {
+                        selectedLeadIds.add(box.value);
+                    } else {
+                        selectedLeadIds.delete(box.value);
+                    }
+                    updateLeadSelectionUi();
+                });
+            });
+
+            selectAllLeads?.addEventListener('change', function () {
+                matchingLeadRows().forEach(function (row) {
+                    const box = row.querySelector('.lead-select-box');
+                    const id = row.dataset.resultId;
+                    if (!box || !id) {
+                        return;
+                    }
+                    box.checked = selectAllLeads.checked;
+                    if (selectAllLeads.checked) {
+                        selectedLeadIds.add(id);
+                    } else {
+                        selectedLeadIds.delete(id);
+                    }
+                });
+                updateLeadSelectionUi();
+            });
+
+            addToCustomersBtn?.addEventListener('click', async function () {
+                const ids = Array.from(selectedLeadIds).map(Number).filter(id => id > 0);
+                if (!ids.length) {
+                    showAddToCustomersAlert('warning', 'Select one or more leads first.');
+                    return;
+                }
+
+                addToCustomersBtn.disabled = true;
+                try {
+                    const response = await fetch(addToCustomersBtn.dataset.addUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ result_ids: ids }),
+                    });
+                    let json = {};
+                    try {
+                        json = await response.json();
+                    } catch (e) {}
+                    if (!response.ok) {
+                        throw new Error(json.message || 'Could not add leads to Shopify customers.');
+                    }
+                    ids.forEach(function (id) {
+                        const row = rows.find(item => item.dataset.resultId === String(id));
+                        if (!row) {
+                            return;
+                        }
+                        row.dataset.added = '1';
+                        const nameCell = row.querySelector('td:nth-child(2) strong');
+                        if (nameCell && !row.querySelector('.lead-added-badge')) {
+                            const badge = document.createElement('span');
+                            badge.className = 'badge bg-success-subtle text-success border ms-1 lead-added-badge';
+                            badge.textContent = 'Added';
+                            nameCell.insertAdjacentElement('afterend', badge);
+                        }
+                    });
+                    showAddToCustomersAlert('success', json.message || 'Leads added.', json.customers_url || addToCustomersBtn.dataset.customersUrl);
+                } catch (e) {
+                    showAddToCustomersAlert('danger', e && e.message ? e.message : 'Could not add leads.');
+                } finally {
+                    updateLeadSelectionUi();
+                }
+            });
 
             if (filter) {
                 filter.addEventListener('change', () => applyLeadFilter(true));

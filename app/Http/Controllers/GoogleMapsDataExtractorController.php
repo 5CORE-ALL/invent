@@ -6,9 +6,11 @@ use App\Jobs\RunGoogleMapsEnrichmentJob;
 use App\Jobs\RunGoogleMapsExtractionJob;
 use App\Models\GoogleMapsExtractorResult;
 use App\Models\GoogleMapsExtractorSearch;
+use App\Services\Crm\GoogleMapsLeadImportService;
 use App\Services\GoogleMapsScraperService;
 use App\Services\Support\QueueWorkerWatchdog;
 use App\Services\WebsiteContactExtractorService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -525,6 +527,35 @@ class GoogleMapsDataExtractorController extends Controller
             'searches' => $searches,
             'activeSearch' => $search,
             'results' => $results,
+        ]);
+    }
+
+    public function addToCustomers(Request $request, GoogleMapsExtractorSearch $search, GoogleMapsLeadImportService $importer): JsonResponse
+    {
+        $data = $request->validate([
+            'result_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'result_ids.*' => ['integer', 'min:1'],
+        ]);
+
+        $summary = $importer->import($search, $data['result_ids']);
+        $added = $summary['created'] + $summary['updated'];
+        if ($added === 0) {
+            return response()->json([
+                'message' => $summary['errors'][0] ?? 'No selected leads could be added.',
+                'summary' => $summary,
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => sprintf(
+                'Added %d lead%s to Shopify customers (%d new, %d updated).',
+                $added,
+                $added === 1 ? '' : 's',
+                $summary['created'],
+                $summary['updated']
+            ),
+            'summary' => $summary,
+            'customers_url' => route('crm.shopify.customers.index'),
         ]);
     }
 

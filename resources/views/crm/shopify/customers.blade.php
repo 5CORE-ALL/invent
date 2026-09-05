@@ -182,6 +182,7 @@
                 <option value="email_domain">Email domain</option>
                 <option value="order_source">Order source</option>
                 <option value="manual">Manual</option>
+                <option value="Google">Google</option>
                 <option value="fallback">Fallback</option>
             </select>
         </div>
@@ -349,8 +350,17 @@
                             <th>
                                 <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="instagram">Insta</button>
                             </th>
-                            <th class="text-center">
+                            <th class="text-end">
                                 <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="orders_count" data-sort-label="Orders">Orders</button>
+                            </th>
+                            <th class="text-end">
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="qty" data-sort-label="Qty">Qty</button>
+                            </th>
+                            <th class="text-end">
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="revenue" data-sort-label="Revenue">Revenue</button>
+                            </th>
+                            <th class="text-nowrap">
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="order_date" data-sort-label="Order Date">Order Date</button>
                             </th>
                             <th>
                                 <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="customer_type">Type</button>
@@ -389,7 +399,7 @@
                     </thead>
                     <tbody id="crm-shopify-customers-tbody">
                         <tr>
-                            <td colspan="21" class="text-muted text-center py-4">Loading…</td>
+                            <td colspan="24" class="text-muted text-center py-4">Loading…</td>
                         </tr>
                     </tbody>
                 </table>
@@ -722,7 +732,7 @@
             const updateCustomersUrl = @json(route('crm.shopify.customers.update'));
             const socialCustomersUrl = @json(route('crm.shopify.customers.social'));
             const deleteCustomersUrl = @json(route('crm.shopify.customers.delete'));
-            const tableColSpan = 21;
+            const tableColSpan = 24;
             const importUrl = @json(route('crm.shopify.customers.import'));
             const crmCustomerBase = @json(url('/crm/customers'));
             const shopifyCustomersBase = @json(url('/crm/shopify/customers'));
@@ -1583,6 +1593,13 @@
                 return td;
             }
 
+            function tdMetric(text) {
+                const td = document.createElement('td');
+                td.className = 'small text-end text-nowrap';
+                td.textContent = text == null || text === '' ? '—' : String(text);
+                return td;
+            }
+
             let openTip = null;
             let openTipHome = null;
 
@@ -1884,10 +1901,12 @@
                     const ordersCount = Number(r.orders_count || 0);
                     const qty = Number(r.qty || 0);
                     const revenue = Number(r.revenue || 0);
-                    const tdOrders = hoverDotTd({
-                        available: ordersCount > 0 || qty > 0 || revenue > 0,
-                        text: 'Orders: ' + fmtNum.format(ordersCount) + '\nQty: ' + fmtNum.format(qty) + '\nRevenue: ' + fmtMoney.format(revenue),
-                    });
+                    const tdOrders = tdMetric(fmtNum.format(ordersCount));
+                    const tdQty = tdMetric(fmtNum.format(qty));
+                    const tdRevenue = tdMetric(fmtMoney.format(revenue));
+                    const tdOrderDate = document.createElement('td');
+                    tdOrderDate.className = 'small text-nowrap';
+                    tdOrderDate.textContent = formatSynced(r.order_date);
 
                     const tdType = badgeTd(r.customer_type || 'unknown', 'badge bg-primary-subtle text-primary border', r.classification_reason || '');
 
@@ -1999,6 +2018,9 @@
                     tr.appendChild(tdFacebook);
                     tr.appendChild(tdInstagram);
                     tr.appendChild(tdOrders);
+                    tr.appendChild(tdQty);
+                    tr.appendChild(tdRevenue);
+                    tr.appendChild(tdOrderDate);
                     tr.appendChild(tdType);
                     tr.appendChild(tdChannel);
                     tr.appendChild(tdSource);

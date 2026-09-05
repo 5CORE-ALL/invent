@@ -88,7 +88,8 @@ class ShopifyCustomerSyncTest extends TestCase
         int $shopifyOrderId,
         int $shopifyCustomerId,
         float $totalPrice,
-        int $lineItemsCount
+        int $lineItemsCount,
+        ?\DateTimeInterface $orderDate = null
     ): ShopifyOrder {
         $order = new ShopifyOrder([
             'shopify_order_id' => $shopifyOrderId,
@@ -97,7 +98,7 @@ class ShopifyCustomerSyncTest extends TestCase
             'line_items_count' => $lineItemsCount,
             'currency' => 'USD',
             'order_status' => 'paid',
-            'order_date' => now(),
+            'order_date' => $orderDate ?? now(),
             'raw_payload' => [
                 'line_items' => [['quantity' => $lineItemsCount]],
             ],
@@ -313,8 +314,9 @@ class ShopifyCustomerSyncTest extends TestCase
         $payload['total_spent'] = '1.00';
         $withOrders->forceFill(['raw_payload' => $payload])->save();
 
-        $this->createShopifyOrder(9_900_010_290, (int) $withOrders->shopify_customer_id, 100, 3);
-        $this->createShopifyOrder(9_900_010_291, (int) $withOrders->shopify_customer_id, 50.50, 2);
+        $latestOrderDate = now()->subDay();
+        $this->createShopifyOrder(9_900_010_290, (int) $withOrders->shopify_customer_id, 100, 3, now()->subDays(10));
+        $this->createShopifyOrder(9_900_010_291, (int) $withOrders->shopify_customer_id, 50.50, 2, $latestOrderDate);
 
         $payloadOnly = $this->createTypedShopifyCustomer(
             9_900_000_292,
@@ -339,11 +341,17 @@ class ShopifyCustomerSyncTest extends TestCase
         $this->assertSame(2, $withOrdersRow['orders_count']);
         $this->assertSame(5, $withOrdersRow['qty']);
         $this->assertEquals(150.5, $withOrdersRow['revenue']);
+        $this->assertNotNull($withOrdersRow['order_date']);
+        $this->assertSame(
+            $latestOrderDate->toDateString(),
+            \Carbon\Carbon::parse($withOrdersRow['order_date'])->toDateString()
+        );
 
         $this->assertNotNull($payloadRow);
         $this->assertSame(3, $payloadRow['orders_count']);
         $this->assertSame(0, $payloadRow['qty']);
         $this->assertEquals(299.0, $payloadRow['revenue']);
+        $this->assertArrayHasKey('order_date', $payloadRow);
         $this->assertSame('metrics.payload@example.com', $rows->value('email'));
     }
 

@@ -86,6 +86,7 @@
                 <option value="order_source">Order source</option>
                 <option value="tag">Tag</option>
                 <option value="manual">Manual</option>
+                <option value="Google">Google</option>
                 <option value="fallback">Fallback</option>
             </select>
         </div>

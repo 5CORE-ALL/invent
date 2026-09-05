@@ -30,4 +30,15 @@ class GoogleMapsExtractorSearch extends Model
     {
         return $this->hasMany(GoogleMapsExtractorResult::class, 'search_id');
     }
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $model) {
+            if ($model->getKey()) {
+                return;
+            }
+            $model->incrementing = false;
+            $model->setAttribute($model->getKeyName(), ((int) static::query()->max($model->getKeyName())) + 1);
+        });
+    }
 }

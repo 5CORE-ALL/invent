@@ -757,7 +757,7 @@ class ShopifyController extends Controller
     }
 
     /**
-     * @param  array{orders_count?: int, qty?: int, revenue?: float}|null  $orderStats
+     * @param  array{orders_count?: int, qty?: int, revenue?: float, order_date?: mixed}|null  $orderStats
      */
     protected function shopifyCustomerResponseRow(ShopifyCustomer $customer, ?array $orderStats = null): array
     {
@@ -792,6 +792,7 @@ class ShopifyController extends Controller
             'orders_count' => $metrics['orders_count'],
             'qty' => $metrics['qty'],
             'revenue' => $metrics['revenue'],
+            'order_date' => $metrics['order_date'],
             'tags' => $this->tagsFromPayload($payload),
             'channel' => $this->customerClassifier->channelLabel($customer->marketplace_channel),
             'channel_source' => $customer->classification_reason,
@@ -1423,6 +1424,7 @@ class ShopifyController extends Controller
             'orders_count',
             'qty',
             'revenue',
+            'order_date',
             'channel',
             'customer_type',
             'marketplace_channel',
@@ -1464,6 +1466,7 @@ class ShopifyController extends Controller
             'orders_count' => $query->orderByRaw($this->customerOrdersCountSortExpression().' '.$dir),
             'qty' => $query->orderByRaw($this->customerLocalOrderQtySql().' '.$dir),
             'revenue' => $query->orderByRaw($this->customerRevenueSortExpression().' '.$dir),
+            'order_date' => $query->orderByRaw($this->customerLatestOrderDateSql().' '.$dir),
             'channel', 'marketplace_channel' => $query->orderByRaw("LOWER(COALESCE(shopify_customers.marketplace_channel, '')) {$dir}"),
             'customer_type' => $query->orderByRaw("LOWER(COALESCE(shopify_customers.customer_type, '')) {$dir}"),
             'classification_source' => $query->orderByRaw("LOWER(COALESCE(shopify_customers.classification_source, '')) {$dir}"),
@@ -1477,7 +1480,7 @@ class ShopifyController extends Controller
 
     /**
      * @param  array<int, int|string|null>  $shopifyCustomerIds
-     * @return array<int, array{orders_count: int, qty: int, revenue: float}>
+     * @return array<int, array{orders_count: int, qty: int, revenue: float, order_date: mixed}>
      */
     protected function customerOrderStatsByShopifyIds(array $shopifyCustomerIds): array
     {
@@ -1494,7 +1497,7 @@ class ShopifyController extends Controller
 
         $rows = ShopifyOrder::query()
             ->whereIn('shopify_customer_id', array_values($ids))
-            ->selectRaw('shopify_customer_id, COUNT(*) as orders_count, COALESCE(SUM(line_items_count), 0) as qty, COALESCE(SUM(total_price), 0) as revenue')
+            ->selectRaw('shopify_customer_id, COUNT(*) as orders_count, COALESCE(SUM(line_items_count), 0) as qty, COALESCE(SUM(total_price), 0) as revenue, MAX(order_date) as order_date')
             ->groupBy('shopify_customer_id')
             ->get();
 
@@ -1504,6 +1507,7 @@ class ShopifyController extends Controller
                 'orders_count' => (int) $row->orders_count,
                 'qty' => (int) $row->qty,
                 'revenue' => round((float) $row->revenue, 2),
+                'order_date' => $row->order_date,
             ];
         }
 
@@ -1512,8 +1516,8 @@ class ShopifyController extends Controller
 
     /**
      * @param  array<string, mixed>  $payload
-     * @param  array{orders_count?: int, qty?: int, revenue?: float}|null  $orderStats
-     * @return array{orders_count: int, qty: int, revenue: float}
+     * @param  array{orders_count?: int, qty?: int, revenue?: float, order_date?: mixed}|null  $orderStats
+     * @return array{orders_count: int, qty: int, revenue: float, order_date: ?string}
      */
     protected function customerOrderMetrics(array $payload, ?array $orderStats): array
     {
@@ -1527,7 +1531,21 @@ class ShopifyController extends Controller
             'orders_count' => $localOrders > 0 ? $localOrders : $payloadOrders,
             'qty' => $localQty,
             'revenue' => round($localOrders > 0 ? $localRevenue : $payloadRevenue, 2),
+            'order_date' => $this->normalizeOrderDate($orderStats['order_date'] ?? ($payload['last_order_date'] ?? null)),
         ];
+    }
+
+    protected function normalizeOrderDate(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        try {
+            return \Carbon\Carbon::parse($value)->toIso8601String();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     protected function customerLocalOrderCountSql(): string
@@ -1543,6 +1561,11 @@ class ShopifyController extends Controller
     protected function customerLocalOrderRevenueSql(): string
     {
         return '(SELECT COALESCE(SUM(so.total_price), 0) FROM shopify_orders so WHERE so.shopify_customer_id = shopify_customers.shopify_customer_id)';
+    }
+
+    protected function customerLatestOrderDateSql(): string
+    {
+        return '(SELECT MAX(so.order_date) FROM shopify_orders so WHERE so.shopify_customer_id = shopify_customers.shopify_customer_id)';
     }
 
     protected function customerPayloadOrderCountSql(): string
