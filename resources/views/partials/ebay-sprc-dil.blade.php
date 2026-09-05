@@ -4,6 +4,7 @@
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
   Amazon / eBay 1–3: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
   Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
+  Dil slab edits, add/delete, table load, and Save and Apply persist S PRC (same as Amazon).
 --}}
 @php
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
@@ -327,7 +328,7 @@
                 || ebayDgIsFaire() || ebayDgIsTiktok() || ebayDgIsBestbuy() || ebayDgIsNewegg();
         }
         function ebayDgAutoApplies() {
-            return ebayDgUsesSkuDil();
+            return true;
         }
         function ebayDgExcludeShip() {
             return ebayDgIsPurchasingPower() || ebayDgIsWayfair() || ebayDgIsDobaWithoutship() || ebayDgIsFaire();
@@ -917,6 +918,7 @@
             ebayDilGroiRules.push(added);
             ebayDilGroiRules = ebayNormalizeDilGroiList(ebayDilGroiRules);
             renderEbayDilGroiModalTable();
+            ebayAfterDilGroiRulesChanged();
         }
         function ebayDilGroiDeleteSlab(idx) {
             const rules = readEbayDilGroiRulesFromModal();
@@ -928,6 +930,7 @@
             rules.splice(idx, 1);
             ebayDilGroiRules = ebayNormalizeDilGroiList(rules);
             renderEbayDilGroiModalTable();
+            ebayAfterDilGroiRulesChanged();
         }
         function redrawEbaySprcDilColumn() {
             if (typeof table === 'undefined' || !table) return;
@@ -976,24 +979,47 @@
                 consider(ebaySprcDilRowAdapter(d), d);
             });
         }
-        function ebayScheduleSprcDilAutoApply() {
+        function ebayAfterDilGroiRulesChanged() {
+            redrawEbaySprcDilColumn();
+            ebayScheduleSprcDilAutoApply({ delay: 250 });
+        }
+        function ebayScheduleSprcDilAutoApply(opts) {
             if (!ebayDgAutoApplies()) return;
+            opts = opts || {};
+            const delay = opts.delay != null ? opts.delay : 400;
             clearTimeout(ebayDgAutoApplyTimer);
             ebayDgAutoApplyTimer = setTimeout(function() {
                 if (typeof table === 'undefined' || !table) {
-                    if (ebayDgAutoApplyWaits++ < 40) ebayScheduleSprcDilAutoApply();
+                    if (ebayDgAutoApplyWaits++ < 40) ebayScheduleSprcDilAutoApply(opts);
                     return;
                 }
                 const n = (typeof table.getDataCount === 'function') ? table.getDataCount() : 0;
                 if (!(n > 0) && !ebaySprcDilCatalogRows().length) {
-                    if (ebayDgAutoApplyWaits++ < 40) ebayScheduleSprcDilAutoApply();
+                    if (ebayDgAutoApplyWaits++ < 40) ebayScheduleSprcDilAutoApply(opts);
                     return;
                 }
                 ebayDgAutoApplyWaits = 0;
                 Promise.resolve(ebayApplySprcDilToTable()).catch(function() { /* retry on next change */ });
-            }, 400);
+            }, delay);
         }
         window.ebayScheduleSprcDilAutoApply = ebayScheduleSprcDilAutoApply;
+        function bindEbaySprcDilAutofill() {
+            if (!ebayDgAutoApplies()) return;
+            if (typeof table === 'undefined' || !table || !table.on) {
+                setTimeout(bindEbaySprcDilAutofill, 400);
+                return;
+            }
+            if (table._ebaySprcDilAutofillBound) return;
+            table._ebaySprcDilAutofillBound = true;
+            table.on('dataLoaded', function() {
+                ebayScheduleSprcDilAutoApply({ delay: 500 });
+            });
+            try {
+                if ((typeof table.getDataCount === 'function' ? table.getDataCount() : 0) > 0) {
+                    ebayScheduleSprcDilAutoApply({ delay: 500 });
+                }
+            } catch (e) { /* wait for dataLoaded */ }
+        }
         async function ebayApplySprcDilToTable() {
             if (ebayDgApplyBusy) {
                 ebayDgApplyPending = true;
@@ -1194,8 +1220,7 @@
                     if (this === first) cascadeEbayDilGroiFromFirst();
                     else readEbayDilGroiRulesFromModal();
                     renderEbayDilGroiCounts();
-                    redrawEbaySprcDilColumn();
-                    ebayScheduleSprcDilAutoApply();
+                    ebayAfterDilGroiRulesChanged();
                 });
             $('#ebayDilGroiModal').off('shown.bs.modal.ebaydg').on('shown.bs.modal.ebaydg', function() {
                 setTimeout(function() { renderEbayDilGroiPies(); }, 50);
@@ -1213,5 +1238,6 @@
                 $('#ebay-dg-hist-wrap').removeClass('is-open');
             });
             Promise.resolve(loadEbayDilGroiRules()).catch(function() { /* defaults */ });
+            bindEbaySprcDilAutofill();
         });
 @endif

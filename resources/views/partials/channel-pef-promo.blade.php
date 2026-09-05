@@ -1393,6 +1393,7 @@
             temu: {
                 label: 'Temu',
                 saveSpriceUrl: '/temu-pricing/save-sprice',
+                saveSpriceBatchUrl: '/temu-pricing/save-sprice-batch',
                 pushPriceUrl: '/temu/push-price',
                 priceField: 'temu_price',
                 cvrField: 'cvr_30',
@@ -1406,6 +1407,7 @@
             temu2: {
                 label: 'Temu 2',
                 saveSpriceUrl: '/temu2-pricing/save-sprice',
+                saveSpriceBatchUrl: '/temu2-pricing/save-sprice-batch',
                 pushPriceUrl: '/temu2/push-price',
                 priceField: 'temu_price',
                 cvrField: 'cvr_percent',
@@ -1418,6 +1420,7 @@
             temu3: {
                 label: 'Temu 3',
                 saveSpriceUrl: '/temu3-pricing/save-sprice',
+                saveSpriceBatchUrl: '/temu3-pricing/save-sprice-batch',
                 pushPriceUrl: '/temu3/push-price',
                 priceField: 'temu_price',
                 cvrField: 'cvr_percent',
