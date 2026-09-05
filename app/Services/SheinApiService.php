@@ -529,12 +529,35 @@ class SheinApiService
         $signature = $this->generateSheinSignature($endpoint, $timestamp, $random);
 
         return [
-            'Language' => 'en-us',
+            'Language' => $this->sheinLanguageHeader(),
             'x-lt-openKeyId' => (string) config('services.shein.open_key_id'),
             'x-lt-timestamp' => (string) $timestamp,
             'x-lt-signature' => $signature,
             'Content-Type' => 'application/json',
         ];
+    }
+
+    /**
+     * Shein Open API Language header. `en-us` is rejected (language not exist).
+     */
+    protected function sheinLanguageHeader(): string
+    {
+        $configured = strtolower(trim((string) config('services.shein.language', '')));
+        if ($configured !== '') {
+            return $configured === 'en-us' ? 'en' : $configured;
+        }
+
+        $site = strtolower(trim((string) config('services.shein.sub_site', 'shein-us')));
+
+        return match ($site) {
+            'shein-br' => 'pt-br',
+            'shein-mx', 'shein-es' => 'es',
+            'shein-de' => 'de',
+            'shein-fr' => 'fr',
+            'shein-th' => 'th',
+            'shein-cn' => 'zh-cn',
+            default => 'en',
+        };
     }
 
 
@@ -554,7 +577,7 @@ class SheinApiService
         ];
 
         $response = Http::withoutVerifying()->withHeaders([
-            "Language" => "en-us",
+            "Language" => $this->sheinLanguageHeader(),
             "x-lt-openKeyId" => config('services.shein.open_key_id'),
             "x-lt-timestamp" => $timestamp,
             "x-lt-signature" => $signature,
@@ -597,7 +620,7 @@ class SheinApiService
                 "updateTimeStart" => "",
             ];
             $request= Http::withoutVerifying()->withHeaders([
-                "Language"       => "en-us",
+                "Language"       => $this->sheinLanguageHeader(),
                 "x-lt-openKeyId" => config('services.shein.open_key_id'),
                 "x-lt-timestamp" => $timestamp,
                 "x-lt-signature" => $signature,
@@ -805,7 +828,7 @@ class SheinApiService
             ];
 
             $response = Http::withoutVerifying()->withHeaders([
-                'Language' => 'en-us',
+                'Language' => $this->sheinLanguageHeader(),
                 'x-lt-openKeyId' => config('services.shein.open_key_id'),
                 'x-lt-timestamp' => $timestamp,
                 'x-lt-signature' => $signature,
@@ -995,7 +1018,7 @@ class SheinApiService
         ];
 
         $response = Http::withoutVerifying()->withHeaders([
-            "Language" => "en-us",
+            "Language" => $this->sheinLanguageHeader(),
             "x-lt-openKeyId" => config('services.shein.open_key_id'),
             "x-lt-timestamp" => $timestamp,
             "x-lt-signature" => $signature,
@@ -1033,7 +1056,7 @@ class SheinApiService
         ];
 
         $response = Http::withoutVerifying()->withHeaders([
-            "Language" => "en-us",
+            "Language" => $this->sheinLanguageHeader(),
             "x-lt-openKeyId" => config('services.shein.open_key_id'),
             "x-lt-timestamp" => $timestamp,
             "x-lt-signature" => $signature,
@@ -1783,7 +1806,7 @@ class SheinApiService
         foreach ($payloadAttempts as $payload) {
             try {
                 $response = Http::withoutVerifying()->timeout(60)->withHeaders([
-                    'Language' => 'en-us',
+                    'Language' => $this->sheinLanguageHeader(),
                     'x-lt-openKeyId' => $openKeyId,
                     'x-lt-timestamp' => (string) $timestamp,
                     'x-lt-signature' => $signature,
@@ -1928,7 +1951,7 @@ class SheinApiService
             $response = Http::withoutVerifying()
                 ->timeout(45)
                 ->withHeaders([
-                    'Language' => 'en-us',
+                    'Language' => $this->sheinLanguageHeader(),
                     'x-lt-openKeyId' => config('services.shein.open_key_id') ?: config('services.shein.app_id'),
                     'x-lt-timestamp' => (string) $timestamp,
                     'x-lt-signature' => $signature,

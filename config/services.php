@@ -834,6 +834,7 @@ return [
         'title_max_length' => (int) env('SHEIN_TITLE_MAX_LENGTH', 80),
         'brand_code' => env('SHEIN_BRAND_CODE'),
         'sub_site' => env('SHEIN_SUB_SITE', 'shein-us'),
+        'language' => env('SHEIN_LANGUAGE', 'en'),
         'currency' => env('SHEIN_CURRENCY', 'USD'),
     ],
 
