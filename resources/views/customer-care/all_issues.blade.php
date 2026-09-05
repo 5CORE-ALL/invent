@@ -1881,6 +1881,13 @@
                 return '';
             }
 
+            function createdAtSortValue(d) {
+                const raw = d && (d.created_at_raw || d.created_at);
+                if (!raw) return 0;
+                const ts = Date.parse(String(raw).replace(' ', 'T'));
+                return isNaN(ts) ? 0 : ts;
+            }
+
             // Combined "Created By" cell — renders the user name (truncated to
             // 8 chars) on the first line and the short "D Mon" date underneath.
             // The hover tooltip is also combined: full name + full date+time
@@ -2568,7 +2575,13 @@
                     field: 'created_by',
                     width: 88,
                     formatter: fmtCreatedByCombo,
-                    tooltip: tooltipCreatedByCombo
+                    tooltip: tooltipCreatedByCombo,
+                    sorter: function (a, b, aRow, bRow) {
+                        const da = createdAtSortValue(aRow?.getData?.() || {});
+                        const db = createdAtSortValue(bRow?.getData?.() || {});
+                        if (da !== db) return da - db;
+                        return (Number(aRow?.getData?.()?.id) || 0) - (Number(bRow?.getData?.()?.id) || 0);
+                    }
                 },
                 // Action buttons (edit + archive) — pinned to the right edge
                 // so they remain visible regardless of horizontal scroll.
@@ -2812,6 +2825,7 @@
                     columnDefaults: {
                         tooltip: true
                     },
+                    initialSort: [{ column: 'created_by', dir: 'desc' }],
                     columns: mainColumns,
                 });
 
@@ -3264,6 +3278,11 @@
                     });
                     const data = await res.json();
                     holdIssueRows = Array.isArray(data?.data) ? data.data.map(normalizeRecord) : [];
+                    holdIssueRows.sort(function (a, b) {
+                        const diff = createdAtSortValue(b) - createdAtSortValue(a);
+                        if (diff !== 0) return diff;
+                        return (Number(b.id) || 0) - (Number(a.id) || 0);
+                    });
                 } catch (e) {
                     holdIssueRows = [];
                 }

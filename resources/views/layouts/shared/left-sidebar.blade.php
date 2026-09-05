@@ -507,7 +507,7 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.report') }}">Report</a>
+                            <a href="{{ route('customer.care.report') }}">RETURNS REPORT</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.cc.shipping') }}">CC Shipping</a>

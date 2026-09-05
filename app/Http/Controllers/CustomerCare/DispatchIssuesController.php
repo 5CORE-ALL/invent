@@ -1095,7 +1095,8 @@ class DispatchIssuesController extends IssueBoardControllerBase
         if ($department !== '') {
             CustomerCareDepartments::applyWhereDepartmentMatches($query, 'department', $department);
         }
-        $rows = $query->orderByDesc('id')
+        $rows = $query->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->limit(1000)
             ->get();
 

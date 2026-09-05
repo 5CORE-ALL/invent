@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Report', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'RETURNS REPORT', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -395,12 +395,15 @@
         <div class="col-12">
             <div class="page-title-box d-flex align-items-center justify-content-between">
                     <h4 class="page-title mb-0">
-                        <i class="ri-rotate-lock-line me-2 text-primary"></i>Report
+                        <i class="ri-rotate-lock-line me-2 text-primary"></i>RETURNS REPORT
                     </h4>
-                <div class="page-title-right">
+                <div class="page-title-right d-flex align-items-center gap-2">
+                    <a href="{{ route('audit.master.cc.replacement') }}" class="btn btn-sm btn-primary">
+                        <i class="ri-add-line me-1"></i> Add
+                    </a>
                     <ol class="breadcrumb m-0">
                         <li class="breadcrumb-item"><a href="javascript:void(0);">Customer Care</a></li>
-                        <li class="breadcrumb-item active">Report</li>
+                        <li class="breadcrumb-item active">RETURNS REPORT</li>
                     </ol>
                 </div>
             </div>

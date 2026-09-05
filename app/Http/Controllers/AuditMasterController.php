@@ -287,7 +287,7 @@ class AuditMasterController extends Controller
     }
 
     /**
-     * Display the "Report" page — same Returns columns / data as
+     * Display the "RETURNS REPORT" page — same Returns columns / data as
      * /customer-care/cc-messages-returns (R link, R Status, R History,
      * R TAT, R Next), without the Messages-side columns.
      */
@@ -1469,12 +1469,30 @@ class AuditMasterController extends Controller
      */
     public function ccMessagesAudit()
     {
+        return $this->renderCcChannelAuditPage(
+            'cc_messages',
+            'CC Messages Audit',
+            'ri-message-3-line',
+            'CC Messages'
+        );
+    }
+
+    /**
+     * Shared channel-audit listing (Messages, Replacement, …).
+     * The Add button lives on this screen — inside each channel's audit modal.
+     */
+    private function renderCcChannelAuditPage(
+        string $module,
+        string $auditPageTitle,
+        string $auditPageIcon,
+        string $auditSopBadge
+    ) {
         $channelsWithLogo = $this->getActiveChannelsWithLogo();
         $channels = array_column($channelsWithLogo, 'channel');
 
-        // Pull the most recent audit (per channel) for the cc_messages module so
-        // the Audit column can show a red / amber / green button based on age.
-        $lastAuditMap = AuditResult::where('module', 'cc_messages')
+        // Pull the most recent audit (per channel) so the Audit column can
+        // show a red / amber / green button based on age.
+        $lastAuditMap = AuditResult::where('module', $module)
             ->selectRaw('channel, MAX(GREATEST(COALESCE(audit_date, "1970-01-01"), DATE(created_at))) AS last_at')
             ->groupBy('channel')
             ->pluck('last_at', 'channel')
@@ -1484,11 +1502,11 @@ class AuditMasterController extends Controller
         // recent audit (latest row by id — auto-increment matches insertion order).
         // We also pull auditor_id + created_at so the table can show who ran
         // the audit and at what exact time (the audit_date column is date-only).
-        $latestAuditMap = AuditResult::where('module', 'cc_messages')
-            ->whereIn('id', function ($q) {
+        $latestAuditMap = AuditResult::where('module', $module)
+            ->whereIn('id', function ($q) use ($module) {
                 $q->from('audit_results')
                     ->selectRaw('MAX(id)')
-                    ->where('module', 'cc_messages')
+                    ->where('module', $module)
                     ->groupBy('channel');
             })
             ->get([
@@ -1550,7 +1568,7 @@ class AuditMasterController extends Controller
         }
 
         // Grade colours (module-scoped, with global fallback) keyed by grade letter
-        $gradeColorMap = AuditGrade::bandsForModule('cc_messages')
+        $gradeColorMap = AuditGrade::bandsForModule($module)
             ->pluck('color', 'grade')
             ->toArray();
 
@@ -1594,12 +1612,14 @@ class AuditMasterController extends Controller
 
         $isAuditAdmin = $this->isAuditAdmin();
         $isSopAdmin   = $this->isSopAdmin();
-        $sopHtml      = $this->loadSopHtml('cc_messages');
-        $sopKey       = 'cc_messages';
+        $sopHtml      = $this->loadSopHtml($module);
+        $sopKey       = $module;
+        $auditModule  = $module;
 
         return view('audit-master.cc-messages-audit', compact(
             'channels', 'channelsWithLogo', 'isAuditAdmin',
-            'isSopAdmin', 'sopHtml', 'sopKey'
+            'isSopAdmin', 'sopHtml', 'sopKey',
+            'auditPageTitle', 'auditPageIcon', 'auditSopBadge', 'auditModule'
         ));
     }
 
@@ -1614,13 +1634,16 @@ class AuditMasterController extends Controller
     }
 
     /**
-     * Display the CC Replacement Audit page.
+     * Display the CC Replacement Audit page (entry for RETURNS REPORT).
      */
     public function ccReplacementAudit()
     {
-        $channels = $this->getActiveChannels();
-
-        return view('audit-master.cc-replacement-audit', compact('channels'));
+        return $this->renderCcChannelAuditPage(
+            'cc_replacement',
+            'CC Replacement Audit',
+            'ri-refresh-line',
+            'CC Replacement'
+        );
     }
 
     /**

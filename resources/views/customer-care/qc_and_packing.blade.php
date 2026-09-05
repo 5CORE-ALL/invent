@@ -4865,6 +4865,7 @@
                     department_other_note: row?.department_other_note ?? '',
                     created_by: row?.created_by ?? 'System',
                     created_at: row?.created_at_display ?? row?.created_at ?? '',
+                    created_at_raw: row?.created_at ?? '',
                     order_number: row?.order_number ?? '',
                     total_loss: row?.total_loss ?? null,
                     amz_price: row?.amz_price ?? null,
@@ -4939,6 +4940,14 @@
                     });
                     const data = await response.json();
                     holdIssueRows = Array.isArray(data?.data) ? data.data.map(normalizeRecord) : [];
+                    holdIssueRows.sort(function (a, b) {
+                        const da = Date.parse(String(a.created_at_raw || '').replace(' ', 'T'));
+                        const db = Date.parse(String(b.created_at_raw || '').replace(' ', 'T'));
+                        const ta = isNaN(da) ? 0 : da;
+                        const tb = isNaN(db) ? 0 : db;
+                        if (tb !== ta) return tb - ta;
+                        return (Number(b.id) || 0) - (Number(a.id) || 0);
+                    });
                     buildDeptFilters();
                     buildCarrierFilters();
                     buildClaimDotFilters();

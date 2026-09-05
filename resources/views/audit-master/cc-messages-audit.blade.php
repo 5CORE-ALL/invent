@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'CC Messages Audit', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => $auditPageTitle ?? 'CC Messages Audit', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -1134,12 +1134,12 @@
         <div class="col-12">
             <div class="page-title-box d-flex align-items-center justify-content-between">
                 <h4 class="page-title mb-0">
-                    <i class="ri-message-3-line me-2 text-primary"></i>CC Messages Audit
+                    <i class="{{ $auditPageIcon ?? 'ri-message-3-line' }} me-2 text-primary"></i>{{ $auditPageTitle ?? 'CC Messages Audit' }}
                 </h4>
                 <div class="page-title-right">
                     <ol class="breadcrumb m-0">
                         <li class="breadcrumb-item"><a href="javascript:void(0);">Audit Master</a></li>
-                        <li class="breadcrumb-item active">CC Messages Audit</li>
+                        <li class="breadcrumb-item active">{{ $auditPageTitle ?? 'CC Messages Audit' }}</li>
                     </ol>
                 </div>
             </div>
@@ -1285,7 +1285,7 @@
                     <h5 class="modal-title d-flex align-items-center flex-wrap gap-2">
                         <img src="{{ asset('images/audit-button-blue.png') }}" alt="Audit"
                             style="width: 32px; height: 32px;">
-                        <span>CC Messages Audit</span>
+                        <span>{{ $auditPageTitle ?? 'CC Messages Audit' }}</span>
                         <span class="audit-channel-pill" id="auditChannelName">Channel</span>
                         <span id="auditAdminBadge" class="admin-only-badge d-none">
                             <i class="ri-shield-user-line"></i> Admin Mode
@@ -1454,7 +1454,7 @@
                 <div class="modal-body">
                     <form id="paramEditorForm">
                         <input type="hidden" id="paramEditorId">
-                        <input type="hidden" id="paramEditorModule" value="cc_messages">
+                        <input type="hidden" id="paramEditorModule" value="{{ $auditModule ?? 'cc_messages' }}">
 
                         <div class="mb-2">
                             <label class="form-label small fw-semibold mb-1">Label <span class="text-danger">*</span></label>
@@ -1573,7 +1573,7 @@
                     <h5 class="modal-title d-flex align-items-center flex-wrap">
                         <img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="SOP" class="sop-title-img">
                         <span>Standard Operating Procedure</span>
-                        <span class="sop-badge">CC Messages</span>
+                        <span class="sop-badge">{{ $auditSopBadge ?? 'CC Messages' }}</span>
                         <span id="sopAdminBadge" class="sop-admin-badge d-none">
                             <i class="ri-edit-line"></i> Edit Mode
                         </span>
@@ -1890,7 +1890,7 @@
             // ============================================================
             //  CC Messages Audit Modal — dynamic, DB-backed
             // ============================================================
-            const AUDIT_MODULE = 'cc_messages';
+            const AUDIT_MODULE = @json($auditModule ?? 'cc_messages');
             const ROUTES = {
                 config:    '{{ route('audit.master.parameters') }}',
                 store:     '{{ route('audit.master.audits.store') }}',

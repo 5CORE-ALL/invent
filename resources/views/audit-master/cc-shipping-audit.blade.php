@@ -764,7 +764,10 @@
                         </span>
                     </span>
                 </div>
-                <div class="page-title-right">
+                <div class="page-title-right d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-sm btn-primary" id="addShippingAuditBtn">
+                        <i class="ri-add-line me-1"></i> Add
+                    </button>
                     <ol class="breadcrumb m-0">
                         <li class="breadcrumb-item"><a href="javascript:void(0);">Audit Master</a></li>
                         <li class="breadcrumb-item active">CC Shipping Audit</li>
@@ -885,6 +888,35 @@
             <div class="card">
                 <div class="card-body">
                     <div id="ccShippingAuditTable"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ================== ADD — pick channel then open audit form ================== --}}
+    <div class="modal fade" id="addShippingAuditPickModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-semibold mb-0">
+                        <i class="ri-add-line me-1 text-primary"></i> Add Shipping Audit
+                    </h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label small mb-1" for="addShippingAuditChannel">Channel</label>
+                    <select id="addShippingAuditChannel" class="form-select form-select-sm">
+                        <option value="">Select a channel…</option>
+                        @foreach ($channels as $channel)
+                            <option value="{{ $channel }}">{{ $channel }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="addShippingAuditStart">
+                        <i class="ri-play-line me-1"></i> Start Audit
+                    </button>
                 </div>
             </div>
         </div>
@@ -1773,16 +1805,38 @@
                 if (tabEl) bootstrap.Tab.getOrCreateInstance(tabEl).show();
             }
 
-            // Open the modal from any "Audit" button in the table
-            $(document).on('click', '.open-audit-btn', function () {
-                currentChannel = $(this).data('channel') || '';
+            function openAuditForChannel(channel) {
+                currentChannel = channel || '';
+                if (!currentChannel) return;
                 $('#auditChannelName').text(currentChannel);
                 resetAuditForm();
                 loadAuditConfig(currentChannel);
                 loadAuditHistory(currentChannel);
-
                 const el = document.getElementById('auditChecklistModal');
                 bootstrap.Modal.getOrCreateInstance(el).show();
+            }
+
+            $('#addShippingAuditBtn').on('click', function () {
+                bootstrap.Modal.getOrCreateInstance(
+                    document.getElementById('addShippingAuditPickModal')
+                ).show();
+            });
+
+            $('#addShippingAuditStart').on('click', function () {
+                const channel = ($('#addShippingAuditChannel').val() || '').trim();
+                if (!channel) {
+                    $('#addShippingAuditChannel').focus();
+                    return;
+                }
+                const pickEl = document.getElementById('addShippingAuditPickModal');
+                const pickModal = bootstrap.Modal.getInstance(pickEl);
+                if (pickModal) pickModal.hide();
+                openAuditForChannel(channel);
+            });
+
+            // Open the modal from any "Audit" button in the table
+            $(document).on('click', '.open-audit-btn', function () {
+                openAuditForChannel($(this).data('channel') || '');
             });
 
             // Re-load history when the History tab is opened (in case state changed)

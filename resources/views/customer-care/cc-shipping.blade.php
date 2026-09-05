@@ -496,7 +496,10 @@
                 <h4 class="page-title mb-0">
                     <i class="ri-truck-line me-2 text-primary"></i>CC Shipping
                 </h4>
-                <div class="page-title-right">
+                <div class="page-title-right d-flex align-items-center gap-2">
+                    <a href="{{ route('audit.master.cc.shipping') }}" class="btn btn-sm btn-primary">
+                        <i class="ri-add-line me-1"></i> Add
+                    </a>
                     <ol class="breadcrumb m-0">
                         <li class="breadcrumb-item"><a href="javascript:void(0);">Customer Care</a></li>
                         <li class="breadcrumb-item active">CC Shipping</li>

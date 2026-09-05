@@ -311,6 +311,7 @@ abstract class IssueBoardControllerBase extends Controller
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);
             })
+            ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->limit(1000)
             ->get();
