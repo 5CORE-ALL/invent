@@ -43,6 +43,7 @@ class ProductMaster extends Model
         'title150',
         'title100',
         'title80',
+        'title75',
         'title60',
         'amazon_last_sync',
         'amazon_sync_status',

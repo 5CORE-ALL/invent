@@ -513,6 +513,9 @@ class TitleMasterDataService
 
         $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_title100', 'all'), 'pm.title100');
         $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_title80', 'all'), 'pm.title80');
+        if (Schema::hasColumn('product_master', 'title75')) {
+            $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_title75', 'all'), 'pm.title75');
+        }
         $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_title60', 'all'), 'pm.title60');
         if (Schema::hasTable('short_titles')) {
             $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_short_name', 'all'), 'st.short_title');
@@ -545,7 +548,7 @@ class TitleMasterDataService
     /**
      * Header stats computed in PHP from the already-fetched listing rows — mirrors aggregateStats()
      * so we don't run a second full-join aggregate query. Columns used: parent, item_name,
-     * ads_amazon_title (effective Amazon title = item_name, else ads_amazon_title), title100/80/60.
+     * ads_amazon_title (effective Amazon title = item_name, else ads_amazon_title), title100/80/75/60.
      *
      * @param  iterable  $rows
      */
@@ -557,6 +560,7 @@ class TitleMasterDataService
         $exceeds = 0;
         $m100 = 0;
         $m80 = 0;
+        $m75 = 0;
         $m60 = 0;
         $mShort = 0;
 
@@ -589,6 +593,9 @@ class TitleMasterDataService
             if (trim((string) ($r->title80 ?? '')) === '') {
                 $m80++;
             }
+            if (trim((string) ($r->title75 ?? '')) === '') {
+                $m75++;
+            }
             if (trim((string) ($r->title60 ?? '')) === '') {
                 $m60++;
             }
@@ -600,6 +607,7 @@ class TitleMasterDataService
         $present150 = max(0, $total - $m150);
         $present100 = max(0, $total - $m100);
         $present80 = max(0, $total - $m80);
+        $present75 = max(0, $total - $m75);
         $present60 = max(0, $total - $m60);
         $presentShort = max(0, $total - $mShort);
 
@@ -613,6 +621,8 @@ class TitleMasterDataService
             'title100_missing' => $m100,
             'title80_present' => $present80,
             'title80_missing' => $m80,
+            'title75_present' => $present75,
+            'title75_missing' => $m75,
             'title60_present' => $present60,
             'title60_missing' => $m60,
             'short_name_present' => $presentShort,
@@ -634,6 +644,11 @@ class TitleMasterDataService
             )
             ->selectRaw('SUM(CASE WHEN (pm.title100 IS NULL OR TRIM(IFNULL(pm.title100, "")) = "") THEN 1 ELSE 0 END) as m100')
             ->selectRaw('SUM(CASE WHEN (pm.title80 IS NULL OR TRIM(IFNULL(pm.title80, "")) = "") THEN 1 ELSE 0 END) as m80')
+            ->selectRaw(
+                Schema::hasColumn('product_master', 'title75')
+                    ? 'SUM(CASE WHEN (pm.title75 IS NULL OR TRIM(IFNULL(pm.title75, "")) = "") THEN 1 ELSE 0 END) as m75'
+                    : 'SUM(1) as m75'
+            )
             ->selectRaw('SUM(CASE WHEN (pm.title60 IS NULL OR TRIM(IFNULL(pm.title60, "")) = "") THEN 1 ELSE 0 END) as m60')
             ->selectRaw(
                 Schema::hasTable('short_titles')
@@ -646,6 +661,7 @@ class TitleMasterDataService
         $m150 = (int) ($row->m150 ?? 0);
         $m100 = (int) ($row->m100 ?? 0);
         $m80 = (int) ($row->m80 ?? 0);
+        $m75 = (int) ($row->m75 ?? 0);
         $m60 = (int) ($row->m60 ?? 0);
         $mShort = (int) ($row->m_short ?? 0);
 
@@ -659,6 +675,8 @@ class TitleMasterDataService
             'title100_missing' => $m100,
             'title80_present' => max(0, $total - $m80),
             'title80_missing' => $m80,
+            'title75_present' => max(0, $total - $m75),
+            'title75_missing' => $m75,
             'title60_present' => max(0, $total - $m60),
             'title60_missing' => $m60,
             'short_name_present' => max(0, $total - $mShort),
@@ -684,6 +702,9 @@ class TitleMasterDataService
             'pm.title150',
             'pm.title100',
             'pm.title80',
+            Schema::hasColumn('product_master', 'title75')
+                ? 'pm.title75'
+                : DB::raw('NULL as title75'),
             'pm.title60',
             Schema::hasTable('short_titles')
                 ? DB::raw('st.short_title as short_name')
@@ -875,6 +896,7 @@ class TitleMasterDataService
                 'title150' => $listing->title150,
                 'title100' => $listing->title100,
                 'title80' => $listing->title80,
+                'title75' => $listing->title75 ?? null,
                 'title60' => $listing->title60,
                 'short_name' => $listing->short_name ?? null,
                 'bullet1' => $listing->bullet1,

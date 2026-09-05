@@ -4223,6 +4223,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/title-master/ai/generate-title-150', [ProductMasterController::class, 'generateTitle150WithAI'])->name('title.master.ai.generate.title150');
     Route::post('/title-master/ai/generate-title-100', [ProductMasterController::class, 'generateTitle100WithAI'])->name('title.master.ai.generate.title100');
     Route::post('/title-master/ai/generate-title-80', [ProductMasterController::class, 'generateTitle80WithAI'])->name('title.master.ai.generate.title80');
+    Route::post('/title-master/ai/generate-title-75', [ProductMasterController::class, 'generateTitle75WithAI'])->name('title.master.ai.generate.title75');
     Route::post('/title-master/ai/generate-title-60', [ProductMasterController::class, 'generateTitle60WithAI'])->name('title.master.ai.generate.title60');
     Route::post('/title-master/ai/generate-ai-stack-drafts', [ProductMasterController::class, 'generateTitleMasterAiStackDrafts'])->name('title.master.ai.stack.drafts');
     Route::post('/api/amazon/push-title', [ProductMasterController::class, 'pushTitleToAmazon'])->name('amazon.push.title');

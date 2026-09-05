@@ -29,7 +29,7 @@ Canonical map: `AllMarketplaceChannelRegistry::titleMeta()` — registry key →
 
 | PM column | Tier | Marketplaces (push key) |
 |-----------|------|-------------------------|
-| `title150` / `amazon_title` | 75 | amazon (truncated to 75 chars on push) |
+| `title75` (fallback: `title150` / `amazon_title`) | 75 | amazon (75-char Amazon title; truncated to 75 on push if fallback is longer) |
 | `title150` / `amazon_title` | 150 | temu, temu2, reverb, wayfair, walmart, bestbuy, shein, aliexpress, alibaba, purchasing_power, newegg, topdawg, tiktok, tiktok2 |
 | `title100` | 100 | shopify_main, shopify_pls, shopify_b5c, doba |
 | `title80` | 80 | ebay1, ebay2, ebay3 (registry keys: ebay, ebay2, ebay3) |

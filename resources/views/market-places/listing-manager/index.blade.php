@@ -1562,6 +1562,7 @@
             { key: 'title150', label: 'Title 170', value: '', chars: 0 },
             { key: 'title100', label: 'Title 100', value: '', chars: 0 },
             { key: 'title80', label: 'Title 80', value: '', chars: 0 },
+            { key: 'title75', label: 'Title 75', value: '', chars: 0 },
             { key: 'title60', label: 'Title 60', value: '', chars: 0 }
         ];
         $('#lm-masters-titles').html(titleRows.map(function (t) {
