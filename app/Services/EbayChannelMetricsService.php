@@ -7,6 +7,7 @@ use App\Models\Ebay1OrderMetric;
 use App\Models\Ebay2Order;
 use App\Models\Ebay2OrderMetric;
 use App\Models\Ebay3DailyData;
+use App\Models\Ebay3OrderMetric;
 use App\Models\EbayOrder;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\MarketplacePercentage;
@@ -429,8 +430,8 @@ class EbayChannelMetricsService
     }
 
     /**
-     * Pacific-yesterday sales. eBay 1/2 prefer ebay{1,2}_order_metrics (synced every
-     * 30 min) so a missed app:fetch-ebay-orders run cannot zero Y Sales.
+     * Pacific-yesterday sales. eBay 1/2/3 prefer ebay{1,2,3}_order_metrics (synced
+     * every 30 min) so a missed ebay3:daily / fetch-ebay-orders run cannot zero Y Sales.
      */
     public static function computeYSales(int $which): ?float
     {
@@ -457,6 +458,11 @@ class EbayChannelMetricsService
     {
         try {
             if ($which === 3) {
+                $fromMetrics = self::sumEbay3SalesFromOrderMetrics($fromYmd, $toYmd);
+                if ($fromMetrics !== null) {
+                    return $fromMetrics;
+                }
+
                 return self::sumEbay3SalesForPacificDates($fromYmd, $toYmd);
             }
 
@@ -489,6 +495,11 @@ class EbayChannelMetricsService
     {
         try {
             if ($which === 3) {
+                $fromMetrics = self::sumEbay3SalesFromOrderMetricsForTimezone($fromYmd, $toYmd, $tz);
+                if ($fromMetrics !== null) {
+                    return $fromMetrics;
+                }
+
                 return self::sumEbay3SalesForTimezoneDates($fromYmd, $toYmd, $tz);
             }
 
@@ -611,6 +622,106 @@ class EbayChannelMetricsService
         }
 
         return round($base + $car, 2);
+    }
+
+    /**
+     * Live eBay 3 Y / L7 / L30 from ebay3_order_metrics (30-min MM sync).
+     * ebay3_daily_data is only refreshed by ebay3:daily at 19:40 IST and can
+     * miss Pacific yesterday, which zeros /all-marketplace-master Y Sales.
+     */
+    private static function sumEbay3SalesFromOrderMetrics(string $fromYmd, string $toYmd): ?float
+    {
+        $payloads = self::loadEbay3OrderPayloads($fromYmd, $toYmd);
+        if ($payloads === []) {
+            return null;
+        }
+
+        $total = 0.0;
+        foreach ($payloads as $raw) {
+            $sale = self::ebayPayloadSaleIfInPacificRange($raw, $fromYmd, $toYmd);
+            if ($sale !== null) {
+                $total += $sale;
+            }
+        }
+
+        return round($total, 2);
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private static function loadEbay3OrderPayloads(string $fromYmd, string $toYmd): array
+    {
+        if (! Schema::hasTable('ebay3_order_metrics')) {
+            return [];
+        }
+
+        $padFrom = Carbon::parse($fromYmd, self::TZ)->subDay()->startOfDay();
+        $padTo = Carbon::parse($toYmd, self::TZ)->addDay()->endOfDay();
+        $byOrder = [];
+
+        $rows = Ebay3OrderMetric::query()
+            ->whereBetween('order_date', [$padFrom, $padTo])
+            ->whereNotNull('raw_payload')
+            ->get(['order_id', 'raw_payload']);
+
+        foreach ($rows as $row) {
+            $oid = trim((string) $row->order_id);
+            if ($oid === '' || isset($byOrder[$oid])) {
+                continue;
+            }
+            $raw = is_array($row->raw_payload)
+                ? $row->raw_payload
+                : json_decode((string) $row->raw_payload, true);
+            if (is_array($raw)) {
+                $byOrder[$oid] = $raw;
+            }
+        }
+
+        return $byOrder;
+    }
+
+    private static function sumEbay3SalesFromOrderMetricsForTimezone(string $fromYmd, string $toYmd, string $tz): ?float
+    {
+        if (! Schema::hasTable('ebay3_order_metrics')) {
+            return null;
+        }
+
+        $padFrom = Carbon::parse($fromYmd, $tz)->subDay()->startOfDay();
+        $padTo = Carbon::parse($toYmd, $tz)->addDay()->endOfDay();
+        $byOrder = [];
+
+        $rows = Ebay3OrderMetric::query()
+            ->whereBetween('order_date', [$padFrom, $padTo])
+            ->whereNotNull('raw_payload')
+            ->get(['order_id', 'raw_payload']);
+
+        foreach ($rows as $row) {
+            $oid = trim((string) $row->order_id);
+            if ($oid === '' || isset($byOrder[$oid])) {
+                continue;
+            }
+            $raw = is_array($row->raw_payload)
+                ? $row->raw_payload
+                : json_decode((string) $row->raw_payload, true);
+            if (is_array($raw)) {
+                $byOrder[$oid] = $raw;
+            }
+        }
+
+        if ($byOrder === []) {
+            return null;
+        }
+
+        $total = 0.0;
+        foreach ($byOrder as $raw) {
+            $sale = self::ebayPayloadSaleIfInTimezoneRange($raw, $fromYmd, $toYmd, $tz);
+            if ($sale !== null) {
+                $total += $sale;
+            }
+        }
+
+        return round($total, 2);
     }
 
     private static function sumEbay3SalesForPacificDates(string $fromYmd, string $toYmd): float

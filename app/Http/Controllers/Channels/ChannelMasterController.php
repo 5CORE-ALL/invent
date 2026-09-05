@@ -2148,7 +2148,9 @@ class ChannelMasterController extends Controller
      */
     private function applyFastPathLiveSalesOverlays(array $rows): array
     {
-        return $this->restoreSavedTableMetricsOnChannelRows($rows);
+        $rows = $this->restoreSavedTableMetricsOnChannelRows($rows);
+
+        return $this->overlayLiveEbayYSalesOnChannelRows($rows);
     }
 
     /**
