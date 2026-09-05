@@ -1563,6 +1563,148 @@ class ListingManagerController extends Controller
     }
 
     /**
+     * Pull live title, description, images, quantity, and price from Shopify for this SKU.
+     */
+    public function fetchDraftFromShopify(int $id)
+    {
+        $draft = ListingManagerChannelDraft::query()->with('channel:id,channel,logo')->findOrFail($id);
+        if ($draft->status === 'listed') {
+            return response()->json(['success' => false, 'message' => 'Cannot fetch Shopify data onto a published listing.'], 422);
+        }
+
+        $sku = trim((string) $draft->seller_sku);
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'Draft is missing a SKU.'], 422);
+        }
+
+        try {
+            $shopify = app(ShopifyApiService::class)->fetchProductDescriptionHtml($sku);
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager fetchDraftFromShopify failed: '.$e->getMessage(), ['sku' => $sku]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Shopify fetch failed. Check Shopify API credentials and try again.',
+            ], 422);
+        }
+
+        if (! ($shopify['success'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => $shopify['message'] ?? 'No Shopify product found for this SKU.',
+            ], 422);
+        }
+
+        $channelName = (string) ($draft->channel->channel ?? '');
+        $details = ListingManagerPublishStatus::normalizeDetails(
+            is_array($draft->listing_details) ? $draft->listing_details : []
+        );
+
+        $title = trim((string) ($shopify['title'] ?? ''));
+        $html = trim((string) ($shopify['html'] ?? ''));
+        $sourceImages = [];
+        foreach (($shopify['images'] ?? []) as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && preg_match('#^https?://#i', $url) && ! in_array($url, $sourceImages, true)) {
+                $sourceImages[] = $url;
+            }
+        }
+
+        $qty = ListingManagerAmazonHydrator::shopifyQuantity($sku, true);
+        $price = null;
+        $shopifyRow = ShopifySku::firstForProductSku($sku);
+        if ($shopifyRow && $shopifyRow->price !== null && (float) $shopifyRow->price > 0) {
+            $price = (float) $shopifyRow->price;
+        }
+
+        $applied = [];
+        if ($title !== '') {
+            $draft->title = $title;
+            $applied[] = 'title';
+        }
+        if ($html !== '') {
+            $details['description'] = $html;
+            $applied[] = 'description';
+        }
+        if ($sourceImages !== []) {
+            $family = ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName));
+            if ($family === 'tiktok') {
+                $sourceImages = array_slice($sourceImages, 0, 9);
+            }
+            $images = ListingManagerImageStore::localizeMany($sourceImages, $sku);
+            if ($images === []) {
+                $images = $sourceImages;
+            }
+            if ($images !== []) {
+                $details['images'] = $images;
+                $details['image_url'] = $images[0];
+                $details['image_source_urls'] = ListingManagerImageStore::sourceUrlsForSku($sku);
+                $draft->thumbnail_image = $images[0];
+                $applied[] = 'images';
+            }
+        }
+        if ($qty !== null) {
+            $draft->quantity = (int) $qty;
+            $applied[] = 'quantity';
+        }
+        if ($price !== null) {
+            $draft->price = $price;
+            $applied[] = 'price';
+        }
+
+        if ($applied === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Shopify returned this SKU but title, description, images, and quantity were empty.',
+            ], 422);
+        }
+
+        $details = $this->ensureIdentifierDefaults($details, $sku);
+        $draft->listing_details = $details;
+        $snap = is_array($draft->amazon_snapshot) ? $draft->amazon_snapshot : [];
+        if ($html !== '') {
+            $snap['product_description'] = $html;
+        }
+        if ($title !== '') {
+            $snap['item_name'] = $title;
+            $snap['title'] = $title;
+        }
+        if (! empty($details['images'])) {
+            $snap['images'] = $details['images'];
+            $snap['thumbnail_image'] = $details['images'][0];
+        }
+        $snap['description_source'] = 'shopify';
+        if (! empty($shopify['product_id'])) {
+            $snap['shopify_product_id'] = $shopify['product_id'];
+        }
+        $draft->amazon_snapshot = $snap;
+
+        $ready = ListingManagerPublishStatus::readiness(
+            $draft->title,
+            $draft->price,
+            $draft->quantity,
+            $details,
+            (string) $draft->status,
+            $channelName
+        );
+        $draft->status = $ready['ready'] ? 'ready' : 'draft';
+        $draft->save();
+
+        $fresh = $draft->fresh()->load('channel:id,channel,logo');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Fetched from Shopify: '.implode(', ', $applied).'.',
+            'title' => $fresh->title,
+            'description' => $details['description'] ?? '',
+            'images' => $details['images'] ?? [],
+            'quantity' => $fresh->quantity,
+            'price' => $fresh->price,
+            'draft' => $this->serializeDraft($fresh, true),
+        ]);
+    }
+
+    /**
      * Load description HTML from Amazon, Description Master, or Shopify.
      */
     public function loadDescriptionFromStore(Request $request, int $id)
@@ -2149,6 +2291,19 @@ class ListingManagerController extends Controller
                 ? $details['image_source_urls']
                 : ListingManagerImageStore::sourceUrlsForSku((string) $draft->seller_sku)
         );
+
+        $requestMode = strtolower(trim((string) $request->input('mode', $request->input('publish_mode', ''))));
+        if ($requestMode !== '') {
+            $details['publish_mode'] = $requestMode === 'variation' ? 'variation' : 'single';
+        }
+        if ($request->has('variation_skus')) {
+            $skus = $request->input('variation_skus', []);
+            $details['variation_skus'] = is_array($skus)
+                ? array_values(array_filter(array_map(static fn ($sku) => trim((string) $sku), $skus)))
+                : [];
+        }
+        $draft->listing_details = $details;
+        $draft->save();
 
         $result = app(ListingManagerPublishDispatcher::class)->publish($draft, $details);
 

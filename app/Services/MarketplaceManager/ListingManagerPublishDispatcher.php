@@ -31,11 +31,22 @@ class ListingManagerPublishDispatcher
             return $this->publishEbay($key, $draft, $details);
         }
         if (self::supportsListingApi($channelName)) {
+            $skus = $this->publishSkusForMode($draft, $details);
+            $mode = $this->effectivePublishMode($details, $skus);
+            $categoryId = $this->categoryIdFromDetails($details);
+            $categoryUuid = trim((string) ($details['category_uuid'] ?? $details['primary_category_id'] ?? '')) ?: null;
+            $categoryName = trim((string) ($details['primary_category_path'] ?? $details['category_name'] ?? '')) ?: null;
+            $weightLb = $this->weightLbFromDetails($details);
             $result = app(ListingVariationPreviewService::class)->publishSkus(
-                [$sku],
+                $skus !== [] ? $skus : [$sku],
                 $key,
                 false,
-                'single'
+                $mode,
+                '',
+                $categoryId,
+                $categoryUuid,
+                $categoryName,
+                $weightLb
             );
             if (! ($result['success'] ?? false)) {
                 return $result;
@@ -45,7 +56,7 @@ class ListingManagerPublishDispatcher
                 'success' => true,
                 'message' => $result['message'] ?? ('Published to '.$channelName.'.'),
                 'item_id' => $result['goods_id'] ?? $result['item_id'] ?? null,
-                'sibling_skus' => is_array($result['skus'] ?? null) ? $result['skus'] : [$sku],
+                'sibling_skus' => is_array($result['skus'] ?? null) ? $result['skus'] : $skus,
             ];
         }
 
@@ -97,21 +108,46 @@ class ListingManagerPublishDispatcher
     private function publishAmazon(ListingManagerChannelDraft $draft, array $details): array
     {
         $sku = trim((string) $draft->seller_sku);
-        $result = app(AmazonListingPublishService::class)->publishSku(
-            $sku,
-            $details,
-            (string) $draft->title,
-            $draft->quantity !== null ? (int) $draft->quantity : null
-        );
-        if (! ($result['success'] ?? false)) {
-            return $result;
+        $skus = $this->publishSkusForMode($draft, $details);
+        if ($skus === []) {
+            $skus = $sku !== '' ? [$sku] : [];
+        }
+
+        $ok = [];
+        $errors = [];
+        $last = null;
+        foreach ($skus as $rowSku) {
+            $result = app(AmazonListingPublishService::class)->publishSku(
+                $rowSku,
+                $details,
+                $rowSku === $sku ? (string) $draft->title : null,
+                $rowSku === $sku && $draft->quantity !== null ? (int) $draft->quantity : null
+            );
+            if (! ($result['success'] ?? false)) {
+                $errors[] = $rowSku.': '.trim((string) ($result['message'] ?? 'failed'));
+                continue;
+            }
+            $ok[] = $rowSku;
+            $last = $result;
+        }
+
+        if ($ok === []) {
+            return $last ?? [
+                'success' => false,
+                'message' => $errors !== [] ? implode(' ', $errors) : 'Amazon publish failed.',
+            ];
+        }
+
+        $message = $last['message'] ?? 'Published to Amazon.';
+        if (count($ok) > 1) {
+            $message = 'Published '.count($ok).' Amazon SKUs'.($errors !== [] ? ' (some siblings failed)' : '').'.';
         }
 
         return [
             'success' => true,
-            'message' => $result['message'] ?? 'Published to Amazon.',
-            'item_id' => $result['goods_id'] ?? null,
-            'sibling_skus' => is_array($result['skus'] ?? null) ? $result['skus'] : [$sku],
+            'message' => $message,
+            'item_id' => $last['goods_id'] ?? $last['item_id'] ?? null,
+            'sibling_skus' => $ok,
         ];
     }
 
@@ -208,17 +244,26 @@ class ListingManagerPublishDispatcher
      */
     private function variationPayload(ListingManagerChannelDraft $draft, array $details): array
     {
-        $family = ListingManagerFamily::forSku((string) $draft->seller_sku);
-        if (count($family['skus']) < 2) {
+        $selected = $this->publishSkusForMode($draft, $details);
+        if ($this->effectivePublishMode($details, $selected) !== 'variation') {
             return [];
         }
 
-        $rows = [];
+        $family = ListingManagerFamily::forSku((string) $draft->seller_sku);
+        $bySku = [];
         foreach ($family['children'] as $child) {
-            $sku = (string) $child['sku'];
+            $bySku[strtoupper((string) $child['sku'])] = $child;
+        }
+
+        $rows = [];
+        foreach ($selected as $sku) {
+            $child = $bySku[strtoupper($sku)] ?? [
+                'sku' => $sku,
+                'variation_label' => $sku,
+            ];
             $hydrated = ListingManagerAmazonHydrator::hydrate($sku, false);
             $price = (float) ($hydrated['price'] ?? $draft->price ?? 0);
-            if ($sku === (string) $draft->seller_sku && $draft->price) {
+            if (strcasecmp($sku, (string) $draft->seller_sku) === 0 && $draft->price) {
                 $price = (float) $draft->price;
             }
             $liveQty = ListingManagerAmazonHydrator::shopifyQuantity($sku, true);
@@ -227,12 +272,108 @@ class ListingManagerPublishDispatcher
                 'sku' => $sku,
                 'price' => $price,
                 'quantity' => $qty,
-                'variation_label' => (string) $child['variation_label'],
+                'variation_label' => (string) ($child['variation_label'] ?? $sku),
                 'upc' => (string) ($hydrated['upc'] ?? ($details['upc'] ?? '')),
             ];
         }
 
         return $rows;
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     */
+    private function publishMode(array $details): string
+    {
+        return strtolower(trim((string) ($details['publish_mode'] ?? 'single'))) === 'variation'
+            ? 'variation'
+            : 'single';
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     * @param  list<string>  $skus
+     */
+    private function effectivePublishMode(array $details, array $skus): string
+    {
+        return $this->publishMode($details) === 'variation' && count($skus) > 1
+            ? 'variation'
+            : 'single';
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     * @return list<string>
+     */
+    private function publishSkusForMode(ListingManagerChannelDraft $draft, array $details): array
+    {
+        $sku = trim((string) $draft->seller_sku);
+        if ($this->publishMode($details) !== 'variation') {
+            return $sku !== '' ? [$sku] : [];
+        }
+
+        $family = ListingManagerFamily::forSku($sku);
+        $allowed = [];
+        foreach ($family['skus'] as $familySku) {
+            $familySku = trim((string) $familySku);
+            if ($familySku !== '') {
+                $allowed[strtoupper($familySku)] = $familySku;
+            }
+        }
+
+        $selected = $details['variation_skus'] ?? [];
+        if (! is_array($selected)) {
+            $selected = [];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($selected as $row) {
+            $candidate = trim((string) $row);
+            $key = strtoupper($candidate);
+            if ($candidate === '' || ! isset($allowed[$key]) || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $allowed[$key];
+        }
+
+        $currentKey = strtoupper($sku);
+        if ($sku !== '' && isset($allowed[$currentKey]) && ! isset($seen[$currentKey])) {
+            array_unshift($out, $allowed[$currentKey]);
+        } elseif ($sku !== '' && $out === []) {
+            $out[] = $sku;
+        }
+
+        return $out !== [] ? $out : ($sku !== '' ? [$sku] : []);
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     */
+    private function categoryIdFromDetails(array $details): ?int
+    {
+        $raw = trim((string) ($details['primary_category_id'] ?? $details['category_uuid'] ?? ''));
+        if ($raw !== '' && ctype_digit($raw)) {
+            return (int) $raw;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     */
+    private function weightLbFromDetails(array $details): ?float
+    {
+        $lb = (float) ($details['package_weight_lb'] ?? 0);
+        $oz = (float) ($details['package_weight_oz'] ?? 0);
+        $total = $lb + ($oz / 16);
+        if ($total > 0) {
+            return round($total, 4);
+        }
+
+        return null;
     }
 
     /**

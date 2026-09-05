@@ -899,10 +899,10 @@
                                 <option value="100">100</option>
                             </select>
                             <label class="small text-muted mb-0 ms-2 me-1" for="filterTitleInv">Inv</label>
-                            <select id="filterTitleInv" class="form-select form-select-sm" style="width:130px;display:inline-block;vertical-align:middle;" title="Filter by inventory (snapshot → Shopify → stock mapping)">
-                                <option value="gt_zero" selected>Inv &gt; 0</option>
+                            <select id="filterTitleInv" class="form-select form-select-sm" style="width:130px;display:inline-block;vertical-align:middle;" title="Filter by inventory (snapshot → Shopify → stock mapping). SKU search always shows the CP Master row.">
+                                <option value="all" selected>Inv = all</option>
+                                <option value="gt_zero">Inv &gt; 0</option>
                                 <option value="zero">Inv = 0</option>
-                                <option value="all">Inv = all</option>
                             </select>
                     </div>
 
@@ -3565,7 +3565,7 @@
             if (f60 && f60 !== 'all') params.set('filter_title60', f60);
             const fShort = document.getElementById('filterShortName')?.value;
             if (fShort && fShort !== 'all') params.set('filter_short_name', fShort);
-            const fInv = document.getElementById('filterTitleInv')?.value || 'gt_zero';
+            const fInv = document.getElementById('filterTitleInv')?.value || 'all';
             params.set('filter_inv', fInv);
             return params;
         }

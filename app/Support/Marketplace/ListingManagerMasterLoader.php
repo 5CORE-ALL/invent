@@ -2,7 +2,10 @@
 
 namespace App\Support\Marketplace;
 
+use App\Models\ShopifySku;
+use App\Services\ShopifyApiService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -57,6 +60,7 @@ class ListingManagerMasterLoader
             'pricing' => self::pricing($sku),
             'package' => self::package($sku),
             'reverb', 'reverb_listing_master' => self::reverb($sku),
+            'shopify', 'shopify_store' => self::shopify($sku),
             default => ['success' => false, 'message' => 'Unknown master source.', 'source' => $source],
         };
     }
@@ -382,6 +386,77 @@ class ListingManagerMasterLoader
             'brand' => $brand,
             'manufacturer' => $manufacturer,
             'mpn' => $sku,
+        ];
+    }
+
+    /**
+     * Live Shopify title, description, images, quantity, and price.
+     *
+     * @return array<string, mixed>
+     */
+    private static function shopify(string $sku): array
+    {
+        try {
+            $shopify = app(ShopifyApiService::class)->fetchProductDescriptionHtml($sku);
+        } catch (\Throwable $e) {
+            Log::warning('ListingManagerMasterLoader shopify fetch failed: '.$e->getMessage(), ['sku' => $sku]);
+
+            return [
+                'success' => false,
+                'message' => 'Shopify fetch failed. Check Shopify API credentials and try again.',
+                'source' => 'shopify',
+            ];
+        }
+
+        if (! ($shopify['success'] ?? false)) {
+            return [
+                'success' => false,
+                'message' => $shopify['message'] ?? 'No Shopify product found for this SKU.',
+                'source' => 'shopify',
+            ];
+        }
+
+        $title = trim((string) ($shopify['title'] ?? ''));
+        $html = trim((string) ($shopify['html'] ?? ''));
+        $images = [];
+        foreach (($shopify['images'] ?? []) as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && preg_match('#^https?://#i', $url) && ! in_array($url, $images, true)) {
+                $images[] = $url;
+            }
+        }
+        $qty = ListingManagerAmazonHydrator::shopifyQuantity($sku, true);
+        $price = null;
+        $row = ShopifySku::firstForProductSku($sku);
+        if ($row && $row->price !== null && (float) $row->price > 0) {
+            $price = (float) $row->price;
+        }
+
+        if ($title === '' && $html === '' && $images === [] && $qty === null && $price === null) {
+            return [
+                'success' => false,
+                'message' => 'Shopify returned this SKU but title, description, images, and quantity were empty.',
+                'source' => 'shopify',
+            ];
+        }
+
+        $applied = array_values(array_filter([
+            $title !== '' ? 'title' : null,
+            $html !== '' ? 'description' : null,
+            $images !== [] ? 'images' : null,
+            $qty !== null ? 'quantity' : null,
+            $price !== null ? 'price' : null,
+        ]));
+
+        return [
+            'success' => true,
+            'message' => 'Fetched from Shopify: '.implode(', ', $applied).'.',
+            'source' => 'shopify',
+            'title' => $title !== '' ? $title : null,
+            'description' => $html !== '' ? $html : null,
+            'images' => $images,
+            'quantity' => $qty,
+            'price' => $price,
         ];
     }
 
