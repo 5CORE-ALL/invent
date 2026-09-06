@@ -2149,8 +2149,9 @@ class ChannelMasterController extends Controller
     private function applyFastPathLiveSalesOverlays(array $rows): array
     {
         $rows = $this->restoreSavedTableMetricsOnChannelRows($rows);
+        $rows = $this->overlayLiveEbayYSalesOnChannelRows($rows);
 
-        return $this->overlayLiveEbayYSalesOnChannelRows($rows);
+        return $this->overlayLiveTodaySalesOnChannelRows($rows);
     }
 
     /**
@@ -2379,10 +2380,12 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Cheap Y Sales / L7 overlay for the all-marketplace-master fast path.
+     * Cheap Y Sales / L7 / Today Sales overlay for the all-marketplace-master fast path.
      */
     private function overlayLiveEbayYSalesOnChannelRows(array $rows): array
     {
+        $todayYmd = now(ChannelTodaySalesService::TZ)->toDateString();
+
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
             $which = $this->ebayWhichFromChannelName($name);
@@ -2396,6 +2399,15 @@ class ChannelMasterController extends Controller
             $l7Sales = $this->computeEbayL7SalesLikeAmazon($which);
             if ($l7Sales !== null) {
                 $row['L7 Sales'] = $l7Sales;
+            }
+            $todaySales = EbayChannelMetricsService::sumSalesForTimezoneDates(
+                $which,
+                $todayYmd,
+                $todayYmd,
+                ChannelTodaySalesService::TZ
+            );
+            if ($todaySales !== null && (float) $todaySales > 0) {
+                $row['Today Sales'] = round((float) $todaySales, 2);
             }
         }
         unset($row);
