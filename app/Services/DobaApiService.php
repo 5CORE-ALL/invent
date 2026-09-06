@@ -616,60 +616,238 @@ class DobaApiService
     }
 
     /**
-     * Get product detail from Doba by item_id
+     * Signed GET to Doba OpenAPI. goods/get/item is not a real path (404).
+     *
+     * @param  array<string, mixed>  $query
+     * @return array<string, mixed>
+     */
+    private function dobaSignedGet(string $path, array $query = []): array
+    {
+        $timestamp = $this->getMillisecond();
+        $content = $this->getContent($timestamp);
+        $sign = $this->generateSignature($content);
+        $url = str_starts_with($path, 'http') ? $path : ($this->baseUrl.'/'.ltrim($path, '/'));
+
+        $response = Http::withoutVerifying()->withHeaders([
+            'appKey' => config('services.doba.app_key'),
+            'signType' => 'rsa2',
+            'timestamp' => $timestamp,
+            'sign' => $sign,
+            'Content-Type' => 'application/json',
+        ])->get($url, $query);
+
+        $json = $response->json();
+
+        return is_array($json) ? $json : ['errors' => $response->body() ?: 'Empty Doba response'];
+    }
+
+    /**
+     * One page from the working catalog endpoint (same as FetchDobaMetrics).
+     *
+     * @param  array<string, mixed>  $extra
+     * @return list<array<string, mixed>>
+     */
+    private function fetchGoodsDetailPage(int $page, int $pageSize = 100, array $extra = []): array
+    {
+        $response = $this->dobaSignedGet('/goods/detail', array_merge([
+            'pageNumber' => $page,
+            'pageSize' => $pageSize,
+        ], $extra));
+
+        $rows = $response['businessData']['data']['dsGoodsDetailResultVOS'] ?? null;
+        if (! is_array($rows)) {
+            if (isset($response['status']) && (int) $response['status'] === 404) {
+                return [];
+            }
+
+            return [];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array{anticipatedIncome: float, selfPickAnticipatedIncome: float}
+     */
+    private function extractDobaStockPrices($stock): array
+    {
+        $stock = is_array($stock) ? $stock : [];
+        $delivery = (float) ($stock['anticipatedIncome'] ?? $stock['anticipated_income'] ?? 0);
+        $pickup = (float) ($stock['selfPickAnticipatedIncome']
+            ?? $stock['self_pick_anticipated_income']
+            ?? $stock['selfPickIncome']
+            ?? 0);
+
+        return [
+            'anticipatedIncome' => $delivery > 0 ? $delivery : 0.0,
+            'selfPickAnticipatedIncome' => $pickup > 0 ? $pickup : 0.0,
+        ];
+    }
+
+    /**
+     * Match Delivery / Pick Up prices from a goods/detail page.
+     *
+     * @param  list<array<string, mixed>>  $products
+     * @param  array<string, true>  $wantItem
+     * @param  array<string, true>  $wantSku
+     * @param  array<string, array{anticipatedIncome: float, selfPickAnticipatedIncome: float}>  $found
+     */
+    private function collectLivePricesFromGoodsDetailPage(array $products, array $wantItem, array $wantSku, array &$found): void
+    {
+        foreach ($products as $product) {
+            if (! is_array($product)) {
+                continue;
+            }
+            foreach (($product['skus'] ?? []) as $skuRow) {
+                if (! is_array($skuRow)) {
+                    continue;
+                }
+                $skuCode = strtoupper(trim((string) ($skuRow['skuCode'] ?? $skuRow['sku'] ?? '')));
+                foreach (($skuRow['stocks'] ?? []) as $stock) {
+                    if (! is_array($stock)) {
+                        continue;
+                    }
+                    $itemNo = strtoupper(trim((string) ($stock['itemNo'] ?? $stock['item_no'] ?? '')));
+                    $hit = ($itemNo !== '' && isset($wantItem[$itemNo]))
+                        || ($skuCode !== '' && isset($wantSku[$skuCode]));
+                    if (! $hit) {
+                        continue;
+                    }
+                    $prices = $this->extractDobaStockPrices($stock);
+                    if ($prices['anticipatedIncome'] <= 0 && $prices['selfPickAnticipatedIncome'] <= 0) {
+                        continue;
+                    }
+                    if ($itemNo !== '') {
+                        $found[$itemNo] = $prices;
+                    }
+                    if ($skuCode !== '') {
+                        $found[$skuCode] = $prices;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Live Delivery / Pick Up from goods/detail. Scans the catalog once for every lookup.
+     *
+     * @param  list<array{itemNo?:string,sku?:string,goodsId?:string}>  $lookups
+     * @return array<string, array{anticipatedIncome: float, selfPickAnticipatedIncome: float}>
+     */
+    public function pullLivePricesFromGoodsDetail(array $lookups): array
+    {
+        $wantItem = [];
+        $wantSku = [];
+        $filterQueries = [];
+        foreach ($lookups as $lookup) {
+            if (! is_array($lookup)) {
+                continue;
+            }
+            $itemNo = strtoupper(trim((string) ($lookup['itemNo'] ?? '')));
+            $sku = strtoupper(trim((string) ($lookup['sku'] ?? '')));
+            $goodsId = trim((string) ($lookup['goodsId'] ?? ''));
+            if ($itemNo !== '') {
+                $wantItem[$itemNo] = true;
+                $filterQueries[] = ['itemNo' => $lookup['itemNo'] ?? $itemNo];
+            }
+            if ($sku !== '') {
+                $wantSku[$sku] = true;
+                $filterQueries[] = ['skuCode' => $lookup['sku'] ?? $sku];
+            }
+            if ($goodsId !== '') {
+                $filterQueries[] = ['goodsId' => $goodsId];
+            }
+        }
+        if ($wantItem === [] && $wantSku === []) {
+            return [];
+        }
+
+        $found = [];
+        $resolved = function () use ($lookups, &$found) {
+            $n = 0;
+            foreach ($lookups as $lookup) {
+                if (! is_array($lookup)) {
+                    continue;
+                }
+                $item = strtoupper(trim((string) ($lookup['itemNo'] ?? '')));
+                $skuKey = strtoupper(trim((string) ($lookup['sku'] ?? '')));
+                if (($item !== '' && isset($found[$item])) || ($skuKey !== '' && isset($found[$skuKey]))) {
+                    $n++;
+                }
+            }
+
+            return $n;
+        };
+        $need = count($lookups);
+        foreach (array_slice($filterQueries, 0, 6) as $extra) {
+            $rows = $this->fetchGoodsDetailPage(1, 50, $extra);
+            if ($rows === []) {
+                continue;
+            }
+            $this->collectLivePricesFromGoodsDetailPage($rows, $wantItem, $wantSku, $found);
+            if ($resolved() >= $need) {
+                return $found;
+            }
+        }
+
+        for ($page = 1; $page <= 30; $page++) {
+            $rows = $this->fetchGoodsDetailPage($page, 100);
+            if ($rows === []) {
+                break;
+            }
+            $this->collectLivePricesFromGoodsDetailPage($rows, $wantItem, $wantSku, $found);
+            if ($resolved() >= $need) {
+                break;
+            }
+            if (count($rows) < 100) {
+                break;
+            }
+            usleep(120000);
+        }
+
+        return $found;
+    }
+
+    /**
+     * Get product detail from Doba by item_id (goods/detail — goods/get/item is 404).
      */
     public function getItemDetail($itemId)
     {
         try {
-            $timestamp = $this->getMillisecond();
-            $content = $this->getContent($timestamp);
-            $sign = $this->generateSignature($content);
-
-            $url = $this->baseUrl . "/goods/get/item";
-
-            $response = Http::withHeaders([
-                'appKey'     => config('services.doba.app_key'),
-                'signType'   => 'rsa2',
-                'timestamp'  => $timestamp,
-                'sign'       => $sign,
-                'Content-Type' => 'application/json',
-            ])->get($url, [
-                'itemNo' => $itemId
-            ]);
-
-            $responseData = $response->json();
-            Log::info('Doba API response received', ['response_data' => $responseData]);
-
-            if (!isset($responseData['code']) || $responseData['code'] !== 200) {
-                return [
-                    'errors' => $responseData['message'] ?? 'API returned error'
-                ];
+            $itemId = trim((string) $itemId);
+            if ($itemId === '') {
+                return ['errors' => 'itemNo is required'];
+            }
+            $map = $this->pullLivePricesFromGoodsDetail([['itemNo' => $itemId]]);
+            $key = strtoupper($itemId);
+            if (! isset($map[$key])) {
+                return ['errors' => 'Live Doba item not found'];
             }
 
-            return $responseData;
-
+            return $map[$key];
         } catch (Exception $e) {
             return [
-                'errors' => 'API Error: ' . $e->getMessage()
+                'errors' => 'API Error: '.$e->getMessage(),
             ];
         }
     }
 
     /**
-     * Live listing Delivery / Pick Up prices from goods/get/item.
+     * Live listing Delivery / Pick Up prices from goods/detail.
      *
      * @return array{anticipatedIncome: float, selfPickAnticipatedIncome: float}|array{errors: string}
      */
-    public function pullLiveItemPrices(string $itemId): array
+    public function pullLiveItemPrices(string $itemId, ?string $sku = null, ?string $goodsId = null): array
     {
-        $detail = $this->getItemDetail($itemId);
-        if (isset($detail['errors'])) {
-            return $detail;
-        }
-
-        $found = ['anticipatedIncome' => 0.0, 'selfPickAnticipatedIncome' => 0.0];
-        $this->collectDobaLivePrices($detail, $found);
-        if ($found['anticipatedIncome'] <= 0 && $found['selfPickAnticipatedIncome'] <= 0) {
+        $map = $this->pullLivePricesFromGoodsDetail([[
+            'itemNo' => $itemId,
+            'sku' => $sku,
+            'goodsId' => $goodsId,
+        ]]);
+        $itemKey = strtoupper(trim($itemId));
+        $skuKey = strtoupper(trim((string) $sku));
+        $found = $map[$itemKey] ?? $map[$skuKey] ?? null;
+        if (! is_array($found) || (($found['anticipatedIncome'] ?? 0) <= 0 && ($found['selfPickAnticipatedIncome'] ?? 0) <= 0)) {
             return ['errors' => 'Live Doba price not returned'];
         }
 

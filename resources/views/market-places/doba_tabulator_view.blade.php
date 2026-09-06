@@ -1433,16 +1433,19 @@
                 return found;
             }
 
-            function dobaApplyPulledLivePrice(sku, live) {
+            function dobaApplyPulledLivePrice(sku, live, pickup) {
                 const p = Math.round((Number(live) || 0) * 100) / 100;
                 if (!(p > 0)) return;
                 const shipOf = function(d) { return parseFloat(d && d.Ship_productmaster) || 0; };
                 const row = dobaFindRowBySku(sku);
+                const pick = (Number(pickup) > 0)
+                    ? Math.round(Number(pickup) * 100) / 100
+                    : null;
                 if (row) {
                     const d = row.getData() || {};
                     row.update({
                         'doba Price': p,
-                        self_pick_price: Math.max(0, +(p - shipOf(d)).toFixed(2)),
+                        self_pick_price: pick != null ? pick : Math.max(0, +(p - shipOf(d)).toFixed(2)),
                     });
                     try { row.reformat(); } catch (e) { /* ignore */ }
                 }
@@ -1452,7 +1455,7 @@
                         if (!d) return;
                         if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) {
                             d['doba Price'] = p;
-                            d.self_pick_price = Math.max(0, +(p - shipOf(d)).toFixed(2));
+                            d.self_pick_price = pick != null ? pick : Math.max(0, +(p - shipOf(d)).toFixed(2));
                         }
                     });
                 } catch (e) { /* ignore */ }
@@ -1499,7 +1502,7 @@
                                 stale.push(r.sku);
                                 return;
                             }
-                            dobaApplyPulledLivePrice(r.sku, r.price);
+                            dobaApplyPulledLivePrice(r.sku, r.price, r.self_pick_price);
                             pulled++;
                         });
                         if (stale.length && attempt + 1 < retryMs.length) {
@@ -1514,7 +1517,7 @@
                                     return r && String(r.sku || '').toUpperCase() === String(sku).toUpperCase()
                                         && r.success && Number(r.price) > 0;
                                 });
-                                if (match) dobaApplyPulledLivePrice(match.sku, match.price);
+                                if (match) dobaApplyPulledLivePrice(match.sku, match.price, match.self_pick_price);
                             });
                         }
                         if (pulled > 0 && !stale.length) {
@@ -1522,7 +1525,8 @@
                         } else if (stale.length) {
                             showToast('success', 'Pushed ' + list.length + ' SKU(s) — live Price still catching up');
                         } else if (!(Number(resp && resp.skip_count) > 0)) {
-                            showToast('danger', (resp && resp.message) || 'Doba Price pull failed');
+                            const fail = results.find(function(r) { return r && r.message && !r.success; });
+                            showToast('danger', (resp && resp.message) || (fail && fail.message) || 'Doba Price pull failed');
                         }
                     }).fail(function(xhr) {
                         if (attempt + 1 < retryMs.length) {
