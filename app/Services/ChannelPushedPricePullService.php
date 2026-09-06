@@ -489,8 +489,9 @@ class ChannelPushedPricePullService
     private function pullDoba(array $skus, string $channel): array
     {
         $api = app(DobaApiService::class);
-        $out = [];
-        foreach ($skus as $i => $sku) {
+        $lookups = [];
+        $rows = [];
+        foreach ($skus as $sku) {
             try {
                 $metric = DobaMetric::query()
                     ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
@@ -498,7 +499,7 @@ class ChannelPushedPricePullService
                     ?: DobaMetric::query()->where('sku', $sku)->first();
                 $itemId = $metric ? trim((string) ($metric->item_id ?? '')) : '';
                 if ($itemId === '') {
-                    $out[] = [
+                    $rows[] = [
                         'success' => false,
                         'sku' => $sku,
                         'marketplace' => $channel,
@@ -509,52 +510,11 @@ class ChannelPushedPricePullService
                     continue;
                 }
 
-                $live = $api->pullLiveItemPrices($itemId);
-                if (isset($live['errors'])) {
-                    $out[] = [
-                        'success' => false,
-                        'sku' => $sku,
-                        'marketplace' => $channel,
-                        'price' => null,
-                        'sprice' => null,
-                        'message' => (string) $live['errors'],
-                    ];
-                    continue;
-                }
-
-                $delivery = round((float) ($live['anticipatedIncome'] ?? 0), 2);
-                $pickup = round((float) ($live['selfPickAnticipatedIncome'] ?? 0), 2);
-                $price = $channel === 'doba_withoutship' ? $pickup : $delivery;
-                if (! ($price > 0)) {
-                    $out[] = [
-                        'success' => false,
-                        'sku' => $sku,
-                        'marketplace' => $channel,
-                        'price' => null,
-                        'sprice' => null,
-                        'message' => 'Live Doba price not returned',
-                    ];
-                    continue;
-                }
-
-                if ($metric) {
-                    if ($delivery > 0) {
-                        $metric->anticipated_income = $delivery;
-                    }
-                    if ($pickup > 0) {
-                        $metric->self_pick_price = $pickup;
-                    }
-                    $metric->save();
-                }
-
-                $out[] = [
-                    'success' => true,
+                $lookups[] = [
                     'sku' => $sku,
-                    'marketplace' => $channel,
-                    'price' => $price,
-                    'self_pick_price' => $pickup > 0 ? $pickup : null,
-                    'sprice' => null,
-                    'message' => 'Pulled Doba Price $'.number_format($price, 2),
+                    'itemNo' => $itemId,
+                    'goodsId' => $metric ? trim((string) ($metric->goods_id ?? '')) : '',
+                    'metric' => $metric,
                 ];
             } catch (\Throwable $e) {
                 Log::warning('Channel pushed-price Doba pull failed', [
@@ -562,7 +522,7 @@ class ChannelPushedPricePullService
                     'channel' => $channel,
                     'error' => $e->getMessage(),
                 ]);
-                $out[] = [
+                $rows[] = [
                     'success' => false,
                     'sku' => $sku,
                     'marketplace' => $channel,
@@ -571,13 +531,87 @@ class ChannelPushedPricePullService
                     'message' => $e->getMessage(),
                 ];
             }
+        }
 
-            if ($i < count($skus) - 1) {
-                usleep(150000);
+        $liveMap = [];
+        if ($lookups !== []) {
+            try {
+                $liveMap = $api->pullLivePricesFromGoodsDetail($lookups);
+            } catch (\Throwable $e) {
+                Log::warning('Channel pushed-price Doba catalog pull failed', [
+                    'channel' => $channel,
+                    'error' => $e->getMessage(),
+                ]);
+                foreach ($lookups as $lookup) {
+                    $rows[] = [
+                        'success' => false,
+                        'sku' => $lookup['sku'],
+                        'marketplace' => $channel,
+                        'price' => null,
+                        'sprice' => null,
+                        'message' => $e->getMessage(),
+                    ];
+                }
+
+                return $rows;
             }
         }
 
-        return $out;
+        foreach ($lookups as $lookup) {
+            $sku = $lookup['sku'];
+            $itemId = strtoupper(trim((string) $lookup['itemNo']));
+            $skuKey = strtoupper(trim((string) $sku));
+            $live = $liveMap[$itemId] ?? $liveMap[$skuKey] ?? null;
+            if (! is_array($live)) {
+                $rows[] = [
+                    'success' => false,
+                    'sku' => $sku,
+                    'marketplace' => $channel,
+                    'price' => null,
+                    'sprice' => null,
+                    'message' => 'Live Doba price not returned',
+                ];
+                continue;
+            }
+
+            $delivery = round((float) ($live['anticipatedIncome'] ?? 0), 2);
+            $pickup = round((float) ($live['selfPickAnticipatedIncome'] ?? 0), 2);
+            $price = $channel === 'doba_withoutship' ? $pickup : $delivery;
+            if (! ($price > 0)) {
+                $rows[] = [
+                    'success' => false,
+                    'sku' => $sku,
+                    'marketplace' => $channel,
+                    'price' => null,
+                    'sprice' => null,
+                    'message' => 'Live Doba price not returned',
+                ];
+                continue;
+            }
+
+            $metric = $lookup['metric'] ?? null;
+            if ($metric) {
+                if ($delivery > 0) {
+                    $metric->anticipated_income = $delivery;
+                }
+                if ($pickup > 0) {
+                    $metric->self_pick_price = $pickup;
+                }
+                $metric->save();
+            }
+
+            $rows[] = [
+                'success' => true,
+                'sku' => $sku,
+                'marketplace' => $channel,
+                'price' => $price,
+                'self_pick_price' => $pickup > 0 ? $pickup : null,
+                'sprice' => null,
+                'message' => 'Pulled Doba Price $'.number_format($price, 2),
+            ];
+        }
+
+        return $rows;
     }
 
     /**

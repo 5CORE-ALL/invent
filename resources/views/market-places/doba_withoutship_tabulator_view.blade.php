@@ -609,8 +609,9 @@
          *   SPFT % = ((SPRICE × FORMULA_PERCENT − SHIP − LP) ÷ SPRICE) × 100
          *   SROI % = ((SPRICE × FORMULA_PERCENT − SHIP − LP) ÷ LP)     × 100
          *
-         * --- Sprc Dil (same as /doba-tabulator, ship omitted) ---
-         *   S PRC = (LP × (1 + GROI%/100)) / FORMULA_PERCENT
+         * --- S PRC on this page ---
+         *   S PRC = S Pick Price from /doba-tabulator (with-ship SPRICE − Ship)
+         *   Push sends that amount as Pick Up.
          *
          * SHIP is FORMULA_SHIP (= 0 on this "without ship" page).
          * Changing the admin Doba percentage automatically updates BOTH N* and S* margins.
@@ -1566,7 +1567,8 @@
                             const promo_pu = promo - ship;
 
                             // SPFT and SROI calculations using same formula as PFT and ROI
-                            const sprice = Number(item.SPRICE) || 0;
+                            const tabPick = Number(item.doba_tabulator_s_pick) || 0;
+                            const sprice = tabPick > 0 ? tabPick : (Number(item.SPRICE) || 0);
                             // SPFT / SROI use the exact same formula as the backend's
                             // NPFT / NROI (see header comment block above) — only the
                             // input price differs (SPRICE here vs Price for N*).
@@ -1624,11 +1626,12 @@
                                 missing: (inv > 0 && dobaL30 === 0) ? 1 : 0, // Missing indicator: has inventory but not selling
                                 LP_productmaster: lp,
                                 Ship_productmaster: shipDisplay,
-                                sprice: item.SPRICE || 0,
+                                doba_tabulator_s_pick: tabPick,
+                                sprice: sprice,
                                 spft: item.SPFT || spft,
                                 sprofit: sprofit,
                                 sroi: item.SROI || sroi,
-                                s_self_pick: Number(item.S_SELF_PICK) || 0, // Saved S (PP)
+                                s_self_pick: tabPick > 0 ? tabPick : (Number(item.S_SELF_PICK) || sprice || 0),
                                 s_l30: Number(item.s_l30) || 0,  // S L30 from doba_daily_data
                                 doba_list_price: listPriceCol,
                                 msrp: Number(item.msrp) || 0,
@@ -2048,7 +2051,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (Doba L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100)) / margin (Ship not used).",
+                        headerTooltip: "S PRC uses S Pick Price from /doba-tabulator (with-ship SPRICE − Ship). Dil slabs do not set a separate default on this page.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (isDobaWithoutshipParentRow(rowData)) return '';
@@ -2071,7 +2074,7 @@
                         sorter: "number",
                         visible: true,
                         editable: false,
-                        headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab when Doba L30 > 0; 0 Sold uses the lowest Target GROI). S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Pickup Price. Red triangle = S PRC ≥ LMP.",
+                        headerTooltip: "Not editable. S PRC = S Pick Price from /doba-tabulator (SPRICE − Ship). Push sends this as Pick Up. Blue triangle = S PRC ≠ Pickup Price. Red triangle = S PRC ≥ LMP.",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             if (isDobaWithoutshipParentRow(rowData)) return '';
@@ -2104,16 +2107,18 @@
                         width: 90,
                         sorter: "number",
                         visible: true,
-                        headerTooltip: "Pickup / prepaid SPRICE pushed to Doba Pick Up (selfPickAnticipatedIncome). On this page ship is 0, so S Pick = SPRICE.",
+                        headerTooltip: "Same as S PRC: S Pick Price from /doba-tabulator (with-ship SPRICE − Ship). This is the Pick Up amount pushed to Doba.",
                         formatter: function(cell, formatterParams) {
                             const rd = cell.getRow().getData();
                             if (isDobaWithoutshipParentRow(rd)) return '';
-                            let sprice = (typeof chPromoSavedOrLiveSprice === 'function')
-                                ? Number(chPromoSavedOrLiveSprice(rd))
-                                : (parseFloat(rd.sprice) || 0);
-                            const ship = FORMULA_SHIP;
+                            const tabPick = Number(rd.doba_tabulator_s_pick) || 0;
+                            let sprice = tabPick > 0
+                                ? tabPick
+                                : ((typeof chPromoSavedOrLiveSprice === 'function')
+                                    ? Number(chPromoSavedOrLiveSprice(rd))
+                                    : (parseFloat(rd.sprice) || 0));
                             const stored = parseFloat(rd.s_self_pick) || 0;
-                            const value = sprice > 0 ? Math.max(0, sprice - ship) : stored;
+                            const value = sprice > 0 ? sprice : stored;
                             return value > 0 ? `$${value.toFixed(2)}` : '';
                         }
                     },

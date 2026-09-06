@@ -512,6 +512,34 @@ class DobaController extends Controller
                 }
             }
 
+            // Pickup page: S PRC is /doba-tabulator S Pick Price (with-ship SPRICE − Ship).
+            if ($onlyPickupPrepaidLabelFromDaily) {
+                $withShipRaw = $dobaDataValues[$normSku] ?? null;
+                if (! is_array($withShipRaw)) {
+                    $withShipRaw = json_decode((string) $withShipRaw, true);
+                }
+                $tabSprice = 0.0;
+                $tabPick = 0.0;
+                if (is_array($withShipRaw)) {
+                    $tabSprice = round(floatval($withShipRaw['SPRICE'] ?? 0), 2);
+                    $tabPick = round(floatval($withShipRaw['S_SELF_PICK'] ?? 0), 2);
+                }
+                if ($tabPick <= 0 && $tabSprice > 0) {
+                    $tabPick = max(0, round($tabSprice - $ship, 2));
+                }
+                $row['doba_tabulator_s_pick'] = $tabPick > 0 ? $tabPick : null;
+                if ($tabPick > 0) {
+                    $row['SPRICE'] = $tabPick;
+                    $row['S_SELF_PICK'] = $tabPick;
+                    $row['SPFT'] = $tabPick > 0
+                        ? round((($tabPick * $percentage - $lp - $shipInFormula) / $tabPick) * 100, 2)
+                        : 0;
+                    $row['SROI'] = $lp > 0
+                        ? round((($tabPick * $percentage - $lp - $shipInFormula) / $lp) * 100, 2)
+                        : 0;
+                }
+            }
+
             // Buyer / Seller links — Seller is auto-built from goodsId+catId when available:
             // https://seller.doba.com/ds/goods/save?goodsId={goodsId}&catId={catId}
             $bLink = '';

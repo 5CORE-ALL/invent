@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MiraklDailyData;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
+use App\Services\Support\ChannelTodaySalesService;
 use App\Support\ProductMasterShipBb;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,9 +23,13 @@ class BestBuySalesController extends Controller
     {
         \Log::info('BestBuySalesController getData called');
 
+        $todayYmd = now(ChannelTodaySalesService::TZ)->toDateString();
         $orders = MiraklDailyData::bestBuyUsa()
-            ->l30()
             ->where('status', '!=', 'CLOSED')
+            ->where(function ($q) use ($todayYmd) {
+                $q->where('period', 'l30')
+                    ->orWhereRaw('DATE(order_created_at) = ?', [$todayYmd]);
+            })
             ->orderBy('order_created_at', 'desc')
             ->get();
 

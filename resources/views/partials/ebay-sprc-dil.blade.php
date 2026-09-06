@@ -2,16 +2,16 @@
   Sprc Dil — same Dil → Target GROI slabs as Amazon.
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  Amazon / eBay 1–3: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
+  Amazon / eBay 1–3 / Doba Pickup: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
   Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
   Dil slab edits, add/delete, table load, and Save and Apply persist S PRC (same as Amazon).
 --}}
 @php
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
-    $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true);
-    $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg'], true);
-    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire'], true);
+    $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'doba_withoutship'], true);
+    $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg'], true);
+    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire', 'topdawg'], true);
     $ebaySprcDilSoldLabel = match ($ebaySprcDilChannel) {
         'temu', 'temu2', 'temu3' => 'Temu L30',
         'macys', 'macy' => 'MC L30',
@@ -21,6 +21,7 @@
         'doba', 'doba_withoutship' => 'Doba L30',
         'aliexpress', 'shein', 'faire' => 'AL30',
         'tiktok', 'tiktok2' => 'TT L30',
+        'topdawg' => 'TD L30',
         'shopify_b2c' => 'B2C L30',
         'bestbuy' => 'BB L30',
         'newegg' => 'L30',
@@ -43,6 +44,7 @@
         'faire' => 'Faire',
         'tiktok' => 'TikTok',
         'tiktok2' => 'TikTok 2',
+        'topdawg' => 'TopDawg',
         'shopify_b2c' => 'Shopify B2C',
         'bestbuy' => 'Best Buy',
         'newegg' => 'Newegg',
@@ -236,7 +238,13 @@
                             (page close OK).
                         </li>
 @endif
-@if(!empty($ebaySprcDilExcludeShip))
+@if($ebaySprcDilChannel === 'doba_withoutship')
+                        <li>
+                            <strong>When</strong> S PRC is set:
+                            use <strong>S Pick Price from /doba-tabulator</strong>
+                            (with-ship SPRICE − Ship). That amount is pushed as Pick Up.
+                        </li>
+@elseif(!empty($ebaySprcDilExcludeShip))
                         <li>
                             <strong>When</strong> S PRC is calculated:
                             <code>S PRC = (LP × (1 + GROI%/100)) / margin</code> (Ship not used).
@@ -318,11 +326,14 @@
         function ebayDgIsTiktok() {
             return EBAY_DIL_GROI_CHANNEL === 'tiktok' || EBAY_DIL_GROI_CHANNEL === 'tiktok2';
         }
+        function ebayDgIsTopdawg() {
+            return EBAY_DIL_GROI_CHANNEL === 'topdawg';
+        }
         function ebayDgIsShopifyB2c() {
             return EBAY_DIL_GROI_CHANNEL === 'shopify_b2c';
         }
         function ebayDgUsesClearThenApply() {
-            return ebayDgIsTiktok() || ebayDgIsShopifyB2c() || ebayDgIsDoba() || ebayDgIsDobaWithoutship();
+            return ebayDgIsTiktok() || ebayDgIsShopifyB2c() || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsTopdawg();
         }
         function ebayDgIsBestbuy() {
             return EBAY_DIL_GROI_CHANNEL === 'bestbuy';
@@ -334,13 +345,13 @@
             return ebayDgIsMacys() || ebayDgIsPurchasingPower() || ebayDgIsWayfair() || ebayDgIsReverb()
                 || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsAliexpress() || ebayDgIsShein()
                 || ebayDgIsFaire() || ebayDgIsTiktok() || ebayDgIsShopifyB2c()
-                || ebayDgIsBestbuy() || ebayDgIsNewegg();
+                || ebayDgIsBestbuy() || ebayDgIsNewegg() || ebayDgIsTopdawg();
         }
         function ebayDgAutoApplies() {
             return true;
         }
         function ebayDgExcludeShip() {
-            return ebayDgIsPurchasingPower() || ebayDgIsWayfair() || ebayDgIsDobaWithoutship() || ebayDgIsFaire();
+            return ebayDgIsPurchasingPower() || ebayDgIsWayfair() || ebayDgIsDobaWithoutship() || ebayDgIsFaire() || ebayDgIsTopdawg();
         }
         function ebayDgRulesUrl() {
             return '/channel-promo-pricing/' + encodeURIComponent(EBAY_DIL_GROI_CHANNEL) + '/dil-groi';
@@ -510,7 +521,31 @@
             });
             return best;
         }
+        function ebayDgDobaTabulatorSPick(d) {
+            const copied = Number(d && (d.doba_tabulator_s_pick != null
+                ? d.doba_tabulator_s_pick
+                : d.DOBA_TABULATOR_S_PICK)) || 0;
+            if (copied > 0) return ebayDgRound2(copied);
+            const sprice = Number(d && (d.doba_tabulator_sprice != null ? d.doba_tabulator_sprice : 0)) || 0;
+            const ship = parseFloat(d && d.Ship_productmaster) || 0;
+            if (sprice > 0) return ebayDgRound2(Math.max(0, sprice - ship));
+            return 0;
+        }
         function ebaySpriceFromGroi(d, groi) {
+            if (ebayDgIsDobaWithoutship()) {
+                const copied = ebayDgDobaTabulatorSPick(d);
+                if (copied > 0) return copied;
+                const lp = parseFloat(d && d.LP_productmaster) || 0;
+                if (!(lp > 0)) return 0;
+                const ship = parseFloat(d && d.Ship_productmaster) || 0;
+                const margin = (typeof CHANNEL_PROMO_TAKEHOME === 'number' && CHANNEL_PROMO_TAKEHOME > 0)
+                    ? CHANNEL_PROMO_TAKEHOME
+                    : 0.95;
+                const delivery = (lp * (1 + (Number(groi) || 0) / 100) + ship) / margin;
+                return (isFinite(delivery) && delivery > 0)
+                    ? ebayDgRound2(Math.max(0, delivery - ship))
+                    : 0;
+            }
             if (typeof chPromoSpriceFromTargetRoi === 'function') {
                 const p = chPromoSpriceFromTargetRoi(d, groi);
                 return p > 0 ? p : 0;
@@ -1094,6 +1129,10 @@
             return patch;
         }
         function ebayTiktokRuleDiscount(d) {
+            if (ebayDgIsDobaWithoutship()) {
+                const copied = ebayDgDobaTabulatorSPick(d);
+                if (copied > 0) return copied;
+            }
             const meta = ebayDilGroiMetaForRow(d);
             if (meta && meta.sprc > 0) {
                 let price = ebayDgRound2(meta.sprc);
@@ -1115,7 +1154,7 @@
             return 0;
         }
         /**
-         * TikTok / TikTok 2 / Shopify B2C / Doba / Doba Pickup: wipe every stored S PRC and save 0,
+         * TikTok / TikTok 2 / Shopify B2C / Doba / Doba Pickup / TopDawg: wipe every stored S PRC and save 0,
          * then insert the Dil / 0 Sold / CVR discount (not the LMP Diff).
          */
         async function ebayTiktokClearThenApplyAllRules() {
