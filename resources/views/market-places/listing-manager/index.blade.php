@@ -2233,7 +2233,7 @@
             return_policy_id: $('#lc-return-policy').val() || '',
             vat_percent: $('#lc-vat').val() || '',
             gallery_plus: $('#lc-gallery-plus').is(':checked'),
-            best_offer: $('#lc-best-offer').is(':checked'),
+            best_offer: isEbay3Channel(currentDraft && currentDraft.channel) ? false : $('#lc-best-offer').is(':checked'),
             auto_relist: $('#lc-auto-relist').is(':checked'),
             private_listing: $('#lc-private-listing').is(':checked'),
             warehouse_id: $('#lc-warehouse-id').val() || '',
@@ -2535,15 +2535,47 @@
         if (selected) $el.val(String(selected));
     }
 
+    function isEbay3Channel(channel) {
+        const key = String(channel || '').toLowerCase().replace(/[\s\-_&/]/g, '');
+        return key === 'ebay3' || key === 'ebaythree';
+    }
+
+    function pickLivePolicyId(list, selected, fallback) {
+        const ids = (list || []).map(r => String(r.id || ''));
+        if (selected && ids.includes(String(selected))) return String(selected);
+        if (fallback && ids.includes(String(fallback))) return String(fallback);
+        return ids[0] || '';
+    }
+
     function loadPolicies(selected) {
-        return $.getJSON("{{ route('listing.manager.ebay.policies') }}").then(function (res) {
+        const channel = (currentDraft && currentDraft.channel) || '';
+        return $.getJSON("{{ route('listing.manager.ebay.policies') }}", { channel }).then(function (res) {
             policyDefaults = res.defaults || {};
             const sel = selected || {};
-            fillPolicySelect($('#lc-shipping-policy'), res.shipping || [], sel.shipping_policy_id || policyDefaults.shipping_policy_id);
-            fillPolicySelect($('#lc-payment-policy'), res.payment || [], sel.payment_policy_id || policyDefaults.payment_policy_id);
-            fillPolicySelect($('#lc-return-policy'), res.return || [], sel.return_policy_id || policyDefaults.return_policy_id);
+            const shippingSel = isEbay3Channel(channel)
+                ? pickLivePolicyId(res.shipping || [], sel.shipping_policy_id, policyDefaults.shipping_policy_id)
+                : (sel.shipping_policy_id || policyDefaults.shipping_policy_id);
+            const paymentSel = isEbay3Channel(channel)
+                ? pickLivePolicyId(res.payment || [], sel.payment_policy_id, policyDefaults.payment_policy_id)
+                : (sel.payment_policy_id || policyDefaults.payment_policy_id);
+            const returnSel = isEbay3Channel(channel)
+                ? pickLivePolicyId(res.return || [], sel.return_policy_id, policyDefaults.return_policy_id)
+                : (sel.return_policy_id || policyDefaults.return_policy_id);
+            fillPolicySelect($('#lc-shipping-policy'), res.shipping || [], shippingSel);
+            fillPolicySelect($('#lc-payment-policy'), res.payment || [], paymentSel);
+            fillPolicySelect($('#lc-return-policy'), res.return || [], returnSel);
+            if (isEbay3Channel(channel)) {
+                $('#lc-best-offer').prop('checked', false);
+            }
             return res;
         }).fail(function () {
+            if (isEbay3Channel(channel)) {
+                fillPolicySelect($('#lc-shipping-policy'), [], selected?.shipping_policy_id);
+                fillPolicySelect($('#lc-payment-policy'), [], selected?.payment_policy_id);
+                fillPolicySelect($('#lc-return-policy'), [], selected?.return_policy_id);
+                $('#lc-best-offer').prop('checked', false);
+                return;
+            }
             fillPolicySelect($('#lc-shipping-policy'), [], selected?.shipping_policy_id);
             fillPolicySelect($('#lc-payment-policy'), [{ id: '307554145021', name: 'eBay Managed Payments (307554145021)' }], selected?.payment_policy_id || '307554145021');
             fillPolicySelect($('#lc-return-policy'), [{ id: '329818346021', name: '30 days money back (329818346021)' }], selected?.return_policy_id || '329818346021');
@@ -2662,6 +2694,11 @@
             $(this).toggle(fields.includes(String($(this).data('id-field'))));
         });
         $('.lc-ebay-only').toggleClass('d-none', !ed.ebay);
+        const ebay3 = isEbay3Channel(draft && draft.channel);
+        $('#lc-best-offer').prop('disabled', !!ebay3);
+        if (ebay3) {
+            $('#lc-best-offer').prop('checked', false);
+        }
         $('.lc-tiktok-only').toggleClass('d-none', !ed.tiktok);
         $('.lc-temu-only').toggleClass('d-none', !ed.temu);
         $('.lc-reverb-only').toggleClass('d-none', !ed.reverb);
@@ -2735,7 +2772,7 @@
         $('#lc-gallery-plus').prop('checked', !!d.gallery_plus);
         $('#lc-price').val(draft.price != null ? draft.price : '');
         $('#lc-qty').val(draft.quantity != null ? draft.quantity : '');
-        $('#lc-best-offer').prop('checked', !!d.best_offer);
+        $('#lc-best-offer').prop('checked', isEbay3Channel(draft && draft.channel) ? false : !!d.best_offer);
         $('#lc-category-id').val(d.primary_category_id || d.category_uuid || '');
         $('#lc-category-path-input').val(d.primary_category_path || d.category_name || d.category || '');
         $('#lc-secondary-category-id').val(d.secondary_category_id || '');
