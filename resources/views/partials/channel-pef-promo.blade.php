@@ -9,17 +9,17 @@
     $channelPromoPart = $channelPromoPart ?? 'all';
     $channelPromoChannel = $channelPromoChannel ?? 'ebay1';
     $channelPromoHideCvrCpn = !empty($channelPromoHideCvrCpn)
-        || in_array($channelPromoChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg'], true);
+        || in_array($channelPromoChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg'], true);
     $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'bestbuy', 'newegg'], true);
+    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'bestbuy', 'newegg', 'topdawg'], true);
     $channelPromoShowZeroSoldDilRule = !$channelPromoUsesSprcDil;
     $channelPromoZeroSoldDilColorSlabs = true;
     $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['temu', 'temu2', 'temu3'], true) && empty($channelPromoUsesSprcDil);
     $channelPromoZeroSoldMinRoi = $channelPromoChannel === 'shopify_b2c';
     $channelPromoZeroSoldSoldLabel = $channelPromoChannel === 'shopify_b2c' ? 'B2C L30' : 'L30';
-    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg'], true);
+    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg'], true);
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2'], true);
     $channelPromoUsesAmazonCvrDisc = $channelPromoChannel === 'shopify_b2c';
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
@@ -1197,7 +1197,8 @@
                 || CHANNEL_PROMO_CHANNEL === 'tiktok2'
                 || CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
                 || CHANNEL_PROMO_CHANNEL === 'bestbuy'
-                || CHANNEL_PROMO_CHANNEL === 'newegg';
+                || CHANNEL_PROMO_CHANNEL === 'newegg'
+                || CHANNEL_PROMO_CHANNEL === 'topdawg';
         }
         const CHANNEL_PROMO_HIDE_DIL_PRMT = @json(!empty($channelPromoHideDilPrmt));
         function chPromoHideDilPrmt() {
@@ -1489,6 +1490,7 @@
             topdawg: {
                 label: 'TopDawg',
                 saveSpriceUrl: '/topdawg-save-sprice',
+                saveSpriceBatchUrl: '/topdawg-save-sprice',
                 pushPriceUrl: '/cvr-master-push-price',
                 priceField: 'TD Price',
                 cvrField: 'CVR%',
@@ -1496,6 +1498,7 @@
                 invField: 'INV',
                 skuField: '(Child) sku',
                 soldField: 'TD L30',
+                soldFieldLabel: 'TD L30',
                 saveSpriceMode: 'updates',
             },
             purchasing_power: {
@@ -3402,7 +3405,8 @@
                 return false;
             }
             // TikTok / Doba: persist the rule discount. Cell shows saved S PRC; red triangle if ≥ LMP.
-            if (chPromoIsTiktokPromoChannel() || chPromoIsDobaPromoChannel() || chPromoIsDobaWithoutshipPromoChannel()) {
+            if (chPromoIsTiktokPromoChannel() || chPromoIsDobaPromoChannel() || chPromoIsDobaWithoutshipPromoChannel()
+                || CHANNEL_PROMO_CHANNEL === 'topdawg') {
                 return false;
             }
             if (!d) return true;
@@ -3898,6 +3902,14 @@
             // Doba Dil column = (OV L30 / INV) × 100 — same as the DIL column (ov_dil)
             if (CHANNEL_PROMO_CHANNEL === 'doba' || CHANNEL_PROMO_CHANNEL === 'doba_withoutship') {
                 if (inv <= 0) return 0;
+                const ovl30 = Number(d.L30 != null ? d.L30 : d['L30']) || 0;
+                return (ovl30 / inv) * 100;
+            }
+            // TopDawg Dil column = (OV L30 / INV) × 100
+            if (CHANNEL_PROMO_CHANNEL === 'topdawg') {
+                if (inv <= 0) return 0;
+                const stored = Number(d.Dil != null ? d.Dil : d['Dil%']);
+                if (isFinite(stored) && stored > 0) return stored;
                 const ovl30 = Number(d.L30 != null ? d.L30 : d['L30']) || 0;
                 return (ovl30 / inv) * 100;
             }
@@ -4919,6 +4931,7 @@
             if (typeof MACYS_DEFAULT_MARGIN !== 'undefined') globals.push(MACYS_DEFAULT_MARGIN);
             if (typeof TEMU_MARGIN !== 'undefined') globals.push(TEMU_MARGIN);
             if (typeof DEFAULT_TIKTOK_MARGIN_FACTOR !== 'undefined') globals.push(DEFAULT_TIKTOK_MARGIN_FACTOR);
+            if (typeof TD_PERCENTAGE !== 'undefined') globals.push(TD_PERCENTAGE);
             for (let i = 0; i < globals.length; i++) {
                 const t = Number(globals[i]);
                 if (isFinite(t) && t > 0) return t > 1 ? (t / 100) : t;
@@ -5135,7 +5148,8 @@
             }
             const ship = (CHANNEL_PROMO_CHANNEL === 'faire'
                 || CHANNEL_PROMO_CHANNEL === 'purchasing_power'
-                || CHANNEL_PROMO_CHANNEL === 'wayfair')
+                || CHANNEL_PROMO_CHANNEL === 'wayfair'
+                || CHANNEL_PROMO_CHANNEL === 'topdawg')
                 ? 0
                 : chPromoShipCost(d);
             const price = (lp * (1 + roi / 100) + ship) / margin;

@@ -17,6 +17,7 @@
             box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 0 0 5px currentColor;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'topdawg'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'topdawg'])
     </style>
 @endsection
 
@@ -93,7 +94,7 @@
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
                             placeholder="Enter %" step="0.01" style="width:140px;">
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
-                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
+                        <button id="clear-sprice-selected-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
                         </button>
                     </div>
@@ -211,42 +212,10 @@
                             <i class="fas fa-exchange-alt"></i> Price %
                         </button>
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'topdawg'])
-
-                        {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%. --}}
-                        <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
-                            id="target-roi-controls"
-                            title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100)) / {{ $topdawgPercentage }}% on every selected row (no ship)">
-                            <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap"
-                                   aria-label="Target ROI percent">
-                                <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
-                            </label>
-                            <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                                placeholder="30" step="0.1" style="width: 80px;"
-                                title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
-                            <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                                title="Apply — Compute & save S PRC = (LP × (1 + Target ROI%/100)) / {{ $topdawgPercentage }}% for every selected row (no ship)"
-                                aria-label="Apply Target ROI">
-                                <i class="fas fa-calculator"></i>
-                            </button>
-                        </div>
-
-                        {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%. --}}
-                        <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
-                            id="target-gpft-controls"
-                            title="Target GPFT% — sets S PRC = LP / ({{ $topdawgPercentage }}% − Target GPFT%/100) on every selected row (no ship)">
-                            <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap"
-                                   aria-label="Target GPFT percent">
-                                <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
-                            </label>
-                            <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                                placeholder="30" step="0.1" style="width: 80px;"
-                                title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the TopDawg take-home margin ({{ $topdawgPercentage }}%).">
-                            <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                                title="Apply — Compute & save S PRC = LP / ({{ $topdawgPercentage }}% − Target GPFT%/100) for every selected row (no ship)"
-                                aria-label="Apply Target GPFT">
-                                <i class="fas fa-calculator"></i>
-                            </button>
-                        </div>
+                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'topdawg'])
+                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
+                            <i class="fas fa-eraser"></i> Clear SPRICE
+                        </button>
                     </div>
 
                     {{-- Dedicated search row — Search SKU + Search Parent each take
@@ -299,11 +268,13 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'topdawg'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'topdawg'])
 @endsection
 
 @section('script-bottom')
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'topdawg'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'topdawg'])
     const TD_MAP_TOLERANCE = 3;
     const TD_PERCENTAGE    = {{ $topdawgPercentage }} / 100;
     // Pinned to /topdawg/sales-dashboard Total Revenue / PFT% / ROI%.
@@ -323,6 +294,9 @@
         return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
     }
     function tdRowSpriceForAlert(data) {
+        if (typeof chPromoSavedOrLiveSprice === 'function') {
+            return Number(chPromoSavedOrLiveSprice(data)) || 0;
+        }
         let sprice = parseFloat(data && data.SPRICE) || 0;
         if (typeof chPromoLiveSprice === 'function' && !tdIsParentRow(data)) {
             const calc = chPromoLiveSprice(data);
@@ -502,7 +476,9 @@
             const d = row.getData();
             const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
             if (!sku || !tdSelectedSkus.has(sku)) return;
-            const sprice = parseFloat(d.SPRICE);
+            const sprice = (typeof chPromoSavedOrLiveSprice === 'function')
+                ? Number(chPromoSavedOrLiveSprice(d))
+                : parseFloat(d.SPRICE);
             if (!isFinite(sprice) || sprice <= 0) return;
             items.push({ sku: sku, price: +sprice.toFixed(2), row: row });
         });
@@ -652,22 +628,62 @@
         $('#discount-percentage-input').val('');
     }
 
+    function tdApplyRuleSpriceToRow(row, price) {
+        const d = row.getData() || {};
+        const lp = parseFloat(d.LP_productmaster) || 0;
+        const sgpft = price > 0 ? Math.round(((price * TD_PERCENTAGE - lp) / price) * 100) : 0;
+        const sroi = lp > 0 ? Math.round(((price * TD_PERCENTAGE - lp) / lp) * 100) : 0;
+        const patch = (typeof chPromoSpricePatch === 'function')
+            ? chPromoSpricePatch(price)
+            : { SPRICE: price, sprice: price, has_custom_sprice: true };
+        row.update(Object.assign({}, patch, {
+            SPRICE: price,
+            SGPFT: sgpft,
+            SROI: sroi,
+            SPRICE_STATUS: 'applied',
+        }));
+    }
+
     function tdClearSpriceForSelected() {
         if (tdSelectedSkus.size === 0) { tdShowToast('Select SKUs first', 'error'); return; }
         if (!confirm(`Clear SPRICE for ${tdSelectedSkus.size} SKU(s)?`)) return;
 
-        const updates = [];
+        const items = [];
         table.getRows('active').forEach(function(row) {
             const d = row.getData();
             const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
             if (!sku || !tdSelectedSkus.has(sku)) return;
-            row.update({ SPRICE: null, SGPFT: null, SROI: null });
-            updates.push({ sku: sku, sprice: null });
+            if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+            else row.update({ SPRICE: null, SGPFT: null, SROI: null, has_custom_sprice: false });
+            items.push({ row: row, sku: sku });
         });
 
-        if (!updates.length) return;
-        tdSaveSpriceUpdates(updates);
-        tdShowToast(`Cleared SPRICE for ${updates.length} SKU(s)`, 'success');
+        if (!items.length) return;
+
+        const zeros = items.map(function(i) { return { sku: i.sku, sprice: 0 }; });
+        $.ajax({
+            url: "{{ route('topdawg.save.sprice') }}",
+            method: 'POST',
+            data: { _token: '{{ csrf_token() }}', updates: zeros }
+        }).always(function() {
+            const fills = [];
+            items.forEach(function(item) {
+                const d = item.row.getData() || {};
+                let price = (typeof ebayTiktokRuleDiscount === 'function')
+                    ? ebayTiktokRuleDiscount(d)
+                    : ((typeof ebaySprcDilForRow === 'function') ? (ebaySprcDilForRow(d) || 0) : 0);
+                if (!(price > 0)) return;
+                tdApplyRuleSpriceToRow(item.row, price);
+                fills.push({ sku: item.sku, sprice: price });
+            });
+            if (fills.length) {
+                tdSaveSpriceUpdates(fills, { clearFirst: false });
+                tdShowToast('S PRC cleared, then Sprc Dil saved on ' + fills.length + ' SKU(s)', 'success');
+            } else {
+                tdShowToast('Cleared SPRICE for ' + items.length + ' SKU(s)', 'success');
+            }
+            if (typeof tdUpdatePushButton === 'function') tdUpdatePushButton();
+        });
     }
 
     function applyUrlBadgeFilter() {
@@ -1072,39 +1088,64 @@
                     }},
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
+                    title: 'Sprc Dil',
+                    field: 'SPRC_DIL',
+                    hozAlign: 'center',
+                    width: 78,
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            return (typeof ebaySprcDilForRow === 'function')
+                                ? (ebaySprcDilForRow(row) || 0)
+                                : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: 'S PRC from Dil → Target GROI% slabs. TD L30 > 0 uses the matching slab; 0 Sold uses the lowest Target GROI. Formula: (LP × (1 + GROI%/100)) / margin (Ship not used).',
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (tdIsParentRow(rowData)) return '';
+                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                        const meta = ebayDilGroiMetaForRow(rowData);
+                        if (!meta || !(meta.sprc > 0)) return '';
+                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                            + ' → ' + meta.label
+                            + ' → GROI ' + meta.groi + '%'
+                            + ' → $' + meta.sprc.toFixed(2);
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                            + meta.sprc.toFixed(2) + '</span>';
+                    }
+                },
+                {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 92, sorter: 'number',
-                    editor: 'number', editorParams: { min: 0, step: 0.01 },
-                    headerTooltip: 'S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
-                    tooltip: 'Click to edit SPRICE — SGPFT / SROI recompute and auto-save',
-                    cellClick: (e) => e.stopPropagation(),
+                    editable: false,
+                    headerTooltip: 'Not editable. Auto-saved from Sprc Dil (Dil slab when TD L30 > 0; 0 Sold uses the lowest Target GROI). S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.',
                     formatter: c => {
                         const rowData = c.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
-                        let value = parseFloat(c.getValue() || 0);
-                        if (typeof chPromoLiveSprice === 'function') {
-                            const calc = chPromoLiveSprice(rowData);
-                            if (calc > 0) value = calc;
-                        }
+                        let value = (typeof chPromoSavedOrLiveSprice === 'function')
+                            ? Number(chPromoSavedOrLiveSprice(rowData))
+                            : parseFloat(c.getValue() || 0);
                         const status = rowData.SPRICE_STATUS || '';
                         const live = parseFloat(rowData['TD Price']) || 0;
-                        const lmp = parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0;
+                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
+                        const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
                         let bg = '';
                         let tip = '';
                         if (status === 'pushing') { bg = 'background-color:#ffe5b4;'; tip = ' title="Pushing to TopDawg…"'; }
                         else if (status === 'pushed') { bg = 'background-color:#fff3cd;'; tip = ' title="Pushed — queued in TopDawg review"'; }
                         else if (status === 'failed') { bg = 'background-color:#f8d7da;'; tip = ' title="Push failed — see console / Laravel log"'; }
-                        else if (value > 0) { bg = 'background-color:#e7f1ff;'; }
-                        if (!(value > 0)) {
-                            return '<span class="text-muted" style="cursor:text;" title="Click to set SPRICE">-</span>';
-                        }
-                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                        if (cap && cap.shown > 0) value = cap.shown;
+                        else if (status === 'applied' || value > 0) { bg = 'background-color:#d4edda;'; }
+                        if (!(value > 0)) return '';
                         const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
-                        const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         const formatted = '$' + value.toFixed(2);
                         const priceHtml = overLmp
-                            ? `<strong${tip} style="cursor:text;color:#dc3545;${bg}padding:2px 6px;border-radius:3px;">${formatted}</strong>`
-                            : `<strong${tip} style="cursor:text;${bg}padding:2px 6px;border-radius:3px;">${formatted}</strong>`;
+                            ? `<strong${tip} style="color:#dc3545;${bg}padding:2px 6px;border-radius:3px;">${formatted}</strong>`
+                            : `<strong${tip} style="${bg}padding:2px 6px;border-radius:3px;">${formatted}</strong>`;
+                        const redTri = overLmp
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Saved S PRC ≥ LMP $'
+                                + Number(lmp).toFixed(2) + '"></i>'
+                            : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
@@ -1170,10 +1211,28 @@
                 // children, which fires dataLoaded again. Without this guard allTableData would
                 // be overwritten by that subset and later filters would run against only
                 // those rows, leaving the table stuck on the expanded group.
-                if (window.ParentExpand && ParentExpand.isExpanded()) return;
+                if (window.ParentExpand && ParentExpand.isExpanded()) {
+                    if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                        ebayScheduleSprcDilAutoApply();
+                    }
+                    setTimeout(function() {
+                        applyTdColumnVisibilityMap(tdColumnVisibilityMap);
+                        tdBuildColumnDropdown(tdColumnVisibilityMap);
+                        if (typeof tdUpdatePushButton === 'function') tdUpdatePushButton();
+                    }, 800);
+                    return;
+                }
                 allTableData = data;
                 if (window.ParentExpand) ParentExpand.captureDataset(data);
             }
+            if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                ebayScheduleSprcDilAutoApply();
+            }
+            setTimeout(function() {
+                applyTdColumnVisibilityMap(tdColumnVisibilityMap);
+                tdBuildColumnDropdown(tdColumnVisibilityMap);
+                if (typeof tdUpdatePushButton === 'function') tdUpdatePushButton();
+            }, 800);
             setTimeout(function() {
                 applyFilters();
                 updateSummary();
@@ -1192,8 +1251,52 @@
         // channel string and one row in the table.
         const TD_TABULATOR_COLUMN_CHANNEL = 'topdawg_tabulator';
         const TD_TABULATOR_COLUMN_VISIBILITY_URL = '{{ url('/tabulator-column-visibility') }}';
+        const TD_COLUMN_VIS_KEY = 'topdawg_tabulator_col_vis_v1';
+        let tdColumnVisibilityMap = {};
 
-        function tdBuildColumnDropdown() {
+        function tdColumnField(col) {
+            if (!col) return '';
+            const def = (typeof col.getDefinition === 'function') ? (col.getDefinition() || {}) : {};
+            return def.field || (typeof col.getField === 'function' ? col.getField() : '') || '';
+        }
+        function tdVisibilityIsOn(v) {
+            return v === true || v === 1 || v === '1' || v === 'true';
+        }
+        function readTdColumnVisibilityLocal() {
+            try {
+                const raw = localStorage.getItem(TD_COLUMN_VIS_KEY);
+                const parsed = raw ? JSON.parse(raw) : {};
+                return (parsed && typeof parsed === 'object') ? parsed : {};
+            } catch (e) {
+                return {};
+            }
+        }
+        function writeTdColumnVisibilityLocal(map) {
+            try { localStorage.setItem(TD_COLUMN_VIS_KEY, JSON.stringify(map || {})); } catch (e) {}
+        }
+        function applyTdColumnVisibilityMap(map) {
+            if (!table || !map || typeof map !== 'object') return;
+            tdColumnVisibilityMap = map;
+            table.getColumns().forEach(function(col) {
+                const field = tdColumnField(col);
+                if (!field || field === '_select') return;
+                if (!Object.prototype.hasOwnProperty.call(map, field)) return;
+                if (tdVisibilityIsOn(map[field])) col.show();
+                else col.hide();
+            });
+        }
+        function collectTdColumnVisibility() {
+            const visibility = {};
+            if (!table) return visibility;
+            table.getColumns().forEach(function(col) {
+                const field = tdColumnField(col);
+                if (!field || field === '_select') return;
+                visibility[field] = !!col.isVisible();
+            });
+            return visibility;
+        }
+
+        function tdBuildColumnDropdown(savedVisibility) {
             if (window.AnalyticsColVis) {
                 window.AnalyticsColVis.install({
                     getTable: function() { return table; },
@@ -1202,24 +1305,25 @@
                     skipFields: ['_select'],
                     onSave: function() {
                         if (typeof tdSaveColumnVisibilityToServer === 'function') tdSaveColumnVisibilityToServer();
-                        else if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
                     }
                 });
-                window.AnalyticsColVis.rebuild();
+                window.AnalyticsColVis.rebuild(savedVisibility || tdColumnVisibilityMap || null);
                 return;
             }
             let html = '';
+            const map = (savedVisibility && typeof savedVisibility === 'object')
+                ? savedVisibility
+                : tdColumnVisibilityMap;
             table.getColumns().forEach(col => {
-                const field = col.getField();
+                const field = tdColumnField(col);
                 const title = col.getDefinition().title;
-                // Skip the always-on _select checkbox column and any column
-                // without a `field` (e.g. UI-only group headers).
                 if (field && field !== '_select' && title) {
-                    // Strip any HTML inside the title (the SKU select-all header
-                    // wraps an <input>) before using it as a checkbox label.
                     const safeLabel = String(title).replace(/<[^>]*>/g, '').trim() || field;
+                    const isVisible = Object.prototype.hasOwnProperty.call(map, field)
+                        ? tdVisibilityIsOn(map[field])
+                        : col.isVisible();
                     html += `<li class="dropdown-item"><label style="cursor:pointer;display:flex;align-items:center;gap:8px;">
-                        <input type="checkbox" class="td-column-toggle" data-field="${field}" ${col.isVisible() ? 'checked' : ''}>
+                        <input type="checkbox" class="td-column-toggle" data-field="${field}" ${isVisible ? 'checked' : ''}>
                         ${safeLabel}
                     </label></li>`;
                 }
@@ -1228,11 +1332,9 @@
         }
 
         function tdSaveColumnVisibilityToServer() {
-            const visibility = {};
-            table.getColumns().forEach(col => {
-                const f = col.getField();
-                if (f && f !== '_select') visibility[f] = col.isVisible();
-            });
+            const visibility = collectTdColumnVisibility();
+            tdColumnVisibilityMap = visibility;
+            writeTdColumnVisibilityLocal(visibility);
             fetch(TD_TABULATOR_COLUMN_VISIBILITY_URL, {
                 method: 'POST',
                 headers: {
@@ -1247,6 +1349,11 @@
         }
 
         function tdApplyColumnVisibilityFromServer() {
+            const localMap = readTdColumnVisibilityLocal();
+            if (localMap && Object.keys(localMap).length) {
+                applyTdColumnVisibilityMap(localMap);
+                tdBuildColumnDropdown(localMap);
+            }
             fetch(TD_TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TD_TABULATOR_COLUMN_CHANNEL), {
                 method: 'GET',
                 headers: {
@@ -1257,15 +1364,10 @@
             .then(r => r.json())
             .then(savedVisibility => {
                 if (savedVisibility && typeof savedVisibility === 'object' && Object.keys(savedVisibility).length > 0) {
-                    table.getColumns().forEach(col => {
-                        const field = col.getField();
-                        if (field && savedVisibility.hasOwnProperty(field)) {
-                            if (savedVisibility[field]) col.show(); else col.hide();
-                        }
-                    });
-                    // Refresh the dropdown so its checkboxes mirror the new
-                    // visibility we just applied.
-                    tdBuildColumnDropdown();
+                    const merged = Object.assign({}, localMap, savedVisibility);
+                    applyTdColumnVisibilityMap(merged);
+                    writeTdColumnVisibilityLocal(merged);
+                    tdBuildColumnDropdown(merged);
                 }
             })
             .catch(err => console.error('Error loading TopDawg column visibility:', err));
@@ -1292,8 +1394,8 @@
             table.getColumns().forEach(col => {
                 if (col.getField() && col.getField() !== '_select') col.show();
             });
-            tdBuildColumnDropdown();
             tdSaveColumnVisibilityToServer();
+            tdBuildColumnDropdown(tdColumnVisibilityMap);
         });
 
         // Inline SPRICE edit — same UX as /purchasing-power-pricing. Live-recompute
@@ -1339,27 +1441,7 @@
                 return;
             }
 
-            if (field !== 'SPRICE') return;
-            const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
-            if (!sku) return;
-
-            const raw = cell.getValue();
-            const lp = parseFloat(d.LP_productmaster) || 0;
-
-            if (raw === '' || raw === null || raw === undefined || isNaN(parseFloat(raw)) || parseFloat(raw) <= 0) {
-                row.update({ SPRICE: null, SGPFT: null, SROI: null });
-                tdSaveSpriceUpdates([{ sku: sku, sprice: null }]);
-                tdShowToast(`${sku}: SPRICE cleared`, 'success');
-                return;
-            }
-
-            const newSprice = +parseFloat(raw).toFixed(2);
-            const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp) / newSprice) * 100) : 0;
-            const sroi  = lp > 0        ? Math.round(((newSprice * TD_PERCENTAGE - lp) / lp)       * 100) : 0;
-
-            row.update({ SPRICE: newSprice, SGPFT: sgpft, SROI: sroi });
-            tdSaveSpriceUpdates([{ sku: sku, sprice: newSprice }]);
-            tdShowToast(`${sku}: SPRICE saved`, 'success');
+            // SPRICE is not editable — auto-saved from Sprc Dil (same as TikTok).
         });
 
         $('#inventory-filter, #nrl-filter, #gpft-filter, #groi-filter, #dil-filter, #sold-filter').on('change', function() {
@@ -1456,7 +1538,7 @@
         $('#discount-percentage-input').on('keypress', function(e) {
             if (e.which === 13) tdApplyDiscount();
         });
-        $('#clear-sprice-btn').on('click', tdClearSpriceForSelected);
+        $('#clear-sprice-btn, #clear-sprice-selected-btn').on('click', tdClearSpriceForSelected);
 
         // ─── Push to TopDawg (selected rows with SPRICE > 0) ──────────────
         // POSTs every selected SKU's SPRICE to /topdawg-push-prices, which
@@ -1533,138 +1615,6 @@
                     tdUpdatePushButton();
                 }
             });
-        });
-
-        /*
-         * Target ROI% / Target GPFT% bulk apply (TopDawg, margin = TD_PERCENTAGE)
-         * ----------------------------------------------------------------------
-         * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered
-         * target. TopDawg's SGPFT / SROI formulas exclude shipping (matches
-         * TopDawgPricingController::getViewTopDawgTabularData lines 187-188 and
-         * tdApplyDiscount above):
-         *     SROI%  = ((sprice * TD_PERCENTAGE − lp) / lp)     * 100
-         *           → sprice = (lp * (1 + ROI%/100)) / TD_PERCENTAGE
-         *     SGPFT% = ((sprice * TD_PERCENTAGE − lp) / sprice) * 100
-         *           → sprice = lp / (TD_PERCENTAGE − GPFT%/100)
-         * Optimistic SGPFT / SROI written client-side, then the existing
-         * /topdawg-save-sprice endpoint reconciles them server-side. Plain 2-decimal
-         * rounding — no .99 snapping — because snapping would shift the achieved
-         * SROI / SGPFT off the user-typed target.
-         */
-        $('#apply-target-roi-btn').on('click', function () {
-            const rawInput = $('#target-roi-input').val();
-            const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                tdShowToast('Please enter a Target ROI%', 'error');
-                return;
-            }
-            if (!isFinite(targetRoiPct)) {
-                tdShowToast('Target ROI% must be a number', 'error');
-                return;
-            }
-            if (tdSelectedSkus.size === 0) {
-                tdShowToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const roiMultiplier = 1 + (targetRoiPct / 100);
-            const updates = [];
-            let updatedCount = 0;
-            let skippedNoLp  = 0;
-
-            table.getRows('active').forEach(function (row) {
-                const d = row.getData();
-                const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
-                if (!sku || !tdSelectedSkus.has(sku)) return;
-
-                const lp = parseFloat(d.LP_productmaster) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-
-                const candidate = (lp * roiMultiplier) / TD_PERCENTAGE;
-                const newSprice = +candidate.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp) / newSprice) * 100) : 0;
-                const sroi  = lp > 0       ? Math.round(((newSprice * TD_PERCENTAGE - lp) / lp)     * 100) : 0;
-
-                row.update({ SPRICE: newSprice, SGPFT: sgpft, SROI: sroi });
-                updates.push({ sku: sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (!updates.length) {
-                tdShowToast('No selected rows have a usable LP > 0', 'warning');
-                return;
-            }
-
-            tdSaveSpriceUpdates(updates);
-            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-            tdShowToast(`Target ROI ${targetRoiPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
-        });
-
-        $('#apply-target-gpft-btn').on('click', function () {
-            const rawInput = $('#target-gpft-input').val();
-            const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                tdShowToast('Please enter a Target GPFT%', 'error');
-                return;
-            }
-            if (!isFinite(targetGpftPct)) {
-                tdShowToast('Target GPFT% must be a number', 'error');
-                return;
-            }
-            if (tdSelectedSkus.size === 0) {
-                tdShowToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const denom = TD_PERCENTAGE - (targetGpftPct / 100);
-            if (denom <= 0) {
-                tdShowToast(`Target GPFT% ${targetGpftPct}% is too high — must be < ${(TD_PERCENTAGE * 100).toFixed(0)}% (TopDawg take-home).`, 'error');
-                return;
-            }
-
-            const updates = [];
-            let updatedCount = 0;
-            let skippedNoLp  = 0;
-
-            table.getRows('active').forEach(function (row) {
-                const d = row.getData();
-                const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
-                if (!sku || !tdSelectedSkus.has(sku)) return;
-
-                const lp = parseFloat(d.LP_productmaster) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-
-                const candidate = lp / denom;
-                const newSprice = +candidate.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp) / newSprice) * 100) : 0;
-                const sroi  = lp > 0       ? Math.round(((newSprice * TD_PERCENTAGE - lp) / lp)     * 100) : 0;
-
-                row.update({ SPRICE: newSprice, SGPFT: sgpft, SROI: sroi });
-                updates.push({ sku: sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (!updates.length) {
-                tdShowToast('No selected rows have a usable LP > 0', 'warning');
-                return;
-            }
-
-            tdSaveSpriceUpdates(updates);
-            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-            tdShowToast(`Target GPFT ${targetGpftPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
-        });
-
-        $('#target-roi-input').on('keypress', function (e) {
-            if (e.which === 13) $('#apply-target-roi-btn').click();
-        });
-        $('#target-gpft-input').on('keypress', function (e) {
-            if (e.which === 13) $('#apply-target-gpft-btn').click();
         });
 
         table.on('renderComplete', tdUpdateSelectAllHeaderCheckbox);
