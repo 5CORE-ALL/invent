@@ -364,6 +364,10 @@
                         if (result) {
                             if (result.kind === 'price') priceChanged++;
                             try { row.update(result.patch); } catch (e) { /* ignore */ }
+                            try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
+                            if (CH_PUSH_SPRICE_CHANNEL === 'aliexpress' && typeof window.aeApplyPushPatchToSku === 'function') {
+                                window.aeApplyPushPatchToSku(t.sku, result.patch);
+                            }
                         }
                     }
                     if (typeof row.getTreeChildren === 'function') {
@@ -749,6 +753,11 @@
                 }
                 const row = item.row;
                 const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (item.data || {});
+                if (typeof window.aeApplyPushPatchToSku === 'function' && CH_PUSH_SPRICE_CHANNEL === 'aliexpress') {
+                    window.aeApplyPushPatchToSku(item.sku, patch);
+                    chPushClientPatchDatasets(item.sku, patch);
+                    return;
+                }
                 if (row && typeof row.update === 'function') {
                     try { row.update(patch); } catch (e) { Object.assign(d, patch); }
                     try { row.reformat(); } catch (e) { /* ignore */ }
@@ -885,10 +894,22 @@
             function chPushSpriceDatasetRows() {
                 let raw = [];
                 try {
-                    if (Array.isArray(global.allTableData) && global.allTableData.length) {
+                    if (Array.isArray(global.aeFullTableData) && global.aeFullTableData.length) {
+                        raw = global.aeFullTableData;
+                    }
+                } catch (e) { /* ignore */ }
+                try {
+                    if (!raw.length && Array.isArray(global.allTableData) && global.allTableData.length) {
                         raw = global.allTableData;
                     }
                 } catch (e) { /* ignore */ }
+                if (!raw.length) {
+                    try {
+                        if (typeof aeFullTableData !== 'undefined' && Array.isArray(aeFullTableData) && aeFullTableData.length) {
+                            raw = aeFullTableData;
+                        }
+                    } catch (e) { /* TDZ */ }
+                }
                 if (!raw.length) {
                     try {
                         if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) {
@@ -926,9 +947,18 @@
             }
             function chPushSpriceFillFromRow(d) {
                 let fill = 0;
-                if (typeof chPromoLiveSprice === 'function') {
+                if (typeof aePushablePrice === 'function') {
+                    fill = chPushSpriceRound2(aePushablePrice(d));
+                }
+                if (!(fill > 0) && typeof aeVisibleSprice === 'function') {
+                    fill = chPushSpriceRound2(aeVisibleSprice(d));
+                }
+                if (!(fill > 0) && typeof aeStoredSprice === 'function') {
+                    fill = chPushSpriceRound2(aeStoredSprice(d));
+                }
+                if (!(fill > 0) && typeof chPromoLiveSprice === 'function') {
                     fill = chPushSpriceRound2(chPromoLiveSprice(d));
-                } else if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                } else if (!(fill > 0) && typeof chPromoSpriceFromStdTPromo === 'function') {
                     fill = chPushSpriceRound2(chPromoSpriceFromStdTPromo(d));
                 }
                 if (fill > 0) return fill;

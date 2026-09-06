@@ -787,6 +787,10 @@
                 if (!(shown > 0)) return;
                 const stored = Math.round((parseFloat(d.sprice || d.SPRICE) || 0) * 100) / 100;
                 if (stored === shown) return;
+                const st = String(d.SPRICE_STATUS || '').toLowerCase();
+                if (st === 'processing') return;
+                const pv = Math.round((parseFloat(d.SPRICE_PUSHED_VALUE) || 0) * 100) / 100;
+                if ((st === 'pushed' || st === 'applied') && pv > 0 && pv === shown) return;
                 const m = aeSpriceMetrics(d, shown);
                 if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
                 row.update({ sprice: shown, sgpft: m.sgpft, sroi: m.sroi, SPRICE_STATUS: null, SPRICE_PUSHED_VALUE: null });
@@ -819,28 +823,62 @@
         function aeNormSku(sku) {
             return String(sku || '').replace(/[\u00A0\u202F]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
         }
+        function aeReformatPushRow(row) {
+            if (!row || typeof row.reformat !== 'function') return;
+            try { row.reformat(); } catch (e) { /* ignore */ }
+        }
+        function aeWalkTableRows(fn) {
+            const walk = function(rows) {
+                (rows || []).forEach(function(row) {
+                    if (!row) return;
+                    fn(row);
+                    if (typeof row.getTreeChildren === 'function') {
+                        try { walk(row.getTreeChildren() || []); } catch (e) { /* ignore */ }
+                    }
+                });
+            };
+            try {
+                if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
+                    walk(table.getRows());
+                }
+            } catch (e) { /* ignore */ }
+        }
         function aeApplyPushPatchToSku(sku, patch) {
             const want = aeNormSku(sku);
             if (!want || !patch) return;
-            const walk = function(arr) {
+            const price = parseFloat(patch.price != null ? patch.price : patch.SPRICE_PUSHED_VALUE);
+            const full = Object.assign({}, patch);
+            if (full.SPRICE_STATUS === 'pushed' && price > 0) {
+                if (full.price == null) full.price = price;
+                if (full.sprice == null) full.sprice = price;
+                if (full.SPRICE == null) full.SPRICE = price;
+                if (full.SPRICE_PUSHED_VALUE == null) full.SPRICE_PUSHED_VALUE = price;
+            }
+            full._push = String(full.SPRICE_STATUS || 'updated') + ':' + (price > 0 ? price : Date.now());
+            const walkData = function(arr) {
                 if (!Array.isArray(arr)) return;
                 arr.forEach(function(row) {
                     if (!row) return;
-                    if (aeNormSku(row.sku) === want) Object.assign(row, patch);
-                    if (Array.isArray(row._children)) walk(row._children);
+                    if (aeNormSku(row.sku) === want) Object.assign(row, full);
+                    if (Array.isArray(row._children)) walkData(row._children);
                 });
             };
-            walk(typeof aeFullTableData !== 'undefined' ? aeFullTableData : null);
-            walk(typeof allTableData !== 'undefined' ? allTableData : null);
-            try {
-                if (typeof table !== 'undefined' && table) {
-                    (table.getRows() || []).forEach(function(row) {
-                        const d = row.getData() || {};
-                        if (aeNormSku(d.sku) !== want) return;
-                        row.update(patch);
-                    });
+            walkData(typeof aeFullTableData !== 'undefined' ? aeFullTableData : null);
+            walkData(typeof allTableData !== 'undefined' ? allTableData : null);
+            aeWalkTableRows(function(row) {
+                const d = (typeof row.getData === 'function') ? (row.getData() || {}) : {};
+                if (aeNormSku(d.sku) !== want) return;
+                try {
+                    const p = row.update(full);
+                    if (p && typeof p.then === 'function') {
+                        p.then(function() { aeReformatPushRow(row); }).catch(function() { aeReformatPushRow(row); });
+                    } else {
+                        aeReformatPushRow(row);
+                    }
+                } catch (e) {
+                    aeReformatPushRow(row);
                 }
-            } catch (e) { /* ignore */ }
+            });
             if (window.ParentExpand && typeof ParentExpand.captureDataset === 'function') {
                 ParentExpand.captureDataset(
                     (typeof aeFullTableData !== 'undefined' && aeFullTableData.length)
@@ -848,7 +886,11 @@
                         : allTableData
                 );
             }
+            if (typeof updateSummary === 'function') {
+                try { updateSummary(); } catch (e) { /* ignore */ }
+            }
         }
+        window.aeApplyPushPatchToSku = aeApplyPushPatchToSku;
         function aePushablePrice(data) {
             return aeStoredSprice(data) || aeVisibleSprice(data) || 0;
         }
@@ -1215,6 +1257,11 @@
         }
 
         let aeFullTableData = [];
+        function aeSyncPushDatasets() {
+            window.aeFullTableData = aeFullTableData;
+            window.allTableData = allTableData;
+            window.table = table;
+        }
         let aeSwapData = false;
         let aeApplyingFilters = false;
         function aeRowsForType(rowType, rows) {
@@ -1676,6 +1723,7 @@
                     });
                     aeFullTableData = rows;
                     allTableData = rows;
+                    aeSyncPushDatasets();
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     const rowType = $('#ae-row-type-filter').val() || 'skus';
                     const visibleRows = aeRowsForType(rowType, rows).filter(function(r) {
@@ -2232,8 +2280,8 @@
                                     + '% is below Stop < ' + AE_MIN_SGROI + '%', 'warning');
                                 return;
                             }
-                            cell.getRow().update({ SPRICE_STATUS: 'processing' });
-                            aePushUpdatesInChunks([{ sku: sku, price: price }], $t.closest('.ae-push-row-btn'));
+                            aeApplyPushPatchToSku(sku, { SPRICE_STATUS: 'processing' });
+                            aePushUpdatesInChunks([{ sku: sku, price: price, row: cell.getRow() }], $t.closest('.ae-push-row-btn'));
                         }
                     },
                     {
@@ -2284,6 +2332,7 @@
                     } else if (!aeApplyingFilters && !aeSwapData) {
                         allTableData = Array.isArray(data) ? data : [];
                     }
+                    aeSyncPushDatasets();
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     if (!$('#ae-row-type-filter').val()) {
                         $('#ae-row-type-filter').val('skus');
@@ -2734,8 +2783,11 @@
                     return;
                 }
 
-                const origHtml = $btn.html();
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing 0/' + updates.length + '…');
+                const $progressBtn = ($btn && $btn.length && !$btn.hasClass('ae-push-row-btn')) ? $btn : $();
+                const origHtml = $progressBtn.length ? $progressBtn.html() : '';
+                if ($progressBtn.length) {
+                    $progressBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing 0/' + updates.length + '…');
+                }
 
                 const chunks = [];
                 for (let i = 0; i < updates.length; i += AE_PUSH_CHUNK_SIZE) {
@@ -2748,7 +2800,9 @@
 
                 function next(idx) {
                     if (idx >= chunks.length) {
-                        $btn.prop('disabled', false).html(origHtml);
+                        if ($progressBtn.length) {
+                            $progressBtn.prop('disabled', false).html(origHtml);
+                        }
                         const msgType = totalFailed > 0 ? (totalPushed > 0 ? 'warning' : 'error') : 'success';
                         aeNotify(`AliExpress push: ${totalPushed} ok, ${totalFailed} failed`, msgType);
                         if (allFails.length) {
@@ -2760,7 +2814,13 @@
                         return;
                     }
 
-                    $btn.html('<i class="fas fa-spinner fa-spin"></i> Pushing ' + Math.min((idx + 1) * AE_PUSH_CHUNK_SIZE, updates.length) + '/' + updates.length + '…');
+                    if ($progressBtn.length) {
+                        $progressBtn.html('<i class="fas fa-spinner fa-spin"></i> Pushing ' + Math.min((idx + 1) * AE_PUSH_CHUNK_SIZE, updates.length) + '/' + updates.length + '…');
+                    }
+
+                    const payload = chunks[idx].map(function(u) {
+                        return { sku: u.sku, price: u.price };
+                    });
 
                     $.ajax({
                         url: '{{ route("aliexpress.pricing.push") }}',
@@ -2773,7 +2833,7 @@
                         },
                         data: {
                             _token: '{{ csrf_token() }}',
-                            updates: chunks[idx]
+                            updates: payload
                         },
                         success: function(res) {
                             totalPushed += (res.pushed || 0);

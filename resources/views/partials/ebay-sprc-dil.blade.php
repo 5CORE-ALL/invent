@@ -1233,6 +1233,9 @@
                         enqueueChannelPushSpriceAfterSave(f.sku, pushPrice, f.row);
                     });
                 }
+                if (typeof chPromoQueueReloadSpricePush === 'function') {
+                    chPromoQueueReloadSpricePush({ delay: 300 });
+                }
                 ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
             } else if (fills.length) {
                 ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');

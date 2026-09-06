@@ -6433,7 +6433,12 @@
                                 patch.price = pushed;
                                 patch.sprice = pushed;
                             }
-                            job.row.update(patch);
+                            if (typeof window.aeApplyPushPatchToSku === 'function' && CHANNEL_PROMO_CHANNEL === 'aliexpress') {
+                                window.aeApplyPushPatchToSku(job.sku, patch);
+                            } else {
+                                job.row.update(patch);
+                                try { if (job.row.reformat) job.row.reformat(); } catch (e) { /* ignore */ }
+                            }
                         }
                     } else {
                         fail++;
@@ -9608,10 +9613,28 @@
         function chPromoQueueReloadSpricePush(opts) {
             opts = opts || {};
             if (!chPromoPageReloadPushAllowed()) return;
-            if (typeof scanAndQueueChannelPushSprice !== 'function') return;
+            const scan = (typeof scanAndQueueChannelPushSprice === 'function')
+                ? scanAndQueueChannelPushSprice
+                : (window.scanAndQueueChannelPushSprice || null);
+            if (typeof scan !== 'function') return;
             const delay = opts.delay != null ? opts.delay : 0;
             const run = function() {
-                scanAndQueueChannelPushSprice(chPromoSafeTable(), {
+                const tbl = chPromoSafeTable();
+                const extra = (window.aeFullTableData && window.aeFullTableData.length)
+                    ? window.aeFullTableData
+                    : (window.allTableData || []);
+                if (!tbl && !(extra && extra.length)) {
+                    if ((opts.retry || 0) < 10) {
+                        setTimeout(function() {
+                            chPromoQueueReloadSpricePush(Object.assign({}, opts, {
+                                delay: 400,
+                                retry: (opts.retry || 0) + 1,
+                            }));
+                        }, 400);
+                    }
+                    return;
+                }
+                scan(tbl, {
                     once: false,
                     silent: false,
                     catalog: true,
