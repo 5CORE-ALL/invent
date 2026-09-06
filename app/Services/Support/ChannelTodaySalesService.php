@@ -24,7 +24,7 @@ class ChannelTodaySalesService
 {
     public const TZ = 'America/New_York';
 
-    public const CACHE_PREFIX = 'amm_today_sales_est_v2_';
+    public const CACHE_PREFIX = 'amm_today_sales_est_v3_';
 
     /**
      * @return array{0: Carbon, 1: Carbon, 2: string} [startOfDay, endOfDay, Y-m-d]
@@ -139,8 +139,8 @@ class ChannelTodaySalesService
             'shopifyb2c' => fn () => $this->shopifyB2x(false, $start, $end, $ymd),
             'shopifyb2b' => fn () => $this->shopifyB2x(true, $start, $end, $ymd),
             'doba' => fn () => $this->doba($start, $end),
-            'bestbuyusa' => fn () => $this->mirakl('Best Buy USA', $start, $end),
-            'macys' => fn () => $this->mirakl("Macy's, Inc.", $start, $end),
+            'bestbuyusa' => fn () => $this->mirakl('Best Buy USA', $start, $end, $ymd),
+            'macys' => fn () => $this->mirakl("Macy's, Inc.", $start, $end, $ymd),
             'fbmarketplace' => fn () => $this->fbMarketplace($start, $end, $ymd),
             'tiktokshop' => fn () => $this->tiktok($start, $end),
             'tiktok2' => fn () => $this->tiktok2($start, $end),
@@ -174,7 +174,7 @@ class ChannelTodaySalesService
 
         $this->copyAliases($out, 'ebaytwo', ['ebay2']);
         $this->copyAliases($out, 'ebaythree', ['ebay3']);
-        $this->copyAliases($out, 'bestbuyusa', ['bestbuy']);
+        $this->copyAliases($out, 'bestbuyusa', ['bestbuy', 'bestbuy usa', 'best buy usa']);
         $this->copyAliases($out, 'macys', ['macysinc', "macy'sinc", "macy's,inc."]);
         $this->copyAliases($out, 'fbmarketplace', ['facebookmarketplace']);
         $this->copyAliases($out, 'tiktokshop', ['tiktok']);
@@ -315,17 +315,52 @@ class ChannelTodaySalesService
             ->sum('total_price'), 2);
     }
 
-    private function mirakl(string $channelName, Carbon $start, Carbon $end): ?float
+    /**
+     * Best Buy / Macy's Today Sales for a single Eastern calendar day.
+     * Used by the all-marketplace-master fast-path overlay so a stale
+     * Carbon window (app TZ is Pacific) cannot hide intra-day orders.
+     */
+    public function miraklSalesOnEasternDate(string $channelName, ?string $ymd = null): ?float
+    {
+        [$start, $end, $windowYmd] = $this->todayWindow();
+        $ymd ??= $windowYmd;
+        if ($ymd !== $windowYmd) {
+            $start = Carbon::parse($ymd, self::TZ)->startOfDay();
+            $end = Carbon::parse($ymd, self::TZ)->endOfDay();
+        }
+
+        return $this->mirakl($channelName, $start, $end, $ymd);
+    }
+
+    private function mirakl(string $channelName, Carbon $start, Carbon $end, string $ymd): ?float
     {
         if (! Schema::hasTable('mirakl_daily_data')) {
             return null;
         }
 
+        // order_created_at is stored timezone-naive. Binding an Eastern Carbon
+        // through APP_TIMEZONE (America/Los_Angeles) drops late-day ET rows the
+        // same way shopify_b2c_daily_data did before DATE(). Match Eastern
+        // calendar day, Eastern wall-clock, or the UTC equivalent of that day.
+        $etStart = $start->copy()->timezone(self::TZ)->format('Y-m-d H:i:s');
+        $etEnd = $end->copy()->timezone(self::TZ)->format('Y-m-d H:i:s');
+        $utcStart = $start->copy()->utc()->format('Y-m-d H:i:s');
+        $utcEnd = $end->copy()->utc()->format('Y-m-d H:i:s');
+
         $sum = (float) DB::table('mirakl_daily_data')
             ->where('channel_name', $channelName)
-            ->where('order_created_at', '>=', $start)
-            ->where('order_created_at', '<=', $end)
             ->where('status', '!=', 'CLOSED')
+            ->where(function ($q) use ($ymd, $etStart, $etEnd, $utcStart, $utcEnd) {
+                $q->whereRaw('DATE(order_created_at) = ?', [$ymd])
+                    ->orWhere(function ($q2) use ($etStart, $etEnd) {
+                        $q2->where('order_created_at', '>=', $etStart)
+                            ->where('order_created_at', '<=', $etEnd);
+                    })
+                    ->orWhere(function ($q3) use ($utcStart, $utcEnd) {
+                        $q3->where('order_created_at', '>=', $utcStart)
+                            ->where('order_created_at', '<=', $utcEnd);
+                    });
+            })
             ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
             ->value('revenue');
 

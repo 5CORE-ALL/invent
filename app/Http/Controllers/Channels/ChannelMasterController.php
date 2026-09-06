@@ -2150,8 +2150,54 @@ class ChannelMasterController extends Controller
     {
         $rows = $this->restoreSavedTableMetricsOnChannelRows($rows);
         $rows = $this->overlayLiveEbayYSalesOnChannelRows($rows);
+        $rows = $this->overlayLiveMiraklTodaySalesOnChannelRows($rows);
 
         return $this->overlayLiveTodaySalesOnChannelRows($rows);
+    }
+
+    /**
+     * Best Buy / Macy's Today Sales: Eastern calendar day from mirakl_daily_data.
+     * Dedicated overlay so a Carbon/app-TZ window cannot leave the cell at $0
+     * when today's orders are already stored.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveMiraklTodaySalesOnChannelRows(array $rows): array
+    {
+        $channels = [
+            'bestbuyusa' => 'Best Buy USA',
+            'macys' => "Macy's, Inc.",
+        ];
+
+        try {
+            $svc = app(ChannelTodaySalesService::class);
+            [, , $ymd] = $svc->todayWindow();
+        } catch (\Throwable $e) {
+            Log::warning('Live Mirakl Today Sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if (! isset($channels[$key])) {
+                continue;
+            }
+            try {
+                $live = $svc->miraklSalesOnEasternDate($channels[$key], $ymd);
+            } catch (\Throwable $e) {
+                Log::warning('Live Mirakl Today Sales overlay failed for '.$key.': '.$e->getMessage());
+                continue;
+            }
+            if ($live === null || (float) $live <= 0) {
+                continue;
+            }
+            $row['Today Sales'] = round((float) $live, 2);
+        }
+        unset($row);
+
+        return $rows;
     }
 
     /**
@@ -11846,10 +11892,19 @@ class ChannelMasterController extends Controller
         // Live counts from bestbuy-pricing data (same as MISSING / N Map badges + Map column tolerance)
         $mapMissCounts = $this->getBestbuyLiveMapMissNMapFromPricingData($request);
 
+        $todaySales = 0.0;
+        try {
+            $todaySales = (float) (app(ChannelTodaySalesService::class)
+                ->miraklSalesOnEasternDate('Best Buy USA') ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('Best Buy USA Today Sales failed: '.$e->getMessage());
+        }
+
         $result[] = [
             'Channel '   => 'BestBuy USA',
             'L-60 Sales' => intval($l60Sales),
             'L30 Sales'  => intval($l30Sales),
+            'Today Sales' => $todaySales,
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
