@@ -5122,10 +5122,20 @@
             const margin = chPromoZeroSoldTakehomeMargin(d);
             if (!(margin > 0)) return 0;
             const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
+            if (CHANNEL_PROMO_CHANNEL === 'doba_withoutship') {
+                const copied = Number(d && (d.doba_tabulator_s_pick != null
+                    ? d.doba_tabulator_s_pick
+                    : d.DOBA_TABULATOR_S_PICK)) || 0;
+                if (copied > 0) return chPromoRound2(copied);
+                const ship = chPromoShipCost(d);
+                const delivery = (lp * (1 + roi / 100) + ship) / margin;
+                return (isFinite(delivery) && delivery > 0)
+                    ? chPromoRound2(Math.max(0, delivery - ship))
+                    : 0;
+            }
             const ship = (CHANNEL_PROMO_CHANNEL === 'faire'
                 || CHANNEL_PROMO_CHANNEL === 'purchasing_power'
-                || CHANNEL_PROMO_CHANNEL === 'wayfair'
-                || CHANNEL_PROMO_CHANNEL === 'doba_withoutship')
+                || CHANNEL_PROMO_CHANNEL === 'wayfair')
                 ? 0
                 : chPromoShipCost(d);
             const price = (lp * (1 + roi / 100) + ship) / margin;

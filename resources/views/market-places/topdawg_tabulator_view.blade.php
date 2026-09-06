@@ -1340,8 +1340,6 @@
             }
 
             if (field !== 'SPRICE') return;
-            const row = cell.getRow();
-            const d   = row.getData();
             const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
             if (!sku) return;
 
