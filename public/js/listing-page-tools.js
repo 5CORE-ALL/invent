@@ -890,8 +890,8 @@
         if (note) {
             if (current && (typed !== '' || has)) {
                 note.textContent = has && typed === ''
-                    ? 'From Dim/Wt Master. You can change it before publishing.'
-                    : 'Using the weight you typed. AliExpress US Package weight is in pounds.';
+                    ? 'From Dim/Wt Master (lb). We convert to kg and US Package weight for AliExpress.'
+                    : 'Using the pounds you typed. We convert to kg and US Package weight for AliExpress.';
             } else {
                 note.textContent = 'Not on Dim/Wt Master. Type the shipping weight in pounds.';
             }
