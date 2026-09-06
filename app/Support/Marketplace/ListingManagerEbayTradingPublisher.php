@@ -60,6 +60,7 @@ class ListingManagerEbayTradingPublisher
             $svc = new EbayThreeApiService();
 
             return [
+                'channel' => 'ebaythree',
                 'label' => 'Ebay 3',
                 'configured' => $svc->isConfigured(),
                 'token' => $svc->generateBearerToken(),
@@ -108,6 +109,9 @@ class ListingManagerEbayTradingPublisher
         }
         $images = array_values(array_filter(array_map(fn ($u) => trim((string) $u), $images)));
         $payload = self::stripUpcFromPayload($payload);
+        if (($ctx['channel'] ?? '') === 'ebaythree') {
+            $payload = self::applyEbay3Policies($payload);
+        }
         $variations = self::normalizeVariations($payload['variations'] ?? []);
 
         if ($title === '' || $description === '' || $categoryId === '' || $images === []) {
@@ -133,6 +137,9 @@ class ListingManagerEbayTradingPublisher
             $item->addChild('ListingDuration', trim((string) ($payload['duration'] ?? 'GTC')) ?: 'GTC');
             $item->addChild('ListingType', 'FixedPriceItem');
             $item->addChild('ConditionID', $conditionId);
+            if (($ctx['channel'] ?? '') === 'ebaythree') {
+                $item->addChild('DispatchTimeMax', '3');
+            }
 
             if ($variations === []) {
                 $item->addChild('StartPrice', number_format($price, 2, '.', ''));
@@ -179,6 +186,8 @@ class ListingManagerEbayTradingPublisher
                 if ($returnId !== '') {
                     $profiles->addChild('SellerReturnProfile')->addChild('ReturnProfileID', $returnId);
                 }
+            } elseif (($ctx['channel'] ?? '') === 'ebaythree') {
+                self::appendEbay3FallbackShippingAndReturns($item);
             }
 
             $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
@@ -497,6 +506,48 @@ class ListingManagerEbayTradingPublisher
             'X-EBAY-API-SITEID' => (string) ($ctx['site_id'] ?? '0'),
             'Content-Type' => 'text/xml',
         ];
+    }
+
+    /**
+     * Ebay 3 must use this store's business policies, not Ebay 2 IDs, and cannot enable Best Offer.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private static function applyEbay3Policies(array $payload): array
+    {
+        $payload['best_offer'] = false;
+        try {
+            $svc = new EbayThreeApiService();
+            if (! $svc->isConfigured()) {
+                return $payload;
+            }
+            $resolved = $svc->policyIdsForPayload($payload);
+            $payload['shipping_policy_id'] = $resolved['shipping'];
+            $payload['payment_policy_id'] = $resolved['payment'];
+            $payload['return_policy_id'] = $resolved['return'];
+        } catch (\Throwable $e) {
+            Log::warning('Ebay 3 policy resolve failed: '.$e->getMessage());
+        }
+
+        return $payload;
+    }
+
+    private static function appendEbay3FallbackShippingAndReturns(SimpleXMLElement $item): void
+    {
+        $shipping = $item->addChild('ShippingDetails');
+        $shipping->addChild('ShippingType', 'Flat');
+        $option = $shipping->addChild('ShippingServiceOptions');
+        $option->addChild('ShippingServicePriority', '1');
+        $option->addChild('ShippingService', 'USPSPriority');
+        $option->addChild('ShippingServiceCost', '0.00');
+        $option->addChild('ShippingServiceAdditionalCost', '0.00');
+
+        $returns = $item->addChild('ReturnPolicy');
+        $returns->addChild('ReturnsAcceptedOption', 'ReturnsAccepted');
+        $returns->addChild('RefundOption', 'MoneyBack');
+        $returns->addChild('ReturnsWithinOption', 'Days_30');
+        $returns->addChild('ShippingCostPaidByOption', 'Buyer');
     }
 
     /**

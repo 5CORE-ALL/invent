@@ -120,6 +120,61 @@ class EbaySellAccountPolicies
     }
 
     /**
+     * Use a preferred ID only when it exists on this seller account.
+     *
+     * @param  array<string, mixed>  $defaults
+     * @param  array<string, mixed>  $preferred
+     * @return array{shipping: string, payment: string, return: string}
+     */
+    public static function resolveValid(string $token, array $defaults, array $preferred = []): array
+    {
+        $policies = self::list($token);
+        $out = [];
+        foreach (['shipping', 'payment', 'return'] as $key) {
+            $live = [];
+            foreach ($policies[$key] ?? [] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $id = trim((string) ($row['id'] ?? ''));
+                if ($id === '') {
+                    continue;
+                }
+                $live[$id] = strtolower(trim((string) ($row['name'] ?? '')));
+            }
+
+            $candidates = [
+                trim((string) ($preferred[$key] ?? $preferred[$key.'_policy_id'] ?? '')),
+                trim((string) ($defaults[$key.'_policy_id'] ?? '')),
+            ];
+            $picked = '';
+            foreach ($candidates as $candidate) {
+                if ($candidate !== '' && isset($live[$candidate])) {
+                    $picked = $candidate;
+                    break;
+                }
+            }
+            if ($picked === '') {
+                $want = strtolower(trim((string) ($defaults[$key.'_policy_name'] ?? ($key === 'shipping' ? 'as per weight' : ''))));
+                if ($want !== '') {
+                    foreach ($live as $id => $name) {
+                        if ($name !== '' && str_contains($name, $want)) {
+                            $picked = $id;
+                            break;
+                        }
+                    }
+                }
+            }
+            if ($picked === '' && $live !== []) {
+                $picked = (string) array_key_first($live);
+            }
+            $out[$key] = $picked;
+        }
+
+        return $out;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public static function defaultsForChannel(string $channel): array

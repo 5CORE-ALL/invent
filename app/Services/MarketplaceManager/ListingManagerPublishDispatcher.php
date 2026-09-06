@@ -173,13 +173,18 @@ class ListingManagerPublishDispatcher
             ListingManagerEbayTradingPublisher::endItem($key, $existingId, 'OtherListingError');
         }
 
-        $result = ListingManagerEbayTradingPublisher::publish($key, array_merge($details, [
+        $publishDetails = array_merge($details, [
             'sku' => $listingSku,
             'title' => $draft->title,
             'price' => $draft->price,
             'quantity' => $draft->quantity,
             'variations' => $variations,
-        ]));
+        ]);
+        if (in_array($key, ['ebay3', 'ebaythree'], true)) {
+            $publishDetails['best_offer'] = false;
+        }
+
+        $result = ListingManagerEbayTradingPublisher::publish($key, $publishDetails);
 
         if (! ($result['success'] ?? false)) {
             return $result;

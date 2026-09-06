@@ -11,6 +11,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
+use App\Services\EbayThreeApiService;
 use App\Services\ReverbApiService;
 use App\Services\SheinApiService;
 use App\Services\WayfairApiService;
@@ -1872,10 +1873,14 @@ class ListingManagerController extends Controller
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }
 
-    public function businessPolicies()
+    public function businessPolicies(Request $request)
     {
-        $defaults = (array) config('listing_manager.ebay2_defaults', []);
-        $ebay = new Ebay2ApiService();
+        $channelKey = ListingChannelCounts::normalize((string) $request->input('channel', ''));
+        $isEbay3 = in_array($channelKey, ['ebay3', 'ebaythree'], true);
+        $defaults = $isEbay3
+            ? (array) config('listing_manager.ebay3_defaults', [])
+            : (array) config('listing_manager.ebay2_defaults', []);
+        $ebay = $isEbay3 ? new EbayThreeApiService() : new Ebay2ApiService();
         $result = $ebay->isConfigured()
             ? $ebay->getBusinessPolicies()
             : ['success' => false, 'shipping' => [], 'payment' => [], 'return' => []];
@@ -2866,6 +2871,27 @@ class ListingManagerController extends Controller
         $d->save();
     }
 
+    /**
+     * Ebay 3 drafts must not keep Ebay 2 business-policy IDs.
+     *
+     * @param  array<string, mixed>  $details
+     * @return array<string, mixed>
+     */
+    private function stripForeignEbay2PoliciesFromEbay3(array $details): array
+    {
+        $ebay2 = (array) config('listing_manager.ebay2_defaults', []);
+        foreach (['shipping_policy_id', 'payment_policy_id', 'return_policy_id'] as $field) {
+            $value = trim((string) ($details[$field] ?? ''));
+            $foreign = trim((string) ($ebay2[$field] ?? ''));
+            if ($value !== '' && $foreign !== '' && $value === $foreign) {
+                $details[$field] = '';
+            }
+        }
+        $details['best_offer'] = false;
+
+        return $details;
+    }
+
     private function serializeDraft(ListingManagerChannelDraft $d, bool $full = false): array
     {
         $this->demoteUnverifiedAmazonDraft($d);
@@ -2876,6 +2902,9 @@ class ListingManagerController extends Controller
             ),
             (string) $d->seller_sku
         );
+        if (in_array(ListingChannelCounts::normalize($channelName), ['ebay3', 'ebaythree'], true)) {
+            $details = $this->stripForeignEbay2PoliciesFromEbay3($details);
+        }
         $ready = ListingManagerPublishStatus::readiness(
             $d->title,
             $d->price,
