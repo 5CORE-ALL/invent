@@ -46,6 +46,7 @@ use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Support\EbayCampaignReportRollup;
 use App\Support\Marketplace\ChannelMasterViewsGuard;
 use App\Support\Marketplace\ChannelMetricDotPair;
+use App\Support\Marketplace\ChartDatePad;
 use App\Support\Marketplace\EbayTwoListingCounts;
 use App\Services\Support\ChannelTodaySalesService;
 use App\Services\Support\YesterdayMarketplaceMetricsService;
@@ -16776,6 +16777,9 @@ class ChannelMasterController extends Controller
                 $chartData = $metric === 'y_sales'
                     ? $this->buildDailyYSalesChart($channel, $days, $isAll)
                     : $this->buildDailyWindowChart($channel, $metric, $days, $isAll);
+                if ($metric === 'y_sales') {
+                    $chartData = ChartDatePad::fillGapsThroughYesterday($chartData, $days);
+                }
                 if ($metric === 'y_sales' && ! $isAll) {
                     $chartData = $this->overlayLiveYSalesOnChart($channel, $chartData);
                 }
@@ -17246,7 +17250,7 @@ class ChannelMasterController extends Controller
             }
 
             if ($metric === 'y_sales' && ! $useL7Window) {
-                $chartData = $this->extendYSalesChartThroughYesterday($channel, $chartData, $isAll);
+                $chartData = $this->extendYSalesChartThroughYesterday($channel, $chartData, $isAll, $days);
                 if (! $isAll) {
                     $chartData = $this->overlayLiveYSalesOnChart($channel, $chartData);
                 }
@@ -17282,10 +17286,14 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            $chartData = $this->collapseTrailingEqualChartPoints(
-                $chartData,
-                $this->metricDotEpsilon($metric)
-            );
+            // Y Sales must keep $0 days on the axis. Collapsing trailing equals
+            // was hiding Sep 3/4/5 when those days had no sales.
+            if ($metric !== 'y_sales') {
+                $chartData = $this->collapseTrailingEqualChartPoints(
+                    $chartData,
+                    $this->metricDotEpsilon($metric)
+                );
+            }
 
             // Extra lookback for L7 rolling should not appear on the X-axis.
             if ($useL7Window && $days > 0 && count($chartData) > $days) {
@@ -17316,7 +17324,7 @@ class ChannelMasterController extends Controller
     private function fastAllMarketplaceYSalesChartFromSnapshots(int $days, mixed $badgeValue = null): array
     {
         $days = $days > 0 ? $days : 30;
-        $cacheKey = 'amm_all_y_sales_chart_v2_d'.$days;
+        $cacheKey = 'amm_all_y_sales_chart_v3_d'.$days;
         $cached = \Cache::get($cacheKey);
         if (is_array($cached) && $cached !== []) {
             return $this->pinAllYSalesChartLastPoint($cached, $badgeValue);
@@ -17368,6 +17376,7 @@ class ChannelMasterController extends Controller
                 'value' => round(array_sum($channels), 2),
             ];
         }
+        $out = ChartDatePad::fillGapsThroughYesterday($out, $days);
 
         if ($out !== []) {
             \Cache::put($cacheKey, $out, now()->addMinutes(5));
@@ -19451,6 +19460,11 @@ class ChannelMasterController extends Controller
                     'date' => $cursor->format('M d'),
                     'value' => $value,
                 ];
+            } elseif ($metric === 'y_sales') {
+                $out[] = [
+                    'date' => $cursor->format('M d'),
+                    'value' => 0.0,
+                ];
             }
             $cursor->addDay();
         }
@@ -19858,26 +19872,11 @@ class ChannelMasterController extends Controller
      * @param  list<array{date: string, value: float}>  $chartData
      * @return list<array{date: string, value: float}>
      */
-    private function extendYSalesChartThroughYesterday(string $channel, array $chartData, bool $isAll): array
+    private function extendYSalesChartThroughYesterday(string $channel, array $chartData, bool $isAll, int $days = 30): array
     {
-        if ($isAll) {
-            return $chartData;
-        }
+        unset($channel, $isAll);
 
-        $yesterday = now('America/Los_Angeles')->subDay();
-        $label = $yesterday->format('M d');
-        $lastLabel = $chartData !== [] ? (string) ($chartData[array_key_last($chartData)]['date'] ?? '') : '';
-        if ($lastLabel === $label) {
-            return $chartData;
-        }
-
-        $value = $this->getSavedTableMetric($this->allMarketplaceSnapshotKey($channel), 'y_sales');
-        if ($value === null) {
-            return $chartData;
-        }
-        $chartData[] = ['date' => $label, 'value' => round((float) $value, 2)];
-
-        return $chartData;
+        return ChartDatePad::fillGapsThroughYesterday($chartData, $days);
     }
 
     /**
