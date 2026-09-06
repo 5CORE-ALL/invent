@@ -217,15 +217,12 @@ class AliExpressApiService
 
         $officialFields = $hasListedUs ? $listedWeight : [];
         $official = $this->officialProductPostRequest($request, $officialFields);
-        if (! $hasListedUs) {
-            $official = $this->stripInventedLogisticsWeight($official);
-        }
-        $official['weight'] = number_format(max(0.001, $weight), 3, '.', '');
-        $official['package_weight'] = (float) $official['weight'];
-
-        $postRes = $this->postOfficialProduct($official);
+        $postRes = $this->officialPostWithConvertedWeight($official, $weight, $lb);
         if (! empty($postRes['success']) && trim((string) ($postRes['product_id'] ?? '')) !== '') {
             return $postRes;
+        }
+        if (is_array($postRes['payload'] ?? null)) {
+            $official = $postRes['payload'];
         }
         $last = [
             'success' => false,
@@ -319,6 +316,51 @@ class AliExpressApiService
             'message' => $this->extractPostFailureMessage($postRes),
             'data' => $postRes['data'] ?? $postRes['result'] ?? $postRes['response'] ?? null,
         ];
+    }
+
+    /**
+     * Dim/Wt is pounds. Official AE `weight` is kg. US Pop Choice requires
+     * usLogisticsWeight.Package weight in pounds. Try the shapes AE accepts.
+     *
+     * @param  array<string, mixed>  $official
+     * @return array{success: bool, message?: string, product_id?: string, data?: mixed, payload?: array<string, mixed>}
+     */
+    private function officialPostWithConvertedWeight(array $official, float $kg, float $lb): array
+    {
+        $kgText = number_format(max(0.001, $kg), 3, '.', '');
+        $lbText = number_format($this->usPackageWeightPounds($kg, $lb), 2, '.', '');
+        $attempts = [
+            $this->forceUsLogisticsWeightObjects($official, $kg, $lb, 'string'),
+            $this->forceUsLogisticsWeightObjects($official, $kg, $lb, 'json'),
+            $this->forceUsLogisticsWeightObjects($official, $kg, $lb, 'number'),
+            $this->forceUsLogisticsWeightObjects($official, $kg, $lb, 'json_number'),
+        ];
+        $bare = $official;
+        $bare['usLogisticsWeight'] = $lbText;
+        $bare['aeLogisticsWeight'] = $lbText;
+        $attempts[] = $bare;
+
+        $last = [
+            'success' => false,
+            'message' => '',
+            'data' => null,
+            'payload' => $official,
+        ];
+        foreach ($attempts as $try) {
+            $try['weight'] = $kgText;
+            $try['package_weight'] = (float) $kgText;
+            $res = $this->postOfficialProduct($try);
+            $res['payload'] = $try;
+            if (! empty($res['success']) && trim((string) ($res['product_id'] ?? '')) !== '') {
+                return $res;
+            }
+            $last = $res;
+            if (! str_contains(strtolower((string) ($res['message'] ?? '')), 'package weight')) {
+                return $last;
+            }
+        }
+
+        return $last;
     }
 
     /**

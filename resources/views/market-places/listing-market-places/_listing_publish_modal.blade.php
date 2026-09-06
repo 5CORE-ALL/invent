@@ -46,7 +46,7 @@
                                         <div id="listing-publish-aliexpress-weight" class="listing-publish-weight-row">
                                             <label for="listing-publish-weight-lb">Package weight (lb)</label>
                                             <input type="number" id="listing-publish-weight-lb" class="form-control form-control-sm" placeholder="e.g. 3.35" min="0.01" step="0.01">
-                                            <small id="listing-publish-weight-note">Looking up Dim/Wt Master…</small>
+                                            <small id="listing-publish-weight-note">Looking up Dim/Wt Master (lb). We convert this for AliExpress.</small>
                                         </div>
                                     </div>
                                     <div id="listing-publish-ebay-category" class="listing-publish-category" @if(!in_array($publishChannel ?? '', ['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'], true)) hidden @endif>
