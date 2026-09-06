@@ -117,6 +117,7 @@ use App\Services\DobaApiService;
 use App\Services\WalmartService;
 use App\Services\ReverbApiService;
 use App\Services\TopDawgApiService;
+use App\Services\AliExpressApiService;
 use App\Services\FaireApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
@@ -7803,10 +7804,12 @@ class CvrMasterController extends Controller
                 $response = $this->pushToTikTok($sku, $price);
             } elseif (in_array($marketplace, ['tiktok2', 'tiktokshop2'], true)) {
                 $response = $this->pushToTikTok2($sku, $price);
+            } elseif ($marketplace === 'aliexpress') {
+                $response = $this->pushToAliexpress($skuRaw !== '' ? $skuRaw : $sku, $price);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, PPower, Wayfair, Reverb, TopDawg, Faire, Temu, Temu2, TikTok, TikTok 2, FBA."
+                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, PPower, Wayfair, Reverb, TopDawg, Faire, Temu, Temu2, TikTok, TikTok 2, AliExpress, FBA."
                 ], 400);
             }
 
@@ -9246,6 +9249,71 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Push price to AliExpress (same API as /aliexpress-pricing → AliexpressController::pushPricingPrice).
+     */
+    private function pushToAliexpress($sku, $price)
+    {
+        try {
+            if (! ($price > 0)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid AliExpress price (must be > 0)',
+                ], 400);
+            }
+
+            $sku = trim((string) $sku);
+            $rounded = round((float) $price, 2);
+            $req = Request::create('/aliexpress/pricing-push-price', 'POST', [
+                'updates' => [
+                    ['sku' => $sku, 'price' => $rounded],
+                ],
+            ]);
+            $req->headers->set('Accept', 'application/json');
+
+            $response = app(AliexpressController::class)->pushPricingPrice(
+                $req,
+                app(AliExpressApiService::class)
+            );
+            $data = method_exists($response, 'getData') ? $response->getData(true) : [];
+            $ok = ! empty($data['success']) || ((int) ($data['pushed'] ?? 0) > 0);
+            if ($ok) {
+                $this->savePricePushStatus($sku, 'aliexpress', 'pushed', $rounded);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $data['message'] ?? ('Price $'.number_format($rounded, 2).' pushed to AliExpress for SKU: '.$sku),
+                    'price' => $rounded,
+                    'result' => $data,
+                ]);
+            }
+
+            $err = (string) ($data['message'] ?? 'Failed to push price to AliExpress');
+            $first = is_array($data['results'] ?? null) ? ($data['results'][0] ?? []) : [];
+            if (! empty($first['error'])) {
+                $err = (string) $first['error'];
+            }
+            $this->savePricePushStatus($sku, 'aliexpress', 'error', $rounded);
+
+            return response()->json([
+                'success' => false,
+                'message' => $err,
+                'result' => $data,
+            ], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'aliexpress', 'error', $price);
+            Log::error('CVR Master - AliExpress push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'AliExpress API error: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Push wholesale price to Faire (same API as /faire-pricing → FaireApiService::updateSkuWholesalePrice).
      */
     private function pushToFaire($sku, $price, $productId = null)
@@ -9651,6 +9719,11 @@ class CvrMasterController extends Controller
             } elseif ($marketplace === 'topdawg') {
                 if (Schema::hasTable('topdawg_data_views')) {
                     $dataView = TopDawgDataView::firstOrNew(['sku' => $sku]);
+                }
+            } elseif ($marketplace === 'aliexpress') {
+                if (Schema::hasTable('aliexpress_data_views')) {
+                    $existingAe = AliexpressDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+                    $dataView = $existingAe ?: new AliexpressDataView(['sku' => $sku]);
                 }
             } elseif ($marketplace === 'faire') {
                 if (Schema::hasTable('faire_data_views')) {

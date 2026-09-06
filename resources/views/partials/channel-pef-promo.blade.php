@@ -6424,7 +6424,16 @@
                             && CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
                             window.shopifyB2cApplyLivePriceToRow(job.row, job.price, { SPRICE_STATUS: 'pushed' });
                         } else {
-                            job.row.update({ SPRICE_STATUS: 'pushed' });
+                            const pushed = Number(job.price);
+                            const patch = {
+                                SPRICE_STATUS: 'pushed',
+                                SPRICE_PUSHED_VALUE: pushed,
+                            };
+                            if (CHANNEL_PROMO_CHANNEL === 'aliexpress' && pushed > 0) {
+                                patch.price = pushed;
+                                patch.sprice = pushed;
+                            }
+                            job.row.update(patch);
                         }
                     } else {
                         fail++;
@@ -8634,6 +8643,16 @@
                 data.self_pick_price = price;
             } else {
                 data.price = price;
+            }
+            if (String(chPromoCfg.pushPriceUrl || '').indexOf('cvr-master-push-price') !== -1) {
+                const cvrMarket = {
+                    shopify_b2b: 'shopifyb2b',
+                    shopify_b2c: 'shopify',
+                    purchasing_power: 'purchasingpower',
+                    macy: 'macys',
+                    doba_withoutship: 'doba_withoutship',
+                }[CHANNEL_PROMO_CHANNEL] || CHANNEL_PROMO_CHANNEL;
+                data.marketplace = cvrMarket;
             }
             return $.ajax({
                 url: chPromoCfg.pushPriceUrl,

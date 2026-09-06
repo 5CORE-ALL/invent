@@ -1202,13 +1202,12 @@
                         : item.d;
                     const price = ebayTiktokRuleDiscount(d);
                     if (!(price > 0)) return;
-                    const status = livePushOn ? 'queued' : 'applied';
                     if (item.row && typeof item.row.update === 'function') {
                         const patch = (typeof chPromoSpricePatch === 'function')
                             ? chPromoSpricePatch(price)
                             : { SPRICE: price, sprice: price, has_custom_sprice: true };
                         item.row.update(Object.assign({}, patch, ebayTiktokMetricsPatch(d, price), {
-                            SPRICE_STATUS: status,
+                            SPRICE_STATUS: 'applied',
                         }));
                     }
                     fills.push({ sku: item.sku, sprice: price, row: item.row });

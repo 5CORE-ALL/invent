@@ -770,7 +770,9 @@
             return { sprice: shown, sgpft: m.sgpft, sroi: m.sroi };
         }
         function aeRowSpriceForAlert(data) {
-            return aeVisibleSprice(data);
+            const visible = aeVisibleSprice(data);
+            if (visible > 0) return visible;
+            return aeStoredSprice(data);
         }
         function aePersistVisibleSprices() {
             if (typeof chPromoOverwriteStoredSpriceFromRules === 'function') {
@@ -791,6 +793,9 @@
                 updates.push({ sku: d.sku, sprice: shown });
             });
             if (updates.length) saveSpriceUpdates(updates, { clearFirst: false });
+            if (typeof updateSummary === 'function') {
+                try { updateSummary(); } catch (e) { /* ignore */ }
+            }
         }
         function aeStoredSprice(data) {
             return Math.round((parseFloat(data && (data.sprice || data.SPRICE)) || 0) * 100) / 100;
@@ -804,11 +809,45 @@
             if (visible > 0 && live > 0 && Math.round(visible * 100) === Math.round(live * 100)) return true;
             const st = String(data.SPRICE_STATUS || '').toLowerCase();
             const pv = parseFloat(data.SPRICE_PUSHED_VALUE);
-            if ((st === 'pushed' || st === 'applied') && pv > 0 && stored > 0
-                && Math.round(pv * 100) === Math.round(stored * 100)) {
-                return true;
+            if ((st === 'pushed' || st === 'applied') && pv > 0) {
+                if (stored > 0 && Math.round(pv * 100) === Math.round(stored * 100)) return true;
+                if (visible > 0 && Math.round(pv * 100) === Math.round(visible * 100)) return true;
+                if (live > 0 && Math.round(pv * 100) === Math.round(live * 100)) return true;
             }
             return false;
+        }
+        function aeNormSku(sku) {
+            return String(sku || '').replace(/[\u00A0\u202F]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+        }
+        function aeApplyPushPatchToSku(sku, patch) {
+            const want = aeNormSku(sku);
+            if (!want || !patch) return;
+            const walk = function(arr) {
+                if (!Array.isArray(arr)) return;
+                arr.forEach(function(row) {
+                    if (!row) return;
+                    if (aeNormSku(row.sku) === want) Object.assign(row, patch);
+                    if (Array.isArray(row._children)) walk(row._children);
+                });
+            };
+            walk(typeof aeFullTableData !== 'undefined' ? aeFullTableData : null);
+            walk(typeof allTableData !== 'undefined' ? allTableData : null);
+            try {
+                if (typeof table !== 'undefined' && table) {
+                    (table.getRows() || []).forEach(function(row) {
+                        const d = row.getData() || {};
+                        if (aeNormSku(d.sku) !== want) return;
+                        row.update(patch);
+                    });
+                }
+            } catch (e) { /* ignore */ }
+            if (window.ParentExpand && typeof ParentExpand.captureDataset === 'function') {
+                ParentExpand.captureDataset(
+                    (typeof aeFullTableData !== 'undefined' && aeFullTableData.length)
+                        ? aeFullTableData
+                        : allTableData
+                );
+            }
         }
         function aePushablePrice(data) {
             return aeStoredSprice(data) || aeVisibleSprice(data) || 0;
@@ -825,13 +864,23 @@
             return aeSpriceMetrics(data).sroi;
         }
         function aeHasBlueTriangle(data) {
-            if (!data || data.is_parent) return false;
+            if (!data || aeIsParentRow(data)) return false;
             const sprice = aeRowSpriceForAlert(data);
             const price = parseFloat(data.price) || 0;
             if (!(sprice > 0) || !(price > 0) || Math.round(sprice * 100) === Math.round(price * 100)) return false;
             const lmp = aeEffectiveLmp(data);
             if (aeShouldCapSpriceToLmp(data) && lmp > 0 && sprice + 0.0001 >= lmp) return false;
             return true;
+        }
+        function aeBadgeCountRows() {
+            const src = (typeof aeFullTableData !== 'undefined' && aeFullTableData.length)
+                ? aeFullTableData
+                : ((typeof allTableData !== 'undefined' && allTableData.length)
+                    ? allTableData
+                    : (table && typeof table.getData === 'function' ? table.getData() : []));
+            return (src || []).filter(function(row) {
+                return aeRowMatchesFilters(row, { skipBadges: true });
+            });
         }
         function syncAeTriangleBadgeState() {
             $('#aliexpress-blue-triangle-badge').css({
@@ -1512,19 +1561,20 @@
             $('#ae-total-sales-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
             $('#ae-total-profit-badge').text(`PFT: $${Math.round(totalProfit).toLocaleString()}`);
             $('#ae-avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
-            if (window.PriceGtLmpBadge && table) {
-                PriceGtLmpBadge.update('#aliexpress-price-gt-lmp-badge', table.getData(), 'aliexpress', 'price');
+            const badgeRows = aeBadgeCountRows();
+            if (window.PriceGtLmpBadge) {
+                PriceGtLmpBadge.update('#aliexpress-price-gt-lmp-badge', badgeRows, 'aliexpress', 'price');
                 if (window.PriceLt80LmpBadge) {
-                    PriceLt80LmpBadge.update('#aliexpress-price-lt80-lmp-badge', table.getData(), 'aliexpress', 'price');
+                    PriceLt80LmpBadge.update('#aliexpress-price-lt80-lmp-badge', badgeRows, 'aliexpress', 'price');
                 }
             }
-            if (window.LmpMissingBadge && table) {
-                LmpMissingBadge.update('#aliexpress-lmp-missing-badge', table.getData(), 'aliexpress');
+            if (window.LmpMissingBadge) {
+                LmpMissingBadge.update('#aliexpress-lmp-missing-badge', badgeRows, 'aliexpress');
             }
             $('#ae-more-sold-count').text(moreSold.toLocaleString());
             $('#ae-zero-sold-count').text(zeroSold.toLocaleString());
             let blueTriangleCount = 0;
-            (table ? table.getData() : rows).forEach(function(row) {
+            badgeRows.forEach(function(row) {
                 if (aeHasBlueTriangle(row)) blueTriangleCount++;
             });
             $('#aliexpress-blue-triangle-badge').html(
@@ -1533,11 +1583,7 @@
             if (typeof syncAeTriangleBadgeState === 'function') syncAeTriangleBadgeState();
             let pushCrossCount = 0;
             let lowSgroiCount = 0;
-            const countSrc = (typeof aeFullTableData !== 'undefined' && aeFullTableData.length)
-                ? aeFullTableData
-                : (table ? table.getData() : rows);
-            countSrc.forEach(function(row) {
-                if (!aeRowMatchesFilters(row, { skipBadges: true })) return;
+            badgeRows.forEach(function(row) {
                 if (aeHasPushCross(row)) pushCrossCount++;
                 if (aeRowMatchesFilters(row, { sgroiOverride: 'lt40', skipBadges: true })) lowSgroiCount++;
             });
@@ -2733,25 +2779,24 @@
                             totalPushed += (res.pushed || 0);
                             totalFailed += (res.failed || 0);
                             (res.results || []).filter(r => r.success).forEach(r => {
-                                const rows = table.searchRows('sku', '=', r.sku);
-                                if (rows.length) {
-                                    rows[0].update({
-                                        price: r.price,
-                                        SPRICE_STATUS: 'pushed',
-                                        SPRICE_PUSHED_VALUE: r.price
-                                    });
-                                }
+                                aeApplyPushPatchToSku(r.sku, {
+                                    price: r.price,
+                                    SPRICE_STATUS: 'pushed',
+                                    SPRICE_PUSHED_VALUE: r.price
+                                });
                             });
                             (res.results || []).filter(r => !r.success).forEach(r => {
                                 allFails.push(r);
-                                const rows = table.searchRows('sku', '=', r.sku);
-                                if (rows.length) rows[0].update({ SPRICE_STATUS: 'error' });
+                                aeApplyPushPatchToSku(r.sku, { SPRICE_STATUS: 'error' });
                             });
                         },
                         error: function(xhr) {
                             const r = xhr.responseJSON || {};
                             const err = r.message || r.error || ('HTTP ' + xhr.status);
-                            chunks[idx].forEach(u => allFails.push({ sku: u.sku, error: err }));
+                            chunks[idx].forEach(u => {
+                                allFails.push({ sku: u.sku, error: err });
+                                aeApplyPushPatchToSku(u.sku, { SPRICE_STATUS: 'error' });
+                            });
                             totalFailed += chunks[idx].length;
                         },
                         complete: function() {

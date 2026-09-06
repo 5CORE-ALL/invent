@@ -313,6 +313,9 @@
                     let priceChanged = false;
                     if (st === 'ok') {
                         if (d.SPRICE_STATUS !== 'pushed') patch.SPRICE_STATUS = 'pushed';
+                        if (live > 0 && !chPushSpriceNearlyEqual(d.SPRICE_PUSHED_VALUE, live)) {
+                            patch.SPRICE_PUSHED_VALUE = live;
+                        }
                         if (live > 0 && !chPushSpriceNearlyEqual(d[CH_PUSH_SPRICE_PRICE_FIELD], live)) {
                             patch[CH_PUSH_SPRICE_PRICE_FIELD] = live;
                             patch['eBay Price'] = live;
@@ -668,8 +671,11 @@
                     return false;
                 }
                 if (!force) {
-                    const live = chPushSpriceRound2(d[CH_PUSH_SPRICE_PRICE_FIELD]);
-                    if (live > 0 && chPushSpriceNearlyEqual(p, live)) return false;
+                    const live = chPushSpriceLiveFromRow(d);
+                    // Same as scanAndQueue / other analytics pages: only queue a
+                    // listed SKU whose live Price differs from S PRC. Missing
+                    // (live = 0) and already-matching prices are skipped.
+                    if (!(live > 0) || chPushSpriceNearlyEqual(p, live)) return false;
                     if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return false;
                 }
                 try {
@@ -729,6 +735,7 @@
                         patch[CH_PUSH_SPRICE_PRICE_FIELD] = live;
                         patch['eBay Price'] = live;
                         patch.PUSH_PRC_VALUE = live;
+                        patch.SPRICE_PUSHED_VALUE = live;
                     }
                 } else {
                     patch.SPRICE_STATUS = 'error';

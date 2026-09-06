@@ -2,6 +2,7 @@
 
 namespace App\Services\Support;
 
+use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\DobaController;
 use App\Http\Controllers\MarketPlace\EbayController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\MarketPlace\EbayTwoController;
 use App\Http\Controllers\MarketPlace\NeweggPricingController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\TemuController;
+use App\Services\AliExpressApiService;
 use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
@@ -369,6 +371,17 @@ class ChannelPushSpriceRunner
     private function pushPrice(string $sku, float $price)
     {
         $pushPrice = $price;
+        if ($this->channel === 'aliexpress') {
+            $aeReq = Request::create('/aliexpress/pricing-push-price', 'POST', [
+                'updates' => [
+                    ['sku' => $sku, 'price' => $pushPrice],
+                ],
+            ]);
+            $aeReq->headers->set('Accept', 'application/json');
+
+            return app(AliexpressController::class)->pushPricingPrice($aeReq, app(AliExpressApiService::class));
+        }
+
         if ($this->channel === 'newegg') {
             $neweggReq = Request::create('/newegg-pricing-push', 'POST', [
                 'sku' => $sku,

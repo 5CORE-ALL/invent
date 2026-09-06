@@ -641,6 +641,7 @@
             SGPFT: sgpft,
             SROI: sroi,
             SPRICE_STATUS: 'applied',
+            push_status: null,
         }));
     }
 
@@ -1154,6 +1155,55 @@
                     }
                 },
                 {
+                    title: 'Push',
+                    field: 'push_status',
+                    hozAlign: 'center',
+                    headerSort: false,
+                    width: 55,
+                    headerTooltip: 'Push saved S PRC to TopDawg review queue. Double-check = queued for review. Click to push or retry.',
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (tdIsParentRow(rowData)) return '';
+                        const sku = rowData['(Child) sku'] ? String(rowData['(Child) sku']) : '';
+                        const sprice = (typeof chPromoSavedOrLiveSprice === 'function')
+                            ? Number(chPromoSavedOrLiveSprice(rowData))
+                            : parseFloat(rowData.SPRICE || 0);
+                        if (!sku || !(sprice > 0)) return '';
+                        const status = String(rowData.push_status || rowData.SPRICE_STATUS || '');
+                        const pushedValue = rowData.SPRICE_PUSHED_VALUE;
+                        const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT || '';
+                        const pushedBy = rowData.SPRICE_PUSHED_BY || '';
+                        const price = +sprice.toFixed(2);
+                        let icon = '<i class="fas fa-upload"></i>';
+                        let color = '#0d6efd';
+                        let tip = 'Push $' + price.toFixed(2) + ' to TopDawg';
+                        if (status === 'pushing' || status === 'processing' || status === 'queued') {
+                            icon = '<i class="fas fa-spinner fa-spin"></i>';
+                            color = '#ffc107';
+                            tip = 'Pushing to TopDawg…';
+                        } else if (status === 'pushed') {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            color = '#28a745';
+                            tip = 'Pushed — queued in TopDawg review';
+                        } else if (status === 'failed' || status === 'error') {
+                            icon = '<i class="fa-solid fa-x"></i>';
+                            color = '#dc3545';
+                            tip = 'Push failed — click to retry';
+                        }
+                        if (pushedValue != null && pushedValue !== '') {
+                            tip += ' | Last $' + (parseFloat(pushedValue) || 0).toFixed(2);
+                        }
+                        if (updatedAt) tip += ' | ' + updatedAt;
+                        if (pushedBy) tip += ' | by ' + pushedBy;
+                        return '<button type="button" class="td-push-single-btn" data-sku="'
+                            + sku.replace(/"/g, '&quot;') + '" data-price="' + price
+                            + '" data-status="' + status.replace(/"/g, '&quot;')
+                            + '" title="' + String(tip).replace(/"/g, '&quot;')
+                            + '" style="border:none;background:none;color:' + color
+                            + ';padding:0;cursor:pointer;font-size:16px;">' + icon + '</button>';
+                    }
+                },
+                {
                     // SGPFT% — gross profit % at the seller price (no ship).
                     //   ((SPRICE × {{ $topdawgPercentage }}% − LP) / LP) × 100,
                     //   ((SPRICE × {{ $topdawgPercentage }}% − LP) / SPRICE) × 100
@@ -1547,67 +1597,67 @@
         // ("X queued, Y failed") with details in console for debugging.
         // A 200 from TopDawg = "queued for review", NOT "live price" — that
         // wording is in the button tooltip and the toast.
-        $('#td-push-btn').on('click', function() {
-            const items = tdCollectPushableItems();
-            if (items.length === 0) {
-                tdShowToast('No selected SKU has a SPRICE > 0. Set a SPRICE first.', 'warning');
+        function tdMarkPushStatus(row, status, extra) {
+            extra = extra || {};
+            if (!row || typeof row.update !== 'function') return;
+            row.update(Object.assign({
+                SPRICE_STATUS: status,
+                push_status: status,
+            }, extra));
+            try { row.reformat(); } catch (e) { /* ignore */ }
+        }
+
+        function tdPushItems(items, opts) {
+            opts = opts || {};
+            if (!items || !items.length) {
+                tdShowToast('No SKU has a SPRICE > 0. Set a SPRICE first.', 'warning');
                 return;
             }
-            if (!confirm(`Push SPRICE for ${items.length} SKU(s) to TopDawg's review queue?`)) {
+            if (!opts.skipConfirm && !confirm('Push SPRICE for ' + items.length + ' SKU(s) to TopDawg\'s review queue?')) {
                 return;
             }
 
-            const $btn = $(this);
+            const $btn = $('#td-push-btn');
             const original = $btn.html();
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
-
-            // Mark the rows visually so the user can see progress while
-            // the batch endpoint loops server-side.
-            items.forEach(it => it.row.update({ SPRICE_STATUS: 'pushing' }));
+            items.forEach(function(it) { tdMarkPushStatus(it.row, 'pushing'); });
 
             $.ajax({
                 url: "{{ route('topdawg.push.prices') }}",
                 method: 'POST',
                 data: {
                     _token: '{{ csrf_token() }}',
-                    items: items.map(it => ({ sku: it.sku, price: it.price })),
+                    items: items.map(function(it) { return { sku: it.sku, price: it.price }; }),
                 },
-                timeout: 120000, // batch can be slow — TD's review-queue submit is per-SKU
+                timeout: 120000,
                 success: function(res) {
                     const ok   = (res && res.ok_count)   || 0;
                     const fail = (res && res.fail_count) || 0;
                     const results = (res && Array.isArray(res.results)) ? res.results : [];
-
-                    // Update row status from the per-SKU outcome.
-                    const byOk   = new Set(results.filter(r => r.ok).map(r => String(r.sku)));
-                    const byFail = new Set(results.filter(r => !r.ok).map(r => String(r.sku)));
-                    items.forEach(it => {
-                        if (byOk.has(it.sku))   it.row.update({ SPRICE_STATUS: 'pushed' });
-                        else if (byFail.has(it.sku)) it.row.update({ SPRICE_STATUS: 'failed' });
+                    const byOk   = new Set(results.filter(function(r) { return r.ok; }).map(function(r) { return String(r.sku); }));
+                    const byFail = new Set(results.filter(function(r) { return !r.ok; }).map(function(r) { return String(r.sku); }));
+                    items.forEach(function(it) {
+                        if (byOk.has(it.sku)) {
+                            tdMarkPushStatus(it.row, 'pushed', { SPRICE_PUSHED_VALUE: it.price });
+                        } else if (byFail.has(it.sku)) {
+                            tdMarkPushStatus(it.row, 'failed');
+                        }
                     });
-
-                    // Pull TopDawg's literal response message off the first success
-                    // so the toast quotes TD's wording — this kills the recurring
-                    // "I pushed but the site didn't update" confusion: TD's own
-                    // message says it went to review.
-                    const tdReply = (results.find(r => r.ok && r.message) || {}).message
-                                  || 'Product submitted successfully for review.';
+                    const tdReply = (results.find(function(r) { return r.ok && r.message; }) || {}).message
+                        || 'Product submitted successfully for review.';
                     const kind = (fail === 0) ? 'success' : (ok > 0 ? 'warning' : 'error');
                     const msg  = (fail === 0)
-                        ? `TopDawg accepted ${ok} SKU(s) into REVIEW QUEUE. TD said: "${tdReply}" — storefront price updates after TD approval (usually 1–24h).`
-                        : `Pushed ${ok} / ${ok + fail} — ${fail} failed. ${ok > 0 ? 'Accepted SKUs are in TopDawg review queue.' : ''}`;
+                        ? 'TopDawg accepted ' + ok + ' SKU(s) into REVIEW QUEUE. TD said: "' + tdReply + '" — storefront price updates after TD approval (usually 1–24h).'
+                        : 'Pushed ' + ok + ' / ' + (ok + fail) + ' — ' + fail + ' failed. ' + (ok > 0 ? 'Accepted SKUs are in TopDawg review queue.' : '');
                     tdShowToast(msg, kind);
-
                     if (fail > 0 && window.console) {
-                        console.warn('TopDawg push: failures', results.filter(r => !r.ok));
+                        console.warn('TopDawg push: failures', results.filter(function(r) { return !r.ok; }));
                     }
-                    // Full per-row server response for the curious / for debugging.
-                    if (window.console) console.info('TopDawg push results:', results);
                 },
                 error: function(xhr) {
-                    items.forEach(it => it.row.update({ SPRICE_STATUS: 'failed' }));
+                    items.forEach(function(it) { tdMarkPushStatus(it.row, 'failed'); });
                     const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message
-                              : 'Push to TopDawg failed';
+                        : 'Push to TopDawg failed';
                     tdShowToast(msg, 'error');
                 },
                 complete: function() {
@@ -1615,6 +1665,30 @@
                     tdUpdatePushButton();
                 }
             });
+        }
+
+        $('#td-push-btn').on('click', function() {
+            tdPushItems(tdCollectPushableItems());
+        });
+
+        $(document).on('click', '.td-push-single-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const status = String($(this).attr('data-status') || '');
+            if (status === 'pushing' || status === 'processing' || status === 'queued') return;
+            const $rowEl = $(this).closest('.tabulator-row');
+            const row = table.getRow($rowEl[0]);
+            if (!row) return;
+            const d = row.getData() || {};
+            const sku = d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
+            const sprice = (typeof chPromoSavedOrLiveSprice === 'function')
+                ? Number(chPromoSavedOrLiveSprice(d))
+                : parseFloat(d.SPRICE);
+            if (!sku || !(sprice > 0)) {
+                tdShowToast('Set a valid SPRICE (> 0) before pushing', 'error');
+                return;
+            }
+            tdPushItems([{ sku: sku, price: +sprice.toFixed(2), row: row }]);
         });
 
         table.on('renderComplete', tdUpdateSelectAllHeaderCheckbox);

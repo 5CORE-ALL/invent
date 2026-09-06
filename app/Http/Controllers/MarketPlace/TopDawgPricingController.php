@@ -188,6 +188,11 @@ class TopDawgPricingController extends Controller
 
             $dvRecord = $dataViews->get($sku);
             $row['SPRICE'] = null;
+            $row['SPRICE_STATUS'] = null;
+            $row['push_status'] = null;
+            $row['SPRICE_PUSHED_VALUE'] = null;
+            $row['SPRICE_STATUS_UPDATED_AT'] = null;
+            $row['SPRICE_PUSHED_BY'] = null;
             if ($dvRecord) {
                 $dvValue = is_array($dvRecord->value) ? $dvRecord->value : (json_decode($dvRecord->value, true) ?? []);
                 if (is_array($dvValue)) {
@@ -196,6 +201,11 @@ class TopDawgPricingController extends Controller
                     if (array_key_exists('sprice', $dvValue) && $dvValue['sprice'] !== null && $dvValue['sprice'] !== '') {
                         $row['SPRICE'] = round((float) $dvValue['sprice'], 2);
                     }
+                    $row['SPRICE_STATUS'] = $dvValue['SPRICE_STATUS'] ?? $dvValue['PUSH_STATUS'] ?? null;
+                    $row['push_status'] = $dvValue['PUSH_STATUS'] ?? $dvValue['SPRICE_STATUS'] ?? null;
+                    $row['SPRICE_PUSHED_VALUE'] = $dvValue['SPRICE_PUSHED_VALUE'] ?? null;
+                    $row['SPRICE_STATUS_UPDATED_AT'] = $dvValue['SPRICE_STATUS_UPDATED_AT'] ?? $dvValue['PUSH_STATUS_UPDATED_AT'] ?? null;
+                    $row['SPRICE_PUSHED_BY'] = $dvValue['SPRICE_PUSHED_BY'] ?? null;
                 }
             }
 
@@ -614,9 +624,11 @@ class TopDawgPricingController extends Controller
                     ? $dv->value
                     : (json_decode((string) $dv->value, true) ?: []);
                 if ($sprice === null) {
-                    unset($existing['sprice']);
+                    unset($existing['sprice'], $existing['SPRICE_STATUS'], $existing['PUSH_STATUS']);
                 } else {
                     $existing['sprice'] = $sprice;
+                    $existing['SPRICE_STATUS'] = 'applied';
+                    $existing['PUSH_STATUS'] = null;
                 }
                 $dv->value = $existing;
                 $dv->save();
@@ -632,6 +644,35 @@ class TopDawgPricingController extends Controller
         } catch (\Throwable $e) {
             Log::error('TopDawg saveSprice failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    private function persistPushStatus(string $sku, string $status, $price = null): void
+    {
+        try {
+            $dv = TopDawgDataView::firstOrNew(['sku' => $sku]);
+            $existing = is_array($dv->value)
+                ? $dv->value
+                : (json_decode((string) $dv->value, true) ?: []);
+            $existing['SPRICE_STATUS'] = $status;
+            $existing['PUSH_STATUS'] = $status;
+            $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            $existing['PUSH_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            if ($price !== null && $price !== '') {
+                $existing['SPRICE_PUSHED_VALUE'] = round((float) $price, 2);
+            }
+            $user = auth()->user();
+            if ($user) {
+                $existing['SPRICE_PUSHED_BY'] = $user->name ?? $user->email ?? null;
+            }
+            $dv->value = $existing;
+            $dv->save();
+        } catch (\Throwable $e) {
+            Log::warning('TopDawg persistPushStatus failed', [
+                'sku' => $sku,
+                'status' => $status,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -682,6 +723,7 @@ class TopDawgPricingController extends Controller
                 $r = $api->pushPrice($sku, $price);
                 $okCount   += $r['ok'] ? 1 : 0;
                 $failCount += $r['ok'] ? 0 : 1;
+                $this->persistPushStatus($sku, $r['ok'] ? 'pushed' : 'failed', $price);
                 $results[] = [
                     'sku'     => $sku,
                     'price'   => $price,
@@ -694,6 +736,7 @@ class TopDawgPricingController extends Controller
                 ];
             } catch (\Throwable $e) {
                 $failCount++;
+                $this->persistPushStatus($sku, 'failed', $price);
                 Log::warning('TopDawg pushPrices: per-row push failed', [
                     'sku' => $sku, 'price' => $price, 'error' => $e->getMessage(),
                 ]);
