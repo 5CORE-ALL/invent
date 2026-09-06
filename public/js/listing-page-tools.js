@@ -1185,7 +1185,7 @@
                 channel: c.channel || '',
                 mode: selectedPublishMode(),
                 parent: parent || '',
-                category_id: (isWayfairChannel() || isEbayChannel() || isTiktokChannel() || isSheinChannel()) ? selectedCategoryId() : (selectedCategoryName() ? '' : selectedCategoryId()),
+                category_id: (isAliexpressChannel() || isWayfairChannel() || isEbayChannel() || isTiktokChannel() || isSheinChannel()) ? selectedCategoryId() : (selectedCategoryName() ? '' : selectedCategoryId()),
                 category_name: selectedCategoryName(),
                 category_uuid: selectedCategoryUuid(),
                 weight_lb: (isAliexpressChannel() || isTiktokChannel() || isSheinChannel()) ? selectedWeightLb() : ''

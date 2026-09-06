@@ -488,11 +488,18 @@ class AliExpressApiService
                 continue;
             }
             $hay = strtolower($path);
-            $score = 1;
+            $depth = max(substr_count($path, '>'), substr_count($path, '/'), substr_count($path, '»'));
+            $score = 1 + ($depth * 6);
+            if ($depth < 2) {
+                $score -= 10;
+            }
             foreach (array_keys($tokens) as $token) {
                 if (str_contains($hay, $token)) {
                     $score += 4;
                 }
+            }
+            if (str_contains($hay, 'guitar')) {
+                $score += 8;
             }
             if ($score > $best['score']) {
                 $best = ['id' => $id, 'path' => $path !== '' ? $path : 'Category '.$id, 'score' => $score];
@@ -500,6 +507,20 @@ class AliExpressApiService
         }
 
         return ['id' => (int) $best['id'], 'path' => (string) $best['path']];
+    }
+
+    public function categoryPathIsShallow(string $path): bool
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return true;
+        }
+        $depth = max(substr_count($path, '>'), substr_count($path, '/'), substr_count($path, '»'));
+        $parts = preg_split('/\s*[>\/»]+\s*/u', $path) ?: [];
+        $last = strtolower(trim((string) last($parts)));
+
+        return $depth < 2
+            || in_array($last, ['sports & entertainment', 'sports', 'entertainment', 'all'], true);
     }
 
     /**
@@ -1366,6 +1387,14 @@ class AliExpressApiService
         if ($this->payloadLooksLikeSchemaProperties($payload)) {
             return ['properties' => $this->schemaFieldsOnly($payload)];
         }
+        foreach ($payload as $value) {
+            if (is_string($value) && strlen($value) > 80) {
+                $found = $this->extractSchemaJson($value);
+                if ($found !== []) {
+                    return $found;
+                }
+            }
+        }
 
         return [];
     }
@@ -1509,6 +1538,20 @@ class AliExpressApiService
             foreach (['items', 'additionalProperties', 'oneOf', 'anyOf', 'allOf'] as $bag) {
                 if (is_array($node[$bag] ?? null)) {
                     $walk($node[$bag], $path);
+                }
+            }
+            foreach ($node as $key => $child) {
+                if (! is_array($child) || in_array((string) $key, ['properties', 'fields', 'items', 'additionalProperties', 'oneOf', 'anyOf', 'allOf', 'required'], true)) {
+                    continue;
+                }
+                $childName = $this->schemaPropertyName((string) $key, $child);
+                if (
+                    $this->isSchemaWeightProperty($childName, $child)
+                    || isset($child['properties'])
+                    || isset($child['fields'])
+                    || isset($child['type'])
+                ) {
+                    $walk($child, $path === '' ? $childName : $path.'.'.$childName);
                 }
             }
         };

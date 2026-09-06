@@ -151,6 +151,7 @@ class AliexpressListingPublishService
 
         $parentKey = trim($parentHint) !== '' ? trim($parentHint) : $this->groupKey($primary);
         $resolved = $this->resolveCategory($primary, $primarySku, $title, $gallery[0] ?? '', $categoryId, $categoryName);
+        $resolved = $this->ensureLeafCategory($resolved, $title, $gallery[0] ?? '', $this->productTypeHints($primary, $primarySku, $title));
         $categoryId = (int) ($resolved['id'] ?? $categoryId ?? 0);
         $attached = $this->attachToListedSibling($parentKey, $publishSkus, $prepared, $categoryId > 0 ? $categoryId : null);
         if ($attached !== null) {
@@ -161,6 +162,13 @@ class AliexpressListingPublishService
             return [
                 'success' => false,
                 'message' => 'Could not match an AliExpress category from the product type. Type a category name (for example Guitar Capos) and try again.',
+            ];
+        }
+        $resolvedPath = trim((string) ($resolved['path'] ?? ''));
+        if ($resolvedPath !== '' && $this->api->categoryPathIsShallow($resolvedPath)) {
+            return [
+                'success' => false,
+                'message' => 'AliExpress needs a leaf category such as Guitar Parts & Accessories, not "'.$resolvedPath.'". Type a more specific category and try again.',
             ];
         }
 
@@ -404,6 +412,35 @@ class AliexpressListingPublishService
             'weight_kg' => (string) ($pkg['weight'] ?? ''),
             'source' => 'dim_wt_master',
         ];
+    }
+
+    /**
+     * Root categories like "Sports & Entertainment" reject Package weight.
+     * Prefer a leaf such as Guitar Parts & Accessories.
+     *
+     * @param  array{id?: int, path?: string}  $resolved
+     * @param  list<string>  $hints
+     * @return array{id: int, path: string}
+     */
+    private function ensureLeafCategory(array $resolved, string $title, string $imageUrl, array $hints): array
+    {
+        $id = (int) ($resolved['id'] ?? 0);
+        $path = trim((string) ($resolved['path'] ?? ''));
+        if ($id > 0 && ($path === '' || ! $this->api->categoryPathIsShallow($path))) {
+            return ['id' => $id, 'path' => $path];
+        }
+
+        $extra = array_values(array_unique(array_filter(array_merge($hints, [
+            'Guitar Parts & Accessories',
+            'Guitar Accessories',
+            trim($title.' guitar'),
+        ]))));
+        $hit = $this->api->suggestCategoryMatch($title !== '' ? $title : 'guitar accessories', $imageUrl, $extra);
+        if ((int) ($hit['id'] ?? 0) > 0 && ! $this->api->categoryPathIsShallow((string) ($hit['path'] ?? ''))) {
+            return $hit;
+        }
+
+        return ['id' => $id, 'path' => $path];
     }
 
     /**
@@ -800,11 +837,21 @@ class AliexpressListingPublishService
         $seed = (string) ($publishSkus[0] ?? '');
         $bestId = '';
         $bestScore = -1;
+        $seedPrefix = strtoupper(trim((string) preg_replace('/\s+.*/', '', $seed)));
         $candidates = ProductMaster::query()
             ->whereNull('deleted_at')
-            ->where('parent', $parentKey)
+            ->where(function ($query) use ($parentKey, $seedPrefix) {
+                $query->where('parent', $parentKey);
+                if ($parentKey !== '') {
+                    $query->orWhere('parent', 'like', '%'.$parentKey.'%');
+                }
+                if (strlen($seedPrefix) >= 4) {
+                    $query->orWhere('sku', 'like', $seedPrefix.'%')
+                        ->orWhere('parent', 'like', '%'.$seedPrefix.'%');
+                }
+            })
             ->orderBy('sku')
-            ->limit(40)
+            ->limit(80)
             ->pluck('sku')
             ->all();
         foreach ($candidates as $sku) {
