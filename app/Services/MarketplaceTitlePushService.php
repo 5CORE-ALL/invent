@@ -238,6 +238,18 @@ class MarketplaceTitlePushService
             ->orWhere('sku', strtolower($sku))
             ->first();
 
+        if (! $row) {
+            $shopify = \App\Models\ShopifySku::firstForProductSku($sku);
+            $shopifySku = trim((string) ($shopify?->sku ?? ''));
+            if ($shopifySku !== '' && strcasecmp($shopifySku, $sku) !== 0) {
+                $row = AliexpressMetric::query()
+                    ->where('sku', $shopifySku)
+                    ->orWhere('sku', strtoupper($shopifySku))
+                    ->orWhere('sku', strtolower($shopifySku))
+                    ->first();
+            }
+        }
+
         $productId = $row?->product_id;
         if (! $productId) {
             return [

@@ -1333,6 +1333,7 @@ class AliexpressController extends Controller
                     $candidateSkus[] = trim((string) ($u['sku'] ?? ''));
                 }
             }
+            $pushAliasNorms = $this->aeShopifyAliasNormsBySku($candidateSkus);
             $lpShipByNorm = $this->aeLpShipByNormalizedSku($candidateSkus);
 
             foreach ($updates as $u) {
@@ -1350,7 +1351,8 @@ class AliexpressController extends Controller
                 }
 
                 $norm = $this->normalizeAeSkuExact($sku);
-                $metric = $metricByNorm[$norm] ?? null;
+                $aliasNorms = $pushAliasNorms[$sku] ?? [$norm];
+                $metric = $this->aePickByAliasNorms($metricByNorm, $aliasNorms);
                 if ($metric === null) {
                     $results[] = [
                         'sku' => $sku,
@@ -1362,7 +1364,7 @@ class AliexpressController extends Controller
                 }
 
                 $rounded = round($price, 2);
-                $pm = $lpShipByNorm[$norm] ?? ['lp' => 0.0, 'ship' => 0.0];
+                $pm = $this->aePickByAliasNorms($lpShipByNorm, $aliasNorms) ?? ['lp' => 0.0, 'ship' => 0.0];
                 $sgroi = AliexpressPushGuard::sgroi($rounded, $margin, (float) $pm['lp'], (float) $pm['ship']);
                 if (! $forceLowSgroi && AliexpressPushGuard::shouldSkipSgroi($sgroi)) {
                     $skippedLow++;
@@ -1542,6 +1544,8 @@ class AliexpressController extends Controller
             $productMastersBySku = $productMasters->keyBy(fn ($row) => $normalizeSku($row->sku));
 
             $pmSkus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            $shopifyByProductSku = ShopifySku::mapByProductSkus($pmSkus);
+            $listingAliasNorms = $this->aeBuildShopifyAliasIndex($pmSkus, $shopifyByProductSku, $normalizeSku);
             $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('aliexpress', $pmSkus);
             $amazonStandardPrices = [];
             foreach (AmazonDataView::whereIn('sku', $pmSkus)->get(['sku', 'value']) as $adv) {
@@ -1567,12 +1571,24 @@ class AliexpressController extends Controller
             $linksBySku = AliexpressListingStatus::all()
                 ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
-            // Same row universe as Amazon tabulator: all product masters + AE upload + daily sales (exact SKU).
-            $allNormalizedSkus = collect(array_merge(
-                $productMastersBySku->keys()->all(),
+            // Same row universe as Amazon tabulator: Product Master first.
+            // Shopify-normalized SKUs that map to a PM row are absorbed (NBSP / dash).
+            $allNormalizedSkus = collect($productMastersBySku->keys()->all());
+            foreach (array_merge(
                 $uploadedPriceBySku->keys()->all(),
                 $salesBySku->keys()->all()
-            ))->unique()->values();
+            ) as $extraSku) {
+                $extraSku = (string) $extraSku;
+                if ($extraSku === '') {
+                    continue;
+                }
+                if (isset($listingAliasNorms['aliasToPm'][$extraSku])) {
+                    continue;
+                }
+                if (! $allNormalizedSkus->contains($extraSku)) {
+                    $allNormalizedSkus->push($extraSku);
+                }
+            }
 
             // Full Shopify map like Product Master — whereIn(UPPER(TRIM(sku))) misses UTF-8 NBSP / spacing variants.
             $shopifyBySku = ShopifySku::all()->keyBy(fn ($row) => $normalizeSku($row->sku));
@@ -1664,14 +1680,16 @@ class AliexpressController extends Controller
 
             $rows = [];
             foreach ($allNormalizedSkus as $normalizedSku) {
-                $sale = $salesBySku->get($normalizedSku);
                 $productMaster = $productMastersBySku->get($normalizedSku);
                 $pmSku = $productMaster->sku ?? '';
                 if (stripos((string) $normalizedSku, 'PARENT') !== false
                     || stripos((string) $pmSku, 'PARENT') !== false) {
                     continue;
                 }
-                $metaRecord = $viewMetaBySku->get($normalizedSku);
+                $aliasNorms = $listingAliasNorms['pmToAliases'][$normalizedSku]
+                    ?? [$normalizedSku];
+                $sale = $this->aePickByAliasNorms($salesBySku, $aliasNorms);
+                $metaRecord = $this->aePickByAliasNorms($viewMetaBySku, $aliasNorms);
                 $meta = $metaRecord ? ($metaRecord->value ?? []) : [];
 
                 $values = [];
@@ -1688,18 +1706,33 @@ class AliexpressController extends Controller
                 $sales = (float) ($sale->sales ?? 0);
 
                 $sprice = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
-                $priceRow = $uploadedPriceBySku->get($normalizedSku);
+                $priceRow = $this->aePickByAliasNorms($uploadedPriceBySku, $aliasNorms);
                 $price = $priceRow ? (float) $priceRow->price : 0;
                 $aeStock = $priceRow ? (int) ($priceRow->ae_stock ?? 0) : 0;
-                $listingStatus = strtolower(trim((string) ($listingStatusBySku[$normalizedSku] ?? '')));
+                $listingStatus = '';
+                foreach ($aliasNorms as $aliasNorm) {
+                    $statusHit = strtolower(trim((string) ($listingStatusBySku[$aliasNorm] ?? '')));
+                    if ($statusHit === '') {
+                        continue;
+                    }
+                    $listingStatus = $statusHit;
+                    if ($statusHit === 'onselling') {
+                        break;
+                    }
+                }
                 $isOfflineAe = in_array($listingStatus, ['offline', 'service_delete'], true);
                 if ($isOfflineAe) {
                     $price = 0;
                     $aeStock = 0;
                 }
 
-                // INV + OV L30 + image from shopify_skus
-                $shopifyRow = $shopifyBySku->get($normalizedSku);
+                // INV + OV L30 + image: Product Master SKU → ShopifySku::mapByProductSkus.
+                $shopifyRow = $productMaster
+                    ? ($shopifyByProductSku[$productMaster->sku] ?? null)
+                    : null;
+                if (! $shopifyRow) {
+                    $shopifyRow = $this->aePickByAliasNorms($shopifyBySku, $aliasNorms);
+                }
                 $inv        = $shopifyRow ? (int) ($shopifyRow->inv       ?? 0) : 0;
                 $ovL30      = $shopifyRow ? (int) ($shopifyRow->quantity  ?? 0) : 0;
                 $imageSrc   = $shopifyRow ? ($shopifyRow->image_src       ?? null) : null;
@@ -1736,7 +1769,14 @@ class AliexpressController extends Controller
                 $sgpft = $sprice > 0 ? (int) round((($sprice * $margin - $lp - $ship) / $sprice) * 100) : 0;
                 $sroi  = $lp    > 0 ? (int) round((($sprice * $margin - $lp - $ship) / $lp)     * 100) : 0;
 
-                $aeLmpRow = $aeLmpByNormalizedSku[$normalizeLmpSku($displaySku)] ?? $aeLmpByNormalizedSku[$normalizeLmpSku($normalizedSku)] ?? null;
+                $aeLmpRow = null;
+                foreach (array_merge([$displaySku, $normalizedSku], $aliasNorms) as $lmpKey) {
+                    $lmpNorm = $normalizeLmpSku($lmpKey);
+                    if ($lmpNorm !== '' && isset($aeLmpByNormalizedSku[$lmpNorm])) {
+                        $aeLmpRow = $aeLmpByNormalizedSku[$lmpNorm];
+                        break;
+                    }
+                }
                 $lmpEntries = [];
                 if ($aeLmpRow) {
                     $entries = $aeLmpRow->lmp_entries;
@@ -1779,21 +1819,21 @@ class AliexpressController extends Controller
                 }
 
                 // Buyer / Seller links
-                $linkRecord = $linksBySku->get($normalizedSku);
+                $linkRecord = $this->aePickByAliasNorms($linksBySku, $aliasNorms);
                 $linkVal = $linkRecord
                     ? (is_array($linkRecord->value) ? $linkRecord->value : (json_decode($linkRecord->value, true) ?: []))
                     : [];
                 $buyerLink = $linkVal['buyer_link'] ?? '';
                 $sellerLink = $linkVal['seller_link'] ?? '';
                 [$buyerLink, $sellerLink] = $this->aliexpressLinksForProductId(
-                    $productIdBySku[$normalizedSku] ?? null,
+                    $this->aePickByAliasNorms($productIdBySku, $aliasNorms),
                     (string) $buyerLink,
                     (string) $sellerLink
                 );
 
-                    $views = (int) ($viewsBySku[$normalizedSku] ?? 0);
-                    $outputOrder = (int) ($outputOrderBySku[$normalizedSku] ?? 0);
-                    $storedCvr = (float) ($cvrBySku[$normalizedSku] ?? 0);
+                    $views = $this->aeMaxNumericByAliasNorms($viewsBySku, $aliasNorms);
+                    $outputOrder = $this->aeMaxNumericByAliasNorms($outputOrderBySku, $aliasNorms);
+                    $storedCvr = $this->aeMaxNumericByAliasNorms($cvrBySku, $aliasNorms);
                     // API-only: stored CVR, else output_order ÷ views from AliExpress metrics.
                     if ($views > 0) {
                         $cvr = $storedCvr > 0
@@ -1837,12 +1877,18 @@ class AliexpressController extends Controller
                     'views'       => $views,
                     'cvr'         => $cvr,
                     'output_order' => $outputOrder,
-                    'reviews'     => (int) ($reviewsBySku[$normalizedSku] ?? 0),
-                    'avg_rating'  => (float) ($avgRatingBySku[$normalizedSku] ?? 0),
-                    'ae_product_id' => $productIdBySku[$normalizedSku] ?? null,
+                    'reviews'     => $this->aeMaxNumericByAliasNorms($reviewsBySku, $aliasNorms),
+                    'avg_rating'  => $this->aeMaxNumericByAliasNorms($avgRatingBySku, $aliasNorms),
+                    'ae_product_id' => $this->aePickByAliasNorms($productIdBySku, $aliasNorms),
                     'ae_stock'    => $aeStock,
                     'dil_percent' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
-                    'STANDARD_PRICE' => $amazonStandardPrices[strtoupper(trim((string) $displaySku))] ?? null,
+                    'STANDARD_PRICE' => $this->aePickByAliasNorms(
+                        $amazonStandardPrices,
+                        array_merge(
+                            [strtoupper(trim((string) $displaySku))],
+                            $aliasNorms
+                        )
+                    ),
                 ];
                 $rows[] = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $displaySku);
             }
@@ -2747,6 +2793,13 @@ class AliexpressController extends Controller
                 $norms[$norm] = true;
             }
         }
+        foreach ($this->aeShopifyAliasNormsBySku($skus) as $aliasNorms) {
+            foreach ($aliasNorms as $norm) {
+                if ($norm !== '') {
+                    $norms[$norm] = true;
+                }
+            }
+        }
         $norms = array_keys($norms);
         if ($norms === []) {
             return [];
@@ -2774,7 +2827,113 @@ class AliexpressController extends Controller
     }
 
     /**
-     * Exact AliExpress seller SKU key (no prefix / package stripping — 4PCS variants stay distinct).
+     * Product Master SKU + Shopify seller SKU only (NBSP / dash / case).
+     *
+     * @param  array<int, string>  $skus
+     * @return array<string, list<string>> original sku => AliExpress-normalized aliases
+     */
+    private function aeShopifyAliasNormsBySku(array $skus): array
+    {
+        $shopify = ShopifySku::mapByProductSkus($skus);
+        $out = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $norms = [];
+            foreach ([$sku, $shopify[$sku]->sku ?? null] as $alias) {
+                $n = $this->normalizeAeSkuExact((string) $alias);
+                if ($n !== '') {
+                    $norms[] = $n;
+                }
+            }
+            $out[$sku] = array_values(array_unique($norms));
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<int, string>  $pmSkus
+     * @param  \Illuminate\Support\Collection<string, ShopifySku>  $shopifyByProductSku
+     * @param  callable(string): string  $normalizeSku
+     * @return array{pmToAliases: array<string, list<string>>, aliasToPm: array<string, string>}
+     */
+    private function aeBuildShopifyAliasIndex(array $pmSkus, $shopifyByProductSku, callable $normalizeSku): array
+    {
+        $pmToAliases = [];
+        $aliasToPm = [];
+        foreach ($pmSkus as $pmSku) {
+            $pmNorm = $normalizeSku((string) $pmSku);
+            if ($pmNorm === '') {
+                continue;
+            }
+            $shopifySku = $shopifyByProductSku[$pmSku]->sku ?? null;
+            $norms = [];
+            foreach ([$pmSku, $shopifySku] as $alias) {
+                $an = $normalizeSku((string) $alias);
+                if ($an === '') {
+                    continue;
+                }
+                $norms[] = $an;
+                if (! isset($aliasToPm[$an])) {
+                    $aliasToPm[$an] = $pmNorm;
+                }
+            }
+            $pmToAliases[$pmNorm] = array_values(array_unique($norms));
+        }
+
+        return [
+            'pmToAliases' => $pmToAliases,
+            'aliasToPm' => $aliasToPm,
+        ];
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<string, mixed>|array<string, mixed>  $map
+     * @param  list<string>  $aliasNorms
+     */
+    private function aePickByAliasNorms($map, array $aliasNorms)
+    {
+        foreach ($aliasNorms as $key) {
+            if ($key === null || $key === '') {
+                continue;
+            }
+            if ($map instanceof \Illuminate\Support\Collection) {
+                if ($map->has($key)) {
+                    return $map->get($key);
+                }
+
+                continue;
+            }
+            if (is_array($map) && array_key_exists($key, $map)) {
+                return $map[$key];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $map
+     * @param  list<string>  $aliasNorms
+     */
+    private function aeMaxNumericByAliasNorms(array $map, array $aliasNorms): float
+    {
+        $max = 0.0;
+        foreach ($aliasNorms as $key) {
+            if ($key === '' || ! isset($map[$key])) {
+                continue;
+            }
+            $max = max($max, (float) $map[$key]);
+        }
+
+        return $max;
+    }
+
+    /**
+     * Exact AliExpress seller SKU key (spaces/case only). Pack suffixes stay distinct.
      */
     private function normalizeAeSkuExact(string $sku): string
     {
