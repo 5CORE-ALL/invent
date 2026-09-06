@@ -155,6 +155,9 @@ class Kernel extends ConsoleKernel
      *
      * between() only skips firing outside the window — it never kills a process
      * already running. Jobs started before 20:00 may finish after 20:00.
+     *
+     * Do not wrap a job whose clock is outside this window (before 09:00 or
+     * after 20:00 IST). The slot will never fire and cron-monitor will mark it missed.
      */
     protected function istBusinessWindow($event)
     {
@@ -797,26 +800,30 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('walmart:fetch-orders --days=60')
+        // Night slots — do not wrap in $ist() (09:00–20:00), or they never fire.
+        $schedule->command('walmart:fetch-orders --days=60')
             ->dailyAt('01:20')
+            ->timezone('Asia/Kolkata')
             ->name('walmart-fetch-orders')
             ->withoutOverlapping(170)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('tiktok:fetch-orders --days=60 --prune')
+        $schedule->command('tiktok:fetch-orders --days=60 --prune')
             ->dailyAt('02:10')
+            ->timezone('Asia/Kolkata')
             ->name('tiktok-fetch-orders')
             ->withoutOverlapping(170)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('tiktok:fetch-orders --channel=tiktok2 --days=60 --prune')
+        $schedule->command('tiktok:fetch-orders --channel=tiktok2 --days=60 --prune')
             ->dailyAt('02:25')
+            ->timezone('Asia/Kolkata')
             ->name('tiktok2-fetch-orders')
             ->withoutOverlapping(170)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
         $ist($schedule->command('app:update-marketplace-daily-metrics')
             ->everyFiveMinutes()
@@ -1276,54 +1283,55 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('amazon:auto-update-amz-bgt-kw')
+        // Post-20:00 Amazon BGT — must NOT use $ist() (09:00–20:00), or they never fire.
+        $schedule->command('amazon:auto-update-amz-bgt-kw')
             ->dailyAt('20:00')
             ->timezone('Asia/Kolkata')
             ->name('amazon-bgt-kw')
             ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('amazon:auto-update-amz-bgt-pt')
+        $schedule->command('amazon:auto-update-amz-bgt-pt')
             ->dailyAt('20:05')
             ->timezone('Asia/Kolkata')
             ->name('amazon-bgt-pt')
             ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('amazon:auto-update-amz-bgt-hl')
+        $schedule->command('amazon:auto-update-amz-bgt-hl')
             ->dailyAt('20:10')
             ->timezone('Asia/Kolkata')
             ->name('amazon-bgt-hl')
             ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
         // Catch-up: re-apply only remaining BGT≠SBGT deltas (skips already-applied; retries Amazon errors).
-        $ist($schedule->command('amazon:auto-update-amz-bgt-kw')
+        $schedule->command('amazon:auto-update-amz-bgt-kw')
             ->dailyAt('21:30')
             ->timezone('Asia/Kolkata')
             ->name('amazon-bgt-kw-catchup')
             ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('amazon:auto-update-amz-bgt-pt')
+        $schedule->command('amazon:auto-update-amz-bgt-pt')
             ->dailyAt('21:35')
             ->timezone('Asia/Kolkata')
             ->name('amazon-bgt-pt-catchup')
             ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('amazon:auto-update-amz-bgt-hl')
+        $schedule->command('amazon:auto-update-amz-bgt-hl')
             ->dailyAt('21:40')
             ->timezone('Asia/Kolkata')
             ->name('amazon-bgt-hl-catchup')
             ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
         $ist($schedule->command('amazon-fba:auto-update-under-pt-bids')
             ->dailyAt('19:00')
@@ -2573,8 +2581,10 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-            $ist($schedule->command('shopify-pls:sync')
-            ->cron('55 8,17 * * *')
+        // 09:55 not 08:55 — $ist() starts at 09:00, so the 08:55 slot never fired.
+        $ist($schedule->command('shopify-pls:sync')
+            ->cron('55 9,17 * * *')
+            ->timezone('Asia/Kolkata')
             ->name('sync-shopify-pls-catalog')
             ->withoutOverlapping(90)
             ->runInBackground()
@@ -2587,13 +2597,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Deprecated: Temu sheet tables dropped (temu_pricing, temu_product_sheets, etc.)
-        // $ist($schedule->command('sync:temu-sheet-data')
-        //     ->twiceDaily(9, 18)
-        //     ->name('sync-temu-sheet')
-        //     ->withoutOverlapping(90)
-        //     ->runInBackground()
-        //     ->appendOutputTo($log));
 
         $ist($schedule->command('app:sync-cp-master-to-sheet')
             ->hourly()
@@ -2760,6 +2763,18 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);
+
+        // Recover jobs that schedule:run skipped. Must NOT use $ist()
+        // (06:15 is before the window; 20:15 is after).
+        foreach (['06:15', '12:15', '20:15'] as $slot) {
+            $schedule->command('cron:run-missed')
+                ->dailyAt($slot)
+                ->timezone('Asia/Kolkata')
+                ->name('cron-run-missed-'.str_replace(':', '', $slot))
+                ->withoutOverlapping(360)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
     }
 
     protected function commands(): void

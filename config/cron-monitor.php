@@ -14,10 +14,35 @@ return [
             'queue:listen',
             'queue:ensure-watchdog-daemon',
             'cron-monitor:*',
+            'cron:run-missed',
             'storage:ensure',
             'scheduler-heartbeat',
             'clear-laravel-log',
             'crm-follow-up-reminders',
+        ],
+    ],
+
+    /*
+    | Recover Kernel artisan jobs that schedule:run skipped (missed minute,
+    | $ist() window, or withoutOverlapping). Runs at 06:15 / 12:15 / 20:15 IST.
+    */
+    'miss_catchup' => [
+        'skip_commands' => [
+            'cron:run-missed',
+            'cron-monitor:watchdog',
+            'cron-monitor:cleanup',
+            'queue:ensure-watchdog-daemon',
+            'storage:ensure',
+            'users:auto-logout',
+            'tasks:execute-automated',
+            'tasks:expire-missed-automated',
+            'tasks:generate-daily-automated',
+            'tasks:automated-health-alert',
+            'sync:amazon-prices',
+            'amazon:pull-pushed-prices',
+            'sync:walmart-metrics-data',
+            'app:update-marketplace-daily-metrics',
+            'app:aliexpress-sheet-sync',
         ],
     ],
 
