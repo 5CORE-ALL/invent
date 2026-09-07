@@ -313,6 +313,15 @@
             const x = Number(n);
             return x > 0 ? Math.round(x) : 0;
         }
+        /** Same integer INV the column shows — do not use `|| 0` (that is fine for -1, but
+         *  fractions like 0.4 display as 0 while still passing INV > 0). */
+        function fbMpInv(row) {
+            const raw = (row && row.INV != null) ? row.INV : (row && row.inv);
+            if (raw == null || raw === '' || raw === false) return 0;
+            if (typeof raw === 'number' && Number.isFinite(raw)) return Math.round(raw);
+            const n = parseFloat(String(raw).replace(/,/g, '').replace(/[\s\u00A0]+/g, '').trim());
+            return Number.isFinite(n) ? Math.round(n) : 0;
+        }
         function fbMpRowSpriceForAlert(data) {
             if (!data) return 0;
             let sprice = 0;
@@ -423,9 +432,19 @@
                     return payload;
                 },
                 dataLoaded: function() {
-                    // Apply the default filters (INV > 0) once data is present.
-                    applyAllFilters();
+                    // Tabulator 6 finishes its own filter pipeline after dataLoaded, so a
+                    // synchronous setFilter here is wiped — 0 / -1 INV rows stay visible
+                    // even though the dropdown defaults to INV > 0. Apply on the next tick
+                    // (same pattern as TikTok / eBay 2).
+                    setTimeout(function() {
+                        applyAllFilters();
+                    }, 50);
                 },
+                initialFilter: [
+                    function(data) {
+                        return fbMpRowPassesFilters(data);
+                    }
+                ],
                 layout: "fitDataStretch",
                 pagination: true,
                 paginationSize: 100,
@@ -520,7 +539,7 @@
                         width: 70,
                         sorter: "number",
                         formatter: function(cell) {
-                            return Math.round(parseFloat(cell.getValue()) || 0);
+                            return fbMpInv(cell.getRow().getData());
                         }
                     },
                     {
@@ -540,18 +559,18 @@
                         width: 60,
                         sorter: function(a, b, aRow, bRow) {
                             const calcDil = (row) => {
-                                const inv = parseFloat(row.INV) || 0;
+                                const inv = fbMpInv(row);
                                 const l30 = parseFloat(row.L30) || 0;
-                                return inv === 0 ? 0 : (l30 / inv) * 100;
+                                return inv <= 0 ? 0 : (l30 / inv) * 100;
                             };
                             return calcDil(aRow.getData()) - calcDil(bRow.getData());
                         },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const INV = parseFloat(rowData.INV) || 0;
+                            const INV = fbMpInv(rowData);
                             const OVL30 = parseFloat(rowData.L30) || 0;
 
-                            if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
+                            if (INV <= 0) return '<span style="color: #6c757d;">0%</span>';
 
                             const dil = (OVL30 / INV) * 100;
                             let color = '';
@@ -612,37 +631,13 @@
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + '</span>';
                         }
                     },
-                    ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
-                    {
-                        title: "Sprc Dil",
-                        field: "SPRC_DIL",
-                        hozAlign: "center",
-                        headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            const val = function(row) {
-                                return (typeof ebaySprcDilForRow === 'function')
-                                    ? (ebaySprcDilForRow(row) || 0)
-                                    : 0;
-                            };
-                            return val(aRow.getData()) - val(bRow.getData());
-                        },
-                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (FB L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: LP × (1 + GROI%/100) / margin (no ship). CVR% still fills S PRC when Dil does not match a slab.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(rowData)) return '';
-                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                            const meta = ebayDilGroiMetaForRow(rowData);
-                            if (!meta || !(meta.sprc > 0)) return '';
-                            const sprc = fbMpRoundSprice(meta.sprc);
-                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + sprc.toFixed(2);
-                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                                + sprc.toFixed(2) + '</span>';
-                        },
-                        width: 78
-                    },
+                    ...(function() {
+                        const promo = (typeof channelPromoAnalyticsColumns === 'function'
+                            ? channelPromoAnalyticsColumns()
+                            : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])) || [];
+                        const skip = { price: 1, SPRICE: 1, sprice: 1, PFT: 1, ROI: 1, 'CVR%': 1, cpn_pct: 1 };
+                        return promo.filter(function(c) { return c && !skip[c.field]; });
+                    })(),
                     {
                         title: "Price",
                         field: "price",
@@ -682,6 +677,36 @@
                             const color = value < 0 ? '#dc3545' : (value < 10 ? '#ffc107' : '#28a745');
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
                         }
+                    },
+                    {
+                        title: "Sprc Dil",
+                        field: "SPRC_DIL",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const val = function(row) {
+                                return (typeof ebaySprcDilForRow === 'function')
+                                    ? (ebaySprcDilForRow(row) || 0)
+                                    : 0;
+                            };
+                            return val(aRow.getData()) - val(bRow.getData());
+                        },
+                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (FB L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: LP × (1 + GROI%/100) / margin (no ship). CVR% still fills S PRC when Dil does not match a slab.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(rowData)) return '';
+                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                            const meta = ebayDilGroiMetaForRow(rowData);
+                            if (!meta || !(meta.sprc > 0)) return '';
+                            const sprc = fbMpRoundSprice(meta.sprc);
+                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                + ' → ' + meta.label
+                                + ' → GROI ' + meta.groi + '%'
+                                + ' → $' + sprc.toFixed(2);
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                                + sprc.toFixed(2) + '</span>';
+                        },
+                        width: 78
                     },
                     {
                         title: "S PRC",
@@ -866,6 +891,10 @@
                     });
                     return;
                 }
+            });
+
+            table.on('tableBuilt', function() {
+                setTimeout(function() { applyAllFilters(); }, 0);
             });
 
             if (window.ParentExpand) {
@@ -1390,15 +1419,15 @@
             }
 
             if (st.invFilter && st.invFilter !== 'all') {
-                const inv = parseFloat(row.INV) || 0;
-                if (st.invFilter === 'zero' && !(inv === 0)) return false;
+                const inv = fbMpInv(row);
+                if (st.invFilter === 'zero' && !(inv <= 0)) return false;
                 if (st.invFilter === 'more' && !(inv > 0)) return false;
             }
 
             if (st.dilFilter && st.dilFilter !== 'all') {
-                const inv = parseFloat(row.INV) || 0;
+                const inv = fbMpInv(row);
                 const l30 = parseFloat(row.L30) || 0;
-                const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                const dil = inv <= 0 ? 0 : (l30 / inv) * 100;
                 if (st.dilFilter === 'red' && !(dil < 25)) return false;
                 if (st.dilFilter === 'green' && !(dil >= 25 && dil < 50)) return false;
                 if (st.dilFilter === 'pink' && !(dil >= 50)) return false;
@@ -1424,8 +1453,8 @@
                 return;
             }
             if (typeof table !== 'undefined' && table && table.setFilter) {
-                table.setFilter(function(row) {
-                    return fbMpRowPassesFilters(row);
+                table.setFilter(function(data) {
+                    return fbMpRowPassesFilters(data);
                 });
             }
             if (typeof updateBadges === 'function') updateBadges();
@@ -1499,7 +1528,7 @@
                 const nr = row.nr_req || '';
                 const price = parseFloat(row.price) || 0;
                 const soldQty = parseFloat(row.sold) || 0;
-                const inv = parseFloat(row.INV) || 0;
+                const inv = fbMpInv(row);
                 const lp = parseFloat(row.lp) || 0;
                 const factor = parseFloat(row.factor) || 1;
                 const rowViews = parseFloat(row.views) || 0;
