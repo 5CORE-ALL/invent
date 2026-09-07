@@ -264,7 +264,7 @@ class MarketplaceApiConfigService
             'macy' => $this->filledAll([
                 'services.macy.client_id',
                 'services.macy.client_secret',
-            ]),
+            ]) || filled(config('services.macy.mcm_api_key')),
             'bestbuy' => $this->filledAll([
                 'services.bestbuy.client_id',
                 'services.bestbuy.client_secret',
@@ -316,7 +316,12 @@ class MarketplaceApiConfigService
                 'services.newegg.seller_id',
             ]),
             'topdawg' => $this->filled('services.topdawg.token'),
-            'purchasingpower' => $this->filled('services.purchasingpower.mcm_api_key') || $this->filled('services.purchasingpower.api_key'),
+            'purchasingpower' => $this->filled('services.purchasingpower.mcm_api_key')
+                || $this->filled('services.purchasingpower.api_key')
+                || $this->filledAll([
+                    'services.purchasingpower.client_id',
+                    'services.purchasingpower.client_secret',
+                ]),
             'shopify_b2b' => $this->shopifyB2bConfigured(),
             default => false,
         };

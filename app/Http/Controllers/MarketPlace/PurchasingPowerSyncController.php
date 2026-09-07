@@ -43,6 +43,8 @@ class PurchasingPowerSyncController extends Controller
     {
         $mcmKey = (string) config('services.purchasingpower.mcm_api_key', '');
         $apiKey = (string) config('services.purchasingpower.api_key', '');
+        $clientId = (string) config('services.purchasingpower.client_id', '');
+        $clientSecret = (string) config('services.purchasingpower.client_secret', '');
         $credentialsReady = $this->ppApi->isConfigured();
         $mcmBaseUrl = (string) config('services.purchasingpower.mcm_base_url', 'https://purchasingpowerus-prod.mirakl.net');
 
@@ -52,8 +54,11 @@ class PurchasingPowerSyncController extends Controller
             'credentialsReady' => $credentialsReady,
             'hasMcmApiKey' => filled($mcmKey),
             'hasApiKey' => filled($apiKey),
+            'hasMiraklOAuth' => filled($clientId) && filled($clientSecret),
             'maskedMcmApiKey' => $this->maskCredential($mcmKey, 4, 4),
             'maskedApiKey' => $this->maskCredential($apiKey, 4, 4),
+            'maskedClientId' => $this->maskCredential($clientId, 4, 4),
+            'shopId' => config('services.purchasingpower.shop_id'),
             'mcmBaseUrl' => $mcmBaseUrl,
         ]);
     }
@@ -63,7 +68,7 @@ class PurchasingPowerSyncController extends Controller
         if (! $this->ppApi->isConfigured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Purchasing Power API credentials missing. Set PURCHASING_POWER_MCM_API_KEY (or PURCHASING_POWER_API_KEY) in .env.',
+                'message' => 'Purchasing Power API credentials missing. Set PURCHASING_POWER_MCM_API_KEY + PURCHASING_POWER_SHOP_ID (and Connect client id/secret).',
             ]);
         }
 

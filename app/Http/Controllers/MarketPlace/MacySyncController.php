@@ -55,6 +55,7 @@ class MacySyncController extends Controller
             'hasMiraklOAuth' => filled($macyClientId) && filled($macySecret),
             'maskedMcmApiKey' => $this->maskCredential($mcmKey, 4, 4),
             'maskedMacyClientId' => $this->maskCredential($macyClientId, 4, 4),
+            'shopId' => config('services.macy.shop_id'),
             'mcmBaseUrl' => $mcmBaseUrl,
         ]);
     }
@@ -64,7 +65,7 @@ class MacySyncController extends Controller
         if (! $this->macyApi->isConfigured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Macy Mirakl Connect credentials missing. Set MACY_CLIENT_ID + MACY_CLIENT_SECRET in .env.',
+                'message' => 'Macy API credentials missing. Set MACY_MCM_API_KEY + MACY_SHOP_ID (and MACY_CLIENT_ID / MACY_CLIENT_SECRET for Connect).',
             ]);
         }
 

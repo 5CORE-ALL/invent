@@ -352,13 +352,20 @@ class PurchasingPowerController extends Controller
 
             Log::info('PP SPRICE saved', ['sku' => $sku, 'sprice' => $sprice]);
 
+            $skipPush = $request->boolean('skip_push') || $sprice <= 0;
+            $pushResult = $skipPush
+                ? ['success' => true, 'message' => 'Saved without marketplace push', 'skipped' => true]
+                : $this->pushPriceToPurchasingPower($sku, $sprice);
+
             return response()->json([
                 'success'            => true,
                 'spft_percent'       => $sgpft,
                 'sroi_percent'       => $sroi,
                 'sgpft_percent'      => $sgpft,
-                'price_push_success' => false,
-                'price_push_message' => 'SPRICE saved. Use Push to send price to Purchasing Power (MCM PRI01).',
+                'price_push_success' => (bool) ($pushResult['success'] ?? false),
+                'price_push_message' => (string) ($pushResult['message'] ?? ''),
+                'price_push_status_code' => $pushResult['status_code'] ?? null,
+                'price_push_skipped' => $skipPush,
             ]);
         } catch (\Exception $e) {
             Log::error('PP SPRICE tabulator save failed: ' . $e->getMessage());
@@ -381,6 +388,7 @@ class PurchasingPowerController extends Controller
             $margin     = $percentage / 100;
 
             $updatedCount = 0;
+            $pricePushQueue = [];
             foreach ($updates as $update) {
                 $sku    = $update['sku']    ?? null;
                 $sprice = $update['sprice'] ?? null;
@@ -418,15 +426,47 @@ class PurchasingPowerController extends Controller
                 $view->value = $stored;
                 $view->save();
                 $updatedCount++;
+                if ($sprice > 0) {
+                    $pricePushQueue[] = ['sku' => $sku, 'sprice' => $sprice];
+                }
             }
 
-            return response()->json([
+            $skipPush = $request->boolean('skip_push');
+            $pricePushSuccess = 0;
+            $pricePushFailed = 0;
+            $pricePushErrors = [];
+            $singlePushResult = null;
+            foreach ($skipPush ? [] : $pricePushQueue as $pushItem) {
+                $pushResult = $this->pushPriceToPurchasingPower($pushItem['sku'], (float) $pushItem['sprice']);
+                if (count($pricePushQueue) === 1) {
+                    $singlePushResult = $pushResult;
+                }
+                if (($pushResult['success'] ?? false) === true) {
+                    $pricePushSuccess++;
+                } else {
+                    $pricePushFailed++;
+                    $pricePushErrors[] = $pushItem['sku'].': '.($pushResult['message'] ?? 'Price push failed');
+                }
+            }
+
+            $response = [
                 'success'                  => true,
                 'updated'                  => $updatedCount,
                 'message'                  => "Successfully saved {$updatedCount} SPRICE update(s)",
-                'price_push_success_count' => 0,
-                'price_push_failed_count'  => 0,
-            ]);
+                'price_push_success_count' => $pricePushSuccess,
+                'price_push_failed_count'  => $pricePushFailed,
+                'price_push_skipped'       => $skipPush,
+            ];
+            if ($pricePushErrors !== []) {
+                $response['price_push_errors'] = $pricePushErrors;
+            }
+            if (is_array($singlePushResult)) {
+                $response['price_push_success'] = (bool) ($singlePushResult['success'] ?? false);
+                $response['price_push_message'] = (string) ($singlePushResult['message'] ?? '');
+                $response['price_push_status_code'] = $singlePushResult['status_code'] ?? null;
+            }
+
+            return response()->json($response);
         } catch (\Exception $e) {
             Log::error('PP SPRICE batch save failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
@@ -681,5 +721,23 @@ class PurchasingPowerController extends Controller
                 '_source' => $source,
             ];
         });
+    }
+
+    /**
+     * @return array{success: bool, message: string, status_code?: int|null}
+     */
+    private function pushPriceToPurchasingPower(string $sku, float $sprice): array
+    {
+        if ($sprice <= 0) {
+            return ['success' => false, 'message' => 'Skipping push for non-positive price'];
+        }
+
+        try {
+            return app(PurchasingPowerApiService::class)->updatePrice($sku, $sprice);
+        } catch (\Throwable $e) {
+            Log::error('Purchasing Power price push call failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 }
