@@ -78,6 +78,125 @@ class FacebookMarketplaceController extends Controller
     }
 
     /**
+     * Prior 30 Pacific days immediately before the L30 window (yesterday-59 … yesterday-30).
+     *
+     * @return array{start: string, end: string, start_utc: Carbon, end_utc: Carbon}
+     */
+    public static function l60PacificRange(): array
+    {
+        $tz = 'America/Los_Angeles';
+        $l30 = self::l30PacificRange();
+        $end = Carbon::parse($l30['start'], $tz)->subDay();
+        $start = $end->copy()->subDays(29);
+
+        return [
+            'start'     => $start->toDateString(),
+            'end'       => $end->toDateString(),
+            'start_utc' => Carbon::parse($start->toDateString(), $tz)->startOfDay()->utc(),
+            'end_utc'   => Carbon::parse($end->toDateString(), $tz)->endOfDay()->utc(),
+        ];
+    }
+
+    /**
+     * Sales / GPFT / ROI for an inclusive Pacific date range from uploaded FB Sales only.
+     *
+     * @return array<string, float|int|string>
+     */
+    public static function computeSalesMetricsForPacificRange(string $startDate, string $endDate): array
+    {
+        $mpRow = MarketplacePercentage::where('marketplace', 'FB Marketplace')->first()
+            ?: MarketplacePercentage::where('marketplace', 'FBMarketplace')->first();
+        $percentage = $mpRow && $mpRow->percentage !== null ? (float) $mpRow->percentage : null;
+        $factor = ($percentage !== null ? $percentage : 100) / 100;
+
+        $query = FacebookMarketplaceSale::query()
+            ->select('sku', 'qty_sold', 'sold_price', 'order_number');
+        self::constrainToPacificDateRange($query, $startDate, $endDate);
+        $salesRows = $query->get();
+
+        $skuKeys = [];
+        $rawSkus = [];
+        foreach ($salesRows as $r) {
+            $raw = trim((string) $r->sku);
+            $k = strtoupper($raw);
+            if ($k !== '') {
+                $skuKeys[$k] = true;
+                $skuKeys[str_replace(' ', '', $k)] = true;
+                $rawSkus[$raw] = true;
+            }
+        }
+
+        $lpBySku = [];
+        if ($skuKeys !== []) {
+            $lookupSkus = array_values(array_unique(array_merge(array_keys($rawSkus), array_keys($skuKeys))));
+            foreach (ProductMaster::query()->whereIn('sku', $lookupSkus)->get(['sku', 'Values']) as $pm) {
+                $skuKey = strtoupper(trim((string) $pm->sku));
+                if ($skuKey === '' || stripos($skuKey, 'PARENT') !== false) {
+                    continue;
+                }
+                $values = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+                if (! is_array($values)) {
+                    $values = [];
+                }
+                $lp = 0.0;
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+                $lpBySku[$skuKey] = $lp;
+                $lpBySku[str_replace(' ', '', $skuKey)] = $lp;
+            }
+        }
+
+        $totalPft = 0.0;
+        $totalSales = 0.0;
+        $totalCogs = 0.0;
+        $totalQty = 0;
+        $orderSet = [];
+
+        foreach ($salesRows as $r) {
+            $qty = (int) $r->qty_sold;
+            $price = (float) $r->sold_price;
+            if ($qty <= 0 || $price <= 0) {
+                continue;
+            }
+            $skuKey = strtoupper(trim((string) $r->sku));
+            $lp = (float) ($lpBySku[$skuKey] ?? $lpBySku[str_replace(' ', '', $skuKey)] ?? 0);
+            $unitPft = ($price * $factor) - $lp;
+            $totalPft += $unitPft * $qty;
+            $totalSales += $price * $qty;
+            $totalCogs += $lp * $qty;
+            $totalQty += $qty;
+            $orderNo = trim((string) ($r->order_number ?? ''));
+            if ($orderNo !== '') {
+                $orderSet[$orderNo] = true;
+            }
+        }
+
+        $gpftPct = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0.0;
+        $roiPct = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+
+        return [
+            'marketplace' => $mpRow->marketplace ?? 'FB Marketplace',
+            'margin_percent' => $percentage !== null ? round($percentage, 2) : 100.0,
+            'factor' => $factor,
+            'total_sales' => round($totalSales, 2),
+            'total_quantity' => $totalQty,
+            'total_orders' => count($orderSet),
+            'total_pft' => round($totalPft, 2),
+            'total_cogs' => round($totalCogs, 2),
+            'gpft_percent' => round($gpftPct, 1),
+            'roi_percent' => round($roiPct, 1),
+            'start' => $startDate,
+            'end' => $endDate,
+        ];
+    }
+
+    /**
      * Limit a facebook_marketplace_sales query to an inclusive Pacific date range.
      * Prefers order_date; uses created_at only when order_date is null.
      */
