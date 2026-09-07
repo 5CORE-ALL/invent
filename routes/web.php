@@ -4893,7 +4893,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu2-column-visibility', [TemuController::class, 'saveTemu2ColumnVisibility']);
     Route::get('/temu2-column-visibility', [TemuController::class, 'getTemu2ColumnVisibility']);
 
-    // Temu 3 Tabulator View (separate tables: temu3_daily_data, temu3_daily_data_l60)
+    // Temu 3 Sales Data — reads temu3_orders (same source as /temu3-decrease)
     Route::get('/temu3-tabulator', [Temu3Controller::class, 'temu3TabulatorView'])->name('temu3.tabulator');
     Route::get('/temu3/daily-data', [Temu3Controller::class, 'getTemu3DailyData'])->name('temu3.daily.data');
     Route::get('/temu3/daily-data-l7', [Temu3Controller::class, 'getTemu3DailyDataL7'])->name('temu3.daily.data.l7');

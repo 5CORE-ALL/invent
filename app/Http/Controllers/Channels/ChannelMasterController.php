@@ -1154,7 +1154,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 3 L30 for Active Channel: temu3_orders first, else /temu3-tabulator daily upload.
+     * Temu 3 L30 for Active Channel: same temu3_orders window as /temu3-decrease.
      *
      * @return array{total_orders: int, total_quantity: int, total_revenue: float, total_pft: float, total_cogs: float, gpft_percent: float, groi_percent: float}|null
      */
@@ -11450,7 +11450,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 3 Active Channel row — temu3_orders first, else /temu3-tabulator daily data.
+     * Temu 3 Active Channel row — same temu3_orders sales as /temu3-decrease.
      * Same Full Temu Price / GPFT / GROI as /temu3-decrease. No ads API (Ads% = 0).
      */
     public function getTemu3ChannelData(Request $request)

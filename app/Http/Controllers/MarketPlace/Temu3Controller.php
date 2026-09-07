@@ -49,28 +49,30 @@ class Temu3Controller extends TemuController
     }
 
     /**
-     * Show Temu 3 Sales Data tabulator (uploads to temu3_daily_data / temu3_daily_data_l60).
+     * Show Temu 3 Sales Data — same temu3_orders rows as /temu3-decrease.
      */
     public function temu3TabulatorView()
     {
         $temuMargin = TemuShopifySalesService::temuMarginDecimal();
-        $temu3YSales = $this->computeTemu3YSales();
-        $latestUpload = Schema::hasTable('temu3_daily_data')
-            ? Temu3DailyData::whereNotNull('purchase_date')->max('purchase_date')
-            : null;
-        $temu3YDate = $latestUpload ? Carbon::parse($latestUpload)->subDay()->toDateString() : null;
+        $temu3YSales = TemuShopifySalesService::computeYSalesFromTemu3Orders();
+        $temu3YDate = Carbon::now(TemuShopifySalesService::PST)->subDay()->toDateString();
 
         return view('market-places.temu3_tabulator_view', compact('temuMargin', 'temu3YSales', 'temu3YDate'));
     }
 
     public function getTemu3DailyData(Request $request)
     {
-        return $this->buildTemu3DailyDataResponse(Temu3DailyData::class, 'temu3_daily_data');
+        [$start, $end] = TemuShopifySalesService::temu3SheetL30Window();
+
+        return response()->json(TemuShopifySalesService::getTemu3OrdersTableRows($start, $end));
     }
 
     public function getTemu3DailyDataL7(Request $request)
     {
-        return $this->buildTemu3DailyDataResponse(Temu3DailyDataL7::class, 'temu3_daily_data_l7');
+        $end = Carbon::now(TemuShopifySalesService::PST)->endOfDay();
+        $start = Carbon::now(TemuShopifySalesService::PST)->subDays(6)->startOfDay();
+
+        return response()->json(TemuShopifySalesService::getTemu3OrdersTableRows($start, $end));
     }
 
     public function saveTemu3ColumnVisibility(Request $request)
@@ -108,47 +110,6 @@ class Temu3Controller extends TemuController
     public function uploadDailyDataTemu3L60Chunk(Request $request)
     {
         return $this->uploadTemu3DailyDataChunk($request, Temu3DailyDataL60::class, 'temu3_l60_', 'Temu 3 L60');
-    }
-
-    /**
-     * Temu 3 Y Sales: yesterday's BASE-price sales from temu3_daily_data — same as Temu 2.
-     */
-    private function computeTemu3YSales(): ?float
-    {
-        try {
-            if (! Schema::hasTable('temu3_daily_data')) {
-                return null;
-            }
-
-            $latest = Temu3DailyData::whereNotNull('purchase_date')->max('purchase_date');
-            if (! $latest) {
-                return null;
-            }
-
-            $yesterday = Carbon::parse($latest)->subDay();
-            $rows = Temu3DailyData::where('purchase_date', '>=', $yesterday->copy()->startOfDay())
-                ->where('purchase_date', '<=', $yesterday->copy()->endOfDay())
-                ->get(['contribution_sku', 'quantity_purchased', 'base_price_total']);
-
-            $total = 0.0;
-            foreach ($rows as $row) {
-                if (trim((string) ($row->contribution_sku ?? '')) === '') {
-                    continue;
-                }
-                $quantity = (int) ($row->quantity_purchased ?? 0);
-                $basePrice = (float) ($row->base_price_total ?? 0);
-                if ($quantity <= 0 || $basePrice <= 0) {
-                    continue;
-                }
-                $total += $basePrice * $quantity;
-            }
-
-            return round($total, 2);
-        } catch (\Throwable $e) {
-            Log::warning('computeTemu3YSales failed: '.$e->getMessage());
-
-            return null;
-        }
     }
 
     /**
