@@ -32,6 +32,8 @@ class SaveAllBadgeData extends Command
 
     protected function executeSave(CronExecutionContext $monitor): int
     {
+        $monitor->startFresh()->markLocalOnly();
+
         $page = $this->option('page');
         $chunkSize = $this->monitoredChunkSize();
 

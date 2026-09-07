@@ -40,6 +40,8 @@ class SaveGoogleAdsBadgeL30Snapshots extends Command
 
     protected function executeSave(CronExecutionContext $monitor): int
     {
+        $monitor->startFresh()->markLocalOnly();
+
         $backfill = max(0, (int) $this->option('backfill'));
         $channelOpt = strtolower(trim((string) $this->option('channel')));
         $chunkSize = $this->monitoredChunkSize();
@@ -76,18 +78,15 @@ class SaveGoogleAdsBadgeL30Snapshots extends Command
 
         $total = 0;
         foreach (array_chunk($workItems, $chunkSize) as $chunk) {
-            $chunkUpdated = 0;
             foreach ($chunk as $item) {
                 $this->info("Channel {$item['label']}: {$item['date']} (completed US day)");
                 $n = $item['controller']->persistBadgeL30SnapshotsForDate($item['date'], true);
                 $total += $n;
-                $chunkUpdated += $n;
                 $this->line("  {$item['date']}: {$n} campaign row(s)");
             }
             $monitor->incrementProcessed(count($chunk));
-            if ($chunkUpdated > 0) {
-                $monitor->incrementUpdated($chunkUpdated);
-            }
+            $monitor->incrementUpdated(count($chunk));
+            $monitor->mergeMeta(['snapshot_rows' => $total]);
             $monitor->checkpoint(['phase' => 'badge_l30', 'total' => $total], $monitor->processedRecords);
         }
 

@@ -110,6 +110,24 @@ class CronExecutionLog extends Model
         };
     }
 
+    /**
+     * cron_execution_logs.success_percentage is decimal(6,2). Values like
+     * 10100 (updated campaign rows / expected channel-days) overflow MySQL.
+     */
+    public static function clampSuccessPercentage(mixed $percentage): ?float
+    {
+        if ($percentage === null || $percentage === '') {
+            return null;
+        }
+
+        return round(max(0.0, min(100.0, (float) $percentage)), 2);
+    }
+
+    public function setSuccessPercentageAttribute(mixed $value): void
+    {
+        $this->attributes['success_percentage'] = self::clampSuccessPercentage($value);
+    }
+
     public function isHealthy(): bool
     {
         return in_array($this->status, [self::STATUS_SUCCESS, self::STATUS_RECOVERED], true);

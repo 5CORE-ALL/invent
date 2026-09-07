@@ -28,6 +28,7 @@ class SaveAllMarketplaceMasterBadgeData extends Command
 
     protected function executeSave(CronExecutionContext $monitor): int
     {
+        $monitor->startFresh()->markLocalOnly();
         $monitor->setExpected(1);
         $saved = BadgeData::saveForCalculator(AllMarketplaceMasterBadgeCalculator::class);
         $data = $saved['data'];

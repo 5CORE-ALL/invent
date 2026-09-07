@@ -197,7 +197,9 @@ class IntelligentRetryService
         $failed = max(0, (int) $log->failed_records - 1);
 
         $denominator = max(1, (int) ($log->expected_records ?: $log->processed_records ?: $log->fetched_records ?: 1));
-        $percentage = round(($updated / $denominator) * 100, 2);
+        $percentage = CronExecutionLog::clampSuccessPercentage(
+            round(($updated / $denominator) * 100, 2)
+        ) ?? 0.0;
 
         $successMin = (float) config('cron-monitor.thresholds.success_min', 95);
         $partialMin = (float) config('cron-monitor.thresholds.partial_min', 60);

@@ -43,7 +43,9 @@ class CronStatusResolver
 
         $denominator = $ctx->successDenominator();
         $effective = $ctx->effectiveUpdated();
-        $percentage = round(($effective / max(1, $denominator)) * 100, 2);
+        $percentage = CronExecutionLog::clampSuccessPercentage(
+            round(($effective / max(1, $denominator)) * 100, 2)
+        ) ?? 0.0;
 
         if ($hadException) {
             return [

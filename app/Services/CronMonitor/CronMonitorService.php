@@ -209,7 +209,7 @@ class CronMonitorService
             'status' => $status,
             'finished_at' => $finishedAt,
             'duration_seconds' => $duration,
-            'success_percentage' => $statusResult['success_percentage'],
+            'success_percentage' => CronExecutionLog::clampSuccessPercentage($statusResult['success_percentage']),
             'health_score' => $health['score'],
             'health_label' => $healthLabel,
             'validation_message' => $validation['messages']
