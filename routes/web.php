@@ -4478,6 +4478,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/fb-marketplace-price-sold/import', [FbMarketplaceAnalyticsController::class, 'importFbMarketplacePriceSold'])->name('fb.marketplace.price-sold.import');
     Route::get('/fb-marketplace-price-sold/sample', [FbMarketplaceAnalyticsController::class, 'downloadFbMarketplacePriceSoldSample'])->name('fb.marketplace.price-sold.sample');
     Route::post('/fb-marketplace-tabulator/save-status', [FbMarketplaceAnalyticsController::class, 'saveFbMarketplaceStatus'])->name('fb.marketplace.tabulator.save-status');
+    Route::post('/fb-marketplace-tabulator/save-sprice', [FbMarketplaceAnalyticsController::class, 'saveFbMarketplaceSprice'])->name('fb.marketplace.tabulator.save-sprice');
     Route::get('/amazonpricing-cvr-tabular', action: [OverallAmazonController::class, 'amazonPricingCvrTabular'])->name('amazon.pricing.cvr.tabular');
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');

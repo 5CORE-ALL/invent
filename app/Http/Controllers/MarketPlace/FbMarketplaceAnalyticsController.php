@@ -124,23 +124,36 @@ class FbMarketplaceAnalyticsController extends Controller
             $spft = ($sprice !== null && $sprice > 0) ? (($sprice * $factor - $lp) / $sprice) * 100 : 0;
             $sroi = ($sprice !== null && $lp > 0) ? (($sprice * $factor - $lp) / $lp) * 100 : 0;
 
+            $ovL30 = (float) ($shopifyItem->quantity ?? 0);
+            $dil = $inv > 0 ? ($ovL30 / $inv) * 100 : 0;
+            $views = (int) ($sheet?->views ?? 0);
+            $cvr = $views > 0 ? ($soldL30 / $views) * 100 : 0;
+
             $row = [
                 'Parent' => $productMaster->parent ?? null,
                 'image_path' => $shopifyItem->image_src ?? ($values['image_path'] ?? null),
                 'sku' => $sku,
+                '(Child) sku' => $sku,
                 'INV' => $shopifyItem->inv ?? 0,
-                'L30' => $shopifyItem->quantity ?? 0,
+                'L30' => $ovL30,
+                'Dil' => round($dil, 2),
                 'price' => $price,
                 'sold' => $soldL30,
+                'views' => $views,
+                'CVR%' => round($cvr, 2),
                 'PFT' => round($pft, 2),
                 'ROI' => round($roi, 2),
                 'sprice' => $sprice,
+                'SPRICE' => $sprice,
                 'SPFT' => round($spft, 2),
                 'SROI' => round($sroi, 2),
                 'nr_req' => $nrReq,
                 'lp' => $lp,
                 'ship' => $ship,
+                'LP_productmaster' => $lp,
+                'Ship_productmaster' => $ship,
                 'factor' => $factor,
+                'percentage' => $factor,
                 'buyer_link' => $statusValue['buyer_link'] ?? null,
                 'seller_link' => $statusValue['seller_link'] ?? null,
                 'approved' => $statusValue['approved'] ?? null,
@@ -171,11 +184,70 @@ class FbMarketplaceAnalyticsController extends Controller
                 $value[$field] = $request->input($field);
             }
         }
+        if ($request->has('SPRICE') && ! $request->has('sprice')) {
+            $value['sprice'] = $request->input('SPRICE');
+        }
 
         $status->value = $value;
         $status->save();
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Save S PRC from Sprc Dil / CVR% rules (same persist shape as TikTok: sku+sprice or updates[]).
+     */
+    public function saveFbMarketplaceSprice(Request $request)
+    {
+        $updates = [];
+        if ($request->has('updates')) {
+            $updates = $request->input('updates', []);
+        } elseif ($request->filled('sku') && $request->exists('sprice')) {
+            $updates = [[
+                'sku' => $request->input('sku'),
+                'sprice' => $request->input('sprice'),
+            ]];
+        } elseif ($request->filled('sku') && $request->exists('SPRICE')) {
+            $updates = [[
+                'sku' => $request->input('sku'),
+                'sprice' => $request->input('SPRICE'),
+            ]];
+        }
+
+        if (! is_array($updates) || $updates === []) {
+            return response()->json(['success' => false, 'error' => 'No S PRC updates'], 422);
+        }
+
+        $updated = 0;
+        $errors = [];
+        foreach ($updates as $update) {
+            $sku = trim((string) ($update['sku'] ?? ''));
+            if ($sku === '') {
+                $errors[] = 'Missing SKU';
+                continue;
+            }
+            if (! array_key_exists('sprice', $update) && ! array_key_exists('SPRICE', $update)) {
+                $errors[] = 'Missing S PRC for '.$sku;
+                continue;
+            }
+            $sprice = $update['sprice'] ?? $update['SPRICE'];
+            $sprice = is_numeric($sprice) ? round((float) $sprice, 2) : 0;
+
+            $status = FBMarketplaceListingStatus::firstOrNew(['sku' => $sku]);
+            $value = is_array($status->value)
+                ? $status->value
+                : (json_decode((string) $status->value, true) ?: []);
+            $value['sprice'] = $sprice;
+            $status->value = $value;
+            $status->save();
+            $updated++;
+        }
+
+        return response()->json([
+            'success' => $errors === [],
+            'updated' => $updated,
+            'errors' => $errors,
+        ], $errors === [] ? 200 : 422);
     }
 
     public function importFbMarketplacePriceSold(Request $request)

@@ -13,14 +13,14 @@
     $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'bestbuy', 'newegg', 'topdawg'], true);
+    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace'], true);
     $channelPromoShowZeroSoldDilRule = !$channelPromoUsesSprcDil;
     $channelPromoZeroSoldDilColorSlabs = true;
     $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['temu', 'temu2', 'temu3'], true) && empty($channelPromoUsesSprcDil);
     $channelPromoZeroSoldMinRoi = $channelPromoChannel === 'shopify_b2c';
     $channelPromoZeroSoldSoldLabel = $channelPromoChannel === 'shopify_b2c' ? 'B2C L30' : 'L30';
-    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg'], true);
-    $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2'], true);
+    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace'], true);
+    $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'fb_marketplace'], true);
     $channelPromoUsesAmazonCvrDisc = $channelPromoChannel === 'shopify_b2c';
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
     $channelPromoTakehome = ($channelPromoPart === 'script' || $channelPromoPart === 'all')
@@ -1198,7 +1198,8 @@
                 || CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
                 || CHANNEL_PROMO_CHANNEL === 'bestbuy'
                 || CHANNEL_PROMO_CHANNEL === 'newegg'
-                || CHANNEL_PROMO_CHANNEL === 'topdawg';
+                || CHANNEL_PROMO_CHANNEL === 'topdawg'
+                || CHANNEL_PROMO_CHANNEL === 'fb_marketplace';
         }
         const CHANNEL_PROMO_HIDE_DIL_PRMT = @json(!empty($channelPromoHideDilPrmt));
         function chPromoHideDilPrmt() {
@@ -1605,14 +1606,16 @@
             },
             fb_marketplace: {
                 label: 'FB Marketplace',
-                saveSpriceUrl: '',
+                saveSpriceUrl: '/fb-marketplace-tabulator/save-sprice',
+                saveSpriceBatchUrl: '/fb-marketplace-tabulator/save-sprice',
                 pushPriceUrl: null,
                 priceField: 'price',
                 cvrField: 'CVR%',
-                dilField: 'Dil%',
+                dilField: 'Dil',
                 invField: 'INV',
                 skuField: 'sku',
                 soldField: 'sold',
+                soldFieldLabel: 'FB L30',
                 saveSpriceMode: 'sku',
             },
             vinted: {
@@ -3431,8 +3434,9 @@
                 : CHANNEL_PROMO_CHANNEL === 'faire') {
                 return false;
             }
-            // TikTok / Doba: persist the rule discount. Cell shows saved S PRC; red triangle if ≥ LMP.
-            if (chPromoIsTiktokPromoChannel() || chPromoIsDobaPromoChannel() || chPromoIsDobaWithoutshipPromoChannel()
+            // TikTok / FB Marketplace / Doba: persist the rule discount. Cell shows saved S PRC; red triangle if ≥ LMP.
+            if (chPromoIsTiktokPromoChannel() || CHANNEL_PROMO_CHANNEL === 'fb_marketplace'
+                || chPromoIsDobaPromoChannel() || chPromoIsDobaWithoutshipPromoChannel()
                 || CHANNEL_PROMO_CHANNEL === 'topdawg') {
                 return false;
             }
@@ -3907,7 +3911,8 @@
                 return (ovl30 / inv) * 100;
             }
             // TikTok Dil = (OV L30 / INV) × 100 — same as Amazon / the Dil column.
-            if (CHANNEL_PROMO_CHANNEL === 'tiktok' || CHANNEL_PROMO_CHANNEL === 'tiktok2') {
+            if (CHANNEL_PROMO_CHANNEL === 'tiktok' || CHANNEL_PROMO_CHANNEL === 'tiktok2'
+                || CHANNEL_PROMO_CHANNEL === 'fb_marketplace') {
                 return chPromoSkuDil(d);
             }
             // Shopify Dil column = (OV L30 / INV) × 100 — already stored as DIL%
@@ -3992,6 +3997,7 @@
                 || CHANNEL_PROMO_CHANNEL === 'newegg'
                 || CHANNEL_PROMO_CHANNEL === 'tiktok'
                 || CHANNEL_PROMO_CHANNEL === 'tiktok2'
+                || CHANNEL_PROMO_CHANNEL === 'fb_marketplace'
                 || (typeof chPromoIsAeStyleSpriceChannel === 'function' && chPromoIsAeStyleSpriceChannel()))
                 && !chPromoUsesAmazonCvrDisc();
         }
@@ -4092,6 +4098,13 @@
         }
         function chPromoCvr(d) {
             if (!d) return 0;
+            if (CHANNEL_PROMO_CHANNEL === 'fb_marketplace') {
+                let fbCvr = Number(d['CVR%'] != null ? d['CVR%'] : d.cvr);
+                if (isFinite(fbCvr) && fbCvr >= 0) return fbCvr;
+                const views = Number(d.views) || 0;
+                const sold = Number(d.sold) || 0;
+                return views > 0 ? chPromoRound2((sold / views) * 100) : 0;
+            }
             if (CHANNEL_PROMO_CHANNEL === 'aliexpress') {
                 let aeCvr = Number(d.cvr);
                 if (isFinite(aeCvr) && aeCvr > 0) return aeCvr;
@@ -5188,7 +5201,8 @@
             const ship = (CHANNEL_PROMO_CHANNEL === 'faire'
                 || CHANNEL_PROMO_CHANNEL === 'purchasing_power'
                 || CHANNEL_PROMO_CHANNEL === 'wayfair'
-                || CHANNEL_PROMO_CHANNEL === 'topdawg')
+                || CHANNEL_PROMO_CHANNEL === 'topdawg'
+                || CHANNEL_PROMO_CHANNEL === 'fb_marketplace')
                 ? 0
                 : chPromoShipCost(d);
             const price = (lp * (1 + roi / 100) + ship) / margin;
