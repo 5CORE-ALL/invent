@@ -9824,7 +9824,7 @@
                 chPromoRunAllEbayRulesOnLoad();
                 return;
             }
-            if (chPromoIsTiktokPromoChannel()) {
+            if (chPromoIsTiktokPromoChannel() || CHANNEL_PROMO_CHANNEL === 'fb_marketplace') {
                 if (typeof ebayScheduleSprcDilAutoApply === 'function') {
                     ebayScheduleSprcDilAutoApply();
                 }

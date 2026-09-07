@@ -1142,11 +1142,16 @@
             }
             const meta = ebayDilGroiMetaForRow(d);
             if (meta && meta.sprc > 0) {
-                let price = ebayDgRound2(meta.sprc);
+                let price = ebayDgIsFbMarketplace() && typeof fbMpRoundSprice === 'function'
+                    ? fbMpRoundSprice(meta.sprc)
+                    : ebayDgRound2(meta.sprc);
                 if (ebayDgIsShopifyB2c() && typeof chPromoFinalSpriceToSave === 'function') {
                     price = chPromoFinalSpriceToSave(d, price);
                 }
-                return price > 0 ? ebayDgRound2(price) : 0;
+                if (!(price > 0)) return 0;
+                return ebayDgIsFbMarketplace() && typeof fbMpRoundSprice === 'function'
+                    ? fbMpRoundSprice(price)
+                    : ebayDgRound2(price);
             }
             if (typeof chPromoSpriceFromStdTPromo === 'function') {
                 const cvr = Number(chPromoSpriceFromStdTPromo(d, { skip_lmp_cap: true })) || 0;

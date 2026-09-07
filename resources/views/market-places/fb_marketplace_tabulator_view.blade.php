@@ -322,15 +322,23 @@
             const n = parseFloat(String(raw).replace(/,/g, '').replace(/[\s\u00A0]+/g, '').trim());
             return Number.isFinite(n) ? Math.round(n) : 0;
         }
-        function fbMpRowSpriceForAlert(data) {
+        function fbMpDisplayedSprice(data) {
             if (!data) return 0;
-            let sprice = 0;
-            if (typeof chPromoSavedOrLiveSprice === 'function') {
-                sprice = Number(chPromoSavedOrLiveSprice(data)) || 0;
-            } else {
-                sprice = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+            if (typeof ebaySprcDilForRow === 'function') {
+                const dil = Number(ebaySprcDilForRow(data)) || 0;
+                if (dil > 0) return fbMpRoundSprice(dil);
             }
-            return fbMpRoundSprice(sprice);
+            if (typeof chPromoLiveSprice === 'function') {
+                const live = Number(chPromoLiveSprice(data)) || 0;
+                if (live > 0) return fbMpRoundSprice(live);
+            }
+            const saved = (typeof chPromoSavedOrLiveSprice === 'function')
+                ? Number(chPromoSavedOrLiveSprice(data)) || 0
+                : parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+            return fbMpRoundSprice(saved);
+        }
+        function fbMpRowSpriceForAlert(data) {
+            return fbMpDisplayedSprice(data);
         }
         function fbMpSpriceMetrics(d) {
             const sprice = fbMpRowSpriceForAlert(d);
@@ -426,6 +434,13 @@
                 ajaxResponse: function(url, params, response) {
                     const payload = response.data || response;
                     allTableData = Array.isArray(payload) ? payload : [];
+                    allTableData.forEach(function(d) {
+                        const p = fbMpDisplayedSprice(d);
+                        if (p > 0) {
+                            d.SPRICE = p;
+                            d.sprice = p;
+                        }
+                    });
                     window.allTableData = allTableData;
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     updateBadges(payload);
@@ -713,14 +728,13 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         width: 92,
-                        sorter: "number",
-                        headerTooltip: "S PRC from Sprc Dil when Dil matches and FB L30 > 0; 0 Sold uses the lowest Target GROI. Otherwise Std × (1 − CVR%/100). S PRC = LP × (1 + GROI%/100) / margin (no ship). Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                        sorter: function(a, b, aRow, bRow) {
+                            return fbMpDisplayedSprice(aRow.getData()) - fbMpDisplayedSprice(bRow.getData());
+                        },
+                        headerTooltip: "Same dollar as Sprc Dil (live Dil → Target GROI, including 0 Sold min GROI). Otherwise Std × (1 − CVR%/100). S PRC = LP × (1 + GROI%/100) / margin (no ship). Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
-                            let value = (typeof chPromoSavedOrLiveSprice === 'function')
-                                ? Number(chPromoSavedOrLiveSprice(d))
-                                : parseFloat(cell.getValue() || d.sprice || 0);
-                            value = fbMpRoundSprice(value);
+                            let value = fbMpDisplayedSprice(d);
                             if (!(value > 0)) return '';
                             const live = parseFloat(d.price) || 0;
                             const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
