@@ -179,12 +179,10 @@
                                 <span class="lqs-sc def"></span>DIL%
                             </button>
                             <ul class="dropdown-menu">
-                                <li><a class="lqs-dropdown-item lqs-dil-item active" href="#" data-color="all">
+                                <li><a class="lqs-dropdown-item lqs-dil-item" href="#" data-color="all">
                                     <span class="lqs-sc def"></span>All DIL</a></li>
                                 <li><a class="lqs-dropdown-item lqs-dil-item" href="#" data-color="red">
-                                    <span class="lqs-sc red"></span>Red (&lt;16.7%)</a></li>
-                                <li><a class="lqs-dropdown-item lqs-dil-item" href="#" data-color="yellow">
-                                    <span class="lqs-sc yellow"></span>Yellow (16.7–25%)</a></li>
+                                    <span class="lqs-sc red"></span>Red (&lt;25%)</a></li>
                                 <li><a class="lqs-dropdown-item lqs-dil-item" href="#" data-color="green">
                                     <span class="lqs-sc green"></span>Green (25–50%)</a></li>
                                 <li><a class="lqs-dropdown-item lqs-dil-item" href="#" data-color="pink">
@@ -354,8 +352,7 @@
                     const inv   = parseFloat(d.inv)    || 0;
                     const ovL30 = parseFloat(d.ov_l30) || 0;
                     const dil   = inv === 0 ? 0 : (ovL30 / inv) * 100;
-                    if (dilColor === 'red')    return dil < 16.66;
-                    if (dilColor === 'yellow') return dil >= 16.66 && dil < 25;
+                    if (dilColor === 'red')    return dil < 25;
                     if (dilColor === 'green')  return dil >= 25 && dil < 50;
                     if (dilColor === 'pink')   return dil >= 50;
                     return true;
@@ -528,7 +525,7 @@
                             const ovL30 = parseFloat(row.ov_l30) || 0;
                             if (inv === 0) return `<span style="color:#6c757d;">0%</span>`;
                             const dil = (ovL30 / inv) * 100;
-                            let color = dil < 16.66 ? '#a00211' : dil < 25 ? '#ffc107' : dil < 50 ? '#28a745' : '#e83e8c';
+                            let color = dil < 25 ? '#dc3545' : dil < 50 ? '#28a745' : '#e83e8c';
                             return `<span style="color:${color};font-weight:600;">${Math.round(dil)}%</span>`;
                         }
                     },

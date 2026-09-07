@@ -599,8 +599,7 @@
                                 const dilNum = parseFloat(value);
                                 dilText = Math.round(dilNum) + '%';
                                 
-                                if (dilNum < 16.7) dilColor = '#a00211';
-                                else if (dilNum >= 16.7 && dilNum < 25) dilColor = '#ffc107';
+                                if (dilNum < 25) dilColor = '#dc3545';
                                 else if (dilNum >= 25 && dilNum < 50) dilColor = '#28a745';
                                 else if (dilNum >= 50) dilColor = '#e83e8c';
                             }

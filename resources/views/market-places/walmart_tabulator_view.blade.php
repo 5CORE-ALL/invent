@@ -508,8 +508,7 @@
                             let color = '';
 
                             // Color logic from Amazon
-                            if (dil < 16.66) color = '#a00211'; // red
-                            else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
+                            if (dil < 25) color = '#dc3545'; // red
                             else if (dil >= 25 && dil < 50) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink (50 and above)
 

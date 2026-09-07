@@ -941,19 +941,13 @@
                                         <span class="status-circle default"></span> All OV DIL</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="Dil%"
                                         data-color="red">
-                                        <span class="status-circle red"></span> Red</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="Dil%"
-                                        data-color="yellow">
-                                        <span class="status-circle yellow"></span> Yellow</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="DIL%"
-                                        data-color="blue">
-                                        <span class="status-circle blue"></span> Blue</a></li>
+                                        <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="Dil%"
                                         data-color="green">
-                                        <span class="status-circle green"></span> Green</a></li>
+                                        <span class="status-circle green"></span> Green (25–50%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="Dil%"
                                         data-color="pink">
-                                        <span class="status-circle pink"></span> Pink</a></li>
+                                        <span class="status-circle pink"></span> Pink (50%+)</a></li>
                             </ul>
                         </div>
 
@@ -968,19 +962,13 @@
                                         <span class="status-circle default"></span> All M DIL</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="M DIL%"
                                         data-color="red">
-                                        <span class="status-circle red"></span> Red</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="M DIL%"
-                                        data-color="yellow">
-                                        <span class="status-circle yellow"></span> Yellow</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="M DIL%"
-                                        data-color="blue">
-                                        <span class="status-circle green"></span>Blue</a></li>
+                                        <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="M DIL%"
                                         data-color="green">
-                                        <span class="status-circle green"></span> Green</a></li>
+                                        <span class="status-circle green"></span> Green (25–50%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="M DIL%"
                                         data-color="pink">
-                                        <span class="status-circle pink"></span> Pink</a></li>
+                                        <span class="status-circle pink"></span> Pink (50%+)</a></li>
                             </ul>
                         </div>
 

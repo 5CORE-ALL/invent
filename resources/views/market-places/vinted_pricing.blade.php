@@ -120,8 +120,7 @@
 
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="all">DIL%</option>
-                        <option value="red">Red (&lt;16.7%)</option>
-                        <option value="yellow">Yellow (16.7-25%)</option>
+                        <option value="red">Red (&lt;25%)</option>
                         <option value="green">Green (25-50%)</option>
                         <option value="pink">Pink (50%+)</option>
                     </select>
@@ -885,7 +884,7 @@
                         const inv = parseFloat(d.INV) || 0;
                         if (inv === 0) return '<span style="color:#6c757d;">0%</span>';
                         const dil = (parseFloat(d['L30']) || 0) / inv * 100;
-                        const color = dil < 16.66 ? '#a00211' : dil < 25 ? '#ffc107' : dil < 50 ? '#28a745' : '#e83e8c';
+                        const color = dil < 25 ? '#dc3545' : dil < 50 ? '#28a745' : '#e83e8c';
                         return `<span style="color:${color};font-weight:600;">${Math.round(dil)}%</span>`;
                     }
                 },
@@ -1206,8 +1205,7 @@
                 table.addFilter(function(data) {
                     const inv2 = parseFloat(data.INV) || 0, l30 = parseFloat(data.L30) || 0;
                     const d2 = inv2 === 0 ? 0 : (l30 / inv2) * 100;
-                    if (dil === 'red') return d2 < 16.66;
-                    if (dil === 'yellow') return d2 >= 16.66 && d2 < 25;
+                    if (dil === 'red') return d2 < 25;
                     if (dil === 'green') return d2 >= 25 && d2 < 50;
                     if (dil === 'pink') return d2 >= 50;
                     return true;

@@ -1025,16 +1025,13 @@
                                         <span class="status-circle default"></span> All DIL</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="ov_dil"
                                         data-color="red">
-                                        <span class="status-circle red"></span> Red</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="ov_dil"
-                                        data-color="yellow">
-                                        <span class="status-circle yellow"></span> Yellow</a></li>
+                                        <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="ov_dil"
                                         data-color="green">
-                                        <span class="status-circle green"></span> Green</a></li>
+                                        <span class="status-circle green"></span> Green (25–50%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="ov_dil"
                                         data-color="pink">
-                                        <span class="status-circle pink"></span> Pink</a></li>
+                                        <span class="status-circle pink"></span> Pink (50%+)</a></li>
                             </ul>
                         </div>
 
@@ -1049,19 +1046,13 @@
                                         <span class="status-circle default"></span> All FDil</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="FDil%"
                                         data-color="red">
-                                        <span class="status-circle red"></span> Red</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="FDil%"
-                                        data-color="yellow">
-                                        <span class="status-circle yellow"></span> Yellow</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="FDil%"
-                                        data-color="blue">
-                                        <span class="status-circle blue"></span> Blue</a></li>
+                                        <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="FDil%"
                                         data-color="green">
-                                        <span class="status-circle green"></span> Green</a></li>
+                                        <span class="status-circle green"></span> Green (25–50%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="FDil%"
                                         data-color="pink">
-                                        <span class="status-circle pink"></span> Pink</a></li>
+                                        <span class="status-circle pink"></span> Pink (50%+)</a></li>
                             </ul>
                         </div>
 
@@ -2295,8 +2286,7 @@
                     // Updated color coding functions
                     const getDilColor = (value) => {
                         const percent = parseFloat(value) * 100;
-                        if (percent < 16.66) return 'red';
-                        if (percent >= 16.66 && percent < 25) return 'yellow';
+                        if (percent < 25) return 'red';
                         if (percent >= 25 && percent < 50) return 'green';
                         return 'pink'; // 50 and above
                     };
@@ -3768,8 +3758,8 @@
 
                 const colorRules = {
                     'ov_dil': {
-                        ranges: [16.66, 25, 50],
-                        colors: ['red', 'yellow', 'green', 'pink']
+                        ranges: [25, 50],
+                        colors: ['red', 'green', 'pink']
                     },
                     'FDil%': {
                         ranges: [12.5, 25, 50, 100],

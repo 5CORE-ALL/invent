@@ -1434,8 +1434,7 @@
                     }
                     const dil = (ovl30 / inv) * 100;
                     let cls = 'slo-dil-pink';
-                    if (dil < 16.66) cls = 'slo-dil-red';
-                    else if (dil < 25) cls = 'slo-dil-yellow';
+                    if (dil < 25) cls = 'slo-dil-red';
                     else if (dil < 50) cls = 'slo-dil-green';
                     return '<span class="slo-dil ' + cls + '">' + Math.round(dil) + '%</span>';
                 },

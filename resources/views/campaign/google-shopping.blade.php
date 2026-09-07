@@ -2173,8 +2173,7 @@
                                 }
                                 if (!isFinite(dil)) return '—';
                                 var color = '#e83e8c';
-                                if (dil < 16.66) color = '#a00211';
-                                else if (dil < 25) color = '#ffc107';
+                                if (dil < 25) color = '#dc3545';
                                 else if (dil < 50) color = '#28a745';
                                 var tip = 'Dil = OV L30 ÷ INV × 100';
                                 if (isFinite(ovl30)) tip += ' · ' + Math.round(ovl30) + ' ÷ ' + Math.round(inv);

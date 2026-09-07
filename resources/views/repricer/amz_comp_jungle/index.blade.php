@@ -454,8 +454,7 @@
 
                             const dil = (OVL30 / INV) * 100;
                             let color = '';
-                            if (dil < 16.66) color = '#a00211';
-                            else if (dil >= 16.66 && dil < 25) color = '#ffc107';
+                            if (dil < 25) color = '#dc3545'; // red
                             else if (dil >= 25 && dil < 50) color = '#28a745';
                             else color = '#e83e8c';
 

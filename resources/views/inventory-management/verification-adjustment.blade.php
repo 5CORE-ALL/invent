@@ -6155,8 +6155,8 @@
                         colors: ['red', 'green', 'pink']
                     },
                     'E Dil%': {
-                        ranges: [12.5, 16.66, 25, 50],
-                        colors: ['red', 'yellow', 'blue', 'green', 'pink']
+                        ranges: [25, 50],
+                        colors: ['red', 'green', 'pink']
                     },
                     'PFT %': {
                         ranges: [10, 15, 20, 40],

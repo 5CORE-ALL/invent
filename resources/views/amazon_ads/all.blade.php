@@ -1181,8 +1181,7 @@
                 if (!isFinite(inv) || inv === 0) return '#6c757d';
                 var ovl30 = parseFloat(row && row.ovl30) || 0;
                 var dil = (ovl30 / inv) * 100;
-                if (dil < 16.66) return '#a00211';
-                if (dil < 25) return '#ffc107';
+                if (dil < 25) return '#dc3545';
                 if (dil < 50) return '#28a745';
                 return '#e83e8c';
             }

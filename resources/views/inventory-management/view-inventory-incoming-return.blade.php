@@ -2240,8 +2240,7 @@
 
                 const dilTextColor = (dilVal) => {
                     const pct = (parseFloat(dilVal) || 0) * 100;
-                    if (pct < 16.66) return '#a00211';
-                    if (pct < 25) return '#b45309';
+                    if (pct < 25) return '#dc3545';
                     if (pct < 50) return '#198754';
                     return '#c2185b';
                 };
@@ -3594,12 +3593,12 @@
 
                 const colorRules = {
                     'Dil%': {
-                        ranges: [16.66, 25, 50],
-                        colors: ['red', 'yellow', 'green', 'pink']
+                        ranges: [25, 50],
+                        colors: ['red', 'green', 'pink']
                     },
                     'E Dil%': {
-                        ranges: [12.5, 16.66, 25, 50],
-                        colors: ['red', 'yellow', 'blue', 'green', 'pink']
+                        ranges: [25, 50],
+                        colors: ['red', 'green', 'pink']
                     },
                     'PFT %': {
                         ranges: [10, 15, 20, 40],

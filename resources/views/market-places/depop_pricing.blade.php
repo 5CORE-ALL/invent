@@ -356,9 +356,8 @@
                         const ov  = Number(row.ov_l30 || 0);
                         if (inv === 0) return '<span style="color:#6c757d;">0%</span>';
                         const dil = (ov / inv) * 100;
-                        let color = '#a00211';                                  // < 16.66
-                        if (dil >= 16.66 && dil < 25) color = '#ffc107';        // 16.66–25
-                        else if (dil >= 25 && dil < 50) color = '#28a745';      // 25–50
+                        let color = '#dc3545';                                  // < 25
+                        if (dil >= 25 && dil < 50) color = '#28a745';      // 25–50
                         else if (dil >= 50) color = '#e83e8c';                  // >= 50
                         return `<span style="color:${color};font-weight:600;">${Math.round(dil)}%</span>`;
                     }

@@ -343,8 +343,7 @@
                             if (inv <= 0) return '<span style="color:#6c757d;">0%</span>';
                             const dil = (ov / inv) * 100;
                             let color = '#e83e8c';
-                            if (dil < 16.66) color = '#a00211';
-                            else if (dil < 25) color = '#ffc107';
+                            if (dil < 25) color = '#dc3545';
                             else if (dil < 50) color = '#28a745';
                             return '<span style="color:' + color + ';font-weight:600;">' + Math.round(dil) + '%</span>';
                         },

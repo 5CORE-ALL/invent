@@ -62,6 +62,18 @@
         return 'pink-dil';
     }
 
+    /**
+     * DIL% slabs (L30 / INV): red <25 · green 25–50 · pink >=50.
+     * Former yellow 16.7–25% is part of red. No yellow DIL band.
+     */
+    function dilBand(v) {
+        var n = toNum(v);
+        if (!isFinite(n)) return null;
+        if (n < 25) return 'red';
+        if (n < 50) return 'green';
+        return 'pink';
+    }
+
     function bandColor(band) {
         if (band === 'red') return COLORS.red;
         if (band === 'yellow') return COLORS.yellow;
@@ -75,6 +87,7 @@
     function groiColor(v) { return bandColor(groiBand(v)); }
     function npftColor(v) { return bandColor(npftBand(v)); }
     function gpftColor(v) { return bandColor(gpftBand(v)); }
+    function dilColor(v) { return bandColor(dilBand(v)); }
 
     /**
      * CSS style string for a band (yellow gets black text via callers that use styleForCellColor).
@@ -92,6 +105,7 @@
     function groiStyle(v) { return styleFromBand(groiBand(v)); }
     function npftStyle(v) { return styleFromBand(npftBand(v)); }
     function gpftStyle(v) { return styleFromBand(gpftBand(v)); }
+    function dilStyle(v) { return styleFromBand(dilBand(v)); }
 
     /** Map a column/field name to metric kind. */
     function kindFromField(field) {
@@ -108,6 +122,7 @@
         // Generic ROI → GROI; generic PFT → NPFT
         if (f === 'roi' || f.indexOf('roi') !== -1) return 'groi';
         if (f.indexOf('pft') !== -1) return 'npft';
+        if (f === 'dil' || f === 'dilpercent' || f === 'ovdil' || f === 'edil' || f.indexOf('dil') !== -1) return 'dil';
         return null;
     }
 
@@ -116,6 +131,7 @@
         if (kind === 'groi') return groiBand(v);
         if (kind === 'npft') return npftBand(v);
         if (kind === 'gpft') return gpftBand(v);
+        if (kind === 'dil') return dilBand(v);
         return null;
     }
 
@@ -189,6 +205,14 @@
         return classBand(gpftBand(n)) || 'red';
     }
 
+    /** Legacy getDilColor replacement. Fractions (0–1.5) are treated as ratios. */
+    function legacyDilClass(value) {
+        var n = toNum(value);
+        if (!isFinite(n)) return 'red';
+        if (Math.abs(n) <= 1.5) n = n * 100;
+        return classBand(dilBand(n)) || 'red';
+    }
+
     global.MetricPctColors = {
         COLORS: COLORS,
         toNum: toNum,
@@ -196,15 +220,18 @@
         groiBand: groiBand,
         npftBand: npftBand,
         gpftBand: gpftBand,
+        dilBand: dilBand,
         bandFor: bandFor,
         nroiColor: nroiColor,
         groiColor: groiColor,
         npftColor: npftColor,
         gpftColor: gpftColor,
+        dilColor: dilColor,
         nroiStyle: nroiStyle,
         groiStyle: groiStyle,
         npftStyle: npftStyle,
         gpftStyle: gpftStyle,
+        dilStyle: dilStyle,
         kindFromField: kindFromField,
         colorFor: colorFor,
         styleFor: styleFor,
@@ -214,5 +241,6 @@
         htmlForField: htmlForField,
         legacyRoiClass: legacyRoiClass,
         legacyPftClass: legacyPftClass,
+        legacyDilClass: legacyDilClass,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

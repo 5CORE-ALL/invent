@@ -3802,8 +3802,7 @@
             const value = parseFloat(v) || 0;
             let color = '#6c757d';
             if (value === 0) color = '#6c757d';
-            else if (value < 16.7) color = '#a00211';
-            else if (value >= 16.7 && value < 25) color = '#ffc107';
+            else if (value < 25) color = '#dc3545';
             else if (value >= 25 && value < 50) color = '#28a745';
             else color = '#e83e8c';
             const html = '<span style="' + styleForTitleMasterCvrColor(color) + '">' + Math.round(value) + '%</span>';

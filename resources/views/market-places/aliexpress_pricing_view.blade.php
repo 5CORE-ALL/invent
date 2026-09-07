@@ -1942,7 +1942,7 @@
                             const ovL30 = parseFloat(row.ov_l30) || 0;
                             if (inv === 0) return `<span style="color:#6c757d;">0%</span>`;
                             const dil = (ovL30 / inv) * 100;
-                            let color = dil < 25 ? '#a00211' : dil < 50 ? '#28a745' : '#e83e8c';
+                            let color = dil < 25 ? '#dc3545' : dil < 50 ? '#28a745' : '#e83e8c';
                             return `<span style="color:${color};font-weight:600;">${Math.round(dil)}%</span>`;
                         }
                     },

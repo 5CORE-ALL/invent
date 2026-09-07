@@ -92,12 +92,11 @@
                     </select>
 
                     {{-- DIL% slab filter — same color thresholds the Dil column already uses
-                         (<16.66 red, 16.66–25 yellow, 25–50 green, ≥50 pink). DIL = L30 / INV × 100. --}}
+                         (red &lt;25, green 25–50, pink ≥50). DIL = L30 / INV × 100. --}}
                     <select id="dil-filter" class="form-select form-select-sm" style="width: 120px;"
                         title="Filter rows by Dil% color band (L30 / INV × 100)">
                         <option value="all">DIL%</option>
-                        <option value="red">Red (&lt;16.7%)</option>
-                        <option value="yellow">Yellow (16.7–25%)</option>
+                        <option value="red">Red (&lt;25%)</option>
                         <option value="green">Green (25–50%)</option>
                         <option value="pink">Pink (50%+)</option>
                     </select>
@@ -478,8 +477,7 @@
 
                             const dil = (OVL30 / INV) * 100;
                             let color = '';
-                            if (dil < 16.66) color = '#a00211';
-                            else if (dil < 25) color = '#ffc107';
+                            if (dil < 25) color = '#dc3545';
                             else if (dil < 50) color = '#28a745';
                             else color = '#e83e8c';
 
@@ -1172,8 +1170,7 @@
                     const inv = parseFloat(row.INV) || 0;
                     const l30 = parseFloat(row.L30) || 0;
                     const dil = inv === 0 ? 0 : (l30 / inv) * 100;
-                    if (dilFilter === 'red'    && !(dil < 16.66))              return false;
-                    if (dilFilter === 'yellow' && !(dil >= 16.66 && dil < 25)) return false;
+                    if (dilFilter === 'red'    && !(dil < 25)) return false;
                     if (dilFilter === 'green'  && !(dil >= 25 && dil < 50))    return false;
                     if (dilFilter === 'pink'   && !(dil >= 50))                return false;
                 }

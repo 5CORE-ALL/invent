@@ -419,11 +419,9 @@
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
                                     <span class="status-circle default"></span> All DIL</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                                    <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
-                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
+                                    <span class="status-circle green"></span> Green (25–50%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
                                     <span class="status-circle pink"></span> Pink (50%+)</a></li>
                         </ul>
@@ -2221,10 +2219,9 @@
                             const value = parseFloat(cell.getValue()) || 0;
                             const percent = value * 100;
                             let style = '';
-                            if (percent < 16.66) style = 'color: #dc3545; font-weight: 800;'; // red - bold
-                            else if (percent >= 16.66 && percent < 25) style = 'color: #ffc107; font-weight: bold;'; // yellow
-                            else if (percent >= 25 && percent < 50) style = 'color: #28a745; font-weight: bold;'; // green
-                            else style = 'color: #e83e8c; font-weight: 800;'; // pink - bold
+                            if (percent < 25) style = 'color: #dc3545; font-weight: 800;';
+                            else if (percent >= 25 && percent < 50) style = 'color: #28a745; font-weight: bold;';
+                            else style = 'color: #e83e8c; font-weight: 800;';
                             
                             return `<span style="${style}">${Math.round(percent)}%</span>`;
                         }
@@ -2738,8 +2735,7 @@
                         const l30 = parseFloat(data['L30']) || 0;
                         const dil = inv === 0 ? 0 : (l30 / inv) * 100;
                         
-                        if (dilFilter === 'red') return dil < 16.66;
-                        if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                        if (dilFilter === 'red') return dil < 25;
                         if (dilFilter === 'green') return dil >= 25 && dil < 50;
                         if (dilFilter === 'pink') return dil >= 50;
                         return true;

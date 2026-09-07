@@ -1030,16 +1030,13 @@
                                         <span class="status-circle default"></span> All DIL</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="Dil%"
                                         data-color="red">
-                                        <span class="status-circle red"></span> Red</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="Dil%"
-                                        data-color="yellow">
-                                        <span class="status-circle yellow"></span> Yellow</a></li>
+                                        <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="Dil%"
                                         data-color="green">
-                                        <span class="status-circle green"></span> Green</a></li>
+                                        <span class="status-circle green"></span> Green (25–50%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="Dil%"
                                         data-color="pink">
-                                        <span class="status-circle pink"></span> Pink</a></li>
+                                        <span class="status-circle pink"></span> Pink (50%+)</a></li>
                             </ul>
                         </div>
 
@@ -1902,8 +1899,7 @@
 
                 const getDilColor = (value) => {
                     const percent = parseFloat(value) * 100;
-                    if (percent < 16.66) return 'red';
-                    if (percent >= 16.66 && percent < 25) return 'yellow';
+                    if (percent < 25) return 'red';
                     if (percent >= 25 && percent < 50) return 'green';
                     return 'pink';
                 };

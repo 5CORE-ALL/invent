@@ -205,12 +205,10 @@
                                 <span class="amz-sc def"></span>DIL%
                             </button>
                             <ul class="dropdown-menu">
-                                <li><a class="amz-dil-item active" href="#" data-color="all">
+                                <li><a class="amz-dil-item" href="#" data-color="all">
                                     <span class="amz-sc def"></span>All DIL</a></li>
                                 <li><a class="amz-dil-item" href="#" data-color="red">
-                                    <span class="amz-sc red"></span>Red (&lt;16.7%)</a></li>
-                                <li><a class="amz-dil-item" href="#" data-color="yellow">
-                                    <span class="amz-sc yellow"></span>Yellow (16.7–25%)</a></li>
+                                    <span class="amz-sc red"></span>Red (&lt;25%)</a></li>
                                 <li><a class="amz-dil-item" href="#" data-color="green">
                                     <span class="amz-sc green"></span>Green (25–50%)</a></li>
                                 <li><a class="amz-dil-item" href="#" data-color="pink">
@@ -514,8 +512,7 @@
                 if (dilColor !== 'all') {
                     const l30 = parseFloat(d.l30) || 0;
                     const dil = inv === 0 ? 0 : (l30 / inv) * 100;
-                    if (dilColor === 'red'    && !(dil < 16.66)) return false;
-                    if (dilColor === 'yellow' && !(dil >= 16.66 && dil < 25)) return false;
+                    if (dilColor === 'red'    && !(dil < 25)) return false;
                     if (dilColor === 'green'  && !(dil >= 25 && dil < 50)) return false;
                     if (dilColor === 'pink'   && !(dil >= 50)) return false;
                 }
@@ -712,7 +709,7 @@
                             const l30   = parseFloat(row.l30) || 0;
                             if (inv === 0) return `<span style="color:#6c757d;">0%</span>`;
                             const dil   = (l30 / inv) * 100;
-                            const color = dil < 16.66 ? '#a00211' : dil < 25 ? '#ffc107' : dil < 50 ? '#28a745' : '#e83e8c';
+                            const color = dil < 25 ? '#dc3545' : dil < 50 ? '#28a745' : '#e83e8c';
                             return `<span style="color:${color};font-weight:600;">${Math.round(dil)}%</span>`;
                         }
                     },

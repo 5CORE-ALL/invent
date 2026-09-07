@@ -253,12 +253,10 @@
                             <span class="status-circle default"></span> DIL%
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
-                            <li><a class="dropdown-item column-filter active" href="#" data-column="dil_percent" data-color="all">
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
                                     <span class="status-circle default"></span> All DIL</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                                    <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
                                     <span class="status-circle green"></span> Green (25-50%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
@@ -345,7 +343,7 @@
      * 
      * FEATURES:
      * - Display: Image, SKU, INV, OV L30, DIL%
-     * - Color-coded DIL% (Red < 16.7%, Yellow 16.7-25%, Green 25-50%, Pink 50%+)
+     * - Color-coded DIL% (Red < 25%, Green 25-50%, Pink 50%+)
      * - SKU-wise breakdown modal (click info icon on OV L30)
      * - Filters: Inventory, DIL%
      * - Export to CSV
@@ -683,8 +681,7 @@
                         let color = '';
                         
                         if (value === 0) color = '#6c757d';
-                        else if (value < 16.7) color = '#a00211';
-                        else if (value >= 16.7 && value < 25) color = '#ffc107';
+                        else if (value < 25) color = '#dc3545';
                         else if (value >= 25 && value < 50) color = '#28a745';
                         else color = '#e83e8c';
                         
@@ -1381,8 +1378,7 @@
                     const l30 = parseFloat(data['overall_l30']) || 0;
                     const dil = inv === 0 ? 0 : (l30 / inv) * 100;
                     
-                    if (dilFilter === 'red') return dil < 16.7;
-                    if (dilFilter === 'yellow') return dil >= 16.7 && dil < 25;
+                    if (dilFilter === 'red') return dil < 25;
                     if (dilFilter === 'green') return dil >= 25 && dil < 50;
                     if (dilFilter === 'pink') return dil >= 50;
                     return true;

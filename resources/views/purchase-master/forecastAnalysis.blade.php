@@ -2129,8 +2129,8 @@
         /** DIL % display: text color only (red / dark green / magenta). */
         const getDilTextColor = (ratio) => {
             const percent = parseFloat(ratio) * 100;
-            if (percent < 16.66) {
-                return '#b71c1c';
+            if (percent < 25) {
+                return '#dc3545';
             }
             if (percent < 50) {
                 return '#1b5e20';

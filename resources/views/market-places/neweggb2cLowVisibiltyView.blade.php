@@ -939,16 +939,13 @@
                                         <span class="status-circle default"></span> All OV DIL</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="Dil%"
                                         data-color="red">
-                                        <span class="status-circle red"></span> Red</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="Dil%"
-                                        data-color="yellow">
-                                        <span class="status-circle yellow"></span> Yellow</a></li>
+                                        <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="Dil%"
                                         data-color="green">
-                                        <span class="status-circle green"></span> Green</a></li>
+                                        <span class="status-circle green"></span> Green (25–50%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="Dil%"
                                         data-color="pink">
-                                        <span class="status-circle pink"></span> Pink</a></li>
+                                        <span class="status-circle pink"></span> Pink (50%+)</a></li>
                             </ul>
                         </div>
 
@@ -963,16 +960,13 @@
                                         <span class="status-circle default"></span> All N DIL</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="N DIL%"
                                         data-color="red">
-                                        <span class="status-circle red"></span> Red</a></li>
-                                <li><a class="dropdown-item column-filter" href="#" data-column="N DIL%"
-                                        data-color="yellow">
-                                        <span class="status-circle yellow"></span> Yellow</a></li>
+                                        <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="N DIL%"
                                         data-color="green">
-                                        <span class="status-circle green"></span> Green</a></li>
+                                        <span class="status-circle green"></span> Green (25–50%)</a></li>
                                 <li><a class="dropdown-item column-filter" href="#" data-column="N DIL%"
                                         data-color="pink">
-                                        <span class="status-circle pink"></span> Pink</a></li>
+                                        <span class="status-circle pink"></span> Pink (50%+)</a></li>
                             </ul>
                         </div>
 
@@ -2059,9 +2053,7 @@
                     // Helper functions for color coding
                     const getDilColor = (value) => {
                         const percent = parseFloat(value) * 100;
-                        if (percent < 12.5) return 'red';
-                        if (percent >= 12.5 && percent < 16.66) return 'yellow';
-                        if (percent >= 16.66 && percent < 25) return 'blue';
+                        if (percent < 25) return 'red';
                         if (percent >= 25 && percent < 50) return 'green';
                         return 'pink'; // 50 and above
                     };
@@ -3335,12 +3327,12 @@
 
                 const colorRules = {
                     'Dil%': {
-                        ranges: [16.66, 25, 50], // Key change here
-                        colors: ['red', 'yellow', 'green', 'pink']
+                        ranges: [25, 50],
+                        colors: ['red', 'green', 'pink']
                     },
                     'N DIL%': {
-                        ranges: [16.66, 25, 50],
-                        colors: ['red', 'yellow', 'green', 'pink']
+                        ranges: [25, 50],
+                        colors: ['red', 'green', 'pink']
                     },
                     'PFT%': {
                         ranges: [10, 15, 20, 40],

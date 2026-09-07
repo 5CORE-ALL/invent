@@ -1028,8 +1028,7 @@
                 // Function to get DIL color based on value
                 function getDilColor(value) {
                     const percent = parseFloat(value) * 100;
-                    if (percent < 16.66) return 'red';
-                    if (percent >= 16.66 && percent < 25) return 'yellow';
+                    if (percent < 25) return 'red';
                     if (percent >= 25 && percent < 50) return 'green';
                     return 'pink';
                 }
@@ -2104,8 +2103,7 @@
                 // Function to get DIL color based on value
                 function getDilColor(value) {
                     const percent = parseFloat(value) * 100;
-                    if (percent < 16.66) return 'red';
-                    if (percent >= 16.66 && percent < 25) return 'yellow';
+                    if (percent < 25) return 'red';
                     if (percent >= 25 && percent < 50) return 'green';
                     return 'pink';
                 }

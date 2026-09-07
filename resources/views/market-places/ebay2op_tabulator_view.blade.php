@@ -387,9 +387,7 @@
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
                                     <span class="status-circle default"></span> All DIL</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.66%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.66-25%)</a></li>
+                                    <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
                                     <span class="status-circle green"></span> Green (25-50%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
@@ -406,13 +404,11 @@
                             <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="all">
                                 <span class="status-circle default"></span> All OV DIL</a></li>
                             <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="red">
-                                <span class="status-circle red"></span> Red</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="yellow">
-                                <span class="status-circle yellow"></span> Yellow</a></li>
+                                <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                             <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="green">
-                                <span class="status-circle green"></span> Green</a></li>
+                                <span class="status-circle green"></span> Green (25–50%)</a></li>
                             <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_ov_dil" data-color="pink">
-                                <span class="status-circle pink"></span> Pink</a></li>
+                                <span class="status-circle pink"></span> Pink (50%+)</a></li>
                         </ul>
                     </div>
                     <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
@@ -423,13 +419,11 @@
                             <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="all">
                                 <span class="status-circle default"></span> All E Dil</a></li>
                             <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="red">
-                                <span class="status-circle red"></span> Red</a></li>
-                            <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="yellow">
-                                <span class="status-circle yellow"></span> Yellow</a></li>
+                                <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                             <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="green">
-                                <span class="status-circle green"></span> Green</a></li>
+                                <span class="status-circle green"></span> Green (25–50%)</a></li>
                             <li><a class="dropdown-item pmt-column-filter" href="#" data-column="pmt_e_dil" data-color="pink">
-                                <span class="status-circle pink"></span> Pink</a></li>
+                                <span class="status-circle pink"></span> Pink (50%+)</a></li>
                         </ul>
                     </div>
                     <div class="dropdown manual-dropdown-container pmt-ads-filter-item" style="display: none;">
@@ -2206,8 +2200,7 @@
                             }
                             const dil = (el30 / views) * 100;
                             let color = '';
-                            if (dil < 16.66) color = '#a00211';
-                            else if (dil >= 16.66 && dil < 25) color = '#ffc107';
+                            if (dil < 25) color = '#dc3545';
                             else if (dil >= 25 && dil < 50) color = '#28a745';
                             else color = '#e83e8c';
                             return `<span style="color: ${color}; font-weight: 600;" title="Dil = eBay L30 / views">${Math.round(dil)}%</span>`;
@@ -3993,8 +3986,7 @@
                             return dilFilter === 'red';
                         }
                         const dil = (el30 / views) * 100;
-                        if (dilFilter === 'red') return dil < 16.66;
-                        if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                        if (dilFilter === 'red') return dil < 25;
                         if (dilFilter === 'green') return dil >= 25 && dil < 50;
                         if (dilFilter === 'pink') return dil >= 50;
                         return true;
@@ -4127,6 +4119,12 @@
                                     var views = parseFloat(data.views || 0);
                                     var el30 = parseFloat(data['eBay L30'] || 0);
                                     value = views > 0 ? (el30 / views) * 100 : 0;
+                                }
+                                if (column === 'pmt_ov_dil' || column === 'pmt_e_dil') {
+                                    if (colorFilter === 'red') return value < 25;
+                                    if (colorFilter === 'green') return value >= 25 && value < 50;
+                                    if (colorFilter === 'pink') return value >= 50;
+                                    return true;
                                 }
                                 // Color ranges (generic)
                                 if (colorFilter === 'red') return value < 16.66;

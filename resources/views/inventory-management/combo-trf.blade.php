@@ -264,8 +264,7 @@
                     
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="">All DIL%</option>
-                        <option value="red">Red (&lt;16.7%)</option>
-                        <option value="yellow">Yellow (16.7-25%)</option>
+                        <option value="red">Red (&lt;25%)</option>
                         <option value="green">Green (25-50%)</option>
                         <option value="pink">Pink (50%+)</option>
                     </select>
@@ -857,7 +856,7 @@
                     var dilPct = oneItem && oneItem.DIL != null ? Math.round(parseFloat(oneItem.DIL) * 100) : null;
                     var dilClass = '';
                     if (dilPct != null) {
-                        if (dilPct < 16.66) dilClass = 'dil-red'; else if (dilPct < 25) dilClass = 'dil-yellow'; else if (dilPct < 50) dilClass = 'dil-green'; else dilClass = 'dil-pink';
+                        if (dilPct < 25) dilClass = 'dil-red'; else if (dilPct < 50) dilClass = 'dil-green'; else dilClass = 'dil-pink';
                     }
                     $dilSpan.attr('class', 'from-dil-percent ' + dilClass).text(dilPct != null ? dilPct + '%' : '–');
                 }
@@ -1210,8 +1209,7 @@
                         const percent = Math.round(value * 100);
                         let className = '';
                         
-                        if (percent < 16.66) className = 'dil-red';
-                        else if (percent >= 16.66 && percent < 25) className = 'dil-yellow';
+                        if (percent < 25) className = 'dil-red';
                         else if (percent >= 25 && percent < 50) className = 'dil-green';
                         else className = 'dil-pink';
                         
@@ -1433,8 +1431,7 @@
             if (dilVal) {
                 table.addFilter(function(data) {
                     const dil = (parseFloat(data.DIL) || 0) * 100;
-                    if (dilVal === 'red') return dil < 16.66;
-                    if (dilVal === 'yellow') return dil >= 16.66 && dil < 25;
+                    if (dilVal === 'red') return dil < 25;
                     if (dilVal === 'green') return dil >= 25 && dil < 50;
                     if (dilVal === 'pink') return dil >= 50;
                     return true;

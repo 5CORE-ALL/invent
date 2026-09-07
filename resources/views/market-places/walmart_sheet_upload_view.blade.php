@@ -383,9 +383,7 @@
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
                                     <span class="status-circle default"></span> All DIL</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                                    <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
                                     <span class="status-circle green"></span> Green (25-50%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
@@ -2038,13 +2036,11 @@
                         const dil = inv === 0 ? 0 : (ovl30 / inv) * 100;
                         let color = '';
                         
-                        // Red: <16.7% (Critical - low velocity relative to inventory)
-                        // Yellow: 16.7-25% (Warning - moderate velocity) 
+                        // Red: <25% · Green: 25–50% · Pink: 50%+ 
                         // Green: 25-50% (Good - healthy velocity)
                         // Pink: 50%+ (Excellent - high velocity)
                         
-                        if (dil < 16.66) color = '#a00211'; // red
-                        else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
+                        if (dil < 25) color = '#dc3545'; // red
                         else if (dil >= 25 && dil < 50) color = '#28a745'; // green
                         else color = '#e83e8c'; // pink (50 and above)
 
@@ -2968,8 +2964,7 @@
                     const dil = inv === 0 ? 0 : (ovl30 / inv) * 100;
                     
                     // Amazon-style DIL color ranges
-                    if (dilFilter === 'red') return dil < 16.66;
-                    if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                    if (dilFilter === 'red') return dil < 25;
                     if (dilFilter === 'green') return dil >= 25 && dil < 50;
                     if (dilFilter === 'pink') return dil >= 50;
                     return true;

@@ -131,8 +131,7 @@
 
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
                         <option value="all">DIL%</option>
-                        <option value="red">Red &lt;16.7%</option>
-                        <option value="yellow">Yellow 16.7-25%</option>
+                        <option value="red">Red &lt;25%</option>
                         <option value="green">Green 25-50%</option>
                         <option value="pink">Pink 50%+</option>
                     </select>
@@ -2225,8 +2224,7 @@
                             let color = '';
 
                             // Color logic from inc/dec page - getDilColor
-                            if (dil < 16.66) color = '#a00211'; // red
-                            else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
+                            if (dil < 25) color = '#dc3545'; // red
                             else if (dil >= 25 && dil < 50) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink (50 and above)
 
@@ -3326,8 +3324,7 @@
                         const l30 = parseFloat(data['L30']) || 0;
                         const dil = inv === 0 ? 0 : (l30 / inv) * 100;
 
-                        if (dilFilter === 'red') return dil < 16.66;
-                        if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                        if (dilFilter === 'red') return dil < 25;
                         if (dilFilter === 'green') return dil >= 25 && dil < 50;
                         if (dilFilter === 'pink') return dil >= 50;
                         return true;
