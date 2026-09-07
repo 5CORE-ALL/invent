@@ -266,9 +266,12 @@ class MarketplaceApiConfigService
                 'services.macy.client_secret',
             ]),
             'bestbuy' => $this->filledAll([
+                'services.bestbuy.client_id',
+                'services.bestbuy.client_secret',
+            ]) || filled(config('services.bestbuy.mcm_api_key')) || $this->filledAll([
                 'services.macy.client_id',
                 'services.macy.client_secret',
-            ]) || filled(config('services.bestbuy.mcm_api_key')),
+            ]),
             'reverb' => $this->reverbConfigured(),
             'wayfair' => $this->filledAll([
                 'services.wayfair.client_id',
