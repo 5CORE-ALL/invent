@@ -3374,6 +3374,10 @@
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         }
         function chPromoLmp(d) {
+            if (typeof ebayEffectiveLmp === 'function') {
+                const n = Number(ebayEffectiveLmp(d));
+                if (isFinite(n) && n > 0) return n;
+            }
             if (typeof aeEffectiveLmp === 'function') {
                 const n = Number(aeEffectiveLmp(d));
                 if (isFinite(n) && n > 0) return n;
@@ -3394,6 +3398,29 @@
             }
             return 0;
         }
+        /** SGROI at a candidate S PRC — same shape as /ebay-tabulator-view S GROI. */
+        function chPromoSgroiAtPrice(d, price) {
+            const sprice = Number(price);
+            const lp = parseFloat(d && d.LP_productmaster);
+            if (!(sprice > 0) || !(lp > 0)) return null;
+            const ship = parseFloat(d && d.Ship_productmaster) || 0;
+            const margin = (typeof chPromoTakehomeMargin === 'function')
+                ? chPromoTakehomeMargin(d)
+                : 1;
+            return ((sprice * margin - lp - ship) / lp) * 100;
+        }
+        /**
+         * Amazon LMP cap: LMP is lower than S PRC, and SGROI at that LMP is ≥ 20%.
+         * Used for eBay 1–3 so S PRC becomes LMP the same way as /amazon-tabulator-view.
+         */
+        function chPromoEbayShouldCapToLmp(d, sprice) {
+            const lmp = chPromoLmp(d);
+            const s = Number(sprice);
+            if (!(lmp > 0) || !(s > 0) || s + 0.0001 < lmp) return false;
+            const sgroiAtLmp = chPromoSgroiAtPrice(d, lmp);
+            if (sgroiAtLmp != null && sgroiAtLmp < 20) return false;
+            return true;
+        }
         function chPromoIsTiktokPromoChannel() {
             return CHANNEL_PROMO_CHANNEL === 'tiktok' || CHANNEL_PROMO_CHANNEL === 'tiktok2';
         }
@@ -3410,6 +3437,8 @@
                 return false;
             }
             if (!d) return true;
+            // eBay matches Amazon: 0 Sold Dil prices still LMP-cap when SGROI at LMP ≥ 20%.
+            if (chPromoIsEbayChannel()) return true;
             // 0 Sold (AL30 = 0): keep Target GROI% S PRC — do not cap at LMP.
             return !(typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(d));
         }
@@ -3418,13 +3447,20 @@
             if (extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(d)) {
                 return chPromoRound2(sprice);
             }
+            if (chPromoIsEbayChannel()) {
+                if (!chPromoEbayShouldCapToLmp(d, sprice)) return chPromoRound2(sprice);
+                const ebayLmp = chPromoLmp(d);
+                return ebayLmp > 0 ? chPromoRound2(ebayLmp) : chPromoRound2(sprice);
+            }
             const getLmp = (typeof aeEffectiveLmp === 'function')
                 ? aeEffectiveLmp
                 : ((typeof sheinEffectiveLmp === 'function')
                     ? sheinEffectiveLmp
-                    : (window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function'
-                        ? function(row) { return LmpIgnore.effectiveLmp(row); }
-                        : undefined));
+                    : ((typeof ebayEffectiveLmp === 'function')
+                        ? ebayEffectiveLmp
+                        : (window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function'
+                            ? function(row) { return LmpIgnore.effectiveLmp(row); }
+                            : undefined)));
             if (window.SpriceLmpCap) return SpriceLmpCap.prepare(d, sprice, getLmp);
             const lmp = chPromoLmp(d);
             let s = chPromoRound2(sprice);
@@ -8979,9 +9015,13 @@
             }
             if (!(p > 0)) p = chPromoGetSprice(d);
             p = chPromoRound2(p);
-            if (window.SpriceLmpCap && p > 0 && chPromoShouldCapSpriceToLmp(d)) {
-                const cap = SpriceLmpCap.apply(d, p);
-                if (cap && cap.shown > 0) p = chPromoRound2(cap.shown);
+            if (p > 0 && chPromoShouldCapSpriceToLmp(d)) {
+                if (typeof chPromoCapSpriceToLmp === 'function') {
+                    p = chPromoCapSpriceToLmp(d, p);
+                } else if (window.SpriceLmpCap) {
+                    const cap = SpriceLmpCap.apply(d, p);
+                    if (cap && cap.shown > 0) p = chPromoRound2(cap.shown);
+                }
             }
             return p > 0 ? p : 0;
         }
@@ -11570,6 +11610,10 @@
         window.chPromoTemuZeroSoldOwnsSprice = chPromoTemuZeroSoldOwnsSprice;
         window.chPromoTemuZeroSoldSprice = chPromoTemuZeroSoldSprice;
         window.chPromoIsZeroSoldRow = chPromoIsZeroSoldRow;
+        window.chPromoLmp = chPromoLmp;
+        window.chPromoSgroiAtPrice = chPromoSgroiAtPrice;
+        window.chPromoEbayShouldCapToLmp = chPromoEbayShouldCapToLmp;
+        window.chPromoCapSpriceToLmp = chPromoCapSpriceToLmp;
         window.chPromoShouldCapSpriceToLmp = chPromoShouldCapSpriceToLmp;
         window.chPromoZeroSoldTakehomeMargin = chPromoZeroSoldTakehomeMargin;
         window.chPromoListingDil = chPromoListingDil;

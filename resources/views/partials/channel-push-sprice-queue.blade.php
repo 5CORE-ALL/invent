@@ -656,7 +656,8 @@
                 const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (row || {});
                 let p = chPushSpriceRound2(price);
                 if (!force) {
-                    if (window.SpriceLmpCap && d) p = SpriceLmpCap.prepare(d, p);
+                    if (typeof chPromoCapSpriceToLmp === 'function') p = chPromoCapSpriceToLmp(d, p);
+                    else if (window.SpriceLmpCap && d) p = SpriceLmpCap.prepare(d, p);
                     if (typeof chPromoFloorShopifySpriceToAmz === 'function') {
                         p = chPromoFloorShopifySpriceToAmz(d, p);
                     }

@@ -1428,6 +1428,10 @@
          * @param {string} priceKey  'eBay Price' for NROI, 'SPRICE' for SNROI
          */
         function ebaySpriceAmount(rowData) {
+            if (typeof ebayDisplayedSprice === 'function') {
+                const shown = ebayDisplayedSprice(rowData);
+                if (shown > 0) return shown;
+            }
             if (typeof chPromoSavedOrLiveSprice === 'function') {
                 const saved = Number(chPromoSavedOrLiveSprice(rowData));
                 if (isFinite(saved) && saved > 0) return saved;
@@ -1546,6 +1550,66 @@
             }
             return parseFloat(row.lmp_price) || 0;
         }
+        /** SGROI at a candidate price — same formula as the S GROI column. */
+        function ebaySgroiAtPrice(rowData, price) {
+            if (typeof chPromoSgroiAtPrice === 'function') return chPromoSgroiAtPrice(rowData, price);
+            const sprice = parseFloat(price);
+            const lp = parseFloat(rowData && rowData.LP_productmaster);
+            if (!(sprice > 0) || !(lp > 0)) return null;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const marginRaw = parseFloat(rowData.percentage);
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY_TAKEHOME;
+            return ((sprice * margin - lp - ship) / lp) * 100;
+        }
+        /** Same as Amazon: LMP is lower than S PRC, and SGROI at LMP is at least 20%. */
+        function ebayShouldCapSpriceToLmp(rowData, sprice) {
+            if (typeof chPromoEbayShouldCapToLmp === 'function') {
+                return chPromoEbayShouldCapToLmp(rowData, sprice);
+            }
+            const lmp = ebayEffectiveLmp(rowData);
+            const s = parseFloat(sprice);
+            if (!(lmp > 0) || !(s > 0) || s + 0.0001 < lmp) return false;
+            const sgroiAtLmp = ebaySgroiAtPrice(rowData, lmp);
+            if (sgroiAtLmp != null && sgroiAtLmp < 20) return false;
+            return true;
+        }
+        function ebayCapSpriceToLmp(rowData, sprice) {
+            const s = parseFloat(sprice);
+            if (!(s > 0)) return s;
+            if (typeof chPromoCapSpriceToLmp === 'function') {
+                return chPromoCapSpriceToLmp(rowData, s);
+            }
+            if (!ebayShouldCapSpriceToLmp(rowData, s)) return +Number(s).toFixed(2);
+            const lmp = ebayEffectiveLmp(rowData);
+            return lmp > 0 ? +Number(lmp).toFixed(2) : +Number(s).toFixed(2);
+        }
+        function ebayRawRuleSprice(rowData) {
+            if (!rowData || rowData.is_parent_summary) return 0;
+            let saved = 0;
+            if (typeof chPromoSavedOrLiveSprice === 'function') {
+                saved = Number(chPromoSavedOrLiveSprice(rowData)) || 0;
+            }
+            if (!(saved > 0)) {
+                saved = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
+            }
+            if (!(saved > 0)) return 0;
+            if (typeof ebaySprcDilForRow === 'function') {
+                const dil = Number(ebaySprcDilForRow(rowData)) || 0;
+                if (dil > 0) return dil;
+            }
+            return saved;
+        }
+        /** Visible S PRC = Dil / saved rule price, LMP-capped like Amazon. */
+        function ebayDisplayedSprice(rowData) {
+            const raw = ebayRawRuleSprice(rowData);
+            if (!(raw > 0)) return 0;
+            const shown = ebayCapSpriceToLmp(rowData, raw);
+            return shown > 0 ? shown : raw;
+        }
+        window.ebaySgroiAtPrice = ebaySgroiAtPrice;
+        window.ebayShouldCapSpriceToLmp = ebayShouldCapSpriceToLmp;
+        window.ebayCapSpriceToLmp = ebayCapSpriceToLmp;
+        window.ebayDisplayedSprice = ebayDisplayedSprice;
         function ebayApplyL1FromEntries(row) {
             if (!row || row.is_parent_summary) return row;
             const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
@@ -3240,6 +3304,10 @@
             }
             function ebay1RowSpriceForAlert(data) {
                 if (ebay1IsAlertParentRow(data)) return 0;
+                if (typeof ebayDisplayedSprice === 'function') {
+                    const shown = ebayDisplayedSprice(data);
+                    if (shown > 0) return shown;
+                }
                 if (typeof chPromoSavedOrLiveSprice === 'function') {
                     return chPromoSavedOrLiveSprice(data) || 0;
                 }
@@ -3441,7 +3509,9 @@
                 if (row && Number(sprice) > 0) {
                     sprice = (typeof chPromoFinalSpriceToSave === 'function')
                         ? chPromoFinalSpriceToSave(row.getData(), sprice)
-                        : (window.SpriceLmpCap ? SpriceLmpCap.prepare(row.getData(), sprice) : sprice);
+                        : (typeof ebayCapSpriceToLmp === 'function'
+                            ? ebayCapSpriceToLmp(row.getData(), sprice)
+                            : (window.SpriceLmpCap ? SpriceLmpCap.prepare(row.getData(), sprice) : sprice));
                 }
                 if (!skipClear && retryCount === 0 && Number(sprice) > 0) {
                     if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
@@ -4866,22 +4936,42 @@
                         title: "S PRC",
                         field: "SPRICE",
                         hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = (typeof ebaySpriceAmount === 'function')
+                                ? (ebaySpriceAmount(aRow.getData()) || 0)
+                                : (parseFloat(a) || 0);
+                            const bv = (typeof ebaySpriceAmount === 'function')
+                                ? (ebaySpriceAmount(bRow.getData()) || 0)
+                                : (parseFloat(b) || 0);
+                            return av - bv;
+                        },
                         editable: false,
-                        headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, including 0 Sold). Red triangle = S PRC ≥ LMP. Blue triangle = S PRC ≠ Price.",
+                        headerTooltip: "Read-only. Sprc Dil / saved S PRC. If LMP is lower than S PRC, S PRC becomes LMP — unless SGROI at that LMP would be < 20%, then LMP is not applied. Red triangle stays when S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            let sprice = (typeof chPromoSavedOrLiveSprice === 'function')
-                                ? chPromoSavedOrLiveSprice(rowData)
-                                : (parseFloat(rowData.SPRICE) || 0);
-                            if (!(sprice > 0)) {
-                                return '';
-                            }
-                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, sprice) : null;
+                            if (rowData.is_parent_summary) return '';
+                            const raw = (typeof ebayRawRuleSprice === 'function')
+                                ? ebayRawRuleSprice(rowData)
+                                : ((typeof chPromoSavedOrLiveSprice === 'function')
+                                    ? chPromoSavedOrLiveSprice(rowData)
+                                    : (parseFloat(rowData.SPRICE) || 0));
+                            if (!(raw > 0)) return '';
 
-                            const formattedValue = `$${Number(sprice).toFixed(2)}`;
-                            const lmp = cap ? cap.lmp : ((typeof ebayEffectiveLmp === 'function')
+                            const lmpNow = (typeof ebayEffectiveLmp === 'function')
                                 ? ebayEffectiveLmp(rowData)
-                                : (parseFloat(rowData.lmp_price) || 0));
+                                : (parseFloat(rowData.lmp_price) || 0);
+                            const shown = (typeof ebayCapSpriceToLmp === 'function')
+                                ? ebayCapSpriceToLmp(rowData, raw)
+                                : raw;
+                            const sprice = shown > 0 ? shown : raw;
+                            const wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
+                            const appliedLmp = wouldHitLmp && sprice + 0.0001 <= lmpNow + 0.0001;
+                            const atOrAboveLmp = wouldHitLmp;
+                            const sgroiAtLmp = (typeof ebaySgroiAtPrice === 'function')
+                                ? ebaySgroiAtPrice(rowData, lmpNow)
+                                : null;
+
                             const sku = rowData['(Child) sku'] || '';
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
 
@@ -4914,23 +5004,29 @@
                                 : '';
 
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
-                            const differsFromPrice = ebayPrice > 0
-                                && Math.round(sprice * 100) !== Math.round(ebayPrice * 100);
-                            const blueTri = differsFromPrice
+                            const redTri = atOrAboveLmp
+                                ? (appliedLmp
+                                    ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
+                                        + Number(lmpNow).toFixed(2) + '"></i>'
+                                    : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
+                                        + Number(lmpNow).toFixed(2)
+                                        + ' not applied — SGROI would be '
+                                        + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?')
+                                        + '% (&lt; 20%)"></i>')
+                                : '';
+                            const blueTri = (!atOrAboveLmp && ebayPrice > 0 && sprice > 0
+                                && Math.round(sprice * 100) !== Math.round(ebayPrice * 100))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
                                 : '';
 
-                            const atOrAboveLmp = cap ? cap.alert : (lmp > 0 && sprice + 0.0001 >= lmp);
-                            let priceHtml = formattedValue;
+                            let formattedValue = '$' + Number(sprice).toFixed(2);
                             if (atOrAboveLmp) {
-                                priceHtml = `<span style="color: #dc3545; font-weight: 600;">${formattedValue}</span>`;
+                                formattedValue = '<span style="color: #dc3545; font-weight: 600;">' + formattedValue + '</span>';
                             }
-                            const redTri = atOrAboveLmp
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Saved S PRC ≥ LMP $' + Number(lmp).toFixed(2) + '"></i>'
-                                : '';
 
-                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${priceHtml}${redTri}${blueTri}${dotBtn}</span>`;
+                            return '<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">'
+                                + formattedValue + redTri + blueTri + dotBtn + '</span>';
                         },
                         cellClick: function(e) {
                             const el = e.target.closest('.view-sku-chart') || e.target.closest('.ch-pef-hist-dot');
@@ -4950,7 +5046,7 @@
                         field: "SGROI",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "S GROI from S PRC (SPRICE).",
+                        headerTooltip: "S GROI from the visible S PRC. LMP cap (when SGROI at LMP ≥ 20%) can lower the shown %.",
                         formatter: function(cell) {
                             const percent = ebayComputeSgroiFromSprice(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';

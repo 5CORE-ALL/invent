@@ -16843,6 +16843,32 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => $chartData]);
             }
 
+            if (! $isAll && $metric === 'l30_sales' && $channel === 'depop') {
+                $chartData = $this->buildDepopLiveRollingSalesChart($days, 30);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
+            if (! $isAll && $metric === 'l60_sales' && $channel === 'depop') {
+                $chartData = $this->buildDepopLiveL60SalesChart($days);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
             // All-channel Y Sales badge: snapshots only (no per-channel live order
             // lookups). The old path called realPacificDayYSales for every channel
             // × day and made the badge take many seconds to open.
@@ -19448,6 +19474,34 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Per-day Depop sheet sales (item_price × qty), same rows as /depop/sheet.
+     *
+     * @return array<string, array{sales: float}>
+     */
+    private function depopDailySalesByDate(Carbon $start, Carbon $end): array
+    {
+        $out = [];
+        if (! Schema::hasTable('depop_sales_data')) {
+            return $out;
+        }
+
+        $rows = DB::table('depop_sales_data')
+            ->whereDate('sale_date', '>=', $start->toDateString())
+            ->whereDate('sale_date', '<=', $end->toDateString())
+            ->selectRaw('DATE(sale_date) as d, COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
+            ->groupBy('d')
+            ->get();
+        foreach ($rows as $row) {
+            $d = (string) ($row->d ?? '');
+            if ($d !== '') {
+                $out[$d] = ['sales' => (float) $row->revenue];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Depop Y Sales chart from depop_sales_data (same rows as /depop/sheet).
      * Daily snapshots stay $0 until the next sheet upload + calculate, so the
      * graph must not read those frozen zeros.
@@ -19460,30 +19514,68 @@ class ChannelMasterController extends Controller
         $end = now($tz)->subDay()->startOfDay();
         $span = $days > 0 ? $days : 7;
         $start = $end->copy()->subDays($span - 1);
-        $byDate = [];
-
-        if (Schema::hasTable('depop_sales_data')) {
-            $rows = DB::table('depop_sales_data')
-                ->whereDate('sale_date', '>=', $start->toDateString())
-                ->whereDate('sale_date', '<=', $end->toDateString())
-                ->selectRaw('DATE(sale_date) as d, COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
-                ->groupBy('d')
-                ->get();
-            foreach ($rows as $row) {
-                $d = (string) ($row->d ?? '');
-                if ($d !== '') {
-                    $byDate[$d] = (float) $row->revenue;
-                }
-            }
-        }
+        $byDate = $this->depopDailySalesByDate($start, $end);
 
         $out = [];
         $cursor = $start->copy();
         while ($cursor->lte($end)) {
             $ymd = $cursor->toDateString();
+            $cell = $byDate[$ymd] ?? ['sales' => 0];
             $out[] = [
                 'date' => $cursor->format('M d'),
-                'value' => round((float) ($byDate[$ymd] ?? 0), 2),
+                'value' => round((float) ($cell['sales'] ?? 0), 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * Depop Sales column: rolling 30-day sheet totals through Pacific yesterday.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildDepopLiveRollingSalesChart(int $days, int $windowDays): array
+    {
+        $end = now('America/Los_Angeles')->subDay();
+        $span = $days > 0 ? $days : 90;
+        $chartStart = $end->copy()->subDays($span - 1);
+        $dataStart = $chartStart->copy()->subDays(max(1, $windowDays) - 1);
+        $byDay = $this->depopDailySalesByDate($dataStart->copy()->startOfDay(), $end->copy()->endOfDay());
+
+        return TemuShopifySalesService::rollingSalesSeries($byDay, $chartStart, $end, $windowDays);
+    }
+
+    /**
+     * Depop L60 column: prior 30-day sheet window (D−59 … D−30), same as the table cell.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildDepopLiveL60SalesChart(int $days): array
+    {
+        $end = now('America/Los_Angeles')->subDay();
+        $span = $days > 0 ? $days : 90;
+        $chartStart = $end->copy()->subDays($span - 1);
+        $dataStart = $chartStart->copy()->subDays(59);
+        $dataEnd = $end->copy()->subDays(30);
+        $byDay = $this->depopDailySalesByDate($dataStart->copy()->startOfDay(), $dataEnd->copy()->endOfDay());
+
+        $out = [];
+        $cursor = $chartStart->copy();
+        while ($cursor->lte($end)) {
+            $sum = 0.0;
+            $winStart = $cursor->copy()->subDays(59);
+            $winEnd = $cursor->copy()->subDays(30);
+            $day = $winStart->copy();
+            while ($day->lte($winEnd)) {
+                $cell = $byDay[$day->toDateString()] ?? ['sales' => 0];
+                $sum += (float) ($cell['sales'] ?? 0);
+                $day->addDay();
+            }
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round($sum, 2),
             ];
             $cursor->addDay();
         }
