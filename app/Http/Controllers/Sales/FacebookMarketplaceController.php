@@ -78,6 +78,111 @@ class FacebookMarketplaceController extends Controller
     }
 
     /**
+     * Limit a facebook_marketplace_sales query to an inclusive Pacific date range.
+     * Prefers order_date; uses created_at only when order_date is null.
+     */
+    public static function constrainToPacificDateRange($query, string $startDate, string $endDate): void
+    {
+        $tz = 'America/Los_Angeles';
+        $rangeStartUtc = Carbon::parse($startDate, $tz)->startOfDay()->utc();
+        $rangeEndUtc = Carbon::parse($endDate, $tz)->endOfDay()->utc();
+
+        $query->where(function ($q) use ($startDate, $endDate, $rangeStartUtc, $rangeEndUtc) {
+            $q->whereBetween('order_date', [$startDate, $endDate])
+                ->orWhere(function ($q2) use ($rangeStartUtc, $rangeEndUtc) {
+                    $q2->whereNull('order_date')
+                        ->whereBetween('created_at', [
+                            $rangeStartUtc->toDateTimeString(),
+                            $rangeEndUtc->toDateTimeString(),
+                        ]);
+                });
+        });
+    }
+
+    /**
+     * Per-SKU qty / sales / avg sold_price in the same L30 window as /facebook-marketplace badges.
+     *
+     * @return array<string, array{qty: int, sales: float, price: float}>
+     */
+    public static function l30MetricsBySku(): array
+    {
+        $range = self::l30PacificRange();
+        $query = FacebookMarketplaceSale::query()
+            ->select(
+                'sku',
+                DB::raw('SUM(qty_sold) as total_sold'),
+                DB::raw('SUM(sold_price * qty_sold) as total_sales')
+            )
+            ->groupBy('sku');
+        self::constrainToPacificDateRange($query, $range['start'], $range['end']);
+
+        $out = [];
+        foreach ($query->get() as $row) {
+            $key = strtoupper(trim((string) $row->sku));
+            if ($key === '') {
+                continue;
+            }
+            $qty = (int) $row->total_sold;
+            $sales = (float) $row->total_sales;
+            $metrics = [
+                'qty' => ($out[$key]['qty'] ?? 0) + $qty,
+                'sales' => ($out[$key]['sales'] ?? 0) + $sales,
+                'price' => 0.0,
+            ];
+            $metrics['price'] = $metrics['qty'] > 0
+                ? round($metrics['sales'] / $metrics['qty'], 2)
+                : 0.0;
+            $out[$key] = $metrics;
+            $out[str_replace(' ', '', $key)] = $metrics;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Per-SKU qty sold in the same L30 window as /facebook-marketplace badges.
+     *
+     * @return array<string, int>
+     */
+    public static function l30SoldQtyBySku(): array
+    {
+        $out = [];
+        foreach (self::l30MetricsBySku() as $sku => $m) {
+            $out[$sku] = (int) ($m['qty'] ?? 0);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Latest uploaded sold_price per SKU (any date) — fallback when L30 has no rows.
+     *
+     * @return array<string, float>
+     */
+    public static function latestSoldPriceBySku(): array
+    {
+        $rows = FacebookMarketplaceSale::query()
+            ->orderByDesc('id')
+            ->get(['sku', 'sold_price']);
+
+        $out = [];
+        foreach ($rows as $row) {
+            $key = strtoupper(trim((string) $row->sku));
+            if ($key === '' || isset($out[$key])) {
+                continue;
+            }
+            $price = (float) $row->sold_price;
+            if ($price <= 0) {
+                continue;
+            }
+            $out[$key] = round($price, 2);
+            $out[str_replace(' ', '', $key)] = $out[$key];
+        }
+
+        return $out;
+    }
+
+    /**
      * Y Sales — sold_price × qty for Pacific (California) wall-clock yesterday.
      * Same source/rule as the FB Marketplace row on /all-marketplace-master.
      * Prefers order_date; falls back to created_at (PT calendar day) when order_date is null.

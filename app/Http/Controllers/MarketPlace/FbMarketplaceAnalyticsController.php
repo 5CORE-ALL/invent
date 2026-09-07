@@ -7,13 +7,11 @@ use Illuminate\Http\Request;
 use App\Models\MarketplacePercentage;
 use App\Models\FbMarketplacePriceSoldData;
 use App\Models\FBMarketplaceListingStatus;
-use App\Models\FbMarketplaceSheetdata;
-use App\Models\FacebookMarketplaceSale;
+use App\Http\Controllers\Sales\FacebookMarketplaceController;
 use App\Models\ProductMaster;
 use App\Models\AmazonDataView;
 use App\Models\ShopifySku;
 use App\Services\ChannelPromoPricingService;
-use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -33,25 +31,23 @@ class FbMarketplaceAnalyticsController extends Controller
         // Fetch Shopify data (inventory + image) for these SKUs
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-        // Manual price upload overrides (may be empty — sheet is the primary source)
-        $priceSoldData = FbMarketplacePriceSoldData::whereIn('sku', $skus)->get()->keyBy('sku');
-
-        // Primary price / L30 sold from synced sheet (same source as Ads / Channel Master)
-        $sheetBySku = FbMarketplaceSheetdata::all()->keyBy(function ($row) {
-            return strtoupper(trim((string) $row->sku));
-        });
+        // Price upload on this page (sku / price) — never the synced sheet
+        $priceSoldBySku = [];
+        foreach (FbMarketplacePriceSoldData::all() as $row) {
+            $key = strtoupper(trim((string) $row->sku));
+            if ($key === '') {
+                continue;
+            }
+            $priceSoldBySku[$key] = $row;
+            $priceSoldBySku[str_replace(' ', '', $key)] = $row;
+        }
 
         // Fetch listing statuses (sprice / nr_req / approved / links) keyed by SKU
         $listingStatusData = FBMarketplaceListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
-        // Order-upload fallback for sold qty (/facebook-marketplace)
-        $fbSalesBySku = FacebookMarketplaceSale::query()
-            ->select('sku', DB::raw('SUM(qty_sold) as total_sold'))
-            ->groupBy('sku')
-            ->pluck('total_sold', 'sku')
-            ->mapWithKeys(function ($total, $sku) {
-                return [strtoupper(trim((string) $sku)) => (int) $total];
-            });
+        // FB L30 sold + avg sold_price — same last-30 Pacific-day window as /facebook-marketplace
+        $fbL30BySku = FacebookMarketplaceController::l30MetricsBySku();
+        $fbLatestPriceBySku = FacebookMarketplaceController::latestSoldPriceBySku();
 
         // Margin from marketplace_percentages (same source as /facebook-marketplace)
         $mpRow = MarketplacePercentage::where('marketplace', 'FB Marketplace')->first()
@@ -86,9 +82,10 @@ class FbMarketplaceAnalyticsController extends Controller
                 ? $productMaster->Values
                 : (json_decode($productMaster->Values, true) ?: []);
             $shopifyItem = $shopifyData[$sku] ?? null;
-            $priceSold = $priceSoldData[$sku] ?? null;
             $skuKey = strtoupper(trim((string) $sku));
-            $sheet = $sheetBySku[$skuKey] ?? null;
+            $skuKeyNs = str_replace(' ', '', $skuKey);
+            $priceSold = $priceSoldBySku[$skuKey] ?? $priceSoldBySku[$skuKeyNs] ?? null;
+            $l30 = $fbL30BySku[$skuKey] ?? $fbL30BySku[$skuKeyNs] ?? null;
 
             // Buyer/Seller links & saved fields from listing status
             $statusValue = $listingStatusData[$sku]->value ?? [];
@@ -96,16 +93,14 @@ class FbMarketplaceAnalyticsController extends Controller
                 $statusValue = json_decode($statusValue, true) ?: [];
             }
 
-            // Price: uploaded override → sheet price (channel master source)
-            $price = (float) ($priceSold->price ?? $sheet->price ?? 0);
-            // L30 sold: sheet l30 → uploaded sold → order-upload qty
-            $soldL30 = (int) ($sheet->l30 ?? 0);
-            if ($soldL30 <= 0 && $priceSold && isset($priceSold->sold)) {
-                $soldL30 = (int) $priceSold->sold;
-            }
-            if ($soldL30 <= 0) {
-                $soldL30 = (int) ($fbSalesBySku[$skuKey] ?? 0);
-            }
+            // Price + L30: uploaded FB Sales / price-sold only — never sheet
+            $uploadedPrice = $priceSold && $priceSold->price !== null && $priceSold->price !== ''
+                ? (float) $priceSold->price
+                : 0.0;
+            $price = $uploadedPrice > 0
+                ? $uploadedPrice
+                : (float) ($l30['price'] ?? $fbLatestPriceBySku[$skuKey] ?? $fbLatestPriceBySku[$skuKeyNs] ?? 0);
+            $soldL30 = (int) ($l30['qty'] ?? 0);
             $lp = (float) ($values['lp'] ?? 0);
             $ship = (float) ($values['ship'] ?? 0);
             $inv = (float) ($shopifyItem->inv ?? 0);
@@ -126,7 +121,7 @@ class FbMarketplaceAnalyticsController extends Controller
 
             $ovL30 = (float) ($shopifyItem->quantity ?? 0);
             $dil = $inv > 0 ? ($ovL30 / $inv) * 100 : 0;
-            $views = (int) ($sheet?->views ?? 0);
+            $views = 0;
             $cvr = $views > 0 ? ($soldL30 / $views) * 100 : 0;
 
             $row = [
