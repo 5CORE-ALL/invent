@@ -21,12 +21,12 @@
                 <i class="ri-checkbox-circle-line fs-5 mt-1"></i>
                 <div>
                     <strong>Credentials found in .env</strong>
-                    <p class="mb-0 small">Mirakl Connect OAuth (<code>MACY_CLIENT_ID</code> / <code>MACY_CLIENT_SECRET</code>) and/or <code>BESTBUY_MCM_API_KEY</code> is configured. Click <strong>Test connection</strong> to verify Mirakl Connect for channel <code>bestbuyusa</code>.</p>
+                    <p class="mb-0 small">Best Buy Mirakl MCM (<code>BESTBUY_MCM_API_KEY</code> / shop {{ $shopId ?? '—' }}) and/or Connect OAuth is configured. Price push uses MCM PRI01 on <code>bestbuyus-prod.mirakl.net</code>.</p>
                 </div>
             </div>
         @else
             <div class="alert alert-warning">
-                <strong>Setup required</strong> — add Macy Mirakl Connect OAuth (<code>MACY_CLIENT_ID</code> + <code>MACY_CLIENT_SECRET</code>) or <code>BESTBUY_MCM_API_KEY</code> to <code>.env</code>, then refresh.
+                <strong>Setup required</strong> — add <code>BESTBUY_MCM_API_KEY</code>, <code>BESTBUY_SHOP_ID</code>, <code>BESTBUY_CLIENT_ID</code>, and <code>BESTBUY_CLIENT_SECRET</code> to <code>.env</code>, then refresh.
             </div>
         @endif
 
@@ -43,8 +43,7 @@
                     </div>
                     <div class="card-body">
                         <p class="text-muted mb-3">
-                            Best Buy uses Mirakl Connect channel <code>bestbuyusa</code> with shared Macy OAuth credentials.
-                            Shopify B2C is the source shop for inventory sync and order import.
+                            Best Buy live prices are updated on Mirakl MCM offers (shop API). Connect channel <code>bestbuyusa</code> is used for catalog. Shopify B2C is the source shop for inventory sync and order import.
                         </p>
 
                         <table class="table table-sm table-bordered mb-4">
@@ -56,7 +55,7 @@
                                             <span class="cred-ok"><i class="ri-check-line"></i> Set</span>
                                             <span class="cred-mask text-muted ms-2">client_id {{ $maskedMacyClientId ?? '—' }}</span>
                                         @else
-                                            <span class="cred-miss">Missing — <code>MACY_CLIENT_ID</code> + <code>MACY_CLIENT_SECRET</code></span>
+                                            <span class="cred-miss">Missing — <code>BESTBUY_CLIENT_ID</code> + <code>BESTBUY_CLIENT_SECRET</code></span>
                                         @endif
                                     </td>
                                 </tr>
@@ -67,9 +66,13 @@
                                             <span class="cred-ok"><i class="ri-check-line"></i> Set</span>
                                             <span class="cred-mask text-muted ms-2">{{ $maskedMcmApiKey }}</span>
                                         @else
-                                            <span class="text-muted">Optional — <code>BESTBUY_MCM_API_KEY</code></span>
+                                            <span class="cred-miss">Missing — required for price push</span>
                                         @endif
                                     </td>
+                                </tr>
+                                <tr>
+                                    <th>Shop ID</th>
+                                    <td><code>{{ $shopId ?? '—' }}</code></td>
                                 </tr>
                                 <tr>
                                     <th>MCM Base URL</th>

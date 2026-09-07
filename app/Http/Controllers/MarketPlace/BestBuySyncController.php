@@ -42,8 +42,8 @@ class BestBuySyncController extends Controller
     public function connect(Request $request): View
     {
         $mcmKey = (string) config('services.bestbuy.mcm_api_key', '');
-        $macyClientId = (string) config('services.macy.client_id', '');
-        $macySecret = (string) config('services.macy.client_secret', '');
+        $clientId = (string) config('services.bestbuy.client_id', '');
+        $clientSecret = (string) config('services.bestbuy.client_secret', '');
         $credentialsReady = $this->bbApi->isConfigured();
         $mcmBaseUrl = (string) config('services.bestbuy.mcm_base_url', 'https://bestbuyus-prod.mirakl.net');
 
@@ -52,9 +52,10 @@ class BestBuySyncController extends Controller
             'connected' => $this->apiConfig->isConfigured('bestbuy'),
             'credentialsReady' => $credentialsReady,
             'hasMcmApiKey' => filled($mcmKey),
-            'hasMiraklOAuth' => filled($macyClientId) && filled($macySecret),
+            'hasMiraklOAuth' => filled($clientId) && filled($clientSecret),
             'maskedMcmApiKey' => $this->maskCredential($mcmKey, 4, 4),
-            'maskedMacyClientId' => $this->maskCredential($macyClientId, 4, 4),
+            'maskedMacyClientId' => $this->maskCredential($clientId, 4, 4),
+            'shopId' => config('services.bestbuy.shop_id'),
             'mcmBaseUrl' => $mcmBaseUrl,
         ]);
     }
@@ -64,7 +65,7 @@ class BestBuySyncController extends Controller
         if (! $this->bbApi->isConfigured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Best Buy API credentials missing. Set MACY_CLIENT_ID + MACY_CLIENT_SECRET (Mirakl Connect) or BESTBUY_MCM_API_KEY in .env.',
+                'message' => 'Best Buy API credentials missing. Set BESTBUY_MCM_API_KEY + BESTBUY_SHOP_ID (and BESTBUY_CLIENT_ID / BESTBUY_CLIENT_SECRET for Connect).',
             ]);
         }
 

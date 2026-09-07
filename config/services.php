@@ -309,6 +309,9 @@ return [
     ],
 
     'bestbuy' => [
+        'client_id' => env('BESTBUY_CLIENT_ID'),
+        'client_secret' => env('BESTBUY_CLIENT_SECRET'),
+        'company_id' => env('BESTBUY_COMPANY_ID'),
         /** Best Buy MCM Seller API (PM11/P41/P42) — Shop API Key from bestbuyus-prod.mirakl.net */
         'mcm_api_key' => env('BESTBUY_MCM_API_KEY'),
         'mcm_base_url' => env('BESTBUY_MCM_BASE_URL', 'https://bestbuyus-prod.mirakl.net'),

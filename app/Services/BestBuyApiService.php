@@ -48,11 +48,22 @@ class BestBuyApiService
 
     protected function getAccessToken()
     {
+        $clientId = trim((string) config('services.bestbuy.client_id', ''));
+        $clientSecret = trim((string) config('services.bestbuy.client_secret', ''));
+        if ($clientId === '' || $clientSecret === '') {
+            $clientId = trim((string) config('services.macy.client_id', ''));
+            $clientSecret = trim((string) config('services.macy.client_secret', ''));
+        }
+        if ($clientId === '' || $clientSecret === '') {
+            return null;
+        }
+
         $response = Http::withoutVerifying()->asForm()->post('https://auth.mirakl.net/oauth/token', [
             'grant_type' => 'client_credentials',
-            'client_id' => config('services.macy.client_id'),
-            'client_secret' => config('services.macy.client_secret'),
+            'client_id' => $clientId,
+            'client_secret' => $clientSecret,
         ]);
+
         return $response->successful() ? $response->json()['access_token'] : null;
     }
 
@@ -506,89 +517,155 @@ class BestBuyApiService
     }
 
     /**
-     * Push price update to Best Buy (Mirakl Connect).
+     * Push listed price via Mirakl MCM PRI01. Best Buy live price is on the offer, not Connect catalog.
      *
-     * @return array{success: bool, message: string}
+     * @return array{success: bool, message: string, status_code?: int|null, import_id?: string|null}
      */
     public function updatePrice(string $sku, float $price): array
     {
         $sku = trim($sku);
+        $price = round((float) $price, 2);
         if ($sku === '' || $price <= 0) {
             return ['success' => false, 'message' => 'Valid SKU and price are required.', 'status_code' => 422];
         }
 
-        $token = $this->getAccessToken();
-        if (! $token) {
-            return ['success' => false, 'message' => 'Best Buy / Mirakl access token not available.', 'status_code' => 401];
+        $apiKey = $this->miraklMcmApiKey();
+        $baseUrl = rtrim((string) config('services.bestbuy.mcm_base_url', 'https://bestbuyus-prod.mirakl.net'), '/');
+        if ($apiKey === null || $apiKey === '' || $baseUrl === '') {
+            return [
+                'success' => false,
+                'message' => 'Best Buy MCM API key is not configured (BESTBUY_MCM_API_KEY).',
+                'status_code' => 401,
+            ];
         }
 
-        $baseUrl = 'https://miraklconnect.com/api/products';
-        $productPayload = [
-            'id' => $sku,
-            'attributes' => [
-                'price' => round($price, 2),
-            ],
-        ];
+        $offerSku = $this->resolveMcmOfferSku($sku, $apiKey, $baseUrl);
+        if ($offerSku === null) {
+            return [
+                'success' => false,
+                'message' => "No Best Buy MCM offer found for SKU: {$sku}",
+                'status_code' => 404,
+            ];
+        }
 
-        $headers = [
-            'Accept' => 'application/json',
-            'Content-Type' => 'application/json',
-            'channel_id' => $this->miraklChannelCode(),
-        ];
+        $csv = "offer-sku;price\n"
+            .'"'.str_replace('"', '""', $offerSku).'";'
+            .number_format($price, 2, '.', '')."\n";
+
+        $query = [];
+        $shopId = config('services.bestbuy.shop_id');
+        if ($shopId !== null && $shopId !== '') {
+            $query['shop_id'] = (int) $shopId;
+        }
 
         try {
-            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
-            $response = $request->post($baseUrl, ['products' => [$productPayload]]);
-            if (! $response->successful()) {
-                $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
+            $url = $baseUrl.'/api/offers/pricing/imports';
+            if ($query !== []) {
+                $url .= '?'.http_build_query($query);
             }
-            if (! $response->successful()) {
-                $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
-            }
+
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => $apiKey,
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(60)
+                ->attach('file', $csv, 'bb-price-'.preg_replace('/[^A-Za-z0-9_-]+/', '_', $offerSku).'.csv')
+                ->post($url);
 
             if (! $response->successful()) {
-                return [
-                    'success' => false,
-                    'message' => 'Best Buy price update failed: ' . $response->body(),
-                    'status_code' => $response->status(),
-                ];
-            }
-
-            $json = $response->json();
-            $hasApiError = false;
-            $apiErrorMessage = '';
-            if (is_array($json)) {
-                $hasApiError = ! empty($json['errors'])
-                    || ! empty($json['error'])
-                    || ! empty($json['error_message'])
-                    || (isset($json['success']) && $json['success'] === false)
-                    || ((isset($json['status']) && is_string($json['status'])) && strtolower($json['status']) === 'error');
-
-                if ($hasApiError) {
-                    $apiErrorMessage = (string) ($json['error_message']
-                        ?? $json['error']
-                        ?? (is_array($json['errors']) ? json_encode($json['errors']) : $json['errors'])
-                        ?? 'Unknown API error');
-                }
-            }
-
-            if ($hasApiError) {
-                Log::warning('Best Buy price update returned API error payload', [
+                Log::warning('Best Buy MCM PRI01 price push failed', [
                     'sku' => $sku,
+                    'offer_sku' => $offerSku,
                     'status' => $response->status(),
-                    'response' => $json,
+                    'body' => substr($response->body(), 0, 800),
                 ]);
+
                 return [
                     'success' => false,
-                    'message' => 'Best Buy price update failed: ' . $apiErrorMessage,
+                    'message' => 'Best Buy price push failed: HTTP '.$response->status().' '.substr($response->body(), 0, 300),
                     'status_code' => $response->status(),
                 ];
-                
             }
 
-            return ['success' => true, 'message' => 'Best Buy price updated.', 'status_code' => $response->status()];
+            $json = $response->json() ?? [];
+            $importId = $json['import_id'] ?? $json['importId'] ?? null;
+            if ($importId === null || $importId === '') {
+                return [
+                    'success' => false,
+                    'message' => 'Best Buy price push accepted no import_id.',
+                    'status_code' => $response->status(),
+                ];
+            }
+
+            $import = $this->waitForPricingImport((string) $importId, $apiKey, $baseUrl);
+            $linesOk = (int) ($import['lines_in_success'] ?? 0);
+            $linesErr = (int) ($import['lines_in_error'] ?? 0);
+            $offersUpdated = (int) ($import['offers_updated'] ?? 0);
+            $status = strtoupper((string) ($import['status'] ?? ''));
+
+            if ($linesErr > 0 || ($import !== [] && ($linesOk < 1 || $offersUpdated < 1))) {
+                $errMsg = $this->fetchPricingImportErrorSummary((string) $importId, $apiKey, $baseUrl);
+                Log::warning('Best Buy MCM PRI01 completed with errors', [
+                    'sku' => $sku,
+                    'offer_sku' => $offerSku,
+                    'import_id' => $importId,
+                    'status' => $status,
+                    'lines_in_success' => $linesOk,
+                    'lines_in_error' => $linesErr,
+                    'error' => $errMsg,
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => $errMsg !== ''
+                        ? ('Best Buy price push failed: '.$errMsg)
+                        : ('Best Buy price push failed (import '.$importId.' status '.$status.')'),
+                    'status_code' => 400,
+                    'import_id' => (string) $importId,
+                ];
+            }
+
+            try {
+                if (Schema::hasTable('bestbuy_usa_products')) {
+                    \App\Models\BestbuyUsaProduct::query()
+                        ->where(function ($q) use ($offerSku, $sku) {
+                            $q->where('sku', $offerSku)->orWhere('sku', $sku);
+                        })
+                        ->update(['price' => $price]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Best Buy local price sync after PRI01 failed', [
+                    'sku' => $offerSku,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            Log::info('Best Buy MCM PRI01 price push complete', [
+                'sku' => $sku,
+                'offer_sku' => $offerSku,
+                'price' => $price,
+                'import_id' => $importId,
+            ]);
+
+            return [
+                'success' => true,
+                'message' => 'Price $'.number_format($price, 2).' pushed to Best Buy for SKU: '.$offerSku
+                    .' (import '.$importId.')',
+                'status_code' => $response->status(),
+                'import_id' => (string) $importId,
+            ];
         } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage(), 'status_code' => null];
+            Log::error('Best Buy MCM PRI01 exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Best Buy API error: '.$e->getMessage(),
+                'status_code' => null,
+            ];
         }
     }
 
@@ -635,11 +712,11 @@ class BestBuyApiService
 
     public function isConfigured(): bool
     {
-        $macyId = trim((string) config('services.macy.client_id', ''));
-        $macySecret = trim((string) config('services.macy.client_secret', ''));
+        $clientId = trim((string) config('services.bestbuy.client_id', ''));
+        $clientSecret = trim((string) config('services.bestbuy.client_secret', ''));
         $mcmKey = trim((string) config('services.bestbuy.mcm_api_key', ''));
 
-        return ($macyId !== '' && $macySecret !== '') || $mcmKey !== '';
+        return ($clientId !== '' && $clientSecret !== '') || $mcmKey !== '';
     }
 
     /**
@@ -650,43 +727,209 @@ class BestBuyApiService
         if (! $this->isConfigured()) {
             return [
                 'success' => false,
-                'message' => 'Best Buy Mirakl Connect credentials missing (MACY_CLIENT_ID + MACY_CLIENT_SECRET or BESTBUY_MCM_API_KEY).',
+                'message' => 'Best Buy credentials missing. Set BESTBUY_MCM_API_KEY + BESTBUY_SHOP_ID (and BESTBUY_CLIENT_ID / BESTBUY_CLIENT_SECRET for Connect).',
             ];
         }
 
-        try {
-            $token = $this->getAccessToken();
-            if (! $token) {
+        $parts = [];
+        $sample = 0;
+
+        $apiKey = $this->miraklMcmApiKey();
+        $baseUrl = rtrim((string) config('services.bestbuy.mcm_base_url', 'https://bestbuyus-prod.mirakl.net'), '/');
+        if ($apiKey !== null && $apiKey !== '' && $baseUrl !== '') {
+            try {
+                $params = ['max' => 1];
+                $shopId = config('services.bestbuy.shop_id');
+                if ($shopId !== null && $shopId !== '') {
+                    $params['shop_id'] = (int) $shopId;
+                }
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'Authorization' => $apiKey,
+                        'Accept' => 'application/json',
+                    ])
+                    ->timeout(30)
+                    ->get($baseUrl.'/api/offers', $params);
+
+                if (! $response->successful()) {
+                    return [
+                        'success' => false,
+                        'message' => 'Best Buy MCM OF21 failed: HTTP '.$response->status().' '.substr($response->body(), 0, 200),
+                    ];
+                }
+                $offers = $response->json('offers') ?? [];
+                $sample = is_array($offers) ? count($offers) : 0;
+                $parts[] = 'MCM '.$baseUrl.' shop '.(string) ($shopId ?? 'n/a')." ({$sample} offer sample)";
+            } catch (\Throwable $e) {
                 return [
                     'success' => false,
-                    'message' => 'OAuth token request failed — check Macy Mirakl Connect client_id/client_secret.',
+                    'message' => 'Best Buy MCM connection failed: '.$e->getMessage(),
                 ];
             }
+        }
 
-            $response = Http::withoutVerifying()->withToken($token)->get(
-                'https://miraklconnect.com/api/products?limit=1&channel_code='.$this->miraklChannelCode()
-            );
-
-            if (! $response->successful()) {
-                return [
-                    'success' => false,
-                    'message' => 'Mirakl Connect products ping failed: '.$response->status(),
-                ];
+        $token = $this->getAccessToken();
+        if ($token) {
+            try {
+                $response = Http::withoutVerifying()->withToken($token)->get(
+                    'https://miraklconnect.com/api/products?limit=1&channel_code='.$this->miraklChannelCode()
+                );
+                if ($response->successful()) {
+                    $parts[] = 'Mirakl Connect channel '.$this->miraklChannelCode();
+                } else {
+                    $parts[] = 'Mirakl Connect ping HTTP '.$response->status();
+                }
+            } catch (\Throwable $e) {
+                $parts[] = 'Mirakl Connect error: '.$e->getMessage();
             }
+        }
 
-            $count = count($response->json()['data'] ?? []);
-
-            return [
-                'success' => true,
-                'message' => "Mirakl Connect reachable for channel {$this->miraklChannelCode()} (sample: {$count} product row(s)).",
-                'sample_count' => $count,
-            ];
-        } catch (\Throwable $e) {
+        if ($parts === []) {
             return [
                 'success' => false,
-                'message' => 'Connection test failed: '.$e->getMessage(),
+                'message' => 'No Best Buy API endpoint could be reached.',
             ];
         }
+
+        return [
+            'success' => true,
+            'message' => 'Best Buy connected: '.implode('; ', $parts).'.',
+            'sample_count' => $sample,
+        ];
+    }
+
+    protected function resolveMcmOfferSku(string $sku, string $apiKey, string $baseUrl): ?string
+    {
+        $candidates = array_values(array_unique(array_filter([
+            $sku,
+            strtoupper($sku),
+        ])));
+
+        foreach ($candidates as $candidate) {
+            $params = ['sku' => $candidate, 'max' => 20];
+            $shopId = config('services.bestbuy.shop_id');
+            if ($shopId !== null && $shopId !== '') {
+                $params['shop_id'] = (int) $shopId;
+            }
+
+            try {
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'Authorization' => $apiKey,
+                        'Accept' => 'application/json',
+                    ])
+                    ->timeout(30)
+                    ->get($baseUrl.'/api/offers', $params);
+
+                if (! $response->successful()) {
+                    continue;
+                }
+
+                $offers = $response->json('offers') ?? [];
+                if (! is_array($offers) || $offers === []) {
+                    continue;
+                }
+
+                $skuUpper = strtoupper(trim($candidate));
+                foreach ($offers as $offer) {
+                    if (! is_array($offer)) {
+                        continue;
+                    }
+                    $shopSku = trim((string) ($offer['shop_sku'] ?? ''));
+                    if ($shopSku !== '' && strtoupper($shopSku) === $skuUpper) {
+                        return $shopSku;
+                    }
+                }
+
+                $first = $offers[0] ?? [];
+                $fallback = trim((string) ($first['shop_sku'] ?? ''));
+                if ($fallback !== '') {
+                    return $fallback;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Best Buy OF21 lookup failed', [
+                    'sku' => $candidate,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function waitForPricingImport(string $importId, string $apiKey, string $baseUrl): array
+    {
+        for ($i = 0; $i < 15; $i++) {
+            if ($i > 0) {
+                usleep(1500000);
+            }
+            try {
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'Authorization' => $apiKey,
+                        'Accept' => 'application/json',
+                    ])
+                    ->timeout(30)
+                    ->get($baseUrl.'/api/offers/pricing/imports', ['import_id' => $importId]);
+
+                if (! $response->successful()) {
+                    continue;
+                }
+
+                $row = ($response->json('data') ?? [])[0] ?? null;
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $status = strtoupper((string) ($row['status'] ?? ''));
+                if (in_array($status, ['COMPLETE', 'FAILED', 'CANCELLED'], true)) {
+                    return $row;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Best Buy PRI01 status poll failed', [
+                    'import_id' => $importId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return [];
+    }
+
+    protected function fetchPricingImportErrorSummary(string $importId, string $apiKey, string $baseUrl): string
+    {
+        try {
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => $apiKey,
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(30)
+                ->get($baseUrl.'/api/offers/pricing/imports/'.$importId.'/error_report');
+
+            if (! $response->successful()) {
+                return '';
+            }
+
+            $body = trim((string) $response->body());
+            $lines = preg_split("/\r\n|\n|\r/", $body) ?: [];
+            foreach ($lines as $idx => $line) {
+                if ($idx === 0) {
+                    continue;
+                }
+                $line = trim($line);
+                if ($line !== '') {
+                    return substr($line, 0, 300);
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return '';
     }
 
     /**
