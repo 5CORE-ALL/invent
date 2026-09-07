@@ -132,7 +132,7 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from API channels only (Sheet channels excluded)" style="background-color:#a71d2a !important;">
+                    <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from connected API channels (same INV &gt; 0 rule as listing pages)" style="background-color:#a71d2a !important;">
                         Missing L: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
                     </span>
                 </div>
@@ -224,17 +224,28 @@
             return;
         }
         const total = (rows || []).reduce((sum, r) => {
-            if (String(r.data_source || '').toUpperCase() === 'SHEET') return sum;
+            if (!isLiveApiRow(r)) return sum;
             return sum + Number(r.missing_listing || 0);
         }, 0);
         $('#total-missing-listing').text(total.toLocaleString('en-US'));
     }
 
-    function isSheetRow(rowData) {
-        return String((rowData && rowData.data_source) || '').toUpperCase() === 'SHEET';
+    function listingSource(rowData) {
+        return String((rowData && rowData.data_source) || '').toUpperCase();
     }
 
-    function fromSheetCell() {
+    function isLiveApiRow(rowData) {
+        return listingSource(rowData) === 'API';
+    }
+
+    function isSheetRow(rowData) {
+        return !isLiveApiRow(rowData);
+    }
+
+    function fromSheetCell(rowData) {
+        if (listingSource(rowData) === 'OFFLINE') {
+            return '<span class="ml-from-sheet" title="Marketplace API is not connected — Missing L is not calculated">Not connected</span>';
+        }
         return '<span class="ml-from-sheet" title="Listing counts come from Sheet — not calculated here">From Sheet</span>';
     }
 
@@ -598,16 +609,19 @@
                 {
                     title: "Data Source",
                     field: "data_source",
-                    width: 120,
+                    width: 140,
                     hozAlign: "center",
-                    headerTooltip: "API = live listing-page counts; Sheet = From Sheet (no numbers)",
+                    headerTooltip: "API = live listing-page counts; Sheet = From Sheet; Not connected = marketplace API credentials missing",
                     formatter: function(cell) {
-                        const v = String(cell.getValue() || '').trim();
-                        if (v.toUpperCase() === 'API') {
+                        const v = String(cell.getValue() || '').trim().toUpperCase();
+                        if (v === 'API') {
                             return '<span class="ml-source-api">API</span>';
                         }
-                        if (v.toUpperCase() === 'SHEET') {
+                        if (v === 'SHEET') {
                             return '<span class="ml-source-sheet">Sheet</span>';
+                        }
+                        if (v === 'OFFLINE') {
+                            return '<span class="ml-source-sheet" title="Marketplace API is not connected">Not connected</span>';
                         }
                         return escapeHtml(v || '-');
                     },
@@ -642,9 +656,9 @@
                     width: 100,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "CP Master SKUs that are required (not NRL) for this marketplace",
+                    headerTooltip: "In-stock (INV > 0) SKUs that are required (not NRL) — same as the listing page",
                     formatter: function(cell) {
-                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
+                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell(cell.getRow().getData());
                         const v = Number(cell.getValue() || 0);
                         return `<span style="color:#198754;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
                     },
@@ -664,9 +678,9 @@
                     width: 100,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "CP Master SKUs marked NRL / Not Required for this marketplace (deducted from Missing Listing)",
+                    headerTooltip: "In-stock SKUs marked NRL / Not Required (deducted from Missing Listing) — same as the listing page",
                     formatter: function(cell) {
-                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
+                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell(cell.getRow().getData());
                         const v = Number(cell.getValue() || 0);
                         return `<span style="color:#dc3545;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
                     },
@@ -686,9 +700,9 @@
                     width: 110,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "CP Master SKUs that have a marketplace API listing id",
+                    headerTooltip: "In-stock SKUs that have a marketplace API listing id — same as the listing page",
                     formatter: function(cell) {
-                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
+                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell(cell.getRow().getData());
                         const v = Number(cell.getValue() || 0);
                         return `<span style="color:#0d6efd;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
                     },
@@ -708,9 +722,9 @@
                     width: 180,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "CP Master SKUs not found on this marketplace API listing, minus NRL / Not Required",
+                    headerTooltip: "In-stock REQ SKUs not listed on this marketplace — same Missing L badge as the listing page",
                     formatter: function(cell) {
-                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
+                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell(cell.getRow().getData());
                         const v = Number(cell.getValue() || 0);
                         const row = cell.getRow().getData();
                         const channel = (row.channel || '').trim();

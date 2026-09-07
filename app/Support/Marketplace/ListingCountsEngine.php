@@ -9,11 +9,11 @@ use Illuminate\Support\Collection;
 /**
  * Shared listing-page count loop (same rules as /listing-ebaytwo).
  *
- * Listing pages: ProductMaster (not deleted), non-PARENT, Shopify INV > 0.
- * /missing-listing: CP Master SKUs vs marketplace API listing ids.
+ * Listing pages and /missing-listing share the same universe:
+ * ProductMaster (not deleted), non-PARENT, Shopify INV > 0.
  * NRL/REQ from channel DataView.value.NRL (and listing-status overlay).
  * Listed from channel-specific id map (sku_lower → listing id string).
- * Missing L = CP Master SKU not on the marketplace API, minus NRL.
+ * Missing L = in-stock REQ SKU not on the marketplace API.
  */
 class ListingCountsEngine
 {

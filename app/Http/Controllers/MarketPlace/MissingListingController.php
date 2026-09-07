@@ -19,8 +19,9 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Missing Listing page — Tabulator view.
  *
- * Universe: CP Master SKUs vs marketplace API listing ids.
- * NRL / Not Required SKUs are deducted from Missing Listing.
+ * Same universe as each channel's /listing-* page:
+ * Product Master SKUs with Shopify INV > 0, minus PARENT, minus NRL.
+ * Disconnected marketplace APIs show as Offline (no invented Missing L).
  * History chart from daily listing_miss_count snapshots (California dates).
  */
 class MissingListingController extends Controller
@@ -76,18 +77,17 @@ class MissingListingController extends Controller
                 ->map(function ($master) use ($hasLogo, $hasSellerLink, $cpSkuCount, $cpZeroInv) {
                     $channel = (string) $master->channel;
                     $dataSource = ListingChannelCounts::dataSource($channel);
-                    $isSheet = $dataSource === 'Sheet';
 
-                    // Sheet: no listing numbers — UI shows "From Sheet"
+                    // Sheet / Offline: no invented listing numbers
                     $inactive = ListingInactiveParentChildCounts::forChannel($channel);
 
-                    if ($isSheet) {
+                    if (! ListingChannelCounts::isLiveApiSource($channel)) {
                         return [
                             'id' => $master->id,
                             'image' => $hasLogo ? ($master->logo ?? null) : null,
                             'channel' => $channel,
                             'listing_url' => ListingChannelCounts::listingUrl($channel),
-                            'data_source' => 'Sheet',
+                            'data_source' => $dataSource === 'Offline' ? 'Offline' : 'Sheet',
                             'sku' => $cpSkuCount,
                             'zero_inv' => $cpZeroInv,
                             'req' => null,
@@ -101,8 +101,8 @@ class MissingListingController extends Controller
                         ];
                     }
 
-                    // API: live counts from each channel's /listing-* page
-                    $listingCounts = ListingChannelCounts::forChannel($channel, false, false);
+                    // API: same INV > 0 + REQ + not-listed counts as /listing-*
+                    $listingCounts = ListingChannelCounts::forChannel($channel, false);
 
                     return [
                         'id' => $master->id,
@@ -412,8 +412,8 @@ class MissingListingController extends Controller
                     continue;
                 }
 
-                // Do not snapshot Sheet channels (no numeric listing counts)
-                if (($row['data_source'] ?? '') === 'Sheet' || ListingChannelCounts::isSheetSource((string) ($row['channel'] ?? ''))) {
+                // Do not snapshot Sheet / disconnected channels (no live listing counts)
+                if (($row['data_source'] ?? '') !== 'API' || ! ListingChannelCounts::isLiveApiSource((string) ($row['channel'] ?? ''))) {
                     continue;
                 }
 
@@ -449,21 +449,21 @@ class MissingListingController extends Controller
                     continue;
                 }
                 $seen[$key] = true;
-                if (ListingChannelCounts::isSheetSource((string) $name)) {
+                if (! ListingChannelCounts::isLiveApiSource((string) $name)) {
                     continue;
                 }
-                $c = ListingChannelCounts::forChannel((string) $name, false, false);
+                $c = ListingChannelCounts::forChannel((string) $name, false);
                 $total += (int) ($c['Pending'] ?? 0);
             }
 
             return (float) $total;
         }
 
-        if (ListingChannelCounts::isSheetSource($channelKey)) {
+        if (! ListingChannelCounts::isLiveApiSource($channelKey)) {
             return 0.0;
         }
 
-        $c = ListingChannelCounts::forChannel($channelKey, false, false);
+        $c = ListingChannelCounts::forChannel($channelKey, false);
 
         return (float) ($c['Pending'] ?? 0);
     }
