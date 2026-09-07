@@ -2908,7 +2908,7 @@
 
                         <li><a href="{{ route('wayfair.daily.sales') }}">Wayfair Sales Data</a></li>
 
-                        <li><a href="{{ route('facebook.marketplace') }}">Facebook Marketplace</a></li>
+                        <li><a href="{{ route('facebook.marketplace') }}">FB Sales</a></li>
                     </ul>
                 </div>
             </li>

@@ -54,6 +54,7 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'fb_marketplace'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'fb_marketplace'])
+        @include('partials.analytics-column-visibility', ['colVisPart' => 'css'])
     </style>
 @endsection
 
@@ -170,6 +171,15 @@
                         </button>
                     </div>
 
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            aria-expanded="false" title="Show / hide columns">
+                            <i class="fa fa-eye"></i> Columns
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" id="column-dropdown-menu"
+                            aria-labelledby="columnVisibilityDropdown"></ul>
+                    </div>
                     <button type="button" id="export-btn" class="btn btn-sm btn-warning ms-auto"
                         title="Export current (filtered) rows to CSV">
                         <i class="fas fa-file-export"></i> Export
@@ -289,6 +299,11 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'fb_marketplace'])
         let table;
         let allTableData = [];
+        const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+        const TABULATOR_COLUMN_CHANNEL = 'fb_marketplace_tabulator';
+        const FB_MP_COL_VIS_KEY = 'fb_marketplace_tabulator_column_visibility';
+        const FB_MP_COL_SKIP = ['_select', '_parent_expand', 'missing_l'];
+        let fbMpColumnVisibilityMap = {};
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'fb_marketplace'])
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
@@ -629,6 +644,20 @@
                         width: 78
                     },
                     {
+                        title: "Price",
+                        field: "price",
+                        hozAlign: "center",
+                        width: 80,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            const rowData = cell.getRow().getData();
+                            const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
+                            return '$' + value.toFixed(2) + lmpTri + purpleTri;
+                        }
+                    },
+                    {
                         title: "S PRC",
                         field: "SPRICE",
                         hozAlign: "center",
@@ -656,20 +685,6 @@
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + redTri + blueTri + '</span>';
-                        }
-                    },
-                    {
-                        title: "Price",
-                        field: "price",
-                        hozAlign: "center",
-                        width: 80,
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            const rowData = cell.getRow().getData();
-                            const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
-                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
-                            return '$' + value.toFixed(2) + lmpTri + purpleTri;
                         }
                     },
                     {
@@ -864,6 +879,136 @@
                 });
                 ParentExpand.bind();
             }
+
+            function fbMpColumnField(col) {
+                if (!col) return '';
+                const def = (typeof col.getDefinition === 'function') ? (col.getDefinition() || {}) : {};
+                return def.field || (typeof col.getField === 'function' ? col.getField() : '') || '';
+            }
+            function fbMpVisibilityIsOn(v) {
+                return v === true || v === 1 || v === '1' || v === 'true';
+            }
+            function readFbMpColumnVisibilityLocal() {
+                try {
+                    const raw = localStorage.getItem(FB_MP_COL_VIS_KEY);
+                    const parsed = raw ? JSON.parse(raw) : {};
+                    return (parsed && typeof parsed === 'object') ? parsed : {};
+                } catch (e) {
+                    return {};
+                }
+            }
+            function writeFbMpColumnVisibilityLocal(map) {
+                try { localStorage.setItem(FB_MP_COL_VIS_KEY, JSON.stringify(map || {})); } catch (e) {}
+            }
+            function applyFbMpColumnVisibilityMap(map) {
+                if (!table || !map || typeof map !== 'object') return;
+                fbMpColumnVisibilityMap = map;
+                table.getColumns().forEach(function(col) {
+                    const field = fbMpColumnField(col);
+                    if (!field || FB_MP_COL_SKIP.indexOf(field) !== -1) return;
+                    if (!Object.prototype.hasOwnProperty.call(map, field)) return;
+                    if (fbMpVisibilityIsOn(map[field])) col.show();
+                    else col.hide();
+                });
+            }
+            function collectFbMpColumnVisibility() {
+                const visibility = {};
+                if (!table) return visibility;
+                table.getColumns().forEach(function(col) {
+                    const field = fbMpColumnField(col);
+                    if (!field || FB_MP_COL_SKIP.indexOf(field) !== -1) return;
+                    visibility[field] = !!col.isVisible();
+                });
+                return visibility;
+            }
+            function buildColumnDropdown(savedVisibility) {
+                if (window.AnalyticsColVis) {
+                    window.AnalyticsColVis.install({
+                        getTable: function() { return table; },
+                        menuId: 'column-dropdown-menu',
+                        storageKey: 'fb_marketplace_col_cats_v1',
+                        skipFields: FB_MP_COL_SKIP.slice(),
+                        onSave: function() {
+                            if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+                        }
+                    });
+                    window.AnalyticsColVis.rebuild(savedVisibility || fbMpColumnVisibilityMap || null);
+                    return;
+                }
+                const menu = document.getElementById('column-dropdown-menu');
+                if (!menu || !table) return;
+                const map = (savedVisibility && typeof savedVisibility === 'object')
+                    ? savedVisibility
+                    : fbMpColumnVisibilityMap;
+                menu.innerHTML = '';
+                table.getColumns().forEach(function(col) {
+                    const field = fbMpColumnField(col);
+                    const title = (col.getDefinition() || {}).title;
+                    if (!field || FB_MP_COL_SKIP.indexOf(field) !== -1 || !title) return;
+                    const isVisible = Object.prototype.hasOwnProperty.call(map, field)
+                        ? fbMpVisibilityIsOn(map[field])
+                        : col.isVisible();
+                    const li = document.createElement('li');
+                    li.className = 'dropdown-item';
+                    li.innerHTML = '<label style="cursor:pointer;display:flex;align-items:center;gap:8px;margin:0;">'
+                        + '<input type="checkbox" class="column-toggle" data-field="' + field + '"'
+                        + (isVisible ? ' checked' : '') + '> '
+                        + String(title).replace(/<[^>]*>/g, '') + '</label>';
+                    menu.appendChild(li);
+                });
+            }
+            function saveColumnVisibilityToServer() {
+                if (!table) return;
+                const visibility = collectFbMpColumnVisibility();
+                fbMpColumnVisibilityMap = visibility;
+                writeFbMpColumnVisibilityLocal(visibility);
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    },
+                    body: JSON.stringify({
+                        channel: TABULATOR_COLUMN_CHANNEL,
+                        visibility: visibility
+                    })
+                }).catch(function(err) { console.error('Column visibility save failed:', err); });
+            }
+            function fbMpNormalizeVisibilityMap(raw) {
+                if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+                return raw;
+            }
+            function applyColumnVisibilityFromServer() {
+                if (!table) return Promise.resolve();
+                return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                })
+                    .then(function(response) { return response.json(); })
+                    .then(function(savedVisibility) {
+                        const serverMap = fbMpNormalizeVisibilityMap(savedVisibility);
+                        const localMap = readFbMpColumnVisibilityLocal();
+                        const map = Object.keys(serverMap).length ? serverMap : localMap;
+                        applyFbMpColumnVisibilityMap(map);
+                        buildColumnDropdown(map);
+                    })
+                    .catch(function(err) {
+                        console.error('Column visibility load failed:', err);
+                        const localMap = readFbMpColumnVisibilityLocal();
+                        applyFbMpColumnVisibilityMap(localMap);
+                        buildColumnDropdown(localMap);
+                    });
+            }
+            applyColumnVisibilityFromServer();
+            $(document).on('change', '#column-dropdown-menu .column-toggle', function(e) {
+                if (!table || !e.target) return;
+                const field = e.target.getAttribute('data-field');
+                if (!field) return;
+                const col = table.getColumn(field);
+                if (col) e.target.checked ? col.show() : col.hide();
+                saveColumnVisibilityToServer();
+            });
 
             // Update the adjust panel whenever row selection changes
             table.on("rowSelectionChanged", function(data, rows) {

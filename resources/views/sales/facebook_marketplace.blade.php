@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Facebook Marketplace Sales', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'FB Sales', 'sidenav' => 'condensed'])
 
 @section('css')
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -52,10 +52,10 @@
 
         <div class="fbm-page-header">
             <div>
-                <h4 class="mb-1">Facebook Marketplace Sales</h4>
+                <h4 class="mb-1">FB Sales</h4>
                 <div class="text-muted" style="font-size: 13px;">
-                    Upload sales reports exported from Facebook Marketplace. Rows are upserted on
-                    <code>order_number + sku</code>.
+                    Upload FB Sales reports. Rows are upserted on
+                    <code>order_number + sku</code>. Badges use the last 30 Pacific days (ending yesterday).
                 </div>
             </div>
         </div>
@@ -100,34 +100,43 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge fs-6 p-2" id="fbm-y-sales-badge"
                             style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="Yesterday's Facebook Marketplace sales — {{ !empty($ySalesDate) ? \Carbon\Carbon::parse($ySalesDate)->format('M j, Y') . ' (PT / California)' : 'Pacific / California calendar day' }}. Σ sold_price × qty ({{ number_format((int) ($yQuantity ?? 0)) }} qty, {{ number_format((int) ($yOrders ?? 0)) }} orders). Same source as the FB Marketplace row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($ySales ?? 0), 2) }}</span>
+                            title="Yesterday's FB Sales — {{ !empty($ySalesDate) ? \Carbon\Carbon::parse($ySalesDate)->format('M j, Y') . ' (PT / California)' : 'Pacific / California calendar day' }}. Σ sold_price × qty ({{ number_format((int) ($yQuantity ?? 0)) }} qty, {{ number_format((int) ($yOrders ?? 0)) }} orders). Same source as the FB Marketplace row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($ySales ?? 0), 2) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="fbm-total-orders-badge"
-                            style="color: white; font-weight: bold;">Total Orders: 0</span>
+                            style="color: white; font-weight: bold;"
+                            title="Orders in the last 30 Pacific days ({{ $l30Start ?? '' }} – {{ $l30End ?? '' }})">L30 Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="fbm-total-quantity-badge"
-                            style="color: white; font-weight: bold;">Total Quantity: 0</span>
+                            style="color: white; font-weight: bold;"
+                            title="Qty sold in the last 30 Pacific days">L30 Qty: 0</span>
                         <span class="badge fs-6 p-2" id="fbm-total-sales-badge"
-                            style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
+                            style="background-color: #17a2b8; color: white; font-weight: bold;"
+                            title="Σ sold_price × qty for the last 30 Pacific days (ending yesterday)">L30 Sales: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="fbm-total-revenue-badge"
-                            style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
+                            style="color: white; font-weight: bold;"
+                            title="Same as L30 Sales">L30 Revenue: $0.00</span>
                         <span class="badge bg-warning fs-6 p-2" id="fbm-avg-price-badge"
-                            style="color: black; font-weight: bold;">Avg Price: $0.00</span>
+                            style="color: black; font-weight: bold;"
+                            title="L30 Sales / L30 Qty">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="fbm-aov-badge"
-                            style="color: white; font-weight: bold;">Avg Order Value: $0.00</span>
+                            style="color: white; font-weight: bold;"
+                            title="L30 Sales / L30 Orders">Avg Order Value: $0.00</span>
                         <span class="badge fs-6 p-2" id="fbm-total-skus-badge"
-                            style="background-color: #6610f2; color: white; font-weight: bold;">Total SKUs: 0</span>
+                            style="background-color: #6610f2; color: white; font-weight: bold;"
+                            title="Distinct SKUs with sales in the last 30 Pacific days">L30 SKUs: 0</span>
                         <span class="badge fs-6 p-2" id="fbm-total-rows-badge"
-                            style="background-color: #6f42c1; color: white; font-weight: bold;">Total Rows: 0</span>
+                            style="background-color: #6f42c1; color: white; font-weight: bold;"
+                            title="Uploaded rows that fall in the last 30 Pacific days">L30 Rows: 0</span>
                         <span class="badge fs-6 p-2" id="fbm-avg-qty-badge"
-                            style="background-color: #fd7e14; color: white; font-weight: bold;">Avg Qty / Order: 0</span>
+                            style="background-color: #fd7e14; color: white; font-weight: bold;"
+                            title="L30 Qty / L30 Orders">Avg Qty / Order: 0</span>
                         <span class="badge fs-6 p-2" id="fbm-margin-badge"
                             style="background-color: #20c997; color: white; font-weight: bold;"
                             title="Take-home margin from marketplace_percentages">Margin: —</span>
                         <span class="badge bg-info fs-6 p-2" id="fbm-gpft-badge"
                             style="color: black; font-weight: bold;"
-                            title="GPFT% = Σ PFT / Σ Sales × 100 (sold_price × margin − LP, no ship)">GPFT: 0%</span>
+                            title="L30 GPFT% = Σ PFT / Σ Sales × 100 (sold_price × margin − LP, no ship)">GPFT: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="fbm-roi-badge"
                             style="color: white; font-weight: bold;"
-                            title="ROI% = Σ PFT / Σ COGS × 100">ROI: 0%</span>
+                            title="L30 ROI% = Σ PFT / Σ COGS × 100">ROI: 0%</span>
                         <span class="badge fs-6 p-2" id="fbm-ads-badge"
                             style="background-color: #d63384; color: white; font-weight: bold;"
                             title="Ads% = Facebook ads spend (CH=FB from /facebook-ads) / Sales × 100">Ads: 0%</span>
@@ -199,13 +208,16 @@
             }
 
             function updateBadges(rows, summary) {
-                // Aggregate metrics over all rows.
+                // Badges use last 30 Pacific days only — not the full uploaded grid.
                 let totalQuantity = 0;
                 let totalSales    = 0;
                 const orderSet    = new Set();
                 const skuSet      = new Set();
+                let l30RowCount   = 0;
 
                 for (const r of rows) {
+                    if (!r || !r.in_l30) continue;
+                    l30RowCount++;
                     const qty   = Number(r.qty_sold   || 0);
                     const total = Number(r.total      || 0);
                     totalQuantity += qty;
@@ -214,9 +226,19 @@
                     if (r.sku)          skuSet.add(r.sku);
                 }
 
-                const totalOrders = orderSet.size;
-                const totalSkus   = skuSet.size;
-                const totalRows   = rows.length;
+                if (summary) {
+                    if (summary.total_quantity != null) totalQuantity = Number(summary.total_quantity);
+                    if (summary.total_sales != null) totalSales = Number(summary.total_sales);
+                    if (summary.total_rows != null) l30RowCount = Number(summary.total_rows);
+                }
+
+                const totalOrders = (summary && summary.total_orders != null)
+                    ? Number(summary.total_orders)
+                    : orderSet.size;
+                const totalSkus   = (summary && summary.total_skus != null)
+                    ? Number(summary.total_skus)
+                    : skuSet.size;
+                const totalRows   = l30RowCount;
                 const avgPrice    = totalQuantity > 0 ? totalSales / totalQuantity : 0;
                 const aov         = totalOrders   > 0 ? totalSales / totalOrders   : 0;
                 const avgQtyOrder = totalOrders   > 0 ? totalQuantity / totalOrders : 0;
@@ -244,19 +266,19 @@
                             dateLabel = ySalesDate + ' (PT / California)';
                         }
                     }
-                    yBadge.title = "Yesterday's Facebook Marketplace sales — " + dateLabel
+                    yBadge.title = "Yesterday's FB Sales — " + dateLabel
                         + '. Σ sold_price × qty (' + fmtInt(yQty) + ' qty, ' + fmtInt(yOrders)
                         + ' orders). Same source as the FB Marketplace row on /all-marketplace-master.';
                 }
 
-                document.getElementById('fbm-total-orders-badge').textContent   = 'Total Orders: '   + fmtInt(totalOrders);
-                document.getElementById('fbm-total-quantity-badge').textContent = 'Total Quantity: ' + fmtInt(totalQuantity);
-                document.getElementById('fbm-total-sales-badge').textContent    = 'Total Sales: '    + fmtMoney(totalSales);
-                document.getElementById('fbm-total-revenue-badge').textContent  = 'Total Revenue: '  + fmtMoney(totalSales);
-                document.getElementById('fbm-avg-price-badge').textContent      = 'Avg Price: '      + fmtMoney(avgPrice);
+                document.getElementById('fbm-total-orders-badge').textContent   = 'L30 Orders: '   + fmtInt(totalOrders);
+                document.getElementById('fbm-total-quantity-badge').textContent = 'L30 Qty: '      + fmtInt(totalQuantity);
+                document.getElementById('fbm-total-sales-badge').textContent    = 'L30 Sales: '    + fmtMoney(totalSales);
+                document.getElementById('fbm-total-revenue-badge').textContent  = 'L30 Revenue: '  + fmtMoney(totalSales);
+                document.getElementById('fbm-avg-price-badge').textContent      = 'Avg Price: '    + fmtMoney(avgPrice);
                 document.getElementById('fbm-aov-badge').textContent            = 'Avg Order Value: '+ fmtMoney(aov);
-                document.getElementById('fbm-total-skus-badge').textContent     = 'Total SKUs: '     + fmtInt(totalSkus);
-                document.getElementById('fbm-total-rows-badge').textContent     = 'Total Rows: '     + fmtInt(totalRows);
+                document.getElementById('fbm-total-skus-badge').textContent     = 'L30 SKUs: '     + fmtInt(totalSkus);
+                document.getElementById('fbm-total-rows-badge').textContent     = 'L30 Rows: '     + fmtInt(totalRows);
                 document.getElementById('fbm-avg-qty-badge').textContent        = 'Avg Qty / Order: '+ avgQtyOrder.toFixed(2);
                 document.getElementById('fbm-margin-badge').textContent         = margin != null
                     ? ('Margin: ' + margin.toFixed(0) + '%')
@@ -294,7 +316,7 @@
                     paginationSizeSelector: [25, 50, 100, 250],
                     movableColumns: true,
                     height: '600px',
-                    placeholder: 'No Facebook Marketplace sales uploaded yet — use the Upload section above.',
+                    placeholder: 'No FB Sales uploaded yet — use the Upload section above.',
                     columns: [
                         { title: '#',            field: 'id',           width: 70, hozAlign: 'right' },
                         { title: 'Order Number', field: 'order_number', headerFilter: 'input', minWidth: 160 },

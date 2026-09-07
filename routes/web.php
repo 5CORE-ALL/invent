@@ -6279,7 +6279,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-ads-manager/export', 'export')->name('meta.ads.manager.export');
     });
 
-    // Facebook Marketplace Sales (CSV template upload + grid)
+    // FB Sales (CSV template upload + grid)
     Route::controller(FacebookMarketplaceController::class)->group(function () {
         Route::get('/facebook-marketplace',              'index')->name('facebook.marketplace');
         Route::get('/facebook-marketplace/data',         'getData')->name('facebook.marketplace.data');
