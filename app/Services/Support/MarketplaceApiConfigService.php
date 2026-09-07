@@ -316,7 +316,12 @@ class MarketplaceApiConfigService
                 'services.newegg.seller_id',
             ]),
             'topdawg' => $this->filled('services.topdawg.token'),
-            'purchasingpower' => $this->filled('services.purchasingpower.mcm_api_key') || $this->filled('services.purchasingpower.api_key'),
+            'purchasingpower' => $this->filled('services.purchasingpower.mcm_api_key')
+                || $this->filled('services.purchasingpower.api_key')
+                || $this->filledAll([
+                    'services.purchasingpower.client_id',
+                    'services.purchasingpower.client_secret',
+                ]),
             'shopify_b2b' => $this->shopifyB2bConfigured(),
             default => false,
         };

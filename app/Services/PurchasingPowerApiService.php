@@ -200,12 +200,37 @@ class PurchasingPowerApiService extends BestBuyApiService
         return $rows;
     }
 
+    protected function getAccessToken()
+    {
+        $clientId = trim((string) config('services.purchasingpower.client_id', ''));
+        $clientSecret = trim((string) config('services.purchasingpower.client_secret', ''));
+        if ($clientId === '' || $clientSecret === '') {
+            return parent::getAccessToken();
+        }
+
+        $payload = [
+            'grant_type' => 'client_credentials',
+            'client_id' => $clientId,
+            'client_secret' => $clientSecret,
+        ];
+        $companyId = trim((string) config('services.purchasingpower.company_id', ''));
+        if ($companyId !== '') {
+            $payload['audience'] = $companyId;
+        }
+
+        $response = Http::withoutVerifying()->asForm()->post('https://auth.mirakl.net/oauth/token', $payload);
+
+        return $response->successful() ? ($response->json()['access_token'] ?? null) : null;
+    }
+
     public function isConfigured(): bool
     {
         $mcmKey = trim((string) config('services.purchasingpower.mcm_api_key', ''));
         $apiKey = trim((string) config('services.purchasingpower.api_key', ''));
+        $clientId = trim((string) config('services.purchasingpower.client_id', ''));
+        $clientSecret = trim((string) config('services.purchasingpower.client_secret', ''));
 
-        return $mcmKey !== '' || $apiKey !== '';
+        return $mcmKey !== '' || $apiKey !== '' || ($clientId !== '' && $clientSecret !== '');
     }
 
     /**
@@ -216,25 +241,87 @@ class PurchasingPowerApiService extends BestBuyApiService
         if (! $this->isConfigured()) {
             return [
                 'success' => false,
-                'message' => 'Purchasing Power MCM/API credentials missing (PURCHASING_POWER_MCM_API_KEY or PURCHASING_POWER_API_KEY).',
+                'message' => 'Purchasing Power credentials missing. Set PURCHASING_POWER_MCM_API_KEY + PURCHASING_POWER_SHOP_ID (and Connect client id/secret).',
             ];
         }
 
-        try {
-            $result = $this->fetchOrders(now()->subDays(7), now(), 1);
-            $count = count($result['orders'] ?? []);
+        $parts = [];
+        $sample = 0;
 
-            return [
-                'success' => true,
-                'message' => "Mirakl MCM OR11 reachable (sample: {$count} order(s) in last 7 days).",
-                'sample_count' => $count,
-            ];
-        } catch (\Throwable $e) {
+        $apiKey = $this->miraklMcmApiKey();
+        $baseUrl = rtrim((string) config('services.purchasingpower.mcm_base_url', 'https://purchasingpowerus-prod.mirakl.net'), '/');
+        if ($apiKey !== null && $apiKey !== '' && $baseUrl !== '') {
+            try {
+                $params = ['max' => 1];
+                $shopId = config('services.purchasingpower.shop_id');
+                if ($shopId !== null && $shopId !== '') {
+                    $params['shop_id'] = (int) $shopId;
+                }
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'Authorization' => $apiKey,
+                        'Accept' => 'application/json',
+                    ])
+                    ->timeout(30)
+                    ->get($baseUrl.'/api/offers', $params);
+
+                if ($response->status() === 404 && isset($params['shop_id'])) {
+                    unset($params['shop_id']);
+                    $shopId = null;
+                    $response = Http::withoutVerifying()
+                        ->withHeaders([
+                            'Authorization' => $apiKey,
+                            'Accept' => 'application/json',
+                        ])
+                        ->timeout(30)
+                        ->get($baseUrl.'/api/offers', $params);
+                }
+
+                if (! $response->successful()) {
+                    return [
+                        'success' => false,
+                        'message' => 'Purchasing Power MCM OF21 failed: HTTP '.$response->status().' '.substr($response->body(), 0, 200),
+                    ];
+                }
+                $offers = $response->json('offers') ?? [];
+                $sample = is_array($offers) ? count($offers) : 0;
+                $parts[] = 'MCM '.$baseUrl.' shop '.(string) ($shopId ?? 'n/a')." ({$sample} offer sample)";
+            } catch (\Throwable $e) {
+                return [
+                    'success' => false,
+                    'message' => 'Purchasing Power MCM connection failed: '.$e->getMessage(),
+                ];
+            }
+        }
+
+        $token = $this->getAccessToken();
+        if ($token) {
+            try {
+                $response = Http::withoutVerifying()->withToken($token)->get(
+                    'https://miraklconnect.com/api/products?limit=1&channel_code='.$this->miraklChannelCode()
+                );
+                if ($response->successful()) {
+                    $parts[] = 'Mirakl Connect channel '.$this->miraklChannelCode();
+                } else {
+                    $parts[] = 'Mirakl Connect ping HTTP '.$response->status();
+                }
+            } catch (\Throwable $e) {
+                $parts[] = 'Mirakl Connect error: '.$e->getMessage();
+            }
+        }
+
+        if ($parts === []) {
             return [
                 'success' => false,
-                'message' => 'Connection test failed: '.$e->getMessage(),
+                'message' => 'No Purchasing Power API endpoint could be reached.',
             ];
         }
+
+        return [
+            'success' => true,
+            'message' => 'Purchasing Power connected: '.implode('; ', $parts).'.',
+            'sample_count' => $sample,
+        ];
     }
 
     /**
@@ -252,7 +339,7 @@ class PurchasingPowerApiService extends BestBuyApiService
             return ['success' => false, 'message' => 'Valid SKU and price are required.', 'status_code' => 422];
         }
 
-        $apiKey = trim((string) config('services.purchasingpower.mcm_api_key', ''));
+        $apiKey = (string) ($this->miraklMcmApiKey() ?? '');
         $baseUrl = rtrim((string) config('services.purchasingpower.mcm_base_url', ''), '/');
         if ($apiKey === '' || $baseUrl === '') {
             return [
@@ -296,6 +383,17 @@ class PurchasingPowerApiService extends BestBuyApiService
                 ->timeout(60)
                 ->attach('file', $csv, 'pp-price-'.preg_replace('/[^A-Za-z0-9_-]+/', '_', $offerSku).'.csv')
                 ->post($url);
+
+            if ($response->status() === 404 && $query !== []) {
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'Authorization' => $apiKey,
+                        'Accept' => 'application/json',
+                    ])
+                    ->timeout(60)
+                    ->attach('file', $csv, 'pp-price-'.preg_replace('/[^A-Za-z0-9_-]+/', '_', $offerSku).'.csv')
+                    ->post($baseUrl.'/api/offers/pricing/imports');
+            }
 
             if (! $response->successful()) {
                 Log::warning('Purchasing Power MCM PRI01 price push failed', [
@@ -394,7 +492,7 @@ class PurchasingPowerApiService extends BestBuyApiService
     /**
      * Resolve live MCM shop_sku via OF21 only (no stale local fallback).
      */
-    private function resolveMcmOfferSku(string $sku, string $apiKey, string $baseUrl): ?string
+    protected function resolveMcmOfferSku(string $sku, string $apiKey, string $baseUrl): ?string
     {
         $candidates = array_values(array_unique(array_filter([
             $sku,
@@ -416,6 +514,17 @@ class PurchasingPowerApiService extends BestBuyApiService
                     ])
                     ->timeout(30)
                     ->get($baseUrl.'/api/offers', $params);
+
+                if ($response->status() === 404 && isset($params['shop_id'])) {
+                    unset($params['shop_id']);
+                    $response = Http::withoutVerifying()
+                        ->withHeaders([
+                            'Authorization' => $apiKey,
+                            'Accept' => 'application/json',
+                        ])
+                        ->timeout(30)
+                        ->get($baseUrl.'/api/offers', $params);
+                }
 
                 if (! $response->successful()) {
                     continue;
@@ -450,7 +559,7 @@ class PurchasingPowerApiService extends BestBuyApiService
     /**
      * @return array<string, mixed>
      */
-    private function waitForPricingImport(string $importId, string $apiKey, string $baseUrl): array
+    protected function waitForPricingImport(string $importId, string $apiKey, string $baseUrl): array
     {
         for ($i = 0; $i < 15; $i++) {
             if ($i > 0) {
@@ -489,7 +598,7 @@ class PurchasingPowerApiService extends BestBuyApiService
         return [];
     }
 
-    private function fetchPricingImportErrorSummary(string $importId, string $apiKey, string $baseUrl): string
+    protected function fetchPricingImportErrorSummary(string $importId, string $apiKey, string $baseUrl): string
     {
         try {
             $response = Http::withoutVerifying()

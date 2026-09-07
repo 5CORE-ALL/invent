@@ -21,12 +21,12 @@
                 <i class="ri-checkbox-circle-line fs-5 mt-1"></i>
                 <div>
                     <strong>Credentials found in .env</strong>
-                    <p class="mb-0 small"><code>PURCHASING_POWER_MCM_API_KEY</code> (and/or <code>PURCHASING_POWER_API_KEY</code>) is configured. Click <strong>Test connection</strong> to verify Mirakl MCM OR11.</p>
+                    <p class="mb-0 small">Purchasing Power Mirakl MCM (<code>PURCHASING_POWER_MCM_API_KEY</code> / shop {{ $shopId ?? '—' }}) is configured. Price push uses MCM PRI01 on <code>purchasingpowerus-prod.mirakl.net</code>.</p>
                 </div>
             </div>
         @else
             <div class="alert alert-warning">
-                <strong>Setup required</strong> — add <code>PURCHASING_POWER_MCM_API_KEY</code> (Mirakl MCM) to <code>.env</code>, then refresh.
+                <strong>Setup required</strong> — add <code>PURCHASING_POWER_MCM_API_KEY</code>, <code>PURCHASING_POWER_SHOP_ID</code>, and Connect OAuth keys to <code>.env</code>, then refresh.
             </div>
         @endif
 
@@ -43,8 +43,7 @@
                     </div>
                     <div class="card-body">
                         <p class="text-muted mb-3">
-                            Credentials are read from <code>.env</code> / <code>config/services.php</code> → <code>purchasingpower</code>.
-                            Shopify B2C is the source shop for inventory sync and order import.
+                            Live prices are updated on Mirakl MCM offers (shop API). Connect channel <code>purchasingpower</code> is used for catalog. Shopify B2C is the source shop for inventory sync and order import.
                         </p>
 
                         <table class="table table-sm table-bordered mb-4">
@@ -61,15 +60,19 @@
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th>Connect API Key</th>
+                                    <th>Mirakl Connect OAuth</th>
                                     <td>
-                                        @if($hasApiKey ?? false)
+                                        @if($hasMiraklOAuth ?? false)
                                             <span class="cred-ok"><i class="ri-check-line"></i> Set</span>
-                                            <span class="cred-mask text-muted ms-2">{{ $maskedApiKey }}</span>
+                                            <span class="cred-mask text-muted ms-2">client_id {{ $maskedClientId ?? '—' }}</span>
                                         @else
-                                            <span class="text-muted">Optional — <code>PURCHASING_POWER_API_KEY</code></span>
+                                            <span class="text-muted">Optional — <code>PURCHASING_POWER_CLIENT_ID</code></span>
                                         @endif
                                     </td>
+                                </tr>
+                                <tr>
+                                    <th>Shop ID</th>
+                                    <td><code>{{ $shopId ?? '—' }}</code></td>
                                 </tr>
                                 <tr>
                                     <th>MCM Base URL</th>

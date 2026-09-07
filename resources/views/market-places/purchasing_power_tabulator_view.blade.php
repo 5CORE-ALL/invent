@@ -1050,7 +1050,22 @@
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                 data: { updates },
                 success: function(response) {
-                    if (response.success) console.log('PP SPRICE saved:', response.updated, 'records');
+                    if (response.success) {
+                        console.log('PP SPRICE saved:', response.updated, 'records');
+                        if (response.price_push_success_count !== undefined || response.price_push_failed_count !== undefined) {
+                            const pushOk = Number(response.price_push_success_count || 0);
+                            const pushFail = Number(response.price_push_failed_count || 0);
+                            if (pushFail > 0) {
+                                let pushMsg = `Purchasing Power price push: ${pushOk} success, ${pushFail} failed`;
+                                if (response.price_push_errors && response.price_push_errors.length > 0) {
+                                    pushMsg += ` (${response.price_push_errors[0]})`;
+                                }
+                                showToast(pushMsg, 'warning');
+                            } else if (pushOk > 0) {
+                                showToast(`Purchasing Power price push successful for ${pushOk} SKU(s)`, 'success');
+                            }
+                        }
+                    }
                 },
                 error: function(xhr) {
                     showToast('Error saving SPRICE: ' + (xhr.responseJSON?.error || 'Unknown'), 'error');
@@ -1096,7 +1111,12 @@
                 method: 'POST',
                 data: { sku, sprice, _token: '{{ csrf_token() }}' },
                 success: function(response) {
-                    showToast(`✓ SPRICE saved: ${sku} = $${parseFloat(sprice).toFixed(2)}`, 'success');
+                    const pushOk = response.price_push_success === true || response.price_push_skipped === true;
+                    const pushMsg = response.price_push_message ? ` — ${response.price_push_message}` : '';
+                    showToast(
+                        (pushOk ? '✓ SPRICE saved' : '⚠ SPRICE saved, push failed') + `: ${sku} = $${parseFloat(sprice).toFixed(2)}` + pushMsg,
+                        pushOk ? 'success' : 'warning'
+                    );
                     if (response.spft_percent  !== undefined) row.update({ SPFT:  response.spft_percent });
                     if (response.sroi_percent  !== undefined) row.update({ SROI:  response.sroi_percent });
                     if (response.sgpft_percent !== undefined) row.update({ SGPFT: response.sgpft_percent });

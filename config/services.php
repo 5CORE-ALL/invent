@@ -330,9 +330,12 @@ return [
     ],
 
     'purchasingpower' => [
+        'client_id' => env('PURCHASING_POWER_CLIENT_ID'),
+        'client_secret' => env('PURCHASING_POWER_CLIENT_SECRET'),
+        'company_id' => env('PURCHASING_POWER_COMPANY_ID'),
         'api_key' => env('PURCHASING_POWER_API_KEY'),
         'api_base' => env('PURCHASING_POWER_API_BASE', 'https://api.purchasingpower.com'),
-        /** Purchasing Power MCM Seller API (PM11/P41/P42) */
+        /** Purchasing Power MCM Seller API (OF21 / PRI01 / OR11) */
         'mcm_api_key' => env('PURCHASING_POWER_MCM_API_KEY', env('PURCHASING_POWER_API_KEY')),
         'mcm_base_url' => env('PURCHASING_POWER_MCM_BASE_URL', 'https://purchasingpowerus-prod.mirakl.net'),
         'shop_id' => env('PURCHASING_POWER_SHOP_ID'),
