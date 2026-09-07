@@ -264,7 +264,7 @@ class MarketplaceApiConfigService
             'macy' => $this->filledAll([
                 'services.macy.client_id',
                 'services.macy.client_secret',
-            ]),
+            ]) || filled(config('services.macy.mcm_api_key')),
             'bestbuy' => $this->filledAll([
                 'services.bestbuy.client_id',
                 'services.bestbuy.client_secret',

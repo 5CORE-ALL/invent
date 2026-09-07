@@ -604,7 +604,7 @@ class BestBuyApiService
             $offersUpdated = (int) ($import['offers_updated'] ?? 0);
             $status = strtoupper((string) ($import['status'] ?? ''));
 
-            if ($linesErr > 0 || ($import !== [] && ($linesOk < 1 || $offersUpdated < 1))) {
+            if ($linesErr > 0 || ($import !== [] && $linesOk < 1 && $status !== 'COMPLETE')) {
                 $errMsg = $this->fetchPricingImportErrorSummary((string) $importId, $apiKey, $baseUrl);
                 Log::warning('Best Buy MCM PRI01 completed with errors', [
                     'sku' => $sku,

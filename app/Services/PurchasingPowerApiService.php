@@ -328,7 +328,7 @@ class PurchasingPowerApiService extends BestBuyApiService
             $offersUpdated = (int) ($import['offers_updated'] ?? 0);
             $status = strtoupper((string) ($import['status'] ?? ''));
 
-            if ($linesErr > 0 || $linesOk < 1 || $offersUpdated < 1) {
+            if ($linesErr > 0 || ($linesOk < 1 && $status !== 'COMPLETE')) {
                 $errMsg = $this->fetchPricingImportErrorSummary((string) $importId, $apiKey, $baseUrl);
                 Log::warning('Purchasing Power MCM PRI01 completed with errors', [
                     'sku' => $sku,
