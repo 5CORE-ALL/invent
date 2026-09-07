@@ -21,9 +21,9 @@ class AutomatedListingPage
             return collect();
         }
 
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
-        $shopifyData = ListingCountsEngine::shopifyMap($skus);
+        $productMasters = ListingCountsEngine::productMasters();
+        $skus = ListingCountsEngine::productSkus();
+        $shopifyData = ListingCountsEngine::requestShopifyMap();
 
         $statusClass = $cfg['status'] ?? null;
         $statusData = collect();

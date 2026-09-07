@@ -9,23 +9,61 @@ use Illuminate\Support\Collection;
 /**
  * Shared listing-page count loop (same rules as /listing-ebaytwo).
  *
- * Universe: ProductMaster (not deleted), non-PARENT, Shopify INV > 0.
- * NRL/REQ from channel DataView.value.NRL.
+ * Universe: ProductMaster (not deleted), non-PARENT.
+ * Listing pages also require Shopify INV > 0.
+ * /missing-listing compares every CP Master SKU to the marketplace listing id.
+ * NRL/REQ from channel DataView.value.NRL (and listing-status overlay).
  * Listed from channel-specific id map (sku_lower → listing id string).
- * Missing L = REQ and not listed.
+ * Missing L = in CP Master, not NRL, and not listed on the marketplace.
  */
 class ListingCountsEngine
 {
+    private static ?Collection $productMastersMemo = null;
+
+    /** @var list<string>|null */
+    private static ?array $productSkusMemo = null;
+
+    private static ?Collection $shopifyMapMemo = null;
+
+    /**
+     * @return Collection<int, ProductMaster>
+     */
+    public static function productMasters(): Collection
+    {
+        return self::$productMastersMemo ??= ProductMaster::whereNull('deleted_at')->get();
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function productSkus(): array
+    {
+        return self::$productSkusMemo ??= self::productMasters()
+            ->pluck('sku')
+            ->unique()
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * One Shopify INV map per request — /missing-listing used to rebuild this
+     * for every channel (~1.7s each) and later channels timed out as 0.
+     */
+    public static function requestShopifyMap(): Collection
+    {
+        return self::$shopifyMapMemo ??= self::shopifyMap(self::productSkus());
+    }
+
     /**
      * @param  Collection<string, mixed>  $nrValuesBySkuUpper  sku_upper → raw DataView value
      * @param  array<string, string>  $listedIdBySkuLower  sku_lower → non-empty listing id when listed
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
      */
-    public static function counts(Collection $nrValuesBySkuUpper, array $listedIdBySkuLower): array
+    public static function counts(Collection $nrValuesBySkuUpper, array $listedIdBySkuLower, bool $requirePositiveInv = true): array
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
-        $shopifyData = self::shopifyMap($skus);
+        $productMasters = self::productMasters();
+        $shopifyData = $requirePositiveInv ? self::requestShopifyMap() : collect();
 
         $reqCount = 0;
         $nrlCount = 0;
@@ -38,9 +76,11 @@ class ListingCountsEngine
                 continue;
             }
 
-            $inv = self::shopifyInv(self::shopifyRow($shopifyData, $sku, (string) $item->sku));
-            if ($inv <= 0) {
-                continue;
+            if ($requirePositiveInv) {
+                $inv = self::shopifyInv(self::shopifyRow($shopifyData, $sku, (string) $item->sku));
+                if ($inv <= 0) {
+                    continue;
+                }
             }
 
             $nrReq = self::nrReqFromDataView(self::lookupNrValue($nrValuesBySkuUpper, $sku));

@@ -95,7 +95,7 @@ class MissingListingController extends Controller
                     }
 
                     // API: live counts from each channel's /listing-* page
-                    $listingCounts = ListingChannelCounts::forChannel($channel, false);
+                    $listingCounts = ListingChannelCounts::forChannel($channel, false, false);
 
                     return [
                         'id' => $master->id,
@@ -446,7 +446,7 @@ class MissingListingController extends Controller
                 if (ListingChannelCounts::isSheetSource((string) $name)) {
                     continue;
                 }
-                $c = ListingChannelCounts::forChannel((string) $name, false);
+                $c = ListingChannelCounts::forChannel((string) $name, false, false);
                 $total += (int) ($c['Pending'] ?? 0);
             }
 
@@ -457,7 +457,7 @@ class MissingListingController extends Controller
             return 0.0;
         }
 
-        $c = ListingChannelCounts::forChannel($channelKey, false);
+        $c = ListingChannelCounts::forChannel($channelKey, false, false);
 
         return (float) ($c['Pending'] ?? 0);
     }

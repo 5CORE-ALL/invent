@@ -24,13 +24,23 @@ class AmazonListingCounts
     /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
      */
-    public static function counts(): array
+    public static function counts(bool $requirePositiveInv = true): array
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
+        $productMasters = ListingCountsEngine::productMasters();
+        $skus = ListingCountsEngine::productSkus();
 
-        $shopifyData = ListingCountsEngine::shopifyMap($skus);
+        $shopifyData = $requirePositiveInv ? ListingCountsEngine::requestShopifyMap() : collect();
         $nrlSet = self::nrlSetForSkus($skus);
+        if (! $requirePositiveInv && class_exists(\App\Models\AmazonListingStatus::class)) {
+            $fromStatus = ChannelListingRegistry::overlayListingStatusNr(
+                collect(),
+                \App\Models\AmazonListingStatus::class,
+                $skus
+            );
+            foreach ($fromStatus as $key => $_) {
+                $nrlSet[(string) $key] = true;
+            }
+        }
         $listingsByNorm = self::listingsByNormalizedSku();
 
         $reqCount = 0;
@@ -44,9 +54,11 @@ class AmazonListingCounts
                 continue;
             }
 
-            $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, (string) $item->sku));
-            if ($inv <= 0) {
-                continue;
+            if ($requirePositiveInv) {
+                $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, (string) $item->sku));
+                if ($inv <= 0) {
+                    continue;
+                }
             }
 
             $nrReq = self::skuIsNrl($sku, $nrlSet) ? 'NR' : 'REQ';

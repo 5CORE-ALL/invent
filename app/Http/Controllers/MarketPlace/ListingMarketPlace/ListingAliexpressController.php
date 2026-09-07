@@ -39,10 +39,10 @@ class ListingAliexpressController extends Controller
 
     public function getViewListingAliexpressData(Request $request)
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
+        $productMasters = ListingCountsEngine::productMasters();
+        $skus = ListingCountsEngine::productSkus();
 
-        $shopifyData = ListingCountsEngine::shopifyMap($skus);
+        $shopifyData = ListingCountsEngine::requestShopifyMap();
 
         // Links only — NRL/REQ + Listed are automated (same pattern as /listing-ebaytwo)
         $statusData = AliexpressListingStatus::whereIn('sku', $skus)
@@ -55,7 +55,7 @@ class ListingAliexpressController extends Controller
         // NRL column — same source as aliexpress-pricing (AliexpressDataView.value.NRL)
         $nrValues = ListingCountsEngine::loadNrValues(AliexpressDataView::class, $skus);
 
-        // Listed = real aliexpress_metric.product_id OR sku in aliexpress_pricing_prices
+        // Listed = real aliexpress_metric.product_id only
         $metricsByNorm = AliexpressListingCounts::metricsByNormalizedSku();
         $pricingByNorm = AliexpressListingCounts::pricingSkusByNormalizedSku();
 
