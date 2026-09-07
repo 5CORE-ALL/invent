@@ -231,7 +231,7 @@ class FbMarketplaceAnalyticsController extends Controller
                 continue;
             }
             $sprice = $update['sprice'] ?? $update['SPRICE'];
-            $sprice = is_numeric($sprice) ? round((float) $sprice, 2) : 0;
+            $sprice = is_numeric($sprice) ? (float) round((float) $sprice) : 0;
 
             $status = FBMarketplaceListingStatus::firstOrNew(['sku' => $sku]);
             $value = is_array($status->value)

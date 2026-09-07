@@ -3508,7 +3508,8 @@
             const capped = skipCap
                 ? chPromoRound2(fill)
                 : (d ? chPromoCapSpriceToLmp(d, fill, extra) : chPromoRound2(fill));
-            return d ? chPromoFloorShopifySpriceToAmz(d, capped) : capped;
+            const out = d ? chPromoFloorShopifySpriceToAmz(d, capped) : capped;
+            return chPromoRoundChannelSprice(out);
         }
         function chPromoWipeSpriceRow(row) {
             if (!row || typeof row.update !== 'function') return;
@@ -3617,6 +3618,13 @@
         }
         function chPromoRound2(n) {
             return Math.round((Number(n) || 0) * 100) / 100;
+        }
+        /** FB Marketplace S PRC uses the nearest whole dollar (66.66 → 67). */
+        function chPromoRoundChannelSprice(n) {
+            const x = Number(n);
+            if (!(x > 0)) return 0;
+            if (CHANNEL_PROMO_CHANNEL === 'fb_marketplace') return Math.round(x);
+            return chPromoRound2(x);
         }
         function chPromoToast(type, msg) {
             const kinds = ['success', 'error', 'info', 'warning', 'danger'];
@@ -4372,6 +4380,7 @@
                     ? chPromoRound2(sprice)
                     : (rowData ? chPromoCapSpriceToLmp(rowData, sprice, extra) : chPromoRound2(sprice));
                 if (rowData) val = chPromoFloorShopifySpriceToAmz(rowData, val);
+                if (val > 0) val = chPromoRoundChannelSprice(val);
             }
             if (!sku || !chPromoCfg.saveSpriceUrl) {
                 return $.Deferred().reject().promise();
@@ -5206,7 +5215,7 @@
                 ? 0
                 : chPromoShipCost(d);
             const price = (lp * (1 + roi / 100) + ship) / margin;
-            return (isFinite(price) && price > 0) ? chPromoRound2(price) : 0;
+            return (isFinite(price) && price > 0) ? chPromoRoundChannelSprice(price) : 0;
         }
         function chPromoPatchDatasetSprice(sku, updates) {
             const key = chPromoSkuKey(sku);
@@ -9353,7 +9362,7 @@
                     ? chPromoRound2(p)
                     : chPromoCapSpriceToLmp(d, p, extra);
                 if (!extra.skip_amz_floor) out = chPromoFloorShopifySpriceToAmz(d, out);
-                return out;
+                return chPromoRoundChannelSprice(out);
             };
             if (typeof ebaySprcDilForRow === 'function') {
                 const sprcDil = ebaySprcDilForRow(d);

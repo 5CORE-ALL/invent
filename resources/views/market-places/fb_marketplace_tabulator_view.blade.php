@@ -27,22 +27,19 @@
             background-position: right 6px center;
         }
 
-        /* Summary badges: one row only; share width; text scales to fit; thin scroll if needed */
+        /* Summary badges wrap like Temu / TikTok so the full metric set stays visible */
         #summary-stats .ebay2-summary-badge-row {
             display: flex;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
             align-items: stretch;
             gap: clamp(0.2rem, 0.5vw, 0.45rem);
             width: 100%;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: thin;
         }
         #summary-stats .ebay2-summary-badge-row > .badge {
-            flex: 1 1 0;
+            flex: 0 1 auto;
             min-width: 0;
-            font-size: clamp(0.6rem, 0.35rem + 0.7vw, 0.9rem);
-            padding: clamp(0.15rem, 0.3vw, 0.3rem) clamp(0.2rem, 0.5vw, 0.5rem);
+            font-size: clamp(0.65rem, 0.4rem + 0.55vw, 0.85rem);
+            padding: clamp(0.15rem, 0.3vw, 0.3rem) clamp(0.35rem, 0.6vw, 0.55rem);
             font-weight: bold;
             box-sizing: border-box;
             display: inline-flex;
@@ -50,6 +47,10 @@
             justify-content: center;
             text-align: center;
             white-space: nowrap;
+        }
+        #summary-stats .ebay2-summary-badge-row > .badge.is-active {
+            outline: 3px solid #ffc107;
+            outline-offset: 2px;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'fb_marketplace'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'fb_marketplace'])
@@ -183,9 +184,49 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-1 p-2 bg-light rounded">
-                    <div class="ebay2-summary-badge-row">
-                        <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: #fff; font-weight: bold;">PFT: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2" id="avg-roi-badge" style="color: #fff; font-weight: bold;">ROI: 0%</span>
+                    <div class="ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
+                        <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
+                            style="color: #fff; font-weight: bold;"
+                            title="Number of rows currently shown after filters">Rows: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge"
+                            style="color: #fff; font-weight: bold; cursor: pointer;"
+                            title="INV &gt; 0 and FB L30 = 0. Click to filter.">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge"
+                            style="background-color: #7dd3fc; color: #fff; font-weight: bold; cursor: pointer;"
+                            title="INV &gt; 0 and FB L30 &gt; 0. Click to filter.">&gt; 0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="total-sales-amt-badge"
+                            style="background-color: #14b8a6; color: #fff; font-weight: bold;"
+                            title="Sales = Σ(Price × FB L30 sold)">Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="total-recovery-badge"
+                            style="background-color: #38bdf8; color: #fff; font-weight: bold;"
+                            title="Recovery = Sales × take-home factor (marketplace fee already out)">Recovery: $0</span>
+                        <span class="badge fs-6 p-2" id="total-spend-badge"
+                            style="background-color: #a78bfa; color: #fff; font-weight: bold;"
+                            title="FB Marketplace has no listing ads API — Spend stays $0">Spend: $0</span>
+                        <span class="badge fs-6 p-2" id="qty-sold-badge"
+                            style="background-color: #6f42c1; color: #fff; font-weight: bold;"
+                            title="Σ FB L30 units sold">Qty: 0</span>
+                        <span class="badge fs-6 p-2" id="avg-pft-badge"
+                            style="background-color: #3b82f6; color: #fff; font-weight: bold;"
+                            title="GPFT% = Σ((Price × factor − LP) × Qty) / Sales × 100 (no ship)">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="avg-roi-badge"
+                            style="background-color: #6c757d; color: #fff; font-weight: bold;"
+                            title="GROI% = Σ((Price × factor − LP) × Qty) / Σ(LP × Qty) × 100 (no ship)">GROI: 0%</span>
+                        <span class="badge fs-6 p-2" id="ads-percent-badge"
+                            style="background-color: #d63384; color: #fff; font-weight: bold;"
+                            title="Ads% = Spend / Sales. FB Marketplace listing ads API is not wired — 0%.">Ads: 0%</span>
+                        <span class="badge fs-6 p-2" id="avg-npft-badge"
+                            style="background-color: #2563eb; color: #fff; font-weight: bold;"
+                            title="NPFT% = GPFT% − Ads%">NPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="avg-nroi-badge"
+                            style="background-color: #5b21b6; color: #fff; font-weight: bold;"
+                            title="NROI% = GROI% − Ads%">NROI: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
+                            style="color: #fff; font-weight: bold;"
+                            title="Average Price of listed rows (Price &gt; 0)">Prc: $0.00</span>
+                        <span class="badge fs-6 p-2" id="avg-cvr-badge"
+                            style="background-color: #b91c1c; color: #fff; font-weight: bold;"
+                            title="CVR = Σ FB L30 sold ÷ Σ views">CVR: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="missing-l-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: Price = 0 and NR/REQ = REQ">Missing L: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'fbmarketplace-price-gt-lmp-badge', 'pglChannelKey' => 'fbmarketplace', 'pglPriceField' => 'price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'fbmarketplace-price-lt80-lmp-badge', 'pltChannelKey' => 'fbmarketplace', 'pltPriceField' => 'price'])
@@ -193,7 +234,6 @@
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="revenue-badge" style="color: #000; font-weight: bold;" title="Total sales (Price × L30 sold)">Revenue: $0.00</span>
                     </div>
                 </div>
 
@@ -254,12 +294,31 @@
         let priceLt80LmpFilterActive = false;
         let blueTriangleFilterActive = false;
 
+        function fbMpRoundSprice(n) {
+            const x = Number(n);
+            return x > 0 ? Math.round(x) : 0;
+        }
         function fbMpRowSpriceForAlert(data) {
             if (!data) return 0;
+            let sprice = 0;
             if (typeof chPromoSavedOrLiveSprice === 'function') {
-                return Number(chPromoSavedOrLiveSprice(data)) || 0;
+                sprice = Number(chPromoSavedOrLiveSprice(data)) || 0;
+            } else {
+                sprice = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
             }
-            return parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+            return fbMpRoundSprice(sprice);
+        }
+        function fbMpSpriceMetrics(d) {
+            const sprice = fbMpRowSpriceForAlert(d);
+            const lp = parseFloat(d && d.lp) || 0;
+            const factor = parseFloat(d && d.factor) || 1;
+            if (!(sprice > 0)) return { sprice: 0, spft: null, sroi: null };
+            const pft = (sprice * factor) - lp;
+            return {
+                sprice: sprice,
+                spft: (pft / sprice) * 100,
+                sroi: lp > 0 ? (pft / lp) * 100 : 0,
+            };
         }
         function fbMpHasBlueTriangle(data) {
             if (!data) return false;
@@ -559,12 +618,13 @@
                             if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                             const meta = ebayDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
+                            const sprc = fbMpRoundSprice(meta.sprc);
                             const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                                 + ' → ' + meta.label
                                 + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2);
+                                + ' → $' + sprc.toFixed(2);
                             return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                                + meta.sprc.toFixed(2) + '</span>';
+                                + sprc.toFixed(2) + '</span>';
                         },
                         width: 78
                     },
@@ -580,6 +640,7 @@
                             let value = (typeof chPromoSavedOrLiveSprice === 'function')
                                 ? Number(chPromoSavedOrLiveSprice(d))
                                 : parseFloat(cell.getValue() || d.sprice || 0);
+                            value = fbMpRoundSprice(value);
                             if (!(value > 0)) return '';
                             const live = parseFloat(d.price) || 0;
                             const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
@@ -629,11 +690,12 @@
                         }
                     },
                     {
-                        title: "PFT",
+                        title: "GPFT",
                         field: "PFT",
                         hozAlign: "center",
                         width: 70,
                         sorter: "number",
+                        headerTooltip: "GPFT% from listing Price: (Price × factor − LP) / Price (no ship)",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue()) || 0;
                             const color = value < 0 ? '#dc3545' : (value < 10 ? '#ffc107' : '#28a745');
@@ -641,39 +703,16 @@
                         }
                     },
                     {
-                        title: "ROI",
+                        title: "GROI",
                         field: "ROI",
                         hozAlign: "center",
                         width: 70,
                         sorter: "number",
+                        headerTooltip: "GROI% from listing Price: (Price × factor − LP) / LP (no ship)",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue()) || 0;
                             const color = value < 0 ? '#dc3545' : (value < 40 ? '#ffc107' : '#28a745');
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "S Price",
-                        field: "sprice",
-                        hozAlign: "center",
-                        width: 90,
-                        editor: "number",
-                        editorParams: { min: 0, step: 0.01 },
-                        formatter: function(cell) {
-                            const v = cell.getValue();
-                            return (v === null || v === '' || isNaN(parseFloat(v))) ? '—' : '$' + parseFloat(v).toFixed(2);
-                        },
-                        cellEdited: function(cell) {
-                            const row = cell.getRow();
-                            const d = row.getData();
-                            saveMercariStatus(d.sku, { sprice: cell.getValue() });
-
-                            const sprice = parseFloat(cell.getValue()) || 0;
-                            const lp = parseFloat(d.lp) || 0;
-                            const factor = parseFloat(d.factor) || 1;
-                            const spft = sprice > 0 ? ((sprice * factor - lp) / sprice) * 100 : 0;
-                            const sroi = lp > 0 ? ((sprice * factor - lp) / lp) * 100 : 0;
-                            row.update({ SPRICE: sprice, sprice: sprice, SPFT: Math.round(spft * 100) / 100, SROI: Math.round(sroi * 100) / 100 });
                         }
                     },
                     {
@@ -701,31 +740,39 @@
                         }
                     },
                     {
-                        title: "SPFT",
+                        title: "S GPFT",
                         field: "SPFT",
                         hozAlign: "center",
                         width: 70,
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = fbMpSpriceMetrics(aRow.getData()).spft;
+                            const bv = fbMpSpriceMetrics(bRow.getData()).spft;
+                            return (av == null ? -9999 : av) - (bv == null ? -9999 : bv);
+                        },
+                        headerTooltip: "S GPFT from S PRC: (S PRC × factor − LP) / S PRC (no ship)",
                         formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            if (row.sprice === null || row.sprice === '' || isNaN(parseFloat(row.sprice))) return '—';
-                            const value = parseFloat(cell.getValue()) || 0;
-                            const color = value < 0 ? '#dc3545' : (value < 10 ? '#ffc107' : '#28a745');
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
+                            const m = fbMpSpriceMetrics(cell.getRow().getData());
+                            if (m.spft == null) return '—';
+                            const color = m.spft < 0 ? '#dc3545' : (m.spft < 10 ? '#ffc107' : '#28a745');
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(m.spft)}%</span>`;
                         }
                     },
                     {
-                        title: "SROI",
+                        title: "S GROI",
                         field: "SROI",
                         hozAlign: "center",
                         width: 70,
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = fbMpSpriceMetrics(aRow.getData()).sroi;
+                            const bv = fbMpSpriceMetrics(bRow.getData()).sroi;
+                            return (av == null ? -9999 : av) - (bv == null ? -9999 : bv);
+                        },
+                        headerTooltip: "S GROI from S PRC: (S PRC × factor − LP) / LP (no ship)",
                         formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            if (row.sprice === null || row.sprice === '' || isNaN(parseFloat(row.sprice))) return '—';
-                            const value = parseFloat(cell.getValue()) || 0;
-                            const color = value < 0 ? '#dc3545' : (value < 40 ? '#ffc107' : '#28a745');
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
+                            const m = fbMpSpriceMetrics(cell.getRow().getData());
+                            if (m.sroi == null) return '—';
+                            const color = m.sroi < 0 ? '#dc3545' : (m.sroi < 40 ? '#ffc107' : '#28a745');
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(m.sroi)}%</span>`;
                         }
                     },
                     {
@@ -812,7 +859,7 @@
                     skuField: 'sku',
                     getTable: () => table,
                     getDataset: () => allTableData,
-                    onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                    onAfterExpand: () => { if (typeof updateBadges === 'function') updateBadges(); },
                     onCollapse: () => { if (typeof applyAllFilters === 'function') applyAllFilters(); },
                 });
                 ParentExpand.bind();
@@ -910,7 +957,7 @@
                         if (mode !== 'same' && newPrice.toFixed(2) === basePrice.toFixed(2)) {
                             newPrice = roundToRetailPrice49(newPrice);
                         }
-                        newPrice = parseFloat(newPrice.toFixed(2));
+                        newPrice = fbMpRoundSprice(newPrice);
 
                         // recompute SPFT/SROI from new sprice
                         const lp = parseFloat(d.lp) || 0;
@@ -964,7 +1011,7 @@
 
                     const computed = computeFn(lp, factor);
                     if (computed == null) { skippedHigh++; return; }
-                    const newPrice = +computed.toFixed(2);
+                    const newPrice = fbMpRoundSprice(computed);
                     if (!isFinite(newPrice) || newPrice <= 0) return;
 
                     const spft = newPrice > 0 ? ((newPrice * factor - lp) / newPrice) * 100 : 0;
@@ -1163,6 +1210,64 @@
             return price === 0 && nr === 'REQ';
         }
 
+        function fbMpFilterState() {
+            const searchEl = document.getElementById('sku-search');
+            const invEl = document.getElementById('inv-filter');
+            const dilEl = document.getElementById('dil-filter');
+            const soldEl = document.getElementById('sold-filter');
+            return {
+                skuSearch: (searchEl ? (searchEl.value || '') : '').trim().toLowerCase(),
+                invFilter: invEl ? invEl.value : 'all',
+                dilFilter: dilEl ? dilEl.value : 'all',
+                soldFilter: soldEl ? soldEl.value : 'all',
+            };
+        }
+
+        function fbMpRowPassesFilters(row) {
+            if (!row) return false;
+            const st = fbMpFilterState();
+
+            if (st.skuSearch) {
+                const sku = String(row.sku || '').toLowerCase();
+                const parent = String(row.Parent || '').toLowerCase();
+                if (sku.indexOf(st.skuSearch) === -1 && parent.indexOf(st.skuSearch) === -1) return false;
+            }
+
+            if (missingLFilterActive && !missingLFilter(row)) return false;
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge && !PriceGtLmpBadge.hasRedTriangle(row, 'price')) {
+                return false;
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge && !PriceLt80LmpBadge.hasPurpleTriangle(row, 'price')) {
+                return false;
+            }
+            if (blueTriangleFilterActive && !fbMpHasBlueTriangle(row)) {
+                return false;
+            }
+
+            if (st.invFilter && st.invFilter !== 'all') {
+                const inv = parseFloat(row.INV) || 0;
+                if (st.invFilter === 'zero' && !(inv === 0)) return false;
+                if (st.invFilter === 'more' && !(inv > 0)) return false;
+            }
+
+            if (st.dilFilter && st.dilFilter !== 'all') {
+                const inv = parseFloat(row.INV) || 0;
+                const l30 = parseFloat(row.L30) || 0;
+                const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                if (st.dilFilter === 'red' && !(dil < 25)) return false;
+                if (st.dilFilter === 'green' && !(dil >= 25 && dil < 50)) return false;
+                if (st.dilFilter === 'pink' && !(dil >= 50)) return false;
+            }
+
+            if (st.soldFilter && st.soldFilter !== 'all') {
+                const soldQty = parseFloat(row.sold) || 0;
+                if (st.soldFilter === 'sold' && !(soldQty > 0)) return false;
+                if (st.soldFilter === 'zero' && !(soldQty === 0)) return false;
+            }
+
+            return true;
+        }
+
         // Unified filter — combines SKU/Parent search, the Missing L badge toggle, and
         // the Sold dropdown into one Tabulator filter so they STACK instead of
         // overwriting each other (matches the Mercari w/Ship pattern). All three filter
@@ -1170,68 +1275,15 @@
         function applyAllFilters() {
             if (window.ParentExpand && ParentExpand.isExpanded()) {
                 ParentExpand.beforeFilters(function(){ applyAllFilters(); });
+                if (typeof updateBadges === 'function') updateBadges();
                 return;
             }
-            if (typeof table === 'undefined' || !table || !table.setFilter) return;
-
-            const searchEl = document.getElementById('sku-search');
-            const skuSearch = (searchEl ? (searchEl.value || '') : '').trim().toLowerCase();
-
-            const invEl = document.getElementById('inv-filter');
-            const invFilter = invEl ? invEl.value : 'all';
-
-            const dilEl = document.getElementById('dil-filter');
-            const dilFilter = dilEl ? dilEl.value : 'all';
-
-            const soldEl = document.getElementById('sold-filter');
-            const soldFilter = soldEl ? soldEl.value : 'all';
-
-            table.setFilter(function(row) {
-                // SKU / Parent search
-                if (skuSearch) {
-                    const sku = String(row.sku || '').toLowerCase();
-                    const parent = String(row.Parent || '').toLowerCase();
-                    if (sku.indexOf(skuSearch) === -1 && parent.indexOf(skuSearch) === -1) return false;
-                }
-
-                // Missing L (price = 0 and NR/REQ = REQ) — only when the badge is toggled on
-                if (missingLFilterActive && !missingLFilter(row)) return false;
-                if (priceGtLmpFilterActive && window.PriceGtLmpBadge && !PriceGtLmpBadge.hasRedTriangle(row, 'price')) {
-                    return false;
-                }
-                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge && !PriceLt80LmpBadge.hasPurpleTriangle(row, 'price')) {
-                    return false;
-                }
-                if (blueTriangleFilterActive && !fbMpHasBlueTriangle(row)) {
-                    return false;
-                }
-
-                // INV filter (0 INV / INV > 0)
-                if (invFilter && invFilter !== 'all') {
-                    const inv = parseFloat(row.INV) || 0;
-                    if (invFilter === 'zero' && !(inv === 0)) return false;
-                    if (invFilter === 'more' && !(inv > 0))   return false;
-                }
-
-                // DIL% (computed: L30 / INV * 100, same buckets as Dil column formatter)
-                if (dilFilter && dilFilter !== 'all') {
-                    const inv = parseFloat(row.INV) || 0;
-                    const l30 = parseFloat(row.L30) || 0;
-                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
-                    if (dilFilter === 'red'    && !(dil < 25)) return false;
-                    if (dilFilter === 'green'  && !(dil >= 25 && dil < 50))    return false;
-                    if (dilFilter === 'pink'   && !(dil >= 50))                return false;
-                }
-
-                // Sold filter (Mercari w/o Ship L30 sold qty — `sold` field).
-                if (soldFilter && soldFilter !== 'all') {
-                    const soldQty = parseFloat(row.sold) || 0;
-                    if (soldFilter === 'sold' && !(soldQty > 0))   return false;
-                    if (soldFilter === 'zero' && !(soldQty === 0)) return false;
-                }
-
-                return true;
-            });
+            if (typeof table !== 'undefined' && table && table.setFilter) {
+                table.setFilter(function(row) {
+                    return fbMpRowPassesFilters(row);
+                });
+            }
+            if (typeof updateBadges === 'function') updateBadges();
         }
 
         if (window.PriceGtLmpBadge) {
@@ -1266,46 +1318,121 @@
             syncFbMpTriangleBadgeState();
         });
 
+        function fbMpVisibleRows(fallback) {
+            const src = (Array.isArray(allTableData) && allTableData.length)
+                ? allTableData
+                : (Array.isArray(window.allTableData) && window.allTableData.length)
+                    ? window.allTableData
+                    : (Array.isArray(fallback) ? fallback : []);
+            return src.filter(fbMpRowPassesFilters);
+        }
+        function fbMpMoney(n) {
+            return '$' + Math.round(Number(n) || 0).toLocaleString();
+        }
+        function syncFbMpSoldBadgeState() {
+            const soldEl = document.getElementById('sold-filter');
+            const soldFilter = soldEl ? soldEl.value : 'all';
+            $('#zero-sold-count-badge').toggleClass('is-active', soldFilter === 'zero');
+            $('#more-sold-count-badge').toggleClass('is-active', soldFilter === 'sold');
+        }
         function updateBadges(data) {
-            data = data || [];
-            let pftSum = 0, roiSum = 0, count = 0, missingL = 0, revenue = 0;
-            data.forEach(function(row) {
-                // Missing L: price = 0 and NR/REQ = REQ
+            const rows = fbMpVisibleRows(data);
+            let missingL = 0;
+            let zeroSold = 0;
+            let moreSold = 0;
+            let sales = 0;
+            let recovery = 0;
+            let qty = 0;
+            let pftDollars = 0;
+            let cogs = 0;
+            let views = 0;
+            let priceSum = 0;
+            let pricedCount = 0;
+            let blueTriangleCount = 0;
+
+            rows.forEach(function(row) {
                 const nr = row.nr_req || '';
                 const price = parseFloat(row.price) || 0;
-                if (price === 0 && nr === 'REQ') {
-                    missingL++;
+                const soldQty = parseFloat(row.sold) || 0;
+                const inv = parseFloat(row.INV) || 0;
+                const lp = parseFloat(row.lp) || 0;
+                const factor = parseFloat(row.factor) || 1;
+                const rowViews = parseFloat(row.views) || 0;
+                if (price === 0 && nr === 'REQ') missingL++;
+                if (inv > 0 && !(soldQty > 0)) zeroSold++;
+                if (inv > 0 && soldQty > 0) moreSold++;
+                if (soldQty > 0 && price > 0) {
+                    const lineSales = price * soldQty;
+                    sales += lineSales;
+                    recovery += lineSales * factor;
+                    qty += soldQty;
+                    pftDollars += ((price * factor) - lp) * soldQty;
+                    cogs += lp * soldQty;
                 }
-
-                // Revenue: price × L30 sold units
-                revenue += price * (parseFloat(row.sold) || 0);
-
-                if (price <= 0) return; // only rows with a price contribute
-                pftSum += parseFloat(row.PFT) || 0;
-                roiSum += parseFloat(row.ROI) || 0;
-                count++;
+                views += rowViews;
+                if (price > 0) {
+                    priceSum += price;
+                    pricedCount++;
+                }
+                if (fbMpHasBlueTriangle(row)) blueTriangleCount++;
             });
-            const avgPft = count > 0 ? pftSum / count : 0;
-            const avgRoi = count > 0 ? roiSum / count : 0;
-            document.getElementById('avg-pft-badge').textContent = 'PFT: ' + Math.round(avgPft) + '%';
-            document.getElementById('avg-roi-badge').textContent = 'ROI: ' + Math.round(avgRoi) + '%';
-            document.getElementById('missing-l-badge').textContent = 'Missing L: ' + missingL;
+
+            const gpft = sales > 0 ? (pftDollars / sales) * 100 : 0;
+            const groi = cogs > 0 ? (pftDollars / cogs) * 100 : 0;
+            const adsPct = 0;
+            const npft = gpft - adsPct;
+            const nroi = groi - adsPct;
+            const avgPrice = pricedCount > 0 ? (priceSum / pricedCount) : 0;
+            const cvr = views > 0 ? (qty / views) * 100 : 0;
+
+            const setTxt = function(id, text) {
+                const el = document.getElementById(id);
+                if (el) el.textContent = text;
+            };
+            setTxt('rows-count-badge', 'Rows: ' + rows.length.toLocaleString());
+            setTxt('zero-sold-count-badge', '0 Sold: ' + zeroSold.toLocaleString());
+            setTxt('more-sold-count-badge', '> 0 Sold: ' + moreSold.toLocaleString());
+            setTxt('total-sales-amt-badge', 'Sales: ' + fbMpMoney(sales));
+            setTxt('total-recovery-badge', 'Recovery: ' + fbMpMoney(recovery));
+            setTxt('total-spend-badge', 'Spend: $0');
+            setTxt('qty-sold-badge', 'Qty: ' + Math.round(qty).toLocaleString());
+            setTxt('avg-pft-badge', 'GPFT: ' + Math.round(gpft) + '%');
+            setTxt('avg-roi-badge', 'GROI: ' + Math.round(groi) + '%');
+            setTxt('ads-percent-badge', 'Ads: ' + adsPct.toFixed(1) + '%');
+            setTxt('avg-npft-badge', 'NPFT: ' + Math.round(npft) + '%');
+            setTxt('avg-nroi-badge', 'NROI: ' + Math.round(nroi) + '%');
+            setTxt('avg-price-badge', 'Prc: $' + avgPrice.toFixed(2));
+            setTxt('avg-cvr-badge', 'CVR: ' + (Math.round(cvr * 10) / 10) + '%');
+            setTxt('missing-l-badge', 'Missing L: ' + missingL);
+
             if (window.PriceGtLmpBadge && table) {
                 PriceGtLmpBadge.update('#fbmarketplace-price-gt-lmp-badge', table.getData(), 'fbmarketplace', 'price');
                 if (window.PriceLt80LmpBadge) {
                     PriceLt80LmpBadge.update('#fbmarketplace-price-lt80-lmp-badge', table.getData(), 'fbmarketplace', 'price');
                 }
             }
-            let blueTriangleCount = 0;
-            (table ? table.getData() : data).forEach(function(row) {
-                if (fbMpHasBlueTriangle(row)) blueTriangleCount++;
-            });
             $('#fbmarketplace-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             if (typeof syncFbMpTriangleBadgeState === 'function') syncFbMpTriangleBadgeState();
-            document.getElementById('revenue-badge').textContent = 'Revenue: $' + revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            syncFbMpSoldBadgeState();
         }
+        function updateSummary() {
+            updateBadges();
+        }
+
+        $('#zero-sold-count-badge').on('click', function() {
+            const soldEl = document.getElementById('sold-filter');
+            if (!soldEl) return;
+            soldEl.value = soldEl.value === 'zero' ? 'all' : 'zero';
+            applyAllFilters();
+        });
+        $('#more-sold-count-badge').on('click', function() {
+            const soldEl = document.getElementById('sold-filter');
+            if (!soldEl) return;
+            soldEl.value = soldEl.value === 'sold' ? 'all' : 'sold';
+            applyAllFilters();
+        });
 
         function saveMercariStatus(sku, payload) {
             const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
