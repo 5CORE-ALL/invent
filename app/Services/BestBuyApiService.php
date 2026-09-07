@@ -798,65 +798,6 @@ class BestBuyApiService
         ];
     }
 
-    protected function resolveMcmOfferSku(string $sku, string $apiKey, string $baseUrl): ?string
-    {
-        $candidates = array_values(array_unique(array_filter([
-            $sku,
-            strtoupper($sku),
-        ])));
-
-        foreach ($candidates as $candidate) {
-            $params = ['sku' => $candidate, 'max' => 20];
-            $shopId = config('services.bestbuy.shop_id');
-            if ($shopId !== null && $shopId !== '') {
-                $params['shop_id'] = (int) $shopId;
-            }
-
-            try {
-                $response = Http::withoutVerifying()
-                    ->withHeaders([
-                        'Authorization' => $apiKey,
-                        'Accept' => 'application/json',
-                    ])
-                    ->timeout(30)
-                    ->get($baseUrl.'/api/offers', $params);
-
-                if (! $response->successful()) {
-                    continue;
-                }
-
-                $offers = $response->json('offers') ?? [];
-                if (! is_array($offers) || $offers === []) {
-                    continue;
-                }
-
-                $skuUpper = strtoupper(trim($candidate));
-                foreach ($offers as $offer) {
-                    if (! is_array($offer)) {
-                        continue;
-                    }
-                    $shopSku = trim((string) ($offer['shop_sku'] ?? ''));
-                    if ($shopSku !== '' && strtoupper($shopSku) === $skuUpper) {
-                        return $shopSku;
-                    }
-                }
-
-                $first = $offers[0] ?? [];
-                $fallback = trim((string) ($first['shop_sku'] ?? ''));
-                if ($fallback !== '') {
-                    return $fallback;
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Best Buy OF21 lookup failed', [
-                    'sku' => $candidate,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        return null;
-    }
-
     /**
      * @return array<string, mixed>
      */

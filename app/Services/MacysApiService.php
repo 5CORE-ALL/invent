@@ -190,7 +190,7 @@ class MacysApiService
         if ($offerSku === null) {
             return [
                 'success' => false,
-                'message' => "No Macy MCM offer found for SKU: {$sku}",
+                'message' => "SKU is not listed on Macy MCM: {$sku}",
                 'status_code' => 404,
             ];
         }
@@ -211,38 +211,32 @@ class MacysApiService
                 $url .= '?'.http_build_query($query);
             }
 
-            $response = Http::withoutVerifying()
-                ->withHeaders([
-                    'Authorization' => $apiKey,
-                    'Accept' => 'application/json',
-                ])
-                ->timeout(60)
-                ->attach('file', $csv, 'macy-price-'.preg_replace('/[^A-Za-z0-9_-]+/', '_', $offerSku).'.csv')
-                ->post($url);
+            $filename = 'macy-price-'.preg_replace('/[^A-Za-z0-9_-]+/', '_', $offerSku).'.csv';
+            $response = $this->miraklMcmPostPricingImport($apiKey, $url, $csv, $filename);
 
-            if ($response->status() === 404 && $query !== []) {
-                $response = Http::withoutVerifying()
-                    ->withHeaders([
-                        'Authorization' => $apiKey,
-                        'Accept' => 'application/json',
-                    ])
-                    ->timeout(60)
-                    ->attach('file', $csv, 'macy-price-'.preg_replace('/[^A-Za-z0-9_-]+/', '_', $offerSku).'.csv')
-                    ->post($baseUrl.'/api/offers/pricing/imports');
+            if ($response !== null && $response->status() === 404 && $query !== []) {
+                $response = $this->miraklMcmPostPricingImport(
+                    $apiKey,
+                    $baseUrl.'/api/offers/pricing/imports',
+                    $csv,
+                    $filename
+                );
             }
 
-            if (! $response->successful()) {
+            if ($response === null || ! $response->successful()) {
+                $status = $response?->status();
+                $body = $response ? substr($response->body(), 0, 300) : 'no response';
                 Log::warning('Macy MCM PRI01 price push failed', [
                     'sku' => $sku,
                     'offer_sku' => $offerSku,
-                    'status' => $response->status(),
-                    'body' => substr($response->body(), 0, 800),
+                    'status' => $status,
+                    'body' => $body,
                 ]);
 
                 return [
                     'success' => false,
-                    'message' => 'Macy price push failed: HTTP '.$response->status().' '.substr($response->body(), 0, 300),
-                    'status_code' => $response->status(),
+                    'message' => 'Macy price push failed: HTTP '.($status ?? 'n/a').' '.$body,
+                    'status_code' => $status,
                 ];
             }
 
@@ -1821,76 +1815,6 @@ class MacysApiService
             'message' => 'Macy connected: '.implode('; ', $parts).'.',
             'sample_count' => $sample,
         ];
-    }
-
-    protected function resolveMcmOfferSku(string $sku, string $apiKey, string $baseUrl): ?string
-    {
-        $candidates = array_values(array_unique(array_filter([
-            $sku,
-            strtoupper($sku),
-        ])));
-
-        foreach ($candidates as $candidate) {
-            $params = ['sku' => $candidate, 'max' => 20];
-            $shopId = config('services.macy.shop_id');
-            if ($shopId !== null && $shopId !== '') {
-                $params['shop_id'] = (int) $shopId;
-            }
-
-            try {
-                $response = Http::withoutVerifying()
-                    ->withHeaders([
-                        'Authorization' => $apiKey,
-                        'Accept' => 'application/json',
-                    ])
-                    ->timeout(30)
-                    ->get($baseUrl.'/api/offers', $params);
-
-                if ($response->status() === 404 && isset($params['shop_id'])) {
-                    unset($params['shop_id']);
-                    $response = Http::withoutVerifying()
-                        ->withHeaders([
-                            'Authorization' => $apiKey,
-                            'Accept' => 'application/json',
-                        ])
-                        ->timeout(30)
-                        ->get($baseUrl.'/api/offers', $params);
-                }
-
-                if (! $response->successful()) {
-                    continue;
-                }
-
-                $offers = $response->json('offers') ?? [];
-                if (! is_array($offers) || $offers === []) {
-                    continue;
-                }
-
-                $skuUpper = strtoupper(trim($candidate));
-                foreach ($offers as $offer) {
-                    if (! is_array($offer)) {
-                        continue;
-                    }
-                    $shopSku = trim((string) ($offer['shop_sku'] ?? ''));
-                    if ($shopSku !== '' && strtoupper($shopSku) === $skuUpper) {
-                        return $shopSku;
-                    }
-                }
-
-                $first = $offers[0] ?? [];
-                $fallback = trim((string) ($first['shop_sku'] ?? ''));
-                if ($fallback !== '') {
-                    return $fallback;
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Macy OF21 lookup failed', [
-                    'sku' => $candidate,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        return null;
     }
 
     /**

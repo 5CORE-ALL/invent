@@ -2,6 +2,7 @@
 
 namespace App\Services\Support\Concerns;
 
+use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -17,6 +18,13 @@ trait MiraklMcmBulletImport
 {
     /** @var array<string, array<string, mixed>> */
     private array $miraklMcmOperatorMasterProductCache = [];
+
+    /**
+     * Local MCM shop_sku index for the current request/process (bulk price push).
+     *
+     * @var array<string, array{exact: array<string, string>, norm: array<string, string>, compact: array<string, string>}>
+     */
+    private static array $miraklMcmOfferSkuIndex = [];
 
     abstract protected function miraklMcmConfigKey(): string;
 
@@ -205,6 +213,218 @@ trait MiraklMcmBulletImport
         }
 
         return ['shop_id' => (int) $shopId];
+    }
+
+    protected function miraklMcmOfferProductsTable(): ?string
+    {
+        return match ($this->miraklMcmConfigKey()) {
+            'macy' => 'macy_products',
+            'bestbuy' => 'bestbuy_usa_products',
+            'purchasingpower' => 'purchasing_power_products',
+            default => null,
+        };
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function miraklMcmOfferSkuCandidates(string $sku): array
+    {
+        $sku = trim($sku);
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+        return array_values(array_unique(array_filter([
+            $sku,
+            strtoupper($sku),
+            $norm,
+            str_replace('-', ' ', $sku),
+            (string) preg_replace('/\s+/u', ' ', $sku),
+        ], static fn ($value) => is_string($value) && $value !== '')));
+    }
+
+    /**
+     * @return array{exact: array<string, string>, norm: array<string, string>, compact: array<string, string>}
+     */
+    protected function miraklMcmOfferSkuIndex(string $table): array
+    {
+        if (isset(self::$miraklMcmOfferSkuIndex[$table])) {
+            return self::$miraklMcmOfferSkuIndex[$table];
+        }
+
+        $exact = [];
+        $norm = [];
+        $compact = [];
+        try {
+            foreach (DB::table($table)->whereNotNull('sku')->where('sku', '!=', '')->select('sku')->cursor() as $row) {
+                $shop = trim((string) $row->sku);
+                if ($shop === '') {
+                    continue;
+                }
+                $exact[strtoupper($shop)] = $shop;
+                $n = ShopifySku::normalizeSkuForShopifyLookup($shop);
+                if ($n !== '' && ! isset($norm[$n])) {
+                    $norm[$n] = $shop;
+                }
+                $c = ShopifySku::compactSkuForLookup($shop);
+                if ($c !== '' && ! isset($compact[$c])) {
+                    $compact[$c] = $shop;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning($this->miraklMcmMarketplaceLabel().' local offer SKU index failed', [
+                'table' => $table,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return self::$miraklMcmOfferSkuIndex[$table] = [
+            'exact' => $exact,
+            'norm' => $norm,
+            'compact' => $compact,
+        ];
+    }
+
+    protected function resolveLocalMcmOfferSku(string $sku): ?string
+    {
+        $table = $this->miraklMcmOfferProductsTable();
+        if ($table === null || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
+            return null;
+        }
+
+        $index = $this->miraklMcmOfferSkuIndex($table);
+        $upper = strtoupper(trim($sku));
+        if (isset($index['exact'][$upper])) {
+            return $index['exact'][$upper];
+        }
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '' && isset($index['norm'][$norm])) {
+            return $index['norm'][$norm];
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        if ($compact !== '' && isset($index['compact'][$compact])) {
+            return $index['compact'][$compact];
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve the live MCM shop_sku for PRI01.
+     * Local listing tables are the source of truth during bulk push so OF21 429s
+     * are not reported as "offer not found".
+     */
+    protected function resolveMcmOfferSku(string $sku, string $apiKey, string $baseUrl): ?string
+    {
+        $table = $this->miraklMcmOfferProductsTable();
+        $hasLocalIndex = false;
+        if ($table !== null && Schema::hasTable($table) && Schema::hasColumn($table, 'sku')) {
+            $hasLocalIndex = $this->miraklMcmOfferSkuIndex($table)['exact'] !== [];
+        }
+
+        $local = $this->resolveLocalMcmOfferSku($sku);
+        if ($local !== null) {
+            return $local;
+        }
+        if ($hasLocalIndex) {
+            return null;
+        }
+
+        $wantedNorm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        $wantedCompact = ShopifySku::compactSkuForLookup($sku);
+
+        foreach ($this->miraklMcmOfferSkuCandidates($sku) as $candidate) {
+            $params = ['sku' => $candidate, 'max' => 20];
+            $shopId = $this->miraklMcmConfig('shop_id');
+            if ($shopId !== null && $shopId !== '') {
+                $params['shop_id'] = (int) $shopId;
+            }
+
+            $response = $this->miraklMcmGetOffers($apiKey, $baseUrl, $params);
+            if ($response !== null && $response->status() === 404 && isset($params['shop_id'])) {
+                unset($params['shop_id']);
+                $response = $this->miraklMcmGetOffers($apiKey, $baseUrl, $params);
+            }
+            if ($response === null || ! $response->successful()) {
+                continue;
+            }
+
+            foreach ($response->json('offers') ?? [] as $offer) {
+                if (! is_array($offer)) {
+                    continue;
+                }
+                foreach (['shop_sku', 'product_sku'] as $field) {
+                    $value = trim((string) ($offer[$field] ?? ''));
+                    if ($value === '') {
+                        continue;
+                    }
+                    $matches = strtoupper($value) === strtoupper($candidate)
+                        || ($wantedNorm !== '' && ShopifySku::normalizeSkuForShopifyLookup($value) === $wantedNorm)
+                        || ($wantedCompact !== '' && ShopifySku::compactSkuForLookup($value) === $wantedCompact);
+                    if (! $matches) {
+                        continue;
+                    }
+                    $shopSku = trim((string) ($offer['shop_sku'] ?? $value));
+
+                    return $shopSku !== '' ? $shopSku : $value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $params
+     */
+    protected function miraklMcmGetOffers(string $apiKey, string $baseUrl, array $params): mixed
+    {
+        $last = null;
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            try {
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'Authorization' => $apiKey,
+                        'Accept' => 'application/json',
+                    ])
+                    ->timeout(30)
+                    ->get(rtrim($baseUrl, '/').'/api/offers', $params);
+                $last = $response;
+                if ($response->status() !== 429) {
+                    return $response;
+                }
+            } catch (\Throwable $e) {
+                Log::warning($this->miraklMcmMarketplaceLabel().' OF21 lookup failed', [
+                    'sku' => $params['sku'] ?? null,
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+            usleep(min(30, 3 * $attempt) * 1_000_000);
+        }
+
+        return $last;
+    }
+
+    protected function miraklMcmPostPricingImport(string $apiKey, string $url, string $csv, string $filename): mixed
+    {
+        $last = null;
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => $apiKey,
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(60)
+                ->attach('file', $csv, $filename)
+                ->post($url);
+            $last = $response;
+            if ($response->status() !== 429) {
+                return $response;
+            }
+            usleep(min(30, 3 * $attempt) * 1_000_000);
+        }
+
+        return $last;
     }
 
     /** @return list<string> */

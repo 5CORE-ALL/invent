@@ -354,7 +354,7 @@ class PurchasingPowerApiService extends BestBuyApiService
         if ($offerSku === null) {
             return [
                 'success' => false,
-                'message' => "No Purchasing Power MCM offer found for SKU: {$sku}",
+                'message' => "SKU is not listed on Purchasing Power MCM: {$sku}",
                 'status_code' => 404,
             ];
         }
@@ -375,38 +375,32 @@ class PurchasingPowerApiService extends BestBuyApiService
                 $url .= '?'.http_build_query($query);
             }
 
-            $response = Http::withoutVerifying()
-                ->withHeaders([
-                    'Authorization' => $apiKey,
-                    'Accept' => 'application/json',
-                ])
-                ->timeout(60)
-                ->attach('file', $csv, 'pp-price-'.preg_replace('/[^A-Za-z0-9_-]+/', '_', $offerSku).'.csv')
-                ->post($url);
+            $filename = 'pp-price-'.preg_replace('/[^A-Za-z0-9_-]+/', '_', $offerSku).'.csv';
+            $response = $this->miraklMcmPostPricingImport($apiKey, $url, $csv, $filename);
 
-            if ($response->status() === 404 && $query !== []) {
-                $response = Http::withoutVerifying()
-                    ->withHeaders([
-                        'Authorization' => $apiKey,
-                        'Accept' => 'application/json',
-                    ])
-                    ->timeout(60)
-                    ->attach('file', $csv, 'pp-price-'.preg_replace('/[^A-Za-z0-9_-]+/', '_', $offerSku).'.csv')
-                    ->post($baseUrl.'/api/offers/pricing/imports');
+            if ($response !== null && $response->status() === 404 && $query !== []) {
+                $response = $this->miraklMcmPostPricingImport(
+                    $apiKey,
+                    $baseUrl.'/api/offers/pricing/imports',
+                    $csv,
+                    $filename
+                );
             }
 
-            if (! $response->successful()) {
+            if ($response === null || ! $response->successful()) {
+                $status = $response?->status();
+                $body = $response ? substr($response->body(), 0, 300) : 'no response';
                 Log::warning('Purchasing Power MCM PRI01 price push failed', [
                     'sku' => $sku,
                     'offer_sku' => $offerSku,
-                    'status' => $response->status(),
-                    'body' => substr($response->body(), 0, 800),
+                    'status' => $status,
+                    'body' => $body,
                 ]);
 
                 return [
                     'success' => false,
-                    'message' => 'Purchasing Power price push failed: HTTP '.$response->status().' '.substr($response->body(), 0, 300),
-                    'status_code' => $response->status(),
+                    'message' => 'Purchasing Power price push failed: HTTP '.($status ?? 'n/a').' '.$body,
+                    'status_code' => $status,
                 ];
             }
 
@@ -487,73 +481,6 @@ class PurchasingPowerApiService extends BestBuyApiService
                 'status_code' => null,
             ];
         }
-    }
-
-    /**
-     * Resolve live MCM shop_sku via OF21 only (no stale local fallback).
-     */
-    protected function resolveMcmOfferSku(string $sku, string $apiKey, string $baseUrl): ?string
-    {
-        $candidates = array_values(array_unique(array_filter([
-            $sku,
-            strtoupper($sku),
-        ])));
-
-        foreach ($candidates as $candidate) {
-            $params = ['sku' => $candidate, 'max' => 20];
-            $shopId = config('services.purchasingpower.shop_id');
-            if ($shopId !== null && $shopId !== '') {
-                $params['shop_id'] = (int) $shopId;
-            }
-
-            try {
-                $response = Http::withoutVerifying()
-                    ->withHeaders([
-                        'Authorization' => $apiKey,
-                        'Accept' => 'application/json',
-                    ])
-                    ->timeout(30)
-                    ->get($baseUrl.'/api/offers', $params);
-
-                if ($response->status() === 404 && isset($params['shop_id'])) {
-                    unset($params['shop_id']);
-                    $response = Http::withoutVerifying()
-                        ->withHeaders([
-                            'Authorization' => $apiKey,
-                            'Accept' => 'application/json',
-                        ])
-                        ->timeout(30)
-                        ->get($baseUrl.'/api/offers', $params);
-                }
-
-                if (! $response->successful()) {
-                    continue;
-                }
-
-                $offers = $response->json('offers') ?? [];
-                if (! is_array($offers) || $offers === []) {
-                    continue;
-                }
-
-                $skuUpper = strtoupper(trim($candidate));
-                foreach ($offers as $offer) {
-                    if (! is_array($offer)) {
-                        continue;
-                    }
-                    $shopSku = trim((string) ($offer['shop_sku'] ?? ''));
-                    if ($shopSku !== '' && strtoupper($shopSku) === $skuUpper) {
-                        return $shopSku;
-                    }
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Purchasing Power OF21 lookup failed', [
-                    'sku' => $candidate,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        return null;
     }
 
     /**
