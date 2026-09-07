@@ -317,7 +317,7 @@
                         <span id="doba-blue-triangle-badge"
                               class="badge text-center"
                               style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
-                              title="Blue triangle: S PRC ≠ Price.">
+                              title="Blue alert: Price ≠ S PRC. Click to show only those SKUs. Auto-push skips SKUs where Price already equals S PRC.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span id="nmap-count"
                               class="badge text-center"
@@ -625,6 +625,13 @@
             const sprice = dobaRowSpriceForAlert(data);
             const price = parseFloat(data && data['doba Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function dobaListingPriceEqualsSprice(data, spriceOverride) {
+            const price = parseFloat(data && data['doba Price']) || 0;
+            const sprice = spriceOverride != null
+                ? (parseFloat(spriceOverride) || 0)
+                : dobaRowSpriceForAlert(data);
+            return price > 0 && sprice > 0 && Math.round(price * 100) === Math.round(sprice * 100);
         }
         function syncDobaTriangleBadgeState() {
             $('#doba-blue-triangle-badge').css({
@@ -1623,10 +1630,15 @@
             $('#push-to-doba-btn').on('click', function() {
                 // Get all SKUs that have SPRICE set
                 const skusWithSprice = [];
+                let alreadyEqualCount = 0;
                 
                 table.getRows().forEach(row => {
                     const data = row.getData();
                     if (!data.is_parent && data.sprice && data.sprice > 0) {
+                        if (dobaListingPriceEqualsSprice(data, data.sprice)) {
+                            alreadyEqualCount++;
+                            return;
+                        }
                         skusWithSprice.push({
                             sku: data['(Child) sku'],
                             price: data.sprice,
@@ -1637,7 +1649,12 @@
                 });
                 
                 if (skusWithSprice.length === 0) {
-                    showToast('warning', 'No SKUs with SPRICE found. Please set SPRICE first.');
+                    showToast(alreadyEqualCount > 0
+                        ? 'success'
+                        : 'warning',
+                        alreadyEqualCount > 0
+                            ? alreadyEqualCount + ' SKU(s): Price already equals S PRC — left unchanged'
+                            : 'No SKUs with SPRICE found. Please set SPRICE first.');
                     return;
                 }
                 
@@ -1781,6 +1798,12 @@
                 
                 // Get S (PP) from row data (calculated as SPRICE - SHIP)
                 const rowData = row.getData();
+                if (dobaListingPriceEqualsSprice(rowData, price)) {
+                    showToast('success', sku + ': Price already equals S PRC — left unchanged');
+                    $btn.prop('disabled', false);
+                    $btn.html('<i class="fas fa-upload"></i>');
+                    return;
+                }
                 const selfPickPrice = rowData.s_self_pick || null;
                 
                 // Update status to pushing (this also updates the cell formatter)
@@ -2326,7 +2349,7 @@
                         sorter: "number",
                         visible: true,
                         editable: false,
-                        headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab when Doba L30 > 0; 0 Sold uses the lowest Target GROI). S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.",
+                        headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab when Doba L30 > 0; 0 Sold uses the lowest Target GROI). S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP (no blue when red).",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             if (isDobaParentRow(rowData)) return '';
@@ -2346,7 +2369,8 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Saved S PRC ≥ LMP $'
                                     + Number(lmp).toFixed(2) + '"></i>'
                                 : '';
-                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            const blueTri = (!overLmp && live > 0 && value > 0
+                                && live.toFixed(2) !== value.toFixed(2))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
