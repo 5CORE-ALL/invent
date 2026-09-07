@@ -61,7 +61,22 @@ class EbaySellFulfillmentTracking
             ];
         }
 
+        $sku = trim((string) ($line->sku ?? ''));
+        if ($sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => 'Marketplace SKU missing — tracking not attached.',
+            ];
+        }
+
         $shopify = $this->fetchShopifyTracking($channel, $shopifyOrderId, $line);
+        if (empty($shopify['tracking']) && isset($line->id) && (int) $line->id > 0) {
+            $copied = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder($channel, (int) $line->id);
+            if (! empty($copied['success'])) {
+                $shopify = $this->fetchShopifyTracking($channel, $shopifyOrderId, $line);
+            }
+        }
         if (! empty($shopify['error']) && empty($shopify['tracking'])) {
             return [
                 'success' => false,

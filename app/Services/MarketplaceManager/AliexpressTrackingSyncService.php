@@ -65,25 +65,21 @@ class AliexpressTrackingSyncService
             ];
         }
 
-        $skus = AliexpressOrderMetric::query()
-            ->where('order_id', $orderId)
-            ->pluck('sku')
-            ->map(static fn ($sku) => trim((string) $sku))
-            ->filter(static fn ($sku) => $sku !== '' && ! in_array($sku, ['__order__', '__unknown__'], true))
-            ->unique()
-            ->values();
-        if ($skus->isEmpty() && trim((string) ($line->sku ?? '')) !== '') {
-            $skus = collect([trim((string) $line->sku)]);
+        $sku = trim((string) ($line->sku ?? ''));
+        if ($sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => 'Marketplace SKU missing — tracking not attached.',
+            ];
         }
 
-        $shopifyFulfillment = ['tracking' => null, 'carrier' => null, 'tracking_url' => null, 'error' => null];
-        foreach ($skus as $sku) {
-            $hit = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
-            if (! empty($hit['tracking'])) {
-                $shopifyFulfillment = $hit;
-                break;
+        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
+        if (empty($shopifyFulfillment['tracking'])) {
+            $copied = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder('aliexpress', (int) $line->id);
+            if (! empty($copied['success'])) {
+                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
             }
-            $shopifyFulfillment = $hit;
         }
         if (empty($shopifyFulfillment['tracking'])) {
             return [
@@ -222,7 +218,7 @@ class AliexpressTrackingSyncService
     {
         $limit = max(1, min(200, $limit));
 
-        $orderIds = AliexpressOrderMetric::query()
+        $rows = AliexpressOrderMetric::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
             ->where(function ($q) {
@@ -238,16 +234,21 @@ class AliexpressTrackingSyncService
             ->orderBy('order_date')
             ->orderBy('id')
             ->limit($limit * 12)
-            ->pluck('order_id', 'shopify_order_id');
+            ->get(['id', 'order_id', 'sku', 'shopify_order_id', 'status']);
 
-        $uniqueOrderIds = [];
-        foreach ($orderIds as $shopifyId => $aeOrderId) {
-            $aeOrderId = (string) $aeOrderId;
-            if ($aeOrderId === '' || isset($uniqueOrderIds[$aeOrderId])) {
+        $unique = [];
+        foreach ($rows as $row) {
+            $ref = trim((string) $row->order_id);
+            $sku = trim((string) ($row->sku ?? ''));
+            if ($ref === '' || $sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
                 continue;
             }
-            $uniqueOrderIds[$aeOrderId] = (string) $shopifyId;
-            if (count($uniqueOrderIds) >= $limit) {
+            $key = $ref.'|'.$sku;
+            if (isset($unique[$key])) {
+                continue;
+            }
+            $unique[$key] = $row;
+            if (count($unique) >= $limit) {
                 break;
             }
         }
@@ -257,17 +258,7 @@ class AliexpressTrackingSyncService
         $skipped = 0;
         $failed = 0;
 
-        foreach ($uniqueOrderIds as $aeOrderId => $shopifyId) {
-            $line = AliexpressOrderMetric::query()
-                ->where('order_id', $aeOrderId)
-                ->where('shopify_order_id', $shopifyId)
-                ->orderBy('id')
-                ->first();
-
-            if (! $line) {
-                continue;
-            }
-
+        foreach ($unique as $line) {
             $checked++;
             $result = $this->pushTrackingForOrder($line);
             if (! empty($result['success']) && empty($result['skipped'])) {
