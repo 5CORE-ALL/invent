@@ -23,8 +23,11 @@ use App\Models\WalmartMetrics;
 use App\Models\WalmartPriceData;
 use App\Models\WayfairPricingPrice;
 use App\Models\WayfairListingStatus;
+use App\Models\AlibabaMetric;
 use App\Models\AliexpressMetric;
 use App\Models\ProductMaster;
+use App\Models\PurchasingPowerProduct;
+use App\Models\TopDawgProduct;
 
 /**
  * Channel configs for automated listing pages (EbayTwo pattern).
@@ -344,6 +347,30 @@ class ChannelListingRegistry
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
             ],
+            'topdawg' => [
+                'dataView' => \App\Models\TopDawgDataView::class,
+                'status' => null,
+                'listed' => ['type' => 'column', 'model' => TopDawgProduct::class, 'column' => 'topdawg_listing_id', 'reject_sku' => true],
+                'id_field' => 'topdawg_listing_id',
+                'buyer_tpl' => null,
+                'seller_tpl' => null,
+            ],
+            'purchasingpower' => [
+                'dataView' => \App\Models\PurchasingPowerDataView::class,
+                'status' => null,
+                'listed' => ['type' => 'column', 'model' => PurchasingPowerProduct::class, 'column' => 'sku'],
+                'id_field' => 'sku',
+                'buyer_tpl' => null,
+                'seller_tpl' => null,
+            ],
+            'alibaba' => [
+                'dataView' => null,
+                'status' => null,
+                'listed' => ['type' => 'column', 'model' => AlibabaMetric::class, 'column' => 'product_id', 'reject_sku' => true],
+                'id_field' => 'product_id',
+                'buyer_tpl' => null,
+                'seller_tpl' => null,
+            ],
         ];
     }
 
@@ -364,6 +391,7 @@ class ChannelListingRegistry
             'facebookmarketplace' => 'fbmarketplace',
             'shopifyb2b' => 'shopifywholesale',
             'shopifywholesaleds' => 'shopifywholesale',
+            'newegg' => 'neweggb2c',
         ];
         $resolved = $aliases[$normalized] ?? $normalized;
 

@@ -93,6 +93,7 @@ class ListingChannelCounts
         'mercariwoship' => ListingMercariWoShipController::class,
         'neweggb2c' => ListingNeweggB2CController::class,
         'neweggb2b' => ListingNeweggB2BController::class,
+        'newegg' => ListingNeweggB2CController::class,
         'fbmarketplace' => ListingFBMarketplaceController::class,
         'facebookmarketplace' => ListingFBMarketplaceController::class,
         'fbshop' => ListingFBShopController::class,
@@ -152,6 +153,10 @@ class ListingChannelCounts
         'business5core' => null,
         'neweggb2c' => '/listing-neweggb2c',
         'neweggb2b' => '/listing-neweggb2b',
+        'newegg' => '/listing-neweggb2c',
+        'topdawg' => '/marketplace-manager/topdawg',
+        'purchasingpower' => '/marketplace-manager/purchasingpower',
+        'alibaba' => '/marketplace-manager/alibaba',
         'fbmarketplace' => '/listing-fbmarketplace',
         'facebookmarketplace' => '/listing-fbmarketplace',
         'fbshop' => '/listing-fbshop',
@@ -190,8 +195,26 @@ class ListingChannelCounts
     public static function hasListingSource(string $channel): bool
     {
         $key = self::normalize($channel);
+        if ($key === '') {
+            return false;
+        }
 
-        return $key !== '' && isset(self::$controllers[$key]);
+        return isset(self::$controllers[$key]) || ChannelListingRegistry::get($key) !== null;
+    }
+
+    /**
+     * Active listing channels, plus inactive ones that have a marketplace API.
+     */
+    public static function shouldShowOnMissingListing(string $channel, mixed $status = 'active'): bool
+    {
+        if (! self::hasListingSource($channel)) {
+            return false;
+        }
+        if (strtolower(trim((string) $status)) === 'active') {
+            return true;
+        }
+
+        return ! self::isSheetSource($channel);
     }
 
     /**
@@ -207,14 +230,40 @@ class ListingChannelCounts
      */
     private static array $forceApiListingSources = [
         'amazon',
+        'amazonfba',
         'shopify',
         'shopifyb2c',
         'wayfair',
+        'tiktok',
+        'tiktokshop',
         'tiktok2',
         'tiktokshop2',
         'temu',
         'temu2',
         'temutwo',
+        'ebay',
+        'ebay1',
+        'ebayone',
+        'ebay2',
+        'ebaytwo',
+        'ebay3',
+        'ebaythree',
+        'doba',
+        'walmart',
+        'aliexpress',
+        'shein',
+        'faire',
+        'reverb',
+        'macys',
+        'newegg',
+        'neweggb2c',
+        'neweggb2b',
+        'bestbuyusa',
+        'bestbuy',
+        'pls',
+        'topdawg',
+        'purchasingpower',
+        'alibaba',
     ];
 
     private static array $sheetListingSources = [
@@ -365,13 +414,13 @@ class ListingChannelCounts
         $seen = [];
         $total = 0;
 
-        $channels = ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])
-            ->whereNotNull('channel')
+        $channels = ChannelMaster::whereNotNull('channel')
             ->where('channel', '!=', '')
-            ->pluck('channel');
+            ->get(['channel', 'status']);
 
-        foreach ($channels as $name) {
-            if (! self::hasListingSource((string) $name)) {
+        foreach ($channels as $row) {
+            $name = (string) $row->channel;
+            if (! self::shouldShowOnMissingListing($name, $row->status ?? '')) {
                 continue;
             }
             $key = self::normalize((string) $name);
@@ -403,7 +452,7 @@ class ListingChannelCounts
     {
         $empty = ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0];
         $key = self::normalize($channel);
-        if ($key === '' || ! isset(self::$controllers[$key])) {
+        if ($key === '' || (! isset(self::$controllers[$key]) && ChannelListingRegistry::get($key) === null)) {
             return $empty;
         }
 
@@ -417,7 +466,7 @@ class ListingChannelCounts
             }
         }
 
-        $cacheKey = 'listing_channel_counts_v1:'.($requirePositiveInv ? 'inv' : 'shopify').':'.$key;
+        $cacheKey = 'listing_channel_counts_v1:'.($requirePositiveInv ? 'inv' : 'cp').':'.$key;
 
         try {
             return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($key, $empty, $requirePositiveInv) {
@@ -505,6 +554,6 @@ class ListingChannelCounts
 
     public static function normalize(string $channel): string
     {
-        return strtolower(str_replace([' ', '-', '&', '/', '_'], '', trim($channel)));
+        return strtolower(str_replace([' ', '-', '&', '/', '_', "'", '’'], '', trim($channel)));
     }
 }

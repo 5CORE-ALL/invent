@@ -618,7 +618,7 @@
                     width: 90,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Total Shopify catalog products (unique SKUs with a variant id, excluding PARENT)",
+                    headerTooltip: "Total non-PARENT SKUs from CP Master",
                     formatter: function(cell) {
                         const v = Number(cell.getValue() || 0);
                         return `<span style="color:#0d6efd;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
@@ -630,7 +630,7 @@
                     width: 90,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Shopify catalog products with 0 / missing inventory",
+                    headerTooltip: "SKUs with 0 / missing Shopify INV from CP Master",
                     formatter: function(cell) {
                         const v = Number(cell.getValue() || 0);
                         return `<span style="color:#dc3545;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
@@ -642,7 +642,7 @@
                     width: 100,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Shopify products that are required (not NRL) for this marketplace",
+                    headerTooltip: "CP Master SKUs that are required (not NRL) for this marketplace",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);
@@ -664,7 +664,7 @@
                     width: 100,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Shopify products marked NRL / Not Required for this marketplace (deducted from Missing Listing)",
+                    headerTooltip: "CP Master SKUs marked NRL / Not Required for this marketplace (deducted from Missing Listing)",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);
@@ -686,7 +686,7 @@
                     width: 110,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Shopify products that have a marketplace listing id",
+                    headerTooltip: "CP Master SKUs that have a marketplace API listing id",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);
@@ -708,7 +708,7 @@
                     width: 180,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Shopify products not found on this marketplace listing, minus NRL / Not Required",
+                    headerTooltip: "CP Master SKUs not found on this marketplace API listing, minus NRL / Not Required",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);
