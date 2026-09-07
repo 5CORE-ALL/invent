@@ -7283,7 +7283,7 @@ class TemuController extends Controller
      * After Temu / Temu 2 daily sales upload, refresh marketplace_daily_metrics and
      * channel_master_calculated_data so /all-marketplace-master stays in sync with tabulator.
      */
-    private function refreshTemuMetricsAfterDailyUpload(bool $isTemu2): void
+    protected function refreshTemuMetricsAfterDailyUpload(bool $isTemu2): void
     {
         try {
             $php = PHP_BINARY;

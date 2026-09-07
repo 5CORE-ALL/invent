@@ -1154,18 +1154,14 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 3 L30 from uploaded Seller Center orders — same Full Price Sales as /temu3-decrease.
+     * Temu 3 L30 for Active Channel: temu3_orders first, else /temu3-tabulator daily upload.
      *
      * @return array{total_orders: int, total_quantity: int, total_revenue: float, total_pft: float, total_cogs: float, gpft_percent: float, groi_percent: float}|null
      */
     private function getTemu3TabulatorSalesSummary(): ?array
     {
         try {
-            if (! Schema::hasTable('temu3_orders')) {
-                return null;
-            }
-            [$start, $end] = TemuShopifySalesService::temu3SheetL30Window();
-            $m = TemuShopifySalesService::computeMetricsFromTemu3Orders($start, $end);
+            $m = TemuShopifySalesService::computeTemu3ActiveChannelL30();
             if ((float) ($m['sales'] ?? 0) <= 0 && (int) ($m['qty'] ?? 0) <= 0) {
                 return null;
             }
@@ -1396,8 +1392,7 @@ class ChannelMasterController extends Controller
     private function resolveTemu3L60SalesAndOrders(): array
     {
         try {
-            [$start, $end] = TemuShopifySalesService::temu3SheetL60Window();
-            $m = TemuShopifySalesService::computeMetricsFromTemu3Orders($start, $end);
+            $m = TemuShopifySalesService::computeTemu3ActiveChannelL60();
 
             return [
                 'sales' => (float) ($m['sales'] ?? 0),
@@ -1511,6 +1506,10 @@ class ChannelMasterController extends Controller
                 $row['Ads%'] = '0%';
                 $row['TACOS %'] = '0%';
                 $row['N PFT'] = round($gProfitPct, 2).'%';
+                $row['sales_page_link'] = '/temu3-tabulator';
+                if (empty($row['missing_link'])) {
+                    $row['missing_link'] = '/temu3-decrease';
+                }
             }
 
             // Temu / Temu 2 / Temu 3: NROI% = GROI% − Ads% (same as /temu-decrease after Ads reduce).
@@ -1561,6 +1560,10 @@ class ChannelMasterController extends Controller
                     $row['cogs'] = round((float) ($liveSales['total_cogs'] ?? 0), 2);
                     $row['N PFT'] = round($gProfitPct, 2).'%';
                     $row['N ROI'] = round($gRoi, 2);
+                    $row['sales_page_link'] = '/temu3-tabulator';
+                    if (empty($row['missing_link'])) {
+                        $row['missing_link'] = '/temu3-decrease';
+                    }
                 }
             }
 
@@ -8131,19 +8134,35 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Rewrite Depop Y Sales snapshots from the latest /depop/sheet rows.
+     */
+    public function refreshDepopYSalesAfterSheetUpload(): void
+    {
+        $this->healClosedChannelYSalesSnapshot('depop');
+    }
+
+    /**
      * Depop Y = Pacific yesterday on depop_sales_data (same rows as /depop/sheet).
      * No sales that day → 0. Do not use latest-sale minus 1 day (that skipped Aug 31).
      */
     private function computeDepopYSalesLikeAmazon(): ?float
     {
+        return $this->computeDepopSalesForPacificDate(
+            Carbon::yesterday('America/Los_Angeles')->toDateString()
+        );
+    }
+
+    /**
+     * One calendar day's Depop sheet sales (item_price × qty).
+     */
+    private function computeDepopSalesForPacificDate(string $ymd): ?float
+    {
         if (! Schema::hasTable('depop_sales_data')) {
             return null;
         }
 
-        $yDate = Carbon::yesterday('America/Los_Angeles')->toDateString();
-
         $sum = (float) DB::table('depop_sales_data')
-            ->whereDate('sale_date', $yDate)
+            ->whereDate('sale_date', $ymd)
             ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
             ->value('revenue');
 
@@ -11431,17 +11450,15 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 3 — sheet-only Full Temu Price Sales / GPFT / GROI from temu3_orders.
-     * Same L30 window and Full Price math as /temu3-decrease. No ads API (Ads% = 0).
+     * Temu 3 Active Channel row — temu3_orders first, else /temu3-tabulator daily data.
+     * Same Full Temu Price / GPFT / GROI as /temu3-decrease. No ads API (Ads% = 0).
      */
     public function getTemu3ChannelData(Request $request)
     {
         $result = [];
 
-        [$l30Start, $l30End] = TemuShopifySalesService::temu3SheetL30Window();
-        [$l60Start, $l60End] = TemuShopifySalesService::temu3SheetL60Window();
-        $l30 = TemuShopifySalesService::computeMetricsFromTemu3Orders($l30Start, $l30End);
-        $l60 = TemuShopifySalesService::computeMetricsFromTemu3Orders($l60Start, $l60End);
+        $l30 = TemuShopifySalesService::computeTemu3ActiveChannelL30();
+        $l60 = TemuShopifySalesService::computeTemu3ActiveChannelL60();
 
         $l30Sales = (float) ($l30['sales'] ?? 0);
         $l30Orders = (int) ($l30['orders'] ?? 0);
@@ -11515,12 +11532,14 @@ class ChannelMasterController extends Controller
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
             'CVR'        => $mapMissCounts['cvr_pct'] ?? null,
+            'sales_page_link' => '/temu3-tabulator',
+            'missing_link' => $channelData->missing_link ?: '/temu3-decrease',
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([
             'status' => 200,
-            'message' => 'Temu 3 channel data fetched successfully (from temu3_orders)',
+            'message' => 'Temu 3 channel data fetched successfully (orders or temu3-tabulator)',
             'data' => $result,
         ]);
     }
@@ -18495,6 +18514,12 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
+            if ($channel === 'depop') {
+                self::$pacificDayYSalesCache[$key] = $this->computeDepopSalesForPacificDate($ymd);
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
             self::$pacificDayYSalesCache[$key] = app(YesterdayMarketplaceMetricsService::class)
                 ->salesForPacificDate($channel, $ymd);
         } catch (\Throwable $e) {
@@ -18516,7 +18541,7 @@ class ChannelMasterController extends Controller
     private function overlayLiveYSalesOnChart(string $channel, array $chartData): array
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
-        if (! in_array($channel, ['amazon', 'temu2'], true) || $chartData === []) {
+        if (! in_array($channel, ['amazon', 'temu2', 'depop'], true) || $chartData === []) {
             return $chartData;
         }
 
@@ -18563,7 +18588,7 @@ class ChannelMasterController extends Controller
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
         $tz = 'America/Los_Angeles';
-        $lookback = $channel === 'temu2' ? 14 : 1;
+        $lookback = in_array($channel, ['temu2', 'depop'], true) ? 14 : 1;
         $lookupKeys = $this->allMarketplaceSnapshotLookupKeys($channel);
 
         for ($offset = 0; $offset <= $lookback; $offset++) {
@@ -19366,6 +19391,10 @@ class ChannelMasterController extends Controller
     {
         $tz = 'America/Los_Angeles';
         $span = $days > 0 ? $days : 30;
+
+        if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'depop') {
+            return $this->buildDepopLiveDailyYSalesChart($span);
+        }
         $startDate = now($tz)->subDays($span + 1)->toDateString();
         $want = $isAll ? null : $this->allMarketplaceSnapshotKey($channel);
 
@@ -19413,6 +19442,50 @@ class ChannelMasterController extends Controller
 
         if (! $isAll) {
             $out = $this->overlayLiveYSalesOnChart($channel, $out);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Depop Y Sales chart from depop_sales_data (same rows as /depop/sheet).
+     * Daily snapshots stay $0 until the next sheet upload + calculate, so the
+     * graph must not read those frozen zeros.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildDepopLiveDailyYSalesChart(int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = now($tz)->subDay()->startOfDay();
+        $span = $days > 0 ? $days : 7;
+        $start = $end->copy()->subDays($span - 1);
+        $byDate = [];
+
+        if (Schema::hasTable('depop_sales_data')) {
+            $rows = DB::table('depop_sales_data')
+                ->whereDate('sale_date', '>=', $start->toDateString())
+                ->whereDate('sale_date', '<=', $end->toDateString())
+                ->selectRaw('DATE(sale_date) as d, COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
+                ->groupBy('d')
+                ->get();
+            foreach ($rows as $row) {
+                $d = (string) ($row->d ?? '');
+                if ($d !== '') {
+                    $byDate[$d] = (float) $row->revenue;
+                }
+            }
+        }
+
+        $out = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $ymd = $cursor->toDateString();
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round((float) ($byDate[$ymd] ?? 0), 2),
+            ];
+            $cursor->addDay();
         }
 
         return $out;
@@ -20149,6 +20222,7 @@ class ChannelMasterController extends Controller
             $this->healClosedAmazonYSalesSnapshot();
             $this->healClosedChannelYSalesSnapshot('temu2');
             $this->healClosedChannelYSalesSnapshot('temu3');
+            $this->healClosedChannelYSalesSnapshot('depop');
 
             foreach ([0, 1, 7] as $dotWindow) {
                 \Cache::forget($this->channelMetricDotTrendsCacheKey($dotWindow));

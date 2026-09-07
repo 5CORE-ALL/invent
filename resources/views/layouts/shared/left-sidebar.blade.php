@@ -1850,6 +1850,9 @@
                                     <li>
                                         <a href="{{ route('temu3.decrease') }}">Temu 3 - Analytics</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('temu3.tabulator') }}">Temu 3 Sales Data</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -2863,6 +2866,8 @@
                         <li><a href="{{ url('temu-tabulator') }}">Temu Sales Data</a></li>
 
                         <li><a href="{{ url('temu2-tabulator') }}">Temu 2 Sales Data</a></li>
+
+                        <li><a href="{{ url('temu3-tabulator') }}">Temu 3 Sales Data</a></li>
 
                         <li><a href="{{ url('shein-tabulator') }}">Shein Sales Data</a></li>
 

@@ -8,6 +8,8 @@ use App\Models\Temu2DailyData;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Order;
 use App\Models\Temu2Pricing;
+use App\Models\Temu3DailyData;
+use App\Models\Temu3DailyDataL60;
 use App\Models\Temu3Order;
 use App\Models\Temu3Pricing;
 use App\Models\TemuMetric;
@@ -589,6 +591,143 @@ class TemuShopifySalesService
         ];
     }
 
+    /**
+     * Temu 3 Sales Data page metrics from temu3_daily_data / temu3_daily_data_l60.
+     * Same Full Price / GPFT / GROI math as temu3_orders. No date filter = all uploaded rows
+     * (matches /temu3-tabulator badges, same as Temu 2 tabulator → Active Channel).
+     *
+     * @return array{sales: float, base_sales: float, full_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
+     */
+    public static function computeMetricsFromTemu3DailyData(string $table = 'temu3_daily_data', ?Carbon $startDate = null, ?Carbon $endDate = null): array
+    {
+        $empty = [
+            'sales' => 0.0,
+            'base_sales' => 0.0,
+            'full_sales' => 0.0,
+            'orders' => 0,
+            'qty' => 0,
+            'pft' => 0.0,
+            'gpft' => 0.0,
+            'cogs' => 0.0,
+        ];
+        if (! Schema::hasTable($table)) {
+            return $empty;
+        }
+
+        $modelClass = $table === 'temu3_daily_data_l60' ? Temu3DailyDataL60::class : Temu3DailyData::class;
+        $query = $modelClass::query();
+        if ($startDate && $endDate) {
+            $query->where('purchase_date', '>=', $startDate->copy()->startOfDay())
+                ->where('purchase_date', '<=', $endDate->copy()->endOfDay());
+        }
+        $items = $query->get();
+        if ($items->isEmpty()) {
+            return $empty;
+        }
+
+        [$pmSet, $noSpaceToNormalized] = self::temu3ProductMasterSkuSets();
+        $productMasters = self::productMastersForSkus($items->pluck('contribution_sku'));
+        $margin = self::temuMarginDecimal();
+
+        $totalFull = 0.0;
+        $totalBase = 0.0;
+        $totalQty = 0;
+        $totalGpft = 0.0;
+        $totalGroiPft = 0.0;
+        $totalCogs = 0.0;
+        $orderSet = [];
+
+        foreach ($items as $item) {
+            $sku = trim((string) ($item->contribution_sku ?? ''));
+            $orderId = trim((string) ($item->order_id ?? ''));
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+            $n = self::normalizeTemu3Sku($sku);
+            $nNoSpace = str_replace(' ', '', $n);
+            if (! isset($pmSet[$n]) && ! isset($noSpaceToNormalized[$nNoSpace])) {
+                continue;
+            }
+            $qty = (int) ($item->quantity_purchased ?? 0);
+            $base = (float) ($item->base_price_total ?? 0);
+            if ($qty <= 0 || $base <= 0) {
+                continue;
+            }
+
+            $full = self::computeFullTemuPrice($base);
+            $rPrice = $base <= 26.99 ? ($base + 2.99) : $base;
+            [$lp, $ship] = self::lpAndTemuShip($productMasters, $sku);
+
+            $totalFull += $full * $qty;
+            $totalBase += $base * $qty;
+            $totalQty += $qty;
+            $totalGpft += ($full * $margin - $lp - $ship) * $qty;
+            $totalGroiPft += self::computeGroiProfit($rPrice, $margin, $lp, $ship) * $qty;
+            $totalCogs += $lp * $qty;
+            $orderSet[$orderId] = true;
+        }
+
+        return [
+            'sales' => round($totalFull, 2),
+            'base_sales' => round($totalBase, 2),
+            'full_sales' => round($totalFull, 2),
+            'orders' => count($orderSet),
+            'qty' => $totalQty,
+            'pft' => round($totalGroiPft, 2),
+            'gpft' => round($totalGpft, 2),
+            'cogs' => round($totalCogs, 2),
+        ];
+    }
+
+    /**
+     * Prefer Seller Center order sheet; if empty, use /temu3-tabulator daily upload.
+     *
+     * @return array{sales: float, base_sales: float, full_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
+     */
+    public static function computeTemu3ActiveChannelL30(): array
+    {
+        [$start, $end] = self::temu3SheetL30Window();
+        $fromOrders = self::computeMetricsFromTemu3Orders($start, $end);
+        if ((float) ($fromOrders['sales'] ?? 0) > 0) {
+            return $fromOrders;
+        }
+
+        return self::computeMetricsFromTemu3DailyData('temu3_daily_data');
+    }
+
+    /**
+     * @return array{sales: float, base_sales: float, full_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
+     */
+    public static function computeTemu3ActiveChannelL60(): array
+    {
+        $fromDaily = self::computeMetricsFromTemu3DailyData('temu3_daily_data_l60');
+        if ((float) ($fromDaily['sales'] ?? 0) > 0) {
+            return $fromDaily;
+        }
+        [$start, $end] = self::temu3SheetL60Window();
+
+        return self::computeMetricsFromTemu3Orders($start, $end);
+    }
+
+    public static function computeYSalesFromTemu3DailyData(): ?float
+    {
+        if (! Schema::hasTable('temu3_daily_data')) {
+            return null;
+        }
+        $latest = Temu3DailyData::whereNotNull('purchase_date')->max('purchase_date');
+        if (! $latest) {
+            return null;
+        }
+        $yesterday = Carbon::parse($latest)->subDay();
+        $m = self::computeMetricsFromTemu3DailyData(
+            'temu3_daily_data',
+            $yesterday->copy()->startOfDay(),
+            $yesterday->copy()->endOfDay()
+        );
+
+        return (float) ($m['base_sales'] ?? 0) > 0 ? (float) $m['base_sales'] : null;
+    }
+
     public static function normalizeTemu3Sku(string $sku): string
     {
         $sku = strtoupper(trim($sku));
@@ -709,29 +848,38 @@ class TemuShopifySalesService
 
     public static function computeYSalesFromTemu3Orders(): ?float
     {
-        if (! Schema::hasTable('temu3_orders') || ! Temu3Order::query()->exists()) {
-            return null;
+        if (Schema::hasTable('temu3_orders') && Temu3Order::query()->exists()) {
+            $yesterday = Carbon::now(self::PST)->subDay();
+            $sales = (float) self::computeMetricsFromTemu3Orders(
+                $yesterday->copy()->startOfDay(),
+                $yesterday->copy()->endOfDay()
+            )['sales'];
+            if ($sales > 0) {
+                return $sales;
+            }
         }
 
-        $yesterday = Carbon::now(self::PST)->subDay();
-
-        return (float) self::computeMetricsFromTemu3Orders(
-            $yesterday->copy()->startOfDay(),
-            $yesterday->copy()->endOfDay()
-        )['sales'];
+        return self::computeYSalesFromTemu3DailyData();
     }
 
     public static function computeL7SalesFromTemu3Orders(): ?float
     {
-        if (! Schema::hasTable('temu3_orders') || ! Temu3Order::query()->exists()) {
-            return null;
+        if (Schema::hasTable('temu3_orders') && Temu3Order::query()->exists()) {
+            $latestPacific = Carbon::now(self::PST);
+            $end = $latestPacific->copy()->subDay()->endOfDay();
+            $start = $latestPacific->copy()->subDay()->subDays(6)->startOfDay();
+            $sales = (float) self::computeMetricsFromTemu3Orders($start, $end)['sales'];
+            if ($sales > 0) {
+                return $sales;
+            }
         }
 
         $latestPacific = Carbon::now(self::PST);
         $end = $latestPacific->copy()->subDay()->endOfDay();
         $start = $latestPacific->copy()->subDay()->subDays(6)->startOfDay();
+        $fromDaily = self::computeMetricsFromTemu3DailyData('temu3_daily_data', $start, $end);
 
-        return (float) self::computeMetricsFromTemu3Orders($start, $end)['sales'];
+        return (float) ($fromDaily['sales'] ?? 0) > 0 ? (float) $fromDaily['sales'] : null;
     }
 
     /** L7 Sales from temu_orders: seven wall-clock Pacific days ending yesterday. */

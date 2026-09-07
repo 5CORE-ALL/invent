@@ -129,21 +129,23 @@
         { prefix: 'wc-cn', tz: 'Asia/Shanghai' }
     ];
     function tzAbbrev(now, timeZone) {
-        var styles = timeZone === 'Asia/Kolkata' ? ['longOffset', 'short'] : ['short'];
-        for (var s = 0; s < styles.length; s++) {
-            try {
-                var parts = new Intl.DateTimeFormat('en-US', {
-                    timeZone: timeZone,
-                    timeZoneName: styles[s]
-                }).formatToParts(now);
-                for (var i = 0; i < parts.length; i++) {
-                    if (parts[i].type === 'timeZoneName') {
-                        return parts[i].value;
-                    }
-                }
-            } catch (e) { /* try next style */ }
+        // Asia/Kolkata: browsers often emit GMT+05:30 (IST is ambiguous with Israel/Ireland).
+        // Keep the short office label consistent with PDT / EDT / CST.
+        if (timeZone === 'Asia/Kolkata') {
+            return 'IST';
         }
-        return timeZone === 'Asia/Kolkata' ? 'IST' : '';
+        try {
+            var parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: timeZone,
+                timeZoneName: 'short'
+            }).formatToParts(now);
+            for (var i = 0; i < parts.length; i++) {
+                if (parts[i].type === 'timeZoneName') {
+                    return parts[i].value;
+                }
+            }
+        } catch (e) { /* ignore */ }
+        return '';
     }
     function tick() {
         var now = new Date();

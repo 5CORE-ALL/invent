@@ -195,6 +195,13 @@ class DepopSalesController extends Controller
             $handle = null;
             DB::commit();
 
+            try {
+                app(\App\Http\Controllers\Channels\ChannelMasterController::class)
+                    ->refreshDepopYSalesAfterSheetUpload();
+            } catch (\Throwable $e) {
+                Log::warning('Depop Y Sales heal after sheet upload failed: '.$e->getMessage());
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => "Upload complete. {$inserted} sales rows imported.",

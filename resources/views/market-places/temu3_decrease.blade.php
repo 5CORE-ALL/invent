@@ -578,6 +578,9 @@
                             </li>
                         </ul>
                     </div>
+                    <a href="{{ route('temu3.tabulator') }}" class="btn btn-sm btn-outline-primary pricing-filter-item" title="Temu 3 Sales Data (same as Temu 2 Daily Data)">
+                        <i class="fa fa-table"></i> Sales Data
+                    </a>
                 </div>
                 <small id="search-result-info" class="text-muted" style="display: none;"></small>
 

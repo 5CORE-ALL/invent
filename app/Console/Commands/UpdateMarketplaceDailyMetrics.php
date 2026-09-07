@@ -931,16 +931,11 @@ class UpdateMarketplaceDailyMetrics extends Command
     }
 
     /**
-     * Temu 3: Full Temu Price L30 from temu3_orders (same window as /temu3-decrease). No ads.
+     * Temu 3: Full Temu Price L30 from temu3_orders, else /temu3-tabulator daily data. No ads.
      */
     private function calculateTemu3Metrics($date)
     {
-        if (! Schema::hasTable('temu3_orders')) {
-            return null;
-        }
-
-        [$start, $end] = TemuShopifySalesService::temu3SheetL30Window();
-        $m = TemuShopifySalesService::computeMetricsFromTemu3Orders($start, $end);
+        $m = TemuShopifySalesService::computeTemu3ActiveChannelL30();
 
         if (($m['sales'] ?? 0) <= 0 && ($m['qty'] ?? 0) <= 0) {
             return null;

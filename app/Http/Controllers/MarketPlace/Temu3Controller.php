@@ -2,16 +2,23 @@
 
 namespace App\Http\Controllers\MarketPlace;
 
+use App\Models\ProductMaster;
+use App\Models\Temu3DailyData;
+use App\Models\Temu3DailyDataL60;
+use App\Models\Temu3DailyDataL7;
 use App\Models\Temu3DataView;
 use App\Models\Temu3Pricing;
 use App\Services\TemuShopifySalesService;
 use App\Support\Marketplace\Temu3OrderSheet;
+use App\Support\ProductMasterTemuShip;
 use App\Support\TemuGoodsIdHelper;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -39,6 +46,359 @@ class Temu3Controller extends TemuController
         $request->query->set('period', 'L7');
 
         return $this->buildTemuDecreaseDataResponse($request, 'temu3');
+    }
+
+    /**
+     * Show Temu 3 Sales Data tabulator (uploads to temu3_daily_data / temu3_daily_data_l60).
+     */
+    public function temu3TabulatorView()
+    {
+        $temuMargin = TemuShopifySalesService::temuMarginDecimal();
+        $temu3YSales = $this->computeTemu3YSales();
+        $latestUpload = Schema::hasTable('temu3_daily_data')
+            ? Temu3DailyData::whereNotNull('purchase_date')->max('purchase_date')
+            : null;
+        $temu3YDate = $latestUpload ? Carbon::parse($latestUpload)->subDay()->toDateString() : null;
+
+        return view('market-places.temu3_tabulator_view', compact('temuMargin', 'temu3YSales', 'temu3YDate'));
+    }
+
+    public function getTemu3DailyData(Request $request)
+    {
+        return $this->buildTemu3DailyDataResponse(Temu3DailyData::class, 'temu3_daily_data');
+    }
+
+    public function getTemu3DailyDataL7(Request $request)
+    {
+        return $this->buildTemu3DailyDataResponse(Temu3DailyDataL7::class, 'temu3_daily_data_l7');
+    }
+
+    public function saveTemu3ColumnVisibility(Request $request)
+    {
+        try {
+            $userId = auth()->id() ?? 'guest';
+            Cache::put("temu3_tabulator_column_visibility_{$userId}", $request->input('visibility', []), now()->addDays(365));
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Error saving Temu 3 column visibility: '.$e->getMessage());
+
+            return response()->json(['error' => 'Failed to save preferences'], 500);
+        }
+    }
+
+    public function getTemu3ColumnVisibility()
+    {
+        try {
+            $userId = auth()->id() ?? 'guest';
+
+            return response()->json(Cache::get("temu3_tabulator_column_visibility_{$userId}", []));
+        } catch (\Exception $e) {
+            Log::error('Error getting Temu 3 column visibility: '.$e->getMessage());
+
+            return response()->json([], 500);
+        }
+    }
+
+    public function uploadDailyDataTemu3Chunk(Request $request)
+    {
+        return $this->uploadTemu3DailyDataChunk($request, Temu3DailyData::class, 'temu3_', 'Temu 3');
+    }
+
+    public function uploadDailyDataTemu3L60Chunk(Request $request)
+    {
+        return $this->uploadTemu3DailyDataChunk($request, Temu3DailyDataL60::class, 'temu3_l60_', 'Temu 3 L60');
+    }
+
+    /**
+     * Temu 3 Y Sales: yesterday's BASE-price sales from temu3_daily_data — same as Temu 2.
+     */
+    private function computeTemu3YSales(): ?float
+    {
+        try {
+            if (! Schema::hasTable('temu3_daily_data')) {
+                return null;
+            }
+
+            $latest = Temu3DailyData::whereNotNull('purchase_date')->max('purchase_date');
+            if (! $latest) {
+                return null;
+            }
+
+            $yesterday = Carbon::parse($latest)->subDay();
+            $rows = Temu3DailyData::where('purchase_date', '>=', $yesterday->copy()->startOfDay())
+                ->where('purchase_date', '<=', $yesterday->copy()->endOfDay())
+                ->get(['contribution_sku', 'quantity_purchased', 'base_price_total']);
+
+            $total = 0.0;
+            foreach ($rows as $row) {
+                if (trim((string) ($row->contribution_sku ?? '')) === '') {
+                    continue;
+                }
+                $quantity = (int) ($row->quantity_purchased ?? 0);
+                $basePrice = (float) ($row->base_price_total ?? 0);
+                if ($quantity <= 0 || $basePrice <= 0) {
+                    continue;
+                }
+                $total += $basePrice * $quantity;
+            }
+
+            return round($total, 2);
+        } catch (\Throwable $e) {
+            Log::warning('computeTemu3YSales failed: '.$e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $modelClass
+     */
+    private function buildTemu3DailyDataResponse(string $modelClass, string $table): \Illuminate\Http\JsonResponse
+    {
+        try {
+            $normalizeSku = static function ($sku) {
+                $sku = strtoupper(trim((string) $sku));
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+                $sku = preg_replace('/\s+/', ' ', $sku);
+
+                return $sku;
+            };
+
+            $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->pluck('sku')
+                ->filter(fn ($sku) => stripos($sku, 'PARENT') === false)
+                ->unique()
+                ->values()
+                ->all();
+
+            $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
+                return [$normalizeSku($s) => true];
+            })->all();
+
+            if (! Schema::hasTable($table)) {
+                return response()->json([]);
+            }
+
+            $allowedRawSkus = $modelClass::select('contribution_sku')->distinct()
+                ->get()
+                ->filter(fn ($r) => isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]))
+                ->pluck('contribution_sku')
+                ->unique()
+                ->values()
+                ->all();
+
+            $allTemuData = $allowedRawSkus === []
+                ? collect()
+                : $modelClass::whereIn('contribution_sku', $allowedRawSkus)
+                    ->orderBy('purchase_date', 'desc')
+                    ->orderBy('order_id', 'desc')
+                    ->get();
+
+            $pmByNormalized = ProductMaster::whereIn('sku', $productMasterSkus)->get()
+                ->keyBy(fn ($pm) => $normalizeSku($pm->sku));
+
+            $margin = TemuShopifySalesService::temuMarginDecimal();
+            $result = [];
+            foreach ($allTemuData as $item) {
+                $sku = $item->contribution_sku;
+                $pm = $pmByNormalized[$normalizeSku($sku ?? '')] ?? null;
+                $parent = $pm ? $pm->parent : '';
+                $lp = 0;
+                $temuShip = 0;
+                $handlingCharge = null;
+                $oSizeCharge = null;
+                if ($pm) {
+                    $values = is_array($pm->Values)
+                        ? $pm->Values
+                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    foreach ($values as $k => $v) {
+                        if (strtolower((string) $k) === 'lp') {
+                            $lp = floatval($v);
+                            break;
+                        }
+                    }
+                    if ($lp === 0 && isset($pm->lp)) {
+                        $lp = floatval($pm->lp);
+                    }
+                    $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $pm);
+                    $handlingCharge = $values['handling_charge'] ?? null;
+                    $oSizeCharge = $values['o_size_charge'] ?? null;
+                }
+                $basePrice = $item->base_price_total !== null ? (float) $item->base_price_total : 0;
+                $quantity = $item->quantity_purchased !== null ? (int) $item->quantity_purchased : 0;
+                $fbPrice = $basePrice <= 26.99 ? ($basePrice + 2.99) : $basePrice;
+                $pft = ($fbPrice * $margin - $lp - $temuShip) * $quantity;
+                $result[] = [
+                    'Parent' => $parent,
+                    'contribution_sku' => $item->contribution_sku ?? '',
+                    'order_id' => $item->order_id ?? '',
+                    'product_name_by_customer_order' => $item->product_name_by_customer_order ?? '',
+                    'variation' => $item->variation ?? '',
+                    'quantity_purchased' => $quantity,
+                    'quantity_shipped' => (int) ($item->quantity_shipped ?? 0),
+                    'quantity_to_ship' => (int) ($item->quantity_to_ship ?? 0),
+                    'base_price_total' => $basePrice,
+                    'fb_price' => round($fbPrice, 2),
+                    'lp' => $lp,
+                    'temu_ship' => $temuShip,
+                    'handling_charge' => $handlingCharge ?? null,
+                    'o_size_charge' => $oSizeCharge ?? null,
+                    'pft' => round($pft, 2),
+                    'order_status' => $item->order_status ?? '',
+                    'fulfillment_mode' => $item->fulfillment_mode ?? '',
+                    'tracking_number' => $item->tracking_number ?? '',
+                    'carrier' => $item->carrier ?? '',
+                    'created_at' => $item->purchase_date ? $item->purchase_date->format('Y-m-d H:i:s') : null,
+                ];
+            }
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Temu 3 daily data: '.$e->getMessage(), ['trace' => $e->getTraceAsString(), 'table' => $table]);
+
+            return response()->json(['error' => 'Failed to fetch data: '.$e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $modelClass
+     */
+    private function uploadTemu3DailyDataChunk(Request $request, string $modelClass, string $uploadPrefix, string $logLabel)
+    {
+        try {
+            $request->validate([
+                'file' => 'required|file|mimes:xlsx,xls,csv',
+                'chunk' => 'required|integer|min:0',
+                'totalChunks' => 'required|integer|min:1',
+            ]);
+            $file = $request->file('file');
+            $chunk = (int) $request->input('chunk');
+            $totalChunks = (int) $request->input('totalChunks');
+            $uploadId = $request->input('uploadId', uniqid($uploadPrefix));
+            $tempPath = storage_path('app/temp');
+            if (! file_exists($tempPath)) {
+                mkdir($tempPath, 0755, true);
+            }
+            $fileName = $uploadId.'_'.$file->getClientOriginalName();
+            $filePath = $tempPath.'/'.$fileName;
+            if ($chunk == 0) {
+                $file->move($tempPath, $fileName);
+                DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+                $modelClass::truncate();
+                DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+                Log::info($logLabel.' daily data table truncated before import');
+            }
+            $spreadsheet = IOFactory::load($filePath);
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+            $rawHeaders = $rows[0] ?? [];
+            $headers = [];
+            foreach ($rawHeaders as $header) {
+                $headers[] = $this->normalizeHeader($header);
+            }
+            unset($rows[0]);
+            $totalRows = count($rows);
+            $chunkSize = $totalChunks > 0 ? (int) ceil($totalRows / $totalChunks) : $totalRows;
+            $startRow = $chunk * $chunkSize;
+            $chunkRows = array_slice($rows, $startRow, $chunkSize, true);
+            $imported = 0;
+            $skipped = 0;
+            DB::beginTransaction();
+            try {
+                foreach ($chunkRows as $row) {
+                    if (empty($row[0])) {
+                        $skipped++;
+                        continue;
+                    }
+                    $rowData = array_pad(array_slice($row, 0, count($headers)), count($headers), null);
+                    $data = array_combine($headers, $rowData);
+                    if (! is_array($data)) {
+                        $skipped++;
+                        continue;
+                    }
+                    $modelClass::create($this->mapTemu3DailyUploadRow($data));
+                    $imported++;
+                }
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+            if ($chunk == $totalChunks - 1 && file_exists($filePath)) {
+                unlink($filePath);
+            }
+            if ($chunk == $totalChunks - 1) {
+                $this->refreshTemuMetricsAfterDailyUpload(false);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Chunk $chunk processed successfully",
+                'chunk' => $chunk,
+                'totalChunks' => $totalChunks,
+                'imported' => $imported,
+                'skipped' => $skipped,
+                'progress' => round((($chunk + 1) / $totalChunks) * 100, 2),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error uploading '.$logLabel.' daily data chunk: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Error: '.$e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function mapTemu3DailyUploadRow(array $data): array
+    {
+        $text = static function (array $data, string $key) {
+            return isset($data[$key]) && $data[$key] !== '' ? trim((string) $data[$key]) : null;
+        };
+
+        return [
+            'order_id' => $text($data, 'order_id'),
+            'order_status' => $text($data, 'order_status'),
+            'fulfillment_mode' => $text($data, 'fulfillment_mode'),
+            'logistics_service_suggestion' => $text($data, 'logistics_service_suggestion'),
+            'order_item_id' => $text($data, 'order_item_id'),
+            'order_item_status' => $text($data, 'order_item_status'),
+            'product_name_by_customer_order' => $text($data, 'product_name_by_customer_order'),
+            'product_name' => $text($data, 'product_name'),
+            'variation' => $text($data, 'variation'),
+            'contribution_sku' => $text($data, 'contribution_sku'),
+            'sku_id' => $text($data, 'sku_id'),
+            'quantity_purchased' => isset($data['quantity_purchased']) && $data['quantity_purchased'] !== '' ? (int) $data['quantity_purchased'] : null,
+            'quantity_shipped' => isset($data['quantity_shipped']) && $data['quantity_shipped'] !== '' ? (int) $data['quantity_shipped'] : null,
+            'quantity_to_ship' => isset($data['quantity_to_ship']) && $data['quantity_to_ship'] !== '' ? (int) $data['quantity_to_ship'] : null,
+            'recipient_name' => $text($data, 'recipient_name'),
+            'recipient_first_name' => $text($data, 'recipient_first_name'),
+            'recipient_last_name' => $text($data, 'recipient_last_name'),
+            'recipient_phone_number' => $text($data, 'recipient_phone_number'),
+            'ship_address_1' => $text($data, 'ship_address_1'),
+            'ship_address_2' => $text($data, 'ship_address_2'),
+            'ship_address_3' => $text($data, 'ship_address_3'),
+            'district' => $text($data, 'district'),
+            'ship_city' => $text($data, 'ship_city'),
+            'ship_state' => $text($data, 'ship_state'),
+            'ship_postal_code' => $text($data, 'ship_postal_code'),
+            'ship_country' => $text($data, 'ship_country'),
+            'purchase_date' => isset($data['purchase_date']) ? $this->parseDate($data['purchase_date']) : null,
+            'latest_shipping_time' => isset($data['latest_shipping_time']) ? $this->parseDate($data['latest_shipping_time']) : null,
+            'latest_delivery_time' => isset($data['latest_delivery_time']) ? $this->parseDate($data['latest_delivery_time']) : null,
+            'iphone_serial_number' => $text($data, 'iphone_serial_number'),
+            'virtual_email' => $text($data, 'virtual_email'),
+            'activity_goods_base_price' => isset($data['activity_goods_base_price']) ? $this->sanitizePrice($data['activity_goods_base_price']) : null,
+            'base_price_total' => isset($data['base_price_total']) ? $this->sanitizePrice($data['base_price_total']) : null,
+            'tracking_number' => $text($data, 'tracking_number'),
+            'carrier' => $text($data, 'carrier'),
+            'order_settlement_status' => $text($data, 'order_settlement_status'),
+            'keep_proof_of_shipment_before_delivery' => $text($data, 'keep_proof_of_shipment_before_delivery'),
+        ];
     }
 
     /**

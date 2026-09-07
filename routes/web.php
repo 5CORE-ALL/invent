@@ -4893,6 +4893,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu2-column-visibility', [TemuController::class, 'saveTemu2ColumnVisibility']);
     Route::get('/temu2-column-visibility', [TemuController::class, 'getTemu2ColumnVisibility']);
 
+    // Temu 3 Tabulator View (separate tables: temu3_daily_data, temu3_daily_data_l60)
+    Route::get('/temu3-tabulator', [Temu3Controller::class, 'temu3TabulatorView'])->name('temu3.tabulator');
+    Route::get('/temu3/daily-data', [Temu3Controller::class, 'getTemu3DailyData'])->name('temu3.daily.data');
+    Route::get('/temu3/daily-data-l7', [Temu3Controller::class, 'getTemu3DailyDataL7'])->name('temu3.daily.data.l7');
+    Route::post('/temu3/upload-daily-data-chunk', [Temu3Controller::class, 'uploadDailyDataTemu3Chunk']);
+    Route::post('/temu3/upload-daily-data-l60-chunk', [Temu3Controller::class, 'uploadDailyDataTemu3L60Chunk']);
+    Route::post('/temu3-column-visibility', [Temu3Controller::class, 'saveTemu3ColumnVisibility']);
+    Route::get('/temu3-column-visibility', [Temu3Controller::class, 'getTemu3ColumnVisibility']);
+
     // Temu 2 pricing sheet upload disabled — use Open API sync
     Route::post('/temu2-pricing/upload', [TemuController::class, 'uploadTemu2Pricing'])->name('temu2.pricing.upload');
     Route::get('/temu2-pricing/sample', [TemuController::class, 'downloadTemu2PricingSample'])->name('temu2.pricing.sample');

@@ -1642,6 +1642,15 @@
             if (key === 'shopifyb2c' || key === 'shopify') {
                 return '/shopify';
             }
+            if (key === 'temu') {
+                return '/temu-tabulator';
+            }
+            if (key === 'temu2') {
+                return '/temu2-tabulator';
+            }
+            if (key === 'temu3' || key === 'temuthree') {
+                return '/temu3-tabulator';
+            }
             return '';
         }
 
@@ -2205,7 +2214,7 @@
                             const fmt = `$${value.toLocaleString('en-US')}`;
                             const salesPage = (rowData['sales_page_link'] || '').trim() || shopifyB2cDailySalesPage(channel);
                             const valueHtml = salesPage
-                                ? `<a href="${salesPage}" target="_blank" rel="noopener noreferrer" class="shopify-b2c-sales-link" style="font-weight:600;color:inherit;text-decoration:none;" title="Open Shopify Sales">${fmt}</a>`
+                                ? `<a href="${salesPage}" target="_blank" rel="noopener noreferrer" class="shopify-b2c-sales-link" style="font-weight:600;color:inherit;text-decoration:none;" title="Open ${channel || 'channel'} Sales">${fmt}</a>`
                                 : `<span style="font-weight: 600;">${fmt}</span>`;
                             return valueHtml + chartIcon;
                         },
