@@ -9,12 +9,11 @@ use Illuminate\Support\Collection;
 /**
  * Shared listing-page count loop (same rules as /listing-ebaytwo).
  *
- * Universe: ProductMaster (not deleted), non-PARENT.
- * Listing pages also require Shopify INV > 0.
- * /missing-listing compares every CP Master SKU to the marketplace listing id.
+ * Listing pages: ProductMaster (not deleted), non-PARENT, Shopify INV > 0.
+ * /missing-listing: Shopify catalog SKUs vs marketplace listing ids.
  * NRL/REQ from channel DataView.value.NRL (and listing-status overlay).
  * Listed from channel-specific id map (sku_lower → listing id string).
- * Missing L = in CP Master, not NRL, and not listed on the marketplace.
+ * Missing L = Shopify product not on the marketplace, minus NRL.
  */
 class ListingCountsEngine
 {
@@ -24,6 +23,12 @@ class ListingCountsEngine
     private static ?array $productSkusMemo = null;
 
     private static ?Collection $shopifyMapMemo = null;
+
+    /** @var list<string>|null */
+    private static ?array $shopifyCatalogSkusMemo = null;
+
+    /** @var array{SKU: int, ZeroInv: int}|null */
+    private static ?array $shopifyCatalogCountsMemo = null;
 
     /**
      * @return Collection<int, ProductMaster>
@@ -56,13 +61,90 @@ class ListingCountsEngine
     }
 
     /**
+     * Unique Shopify Admin catalog SKUs (real variants), excluding PARENT.
+     *
+     * @return list<string>
+     */
+    public static function shopifyCatalogSkus(): array
+    {
+        if (self::$shopifyCatalogSkusMemo !== null) {
+            return self::$shopifyCatalogSkusMemo;
+        }
+
+        self::loadShopifyCatalog();
+
+        return self::$shopifyCatalogSkusMemo ?? [];
+    }
+
+    /**
+     * @return array{SKU: int, ZeroInv: int}
+     */
+    public static function shopifyCatalogCounts(): array
+    {
+        if (self::$shopifyCatalogCountsMemo !== null) {
+            return self::$shopifyCatalogCountsMemo;
+        }
+
+        self::loadShopifyCatalog();
+
+        return self::$shopifyCatalogCountsMemo ?? ['SKU' => 0, 'ZeroInv' => 0];
+    }
+
+    /**
+     * Listing pages use CP Master SKUs; /missing-listing uses Shopify products.
+     *
+     * @return list<string>
+     */
+    public static function countUniverseSkus(bool $requirePositiveInv): array
+    {
+        return $requirePositiveInv ? self::productSkus() : self::shopifyCatalogSkus();
+    }
+
+    private static function loadShopifyCatalog(): void
+    {
+        $seen = [];
+        $skus = [];
+        $zeroInv = 0;
+
+        ShopifySku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereNotNull('variant_id')
+            ->where('variant_id', '!=', '')
+            ->where('variant_id', '!=', '0')
+            ->get(['sku', 'variant_id', 'inv'])
+            ->each(function ($row) use (&$seen, &$skus, &$zeroInv) {
+                $sku = trim((string) ($row->sku ?? ''));
+                if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                    return;
+                }
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm === '' || isset($seen[$norm])) {
+                    return;
+                }
+                $seen[$norm] = true;
+                $skus[] = $sku;
+                $inv = $row->inv ?? null;
+                if ($inv === null || $inv === '' || ! is_numeric($inv) || (float) $inv === 0.0) {
+                    $zeroInv++;
+                }
+            });
+
+        self::$shopifyCatalogSkusMemo = $skus;
+        self::$shopifyCatalogCountsMemo = [
+            'SKU' => count($skus),
+            'ZeroInv' => $zeroInv,
+        ];
+    }
+
+    /**
      * @param  Collection<string, mixed>  $nrValuesBySkuUpper  sku_upper → raw DataView value
      * @param  array<string, string>  $listedIdBySkuLower  sku_lower → non-empty listing id when listed
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
      */
     public static function counts(Collection $nrValuesBySkuUpper, array $listedIdBySkuLower, bool $requirePositiveInv = true): array
     {
-        $productMasters = self::productMasters();
+        $skus = self::countUniverseSkus($requirePositiveInv);
         $shopifyData = $requirePositiveInv ? self::requestShopifyMap() : collect();
 
         $reqCount = 0;
@@ -70,14 +152,14 @@ class ListingCountsEngine
         $listedCount = 0;
         $missingL = 0;
 
-        foreach ($productMasters as $item) {
-            $sku = trim((string) $item->sku);
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
             if ($sku === '' || stripos($sku, 'PARENT') !== false) {
                 continue;
             }
 
             if ($requirePositiveInv) {
-                $inv = self::shopifyInv(self::shopifyRow($shopifyData, $sku, (string) $item->sku));
+                $inv = self::shopifyInv(self::shopifyRow($shopifyData, $sku, $sku));
                 if ($inv <= 0) {
                     continue;
                 }

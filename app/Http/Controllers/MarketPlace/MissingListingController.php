@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
 use App\Models\ChannelMasterSummary;
 use App\Models\MissingListingDar;
-use App\Support\Marketplace\CpMasterCounts;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingInactiveParentChildCounts;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -19,7 +19,8 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Missing Listing page — Tabulator view.
  *
- * Metrics from each channel's /listing-* page (live, no cache).
+ * Universe: Shopify catalog products vs marketplace listing ids.
+ * NRL / Not Required SKUs are deducted from Missing Listing.
  * History chart from daily listing_miss_count snapshots (California dates).
  */
 class MissingListingController extends Controller
@@ -60,13 +61,13 @@ class MissingListingController extends Controller
                     ->get($masterColumns)
                 : collect();
 
-            $cpMasterCounts = CpMasterCounts::counts(false);
-            $cpSkuCount = (int) ($cpMasterCounts['SKU'] ?? 0);
-            $cpZeroInv = (int) ($cpMasterCounts['ZeroInv'] ?? 0);
+            $shopifyCatalog = ListingCountsEngine::shopifyCatalogCounts();
+            $shopifySkuCount = (int) ($shopifyCatalog['SKU'] ?? 0);
+            $shopifyZeroInv = (int) ($shopifyCatalog['ZeroInv'] ?? 0);
 
             $data = $masterRows
                 ->filter(fn ($master) => ListingChannelCounts::hasListingSource((string) $master->channel))
-                ->map(function ($master) use ($hasLogo, $hasSellerLink, $cpSkuCount, $cpZeroInv) {
+                ->map(function ($master) use ($hasLogo, $hasSellerLink, $shopifySkuCount, $shopifyZeroInv) {
                     $channel = (string) $master->channel;
                     $dataSource = ListingChannelCounts::dataSource($channel);
                     $isSheet = $dataSource === 'Sheet';
@@ -81,8 +82,8 @@ class MissingListingController extends Controller
                             'channel' => $channel,
                             'listing_url' => ListingChannelCounts::listingUrl($channel),
                             'data_source' => 'Sheet',
-                            'sku' => $cpSkuCount,
-                            'zero_inv' => $cpZeroInv,
+                            'sku' => $shopifySkuCount,
+                            'zero_inv' => $shopifyZeroInv,
                             'req' => null,
                             'nrl' => null,
                             'listed' => null,
@@ -103,8 +104,8 @@ class MissingListingController extends Controller
                         'channel' => $channel,
                         'listing_url' => ListingChannelCounts::listingUrl($channel),
                         'data_source' => 'API',
-                        'sku' => $cpSkuCount,
-                        'zero_inv' => $cpZeroInv,
+                        'sku' => $shopifySkuCount,
+                        'zero_inv' => $shopifyZeroInv,
                         'req' => (int) ($listingCounts['REQ'] ?? 0),
                         'nrl' => (int) ($listingCounts['NRL'] ?? 0),
                         'listed' => (int) ($listingCounts['Listed'] ?? 0),

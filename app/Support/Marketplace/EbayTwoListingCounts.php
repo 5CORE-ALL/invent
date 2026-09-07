@@ -4,7 +4,6 @@ namespace App\Support\Marketplace;
 
 use App\Models\Ebay2Metric;
 use App\Models\EbayTwoDataView;
-use App\Models\ProductMaster;
 
 /**
  * EbayTwo listing status counts — same source as /listing-ebaytwo.
@@ -23,8 +22,7 @@ class EbayTwoListingCounts
      */
     public static function counts(bool $requirePositiveInv = true): array
     {
-        $productMasters = ListingCountsEngine::productMasters();
-        $skus = ListingCountsEngine::productSkus();
+        $skus = ListingCountsEngine::countUniverseSkus($requirePositiveInv);
 
         $shopifyData = $requirePositiveInv ? ListingCountsEngine::requestShopifyMap() : collect();
         $nrValues = ListingCountsEngine::loadNrValues(EbayTwoDataView::class, $skus);
@@ -43,14 +41,14 @@ class EbayTwoListingCounts
         $listedCount = 0;
         $missingL = 0;
 
-        foreach ($productMasters as $item) {
-            $sku = trim((string) $item->sku);
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
             if ($sku === '' || stripos($sku, 'PARENT') !== false) {
                 continue;
             }
 
             if ($requirePositiveInv) {
-                $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, (string) $item->sku));
+                $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, $sku));
                 if ($inv <= 0) {
                     continue;
                 }
