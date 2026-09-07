@@ -355,7 +355,7 @@
                         <span id="doba_withoutship-blue-triangle-badge"
                               class="badge text-center"
                               style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
-                              title="Blue triangle: S PRC ≠ Price.">
+                              title="Blue alert: Price ≠ S PRC. Click to show only those SKUs. Auto-push skips SKUs where Price already equals S PRC.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span id="nmap-count"
                               class="badge text-center"
@@ -687,6 +687,13 @@
             const sprice = dobaWithoutshipRowSpriceForAlert(data);
             const price = parseFloat(data && (data.self_pick_price != null ? data.self_pick_price : data['doba Price'])) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function dobaWithoutshipListingPriceEqualsSprice(data, spriceOverride) {
+            const price = parseFloat(data && (data.self_pick_price != null ? data.self_pick_price : data['doba Price'])) || 0;
+            const sprice = spriceOverride != null
+                ? (parseFloat(spriceOverride) || 0)
+                : dobaWithoutshipRowSpriceForAlert(data);
+            return price > 0 && sprice > 0 && Math.round(price * 100) === Math.round(sprice * 100);
         }
         function syncDobaWithoutshipTriangleBadgeState() {
             $('#doba_withoutship-blue-triangle-badge').css({
@@ -2074,7 +2081,7 @@
                         sorter: "number",
                         visible: true,
                         editable: false,
-                        headerTooltip: "Not editable. S PRC = S Pick Price from /doba-tabulator (SPRICE − Ship). Push sends this as Pick Up. Blue triangle = S PRC ≠ Pickup Price. Red triangle = S PRC ≥ LMP.",
+                        headerTooltip: "Not editable. S PRC = S Pick Price from /doba-tabulator (SPRICE − Ship). Push sends this as Pick Up. Blue triangle = S PRC ≠ Pickup Price. Red triangle = S PRC ≥ LMP (no blue when red).",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             if (isDobaWithoutshipParentRow(rowData)) return '';
@@ -2094,7 +2101,8 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Saved S PRC ≥ LMP $'
                                     + Number(lmp).toFixed(2) + '"></i>'
                                 : '';
-                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            const blueTri = (!overLmp && live > 0 && value > 0
+                                && live.toFixed(2) !== value.toFixed(2))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
@@ -3031,6 +3039,7 @@
             // Bulk push selected SKUs' pickup / prepaid price
             $('#push-to-doba-btn').on('click', function() {
                 const skusWithSprice = [];
+                let alreadyEqualCount = 0;
                 selectedSkus.forEach(sku => {
                     const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
                     if (!row) return;
@@ -3038,12 +3047,21 @@
                     if (data.is_parent) return;
                     const pickupPrice = parseFloat(data.s_self_pick) || parseFloat(data.sprice) || 0;
                     if (pickupPrice > 0) {
+                        if (dobaWithoutshipListingPriceEqualsSprice(data, pickupPrice)) {
+                            alreadyEqualCount++;
+                            return;
+                        }
                         skusWithSprice.push({ sku: sku, pickupPrice: pickupPrice, row: row });
                     }
                 });
 
                 if (skusWithSprice.length === 0) {
-                    showToast('warning', 'No selected SKUs with SPRICE. Set SPRICE first.');
+                    showToast(alreadyEqualCount > 0
+                        ? 'success'
+                        : 'warning',
+                        alreadyEqualCount > 0
+                            ? alreadyEqualCount + ' SKU(s): Price already equals S PRC — left unchanged'
+                            : 'No selected SKUs with SPRICE. Set SPRICE first.');
                     return;
                 }
 
@@ -3148,6 +3166,10 @@
                 pickupPrice = parseFloat(rowData.s_self_pick) || parseFloat(rowData.sprice) || pickupPrice;
                 if (!sku || pickupPrice <= 0) {
                     showToast('danger', 'Invalid SKU or pickup price');
+                    return;
+                }
+                if (dobaWithoutshipListingPriceEqualsSprice(rowData, pickupPrice)) {
+                    showToast('success', sku + ': Price already equals S PRC — left unchanged');
                     return;
                 }
 
