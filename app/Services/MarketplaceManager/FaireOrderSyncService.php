@@ -41,13 +41,20 @@ class FaireOrderSyncService
         $upserted = 0;
         $pages = 0;
         $detailService = app(FaireOrderDetailService::class);
+        $cursor = null;
+        $pageNum = 1;
 
-        for ($page = 1; $page <= 50; $page++) {
-            $res = $this->faireApi->getOrders([
-                'limit' => 50, // Faire requires 10–50
-                'page' => $page,
-                'created_at_min' => $from->toIso8601String(),
-            ]);
+        for ($i = 1; $i <= 50; $i++) {
+            $params = ['limit' => 50];
+            if ($cursor !== null && $cursor !== '') {
+                // Faire: cursor pages cannot also send date filters.
+                $params['cursor'] = $cursor;
+            } else {
+                $params['updated_at_min'] = $from->toIso8601String();
+                $params['page'] = $pageNum;
+            }
+
+            $res = $this->faireApi->getOrders($params);
 
             if (! empty($res['blocked_by_cloudflare'])) {
                 return [
@@ -72,7 +79,8 @@ class FaireOrderSyncService
             }
 
             $pages++;
-            $orders = $detailService->extractOrders($res['json'] ?? []);
+            $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+            $orders = $detailService->extractOrders($json);
             if ($orders === []) {
                 break;
             }
@@ -81,9 +89,16 @@ class FaireOrderSyncService
                 $upserted += $this->upsertOrder($order);
             }
 
-            if (count($orders) < 50) {
-                break;
+            $nextCursor = $this->nextFaireCursor($json);
+            if ($nextCursor !== null && $nextCursor !== '' && $nextCursor !== $cursor) {
+                $cursor = $nextCursor;
+                continue;
             }
+            if (count($orders) >= 50 && ($cursor === null || $cursor === '')) {
+                $pageNum++;
+                continue;
+            }
+            break;
         }
 
         if ($import || MarketplaceShopifyImportQueue::shouldDispatchImports('faire')) {
@@ -185,10 +200,7 @@ class FaireOrderSyncService
             if (! is_array($item)) {
                 continue;
             }
-            $sku = trim((string) ($item['sku'] ?? data_get($item, 'product_variant.sku') ?? ''));
-            if ($sku === '') {
-                $sku = trim((string) ($item['id'] ?? '__unknown__'));
-            }
+            $sku = $this->skuFromFaireItem($item);
             $qty = max(1, (int) ($item['quantity'] ?? 1));
             $amountMinor = data_get($item, 'price.amount_minor')
                 ?? data_get($item, 'total_price.amount_minor')
@@ -224,5 +236,54 @@ class FaireOrderSyncService
         }
 
         return $count;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    protected function skuFromFaireItem(array $item): string
+    {
+        $candidates = [
+            $item['sku'] ?? '',
+            data_get($item, 'product_variant.sku'),
+            data_get($item, 'variant.sku'),
+            data_get($item, 'product.sku'),
+            $item['seller_sku'] ?? '',
+            $item['seller_part_number'] ?? '',
+            data_get($item, 'product_variant.shop_sku'),
+        ];
+        foreach ($candidates as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                return $sku;
+            }
+        }
+
+        return trim((string) ($item['id'] ?? '__unknown__')) ?: '__unknown__';
+    }
+
+    /**
+     * @param  array<string, mixed>  $json
+     */
+    protected function nextFaireCursor(array $json): ?string
+    {
+        foreach (['cursor', 'next_cursor', 'next_page'] as $key) {
+            $value = trim((string) ($json[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+        $page = $json['page'] ?? null;
+        if (is_string($page) && $page !== '' && ! ctype_digit($page)) {
+            return $page;
+        }
+        if (is_array($page)) {
+            $value = trim((string) ($page['cursor'] ?? $page['next'] ?? $page['next_cursor'] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
     }
 }

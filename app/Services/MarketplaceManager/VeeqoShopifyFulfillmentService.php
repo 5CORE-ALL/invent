@@ -28,6 +28,7 @@ use App\Models\MarketplaceSyncSettings;
 use App\Services\FourSellerApiService;
 use App\Services\GofoExpressService;
 use App\Services\VeeqoApiService;
+use App\Support\DobaTrackingNumber;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -131,6 +132,10 @@ class VeeqoShopifyFulfillmentService
         $marketplaceOrderIds = app(ShopifyFulfillmentTrackingMatcher::class)->uniqueIds(
             $marketplaceOrderIds !== [] ? $marketplaceOrderIds : $refs
         );
+        $marketplaceOrderIds = array_values(array_filter(
+            $marketplaceOrderIds,
+            fn ($id) => ! $this->isCollisionProneOrderRef((string) $id) && ! $this->isShopifyInternalIdRef((string) $id)
+        ));
         $sku = app(ShopifyFulfillmentTrackingMatcher::class)->normalizeSku($sku);
 
         if ($strict && $marketplaceOrderIds === []) {
@@ -180,10 +185,16 @@ class VeeqoShopifyFulfillmentService
             // ids as "Shopify-like", and never look up Veeqo by Shopify #.
             $refs = $this->confirmedMarketplaceRefs($marketplaceOrderIds);
         } else {
-            $refs = array_values(array_unique(array_filter(array_merge(
-                $refs,
-                $this->shopifyDisplayNameRefs($shopifyConfig, $shopifyOrderId)
-            ))));
+            // Never search Veeqo/GOFO by Shopify #334042 — it collides with
+            // Amazon ids like 113-3340426-4270650.
+            $refs = $this->confirmedMarketplaceRefs($refs);
+        }
+
+        if (strtolower(trim($marketplace)) === 'doba' && is_array($localTracking)) {
+            $localTn = trim((string) ($localTracking['tracking'] ?? ''));
+            if ($localTn !== '') {
+                $localTracking['tracking'] = DobaTrackingNumber::sanitize($localTn);
+            }
         }
 
         $existing = $this->existingShopifyTracking(
@@ -194,20 +205,56 @@ class VeeqoShopifyFulfillmentService
             $strict
         );
         if ($existing !== null) {
+            $existingTn = (string) ($existing['tracking'] ?? '');
+            $existingCarrier = (string) ($existing['carrier'] ?? '');
+            if (strtolower(trim($marketplace)) === 'doba' && DobaTrackingNumber::needsSanitize($existingTn)) {
+                $clean = DobaTrackingNumber::sanitize($existingTn);
+                $updated = $this->updateExistingShopifyFulfillmentTracking(
+                    (string) ($shopifyConfig['store_url'] ?? ''),
+                    (string) ($shopifyConfig['token'] ?? ''),
+                    $shopifyOrderId,
+                    $clean,
+                    $existingCarrier !== '' ? $existingCarrier : 'UPS'
+                );
+                $this->rewriteDobaShopifyPrepaidNote($shopifyConfig, $shopifyOrderId);
+                $this->cacheTrackingOnShopifyRawOrder($shopifyOrderId, $clean, $existingCarrier);
+
+                return [
+                    'success' => ! empty($updated['success']),
+                    'skipped' => false,
+                    'action' => ! empty($updated['success']) ? 'shopify_fulfilled' : 'shopify_fulfill_failed',
+                    'message' => ! empty($updated['success'])
+                        ? 'Shopify Doba tracking cleaned to '.$clean.'.'
+                        : (string) ($updated['message'] ?? 'Failed to strip carrier from Doba tracking.'),
+                    'tracking' => $clean,
+                    'carrier' => $existingCarrier,
+                    'sku' => $sku !== '' ? $sku : null,
+                ];
+            }
+
             $this->cacheTrackingOnShopifyRawOrder(
                 $shopifyOrderId,
-                (string) $existing['tracking'],
-                (string) ($existing['carrier'] ?? '')
+                $existingTn,
+                $existingCarrier
             );
 
             return [
                 'success' => true,
                 'skipped' => true,
                 'action' => 'already_on_shopify',
-                'message' => 'Shopify already has tracking '.$existing['tracking'].'.',
-                'tracking' => $existing['tracking'],
+                'message' => 'Shopify already has tracking '.$existingTn.'.',
+                'tracking' => $existingTn,
                 'carrier' => $existing['carrier'],
                 'sku' => $sku !== '' ? $sku : null,
+            ];
+        }
+
+        if (strtolower(trim($marketplace)) === 'doba' && ! $this->dobaMayUseExternalLabel($localTracking, $shopifyConfig, $shopifyOrderId)) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'action' => 'tracking_not_found',
+                'message' => 'Doba order is not prepaid — Veeqo/GOFO tracking was not attached.',
             ];
         }
 
@@ -237,6 +284,9 @@ class VeeqoShopifyFulfillmentService
         }
 
         $source = (string) ($found['source'] ?? 'marketplace');
+        if (strtolower(trim($marketplace)) === 'doba') {
+            $found['tracking'] = DobaTrackingNumber::sanitize((string) ($found['tracking'] ?? ''));
+        }
 
         $carrier = $this->shopifyCarrierName((string) ($found['carrier'] ?? 'Other'), (string) ($found['tracking'] ?? ''));
         $this->cacheTrackingOnShopifyRawOrder($shopifyOrderId, (string) $found['tracking'], $carrier);
@@ -247,6 +297,9 @@ class VeeqoShopifyFulfillmentService
             $carrier,
             $sku
         );
+        if (strtolower(trim($marketplace)) === 'doba') {
+            $this->rewriteDobaShopifyPrepaidNote($shopifyConfig, $shopifyOrderId);
+        }
 
         if (empty($written['success'])) {
             return [
@@ -340,7 +393,8 @@ class VeeqoShopifyFulfillmentService
         }
 
         if ($this->veeqo->isConfigured()) {
-            $veeqo = $this->findVeeqoShipment($clean, false, $sku);
+            $veeqoRefs = $this->strongMarketplaceRefs($marketRefs !== [] ? $marketRefs : $clean);
+            $veeqo = $veeqoRefs === [] ? null : $this->findVeeqoShipment($veeqoRefs, false, $sku);
             if ($veeqo !== null && trim((string) ($veeqo['tracking'] ?? '')) !== '') {
                 return [
                     'tracking' => (string) $veeqo['tracking'],
@@ -706,7 +760,7 @@ class VeeqoShopifyFulfillmentService
             'fulfillment_status' => 'unfulfilled',
             'limit' => 50,
             'created_at_min' => now()->subDays(45)->toIso8601String(),
-            'fields' => 'id,name,tags,note,note_attributes,fulfillment_status,line_items',
+            'fields' => 'id,name,tags,note,note_attributes,source_name,source_identifier,fulfillment_status,line_items',
         ];
         for ($page = 0; $page < 8 && count($out) < $limit; $page++) {
             try {
@@ -825,7 +879,13 @@ class VeeqoShopifyFulfillmentService
         $tagsRaw = (string) ($order['tags'] ?? '');
         $note = (string) ($order['note'] ?? '');
         $hay = strtolower($tagsRaw.' '.$note);
-        if (trim($hay) === '' && empty($order['note_attributes']) && trim((string) ($order['name'] ?? '')) === '') {
+        $sourceId = trim((string) ($order['source_identifier'] ?? ''));
+        if (
+            trim($hay) === ''
+            && empty($order['note_attributes'])
+            && trim((string) ($order['name'] ?? '')) === ''
+            && $sourceId === ''
+        ) {
             return [];
         }
 
@@ -863,9 +923,14 @@ class VeeqoShopifyFulfillmentService
             if ($val === '' || strlen($val) < 6) {
                 continue;
             }
-            if (str_contains($name, 'order') || str_contains($name, 'po_') || $name === 'po' || str_contains($name, 'track')) {
+            if (str_contains($name, 'track')) {
+                continue;
+            }
+            if (str_contains($name, 'order') || str_contains($name, 'po_') || $name === 'po') {
                 $matched = true;
-                $refs[] = $val;
+                if (! $this->isCollisionProneOrderRef($val)) {
+                    $refs[] = $val;
+                }
             }
         }
 
@@ -875,13 +940,17 @@ class VeeqoShopifyFulfillmentService
             $refs[] = $amazonId;
         }
 
-        if (! $matched) {
-            return [];
+        if (
+            $sourceId !== ''
+            && ! $this->isCollisionProneOrderRef($sourceId)
+            && ! $this->isShopifyInternalIdRef($sourceId)
+        ) {
+            $matched = true;
+            $refs[] = $sourceId;
         }
 
-        $name = ltrim((string) ($order['name'] ?? ''), '#');
-        if ($name !== '') {
-            $refs[] = $name;
+        if (! $matched) {
+            return [];
         }
 
         $unique = [];
@@ -910,6 +979,42 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
+        $source = strtolower((string) ($order['source_name'] ?? ''));
+        if (str_contains($source, 'doba') || $source === '145019994113') {
+            return 'doba';
+        }
+        if (str_contains($hay, 'doba')) {
+            return 'doba';
+        }
+        foreach ($slugs as $slug) {
+            $slug = strtolower((string) $slug);
+            if ($slug === '') {
+                continue;
+            }
+            if ($source === $slug || str_contains($source, $slug)) {
+                return $slug;
+            }
+            if (preg_match('/(?:^|[\s,])'.preg_quote($slug, '/').'(?:[\s,]|$)/i', $hay)) {
+                return $slug;
+            }
+        }
+        foreach ($order['note_attributes'] ?? [] as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $name = strtolower(trim((string) ($attr['name'] ?? $attr['key'] ?? '')));
+            $val = strtolower(trim((string) ($attr['value'] ?? '')));
+            if (str_contains($name, 'doba') || str_contains($val, 'doba')) {
+                return 'doba';
+            }
+            foreach ($slugs as $slug) {
+                $slug = strtolower((string) $slug);
+                if ($slug !== '' && (str_contains($name, $slug) || ($name === $slug.'_order_id'))) {
+                    return $slug;
+                }
+            }
+        }
+
         return '';
     }
 
@@ -933,6 +1038,40 @@ class VeeqoShopifyFulfillmentService
             $id = trim((string) ($m[1] ?? ''));
             if ($id !== '' && ! in_array($id, $ids, true)) {
                 $ids[] = $id;
+            }
+        }
+
+        $sourceId = trim((string) ($order['source_identifier'] ?? ''));
+        if (
+            $sourceId !== ''
+            && strlen($sourceId) >= 6
+            && ! $this->isCollisionProneOrderRef($sourceId)
+            && ! $this->isShopifyInternalIdRef($sourceId)
+            && ! in_array($sourceId, $ids, true)
+        ) {
+            $ids[] = $sourceId;
+        }
+
+        foreach ($order['note_attributes'] ?? [] as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $name = strtolower(trim((string) ($attr['name'] ?? $attr['key'] ?? '')));
+            $val = trim((string) ($attr['value'] ?? ''));
+            if ($val === '' || strlen($val) < 6 || $this->isCollisionProneOrderRef($val)) {
+                continue;
+            }
+            if (
+                ($marketplace === 'doba' && (str_contains($name, 'doba order') || $name === 'doba_order_no'))
+                || ($marketplace !== '' && $name === $marketplace.'_order_id')
+                || str_contains($name, 'order no')
+                || str_contains($name, 'order number')
+                || str_contains($name, 'order_id')
+                || str_contains($name, 'order id')
+            ) {
+                if (! in_array($val, $ids, true)) {
+                    $ids[] = $val;
+                }
             }
         }
 
@@ -1029,11 +1168,9 @@ class VeeqoShopifyFulfillmentService
         $marketplaceOrderIds = $refs;
         $strict = $this->isStrictTrackingMarketplace($marketplace);
         if ($shopifyOrderId !== '' && ! str_starts_with($shopifyOrderId, 'manual') && ! $strict) {
-            $refs[] = $shopifyOrderId;
-            foreach ($this->shopifyOrderNumberRefs($shopifyOrderId) as $num) {
-                if (! in_array($num, $refs, true)) {
-                    $refs[] = $num;
-                }
+            // Shopify Admin id only — never the short #334042 display name.
+            if (! $this->isCollisionProneOrderRef($shopifyOrderId)) {
+                $refs[] = $shopifyOrderId;
             }
         }
 
@@ -1175,6 +1312,9 @@ class VeeqoShopifyFulfillmentService
             $plain = ltrim($ref, '#');
             if ($plain !== $ref) {
                 $variants[] = $plain;
+            }
+            if ($this->isCollisionProneOrderRef($ref) || $this->isShopifyInternalIdRef($ref)) {
+                continue;
             }
             if ($plain !== '' && ! str_starts_with(strtolower($plain), 'amz')) {
                 $variants[] = 'Amz'.$plain;
@@ -1407,8 +1547,18 @@ class VeeqoShopifyFulfillmentService
         }
         $aDash = str_replace('-', '', $a);
         $bDash = str_replace('-', '', $b);
+        if ($aDash === $bDash && (str_contains($a, '-') || str_contains($b, '-'))) {
+            return true;
+        }
 
-        return $aDash === $bDash && (str_contains($a, '-') || str_contains($b, '-'));
+        // #334042 must not match Amazon 113-3340426-4270650
+        $shorter = strlen($aDash) <= strlen($bDash) ? $aDash : $bDash;
+        $longer = strlen($aDash) <= strlen($bDash) ? $bDash : $aDash;
+        if (strlen($shorter) >= 6 && str_contains($longer, $shorter) && $shorter !== $longer) {
+            return false;
+        }
+
+        return false;
     }
 
     protected function normalizeOrderRef(string $ref): string
@@ -1427,13 +1577,21 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
-     * Shopify Admin REST ids (typically 12–14 digits), not marketplace order numbers.
+     * Shopify Admin REST ids are 13 digits (e.g. 7159464132845).
+     * Doba order nos are 14 digits (YYMMDD…) and must not be dropped.
      */
     protected function isShopifyInternalIdRef(string $ref): bool
     {
         $n = $this->normalizeOrderRef($ref);
+        if ($n === '') {
+            return false;
+        }
+        // Doba / dated marketplace ids: 26083068732127
+        if (preg_match('/^2\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{4,}$/', $n)) {
+            return false;
+        }
 
-        return $n !== '' && (bool) preg_match('/^\d{12,14}$/', $n);
+        return (bool) preg_match('/^\d{13}$/', $n);
     }
 
     /**
@@ -1486,12 +1644,60 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
-     * Newegg / eBay 2 / AliExpress / TikTok: attach a label only when the
-     * Shopify copy contains this full marketplace order id and this SKU.
+     * Attach a label only when the Shopify copy contains this full
+     * marketplace order id and this SKU. Never search by Shopify #.
      */
     protected function isStrictTrackingMarketplace(string $marketplace): bool
     {
-        return in_array(strtolower(trim($marketplace)), ['ebay2', 'newegg', 'aliexpress', 'tiktok'], true);
+        $marketplace = strtolower(trim($marketplace));
+
+        return $marketplace !== '';
+    }
+
+    /**
+     * Regular Doba orders must not inherit a Veeqo/GOFO label.
+     * Prepaid Doba may use tracking already on the Doba/Shopify prepaid note.
+     *
+     * @param  array{tracking?: string, carrier?: string}|null  $localTracking
+     * @param  array{store_url?: string, token?: string}  $shopifyConfig
+     */
+    protected function dobaMayUseExternalLabel(?array $localTracking, array $shopifyConfig, string $shopifyOrderId): bool
+    {
+        $localTn = DobaTrackingNumber::sanitize((string) ($localTracking['tracking'] ?? ''));
+        if (strlen($localTn) >= 8) {
+            return true;
+        }
+
+        $order = $this->shopifyOrderPayload($shopifyConfig, $shopifyOrderId);
+        if (is_array($order)) {
+            foreach ($order['note_attributes'] ?? [] as $attr) {
+                if (! is_array($attr)) {
+                    continue;
+                }
+                $name = strtolower((string) ($attr['name'] ?? $attr['key'] ?? ''));
+                $val = strtolower((string) ($attr['value'] ?? ''));
+                if (str_contains($name, 'prepaid') || str_contains($val, 'prepaid label')) {
+                    return true;
+                }
+            }
+        }
+
+        if (Schema::hasTable('doba_daily_data') && Schema::hasColumn('doba_daily_data', 'order_type')) {
+            $sid = preg_replace('/\D+/', '', $shopifyOrderId);
+            $type = DobaDailyData::query()
+                ->where(function ($q) use ($shopifyOrderId, $sid) {
+                    $q->where('shopify_order_id', $shopifyOrderId);
+                    if ($sid !== '') {
+                        $q->orWhere('shopify_order_id', $sid);
+                    }
+                })
+                ->value('order_type');
+            if (strtolower(trim((string) $type)) === 'pickup with a prepaid label') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function marketplaceSkuColumn(string $marketplace, string $table): ?string
@@ -1809,6 +2015,167 @@ class VeeqoShopifyFulfillmentService
             ]);
 
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Fix an existing Doba Shopify order whose fulfillment / notes still have (UPS).
+     *
+     * @return array{success: bool, updated: bool, tracking?: string, message: string}
+     */
+    public function cleanExistingDobaShopifyTracking(string $shopifyOrderId): array
+    {
+        $config = $this->shopifyConfigFor('doba');
+        $storeUrl = trim((string) ($config['store_url'] ?? ''));
+        $token = trim((string) ($config['token'] ?? ''));
+        $shopifyOrderId = trim($shopifyOrderId);
+        if ($storeUrl === '' || $token === '' || $shopifyOrderId === '') {
+            return ['success' => false, 'updated' => false, 'message' => 'Shopify credentials or order id missing.'];
+        }
+
+        $order = $this->shopifyOrderPayload($config, $shopifyOrderId);
+        if ($order === null) {
+            return ['success' => false, 'updated' => false, 'message' => 'Shopify order not found.'];
+        }
+
+        $dirty = '';
+        $carrier = 'UPS';
+        foreach ($order['fulfillments'] ?? [] as $fulfillment) {
+            if (! is_array($fulfillment)) {
+                continue;
+            }
+            $status = strtolower((string) ($fulfillment['status'] ?? ''));
+            if (in_array($status, ['cancelled', 'error', 'failure'], true)) {
+                continue;
+            }
+            $number = '';
+            if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
+                $number = trim((string) ($fulfillment['tracking_numbers'][0] ?? ''));
+            }
+            if ($number === '' && ! empty($fulfillment['tracking_number'])) {
+                $number = trim((string) $fulfillment['tracking_number']);
+            }
+            if ($number !== '' && DobaTrackingNumber::needsSanitize($number)) {
+                $dirty = $number;
+                $carrier = trim((string) ($fulfillment['tracking_company'] ?? '')) ?: 'UPS';
+                break;
+            }
+        }
+
+        $noteDirty = false;
+        foreach ($order['note_attributes'] ?? [] as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $nameKey = strtolower(trim((string) ($attr['name'] ?? $attr['key'] ?? '')));
+            $value = (string) ($attr['value'] ?? '');
+            if (
+                $value !== ''
+                && DobaTrackingNumber::needsSanitize($value)
+                && (str_contains($nameKey, 'tracking') || str_contains($nameKey, 'prepaid'))
+            ) {
+                $noteDirty = true;
+                if ($dirty === '') {
+                    $dirty = $value;
+                }
+            }
+        }
+
+        if ($dirty === '' && ! $noteDirty) {
+            return ['success' => true, 'updated' => false, 'message' => 'Tracking already clean.'];
+        }
+
+        $clean = DobaTrackingNumber::sanitize($dirty);
+        $updated = false;
+        if ($clean !== '' && DobaTrackingNumber::needsSanitize($dirty)) {
+            $res = $this->updateExistingShopifyFulfillmentTracking($storeUrl, $token, $shopifyOrderId, $clean, $carrier);
+            $updated = ! empty($res['success']);
+            if (! $updated) {
+                return [
+                    'success' => false,
+                    'updated' => false,
+                    'tracking' => $clean,
+                    'message' => (string) ($res['message'] ?? 'Shopify tracking update failed.'),
+                ];
+            }
+        }
+
+        $this->rewriteDobaShopifyPrepaidNote($config, $shopifyOrderId);
+        if ($clean !== '') {
+            $this->cacheTrackingOnShopifyRawOrder($shopifyOrderId, $clean, $carrier);
+        }
+
+        return [
+            'success' => true,
+            'updated' => $updated || $noteDirty,
+            'tracking' => $clean,
+            'message' => $clean !== '' ? 'Cleaned to '.$clean.'.' : 'Prepaid note cleaned.',
+        ];
+    }
+
+    /**
+     * Strip carrier suffixes from Doba "Tracking Number of Prepaid Label" notes.
+     *
+     * @param  array{store_url?: string, token?: string}  $config
+     */
+    public function rewriteDobaShopifyPrepaidNote(array $config, string $shopifyOrderId): void
+    {
+        $storeUrl = trim((string) ($config['store_url'] ?? ''));
+        $token = trim((string) ($config['token'] ?? ''));
+        $shopifyOrderId = trim($shopifyOrderId);
+        if ($storeUrl === '' || $token === '' || $shopifyOrderId === '') {
+            return;
+        }
+
+        $order = $this->shopifyOrderPayload($config, $shopifyOrderId);
+        if ($order === null) {
+            return;
+        }
+
+        $attrs = $order['note_attributes'] ?? [];
+        if (! is_array($attrs) || $attrs === []) {
+            return;
+        }
+
+        $changed = false;
+        $next = [];
+        foreach ($attrs as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $name = trim((string) ($attr['name'] ?? $attr['key'] ?? ''));
+            $value = (string) ($attr['value'] ?? '');
+            $nameKey = strtolower($name);
+            if (
+                $value !== ''
+                && DobaTrackingNumber::needsSanitize($value)
+                && (
+                    str_contains($nameKey, 'tracking')
+                    || str_contains($nameKey, 'prepaid')
+                )
+            ) {
+                $value = DobaTrackingNumber::sanitize($value);
+                $changed = true;
+            }
+            $next[] = ['name' => $name, 'value' => $value];
+        }
+
+        if (! $changed) {
+            return;
+        }
+
+        try {
+            $this->shopifyApi($storeUrl, $token, 'PUT', "orders/{$shopifyOrderId}.json", [
+                'order' => [
+                    'id' => (int) $shopifyOrderId,
+                    'note_attributes' => $next,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('VeeqoShopifyFulfillmentService: Doba prepaid note rewrite failed', [
+                'shopify_order_id' => $shopifyOrderId,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -2275,9 +2642,12 @@ class VeeqoShopifyFulfillmentService
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
                 ])->timeout(30);
-                $last = strtoupper($method) === 'POST'
-                    ? $req->post($url, $payload)
-                    : $req->get($url, $payload);
+                $verb = strtoupper($method);
+                $last = match ($verb) {
+                    'POST' => $req->post($url, $payload),
+                    'PUT' => $req->put($url, $payload),
+                    default => $req->get($url, $payload),
+                };
             } catch (\Throwable $e) {
                 if ($attempt >= 4) {
                     throw $e;
@@ -2478,7 +2848,7 @@ class VeeqoShopifyFulfillmentService
             $response = Http::withoutVerifying()->withHeaders([
                 'X-Shopify-Access-Token' => $token,
             ])->timeout(30)->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json", [
-                'fields' => 'id,name,tags,note,note_attributes,source_identifier,line_items,fulfillments',
+                'fields' => 'id,name,tags,note,note_attributes,source_name,source_identifier,line_items,fulfillments',
             ]);
             if (! $response->successful()) {
                 return null;
@@ -2713,6 +3083,9 @@ class VeeqoShopifyFulfillmentService
         string $carrier = ''
     ): void {
         $tn = strtoupper(preg_replace('/\s+/', '', $tracking) ?? $tracking);
+        if (strtolower(trim($marketplace)) === 'doba') {
+            $tn = DobaTrackingNumber::sanitize($tn);
+        }
         if ($tn === '' || strlen($tn) < 8) {
             return;
         }

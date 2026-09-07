@@ -58,8 +58,12 @@ trait FindsExistingShopifyOrderByChannelRef
             ];
         }
 
-        // 1) REST name lookup (exact order name — common for manual Shopify entry).
+        // 1) REST name lookup only when the ref can be a Shopify #name (short digits).
+        // Channel ids like Faire bo_*, Amazon 113-…-… never match Shopify names and burn the 2 req/s budget.
         foreach ($candidates as $ref) {
+            if (! $this->looksLikeShopifyOrderName($ref)) {
+                continue;
+            }
             $byName = $this->shopifyRestFindOrderByName($storeUrl, $token, $ref, $logContext);
             if (($byName['error'] ?? null) !== null) {
                 return $byName;
@@ -67,6 +71,7 @@ trait FindsExistingShopifyOrderByChannelRef
             if (! empty($byName['id'])) {
                 return $byName;
             }
+            usleep(550000);
         }
 
         // 2) GraphQL search: name / tag / note / custom attribute value.
@@ -186,14 +191,14 @@ trait FindsExistingShopifyOrderByChannelRef
 
         try {
             $url = 'https://'.$storeUrl.'/admin/api/2024-01/orders.json';
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->get($url, [
-                'status' => 'any',
-                'name' => $name,
-                'limit' => 10,
-                'fields' => 'id,name,tags,note,note_attributes',
+            $response = $this->shopifyAdminRequest('GET', $url, $token, [
+                'query' => [
+                    'status' => 'any',
+                    'name' => $name,
+                    'limit' => 10,
+                    'fields' => 'id,name,tags,note,note_attributes',
+                ],
+                'timeout' => 30,
             ]);
 
             if (! $response->successful()) {
@@ -262,14 +267,14 @@ trait FindsExistingShopifyOrderByChannelRef
 
         try {
             $url = 'https://'.$storeUrl.'/admin/api/2024-01/orders.json';
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->get($url, [
-                'status' => 'any',
-                'tag' => $tag,
-                'limit' => 10,
-                'fields' => 'id,name,tags,note,note_attributes',
+            $response = $this->shopifyAdminRequest('GET', $url, $token, [
+                'query' => [
+                    'status' => 'any',
+                    'tag' => $tag,
+                    'limit' => 10,
+                    'fields' => 'id,name,tags,note,note_attributes',
+                ],
+                'timeout' => 30,
             ]);
 
             if (! $response->successful()) {
@@ -416,10 +421,12 @@ GQL,
         ];
 
         try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(45)->post('https://'.$storeUrl.'/admin/api/2024-01/graphql.json', $payload);
+            $response = $this->shopifyAdminRequest(
+                'POST',
+                'https://'.$storeUrl.'/admin/api/2024-01/graphql.json',
+                $token,
+                ['json' => $payload, 'timeout' => 45]
+            );
 
             if (! $response->successful()) {
                 $status = $response->status();
@@ -435,6 +442,25 @@ GQL,
             }
 
             $json = $response->json() ?? [];
+            if (! empty($json['errors']) && is_array($json['errors'])) {
+                $first = (string) ($json['errors'][0]['message'] ?? 'GraphQL error');
+                if (stripos($first, 'throttl') !== false) {
+                    for ($retry = 1; $retry <= 3; $retry++) {
+                        usleep($retry * 2000000);
+                        $response = $this->shopifyAdminRequest(
+                            'POST',
+                            'https://'.$storeUrl.'/admin/api/2024-01/graphql.json',
+                            $token,
+                            ['json' => $payload, 'timeout' => 45]
+                        );
+                        $json = $response->json() ?? [];
+                        $retryFirst = (string) ($json['errors'][0]['message'] ?? '');
+                        if ($response->successful() && (empty($json['errors']) || stripos($retryFirst, 'throttl') === false)) {
+                            break;
+                        }
+                    }
+                }
+            }
             if (! empty($json['errors']) && is_array($json['errors'])) {
                 $first = (string) ($json['errors'][0]['message'] ?? 'GraphQL error');
                 Log::warning($logContext.': GraphQL errors', [
@@ -594,5 +620,48 @@ GQL,
         if (property_exists($this, 'lastApiStatus')) {
             $this->lastApiStatus = $status;
         }
+    }
+
+    /**
+     * Shopify Admin names are typically short numeric (#334042). Channel ids are not.
+     */
+    protected function looksLikeShopifyOrderName(string $ref): bool
+    {
+        $ref = ltrim(trim($ref), '#');
+
+        return $ref !== '' && preg_match('/^\d{1,12}$/', $ref) === 1;
+    }
+
+    /**
+     * @param  array{query?: array<string, mixed>, json?: array<string, mixed>, timeout?: int}  $options
+     */
+    protected function shopifyAdminRequest(string $method, string $url, string $token, array $options = [])
+    {
+        $last = null;
+        $timeout = (int) ($options['timeout'] ?? 30);
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            try {
+                $req = Http::withoutVerifying()->withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout($timeout);
+                $last = strtoupper($method) === 'POST'
+                    ? $req->post($url, $options['json'] ?? [])
+                    : $req->get($url, $options['query'] ?? []);
+            } catch (\Throwable $e) {
+                if ($attempt >= 5) {
+                    throw $e;
+                }
+                usleep(max(1500000, $attempt * 1000000));
+                continue;
+            }
+            if ($last->status() !== 429) {
+                return $last;
+            }
+            $wait = (int) ($last->header('Retry-After') ?: (2 * $attempt));
+            usleep(max(2000000, min(20000000, $wait * 1000000)));
+        }
+
+        return $last;
     }
 }

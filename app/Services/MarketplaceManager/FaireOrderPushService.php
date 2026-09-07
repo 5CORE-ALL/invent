@@ -229,6 +229,9 @@ class FaireOrderPushService
         $this->lastDuplicateLinkMessage = null;
 
         if ($order->shopify_order_id) {
+            if ((string) ($order->import_status ?? '') !== 'imported') {
+                $order->update(['import_status' => 'imported']);
+            }
             $this->fulfillShopifyForImportedMarketplaceOrder('faire', (int) $order->id, ['order_id' => (string) $order->order_id]);
 
             return (string) $order->shopify_order_id;
@@ -755,7 +758,7 @@ class FaireOrderPushService
 
         try {
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-                $response = Http::withHeaders([
+                $response = Http::withoutVerifying()->withHeaders([
                     'X-Shopify-Access-Token' => $config['token'],
                     'Content-Type' => 'application/json',
                 ])->timeout(60)->post($url, $payload);
@@ -812,7 +815,7 @@ class FaireOrderPushService
         $token = $config['token'];
 
         try {
-            $response = Http::withHeaders([
+            $response = Http::withoutVerifying()->withHeaders([
                 'X-Shopify-Access-Token' => $token,
             ])->timeout(30)->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}/fulfillment_orders.json");
 
@@ -830,7 +833,7 @@ class FaireOrderPushService
                 return;
             }
 
-            Http::withHeaders([
+            Http::withoutVerifying()->withHeaders([
                 'X-Shopify-Access-Token' => $token,
                 'Content-Type' => 'application/json',
             ])->timeout(30)->post("https://{$storeUrl}/admin/api/2024-01/fulfillments.json", [
@@ -866,7 +869,7 @@ class FaireOrderPushService
         $url = 'https://'.$config['store_url'].'/admin/api/2024-01/variants.json?sku='.urlencode($sku);
 
         try {
-            $response = Http::withHeaders([
+            $response = Http::withoutVerifying()->withHeaders([
                 'X-Shopify-Access-Token' => $config['token'],
             ])->timeout(30)->get($url);
 

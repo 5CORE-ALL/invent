@@ -59,7 +59,12 @@ class FaireTrackingSyncService
             ];
         }
 
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, (string) ($line->sku ?? ''));
+        $shopifyFulfillment = $this->fetchShopifyTracking(
+            $shopifyOrderId,
+            $orderId,
+            (string) ($line->sku ?? ''),
+            trim((string) ($line->order_number ?? ''))
+        );
         if (empty($shopifyFulfillment['tracking'])) {
             return [
                 'success' => false,
@@ -114,7 +119,7 @@ class FaireTrackingSyncService
         if (empty($result['success'])) {
             $message = (string) ($result['message'] ?? 'Failed to push tracking to Faire.');
 
-            // Already shipped on Faire — treat matching post-refresh tracking as success.
+            // Faire locked the shipment (already shipped / payment started).
             if ($this->looksLikeAlreadyShipped($message)) {
                 try {
                     $this->orderDetailService->fetchAndPersistOrderDetail($orderId);
@@ -124,18 +129,20 @@ class FaireTrackingSyncService
                 }
                 $after = $this->resolveFaireShipment($orderId, $line);
                 $afterTracking = trim((string) ($after['tracking'] ?? ''));
-                if ($afterTracking !== '' && $this->trackingEquals($afterTracking, $shopifyTracking)) {
-                    return [
-                        'success' => true,
-                        'skipped' => true,
-                        'action' => 'already_shipped',
-                        'message' => 'Faire order already shipped with this tracking number.',
-                        'shopify_tracking' => $shopifyTracking,
-                        'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
-                        'faire_tracking' => $afterTracking,
-                        'ship_carrier' => $shipCarrier,
-                    ];
-                }
+                $same = $afterTracking !== '' && $this->trackingEquals($afterTracking, $shopifyTracking);
+
+                return [
+                    'success' => true,
+                    'skipped' => true,
+                    'action' => $same ? 'already_shipped' : 'payment_locked',
+                    'message' => $same
+                        ? 'Faire order already shipped with this tracking number.'
+                        : 'Faire already started payment — shipment updates are locked.',
+                    'shopify_tracking' => $shopifyTracking,
+                    'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
+                    'faire_tracking' => $afterTracking !== '' ? $afterTracking : null,
+                    'ship_carrier' => $shipCarrier,
+                ];
             }
 
             Log::warning('FaireTrackingSyncService: push failed', [
@@ -196,16 +203,23 @@ class FaireTrackingSyncService
             ->where('shopify_order_id', '!=', '')
             ->orderByDesc('id')
             ->limit($limit * 5)
-            ->get(['id', 'order_id', 'shopify_order_id', 'status']);
+            ->get(['id', 'order_id', 'order_number', 'sku', 'shopify_order_id', 'status']);
 
         $unique = [];
         foreach ($rows as $row) {
             $ref = trim((string) $row->order_id);
-            if ($ref === '' || isset($unique[$ref])) {
+            if ($ref === '') {
                 continue;
             }
-            $unique[$ref] = $row;
-            if (count($unique) >= $limit) {
+            $sku = trim((string) ($row->sku ?? ''));
+            $existing = $unique[$ref] ?? null;
+            $existingSku = $existing ? trim((string) ($existing->sku ?? '')) : '';
+            $existingBad = $existingSku === '' || in_array($existingSku, ['__order__', '__unknown__'], true);
+            $incomingBad = $sku === '' || in_array($sku, ['__order__', '__unknown__'], true);
+            if ($existing === null || ($existingBad && ! $incomingBad)) {
+                $unique[$ref] = $row;
+            }
+            if (count($unique) >= $limit && ! $existingBad) {
                 break;
             }
         }
@@ -248,16 +262,46 @@ class FaireTrackingSyncService
     /**
      * @return array{tracking: ?string, carrier: ?string, tracking_url: ?string, error?: ?string}
      */
-    protected function fetchShopifyTracking(string $shopifyOrderId, string $marketplaceOrderId = '', string $sku = ''): array
+    protected function fetchShopifyTracking(string $shopifyOrderId, string $marketplaceOrderId = '', string $sku = '', string $displayId = ''): array
     {
-        return app(ShopifyFulfillmentTrackingMatcher::class)->match(
-            $this->shopifyConfig(),
-            $shopifyOrderId,
-            $marketplaceOrderId,
-            $sku,
-            [],
-            'FaireTrackingSyncService'
-        );
+        $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
+        $extra = array_values(array_filter([$displayId]));
+        $skus = [];
+        $want = $matcher->normalizeSku($sku);
+        if ($want !== '' && ! in_array($want, ['__ORDER__', '__UNKNOWN__'], true)) {
+            $skus[] = $want;
+        }
+        if ($marketplaceOrderId !== '') {
+            foreach (FaireOrderMetric::query()->where('order_id', $marketplaceOrderId)->pluck('sku') as $sibling) {
+                $norm = $matcher->normalizeSku((string) $sibling);
+                if ($norm === '' || in_array($norm, ['__ORDER__', '__UNKNOWN__'], true) || in_array($norm, $skus, true)) {
+                    continue;
+                }
+                $skus[] = $norm;
+            }
+        }
+
+        $last = [
+            'tracking' => null,
+            'carrier' => null,
+            'tracking_url' => null,
+            'error' => 'Marketplace SKU missing — tracking not attached.',
+        ];
+        foreach ($skus as $trySku) {
+            $last = $matcher->match(
+                $this->shopifyConfig(),
+                $shopifyOrderId,
+                $marketplaceOrderId,
+                $trySku,
+                $extra,
+                'FaireTrackingSyncService'
+            );
+            if (! empty($last['tracking'])) {
+                return $last;
+            }
+        }
+
+        return $last;
     }
 
     /**
@@ -403,7 +447,8 @@ class FaireTrackingSyncService
         return str_contains($m, 'so027')
             || str_contains($m, 'so025')
             || str_contains($m, 'already been shipped')
-            || str_contains($m, 'already shipped');
+            || str_contains($m, 'already shipped')
+            || str_contains($m, 'payment is already initiated');
     }
 
     protected function trackingEquals(string $a, string $b): bool

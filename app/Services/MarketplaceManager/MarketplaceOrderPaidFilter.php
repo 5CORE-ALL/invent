@@ -227,8 +227,8 @@ class MarketplaceOrderPaidFilter
         }
         $state = strtoupper(trim((string) ($raw['state'] ?? $raw['status'] ?? $status)));
 
-        // Faire unpaid / canceled-like states — treat everything else as importable.
-        $unpaid = ['NEW', 'CANCELED', 'CANCELLED', 'DRAFT', 'PENDING_RETAILER_CONFIRMATION'];
+        // Faire NEW is a placed wholesale order — import it. Only skip canceled/draft.
+        $unpaid = ['CANCELED', 'CANCELLED', 'DRAFT', 'PENDING_RETAILER_CONFIRMATION'];
         if ($state !== '' && in_array($state, $unpaid, true)) {
             return false;
         }

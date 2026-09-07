@@ -493,21 +493,21 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('aliexpress', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('aliexpress', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('aliexpress-sync-orders')
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('alibaba', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('alibaba', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('alibaba-sync-orders')
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('reverb', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('reverb', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('reverb-manager-sync-orders')
@@ -521,7 +521,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('shein', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('shein', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('shein-sync-orders')
@@ -535,7 +535,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('topdawg', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('topdawg', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('topdawg-sync-orders')
@@ -543,7 +543,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('temu-sync-orders')
@@ -551,56 +551,56 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         // Fetch + auto-import Temu 2 to Shopify (duplicate check links existing copies; no second order).
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu2', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu2', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('temu2-sync-orders')
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('purchasingpower', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('purchasingpower', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('purchasingpower-sync-orders')
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('wayfair', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('wayfair', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('wayfair-sync-orders')
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('bestbuy', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('bestbuy', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('bestbuy-sync-orders')
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('macy', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('macy', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('macy-sync-orders')
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('doba', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('doba', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('doba-sync-orders')
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay1', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay1', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('ebay1-sync-orders')
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay2', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay2', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('ebay2-sync-orders')
@@ -614,7 +614,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('faire', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('faire', '', true, 14))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('faire-sync-orders')

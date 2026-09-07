@@ -51,6 +51,9 @@ class ImportFaireOrderToShopify implements ShouldQueue
         }
 
         if ($order->shopify_order_id) {
+            if ((string) ($order->import_status ?? '') !== 'imported') {
+                $order->update(['import_status' => 'imported']);
+            }
             $pushService->importToShopify($order);
 
             return;

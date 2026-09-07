@@ -600,7 +600,8 @@ class FaireApiService
                 $payload['scope'] = $scopeList;
             }
 
-            $response = Http::acceptJson()
+            $response = Http::withoutVerifying()
+                ->acceptJson()
                 ->asJson()
                 ->timeout($this->timeout)
                 ->connectTimeout($this->connectTimeout)
@@ -626,7 +627,8 @@ class FaireApiService
         }
 
         try {
-            $response = Http::acceptJson()
+            $response = Http::withoutVerifying()
+                ->acceptJson()
                 ->asJson()
                 ->timeout($this->timeout)
                 ->connectTimeout($this->connectTimeout)
@@ -1299,7 +1301,8 @@ class FaireApiService
         while ($attempt < $maxAttempts) {
             $attempt++;
             try {
-                $http = Http::withHeaders($this->authHeaders())
+                $http = Http::withoutVerifying()
+                    ->withHeaders($this->authHeaders())
                     ->acceptJson()
                     ->timeout($this->timeout)
                     ->connectTimeout($this->connectTimeout);

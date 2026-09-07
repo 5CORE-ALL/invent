@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Log;
  */
 class Ebay3OrderDetailService
 {
+    use PreservesMarketplaceImportStatus;
+
     /**
      * @return array{order: array<string, mixed>, lines: list<array<string, mixed>>, raw: ?array}
      */
@@ -97,15 +99,18 @@ class Ebay3OrderDetailService
 
         $lineItems = is_array($order['lineItems'] ?? null) ? $order['lineItems'] : [];
         if ($lineItems === []) {
+            $existing = Ebay3OrderMetric::query()
+                ->where('order_id', $orderId)
+                ->where('sku', '__order__')
+                ->first();
             Ebay3OrderMetric::updateOrCreate(
                 ['order_id' => $orderId, 'sku' => '__order__'],
-                [
+                array_merge([
                     'order_number' => trim((string) ($order['legacyOrderId'] ?? $orderId)),
                     'order_date' => $orderDate,
                     'status' => $status,
                     'raw_payload' => $order,
-                    'import_status' => 'ready',
-                ]
+                ], $this->importStatusForUpsert($existing))
             );
         } else {
             foreach ($lineItems as $line) {
@@ -113,9 +118,13 @@ class Ebay3OrderDetailService
                     continue;
                 }
                 $sku = trim((string) ($line['sku'] ?? $line['legacyItemId'] ?? '__unknown__'));
+                $existing = Ebay3OrderMetric::query()
+                    ->where('order_id', $orderId)
+                    ->where('sku', $sku)
+                    ->first();
                 Ebay3OrderMetric::updateOrCreate(
                     ['order_id' => $orderId, 'sku' => $sku],
-                    [
+                    array_merge([
                         'order_number' => trim((string) ($order['legacyOrderId'] ?? $orderId)),
                         'order_date' => $orderDate,
                         'status' => $status,
@@ -124,8 +133,7 @@ class Ebay3OrderDetailService
                         'quantity' => max(1, (int) ($line['quantity'] ?? 1)),
                         'amount' => isset($line['lineItemCost']['value']) ? (float) $line['lineItemCost']['value'] : null,
                         'raw_payload' => $order,
-                        'import_status' => 'ready',
-                    ]
+                    ], $this->importStatusForUpsert($existing))
                 );
             }
         }
