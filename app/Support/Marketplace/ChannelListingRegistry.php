@@ -380,7 +380,7 @@ class ChannelListingRegistry
             return ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0, 'MissingL' => 0];
         }
 
-        $skus = ListingCountsEngine::productSkus();
+        $skus = ListingCountsEngine::countUniverseSkus($requirePositiveInv);
         $dataView = $cfg['dataView'] ?? null;
         $nrValues = ($dataView && class_exists($dataView))
             ? ListingCountsEngine::loadNrValues($dataView, $skus)

@@ -5,7 +5,6 @@ namespace App\Support\Marketplace;
 use App\Models\AliexpressDataView;
 use App\Models\AliexpressMetric;
 use App\Models\AliexpressPricingPrice;
-use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Schema;
 
@@ -27,8 +26,7 @@ class AliexpressListingCounts
      */
     public static function counts(bool $requirePositiveInv = true): array
     {
-        $productMasters = ListingCountsEngine::productMasters();
-        $skus = ListingCountsEngine::productSkus();
+        $skus = ListingCountsEngine::countUniverseSkus($requirePositiveInv);
 
         $shopifyData = $requirePositiveInv ? ListingCountsEngine::requestShopifyMap() : collect();
         $nrValues = ListingCountsEngine::loadNrValues(AliexpressDataView::class, $skus);
@@ -48,14 +46,14 @@ class AliexpressListingCounts
         $listedCount = 0;
         $missingL = 0;
 
-        foreach ($productMasters as $item) {
-            $sku = trim((string) $item->sku);
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
             if ($sku === '' || stripos($sku, 'PARENT') !== false) {
                 continue;
             }
 
             if ($requirePositiveInv) {
-                $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, (string) $item->sku));
+                $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, $sku));
                 if ($inv <= 0) {
                     continue;
                 }
