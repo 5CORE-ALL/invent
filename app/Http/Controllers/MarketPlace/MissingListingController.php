@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
 use App\Models\ChannelMasterSummary;
 use App\Models\MissingListingDar;
+use App\Support\Marketplace\CpMasterCounts;
 use App\Support\Marketplace\ListingChannelCounts;
-use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingInactiveParentChildCounts;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Missing Listing page — Tabulator view.
  *
- * Universe: Shopify catalog products vs marketplace listing ids.
+ * Universe: CP Master SKUs vs marketplace API listing ids.
  * NRL / Not Required SKUs are deducted from Missing Listing.
  * History chart from daily listing_miss_count snapshots (California dates).
  */
@@ -45,7 +45,7 @@ class MissingListingController extends Controller
             $hasSellerLink = Schema::hasTable('channel_master')
                 && Schema::hasColumn('channel_master', 'seller_link');
 
-            $masterColumns = ['id', 'channel'];
+            $masterColumns = ['id', 'channel', 'status'];
             if ($hasLogo) {
                 $masterColumns[] = 'logo';
             }
@@ -54,20 +54,26 @@ class MissingListingController extends Controller
             }
 
             $masterRows = Schema::hasTable('channel_master')
-                ? ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])
-                    ->whereNotNull('channel')
+                ? ChannelMaster::whereNotNull('channel')
                     ->where('channel', '!=', '')
                     ->orderBy('channel')
                     ->get($masterColumns)
+                    ->filter(function ($master) {
+                        return ListingChannelCounts::shouldShowOnMissingListing(
+                            (string) $master->channel,
+                            $master->status ?? ''
+                        );
+                    })
+                    ->values()
                 : collect();
 
-            $shopifyCatalog = ListingCountsEngine::shopifyCatalogCounts();
-            $shopifySkuCount = (int) ($shopifyCatalog['SKU'] ?? 0);
-            $shopifyZeroInv = (int) ($shopifyCatalog['ZeroInv'] ?? 0);
+            $cpMasterCounts = CpMasterCounts::counts(false);
+            $cpSkuCount = (int) ($cpMasterCounts['SKU'] ?? 0);
+            $cpZeroInv = (int) ($cpMasterCounts['ZeroInv'] ?? 0);
 
             $data = $masterRows
                 ->filter(fn ($master) => ListingChannelCounts::hasListingSource((string) $master->channel))
-                ->map(function ($master) use ($hasLogo, $hasSellerLink, $shopifySkuCount, $shopifyZeroInv) {
+                ->map(function ($master) use ($hasLogo, $hasSellerLink, $cpSkuCount, $cpZeroInv) {
                     $channel = (string) $master->channel;
                     $dataSource = ListingChannelCounts::dataSource($channel);
                     $isSheet = $dataSource === 'Sheet';
@@ -82,8 +88,8 @@ class MissingListingController extends Controller
                             'channel' => $channel,
                             'listing_url' => ListingChannelCounts::listingUrl($channel),
                             'data_source' => 'Sheet',
-                            'sku' => $shopifySkuCount,
-                            'zero_inv' => $shopifyZeroInv,
+                            'sku' => $cpSkuCount,
+                            'zero_inv' => $cpZeroInv,
                             'req' => null,
                             'nrl' => null,
                             'listed' => null,
@@ -104,8 +110,8 @@ class MissingListingController extends Controller
                         'channel' => $channel,
                         'listing_url' => ListingChannelCounts::listingUrl($channel),
                         'data_source' => 'API',
-                        'sku' => $shopifySkuCount,
-                        'zero_inv' => $shopifyZeroInv,
+                        'sku' => $cpSkuCount,
+                        'zero_inv' => $cpZeroInv,
                         'req' => (int) ($listingCounts['REQ'] ?? 0),
                         'nrl' => (int) ($listingCounts['NRL'] ?? 0),
                         'listed' => (int) ($listingCounts['Listed'] ?? 0),
@@ -430,13 +436,12 @@ class MissingListingController extends Controller
             $total = 0;
             $seen = [];
             $masters = Schema::hasTable('channel_master')
-                ? ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])
-                    ->whereNotNull('channel')
-                    ->pluck('channel')
+                ? ChannelMaster::whereNotNull('channel')->get(['channel', 'status'])
                 : collect();
 
-            foreach ($masters as $name) {
-                if (! ListingChannelCounts::hasListingSource((string) $name)) {
+            foreach ($masters as $master) {
+                $name = (string) $master->channel;
+                if (! ListingChannelCounts::shouldShowOnMissingListing($name, $master->status ?? '')) {
                     continue;
                 }
                 $key = ListingChannelCounts::normalize((string) $name);
