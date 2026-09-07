@@ -73,8 +73,6 @@ $orders = [
     'app:fetch-macy-products',
     'purchasing-power:sync --days=60',
     'mirakl:daily --days=60',
-    'walmart:fetch-orders --days=60',
-    'sof:snapshot-daily --catch-up --backfill=7',
 ];
 
 $price = [

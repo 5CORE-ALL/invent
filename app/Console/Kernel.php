@@ -801,14 +801,6 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         // Night slots — do not wrap in $ist() (09:00–20:00), or they never fire.
-        $schedule->command('walmart:fetch-orders --days=60')
-            ->dailyAt('01:20')
-            ->timezone('Asia/Kolkata')
-            ->name('walmart-fetch-orders')
-            ->withoutOverlapping(170)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
         $schedule->command('tiktok:fetch-orders --days=60 --prune')
             ->dailyAt('02:10')
             ->timezone('Asia/Kolkata')
@@ -855,33 +847,6 @@ class Kernel extends ConsoleKernel
 
         $retryFiveTimesUntil('sync:tiktok-api-data', 'sync-tiktok-api-data', '15:45');
         $retryFiveTimesUntil('sync:tiktok-api-data --channel=tiktok2', 'sync-tiktok2-api-data', '16:00');
-
-        // SOF summary history — always one row per Eastern day (even if metrics unchanged).
-        // Primary write at 00:00 EST/EDT (stores the day that just ended).
-        $schedule->command('sof:snapshot-daily')
-            ->dailyAt('00:00')
-            ->timezone('America/New_York')
-            ->name('sof-snapshot-daily-est')
-            ->withoutOverlapping(30)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        // Catch-up: if 00:00 was missed, create any missing recent Eastern-day rows (never skip unchanged).
-        $schedule->command('sof:snapshot-daily --catch-up --backfill=3')
-            ->dailyAt('00:30')
-            ->timezone('America/New_York')
-            ->name('sof-snapshot-daily-catchup-0030')
-            ->withoutOverlapping(30)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('sof:snapshot-daily --catch-up --backfill=3')
-            ->dailyAt('06:00')
-            ->timezone('America/New_York')
-            ->name('sof-snapshot-daily-catchup-0600')
-            ->withoutOverlapping(30)
-            ->runInBackground()
-            ->appendOutputTo($log);
     }
 
     /**
