@@ -58,23 +58,20 @@ class NeweggTrackingSyncService
             ];
         }
 
-        $shopifyFulfillment = $this->fetchShopifyTracking(
-            $shopifyOrderId,
-            $orderId,
-            trim((string) ($line->sku ?? ''))
-        );
+        $sku = trim((string) ($line->sku ?? ''));
+        if ($sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => 'Marketplace SKU missing — tracking not attached.',
+            ];
+        }
+
+        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
         if (empty($shopifyFulfillment['tracking'])) {
             $copied = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder('newegg', (int) $line->id);
-            if (! empty($copied['tracking'])) {
-                $shopifyFulfillment = $this->fetchShopifyTracking(
-                    $shopifyOrderId,
-                    $orderId,
-                    trim((string) ($line->sku ?? ''))
-                );
-                if (empty($shopifyFulfillment['tracking'])) {
-                    $shopifyFulfillment['tracking'] = $copied['tracking'];
-                    $shopifyFulfillment['carrier'] = $copied['carrier'] ?? $shopifyFulfillment['carrier'];
-                }
+            if (! empty($copied['success'])) {
+                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
             }
         }
         if (empty($shopifyFulfillment['tracking'])) {
@@ -110,7 +107,7 @@ class NeweggTrackingSyncService
 
         $shipCarrier = $this->resolveShipCarrier($shopifyCarrier, $neweggCarrier);
         $shipService = $this->resolveShipService($shopifyCarrier, $neweggCarrier);
-        $items = $this->buildShipItems($orderId, trim((string) ($line->sku ?? '')));
+        $items = $this->buildShipItems($orderId, $sku);
 
         if ($items === []) {
             return [

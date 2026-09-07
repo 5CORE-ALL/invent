@@ -125,7 +125,11 @@ class MarketplaceChannelFulfillmentHub
             if ($channelRef === '') {
                 continue;
             }
-            $line = $this->findLineByChannelRef($slug, $channelRef);
+            $line = $this->findLineByChannelRef(
+                $slug,
+                $channelRef,
+                trim((string) ($result['sku'] ?? ''))
+            );
             if ($line === null) {
                 continue;
             }
@@ -229,7 +233,7 @@ class MarketplaceChannelFulfillmentHub
         }
     }
 
-    protected function findLineByChannelRef(string $marketplace, string $ref): ?object
+    protected function findLineByChannelRef(string $marketplace, string $ref, string $sku = ''): ?object
     {
         $map = $this->channelMap()[$marketplace] ?? null;
         if ($map === null || $ref === '') {
@@ -255,6 +259,17 @@ class MarketplaceChannelFulfillmentHub
             });
             if (! $applied) {
                 return null;
+            }
+
+            $sku = trim($sku);
+            $skuCol = in_array($marketplace, ['tiktok', 'tiktok2'], true) ? 'seller_sku' : 'sku';
+            if ($sku !== '' && Schema::hasColumn($table, $skuCol)) {
+                $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
+                foreach ((clone $query)->orderBy('id')->limit(40)->get() as $candidate) {
+                    if ($matcher->skusEqual((string) ($candidate->{$skuCol} ?? ''), $sku)) {
+                        return $candidate;
+                    }
+                }
             }
 
             return $query->orderBy('id')->first();
