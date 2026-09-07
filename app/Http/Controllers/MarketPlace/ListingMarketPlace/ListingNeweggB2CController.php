@@ -7,6 +7,7 @@ namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 use App\Http\Controllers\Controller;
 use App\Support\Marketplace\AutomatedListingPage;
 use App\Support\Marketplace\ChannelListingRegistry;
+use App\Support\Marketplace\ListingStatusCsv;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\NeweggB2CListingStatus;
@@ -16,6 +17,11 @@ use Illuminate\Support\Facades\Cache;
 class ListingNeweggB2CController extends Controller
 {
     use HandlesListingPublishActions;
+
+    protected function listingPublishChannel(): string
+    {
+        return 'neweggb2c';
+    }
 
     public function listingNeweggB2C(Request $request)
     {
@@ -78,6 +84,16 @@ class ListingNeweggB2CController extends Controller
     public function getNrReqCount()
     {
         return ChannelListingRegistry::nrReqCountArray('neweggb2c');
+    }
+
+    public function import(Request $request)
+    {
+        return ListingStatusCsv::import($request, NeweggB2CListingStatus::class);
+    }
+
+    public function export()
+    {
+        return ListingStatusCsv::export(NeweggB2CListingStatus::class, 'listing_neweggb2c_'.date('Y-m-d').'.csv');
     }
 
 }

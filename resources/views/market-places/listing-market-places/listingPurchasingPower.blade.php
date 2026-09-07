@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Listing Newegg B2B', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Listing Purchasing Power', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
@@ -10,13 +10,13 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         /* ========== TABLE SHELL ========== */
-        #neweggb2b-listing-wrap {
+        #purchasingpower-listing-wrap {
             overflow-x: auto;
             overflow-y: visible;
             width: 100%;
         }
 
-        #neweggb2b-listing-wrap .tabulator {
+        #purchasingpower-listing-wrap .tabulator {
             border: 1px solid #dee2e6;
             border-radius: 8px;
             font-size: 13px;
@@ -24,33 +24,33 @@
             width: 100% !important;
         }
 
-        .card-body:has(#neweggb2b-listing-toolbar) {
+        .card-body:has(#purchasingpower-listing-toolbar) {
             width: 100%;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-tableholder {
+        #purchasingpower-listing-wrap .tabulator .tabulator-tableholder {
             background: #fff;
         }
 
         /* ========== HEADER ========== */
-        #neweggb2b-listing-wrap .tabulator .tabulator-header {
+        #purchasingpower-listing-wrap .tabulator .tabulator-header {
             background: #00d5d5;
             border-bottom: 1px solid #ffffff;
         }
 
-        #neweggb2b-listing-wrap .tabulator-col .tabulator-col-sorter {
+        #purchasingpower-listing-wrap .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
-        #neweggb2b-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+        #purchasingpower-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
+        #purchasingpower-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
             white-space: normal !important;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+        #purchasingpower-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
@@ -68,13 +68,13 @@
             color: #000 !important;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+        #purchasingpower-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
             height: auto !important;
             min-height: 34px;
             padding: 0;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-header .tabulator-col {
+        #purchasingpower-listing-wrap .tabulator .tabulator-header .tabulator-col {
             height: auto !important;
             min-height: 34px;
             vertical-align: middle;
@@ -84,13 +84,13 @@
             font-weight: bold;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
+        #purchasingpower-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
             padding-left: 2px !important;
             padding-right: 2px !important;
         }
 
         /* Header filters */
-        #neweggb2b-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+        #purchasingpower-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
             width: 100%;
             border: 1px solid #cbd5e1;
             border-radius: 6px;
@@ -101,26 +101,26 @@
             box-shadow: none;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
+        #purchasingpower-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
             outline: none;
             border-color: #4361ee;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
         /* ========== ROWS / CELLS ========== */
-        #neweggb2b-listing-wrap .tabulator .tabulator-row {
+        #purchasingpower-listing-wrap .tabulator .tabulator-row {
             min-height: 36px;
             border-bottom: 1px solid #f1f5f9;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-row .tabulator-cell {
+        #purchasingpower-listing-wrap .tabulator .tabulator-row .tabulator-cell {
             padding: 5px 6px !important;
             border-right: 1px solid #f1f5f9;
             vertical-align: middle;
         }
 
-        #neweggb2b-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
-        #neweggb2b-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
+        #purchasingpower-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
+        #purchasingpower-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
             width: 16px;
             height: 16px;
             cursor: pointer;
@@ -129,38 +129,38 @@
             vertical-align: middle;
         }
 
-        #neweggb2b-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
+        #purchasingpower-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
             display: none;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-row:hover {
+        #purchasingpower-listing-wrap .tabulator .tabulator-row:hover {
             background-color: #f8fafc !important;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
+        #purchasingpower-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
             background-color: #fcfcfd;
         }
 
-        #neweggb2b-listing-wrap .tabulator-row.parent-row,
-        #neweggb2b-listing-wrap .tabulator-row.parent-row .tabulator-cell {
+        #purchasingpower-listing-wrap .tabulator-row.parent-row,
+        #purchasingpower-listing-wrap .tabulator-row.parent-row .tabulator-cell {
             background-color: #fffef2 !important;
             font-weight: 700 !important;
             color: #0f172a;
         }
 
-        #neweggb2b-listing-wrap .tabulator-row.parent-row:hover,
-        #neweggb2b-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
+        #purchasingpower-listing-wrap .tabulator-row.parent-row:hover,
+        #purchasingpower-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
             background-color: #fefce8 !important;
         }
 
         /* ========== FOOTER / PAGINATION ========== */
-        #neweggb2b-listing-wrap .tabulator .tabulator-footer {
+        #purchasingpower-listing-wrap .tabulator .tabulator-footer {
             background: #f8fafc !important;
             border-top: 1px solid #e2e8f0 !important;
             padding: 10px 16px !important;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
+        #purchasingpower-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -168,14 +168,14 @@
             flex-wrap: wrap;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
+        #purchasingpower-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
             margin-right: 6px;
             font-size: 12px;
             color: #475569;
             font-weight: 600;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
+        #purchasingpower-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
             border: 1px solid #e2e8f0;
             border-radius: 8px;
             padding: 4px 8px;
@@ -185,7 +185,7 @@
             min-height: 36px;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+        #purchasingpower-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
             font-size: 14px !important;
             font-weight: 500 !important;
             min-width: 36px !important;
@@ -201,13 +201,13 @@
             text-align: center !important;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+        #purchasingpower-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
             background: #f1f5f9 !important;
             border-color: #cbd5e1 !important;
             color: #1e293b !important;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+        #purchasingpower-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
             background: #4361ee !important;
             border-color: #4361ee !important;
             color: #fff !important;
@@ -215,19 +215,19 @@
             box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3) !important;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
+        #purchasingpower-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
             opacity: 0.4 !important;
             cursor: not-allowed !important;
         }
 
-        #neweggb2b-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
+        #purchasingpower-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
             margin: 0 0.5rem;
             font-size: 12px;
             color: #334155;
         }
 
         /* ========== TOOLBAR (badges + filters, one line, autofit page) ========== */
-        #neweggb2b-listing-toolbar {
+        #purchasingpower-listing-toolbar {
             background: transparent;
             border: none;
             border-radius: 0;
@@ -237,7 +237,7 @@
             box-sizing: border-box;
         }
 
-        #neweggb2b-listing-toolbar .neweggb2b-listing-toolbar-row {
+        #purchasingpower-listing-toolbar .purchasingpower-listing-toolbar-row {
             display: flex;
             flex-wrap: nowrap;
             align-items: center;
@@ -248,7 +248,7 @@
             box-sizing: border-box;
         }
 
-        #neweggb2b-listing-toolbar .listing-stat-badges {
+        #purchasingpower-listing-toolbar .listing-stat-badges {
             display: inline-flex;
             flex: 0 0 auto;
             align-items: stretch;
@@ -257,22 +257,22 @@
             padding: 0;
         }
 
-        #neweggb2b-listing-toolbar .listing-stat-badge {
+        #purchasingpower-listing-toolbar .listing-stat-badge {
             flex: 0 0 auto;
             justify-content: center;
             margin: 0 !important;
             border-radius: 0;
         }
 
-        #neweggb2b-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
+        #purchasingpower-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
             border-radius: 8px 0 0 8px;
         }
 
-        #neweggb2b-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
+        #purchasingpower-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
             border-radius: 0 8px 8px 0;
         }
 
-        #neweggb2b-listing-toolbar .filter-select {
+        #purchasingpower-listing-toolbar .filter-select {
             flex: 0 0 auto;
             min-width: 0;
             width: 92px !important;
@@ -288,20 +288,20 @@
             line-height: 1.2;
         }
 
-        #neweggb2b-listing-toolbar .filter-select:focus {
+        #purchasingpower-listing-toolbar .filter-select:focus {
             outline: none;
             border-color: #4361ee;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
-        #neweggb2b-listing-toolbar .toolbar-actions {
+        #purchasingpower-listing-toolbar .toolbar-actions {
             display: flex;
             flex: 0 0 auto;
             align-items: center;
             margin-left: 0;
         }
 
-        #neweggb2b-listing-toolbar .listing-io-btn {
+        #purchasingpower-listing-toolbar .listing-io-btn {
             border-radius: 5px;
             font-weight: 600;
             font-size: 14px;
@@ -314,16 +314,16 @@
             line-height: 1;
         }
 
-        #neweggb2b-listing-toolbar .listing-io-btn::after {
+        #purchasingpower-listing-toolbar .listing-io-btn::after {
             display: none;
         }
 
-        #neweggb2b-listing-toolbar .listing-io-menu {
+        #purchasingpower-listing-toolbar .listing-io-menu {
             min-width: 42px;
             padding: 4px;
         }
 
-        #neweggb2b-listing-toolbar .listing-io-menu .dropdown-item {
+        #purchasingpower-listing-toolbar .listing-io-menu .dropdown-item {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -334,7 +334,7 @@
             font-size: 14px;
         }
 
-        #neweggb2b-listing-toolbar .listing-io-menu .dropdown-item:hover {
+        #purchasingpower-listing-toolbar .listing-io-menu .dropdown-item:hover {
             background: #f1f5f9;
         }
 
@@ -378,8 +378,8 @@
         .listing-stat-badge--rows { background: #334155; color: #fff; }
 
         /* ========== DROPDOWNS ========== */
-        #neweggb2b-listing-wrap select.nr-req-dropdown,
-        #neweggb2b-listing-wrap select.listed-dropdown {
+        #purchasingpower-listing-wrap select.nr-req-dropdown,
+        #purchasingpower-listing-wrap select.listed-dropdown {
             border: 1px solid transparent;
             border-radius: 6px;
             font-weight: 700;
@@ -390,32 +390,32 @@
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
-        #neweggb2b-listing-wrap select.nr-req-dropdown:focus,
-        #neweggb2b-listing-wrap select.listed-dropdown:focus {
+        #purchasingpower-listing-wrap select.nr-req-dropdown:focus,
+        #purchasingpower-listing-wrap select.listed-dropdown:focus {
             outline: none;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
         }
 
-        #neweggb2b-listing-wrap select.nr-req-dropdown[data-val="REQ"],
-        #neweggb2b-listing-wrap select.nr-req-dropdown option.req-option {
+        #purchasingpower-listing-wrap select.nr-req-dropdown[data-val="REQ"],
+        #purchasingpower-listing-wrap select.nr-req-dropdown option.req-option {
             background-color: #28a745;
             color: #fff;
         }
 
-        #neweggb2b-listing-wrap select.nr-req-dropdown[data-val="NR"],
-        #neweggb2b-listing-wrap select.nr-req-dropdown option.nr-option {
+        #purchasingpower-listing-wrap select.nr-req-dropdown[data-val="NR"],
+        #purchasingpower-listing-wrap select.nr-req-dropdown option.nr-option {
             background-color: #dc3545;
             color: #fff;
         }
 
-        #neweggb2b-listing-wrap select.listed-dropdown[data-val="Listed"],
-        #neweggb2b-listing-wrap select.listed-dropdown option.listed-option {
+        #purchasingpower-listing-wrap select.listed-dropdown[data-val="Listed"],
+        #purchasingpower-listing-wrap select.listed-dropdown option.listed-option {
             background-color: #28a745;
             color: #fff;
         }
 
-        #neweggb2b-listing-wrap select.listed-dropdown[data-val="Pending"],
-        #neweggb2b-listing-wrap select.listed-dropdown option.pending-option {
+        #purchasingpower-listing-wrap select.listed-dropdown[data-val="Pending"],
+        #purchasingpower-listing-wrap select.listed-dropdown option.pending-option {
             background-color: #dc3545;
             color: #fff;
         }
@@ -459,13 +459,13 @@
         }
 
         /* ========== LINK CELL ========== */
-        #neweggb2b-listing-wrap a.listing-item-link {
+        #purchasingpower-listing-wrap a.listing-item-link {
             font-weight: 600;
             color: #0d6efd;
             text-decoration: none;
         }
 
-        #neweggb2b-listing-wrap a.listing-item-link:hover {
+        #purchasingpower-listing-wrap a.listing-item-link:hover {
             color: #1d4ed8 !important;
             text-decoration: underline;
         }
@@ -498,7 +498,7 @@
         }
 
         /* ========== PLACEHOLDER ========== */
-        #neweggb2b-listing-wrap .tabulator-placeholder {
+        #purchasingpower-listing-wrap .tabulator-placeholder {
             color: #64748b;
             font-weight: 600;
             padding: 24px;
@@ -508,14 +508,14 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Listing Newegg B2B', 'sub_title' => 'Newegg B2B'])
+    @include('layouts.shared/page-title', ['page_title' => 'Listing Purchasing Power', 'sub_title' => 'Purchasing Power'])
 
     <div class="row">
         <div class="col-12">
             <div class="card position-relative">
                 <div class="card-body">
-                    <div id="neweggb2b-listing-toolbar" class="mb-3">
-                        <div class="neweggb2b-listing-toolbar-row">
+                    <div id="purchasingpower-listing-toolbar" class="mb-3">
+                        <div class="purchasingpower-listing-toolbar-row">
                             <div class="listing-stat-badges">
                                 <span class="listing-stat-badge listing-stat-badge--req">REQ:<span id="req-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
@@ -595,8 +595,8 @@
                     @include('market-places.listing-market-places._listing_publish_modal')
 
 
-                    <div id="neweggb2b-listing-wrap">
-                        <div id="neweggb2bListing-table"></div>
+                    <div id="purchasingpower-listing-wrap">
+                        <div id="purchasingpowerListing-table"></div>
                     </div>
 
                     <div id="data-loader" class="card-loader-overlay" style="display: none;">
@@ -619,7 +619,7 @@
     <script>
         document.body.style.zoom = "80%";
 
-        let neweggb2bListingTable = null;
+        let purchasingpowerListingTable = null;
         let allListingData = [];
 
         function isParentSku(sku) {
@@ -659,7 +659,7 @@
             const mapped = (rows || []).map(item => {
                 const inv = parseFloat(item.INV) || 0;
                 const itemId = String(item.eBay_item_id || '').trim();
-                // Automated: NRL from EbayTwoDataView; Listed from ebay_2_metrics.item_id
+                // Automated: NRL from PurchasingPowerDataView; Listed from purchasing_power_products.sku
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
                 const listed = itemId ? 'Listed' : 'Pending';
                 return {
@@ -688,15 +688,15 @@
 
         function calculateTotals() {
             try {
-                if (!neweggb2bListingTable) {
+                if (!purchasingpowerListingTable) {
                     resetMetricsToZero();
                     return;
                 }
 
                 const source = (allListingData && allListingData.length)
                     ? allListingData
-                    : (neweggb2bListingTable.getData() || []);
-                const rows = neweggb2bListingTable.getData('active') || [];
+                    : (purchasingpowerListingTable.getData() || []);
+                const rows = purchasingpowerListingTable.getData('active') || [];
                 const metrics = {
                     invTotal: 0,
                     reqTotal: 0,
@@ -753,7 +753,7 @@
         }
 
         function applyListingFilters() {
-            if (!neweggb2bListingTable) return;
+            if (!purchasingpowerListingTable) return;
 
             const dataType = $('#row-data-type').val();
             const invFilter = $('#inv-filter').val();
@@ -761,7 +761,7 @@
             const linkFilter = $('#link-filter').val();
             const listedFilter = $('#listed-filter').val();
 
-            neweggb2bListingTable.setFilter(function (data) {
+            purchasingpowerListingTable.setFilter(function (data) {
                 if (dataType === 'parent' && !data.is_parent) return false;
                 if (dataType === 'sku' && data.is_parent) return false;
 
@@ -843,7 +843,7 @@
             // Missing Listing: channel listing id / price signal = Listed
             const itemId = String(data.eBay_item_id || '').trim();
             if (itemId) {
-                return `<span class="listing-listed-tick" title="Listed (ebay_2_metrics.item_id)" aria-label="Listed">
+                return `<span class="listing-listed-tick" title="Listed (purchasing_power_products.sku)" aria-label="Listed">
                     <i class="fas fa-check"></i>
                 </span>`;
             }
@@ -854,8 +854,8 @@
             showLoader();
             let missingLFilterActive = false;
 
-            neweggb2bListingTable = new Tabulator('#neweggb2bListing-table', {
-                ajaxURL: '/listing_neweggb2b/view-data',
+            purchasingpowerListingTable = new Tabulator('#purchasingpowerListing-table', {
+                ajaxURL: '/listing_purchasingpower/view-data',
                 ajaxResponse: function (url, params, response) {
                     const rows = Array.isArray(response) ? response : (response.data || []);
                     allListingData = normalizeListingRows(rows);
@@ -972,10 +972,10 @@
                 ]
             });
 
-            neweggb2bListingTable.on('dataProcessed', function () {
+            purchasingpowerListingTable.on('dataProcessed', function () {
                 hideLoader();
-                if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__neweggb2bMissingApplied) {
-                    window.__neweggb2bMissingApplied = true;
+                if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__purchasingpowerMissingApplied) {
+                    window.__purchasingpowerMissingApplied = true;
                     $('#row-data-type').val('sku');
                     $('#inv-filter').val('inv-only');
                     $('#nr-req-filter').val('REQ');
@@ -986,10 +986,10 @@
                 }
                 applyListingFilters();
             });
-            neweggb2bListingTable.on('dataFiltered', function () {
+            purchasingpowerListingTable.on('dataFiltered', function () {
                 calculateTotals();
             });
-            neweggb2bListingTable.on('dataLoadError', function () {
+            purchasingpowerListingTable.on('dataLoadError', function () {
                 hideLoader();
                 showNotification('danger', 'Failed to load data. Please try again.');
             });
@@ -1056,7 +1056,7 @@
 
                 showLoader();
                 $.ajax({
-                    url: "{{ route('listing_neweggb2b.import') }}",
+                    url: "{{ route('listing_purchasingpower.import') }}",
                     type: 'POST',
                     data: formData,
                     processData: false,
@@ -1076,7 +1076,7 @@
                             }
                         }
                         showNotification('success', message);
-                        neweggb2bListingTable.setData('/listing_neweggb2b/view-data');
+                        purchasingpowerListingTable.setData('/listing_purchasingpower/view-data');
                     },
                     error: function (xhr) {
                         hideLoader();
@@ -1094,13 +1094,13 @@
 
     <script>
         window.listingPageConfig = {
-            wrap: '#neweggb2b-listing-wrap',
-            tableId: 'neweggb2bListing-table',
-            exportName: 'neweggb2b_listing',
-            channel: 'neweggb2b',
-            channelLabel: "Newegg B2B",
-            previewUrl: '/listing_neweggb2b/save-status',
-            publishUrl: '/listing_neweggb2b/save-status'
+            wrap: '#purchasingpower-listing-wrap',
+            tableId: 'purchasingpowerListing-table',
+            exportName: 'purchasingpower_listing',
+            channel: 'purchasingpower',
+            channelLabel: "Purchasing Power",
+            previewUrl: '/listing_purchasingpower/save-status',
+            publishUrl: '/listing_purchasingpower/save-status'
         };
     </script>
     <script src="{{ asset('js/listing-page-tools.js') }}?v=6"></script>

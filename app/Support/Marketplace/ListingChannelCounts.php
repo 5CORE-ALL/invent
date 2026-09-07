@@ -24,6 +24,8 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingNeweggB2BControll
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingNeweggB2CController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingOfferupController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingPlsController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingPurchasingPowerController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTopDawgController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingPoshmarkController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingReverbController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSheinController;
@@ -110,6 +112,8 @@ class ListingChannelCounts
         'yamibuy' => ListingYamibuyController::class,
         'bestbuyusa' => ListingBestbuyUSAController::class,
         'bestbuy' => ListingBestbuyUSAController::class,
+        'topdawg' => ListingTopDawgController::class,
+        'purchasingpower' => ListingPurchasingPowerController::class,
         'swgearexchange' => ListingSWGearExchangeController::class,
         'pls' => ListingPlsController::class,
     ];
@@ -155,8 +159,8 @@ class ListingChannelCounts
         'neweggb2c' => '/listing-neweggb2c',
         'neweggb2b' => '/listing-neweggb2b',
         'newegg' => '/listing-neweggb2c',
-        'topdawg' => '/marketplace-manager/topdawg',
-        'purchasingpower' => '/marketplace-manager/purchasingpower',
+        'topdawg' => '/listing-topdawg',
+        'purchasingpower' => '/listing-purchasingpower',
         'alibaba' => '/marketplace-manager/alibaba',
         'fbmarketplace' => '/listing-fbmarketplace',
         'facebookmarketplace' => '/listing-fbmarketplace',

@@ -5,6 +5,7 @@ namespace App\Support\Marketplace;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Build listing-page row payloads (EbayTwo pattern) for a registry channel key.
@@ -27,7 +28,7 @@ class AutomatedListingPage
 
         $statusClass = $cfg['status'] ?? null;
         $statusData = collect();
-        if ($statusClass && class_exists($statusClass)) {
+        if ($statusClass && class_exists($statusClass) && Schema::hasTable((new $statusClass)->getTable())) {
             $statusQuery = $statusClass::query()->whereNotNull('sku')->where('sku', '!=', '');
             // Wayfair status SKUs often differ by spaces/hyphens from CP Master — load all and match normalized.
             if ($statusClass !== \App\Models\WayfairListingStatus::class) {
