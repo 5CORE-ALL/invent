@@ -43,6 +43,7 @@ return [
             'sync:walmart-metrics-data',
             'app:update-marketplace-daily-metrics',
             'app:aliexpress-sheet-sync',
+            '*sync-link-map',
         ],
     ],
 
