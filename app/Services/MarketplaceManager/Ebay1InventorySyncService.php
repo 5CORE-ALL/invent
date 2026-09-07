@@ -94,6 +94,10 @@ class Ebay1InventorySyncService
             })
             ->values();
 
+        $liveMpQty = EbayInventoryUnchangedSkip::qtyMapForSkip(
+            MarketplaceListingStockResolver::CHANNEL_EBAY1,
+            $metrics->pluck('sku')->all()
+        );
         $inventoryRows = [];
         $skipped = 0;
 
@@ -118,11 +122,20 @@ class Ebay1InventorySyncService
             $pushQty = $shopifyStock === null
                 ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
                 : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
+
+            // Mismatch pass already classified live eBay vs the % target — always push.
+            // Full SKU sync: skip only when listings qty already equals the exact % target.
+            if (! $exactShopifyQty
+                && EbayInventoryUnchangedSkip::qtyAlreadyAtTarget($liveMpQty, $sku, $pushQty)) {
+                $skipped++;
+                continue;
+            }
 
             $inventoryRows[] = [
                 'product_id' => $itemId,
                 'sku_code' => $sku,
-                'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
+                'inventory' => $pushQty,
                 'shopify_qty' => $shopifyStock ?? 0,
                 // Mismatch button is qty-only; sending StartPrice on variation listings often fails the whole call.
                 'price' => $exactShopifyQty ? null : ($metric->ebay_price !== null ? (float) $metric->ebay_price : null),
@@ -132,9 +145,11 @@ class Ebay1InventorySyncService
         if ($inventoryRows === []) {
             return [
                 'updated' => 0,
-                'failed' => count($skus),
+                'failed' => $skipped > 0 ? 0 : count($skus),
                 'skipped' => $skipped,
-                'message' => 'No linked eBay 1 SKUs found for inventory sync.',
+                'message' => $skipped > 0
+                    ? 'No eBay 1 SKUs needed a push (already at this marketplace Qty % of Shopify).'
+                    : 'No linked eBay 1 SKUs found for inventory sync.',
             ];
         }
 
@@ -146,6 +161,7 @@ class Ebay1InventorySyncService
         if ($pushed > 0) {
             $this->updateLocalStock($inventoryRows, $updatedSkus);
             $this->updateLocalPlatformQuantities($inventoryRows, true, $updatedSkus);
+            $this->updateLocalPrices($invResult['priced_rows'] ?? []);
             $this->clearListingCaches();
 
             return [
@@ -267,6 +283,10 @@ class Ebay1InventorySyncService
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
         $useSalePrice = (bool) ($settings['pricing']['use_sale_price'] ?? false);
 
+        $liveMpQty = EbayInventoryUnchangedSkip::qtyMapForSkip(
+            MarketplaceListingStockResolver::CHANNEL_EBAY1,
+            $metrics->pluck('sku')->all()
+        );
         $inventoryRows = [];
         $priceRows = [];
         $skipped = 0;
@@ -302,21 +322,44 @@ class Ebay1InventorySyncService
             }
 
             if ($pushQty !== null) {
-                $inventoryRows[] = [
-                    'product_id' => $itemId,
-                    'sku_code' => $sku,
-                    'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
-                    'shopify_qty' => $shopifyStock ?? 0,
-                    'price' => $price,
-                ];
+                $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
+                $qtyUnchanged = EbayInventoryUnchangedSkip::qtyAlreadyAtTarget($liveMpQty, $sku, $pushQty);
+                $priceUnchanged = EbayInventoryUnchangedSkip::priceAlreadyAtTarget($metric->ebay_price, $price);
+                if ($qtyUnchanged && $priceUnchanged) {
+                    $skipped++;
+                } elseif ($qtyUnchanged) {
+                    $priceRows[] = [
+                        'product_id' => $itemId,
+                        'sku_code' => $sku,
+                        'price' => $price,
+                    ];
+                } else {
+                    $inventoryRows[] = [
+                        'product_id' => $itemId,
+                        'sku_code' => $sku,
+                        'inventory' => $pushQty,
+                        'shopify_qty' => $shopifyStock ?? 0,
+                        'price' => $price,
+                    ];
+                }
             } elseif ($price !== null && $price > 0) {
-                $priceRows[] = [
-                    'product_id' => $itemId,
-                    'sku_code' => $sku,
-                    'price' => $price,
-                ];
+                if (EbayInventoryUnchangedSkip::priceAlreadyAtTarget($metric->ebay_price, $price)) {
+                    $skipped++;
+                } else {
+                    $priceRows[] = [
+                        'product_id' => $itemId,
+                        'sku_code' => $sku,
+                        'price' => $price,
+                    ];
+                }
             }
         }
+
+        Log::info('Ebay1InventorySyncService: inventory rows queued', [
+            'queued' => count($inventoryRows),
+            'price_only' => count($priceRows),
+            'skipped_already_at_target' => $skipped,
+        ]);
 
         if ($dryRun) {
             return [
@@ -340,6 +383,7 @@ class Ebay1InventorySyncService
             if ($updated > 0) {
                 $this->updateLocalStock($inventoryRows, $updatedSkus);
                 $this->updateLocalPlatformQuantities($inventoryRows, true, $updatedSkus);
+                $this->updateLocalPrices($invResult['priced_rows'] ?? []);
                 $this->clearListingCaches();
             } elseif ($failed > 0) {
                 Log::warning('Ebay1InventorySyncService: inventory push failed', $invResult);
@@ -347,6 +391,7 @@ class Ebay1InventorySyncService
         }
 
         if ($priceRows !== []) {
+            $successfulPriceRows = [];
             foreach ($priceRows as $row) {
                 $result = $this->ebay1Api->reviseFixedPriceItem(
                     (string) $row['product_id'],
@@ -356,10 +401,11 @@ class Ebay1InventorySyncService
                 );
                 if (! empty($result['success'])) {
                     $priceUpdated++;
+                    $successfulPriceRows[] = $row;
                 }
             }
-            if ($priceUpdated > 0) {
-                $this->updateLocalPrices($priceRows);
+            if ($successfulPriceRows !== []) {
+                $this->updateLocalPrices($successfulPriceRows);
             }
         }
 
@@ -386,26 +432,88 @@ class Ebay1InventorySyncService
 
     /**
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int, price?: float|null}>  $inventoryRows
-     * @return array{success: bool, pushed: int, failed: int, updated_skus: list<string>, message?: string}
+     * @return array{success: bool, pushed: int, failed: int, updated_skus: list<string>, priced_rows: list<array<string, mixed>>, message?: string}
      */
     protected function pushInventoryRows(array $inventoryRows): array
     {
         $pushed = 0;
         $failed = 0;
         $updatedSkus = [];
+        $pricedRows = [];
         $lastMessage = null;
 
+        $valid = [];
         foreach ($inventoryRows as $row) {
-            $one = $this->pushOneInventoryRow($row);
-            if (! empty($one['ok'])) {
-                $pushed++;
-                $sku = trim((string) ($row['sku_code'] ?? ''));
-                if ($sku !== '') {
-                    $updatedSkus[] = $sku;
-                }
-            } else {
+            $itemId = trim((string) ($row['product_id'] ?? ''));
+            $sku = trim((string) ($row['sku_code'] ?? ''));
+            if ($itemId === '' || $sku === '') {
                 $failed++;
-                $lastMessage = $one['message'] ?? 'ReviseInventoryStatus failed';
+                $lastMessage = 'ItemID and SKU are required.';
+                continue;
+            }
+            $price = $row['price'] ?? null;
+            $row['inventory'] = max(0, (int) ($row['inventory'] ?? 0));
+            $row['price'] = ($price !== null && (float) $price > 0) ? (float) $price : null;
+            $valid[] = $row;
+        }
+
+        $attempted = 0;
+        foreach (array_chunk($valid, 4) as $chunk) {
+            if ($attempted > 0) {
+                usleep(350000);
+            }
+
+            if (count($chunk) >= 2) {
+                $attempted += count($chunk);
+                $batch = [];
+                foreach ($chunk as $row) {
+                    $batch[] = [
+                        'item_id' => (string) $row['product_id'],
+                        'sku' => (string) $row['sku_code'],
+                        'quantity' => (int) $row['inventory'],
+                        'price' => $row['price'],
+                    ];
+                }
+                $result = $this->ebay1Api->reviseInventoryStatusMany($batch);
+                if (! empty($result['success'])) {
+                    foreach ($chunk as $row) {
+                        $pushed++;
+                        $sku = trim((string) ($row['sku_code'] ?? ''));
+                        if ($sku !== '') {
+                            $updatedSkus[] = $sku;
+                        }
+                        if (($row['price'] ?? null) !== null && (float) $row['price'] > 0) {
+                            $pricedRows[] = $row;
+                        }
+                    }
+                    continue;
+                }
+                $lastMessage = (string) ($result['message'] ?? 'Batch ReviseInventoryStatus failed.');
+            }
+
+            foreach ($chunk as $index => $row) {
+                if (count($chunk) < 2) {
+                    if ($attempted > 0) {
+                        usleep(350000);
+                    }
+                    $attempted++;
+                } elseif ($index > 0) {
+                    usleep(350000);
+                }
+                $one = $this->pushOneInventoryRow($row);
+                if (! empty($one['ok'])) {
+                    $pushed++;
+                    $sku = trim((string) ($row['sku_code'] ?? ''));
+                    if ($sku !== '') {
+                        $updatedSkus[] = $sku;
+                    }
+                    if (! empty($one['price_synced']) && ($row['price'] ?? null) !== null && (float) $row['price'] > 0) {
+                        $pricedRows[] = $row;
+                    }
+                } else {
+                    $failed++;
+                    $lastMessage = $one['message'] ?? 'ReviseInventoryStatus failed';
+                }
             }
         }
 
@@ -414,6 +522,7 @@ class Ebay1InventorySyncService
             'pushed' => $pushed,
             'failed' => $failed,
             'updated_skus' => $updatedSkus,
+            'priced_rows' => $pricedRows,
             'message' => $lastMessage,
         ];
     }
@@ -433,6 +542,7 @@ class Ebay1InventorySyncService
         $qty = max(0, (int) ($row['inventory'] ?? 0));
         $price = $row['price'] ?? null;
         $price = ($price !== null && (float) $price > 0) ? (float) $price : null;
+        $usedQtyOnlyFallback = false;
 
         try {
             $result = $this->ebay1Api->reviseInventoryStatus($itemId, $qty, $sku, $price);
@@ -442,6 +552,7 @@ class Ebay1InventorySyncService
                 $fallback = $this->ebay1Api->reviseVariationQuantity($itemId, $sku, $qty);
                 if (! empty($fallback['success'])) {
                     $result = $fallback;
+                    $usedQtyOnlyFallback = true;
                 } elseif (empty($result['success'])) {
                     $result = $fallback;
                     $msg = (string) ($fallback['message'] ?? $msg);
@@ -456,7 +567,11 @@ class Ebay1InventorySyncService
             }
 
             if (! empty($result['success'])) {
-                return ['ok' => true, 'message' => (string) ($result['message'] ?? '')];
+                return [
+                    'ok' => true,
+                    'price_synced' => $price !== null && ! $usedQtyOnlyFallback,
+                    'message' => (string) ($result['message'] ?? ''),
+                ];
             }
 
             Log::warning('Ebay1InventorySyncService: revise inventory failed', [
@@ -619,8 +734,12 @@ class Ebay1InventorySyncService
     protected function updateLocalPrices(array $rows): void
     {
         foreach ($rows as $row) {
-            $sku = (string) $row['sku_code'];
-            EbayMetric::query()->where('sku', $sku)->update(['ebay_price' => (float) $row['price']]);
+            $sku = trim((string) ($row['sku_code'] ?? ''));
+            $price = $row['price'] ?? null;
+            if ($sku === '' || $price === null || (float) $price <= 0) {
+                continue;
+            }
+            EbayMetric::query()->where('sku', $sku)->update(['ebay_price' => (float) $price]);
         }
     }
 

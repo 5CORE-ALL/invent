@@ -207,6 +207,7 @@ class Ebay2InventorySyncService
         if ($pushedRows !== []) {
             $this->updateLocalStock($pushedRows);
             $this->updateLocalPlatformQuantities($pushedRows);
+            $this->updateLocalPrices($this->rowsWithPositivePrice($pushedRows));
             app(Ebay2LiveListingsService::class)->clearCache();
 
             return [
@@ -484,6 +485,7 @@ class Ebay2InventorySyncService
             if ($pushedRows !== []) {
                 $this->updateLocalStock($pushedRows);
                 $this->updateLocalPlatformQuantities($pushedRows);
+                $this->updateLocalPrices($this->rowsWithPositivePrice($pushedRows));
                 app(Ebay2LiveListingsService::class)->clearCache();
             } elseif ($failed > 0 || $rateLimited) {
                 Log::warning('Ebay2InventorySyncService: inventory push failed', $invResult);
@@ -491,6 +493,7 @@ class Ebay2InventorySyncService
         }
 
         if ($priceRows !== []) {
+            $successfulPriceRows = [];
             foreach ($priceRows as $row) {
                 $result = $this->ebay2Api->reviseFixedPriceItem(
                     (string) $row['product_id'],
@@ -500,10 +503,11 @@ class Ebay2InventorySyncService
                 );
                 if (! empty($result['success'])) {
                     $priceUpdated++;
+                    $successfulPriceRows[] = $row;
                 }
             }
-            if ($priceUpdated > 0) {
-                $this->updateLocalPrices($priceRows);
+            if ($successfulPriceRows !== []) {
+                $this->updateLocalPrices($successfulPriceRows);
             }
         }
 
@@ -672,6 +676,7 @@ class Ebay2InventorySyncService
         $qty = max(0, (int) ($row['inventory'] ?? 0));
         $price = $row['price'] ?? null;
         $price = ($price !== null && (float) $price > 0) ? (float) $price : null;
+        $usedQtyOnlyFallback = false;
 
         try {
             $result = $this->ebay2Api->reviseInventoryStatus($itemId, $qty, $sku, $price);
@@ -724,6 +729,8 @@ class Ebay2InventorySyncService
                 }
                 if (! empty($fallback['success'])) {
                     $result = $fallback;
+                    $usedQtyOnlyFallback = true;
+                    $row['price'] = null;
                 } elseif (empty($result['success'])) {
                     $result = $fallback;
                 }
@@ -742,6 +749,9 @@ class Ebay2InventorySyncService
                                 .($liveQty !== null ? ' (live '.$liveQty.')' : ''),
                         ];
                     }
+                }
+                if ($usedQtyOnlyFallback) {
+                    $row['price'] = null;
                 }
 
                 return ['ok' => true, 'rate_limited' => false, 'row' => $row, 'message' => (string) ($result['message'] ?? '')];
@@ -963,13 +973,10 @@ class Ebay2InventorySyncService
      */
     protected function ebay2QtyMapForSkip(array $skus): array
     {
-        $liveRows = app(Ebay2LiveListingsService::class)->peekCached();
-        $local = MarketplaceListingStockResolver::stockMapForSkus(
+        return EbayInventoryUnchangedSkip::qtyMapForSkip(
             MarketplaceListingStockResolver::CHANNEL_EBAY2,
             $skus
         );
-
-        return MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal($liveRows, $local);
     }
 
     /**
@@ -980,9 +987,7 @@ class Ebay2InventorySyncService
      */
     protected function marketplaceQtyAlreadyAtTarget(array $liveMpQty, string $sku, int $pushQty): bool
     {
-        $current = MarketplaceListingStockResolver::qtyFromMap($liveMpQty, $sku);
-
-        return $current !== null && (int) $current === $pushQty;
+        return EbayInventoryUnchangedSkip::qtyAlreadyAtTarget($liveMpQty, $sku, $pushQty);
     }
 
     /**
@@ -1112,9 +1117,30 @@ class Ebay2InventorySyncService
     protected function updateLocalPrices(array $rows): void
     {
         foreach ($rows as $row) {
-            $sku = (string) $row['sku_code'];
-            Ebay2Metric::query()->where('sku', $sku)->update(['ebay_price' => (float) $row['price']]);
+            $sku = trim((string) ($row['sku_code'] ?? ''));
+            $price = $row['price'] ?? null;
+            if ($sku === '' || $price === null || (float) $price <= 0) {
+                continue;
+            }
+            Ebay2Metric::query()->where('sku', $sku)->update(['ebay_price' => (float) $price]);
         }
+    }
+
+    /**
+     * @param  array<int, array{price?: float|null}>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function rowsWithPositivePrice(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $price = $row['price'] ?? null;
+            if ($price !== null && (float) $price > 0) {
+                $out[] = $row;
+            }
+        }
+
+        return $out;
     }
 
     /**
