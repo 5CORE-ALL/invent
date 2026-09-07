@@ -368,7 +368,7 @@
                     <select id="parent-filter" class="form-select form-select-sm" style="width:110px;">
                         <option value="">Row</option>
                         <option value="parent">Parent Only</option>
-                        <option value="child">Child Only</option>
+                        <option value="child" selected>Child Only</option>
                     </select>
 
                     {{-- "Missing" filter — dropdown is hidden by request, but the
