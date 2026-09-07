@@ -16,8 +16,8 @@ use Illuminate\Support\Facades\Schema;
  * - skip PARENT SKUs
  * - skip INV <= 0 (shopify_skus.inv — Product Master, not live catalog)
  * - nr_req from AliexpressDataView.value.NRL (NRL/NR → NR, else REQ)
- * - listed if onSelling aliexpress_metric.product_id OR sku in aliexpress_pricing_prices
- *   with price > 0 (normalized SKU: spaces / hyphens / case). Offline / deleted IDs do not count.
+ * - listed if onSelling aliexpress_metric.product_id (normalized SKU).
+ *   Offline / deleted IDs and pricing-sheet prices do not count.
  * - Missing L (Pending) = REQ and not listed
  */
 class AliexpressListingCounts
@@ -25,13 +25,20 @@ class AliexpressListingCounts
     /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
      */
-    public static function counts(): array
+    public static function counts(bool $requirePositiveInv = true): array
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
+        $productMasters = ListingCountsEngine::productMasters();
+        $skus = ListingCountsEngine::productSkus();
 
-        $shopifyData = ListingCountsEngine::shopifyMap($skus);
+        $shopifyData = $requirePositiveInv ? ListingCountsEngine::requestShopifyMap() : collect();
         $nrValues = ListingCountsEngine::loadNrValues(AliexpressDataView::class, $skus);
+        if (! $requirePositiveInv) {
+            $nrValues = ChannelListingRegistry::overlayListingStatusNr(
+                $nrValues,
+                \App\Models\AliexpressListingStatus::class,
+                $skus
+            );
+        }
 
         $metricsByNorm = self::metricsByNormalizedSku();
         $pricingByNorm = self::pricingSkusByNormalizedSku();
@@ -47,9 +54,11 @@ class AliexpressListingCounts
                 continue;
             }
 
-            $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, (string) $item->sku));
-            if ($inv <= 0) {
-                continue;
+            if ($requirePositiveInv) {
+                $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, (string) $item->sku));
+                if ($inv <= 0) {
+                    continue;
+                }
             }
 
             $nrReq = self::nrReqFromDataView(ListingCountsEngine::lookupNrValue($nrValues, $sku));
@@ -91,7 +100,7 @@ class AliexpressListingCounts
     public static function resolveListed(string $sku, array $metricsByNorm, array $pricingByNorm): array
     {
         $productId = self::productIdForSku($sku, $metricsByNorm);
-        $listed = $productId !== '' || self::inPricing($sku, $pricingByNorm);
+        $listed = $productId !== '';
 
         return [
             'product_id' => $productId,

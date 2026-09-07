@@ -21,13 +21,20 @@ class EbayTwoListingCounts
     /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
      */
-    public static function counts(): array
+    public static function counts(bool $requirePositiveInv = true): array
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
+        $productMasters = ListingCountsEngine::productMasters();
+        $skus = ListingCountsEngine::productSkus();
 
-        $shopifyData = ListingCountsEngine::shopifyMap($skus);
+        $shopifyData = $requirePositiveInv ? ListingCountsEngine::requestShopifyMap() : collect();
         $nrValues = ListingCountsEngine::loadNrValues(EbayTwoDataView::class, $skus);
+        if (! $requirePositiveInv) {
+            $nrValues = ChannelListingRegistry::overlayListingStatusNr(
+                $nrValues,
+                \App\Models\EbayTwoListingStatus::class,
+                $skus
+            );
+        }
 
         $listedIds = ListingCountsEngine::listedIdsFromColumn(Ebay2Metric::class, $skus, 'item_id');
 
@@ -42,9 +49,11 @@ class EbayTwoListingCounts
                 continue;
             }
 
-            $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, (string) $item->sku));
-            if ($inv <= 0) {
-                continue;
+            if ($requirePositiveInv) {
+                $inv = ListingCountsEngine::shopifyInv(ListingCountsEngine::shopifyRow($shopifyData, $sku, (string) $item->sku));
+                if ($inv <= 0) {
+                    continue;
+                }
             }
 
             $nrReq = self::nrReqFromDataView(ListingCountsEngine::lookupNrValue($nrValues, $sku));

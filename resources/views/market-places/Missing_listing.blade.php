@@ -642,7 +642,7 @@
                     width: 100,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "REQ count from the channel listing page (API only)",
+                    headerTooltip: "CP Master SKUs that are required (not NRL) for this marketplace",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);
@@ -664,7 +664,7 @@
                     width: 100,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "NRL count from the channel listing page (API only)",
+                    headerTooltip: "CP Master SKUs marked NRL / Not Required for this marketplace (deducted from Missing Listing)",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);
@@ -686,7 +686,7 @@
                     width: 110,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Listed count from the channel listing page (API only)",
+                    headerTooltip: "CP Master SKUs that have a marketplace listing id",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);
@@ -708,6 +708,7 @@
                     width: 180,
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "CP Master SKUs not found on this marketplace listing, minus NRL / Not Required",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);

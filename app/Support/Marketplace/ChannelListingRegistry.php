@@ -20,6 +20,7 @@ use App\Models\TemuMetric;
 use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\WalmartMetrics;
+use App\Models\WalmartPriceData;
 use App\Models\WayfairPricingPrice;
 use App\Models\WayfairListingStatus;
 use App\Models\AliexpressMetric;
@@ -85,7 +86,7 @@ class ChannelListingRegistry
             'walmart' => [
                 'dataView' => \App\Models\WalmartDataView::class,
                 'status' => \App\Models\WalmartListingStatus::class,
-                'listed' => ['type' => 'price', 'model' => WalmartMetrics::class, 'column' => 'price'],
+                'listed' => ['type' => 'custom', 'method' => 'listedWalmart'],
                 'id_field' => 'listing_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -134,7 +135,7 @@ class ChannelListingRegistry
             'shein' => [
                 'dataView' => \App\Models\SheinDataView::class,
                 'status' => \App\Models\SheinListingStatus::class,
-                'listed' => ['type' => 'price', 'model' => SheinMetric::class, 'column' => 'price'],
+                'listed' => ['type' => 'column', 'model' => SheinMetric::class, 'column' => 'shein_sku_code', 'reject_sku' => true],
                 'id_field' => 'listing_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -372,21 +373,22 @@ class ChannelListingRegistry
     /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
      */
-    public static function counts(string $key): array
+    public static function counts(string $key, bool $requirePositiveInv = true): array
     {
         $cfg = self::get($key);
         if ($cfg === null) {
             return ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0, 'MissingL' => 0];
         }
 
-        $skus = ProductMaster::whereNull('deleted_at')->pluck('sku')->unique()->filter()->values()->all();
+        $skus = ListingCountsEngine::productSkus();
         $dataView = $cfg['dataView'] ?? null;
         $nrValues = ($dataView && class_exists($dataView))
             ? ListingCountsEngine::loadNrValues($dataView, $skus)
             : collect();
+        $nrValues = self::overlayListingStatusNr($nrValues, $cfg['status'] ?? null, $skus);
         $listedMap = self::loadListedIds($cfg, $skus);
 
-        return ListingCountsEngine::counts($nrValues, $listedMap);
+        return ListingCountsEngine::counts($nrValues, $listedMap, $requirePositiveInv);
     }
 
     /**
@@ -436,6 +438,83 @@ class ChannelListingRegistry
     }
 
     /**
+     * Overlay listing-status NRL onto DataView values (same as listing-page rows).
+     *
+     * @param  Collection<string, mixed>  $nrValues
+     * @param  class-string|null  $statusClass
+     * @param  list<string>  $skus
+     * @return Collection<string, mixed>
+     */
+    public static function overlayListingStatusNr($nrValues, $statusClass, array $skus)
+    {
+        if (! is_string($statusClass) || $statusClass === '' || ! class_exists($statusClass) || $skus === []) {
+            return $nrValues;
+        }
+
+        $wanted = [];
+        foreach ($skus as $sku) {
+            foreach (ListingCountsEngine::skuLookupKeys((string) $sku) as $key) {
+                $wanted[$key] = true;
+            }
+        }
+
+        $statusClass::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'value'])
+            ->each(function ($row) use ($nrValues, $wanted) {
+                $sku = trim((string) ($row->sku ?? ''));
+                if ($sku === '') {
+                    return;
+                }
+                $keys = ListingCountsEngine::skuLookupKeys($sku);
+                $hit = false;
+                foreach ($keys as $key) {
+                    if (isset($wanted[$key])) {
+                        $hit = true;
+                        break;
+                    }
+                }
+                if (! $hit) {
+                    return;
+                }
+                if (ListingCountsEngine::nrReqFromDataView($row->value) !== 'NR') {
+                    return;
+                }
+                foreach ($keys as $key) {
+                    $nrValues[$key] = ['NRL' => 'NRL'];
+                }
+            });
+
+        return $nrValues;
+    }
+
+    /**
+     * Walmart Listed = walmart_price_data.item_id (not sheet price).
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedWalmart(array $skus): array
+    {
+        if ($skus === [] || ! class_exists(WalmartPriceData::class)) {
+            return ListingCountsEngine::listedIdsFromPrice(WalmartMetrics::class, $skus, 'price');
+        }
+
+        $fromItemId = ListingCountsEngine::listedIdsFromColumn(
+            WalmartPriceData::class,
+            $skus,
+            'item_id',
+            true
+        );
+        if ($fromItemId !== []) {
+            return $fromItemId;
+        }
+
+        return ListingCountsEngine::listedIdsFromPrice(WalmartMetrics::class, $skus, 'price');
+    }
+
+    /**
      * Faire Listed = SKU present in faire_metric. Listing id prefers product_id.
      *
      * @param  list<string>  $skus
@@ -473,7 +552,10 @@ class ChannelListingRegistry
                     return;
                 }
                 $id = trim((string) ($row->product_id ?? ''));
-                $byNorm[$norm] = $id !== '' ? $id : $sku;
+                if ($id === '' || strcasecmp($id, $sku) === 0) {
+                    return;
+                }
+                $byNorm[$norm] = $id;
             });
 
         $map = [];

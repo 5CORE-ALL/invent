@@ -386,7 +386,7 @@ class ListingChannelCounts
             }
 
             try {
-                $c = self::forChannel((string) $name, false);
+                $c = self::forChannel((string) $name, false, false);
                 $total += (int) ($c['Pending'] ?? 0);
             } catch (\Throwable $e) {
                 Log::warning('ListingChannelCounts totalMissingL channel failed (' . $key . '): ' . $e->getMessage());
@@ -399,7 +399,7 @@ class ListingChannelCounts
     /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
      */
-    public static function forChannel(string $channel, bool $useCache = true): array
+    public static function forChannel(string $channel, bool $useCache = true, bool $requirePositiveInv = true): array
     {
         $empty = ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0];
         $key = self::normalize($channel);
@@ -409,7 +409,7 @@ class ListingChannelCounts
 
         if (! $useCache) {
             try {
-                return self::loadCounts($key) ?: $empty;
+                return self::loadCounts($key, $requirePositiveInv) ?: $empty;
             } catch (\Throwable $e) {
                 Log::warning('ListingChannelCounts load failed for ' . $key . ': ' . $e->getMessage());
 
@@ -417,17 +417,17 @@ class ListingChannelCounts
             }
         }
 
-        $cacheKey = 'listing_channel_counts_v1:' . $key;
+        $cacheKey = 'listing_channel_counts_v1:'.($requirePositiveInv ? 'inv' : 'cp').':'.$key;
 
         try {
-            return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($key, $empty) {
-                return self::loadCounts($key) ?: $empty;
+            return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($key, $empty, $requirePositiveInv) {
+                return self::loadCounts($key, $requirePositiveInv) ?: $empty;
             });
         } catch (\Throwable $e) {
             Log::warning('ListingChannelCounts cache failed: ' . $e->getMessage());
 
             try {
-                return self::loadCounts($key) ?: $empty;
+                return self::loadCounts($key, $requirePositiveInv) ?: $empty;
             } catch (\Throwable $e2) {
                 Log::warning('ListingChannelCounts load failed for ' . $key . ': ' . $e2->getMessage());
 
@@ -439,11 +439,11 @@ class ListingChannelCounts
     /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
      */
-    private static function loadCounts(string $normalizedKey): array
+    private static function loadCounts(string $normalizedKey, bool $requirePositiveInv = true): array
     {
         // EbayTwo — shared helper (source of truth for /listing-ebaytwo)
         if (in_array($normalizedKey, ['ebay2', 'ebaytwo'], true)) {
-            $c = EbayTwoListingCounts::counts();
+            $c = EbayTwoListingCounts::counts($requirePositiveInv);
 
             return [
                 'REQ' => (int) ($c['REQ'] ?? 0),
@@ -455,7 +455,7 @@ class ListingChannelCounts
 
         // Aliexpress — shared helper (source of truth for /listing-aliexpress)
         if ($normalizedKey === 'aliexpress') {
-            $c = AliexpressListingCounts::counts();
+            $c = AliexpressListingCounts::counts($requirePositiveInv);
 
             return [
                 'REQ' => (int) ($c['REQ'] ?? 0),
@@ -467,7 +467,7 @@ class ListingChannelCounts
 
         // Amazon — shared helper (source of truth for /listing-amazon)
         if ($normalizedKey === 'amazon') {
-            $c = AmazonListingCounts::counts();
+            $c = AmazonListingCounts::counts($requirePositiveInv);
 
             return [
                 'REQ' => (int) ($c['REQ'] ?? 0),
@@ -479,7 +479,7 @@ class ListingChannelCounts
 
         // Registry-backed channels (EbayTwo pattern)
         if (ChannelListingRegistry::get($normalizedKey) !== null) {
-            $c = ChannelListingRegistry::counts($normalizedKey);
+            $c = ChannelListingRegistry::counts($normalizedKey, $requirePositiveInv);
 
             return [
                 'REQ' => (int) ($c['REQ'] ?? 0),
