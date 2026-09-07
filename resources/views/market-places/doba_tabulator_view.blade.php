@@ -1557,7 +1557,7 @@
                 if (typeof updateSummary === 'function') updateSummary();
             }
 
-            /** After a successful push, GET live Delivery price from Doba and write PRICE. */
+            /** After a successful push, GET live Delivery/Pick Up for only those changed SKUs. */
             function dobaPullAfterPush(skus) {
                 const list = [];
                 const seen = {};
@@ -1578,6 +1578,7 @@
                 });
                 const csrf = $('meta[name="csrf-token"]').attr('content');
                 const retryMs = [1500, 3000, 5000];
+                if (!dobaPullAfterPush._timers) dobaPullAfterPush._timers = {};
                 function runPull(attempt, pending) {
                     if (!pending || !pending.length) return;
                     $.ajax({
@@ -1601,9 +1602,13 @@
                             pulled++;
                         });
                         if (stale.length && attempt + 1 < retryMs.length) {
-                            dobaPullAfterPush._t = setTimeout(function() {
-                                runPull(attempt + 1, stale);
-                            }, retryMs[attempt + 1]);
+                            pending.forEach(function(sku) {
+                                const key = String(sku).toUpperCase();
+                                clearTimeout(dobaPullAfterPush._timers[key]);
+                                dobaPullAfterPush._timers[key] = setTimeout(function() {
+                                    runPull(attempt + 1, stale);
+                                }, retryMs[attempt + 1]);
+                            });
                             return;
                         }
                         if (stale.length && attempt + 1 >= retryMs.length) {
@@ -1625,19 +1630,26 @@
                         }
                     }).fail(function(xhr) {
                         if (attempt + 1 < retryMs.length) {
-                            dobaPullAfterPush._t = setTimeout(function() {
-                                runPull(attempt + 1, pending);
-                            }, retryMs[attempt + 1]);
+                            pending.forEach(function(sku) {
+                                const key = String(sku).toUpperCase();
+                                clearTimeout(dobaPullAfterPush._timers[key]);
+                                dobaPullAfterPush._timers[key] = setTimeout(function() {
+                                    runPull(attempt + 1, pending);
+                                }, retryMs[attempt + 1]);
+                            });
                             return;
                         }
                         showToast('danger', (xhr.responseJSON && xhr.responseJSON.message) || 'Doba Price pull failed');
                     });
                 }
-                showToast('success', 'Pulling live Price for ' + list.length + ' SKU(s)…');
-                clearTimeout(dobaPullAfterPush._t);
-                dobaPullAfterPush._t = setTimeout(function() {
-                    runPull(0, list.slice());
-                }, retryMs[0]);
+                showToast('success', 'Pulling live Price for ' + list.length + ' changed SKU(s)…');
+                list.forEach(function(sku) {
+                    const key = String(sku).toUpperCase();
+                    clearTimeout(dobaPullAfterPush._timers[key]);
+                    dobaPullAfterPush._timers[key] = setTimeout(function() {
+                        runPull(0, [sku]);
+                    }, retryMs[0]);
+                });
             }
 
             // Push price to Doba API with retry functionality (5 retries, 1 minute gap)
@@ -1718,24 +1730,25 @@
 
             // Push to Doba button handler
             $('#push-to-doba-btn').on('click', function() {
-                // Get all SKUs that have SPRICE set
+                // Only selected SKUs whose S PRC differs from live Price
                 const skusWithSprice = [];
                 let alreadyEqualCount = 0;
                 
-                table.getRows().forEach(row => {
+                selectedSkus.forEach(sku => {
+                    const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
+                    if (!row) return;
                     const data = row.getData();
-                    if (!data.is_parent && data.sprice && data.sprice > 0) {
-                        if (dobaListingPriceEqualsSprice(data, data.sprice)) {
-                            alreadyEqualCount++;
-                            return;
-                        }
-                        skusWithSprice.push({
-                            sku: data['(Child) sku'],
-                            price: data.sprice,
-                            selfPickPrice: data.s_self_pick || null, // Use calculated S (PP) (SPRICE - SHIP)
-                            row: row
-                        });
+                    if (data.is_parent || !(data.sprice > 0)) return;
+                    if (dobaListingPriceEqualsSprice(data, data.sprice)) {
+                        alreadyEqualCount++;
+                        return;
                     }
+                    skusWithSprice.push({
+                        sku: data['(Child) sku'],
+                        price: data.sprice,
+                        selfPickPrice: data.s_self_pick || null,
+                        row: row
+                    });
                 });
                 
                 if (skusWithSprice.length === 0) {
@@ -1774,7 +1787,6 @@
                         } else {
                             showToast('danger', `Failed to push prices for ${errorCount} SKU(s)`);
                         }
-                        if (pushedOkSkus.length) dobaPullAfterPush(pushedOkSkus);
                         return;
                     }
                     
@@ -1792,6 +1804,7 @@
                             successCount++;
                             pushedOkSkus.push(sku);
                             console.log(`SKU ${sku}: Price pushed successfully`);
+                            dobaPullAfterPush([sku]);
                             row.update({ push_status: 'pushed', apply_status: null });
                             
                             // Force update the cell to show double tick immediately
@@ -3313,7 +3326,8 @@
                     const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
                     if (row) {
                         const data = row.getData();
-                        if (!data.is_parent && data.sprice && data.sprice > 0) {
+                        if (!data.is_parent && data.sprice && data.sprice > 0
+                            && !dobaListingPriceEqualsSprice(data, data.sprice)) {
                             spriceCount++;
                         }
                     }
