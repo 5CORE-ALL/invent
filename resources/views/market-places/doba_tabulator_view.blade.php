@@ -612,6 +612,96 @@
             const sku = String(row['(Child) sku'] || row.SKU || row.sku || '').toUpperCase();
             return sku.includes('PARENT');
         }
+
+        let dobaParentRowByKey = {};
+
+        function dobaNormalizeParentKey(val) {
+            return String(val == null ? '' : val).trim().replace(/^PARENT\s+/i, '').trim().toUpperCase();
+        }
+
+        function dobaParentKey(row) {
+            if (!row) return '';
+            if (isDobaParentRow(row)) {
+                return dobaNormalizeParentKey(row.Parent || row['(Child) sku'] || row.SKU || '');
+            }
+            return dobaNormalizeParentKey(row.Parent);
+        }
+
+        function dobaRollupParentRows(rows) {
+            dobaParentRowByKey = {};
+            const kidsByParent = {};
+            (rows || []).forEach(function(r) {
+                if (!r || isDobaParentRow(r)) return;
+                const k = dobaParentKey(r);
+                if (!k) return;
+                (kidsByParent[k] = kidsByParent[k] || []).push(r);
+            });
+            const sumFields = ['INV', 'shopify_inv', 'L30', 'doba L30', 'doba L60', 'doba L45', 'quantity_l7', 'quantity_l7_prev', 's_l30', 'Profit', 'T_COGS', 'Sales L30'];
+            const avgFields = ['doba Price', 'self_pick_price', 'standard_price', 'sprice', 's_self_pick', 'Roi', 'NPFT_pct', 'PFT_percentage', 'msrp', 'map', 'amazon_price', 'l30_avg_price', 'l60_avg_price', 'spft', 'sroi'];
+            (rows || []).forEach(function(r) {
+                if (!r || !isDobaParentRow(r)) return;
+                const k = dobaParentKey(r);
+                if (k) dobaParentRowByKey[k] = r;
+                const kids = kidsByParent[k] || [];
+                if (!kids.length) return;
+                sumFields.forEach(function(f) {
+                    r[f] = kids.reduce(function(s, x) { return s + (parseFloat(x[f]) || 0); }, 0);
+                });
+                avgFields.forEach(function(f) {
+                    const used = kids.filter(function(x) { return (parseFloat(x[f]) || 0) !== 0; });
+                    const src = used.length ? used : kids;
+                    r[f] = src.length
+                        ? src.reduce(function(s, x) { return s + (parseFloat(x[f]) || 0); }, 0) / src.length
+                        : 0;
+                });
+                const inv = parseFloat(r.INV) || 0;
+                const ovL30 = parseFloat(r.L30) || 0;
+                r.ov_dil = inv > 0 ? ovL30 / inv : 0;
+                r['Dil%'] = r.ov_dil * 100;
+                const l30 = parseFloat(r['doba L30']) || 0;
+                const l60 = parseFloat(r['doba L60']) || 0;
+                r.growth_percent = l60 > 0 ? ((l30 - l60) / l60) * 100 : (l30 > 0 ? 100 : 0);
+                if ((parseFloat(r['doba Price']) || 0) > 0 && (parseFloat(r.amazon_price) || 0) > 0) {
+                    r.disc_vs_amz = (parseFloat(r['doba Price']) / parseFloat(r.amazon_price) * 100) - 100;
+                }
+            });
+            return rows;
+        }
+
+        function dobaParentAwareCmp(aRow, bRow, field, isNum) {
+            const da = aRow && typeof aRow.getData === 'function' ? aRow.getData() : (aRow || {});
+            const db = bRow && typeof bRow.getData === 'function' ? bRow.getData() : (bRow || {});
+            const ka = dobaParentKey(da);
+            const kb = dobaParentKey(db);
+            const parentVal = function(row, key) {
+                const parent = key ? dobaParentRowByKey[key] : null;
+                const src = parent || row;
+                if (field === '(Child) sku') return key || String(row[field] || '');
+                return src[field];
+            };
+            if (isNum) {
+                const va = parseFloat(parentVal(da, ka)) || 0;
+                const vb = parseFloat(parentVal(db, kb)) || 0;
+                if (va !== vb) return va - vb;
+            } else {
+                const va = String(parentVal(da, ka) || '');
+                const vb = String(parentVal(db, kb) || '');
+                const c = va.localeCompare(vb, undefined, { numeric: true, sensitivity: 'base' });
+                if (c) return c;
+            }
+            if (!!da.is_parent !== !!db.is_parent) return da.is_parent ? -1 : 1;
+            if (isNum) return (parseFloat(da[field]) || 0) - (parseFloat(db[field]) || 0);
+            return String(da[field] || '').localeCompare(String(db[field] || ''), undefined, { numeric: true, sensitivity: 'base' });
+        }
+
+        function dobaNumberSorter(a, b, aRow, bRow, column) {
+            const field = (column && typeof column.getField === 'function') ? column.getField() : '';
+            return dobaParentAwareCmp(aRow, bRow, field, true);
+        }
+
+        function dobaSkuSorter(a, b, aRow, bRow) {
+            return dobaParentAwareCmp(aRow, bRow, '(Child) sku', false);
+        }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'doba'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'doba'])
         function dobaRowSpriceForAlert(data) {
@@ -1971,6 +2061,7 @@
                                 push_status_updated_at: item.PUSH_STATUS_UPDATED_AT || null // Timestamp when push status was updated
                             };
                         });
+                        dobaRollupParentRows(processedData);
                         allTableData = processedData;
                         if (window.ParentExpand) ParentExpand.captureDataset(processedData);
                         return processedData;
@@ -2018,6 +2109,7 @@
                         frozen: true,
                         hozAlign: "left",
                         headerHozAlign: "left",
+                        sorter: dobaSkuSorter,
                         formatter: function(cell, formatterParams) {
                             const value = cell.getValue();
                             const copyBtn = '<button type="button" class="btn btn-link btn-sm py-0 px-1 dws-copy-sku" data-sku="' + dobaAttrEscape(value) + '" title="Copy SKU"><i class="fa-regular fa-copy"></i></button>';
@@ -2054,7 +2146,7 @@
                         title: "Shop INV",
                         field: "shopify_inv",
                         width: 80,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value.toString();
@@ -2064,7 +2156,7 @@
                         title: "D INV",
                         field: "INV",
                         width: 70,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value.toString();
@@ -2102,7 +2194,7 @@
                         title: "OV L30",
                         field: "L30",
                         width: 70,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             return parseFloat(cell.getValue()) || 0;
                         }
@@ -2111,7 +2203,7 @@
                         title: "DIL",
                         field: "ov_dil",
                         width: 80,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             const percent = value * 100;
@@ -2128,7 +2220,7 @@
                         title: "L30",
                         field: "doba L30",
                         width: 70,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             return parseFloat(cell.getValue()) || 0;
                         }
@@ -2137,7 +2229,7 @@
                         title: "Growth",
                         field: "growth_percent",
                         width: 80,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             const l30 = parseFloat(rowData['doba L30']) || 0;
@@ -2173,7 +2265,7 @@
                         title: "L7",
                         field: "quantity_l7",
                         width: 70,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         visible: false,
                         formatter: function(cell, formatterParams) {
                             const value = parseInt(cell.getValue()) || 0;
@@ -2187,7 +2279,7 @@
                         title: "L7-14",
                         field: "quantity_l7_prev",
                         width: 70,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         visible: false,
                         formatter: function(cell, formatterParams) {
                             const value = parseInt(cell.getValue()) || 0;
@@ -2201,7 +2293,7 @@
                         title: "S L30",
                         field: "s_l30",
                         width: 70,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         visible: false,
                         formatter: function(cell, formatterParams) {
                             const value = parseInt(cell.getValue()) || 0;
@@ -2233,7 +2325,7 @@
                         title: "STD Price",
                         field: "standard_price",
                         width: 85,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value > 0 ? `$${value.toFixed(2)}` : '';
@@ -2243,7 +2335,7 @@
                         title: "PRICE",
                         field: "doba Price",
                         width: 80,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             const rowData = cell.getRow().getData();
@@ -2256,7 +2348,7 @@
                         title: "Pick Price",
                         field: "self_pick_price",
                         width: 85,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         visible: true,
                         headerTooltip: "Live Doba Pick Up (selfPickAnticipatedIncome). Not PRICE − Ship.",
                         formatter: function(cell, formatterParams) {
@@ -2268,7 +2360,7 @@
                         title: "NROI%",
                         field: "Roi",
                         width: 70,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             // Value is already a percentage from controller (ROI_percentage)
@@ -2280,7 +2372,7 @@
                         title: "NPFT%",
                         field: "NPFT_pct",
                         width: 80,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             // Value is already a percentage from controller (PFT_percentage)
@@ -2346,13 +2438,16 @@
                         title: "SPRICE",
                         field: "sprice",
                         width: 92,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         visible: true,
                         editable: false,
                         headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab when Doba L30 > 0; 0 Sold uses the lowest Target GROI). S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP (no blue when red).",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
-                            if (isDobaParentRow(rowData)) return '';
+                            if (isDobaParentRow(rowData)) {
+                                const parentSprice = parseFloat(rowData.sprice) || 0;
+                                return parentSprice > 0 ? ('$' + parentSprice.toFixed(2)) : '';
+                            }
                             let value = (typeof chPromoSavedOrLiveSprice === 'function')
                                 ? Number(chPromoSavedOrLiveSprice(rowData))
                                 : parseFloat(cell.getValue() || 0);
@@ -2381,11 +2476,14 @@
                         title: "S Pick Price",
                         field: "s_self_pick",
                         width: 90,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         visible: true,
                         formatter: function(cell, formatterParams) {
-                            // Always SPRICE − Ship
                             const rd = cell.getRow().getData();
+                            if (isDobaParentRow(rd)) {
+                                const rolled = parseFloat(rd.s_self_pick) || 0;
+                                return rolled > 0 ? ('$' + rolled.toFixed(2)) : '';
+                            }
                             const sprice = parseFloat(rd.sprice) || 0;
                             const ship = parseFloat(rd.Ship_productmaster) || 0;
                             const value = sprice > 0 ? Math.max(0, sprice - ship) : 0;
@@ -2396,7 +2494,7 @@
                         title: "LP",
                         field: "LP_productmaster",
                         width: 70,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         visible: true,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
@@ -2407,7 +2505,7 @@
                         title: "SGROI %",
                         field: "sroi",
                         width: 70,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         visible: true,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
@@ -2420,7 +2518,7 @@
                         title: "SGPFT%",
                         field: "spft",
                         width: 70,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         visible: true,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
@@ -2480,7 +2578,7 @@
                         title: "MSRP",
                         field: "msrp",
                         width: 75,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value > 0 ? `$${value.toFixed(2)}` : '';
@@ -2490,7 +2588,7 @@
                         title: "MAP",
                         field: "map",
                         width: 70,
-                        sorter: "number",
+                        sorter: dobaNumberSorter,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value > 0 ? `$${value.toFixed(2)}` : '';
@@ -2514,23 +2612,41 @@
                     ParentExpand.beforeFilters(function(){ applyFilters(); });
                     return;
                 }
+                var sortSnapshot = [];
+                try {
+                    sortSnapshot = (table.getSorters() || []).map(function(s) {
+                        try {
+                            var col = s.column;
+                            var field = col && typeof col.getField === 'function' ? col.getField() : null;
+                            return field ? { column: field, dir: s.dir } : null;
+                        } catch (errCol) {
+                            return null;
+                        }
+                    }).filter(Boolean);
+                } catch (errSnap) {
+                    sortSnapshot = [];
+                }
                 const inventoryFilter = $('#inventory-filter').val();
                 const parentFilter = $('#parent-filter').val();
                 const missingFilter = $('#missing-filter').val();
                 const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
                 
                 table.clearFilter(true);
-                
+
                 if (inventoryFilter === 'positive') {
-                    table.setFilter("shopify_inv", ">", 0);
+                    table.addFilter(function(data) {
+                        return (parseFloat(data.shopify_inv) || 0) > 0;
+                    });
                 } else if (inventoryFilter === 'zero') {
-                    table.setFilter("shopify_inv", "=", 0);
+                    table.addFilter(function(data) {
+                        return (parseFloat(data.shopify_inv) || 0) === 0;
+                    });
                 }
-                
+
                 if (parentFilter === 'parent') {
-                    table.setFilter("is_parent", "=", true);
+                    table.addFilter(function(data) { return !!data.is_parent; });
                 } else if (parentFilter === 'child') {
-                    table.setFilter("is_parent", "!=", true);
+                    table.addFilter(function(data) { return !data.is_parent; });
                 }
 
                 if (missingFilter === 'missing') {
@@ -2544,9 +2660,9 @@
                 const skuSearch = ($('#sku-search').val() || '').trim().toLowerCase();
                 if (skuSearch !== '') {
                     table.addFilter(function(data) {
-                        if (data.is_parent) return false;
                         const sku = String(data['(Child) sku'] || '').toLowerCase();
-                        return sku.indexOf(skuSearch) !== -1;
+                        const parent = String(data.Parent || '').toLowerCase();
+                        return sku.indexOf(skuSearch) !== -1 || parent.indexOf(skuSearch) !== -1;
                     });
                 }
 
@@ -2762,6 +2878,11 @@
                     updateVisibleRowsCount();
                 }, 100);
                 if (typeof syncDobaTriangleBadgeState === 'function') syncDobaTriangleBadgeState();
+                queueMicrotask(function() {
+                    if (sortSnapshot && sortSnapshot.length) {
+                        try { table.setSort(sortSnapshot); } catch (eSort) { /* ignore */ }
+                    }
+                });
             }
 
             if (window.PriceGtLmpBadge) {
