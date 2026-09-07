@@ -3448,6 +3448,9 @@
                 return chPromoRound2(sprice);
             }
             if (chPromoIsEbayChannel()) {
+                if (typeof ebayCapSpriceToLmp === 'function') return ebayCapSpriceToLmp(d, sprice);
+                if (typeof ebay2CapSpriceToLmp === 'function') return ebay2CapSpriceToLmp(d, sprice);
+                if (typeof ebay3CapSpriceToLmp === 'function') return ebay3CapSpriceToLmp(d, sprice);
                 if (!chPromoEbayShouldCapToLmp(d, sprice)) return chPromoRound2(sprice);
                 const ebayLmp = chPromoLmp(d);
                 return ebayLmp > 0 ? chPromoRound2(ebayLmp) : chPromoRound2(sprice);
@@ -9009,6 +9012,18 @@
         /** Visible S PRC (live rules + LMP cap) — what Push Prc sends to the listing. */
         function chPromoPushSpriceAmount(d) {
             if (!d) return 0;
+            if (typeof ebayDisplayedSprice === 'function') {
+                const shown = Number(ebayDisplayedSprice(d)) || 0;
+                if (shown > 0) return chPromoRound2(shown);
+            }
+            if (typeof ebay2DisplayedSprice === 'function') {
+                const shown = Number(ebay2DisplayedSprice(d)) || 0;
+                if (shown > 0) return chPromoRound2(shown);
+            }
+            if (typeof ebay3DisplayedSprice === 'function') {
+                const shown = Number(ebay3DisplayedSprice(d)) || 0;
+                if (shown > 0) return chPromoRound2(shown);
+            }
             let p = 0;
             if (typeof chPromoLiveSprice === 'function') {
                 p = Number(chPromoLiveSprice(d)) || 0;
