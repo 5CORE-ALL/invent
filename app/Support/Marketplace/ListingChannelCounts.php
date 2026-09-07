@@ -42,6 +42,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingZendropController;
 use App\Models\ApiVsSheetSetting;
 use App\Models\ChannelMaster;
+use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -290,8 +291,9 @@ class ListingChannelCounts
     ];
 
     /**
-     * Listing Missing L data source for /missing-listing: API or Sheet.
-     * Force-API channels win; then /api-vs-sheet download_source; else architecture default.
+     * Listing Missing L data source for /missing-listing: API, Sheet, or Offline.
+     * Offline = marketplace credentials are not configured (do not invent Missing L).
+     * Force-API channels win when connected; then /api-vs-sheet; else architecture default.
      */
     public static function dataSource(string $channel): string
     {
@@ -301,20 +303,48 @@ class ListingChannelCounts
         }
 
         if (in_array($key, self::$forceApiListingSources, true)) {
-            return 'API';
+            return self::marketplaceApiIsReady($key) ? 'API' : 'Offline';
         }
 
         $fromSettings = self::dataSourceFromApiVsSheet($key);
         if ($fromSettings !== null) {
+            if ($fromSettings === 'API' && ! self::marketplaceApiIsReady($key)) {
+                return 'Offline';
+            }
+
             return $fromSettings;
         }
 
-        return in_array($key, self::$sheetListingSources, true) ? 'Sheet' : 'API';
+        if (in_array($key, self::$sheetListingSources, true)) {
+            return 'Sheet';
+        }
+
+        return self::marketplaceApiIsReady($key) ? 'API' : 'Offline';
     }
 
     public static function isSheetSource(string $channel): bool
     {
-        return self::dataSource($channel) === 'Sheet';
+        return self::dataSource($channel) !== 'API';
+    }
+
+    public static function isLiveApiSource(string $channel): bool
+    {
+        return self::dataSource($channel) === 'API';
+    }
+
+    /**
+     * True when this channel has marketplace API credentials filled in.
+     * Unknown / sheet-only slugs return false.
+     */
+    private static function marketplaceApiIsReady(string $normalizedKey): bool
+    {
+        try {
+            return app(MarketplaceApiConfigService::class)->isConfigured($normalizedKey);
+        } catch (\Throwable $e) {
+            Log::warning('ListingChannelCounts marketplaceApiIsReady failed: '.$e->getMessage());
+
+            return false;
+        }
     }
 
     /**
@@ -429,13 +459,13 @@ class ListingChannelCounts
             }
             $seen[$key] = true;
 
-            // Sheet channels are not counted (display "From Sheet" on /missing-listing)
-            if (self::isSheetSource((string) $name)) {
+            // Sheet / disconnected APIs are not counted
+            if (! self::isLiveApiSource((string) $name)) {
                 continue;
             }
 
             try {
-                $c = self::forChannel((string) $name, false, false);
+                $c = self::forChannel((string) $name, false);
                 $total += (int) ($c['Pending'] ?? 0);
             } catch (\Throwable $e) {
                 Log::warning('ListingChannelCounts totalMissingL channel failed (' . $key . '): ' . $e->getMessage());

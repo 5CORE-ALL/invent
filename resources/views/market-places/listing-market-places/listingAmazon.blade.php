@@ -856,6 +856,7 @@
 
         $(document).ready(function () {
             showLoader();
+            let missingLFilterActive = false;
 
             amazonListingTable = new Tabulator('#amazonListing-table', {
                 ajaxURL: '/listing_amazon/view-data',
@@ -977,6 +978,16 @@
 
             amazonListingTable.on('dataProcessed', function () {
                 hideLoader();
+                if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__amazonMissingApplied) {
+                    window.__amazonMissingApplied = true;
+                    $('#row-data-type').val('sku');
+                    $('#inv-filter').val('inv-only');
+                    $('#nr-req-filter').val('REQ');
+                    $('#link-filter').val('all');
+                    $('#listed-filter').val('Pending');
+                    $('#missing-l-badge').addClass('is-active');
+                    missingLFilterActive = true;
+                }
                 applyListingFilters();
             });
             amazonListingTable.on('dataFiltered', function () {
@@ -990,7 +1001,6 @@
             $('#row-data-type, #inv-filter, #nr-req-filter, #link-filter, #listed-filter').on('change', applyListingFilters);
 
             // Missing L badge → filter table to unlisted REQ SKUs (toggle)
-            let missingLFilterActive = false;
             function applyMissingLBadgeFilter(forceOff) {
                 if (forceOff === true) {
                     missingLFilterActive = false;
