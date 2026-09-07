@@ -2061,8 +2061,11 @@
             return String(data['(Child) sku'] || '').toUpperCase().includes('PARENT');
         }
         function ebay3RowSpriceForAlert(data) {
-            if (typeof chPromoLiveSprice !== 'function' || ebay3IsAlertParentRow(data)) return 0;
-            return chPromoLiveSprice(data) || 0;
+            if (ebay3IsAlertParentRow(data)) return 0;
+            if (typeof chPromoSavedOrLiveSprice === 'function') {
+                return chPromoSavedOrLiveSprice(data) || 0;
+            }
+            return parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
         }
         function ebay3IsEndedListing(data) {
             if (!data || ebay3IsAlertParentRow(data)) return false;

@@ -7635,7 +7635,9 @@
                             }
                         }
                     } else if (ebay1PrmtOnly) {
-                        if (typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(d)) {
+                        if (typeof chPromoUsesSprcDilInsteadOfPrmt === 'function' && chPromoUsesSprcDilInsteadOfPrmt()) {
+                            skipSprice = true;
+                        } else if (typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(d)) {
                             skipSprice = true;
                         } else if (typeof chPromoDilSgroiRuleSprice === 'function' && chPromoDilSgroiRuleSprice(d) > 0) {
                             skipSprice = true;
@@ -8066,6 +8068,8 @@
                 }
             }
             const ebay1 = chPromoEbayStdMinusPrmtCpnEnabled();
+            const sprcDilOwnsSprice = typeof chPromoUsesSprcDilInsteadOfPrmt === 'function'
+                && chPromoUsesSprcDilInsteadOfPrmt();
             const jobs = [];
             let skipped = 0;
             for (let i = 0; i < targets.length; i++) {
@@ -8105,14 +8109,17 @@
                         }
                     }
                     } else if (ebay1) {
-                        let newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { cpn: 0 });
-                        if (newPrice > 0 && typeof chPromoFinalSpriceToSave === 'function') {
-                            newPrice = chPromoFinalSpriceToSave(d, newPrice);
-                        }
+                        let newPrice = 0;
                         const patch = { cpn_pct: String(cpn), _cpn_pct_applied: 0 };
-                        if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
+                        if (!sprcDilOwnsSprice) {
+                            newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { cpn: 0 });
+                            if (newPrice > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+                                newPrice = chPromoFinalSpriceToSave(d, newPrice);
+                            }
+                            if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
+                        }
                         item.row.update(patch);
-                        jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: !(newPrice > 0) });
+                        jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: sprcDilOwnsSprice || !(newPrice > 0) });
                     } else {
                         item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
                         jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: ebay1 });
@@ -8121,14 +8128,17 @@
                     continue;
                 }
                 if (ebay1) {
-                    let newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { cpn: cpn });
-                    if (newPrice > 0 && typeof chPromoFinalSpriceToSave === 'function') {
-                        newPrice = chPromoFinalSpriceToSave(d, newPrice);
-                    }
+                    let newPrice = 0;
                     const patch = { cpn_pct: String(cpn), _cpn_pct_applied: cpn };
-                    if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
+                    if (!sprcDilOwnsSprice) {
+                        newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { cpn: cpn });
+                        if (newPrice > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+                            newPrice = chPromoFinalSpriceToSave(d, newPrice);
+                        }
+                        if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
+                    }
                     item.row.update(patch);
-                    jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: !(newPrice > 0) });
+                    jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: sprcDilOwnsSprice || !(newPrice > 0) });
                 } else if (chPromoPrmtCpnComboEnabled()) {
                     if (chPromoTemuZeroSoldOwnsSprice(d) || chPromoKeepZeroSoldPrcSprice(d)) {
                         item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
@@ -9439,10 +9449,10 @@
                 const needsFill = !!opts.force
                     || !(current > 0)
                     || (overwrite && !chPromoNearlyEqual(current, finalFill));
-                const needsPush = !forceSkipPush && livePushOn && (
+                const needsPush = !forceSkipPush && livePushOn && current > 0 && live > 0 && (
                     (chPromoIsTemuPromoChannel() && typeof temuListingNeedsPush === 'function')
-                        ? temuListingNeedsPush(d, finalFill)
-                        : (live > 0 && !chPromoNearlyEqual(finalFill, live))
+                        ? temuListingNeedsPush(d, current)
+                        : !chPromoNearlyEqual(current, live)
                 );
                 if (!needsFill && !needsPush) return;
                 queuedKeys.add(key);
@@ -9666,7 +9676,7 @@
         function chPromoUsesAmazonStyleRuleApply() {
             return chPromoIsEbayChannel() || CHANNEL_PROMO_CHANNEL === 'shopify_b2c';
         }
-        /** eBay / Shopify B2C page load: Dil vs PRMT → CVR vs Disc → 0 Sold (clear S PRC) → refill S PRC. */
+        /** eBay / Shopify B2C page load: sync Dil/CVR slabs. Do not refill S PRC or push the catalog. */
         async function chPromoRunAllEbayRulesOnLoad() {
             if (!chPromoUsesAmazonStyleRuleApply() || chPromoAllEbayRulesBusy) return;
             chPromoAllEbayRulesBusy = true;
@@ -9689,15 +9699,6 @@
                     await chPromoRunZeroSoldDilAutoApply({ force: true });
                 }
                 const livePushOn = chPromoPageReloadPushAllowed();
-                if (!chPromoUsesSprcDilOnlySprice()) {
-                    autopopulateEbaySpriceFromStdPrmtCpn({
-                        overwrite: true,
-                        persist: true,
-                        silent: true,
-                        force: true,
-                        skip_push: !livePushOn,
-                    });
-                }
                 if (clearOnce) chPromoMarkStoredClearedOnce();
                 if (livePushOn) {
                     if (chPromoIsTemuPromoChannel() && typeof scanAndQueueTemuListingPush === 'function') {
@@ -9766,16 +9767,8 @@
             if (typeof chPromoSyncCvrDiscColumnFromSlabs === 'function') {
                 chPromoSyncCvrDiscColumnFromSlabs();
             }
-            const clearOnce = chPromoShouldClearStoredOnce();
             const livePushOn = chPromoPageReloadPushAllowed();
-            autopopulateEbaySpriceFromStdPrmtCpn({
-                overwrite: true,
-                persist: true,
-                silent: true,
-                force: clearOnce,
-                skip_push: !livePushOn,
-            });
-            if (clearOnce) chPromoMarkStoredClearedOnce();
+            if (chPromoShouldClearStoredOnce()) chPromoMarkStoredClearedOnce();
             if (!livePushOn) return;
             if (chPromoIsTemuPromoChannel() && typeof scanAndQueueTemuListingPush === 'function') {
                 scanAndQueueTemuListingPush(tbl);
@@ -10861,7 +10854,7 @@
                         chPromoToast(
                             'success',
                             on
-                                ? 'Auto-push on — S PRC ≠ Price listings are queued (same as Temu).'
+                                ? 'Auto-push on — only SKUs whose saved S PRC ≠ Price are queued.'
                                 : 'Auto-push off — price edits only save. Daily cron still pushes.'
                         );
                         if (!on) return;

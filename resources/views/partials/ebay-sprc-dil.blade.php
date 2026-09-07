@@ -4,7 +4,9 @@
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
   Amazon / eBay 1–3 / Doba Pickup: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
   Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
-  Dil slab edits, add/delete, table load, and Save and Apply persist S PRC (same as Amazon).
+  Dil slab edits and table load recalculate display only.
+  Save and Apply deletes old S PRC (saves 0), then writes the new Dil S PRC.
+  Live push is only for saved S PRC ≠ Price.
 --}}
 @php
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
@@ -256,7 +258,7 @@
                         </li>
                         <li>
                             <strong>When</strong> you click <strong>Save and Apply</strong>:
-                            {{ $ebaySprcDilPageLabel }}’s table is stored via <strong>API only</strong>, then <strong>S PRC</strong> is written.
+                            {{ $ebaySprcDilPageLabel }}’s table is stored via <strong>API only</strong>, then old <strong>S PRC</strong> is deleted and the new Dil S PRC is written.
                         </li>
                         <li>
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
@@ -1065,7 +1067,7 @@
                     return;
                 }
                 ebayDgAutoApplyWaits = 0;
-                Promise.resolve(ebayApplySprcDilToTable()).catch(function() { /* retry on next change */ });
+                Promise.resolve(ebayApplySprcDilToTable({ persist: false, push: false })).catch(function() { /* retry on next change */ });
             }, delay);
         }
         window.ebayScheduleSprcDilAutoApply = ebayScheduleSprcDilAutoApply;
@@ -1157,7 +1159,9 @@
          * TikTok / TikTok 2 / Shopify B2C / Doba / Doba Pickup / TopDawg: wipe every stored S PRC and save 0,
          * then insert the Dil / 0 Sold / CVR discount (not the LMP Diff).
          */
-        async function ebayTiktokClearThenApplyAllRules() {
+        async function ebayTiktokClearThenApplyAllRules(opts) {
+            opts = opts || {};
+            if (opts.persist !== true) return 0;
             const items = [];
             ebaySprcDilEachCatalogRow(function(row, d) {
                 if (!ebayDgIsChild(d)) return;
@@ -1223,7 +1227,7 @@
                 );
             }
 
-            if (livePushOn && fills.length) {
+            if (opts.push === true && livePushOn && fills.length) {
                 if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
                     fills.forEach(function(f) {
                         const d = (f.row && typeof f.row.getData === 'function') ? f.row.getData() : {};
@@ -1233,9 +1237,6 @@
                         enqueueChannelPushSpriceAfterSave(f.sku, pushPrice, f.row);
                     });
                 }
-                if (typeof chPromoQueueReloadSpricePush === 'function') {
-                    chPromoQueueReloadSpricePush({ delay: 300 });
-                }
                 ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
             } else if (fills.length) {
                 ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
@@ -1244,7 +1245,11 @@
             try { if (typeof table !== 'undefined' && table) table.redraw(true); } catch (e) { /* ignore */ }
             return fills.length;
         }
-        async function ebayApplySprcDilToTable() {
+        async function ebayApplySprcDilToTable(opts) {
+            opts = opts || {};
+            const persist = opts.persist === true;
+            const allowPush = opts.push === true;
+            if (!persist && !allowPush) return 0;
             if (ebayDgApplyBusy) {
                 ebayDgApplyPending = true;
                 return 0;
@@ -1252,7 +1257,7 @@
             ebayDgApplyBusy = true;
             try {
                 if (ebayDgUsesClearThenApply()) {
-                    return await ebayTiktokClearThenApplyAllRules();
+                    return await ebayTiktokClearThenApplyAllRules({ persist: persist, push: allowPush });
                 }
                 const jobs = [];
                 const nearly = typeof chPromoNearlyEqual === 'function'
@@ -1281,13 +1286,53 @@
                         ? chPromoPrice(d)
                         : (Number(d && (d['MC Price'] != null ? d['MC Price'] : d.price)) || 0);
                     const ended = typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d);
-                    const needsFill = !nearly(current, price);
-                    const needsPush = !!(livePushOn && !ended && !(live > 0 && nearly(price, live)));
+                    const needsFill = persist && !nearly(current, price);
+                    const needsPush = !!(allowPush && livePushOn && !ended && current > 0 && live > 0 && !nearly(current, live));
                     if (!needsFill && !needsPush) return;
                     jobs.push({ row: row, sku: sku, price: price, needsFill: needsFill, needsPush: needsPush });
                 });
                 if (!jobs.length) return 0;
+                const fillJobs = jobs.filter(function(j) { return j.needsFill; });
+                async function ebayPersistSpriceUpdates(updates) {
+                    if (!updates.length) return;
+                    if (typeof saveChannelSpriceBatch === 'function'
+                        && typeof chPromoCfg !== 'undefined' && chPromoCfg.saveSpriceBatchUrl) {
+                        await saveChannelSpriceBatch(updates, { skip_push: true, queue_push: false });
+                        return;
+                    }
+                    if (typeof saveChannelSprice !== 'function') return;
+                    const run = function(u) {
+                        return saveChannelSprice(u.sku, u.sprice, true, {
+                            skip_push: true,
+                            queue_push: false,
+                        });
+                    };
+                    if (typeof chPromoMapLimit === 'function') {
+                        await chPromoMapLimit(updates, 6, run);
+                    } else {
+                        for (let i = 0; i < updates.length; i++) {
+                            await Promise.resolve(run(updates[i]));
+                        }
+                    }
+                }
                 const blocked = typeof table !== 'undefined' && table && typeof table.blockRedraw === 'function';
+                if (fillJobs.length) {
+                    if (blocked) table.blockRedraw();
+                    try {
+                        fillJobs.forEach(function(job) {
+                            if (job.row && typeof chPromoWipeSpriceRow === 'function') {
+                                chPromoWipeSpriceRow(job.row);
+                            } else if (job.row && typeof job.row.update === 'function') {
+                                job.row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false });
+                            }
+                        });
+                    } finally {
+                        if (blocked) table.restoreRedraw();
+                    }
+                    await ebayPersistSpriceUpdates(fillJobs.map(function(j) {
+                        return { sku: j.sku, sprice: 0 };
+                    }));
+                }
                 if (blocked) table.blockRedraw();
                 try {
                     jobs.forEach(function(job) {
@@ -1302,28 +1347,9 @@
                 } finally {
                     if (blocked) table.restoreRedraw();
                 }
-                const toSave = jobs.filter(function(j) { return j.needsFill; })
-                    .map(function(j) { return { sku: j.sku, sprice: j.price }; });
-                if (toSave.length && typeof saveChannelSpriceBatch === 'function'
-                    && typeof chPromoCfg !== 'undefined' && chPromoCfg.saveSpriceBatchUrl) {
-                    await saveChannelSpriceBatch(toSave, { skip_push: true, queue_push: false });
-                } else if (toSave.length && typeof saveChannelSprice === 'function') {
-                    const run = function(job) {
-                        return saveChannelSprice(job.sku, job.price, true, {
-                            row: job.row,
-                            skip_push: true,
-                            queue_push: false,
-                        });
-                    };
-                    const saveJobs = jobs.filter(function(j) { return j.needsFill; });
-                    if (typeof chPromoMapLimit === 'function') {
-                        await chPromoMapLimit(saveJobs, 6, run);
-                    } else {
-                        for (let i = 0; i < saveJobs.length; i++) {
-                            await Promise.resolve(run(saveJobs[i]));
-                        }
-                    }
-                }
+                await ebayPersistSpriceUpdates(fillJobs.map(function(j) {
+                    return { sku: j.sku, sprice: j.price };
+                }));
                 const toQueue = jobs.filter(function(j) { return j.needsPush; });
                 if (toQueue.length) {
                     if (typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel()
@@ -1401,8 +1427,8 @@
                     if (saved.length) ebayDilGroiRules = saved;
                     renderEbayDilGroiModalTable();
                 }
-                const n = await ebayApplySprcDilToTable();
-                $('#ebay-dil-groi-status').text('Saved via API. S PRC applied and queued on ' + n + ' SKU(s).');
+                const n = await ebayApplySprcDilToTable({ persist: true, push: true });
+                $('#ebay-dil-groi-status').text('Saved via API. S PRC applied on ' + n + ' SKU(s); only S PRC ≠ Price were queued.');
                 return res;
             });
         }

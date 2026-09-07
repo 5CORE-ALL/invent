@@ -945,28 +945,18 @@
                         : (d.Price != null ? d.Price : 0));
                 return chPushSpriceRound2(raw);
             }
-            function chPushSpriceFillFromRow(d) {
-                let fill = 0;
-                if (typeof aePushablePrice === 'function') {
-                    fill = chPushSpriceRound2(aePushablePrice(d));
+            function chPushSpriceSavedFromRow(d) {
+                if (typeof chPromoSavedOrLiveSprice === 'function') {
+                    return chPushSpriceRound2(chPromoSavedOrLiveSprice(d));
                 }
-                if (!(fill > 0) && typeof aeVisibleSprice === 'function') {
-                    fill = chPushSpriceRound2(aeVisibleSprice(d));
-                }
-                if (!(fill > 0) && typeof aeStoredSprice === 'function') {
-                    fill = chPushSpriceRound2(aeStoredSprice(d));
-                }
-                if (!(fill > 0) && typeof chPromoLiveSprice === 'function') {
-                    fill = chPushSpriceRound2(chPromoLiveSprice(d));
-                } else if (!(fill > 0) && typeof chPromoSpriceFromStdTPromo === 'function') {
-                    fill = chPushSpriceRound2(chPromoSpriceFromStdTPromo(d));
-                }
-                if (fill > 0) return fill;
                 return chPushSpriceRound2(d && (d.SPRICE != null ? d.SPRICE : d.sprice));
+            }
+            function chPushSpriceFillFromRow(d) {
+                return chPushSpriceSavedFromRow(d);
             }
             function scanAndQueueChannelPushSprice(tbl, opts) {
                 opts = opts || {};
-                // Catalog catch-up is opt-in ({ catalog: true }) — same as Temu's scanAndQueueTemuListingPush.
+                // Catalog catch-up is opt-in ({ catalog: true }). Only saved S PRC ≠ live Price.
                 if (!opts.catalog) return;
                 if (opts.once !== false && opts.silent && window._chPushSpricePageChecked) return;
                 if (opts.once !== false && opts.silent) window._chPushSpricePageChecked = true;
@@ -984,9 +974,7 @@
                 }
                 const extra = chPushSpriceDatasetRows();
                 if (!tbl && !extra.length) return;
-                const persistMissing = opts.persistMissing !== false;
                 const jobs = [];
-                const saves = [];
                 const seen = new Set();
                 function consider(row, d) {
                     if (!chPushSpriceIsChild(d)) return;
@@ -995,22 +983,11 @@
                     const key = sku.toUpperCase();
                     if (!sku || seen.has(key)) return;
                     seen.add(key);
-                    const fill = chPushSpriceFillFromRow(d);
-                    if (!(fill > 0)) return;
+                    const saved = chPushSpriceSavedFromRow(d);
+                    if (!(saved > 0)) return;
                     const live = chPushSpriceLiveFromRow(d);
-                    if (!(live > 0) || chPushSpriceNearlyEqual(fill, live)) return;
-                    const current = chPushSpriceRound2(d.SPRICE != null ? d.SPRICE : d.sprice);
-                    if (persistMissing && CH_PUSH_SPRICE_SAVE && (!(current > 0) || !chPushSpriceNearlyEqual(current, fill))) {
-                        if (row && typeof row.update === 'function') {
-                            try { row.update({ SPRICE: fill, sprice: fill, SPRICE_STATUS: 'queued' }); } catch (e) { /* ignore */ }
-                        } else if (d) {
-                            d.SPRICE = fill;
-                            d.sprice = fill;
-                            d.SPRICE_STATUS = 'queued';
-                        }
-                        saves.push({ sku: sku, price: fill });
-                    }
-                    jobs.push({ sku: sku, price: fill, row: row });
+                    if (!(live > 0) || chPushSpriceNearlyEqual(saved, live)) return;
+                    jobs.push({ sku: sku, price: saved, row: row });
                 }
                 if (tbl) chPushSpriceWalkRows(tbl, consider);
                 extra.forEach(function(d) { if (d) consider(null, d); });
@@ -1031,26 +1008,6 @@
                 } else {
                     enqueueChannelPushSprice(jobs, { silent: !!opts.silent });
                 }
-                if (!saves.length || !CH_PUSH_SPRICE_SAVE) return;
-                let idx = 0;
-                let inflight = 0;
-                const max = 8;
-                function pump() {
-                    while (inflight < max && idx < saves.length) {
-                        const job = saves[idx++];
-                        inflight++;
-                        $.ajax({
-                            url: CH_PUSH_SPRICE_SAVE,
-                            method: 'POST',
-                            headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
-                            data: { sku: job.sku, sprice: job.price, skip_push: 1, _token: chPushSpriceCsrf() },
-                        }).always(function() {
-                            inflight--;
-                            if (idx < saves.length || inflight > 0) pump();
-                        });
-                    }
-                }
-                pump();
             }
 
             global.enqueueChannelPushSprice = enqueueChannelPushSprice;

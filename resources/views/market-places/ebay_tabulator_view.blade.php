@@ -3239,8 +3239,11 @@
                 return ebayIsParentRowData(data);
             }
             function ebay1RowSpriceForAlert(data) {
-                if (typeof chPromoLiveSprice !== 'function' || ebay1IsAlertParentRow(data)) return 0;
-                return chPromoLiveSprice(data) || 0;
+                if (ebay1IsAlertParentRow(data)) return 0;
+                if (typeof chPromoSavedOrLiveSprice === 'function') {
+                    return chPromoSavedOrLiveSprice(data) || 0;
+                }
+                return parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
             }
             function ebay1IsEndedListing(data) {
                 if (!data || ebay1IsAlertParentRow(data)) return false;
