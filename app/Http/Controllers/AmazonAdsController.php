@@ -2377,6 +2377,43 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Calendar mode pins the grid to one daily report_date_range, so Amazon omits
+     * paused / zero-activity campaigns that still have L30 spend. Badge totals must
+     * use the L30 summary universe (same as Amazon Ads console Last 30 days).
+     */
+    private static function shouldUseL30SummaryUniverseForBadges(string $table, Request $request): bool
+    {
+        if ($table !== 'amazon_sp_campaign_reports' && $table !== 'amazon_sb_campaign_reports') {
+            return false;
+        }
+
+        return self::normalizeSummaryReportRange($request->input('summary_report_range')) === null;
+    }
+
+    /**
+     * L30 summary rows plus search / Stat / U% / ACOS / Ads CVR filters — no calendar-day pin.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function l30SummaryUniverseQuery(string $table, Request $request, string $search, array $dbColumns): Builder
+    {
+        $query = DB::table($table);
+        if (in_array('report_date_range', $dbColumns, true)) {
+            $query->where('report_date_range', 'L30');
+        }
+        if ($search !== '' && in_array('campaignName', $dbColumns, true)) {
+            $escaped = addcslashes($search, '%_\\');
+            $query->where('campaignName', 'LIKE', '%'.$escaped.'%');
+        }
+        self::applyUtilizationPercentRangeFilters($query, $table, $request, true);
+        self::applyCampaignStatusFilter($query, $table, $request);
+        self::applyAcosColorFilter($query, $table, $request);
+        self::applyAdsCvrColorFilter($query, $table, $request);
+
+        return $query;
+    }
+
+    /**
      * Calendar mode + campaign search: include matching L30 rows for campaigns Amazon omitted
      * from the selected daily window (zero-activity days). Returns true when applied.
      *
@@ -3665,11 +3702,16 @@ class AmazonAdsController extends Controller
         $recordsFiltered = (int) $query->clone()->count();
 
         $queryForAggregates = $query->clone();
+        // Calendar latest-day grid omits paused L30 campaigns Amazon still counts.
+        // Spend / Clicks / Sold / Sales / ACOS badges use the L30 summary universe.
+        if (self::shouldUseL30SummaryUniverseForBadges($table, $request)) {
+            $queryForAggregates = self::l30SummaryUniverseQuery($table, $request, $search, $dbColumns);
+        }
 
         $distinctCampaignCount = null;
         if (in_array('campaign_id', $dbColumns, true)) {
             $distinctCampaignCount = (int) DB::query()
-                ->fromSub($queryForAggregates->clone(), 'r')
+                ->fromSub($query->clone(), 'r')
                 ->selectRaw('COUNT(DISTINCT r.campaign_id) AS c')
                 ->value('c');
         }
@@ -5084,7 +5126,7 @@ class AmazonAdsController extends Controller
 
     /**
      * Amazon rows for /advertisement-master — parent Amazon total plus KW / PT / HL
-     * sub-rows (same L30 distinct-campaign aggregation as /amazon-ads/all badges).
+     * sub-rows (same L30 summary-universe aggregation as /amazon-ads/all Spend badges).
      *
      * @return array<int, array<string, mixed>>
      */
@@ -5217,11 +5259,9 @@ class AmazonAdsController extends Controller
         }
 
         $query = DB::table($table);
-        // Match the /amazon-ads/all default view: it pre-fills the date box with
-        // the latest available report day (single Calendar day), so the badge
-        // totals reflect that one day. Mirror it here so the advertisement rows
-        // equal what /amazon-ads/all shows on load.
-        self::applyAdvertisementMasterLatestDayFilter($query, $table);
+        // Same L30 universe as /amazon-ads/all Spend / ACOS badges (Amazon console
+        // Last 30 days), not the calendar latest-day grid subset.
+        self::applyAdvertisementMasterL30SummaryFilter($query, $table);
         if ($scope !== null) {
             $scope($query, $dbColumns, $table);
         }
@@ -5245,12 +5285,11 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Count ACTIVE (campaignStatus = ENABLED) campaigns in the same window the
-     * metrics use — the latest available report day (single Calendar day), same
-     * default as /amazon-ads/all. Optional $scope applies the same KW / PT / HL
-     * search scope as {@see advertisementMasterMetricsForSource}. Falls back to
-     * the latest `report_date_range = 'L30'` row per campaign when no daily day
-     * is available.
+     * Count ACTIVE (campaignStatus = ENABLED) campaigns on the latest calendar
+     * report day (grid window). Spend badges use L30 summary rows instead.
+     * Optional $scope applies the same KW / PT / HL search as
+     * {@see advertisementMasterMetricsForSource}. Falls back to the latest
+     * `report_date_range = 'L30'` row per campaign when no daily day is available.
      *
      * @param  callable(Builder, array<int, string>, string): void|null  $scope
      */
@@ -5308,9 +5347,19 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Apply the /amazon-ads/all default date filter: the latest available report
-     * day for this table as a single Calendar day. No-op when the table has no
-     * dated daily rows (then the full L30 rolling window is used).
+     * Restrict advertisement-master spend/sales to latest L30 summary rows.
+     */
+    private static function applyAdvertisementMasterL30SummaryFilter(Builder $query, string $table): void
+    {
+        $cols = Schema::getColumnListing($table);
+        if (! in_array('report_date_range', $cols, true)) {
+            return;
+        }
+        $query->where('report_date_range', 'L30');
+    }
+
+    /**
+     * Latest available report day as a single Calendar day (active-count window).
      */
     private static function applyAdvertisementMasterLatestDayFilter(Builder $query, string $table): void
     {

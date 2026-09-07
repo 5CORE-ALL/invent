@@ -4480,6 +4480,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/fb-marketplace-price-sold/import', [FbMarketplaceAnalyticsController::class, 'importFbMarketplacePriceSold'])->name('fb.marketplace.price-sold.import');
     Route::get('/fb-marketplace-price-sold/sample', [FbMarketplaceAnalyticsController::class, 'downloadFbMarketplacePriceSoldSample'])->name('fb.marketplace.price-sold.sample');
     Route::post('/fb-marketplace-tabulator/save-status', [FbMarketplaceAnalyticsController::class, 'saveFbMarketplaceStatus'])->name('fb.marketplace.tabulator.save-status');
+    Route::post('/fb-marketplace-tabulator/save-sprice', [FbMarketplaceAnalyticsController::class, 'saveFbMarketplaceSprice'])->name('fb.marketplace.tabulator.save-sprice');
     Route::get('/amazonpricing-cvr-tabular', action: [OverallAmazonController::class, 'amazonPricingCvrTabular'])->name('amazon.pricing.cvr.tabular');
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
@@ -6296,7 +6297,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-ads-manager/export', 'export')->name('meta.ads.manager.export');
     });
 
-    // Facebook Marketplace Sales (CSV template upload + grid)
+    // FB Sales (CSV template upload + grid)
     Route::controller(FacebookMarketplaceController::class)->group(function () {
         Route::get('/facebook-marketplace',              'index')->name('facebook.marketplace');
         Route::get('/facebook-marketplace/data',         'getData')->name('facebook.marketplace.data');

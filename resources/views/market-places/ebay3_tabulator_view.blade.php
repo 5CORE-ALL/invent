@@ -1090,19 +1090,17 @@
         return parseFloat(row.lmp_price) || 0;
     }
     function ebay3SgroiAtPrice(rowData, price) {
-        if (typeof chPromoSgroiAtPrice === 'function') return chPromoSgroiAtPrice(rowData, price);
         const sprice = parseFloat(price);
         const lp = parseFloat(rowData && rowData.LP_productmaster);
         if (!(sprice > 0) || !(lp > 0)) return null;
         const ship = parseFloat(rowData.Ship_productmaster) || 0;
         const marginRaw = parseFloat(rowData.percentage);
-        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY3_TAKEHOME;
+        let margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY3_TAKEHOME;
+        if (margin > 1) margin = margin / 100;
+        if (!(margin > 0)) return null;
         return ((sprice * margin - lp - ship) / lp) * 100;
     }
     function ebay3ShouldCapSpriceToLmp(rowData, sprice) {
-        if (typeof chPromoEbayShouldCapToLmp === 'function') {
-            return chPromoEbayShouldCapToLmp(rowData, sprice);
-        }
         const lmp = ebayEffectiveLmp(rowData);
         const s = parseFloat(sprice);
         if (!(lmp > 0) || !(s > 0) || s + 0.0001 < lmp) return false;
@@ -1113,7 +1111,6 @@
     function ebay3CapSpriceToLmp(rowData, sprice) {
         const s = parseFloat(sprice);
         if (!(s > 0)) return s;
-        if (typeof chPromoCapSpriceToLmp === 'function') return chPromoCapSpriceToLmp(rowData, s);
         if (!ebay3ShouldCapSpriceToLmp(rowData, s)) return +Number(s).toFixed(2);
         const lmp = ebayEffectiveLmp(rowData);
         return lmp > 0 ? +Number(lmp).toFixed(2) : +Number(s).toFixed(2);
@@ -3200,7 +3197,7 @@
                                     + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?')
                                     + '% (&lt; 20%)"></i>')
                             : '';
-                        const blueTri = (!atOrAboveLmp && ebayPrice > 0 && sprice > 0
+                        const blueTri = (ebayPrice > 0 && sprice > 0
                             && Math.round(sprice * 100) !== Math.round(ebayPrice * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'

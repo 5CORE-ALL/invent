@@ -19,20 +19,340 @@ class FacebookMarketplaceController extends Controller
     public const TEMPLATE_COLUMNS = ['sku', 'qty_sold', 'sold_price', 'order_number'];
 
     /**
-     * Facebook Marketplace sales page.
+     * FB Sales page.
      *
      * GET /facebook-marketplace
      */
     public function index()
     {
         $y = self::computeYesterdaySales();
+        $l30 = self::l30PacificRange();
 
         return view('sales.facebook_marketplace', [
             'ySales'     => $y['sales'],
             'ySalesDate' => $y['date'],
             'yQuantity'  => $y['quantity'],
             'yOrders'    => $y['orders'],
+            'l30Start'   => $l30['start'],
+            'l30End'     => $l30['end'],
         ]);
+    }
+
+    /**
+     * Last 30 Pacific (California) calendar days ending yesterday — same close as Y Sales / L7.
+     *
+     * @return array{start: string, end: string, start_utc: Carbon, end_utc: Carbon}
+     */
+    public static function l30PacificRange(): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = Carbon::yesterday($tz);
+        $start = $end->copy()->subDays(29);
+
+        return [
+            'start'     => $start->toDateString(),
+            'end'       => $end->toDateString(),
+            'start_utc' => Carbon::parse($start->toDateString(), $tz)->startOfDay()->utc(),
+            'end_utc'   => Carbon::parse($end->toDateString(), $tz)->endOfDay()->utc(),
+        ];
+    }
+
+    /**
+     * Prefer order_date; fall back to created_at (PT calendar day) when order_date is null.
+     */
+    public static function saleInPacificRange($row, array $range): bool
+    {
+        if (! empty($row->order_date)) {
+            $d = $row->order_date instanceof \DateTimeInterface
+                ? $row->order_date->format('Y-m-d')
+                : Carbon::parse($row->order_date)->toDateString();
+
+            return $d >= $range['start'] && $d <= $range['end'];
+        }
+        if (empty($row->created_at)) {
+            return false;
+        }
+        $created = Carbon::parse($row->created_at);
+
+        return $created->gte($range['start_utc']) && $created->lte($range['end_utc']);
+    }
+
+    /**
+     * Prior 30 Pacific days immediately before the L30 window (yesterday-59 … yesterday-30).
+     *
+     * @return array{start: string, end: string, start_utc: Carbon, end_utc: Carbon}
+     */
+    public static function l60PacificRange(): array
+    {
+        $tz = 'America/Los_Angeles';
+        $l30 = self::l30PacificRange();
+        $end = Carbon::parse($l30['start'], $tz)->subDay();
+        $start = $end->copy()->subDays(29);
+
+        return [
+            'start'     => $start->toDateString(),
+            'end'       => $end->toDateString(),
+            'start_utc' => Carbon::parse($start->toDateString(), $tz)->startOfDay()->utc(),
+            'end_utc'   => Carbon::parse($end->toDateString(), $tz)->endOfDay()->utc(),
+        ];
+    }
+
+    /**
+     * Sales / GPFT / ROI for an inclusive Pacific date range from uploaded FB Sales only.
+     *
+     * @return array<string, float|int|string>
+     */
+    public static function computeSalesMetricsForPacificRange(string $startDate, string $endDate): array
+    {
+        $mpRow = MarketplacePercentage::where('marketplace', 'FB Marketplace')->first()
+            ?: MarketplacePercentage::where('marketplace', 'FBMarketplace')->first();
+        $percentage = $mpRow && $mpRow->percentage !== null ? (float) $mpRow->percentage : null;
+        $factor = ($percentage !== null ? $percentage : 100) / 100;
+
+        $query = FacebookMarketplaceSale::query()
+            ->select('sku', 'qty_sold', 'sold_price', 'order_number');
+        self::constrainToPacificDateRange($query, $startDate, $endDate);
+        $salesRows = $query->get();
+
+        $skuKeys = [];
+        $rawSkus = [];
+        foreach ($salesRows as $r) {
+            $raw = trim((string) $r->sku);
+            $k = strtoupper($raw);
+            if ($k !== '') {
+                $skuKeys[$k] = true;
+                $skuKeys[str_replace(' ', '', $k)] = true;
+                $rawSkus[$raw] = true;
+            }
+        }
+
+        $lpBySku = [];
+        if ($skuKeys !== []) {
+            $lookupSkus = array_values(array_unique(array_merge(array_keys($rawSkus), array_keys($skuKeys))));
+            foreach (ProductMaster::query()->whereIn('sku', $lookupSkus)->get(['sku', 'Values']) as $pm) {
+                $skuKey = strtoupper(trim((string) $pm->sku));
+                if ($skuKey === '' || stripos($skuKey, 'PARENT') !== false) {
+                    continue;
+                }
+                $values = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+                if (! is_array($values)) {
+                    $values = [];
+                }
+                $lp = 0.0;
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+                $lpBySku[$skuKey] = $lp;
+                $lpBySku[str_replace(' ', '', $skuKey)] = $lp;
+            }
+        }
+
+        $totalPft = 0.0;
+        $totalSales = 0.0;
+        $totalCogs = 0.0;
+        $totalQty = 0;
+        $orderSet = [];
+
+        foreach ($salesRows as $r) {
+            $qty = (int) $r->qty_sold;
+            $price = (float) $r->sold_price;
+            if ($qty <= 0 || $price <= 0) {
+                continue;
+            }
+            $skuKey = strtoupper(trim((string) $r->sku));
+            $lp = (float) ($lpBySku[$skuKey] ?? $lpBySku[str_replace(' ', '', $skuKey)] ?? 0);
+            $unitPft = ($price * $factor) - $lp;
+            $totalPft += $unitPft * $qty;
+            $totalSales += $price * $qty;
+            $totalCogs += $lp * $qty;
+            $totalQty += $qty;
+            $orderNo = trim((string) ($r->order_number ?? ''));
+            if ($orderNo !== '') {
+                $orderSet[$orderNo] = true;
+            }
+        }
+
+        $gpftPct = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0.0;
+        $roiPct = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+
+        return [
+            'marketplace' => $mpRow->marketplace ?? 'FB Marketplace',
+            'margin_percent' => $percentage !== null ? round($percentage, 2) : 100.0,
+            'factor' => $factor,
+            'total_sales' => round($totalSales, 2),
+            'total_quantity' => $totalQty,
+            'total_orders' => count($orderSet),
+            'total_pft' => round($totalPft, 2),
+            'total_cogs' => round($totalCogs, 2),
+            'gpft_percent' => round($gpftPct, 1),
+            'roi_percent' => round($roiPct, 1),
+            'start' => $startDate,
+            'end' => $endDate,
+        ];
+    }
+
+    /**
+     * Limit a facebook_marketplace_sales query to an inclusive Pacific date range.
+     * Prefers order_date; uses created_at only when order_date is null.
+     */
+    public static function constrainToPacificDateRange($query, string $startDate, string $endDate): void
+    {
+        $tz = 'America/Los_Angeles';
+        $rangeStartUtc = Carbon::parse($startDate, $tz)->startOfDay()->utc();
+        $rangeEndUtc = Carbon::parse($endDate, $tz)->endOfDay()->utc();
+
+        $query->where(function ($q) use ($startDate, $endDate, $rangeStartUtc, $rangeEndUtc) {
+            $q->whereBetween('order_date', [$startDate, $endDate])
+                ->orWhere(function ($q2) use ($rangeStartUtc, $rangeEndUtc) {
+                    $q2->whereNull('order_date')
+                        ->whereBetween('created_at', [
+                            $rangeStartUtc->toDateTimeString(),
+                            $rangeEndUtc->toDateTimeString(),
+                        ]);
+                });
+        });
+    }
+
+    /**
+     * Per Pacific calendar day sales from uploaded FB Sales (order_date, else created_at in PT).
+     *
+     * @return array<string, array{sales: float, qty: int, orders: int}>
+     */
+    public static function dailySalesByPacificDate(string $startDate, string $endDate): array
+    {
+        $tz = 'America/Los_Angeles';
+        $out = [];
+
+        FacebookMarketplaceSale::query()
+            ->get(['sold_price', 'qty_sold', 'order_number', 'order_date', 'created_at'])
+            ->each(function ($r) use ($startDate, $endDate, $tz, &$out) {
+                if (! empty($r->order_date)) {
+                    $d = $r->order_date instanceof \DateTimeInterface
+                        ? $r->order_date->format('Y-m-d')
+                        : Carbon::parse($r->order_date)->toDateString();
+                } elseif (! empty($r->created_at)) {
+                    $d = Carbon::parse($r->created_at)->timezone($tz)->toDateString();
+                } else {
+                    return;
+                }
+                if ($d < $startDate || $d > $endDate) {
+                    return;
+                }
+                $qty = (int) $r->qty_sold;
+                $price = (float) $r->sold_price;
+                if ($qty <= 0 || $price <= 0) {
+                    return;
+                }
+                if (! isset($out[$d])) {
+                    $out[$d] = ['sales' => 0.0, 'qty' => 0, 'oids' => []];
+                }
+                $out[$d]['sales'] += $price * $qty;
+                $out[$d]['qty'] += $qty;
+                $oid = trim((string) ($r->order_number ?? ''));
+                if ($oid !== '') {
+                    $out[$d]['oids'][$oid] = true;
+                }
+            });
+
+        $flat = [];
+        foreach ($out as $d => $row) {
+            $flat[$d] = [
+                'sales' => round((float) $row['sales'], 2),
+                'qty' => (int) $row['qty'],
+                'orders' => count($row['oids']),
+            ];
+        }
+        ksort($flat);
+
+        return $flat;
+    }
+
+    /**
+     * Per-SKU qty / sales / avg sold_price in the same L30 window as /facebook-marketplace badges.
+     *
+     * @return array<string, array{qty: int, sales: float, price: float}>
+     */
+    public static function l30MetricsBySku(): array
+    {
+        $range = self::l30PacificRange();
+        $query = FacebookMarketplaceSale::query()
+            ->select(
+                'sku',
+                DB::raw('SUM(qty_sold) as total_sold'),
+                DB::raw('SUM(sold_price * qty_sold) as total_sales')
+            )
+            ->groupBy('sku');
+        self::constrainToPacificDateRange($query, $range['start'], $range['end']);
+
+        $out = [];
+        foreach ($query->get() as $row) {
+            $key = strtoupper(trim((string) $row->sku));
+            if ($key === '') {
+                continue;
+            }
+            $qty = (int) $row->total_sold;
+            $sales = (float) $row->total_sales;
+            $metrics = [
+                'qty' => ($out[$key]['qty'] ?? 0) + $qty,
+                'sales' => ($out[$key]['sales'] ?? 0) + $sales,
+                'price' => 0.0,
+            ];
+            $metrics['price'] = $metrics['qty'] > 0
+                ? round($metrics['sales'] / $metrics['qty'], 2)
+                : 0.0;
+            $out[$key] = $metrics;
+            $out[str_replace(' ', '', $key)] = $metrics;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Per-SKU qty sold in the same L30 window as /facebook-marketplace badges.
+     *
+     * @return array<string, int>
+     */
+    public static function l30SoldQtyBySku(): array
+    {
+        $out = [];
+        foreach (self::l30MetricsBySku() as $sku => $m) {
+            $out[$sku] = (int) ($m['qty'] ?? 0);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Latest uploaded sold_price per SKU (any date) — fallback when L30 has no rows.
+     *
+     * @return array<string, float>
+     */
+    public static function latestSoldPriceBySku(): array
+    {
+        $rows = FacebookMarketplaceSale::query()
+            ->orderByDesc('id')
+            ->get(['sku', 'sold_price']);
+
+        $out = [];
+        foreach ($rows as $row) {
+            $key = strtoupper(trim((string) $row->sku));
+            if ($key === '' || isset($out[$key])) {
+                continue;
+            }
+            $price = (float) $row->sold_price;
+            if ($price <= 0) {
+                continue;
+            }
+            $out[$key] = round($price, 2);
+            $out[str_replace(' ', '', $key)] = $out[$key];
+        }
+
+        return $out;
     }
 
     /**
@@ -85,7 +405,8 @@ class FacebookMarketplaceController extends Controller
 
     /**
      * Live Sales / GPFT / ROI from uploaded facebook_marketplace_sales rows.
-     * Shared by /facebook-marketplace and /all-marketplace-master (FB Marketplace row).
+     * Shared by /facebook-marketplace (FB Sales) and /all-marketplace-master.
+     * Grid rows are the full upload; summary badges are last 30 Pacific days only.
      *
      * Formula (no ship; margin from marketplace_percentages):
      *   unit_pft = sold_price × factor − LP
@@ -131,11 +452,14 @@ class FacebookMarketplaceController extends Controller
         $totalSales = 0.0;
         $totalCogs = 0.0;
         $totalQty = 0;
+        $l30RowCount = 0;
         $orderSet = [];
+        $skuSet = [];
+        $l30 = self::l30PacificRange();
 
         $rows = FacebookMarketplaceSale::orderByDesc('id')
             ->get()
-            ->map(function ($r) use ($factor, $lpBySku, &$totalPft, &$totalSales, &$totalCogs, &$totalQty, &$orderSet) {
+            ->map(function ($r) use ($factor, $lpBySku, $l30, &$totalPft, &$totalSales, &$totalCogs, &$totalQty, &$l30RowCount, &$orderSet, &$skuSet) {
                 $qty = (int) $r->qty_sold;
                 $price = (float) $r->sold_price;
                 $lineTotal = $price * $qty;
@@ -145,16 +469,24 @@ class FacebookMarketplaceController extends Controller
                 $unitPft = ($price * $factor) - $lp;
                 $gpft = $price > 0 ? ($unitPft / $price) * 100 : 0.0;
                 $roi = $lp > 0 ? ($unitPft / $lp) * 100 : 0.0;
+                $inL30 = self::saleInPacificRange($r, $l30);
 
-                if ($qty > 0 && $price > 0) {
-                    $totalPft += $unitPft * $qty;
-                    $totalSales += $lineTotal;
-                    $totalCogs += $lp * $qty;
-                    $totalQty += $qty;
-                }
-                $orderNo = trim((string) ($r->order_number ?? ''));
-                if ($orderNo !== '') {
-                    $orderSet[$orderNo] = true;
+                if ($inL30) {
+                    $l30RowCount++;
+                    if ($qty > 0 && $price > 0) {
+                        $totalPft += $unitPft * $qty;
+                        $totalSales += $lineTotal;
+                        $totalCogs += $lp * $qty;
+                        $totalQty += $qty;
+                    }
+                    $orderNo = trim((string) ($r->order_number ?? ''));
+                    if ($orderNo !== '') {
+                        $orderSet[$orderNo] = true;
+                    }
+                    $sku = trim((string) ($r->sku ?? ''));
+                    if ($sku !== '') {
+                        $skuSet[$sku] = true;
+                    }
                 }
 
                 return [
@@ -171,6 +503,7 @@ class FacebookMarketplaceController extends Controller
                     'order_date'   => optional($r->order_date)->format('Y-m-d'),
                     'notes'        => $r->notes,
                     'created_at'   => optional($r->created_at)->format('Y-m-d H:i:s'),
+                    'in_l30'       => $inL30,
                 ];
             })
             ->values();
@@ -187,10 +520,14 @@ class FacebookMarketplaceController extends Controller
                 'total_sales' => round($totalSales, 2),
                 'total_quantity' => $totalQty,
                 'total_orders' => count($orderSet),
+                'total_skus' => count($skuSet),
+                'total_rows' => $l30RowCount,
                 'total_pft' => round($totalPft, 2),
                 'total_cogs' => round($totalCogs, 2),
                 'gpft_percent' => round($gpftPct, 1),
                 'roi_percent' => round($roiPct, 1),
+                'l30_start' => $l30['start'],
+                'l30_end' => $l30['end'],
             ],
         ];
     }

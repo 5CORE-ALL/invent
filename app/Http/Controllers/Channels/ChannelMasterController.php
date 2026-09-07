@@ -83,7 +83,6 @@ use App\Models\EbayOrderItem;
 use App\Models\EbayPriorityReport;
 use App\Models\FaireListingStatus;
 use App\Models\FacebookMarketplaceSale;
-use App\Models\FbMarketplaceSheetdata;
 use App\Models\FBMarketplaceListingStatus;
 use App\Models\FbShopSheetdata;
 use App\Models\FBShopListingStatus;
@@ -2155,6 +2154,8 @@ class ChannelMasterController extends Controller
         $rows = $this->restoreSavedTableMetricsOnChannelRows($rows);
         $rows = $this->overlayLiveEbayYSalesOnChannelRows($rows);
         $rows = $this->overlayLiveMiraklTodaySalesOnChannelRows($rows);
+        // FB Marketplace L30/L60/Y/L7 from /facebook-marketplace uploads (not stale sheet cache)
+        $rows = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($rows);
 
         return $this->overlayLiveTodaySalesOnChannelRows($rows);
     }
@@ -3246,7 +3247,16 @@ class ChannelMasterController extends Controller
     private function overlayLiveFbMarketplaceMetricsOnChannelRows(array $rows): array
     {
         try {
-            $live = FacebookMarketplaceController::computeLiveMetrics()['summary'] ?? null;
+            $l30Range = FacebookMarketplaceController::l30PacificRange();
+            $l60Range = FacebookMarketplaceController::l60PacificRange();
+            $live = FacebookMarketplaceController::computeSalesMetricsForPacificRange(
+                $l30Range['start'],
+                $l30Range['end']
+            );
+            $l60Live = FacebookMarketplaceController::computeSalesMetricsForPacificRange(
+                $l60Range['start'],
+                $l60Range['end']
+            );
         } catch (\Throwable $e) {
             Log::warning('FB Marketplace live metrics overlay failed: ' . $e->getMessage());
             return $rows;
@@ -3263,6 +3273,10 @@ class ChannelMasterController extends Controller
         $roiPct = (float) ($live['roi_percent'] ?? 0);
         $qty = (int) ($live['total_quantity'] ?? 0);
         $orders = (int) ($live['total_orders'] ?? 0);
+        $l60Sales = (float) ($l60Live['total_sales'] ?? 0);
+        $l60Orders = (int) ($l60Live['total_orders'] ?? 0);
+        $l60Pft = (float) ($l60Live['total_pft'] ?? 0);
+        $l60Cogs = (float) ($l60Live['total_cogs'] ?? 0);
 
         // FB Marketplace spend is disconnected from Facebook ads — no FB ads spend overlay.
         $adSpend = 0.0;
@@ -3277,17 +3291,23 @@ class ChannelMasterController extends Controller
         // Still overlay even when sales are 0 so the master doesn't keep stale sheet figures.
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if (strcasecmp($name, 'FB Marketplace') !== 0) {
+            if ($this->allMarketplaceSnapshotKey($name) !== 'fbmarketplace') {
                 continue;
             }
 
             $row['L30 Sales'] = (int) round($l30Sales);
             $row['L30 Orders'] = $orders;
             $row['Qty'] = $qty;
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L60 Orders'] = $l60Orders;
             $row['Total PFT'] = round($totalPft, 2);
             $row['cogs'] = round($totalCogs, 2);
             $row['Gprofit%'] = round($gpftPct, 1) . '%';
             $row['G Roi'] = round($roiPct, 1);
+            $row['gprofitL60'] = $l60Sales > 0
+                ? (round(($l60Pft / $l60Sales) * 100, 1) . '%')
+                : '0%';
+            $row['G RoiL60'] = $l60Cogs > 0 ? round(($l60Pft / $l60Cogs) * 100, 1) : 0;
             $row['Total Ad Spend'] = round($adSpend, 2);
             $row['Ads%'] = round($adsPct, 1) . '%';
             $row['TACOS %'] = round($adsPct, 1) . '%';
@@ -3300,7 +3320,6 @@ class ChannelMasterController extends Controller
                 $row['L7 Sales'] = $l7Sales;
             }
 
-            $l60Sales = (float) str_replace(['$', ',', '%'], '', (string) ($row['L-60 Sales'] ?? 0));
             if ($l60Sales > 0) {
                 $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2) . '%';
             }
@@ -14488,8 +14507,17 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // L30 Sales / GPFT / ROI — same source as /facebook-marketplace
-        $live = FacebookMarketplaceController::computeLiveMetrics()['summary'] ?? [];
+        // L30 / L60 Sales / GPFT / ROI — same uploaded FB Sales as /facebook-marketplace
+        $l30Range = FacebookMarketplaceController::l30PacificRange();
+        $l60Range = FacebookMarketplaceController::l60PacificRange();
+        $live = FacebookMarketplaceController::computeSalesMetricsForPacificRange(
+            $l30Range['start'],
+            $l30Range['end']
+        );
+        $l60Live = FacebookMarketplaceController::computeSalesMetricsForPacificRange(
+            $l60Range['start'],
+            $l60Range['end']
+        );
         $l30Sales = (float) ($live['total_sales'] ?? 0);
         $l30Orders = (int) ($live['total_orders'] ?? 0);
         $totalQuantity = (int) ($live['total_quantity'] ?? 0);
@@ -14498,43 +14526,12 @@ class ChannelMasterController extends Controller
         $gProfitPct = (float) ($live['gpft_percent'] ?? 0);
         $gRoi = (float) ($live['roi_percent'] ?? 0);
 
-        // L60 still from sheet (no L60 order upload on /facebook-marketplace yet)
-        $query = FbMarketplaceSheetdata::where('sku', 'not like', '%Parent%');
-        $l60Orders = (int) $query->sum('l60');
-        $l60Sales = (float) ((clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0);
+        $l60Orders = (int) ($l60Live['total_orders'] ?? 0);
+        $l60Sales = (float) ($l60Live['total_sales'] ?? 0);
+        $totalProfitL60 = (float) ($l60Live['total_pft'] ?? 0);
+        $totalCogsL60 = (float) ($l60Live['total_cogs'] ?? 0);
 
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-
-        // L60 profit using same marketplace_percentages margin (no ship) as live L30
-        $factor = (float) ($live['factor'] ?? 0.95);
-        $productMasters = ProductMaster::query()->get(['sku', 'Values'])->keyBy(function ($item) {
-            return strtoupper(trim((string) $item->sku));
-        });
-        $totalProfitL60 = 0.0;
-        $totalCogsL60 = 0.0;
-        foreach ($query->get(['sku', 'price', 'l60']) as $row) {
-            $sku = strtoupper(trim((string) $row->sku));
-            $price = (float) $row->price;
-            $unitsL60 = (int) $row->l60;
-            if ($unitsL60 <= 0 || $price <= 0) {
-                continue;
-            }
-            $lp = 0.0;
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-                $values = is_array($pm->Values) ? $pm->Values
-                    : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
-                foreach ($values as $k => $v) {
-                    if (strtolower((string) $k) === 'lp') {
-                        $lp = (float) $v;
-                        break;
-                    }
-                }
-            }
-            $unitPft = ($price * $factor) - $lp;
-            $totalProfitL60 += $unitPft * $unitsL60;
-            $totalCogsL60 += $lp * $unitsL60;
-        }
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
@@ -16817,6 +16814,32 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => []]);
             }
 
+            if (! $isAll && $metric === 'l30_sales' && $channel === 'fbmarketplace') {
+                $chartData = $this->buildFbMarketplaceLiveRollingSalesChart($days, 30);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
+            if (! $isAll && $metric === 'l60_sales' && $channel === 'fbmarketplace') {
+                $chartData = $this->buildFbMarketplaceLiveL60SalesChart($days);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
             if (! $isAll && $metric === 'l30_sales' && $channel === 'temu2') {
                 $chartData = $this->buildTemu2LiveRollingSalesChart($days, 30);
                 $chartData = $this->pinChartSeriesLastToTable(
@@ -18546,6 +18569,13 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
+            if ($channel === 'fbmarketplace' || $channel === 'facebookmarketplace') {
+                $day = FacebookMarketplaceController::dailySalesByPacificDate($ymd, $ymd);
+                self::$pacificDayYSalesCache[$key] = (float) ($day[$ymd]['sales'] ?? 0);
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
             self::$pacificDayYSalesCache[$key] = app(YesterdayMarketplaceMetricsService::class)
                 ->salesForPacificDate($channel, $ymd);
         } catch (\Throwable $e) {
@@ -18567,7 +18597,7 @@ class ChannelMasterController extends Controller
     private function overlayLiveYSalesOnChart(string $channel, array $chartData): array
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
-        if (! in_array($channel, ['amazon', 'temu2', 'depop'], true) || $chartData === []) {
+        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace'], true) || $chartData === []) {
             return $chartData;
         }
 
@@ -20050,6 +20080,64 @@ class ChannelMasterController extends Controller
      *
      * @return list<array{date: string, value: float}>
      */
+    /**
+     * FB Marketplace Sales chart: rolling 30 Pacific days from uploaded FB Sales
+     * (facebook_marketplace_sales), not sheet snapshots.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildFbMarketplaceLiveRollingSalesChart(int $days, int $windowDays): array
+    {
+        $end = now('America/Los_Angeles')->subDay();
+        $span = $days > 0 ? $days : 32;
+        $chartStart = $end->copy()->subDays($span - 1);
+        $dataStart = $chartStart->copy()->subDays(max(1, $windowDays) - 1);
+        $byDay = FacebookMarketplaceController::dailySalesByPacificDate(
+            $dataStart->toDateString(),
+            $end->toDateString()
+        );
+
+        return TemuShopifySalesService::rollingSalesSeries($byDay, $chartStart, $end, $windowDays);
+    }
+
+    /**
+     * FB Marketplace L60 chart: prior 30 Pacific days (D−59 … D−30) from uploads.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildFbMarketplaceLiveL60SalesChart(int $days): array
+    {
+        $end = now('America/Los_Angeles')->subDay();
+        $span = $days > 0 ? $days : 32;
+        $chartStart = $end->copy()->subDays($span - 1);
+        $dataStart = $chartStart->copy()->subDays(59);
+        $byDay = FacebookMarketplaceController::dailySalesByPacificDate(
+            $dataStart->toDateString(),
+            $end->copy()->subDays(30)->toDateString()
+        );
+
+        $out = [];
+        $cursor = $chartStart->copy();
+        while ($cursor->lte($end)) {
+            $sum = 0.0;
+            $winStart = $cursor->copy()->subDays(59);
+            $winEnd = $cursor->copy()->subDays(30);
+            $day = $winStart->copy();
+            while ($day->lte($winEnd)) {
+                $cell = $byDay[$day->toDateString()] ?? ['sales' => 0];
+                $sum += is_array($cell) ? (float) ($cell['sales'] ?? 0) : (float) $cell;
+                $day->addDay();
+            }
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round($sum, 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
     private function buildTemu2LiveRollingSalesChart(int $days, int $windowDays): array
     {
         $end = now('America/Los_Angeles')->subDay();

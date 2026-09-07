@@ -238,13 +238,13 @@
                     <div class="amz-ads-toolbar d-flex flex-wrap align-items-center gap-2 mb-2">
                         <div class="amz-stat-badges py-1">
                             <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching current filters">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
-                            <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS (L30) for the filtered set">ACOS:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
-                            <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Spend (L30) total">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
-                            <span id="amazonAdsClicksBadgeWrap" class="amz-stat-badge amz-stat-badge--clicks" title="Clicks (L30) total">CLICKS:<span id="amazonAdsClicksBadgeValue">0</span></span>
-                            <span id="amazonAdsSoldBadgeWrap" class="amz-stat-badge amz-stat-badge--sold" title="Sold (L30) total">SOLD:<span id="amazonAdsSoldBadgeValue">0</span></span>
+                            <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS from Amazon L30 (all campaigns matching Stat / search / U% filters — not only the calendar day's rows)">ACOS:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
+                            <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Amazon L30 spend for the selected table (SP+SB on All). Includes paused campaigns that spent in L30 even if they have no row on the calendar day.">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
+                            <span id="amazonAdsClicksBadgeWrap" class="amz-stat-badge amz-stat-badge--clicks" title="Clicks (L30) — same Amazon L30 universe as Spend">CLICKS:<span id="amazonAdsClicksBadgeValue">0</span></span>
+                            <span id="amazonAdsSoldBadgeWrap" class="amz-stat-badge amz-stat-badge--sold" title="Sold (L30) — same Amazon L30 universe as Spend">SOLD:<span id="amazonAdsSoldBadgeValue">0</span></span>
                             <span id="amazonAdsCvrBadgeWrap" class="amz-stat-badge amz-stat-badge--cvr" title="Ads CVR = Ads Sold / Ads Clicks (L30)">CVR:<span id="amazonAdsCvrBadgeValue">0%</span></span>
                             <span id="amazonAdsCpcBadgeWrap" class="amz-stat-badge amz-stat-badge--cpc" title="CPC = Spend / Clicks">CPC:<span id="amazonAdsCpcBadgeValue">$0</span></span>
-                            <span id="amazonAdsSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Sales (L30) total">SALES:<span id="amazonAdsSalesBadgeValue">$0</span></span>
+                            <span id="amazonAdsSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Sales (L30) — same Amazon L30 universe as Spend">SALES:<span id="amazonAdsSalesBadgeValue">$0</span></span>
                         </div>
 
                         <div class="amz-ads-toolbar-actions">
@@ -280,8 +280,8 @@
                             <div class="amz-raw-filter-field">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterReportType">Table</label>
                                 <select id="amazonAdsFilterReportType" class="form-select form-select-sm amz-raw-filter-select">
-                                    <option value="all_reports">All (SP + SB)</option>
-                                    <option value="sp_reports" selected>SP reports</option>
+                                    <option value="all_reports" selected>All (SP + SB)</option>
+                                    <option value="sp_reports">SP reports</option>
                                     <option value="sb_reports">SB reports</option>
                                     <option value="sd_reports">SD reports</option>
                                     <option value="sp_keywords">SP keywords</option>
@@ -879,7 +879,7 @@
 
             var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
             var table = null;
-            var activeRawSourceKey = 'sp_reports';
+            var activeRawSourceKey = 'all_reports';
             var amzDrawCounter = 0;
             var amzU7PieChart = null;
             var amzU7PieRefreshTimer = null;
@@ -1676,7 +1676,7 @@
 
             // ---- AJAX bridge: translate Tabulator remote params -> DataTables protocol ----
             function amzAjaxRequestFunc(url, config, params) {
-                var source = activeRawSourceKey || 'sp_reports';
+                var source = activeRawSourceKey || 'all_reports';
                 var cols = (rawSources[source] && rawSources[source].columns) ? rawSources[source].columns : [];
                 var size = parseInt(params.size, 10) || 100;
                 var page = parseInt(params.page, 10) || 1;
@@ -1710,8 +1710,8 @@
             }
 
             table = new Tabulator('#amz-ads-raw-table', {
-                columns: amzBuildColumns('sp_reports'),
-                ajaxURL: dataUrlTemplate + 'sp_reports',
+                columns: amzBuildColumns('all_reports'),
+                ajaxURL: dataUrlTemplate + 'all_reports',
                 ajaxRequestFunc: amzAjaxRequestFunc,
                 height: false,
                 layout: 'fitDataFill',
@@ -1811,7 +1811,7 @@
             }
 
             function amzSwitchSource(sourceKey) {
-                if (!sourceKey || !rawSources[sourceKey]) sourceKey = 'sp_reports';
+                if (!sourceKey || !rawSources[sourceKey]) sourceKey = 'all_reports';
                 activeRawSourceKey = sourceKey;
                 amzSetDatesToLatestForSource(sourceKey);
                 amzClearBadges();
@@ -3735,7 +3735,7 @@
                     if (rt) rt.value = deepSource;
                     amzSwitchSource(deepSource);
                 } else {
-                    amzSetDatesToLatestForSource('sp_reports');
+                    amzSetDatesToLatestForSource('all_reports');
                 }
                 amzFillAcosFilterOptions();
                 amzFillAdsCvrFilterOptions();
