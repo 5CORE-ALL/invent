@@ -173,9 +173,11 @@ class TikTok2InventorySyncService
             foreach ($known as $sku) {
                 $knownMap[strtoupper(trim($sku))] = true;
             }
-            $metrics = $metrics->filter(
-                static fn ($row) => isset($knownMap[strtoupper(trim((string) ($row->sku ?? ''))]))
-            )->values();
+            $metrics = $metrics->filter(function ($row) use ($knownMap) {
+                $skuKey = strtoupper(trim((string) ($row->sku ?? '')));
+
+                return $skuKey !== '' && isset($knownMap[$skuKey]);
+            })->values();
             $skus = $metrics->pluck('sku')->unique()->values()->all();
             Log::warning('TikTok2InventorySyncService: Shopify coverage low — pushing confirmed qtys only', $coverage + ['kept' => count($skus)]);
             if ($skus === []) {
