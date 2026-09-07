@@ -16814,6 +16814,32 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => []]);
             }
 
+            if (! $isAll && $metric === 'l30_sales' && $channel === 'fbmarketplace') {
+                $chartData = $this->buildFbMarketplaceLiveRollingSalesChart($days, 30);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
+            if (! $isAll && $metric === 'l60_sales' && $channel === 'fbmarketplace') {
+                $chartData = $this->buildFbMarketplaceLiveL60SalesChart($days);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
             if (! $isAll && $metric === 'l30_sales' && $channel === 'temu2') {
                 $chartData = $this->buildTemu2LiveRollingSalesChart($days, 30);
                 $chartData = $this->pinChartSeriesLastToTable(
@@ -18543,6 +18569,13 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
+            if ($channel === 'fbmarketplace' || $channel === 'facebookmarketplace') {
+                $day = FacebookMarketplaceController::dailySalesByPacificDate($ymd, $ymd);
+                self::$pacificDayYSalesCache[$key] = (float) ($day[$ymd]['sales'] ?? 0);
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
             self::$pacificDayYSalesCache[$key] = app(YesterdayMarketplaceMetricsService::class)
                 ->salesForPacificDate($channel, $ymd);
         } catch (\Throwable $e) {
@@ -18564,7 +18597,7 @@ class ChannelMasterController extends Controller
     private function overlayLiveYSalesOnChart(string $channel, array $chartData): array
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
-        if (! in_array($channel, ['amazon', 'temu2', 'depop'], true) || $chartData === []) {
+        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace'], true) || $chartData === []) {
             return $chartData;
         }
 
@@ -20047,6 +20080,64 @@ class ChannelMasterController extends Controller
      *
      * @return list<array{date: string, value: float}>
      */
+    /**
+     * FB Marketplace Sales chart: rolling 30 Pacific days from uploaded FB Sales
+     * (facebook_marketplace_sales), not sheet snapshots.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildFbMarketplaceLiveRollingSalesChart(int $days, int $windowDays): array
+    {
+        $end = now('America/Los_Angeles')->subDay();
+        $span = $days > 0 ? $days : 32;
+        $chartStart = $end->copy()->subDays($span - 1);
+        $dataStart = $chartStart->copy()->subDays(max(1, $windowDays) - 1);
+        $byDay = FacebookMarketplaceController::dailySalesByPacificDate(
+            $dataStart->toDateString(),
+            $end->toDateString()
+        );
+
+        return TemuShopifySalesService::rollingSalesSeries($byDay, $chartStart, $end, $windowDays);
+    }
+
+    /**
+     * FB Marketplace L60 chart: prior 30 Pacific days (D−59 … D−30) from uploads.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildFbMarketplaceLiveL60SalesChart(int $days): array
+    {
+        $end = now('America/Los_Angeles')->subDay();
+        $span = $days > 0 ? $days : 32;
+        $chartStart = $end->copy()->subDays($span - 1);
+        $dataStart = $chartStart->copy()->subDays(59);
+        $byDay = FacebookMarketplaceController::dailySalesByPacificDate(
+            $dataStart->toDateString(),
+            $end->copy()->subDays(30)->toDateString()
+        );
+
+        $out = [];
+        $cursor = $chartStart->copy();
+        while ($cursor->lte($end)) {
+            $sum = 0.0;
+            $winStart = $cursor->copy()->subDays(59);
+            $winEnd = $cursor->copy()->subDays(30);
+            $day = $winStart->copy();
+            while ($day->lte($winEnd)) {
+                $cell = $byDay[$day->toDateString()] ?? ['sales' => 0];
+                $sum += is_array($cell) ? (float) ($cell['sales'] ?? 0) : (float) $cell;
+                $day->addDay();
+            }
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round($sum, 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
     private function buildTemu2LiveRollingSalesChart(int $days, int $windowDays): array
     {
         $end = now('America/Los_Angeles')->subDay();

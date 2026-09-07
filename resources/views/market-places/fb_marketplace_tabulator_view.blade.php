@@ -658,6 +658,32 @@
                         }
                     },
                     {
+                        title: "GROI",
+                        field: "ROI",
+                        hozAlign: "center",
+                        width: 70,
+                        sorter: "number",
+                        headerTooltip: "GROI% from listing Price: (Price × factor − LP) / LP (no ship)",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            const color = value < 0 ? '#dc3545' : (value < 40 ? '#ffc107' : '#28a745');
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
+                        }
+                    },
+                    {
+                        title: "GPFT",
+                        field: "PFT",
+                        hozAlign: "center",
+                        width: 70,
+                        sorter: "number",
+                        headerTooltip: "GPFT% from listing Price: (Price × factor − LP) / Price (no ship)",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            const color = value < 0 ? '#dc3545' : (value < 10 ? '#ffc107' : '#28a745');
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
+                        }
+                    },
+                    {
                         title: "S PRC",
                         field: "SPRICE",
                         hozAlign: "center",
@@ -688,6 +714,42 @@
                         }
                     },
                     {
+                        title: "S GROI",
+                        field: "SROI",
+                        hozAlign: "center",
+                        width: 70,
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = fbMpSpriceMetrics(aRow.getData()).sroi;
+                            const bv = fbMpSpriceMetrics(bRow.getData()).sroi;
+                            return (av == null ? -9999 : av) - (bv == null ? -9999 : bv);
+                        },
+                        headerTooltip: "S GROI from S PRC: (S PRC × factor − LP) / LP (no ship)",
+                        formatter: function(cell) {
+                            const m = fbMpSpriceMetrics(cell.getRow().getData());
+                            if (m.sroi == null) return '—';
+                            const color = m.sroi < 0 ? '#dc3545' : (m.sroi < 40 ? '#ffc107' : '#28a745');
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(m.sroi)}%</span>`;
+                        }
+                    },
+                    {
+                        title: "S GPFT",
+                        field: "SPFT",
+                        hozAlign: "center",
+                        width: 70,
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = fbMpSpriceMetrics(aRow.getData()).spft;
+                            const bv = fbMpSpriceMetrics(bRow.getData()).spft;
+                            return (av == null ? -9999 : av) - (bv == null ? -9999 : bv);
+                        },
+                        headerTooltip: "S GPFT from S PRC: (S PRC × factor − LP) / S PRC (no ship)",
+                        formatter: function(cell) {
+                            const m = fbMpSpriceMetrics(cell.getRow().getData());
+                            if (m.spft == null) return '—';
+                            const color = m.spft < 0 ? '#dc3545' : (m.spft < 10 ? '#ffc107' : '#28a745');
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(m.spft)}%</span>`;
+                        }
+                    },
+                    {
                         title: "Missing L",
                         field: "missing_l",
                         hozAlign: "center",
@@ -702,32 +764,6 @@
                                 return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                             }
                             return '';
-                        }
-                    },
-                    {
-                        title: "GPFT",
-                        field: "PFT",
-                        hozAlign: "center",
-                        width: 70,
-                        sorter: "number",
-                        headerTooltip: "GPFT% from listing Price: (Price × factor − LP) / Price (no ship)",
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            const color = value < 0 ? '#dc3545' : (value < 10 ? '#ffc107' : '#28a745');
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "GROI",
-                        field: "ROI",
-                        hozAlign: "center",
-                        width: 70,
-                        sorter: "number",
-                        headerTooltip: "GROI% from listing Price: (Price × factor − LP) / LP (no ship)",
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            const color = value < 0 ? '#dc3545' : (value < 40 ? '#ffc107' : '#28a745');
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
                         }
                     },
                     {
@@ -752,42 +788,6 @@
                             const newVal = isNo ? 1 : 0;
                             row.update({ approved: newVal });
                             saveMercariStatus(d.sku, { approved: newVal });
-                        }
-                    },
-                    {
-                        title: "S GPFT",
-                        field: "SPFT",
-                        hozAlign: "center",
-                        width: 70,
-                        sorter: function(a, b, aRow, bRow) {
-                            const av = fbMpSpriceMetrics(aRow.getData()).spft;
-                            const bv = fbMpSpriceMetrics(bRow.getData()).spft;
-                            return (av == null ? -9999 : av) - (bv == null ? -9999 : bv);
-                        },
-                        headerTooltip: "S GPFT from S PRC: (S PRC × factor − LP) / S PRC (no ship)",
-                        formatter: function(cell) {
-                            const m = fbMpSpriceMetrics(cell.getRow().getData());
-                            if (m.spft == null) return '—';
-                            const color = m.spft < 0 ? '#dc3545' : (m.spft < 10 ? '#ffc107' : '#28a745');
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(m.spft)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "S GROI",
-                        field: "SROI",
-                        hozAlign: "center",
-                        width: 70,
-                        sorter: function(a, b, aRow, bRow) {
-                            const av = fbMpSpriceMetrics(aRow.getData()).sroi;
-                            const bv = fbMpSpriceMetrics(bRow.getData()).sroi;
-                            return (av == null ? -9999 : av) - (bv == null ? -9999 : bv);
-                        },
-                        headerTooltip: "S GROI from S PRC: (S PRC × factor − LP) / LP (no ship)",
-                        formatter: function(cell) {
-                            const m = fbMpSpriceMetrics(cell.getRow().getData());
-                            if (m.sroi == null) return '—';
-                            const color = m.sroi < 0 ? '#dc3545' : (m.sroi < 40 ? '#ffc107' : '#28a745');
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(m.sroi)}%</span>`;
                         }
                     },
                     {

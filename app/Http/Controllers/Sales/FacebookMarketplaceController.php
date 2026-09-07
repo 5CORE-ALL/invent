@@ -219,6 +219,60 @@ class FacebookMarketplaceController extends Controller
     }
 
     /**
+     * Per Pacific calendar day sales from uploaded FB Sales (order_date, else created_at in PT).
+     *
+     * @return array<string, array{sales: float, qty: int, orders: int}>
+     */
+    public static function dailySalesByPacificDate(string $startDate, string $endDate): array
+    {
+        $tz = 'America/Los_Angeles';
+        $out = [];
+
+        FacebookMarketplaceSale::query()
+            ->get(['sold_price', 'qty_sold', 'order_number', 'order_date', 'created_at'])
+            ->each(function ($r) use ($startDate, $endDate, $tz, &$out) {
+                if (! empty($r->order_date)) {
+                    $d = $r->order_date instanceof \DateTimeInterface
+                        ? $r->order_date->format('Y-m-d')
+                        : Carbon::parse($r->order_date)->toDateString();
+                } elseif (! empty($r->created_at)) {
+                    $d = Carbon::parse($r->created_at)->timezone($tz)->toDateString();
+                } else {
+                    return;
+                }
+                if ($d < $startDate || $d > $endDate) {
+                    return;
+                }
+                $qty = (int) $r->qty_sold;
+                $price = (float) $r->sold_price;
+                if ($qty <= 0 || $price <= 0) {
+                    return;
+                }
+                if (! isset($out[$d])) {
+                    $out[$d] = ['sales' => 0.0, 'qty' => 0, 'oids' => []];
+                }
+                $out[$d]['sales'] += $price * $qty;
+                $out[$d]['qty'] += $qty;
+                $oid = trim((string) ($r->order_number ?? ''));
+                if ($oid !== '') {
+                    $out[$d]['oids'][$oid] = true;
+                }
+            });
+
+        $flat = [];
+        foreach ($out as $d => $row) {
+            $flat[$d] = [
+                'sales' => round((float) $row['sales'], 2),
+                'qty' => (int) $row['qty'],
+                'orders' => count($row['oids']),
+            ];
+        }
+        ksort($flat);
+
+        return $flat;
+    }
+
+    /**
      * Per-SKU qty / sales / avg sold_price in the same L30 window as /facebook-marketplace badges.
      *
      * @return array<string, array{qty: int, sales: float, price: float}>
