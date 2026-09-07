@@ -1436,17 +1436,15 @@
             function dobaApplyPulledLivePrice(sku, live, pickup) {
                 const p = Math.round((Number(live) || 0) * 100) / 100;
                 if (!(p > 0)) return;
-                const shipOf = function(d) { return parseFloat(d && d.Ship_productmaster) || 0; };
                 const row = dobaFindRowBySku(sku);
                 const pick = (Number(pickup) > 0)
                     ? Math.round(Number(pickup) * 100) / 100
                     : null;
                 if (row) {
                     const d = row.getData() || {};
-                    row.update({
-                        'doba Price': p,
-                        self_pick_price: pick != null ? pick : Math.max(0, +(p - shipOf(d)).toFixed(2)),
-                    });
+                    const patch = { 'doba Price': p };
+                    if (pick != null) patch.self_pick_price = pick;
+                    row.update(patch);
                     try { row.reformat(); } catch (e) { /* ignore */ }
                 }
                 const want = String(sku || '').trim().toUpperCase();
@@ -1455,7 +1453,7 @@
                         if (!d) return;
                         if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) {
                             d['doba Price'] = p;
-                            d.self_pick_price = pick != null ? pick : Math.max(0, +(p - shipOf(d)).toFixed(2));
+                            if (pick != null) d.self_pick_price = pick;
                         }
                     });
                 } catch (e) { /* ignore */ }
@@ -1880,8 +1878,10 @@
                             const spft = sprice > 0 ? ((sprice * 0.95) - ship - lp) / sprice * 100 : 0;
                             const sprofit = sprice > 0 ? (sprice * 0.95) - ship - lp : 0;
                             const sroi = lp > 0 && sprice > 0 ? (((sprice * 0.95) - ship - lp) / lp) * 100 : 0;
-                            // Always: Pick Price = PRICE − Ship; S Pick Price = SPRICE − Ship
-                            const pickPrice = price > 0 ? Math.max(0, parseFloat((price - ship).toFixed(2))) : 0;
+                            // Pick Price = live Doba Pick Up (selfPickAnticipatedIncome).
+                            // S Pick Price stays SPRICE − Ship (what we would push).
+                            const livePick = Number(item.self_pick_price) || 0;
+                            const pickPrice = livePick > 0 ? parseFloat(livePick.toFixed(2)) : 0;
                             const sPickPrice = sprice > 0 ? Math.max(0, parseFloat((sprice - ship).toFixed(2))) : 0;
 
                             return {
@@ -1941,7 +1941,7 @@
                                 sroi: item.SROI || sroi,
                                 s_self_pick: sPickPrice, // always SPRICE − Ship
                                 s_l30: Number(item.s_l30) || 0,  // S L30 from doba_daily_data
-                                self_pick_price: pickPrice, // always PRICE − Ship
+                                self_pick_price: pickPrice, // live Doba Pick Up
                                 msrp: Number(item.msrp) || 0,
                                 map: Number(item.map) || 0,
                                 push_status: item.PUSH_STATUS || null, // Saved push status from DB
@@ -2235,12 +2235,9 @@
                         width: 85,
                         sorter: "number",
                         visible: true,
+                        headerTooltip: "Live Doba Pick Up (selfPickAnticipatedIncome). Not PRICE − Ship.",
                         formatter: function(cell, formatterParams) {
-                            // Always PRICE − Ship
-                            const rd = cell.getRow().getData();
-                            const price = parseFloat(rd['doba Price']) || 0;
-                            const ship = parseFloat(rd.Ship_productmaster) || 0;
-                            const value = price > 0 ? Math.max(0, price - ship) : 0;
+                            const value = parseFloat(cell.getValue()) || 0;
                             return value > 0 ? `$${value.toFixed(2)}` : '';
                         }
                     },
