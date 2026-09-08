@@ -9,6 +9,7 @@ use App\Models\FaireOrderMetric;
 use App\Models\NeweggOrderMetric;
 use App\Models\PurchasingPowerSale;
 use App\Models\ReverbOrderMetric;
+use App\Models\SheinOrderMetric;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -25,6 +26,7 @@ class ChannelTrackingApiFallbackService
         'aliexpress',
         'alibaba',
         'faire',
+        'shein',
     ];
 
     /** Channels that re-sync a batch from their API (tracking lives on local columns). */
@@ -32,6 +34,42 @@ class ChannelTrackingApiFallbackService
         'purchasingpower',
         'doba',
     ];
+
+    /**
+     * @return array{tracking: string, carrier: string}|null
+     */
+    public function pullTrackingForOrder(string $slug, string $orderId): ?array
+    {
+        $slug = strtolower(trim($slug));
+        $orderId = trim($orderId);
+        if ($slug === '' || $orderId === '') {
+            return null;
+        }
+
+        $result = $this->pullForMissingRows([
+            [
+                'mm_slug' => $slug,
+                'order_id' => $orderId,
+                'order_id_api' => $orderId,
+                'order_number' => $orderId,
+                'tracking_number' => '',
+            ],
+        ], 1, $slug);
+
+        $row = $result['rows'][0] ?? null;
+        if (! is_array($row)) {
+            return null;
+        }
+        $tn = strtoupper(preg_replace('/\s+/', '', (string) ($row['tracking_number'] ?? '')) ?? '');
+        if (strlen($tn) < 8) {
+            return null;
+        }
+
+        return [
+            'tracking' => $tn,
+            'carrier' => trim((string) ($row['tracking_company'] ?? '')) ?: 'Other',
+        ];
+    }
 
     /**
      * @param  list<array<string, mixed>>  $candidateRows  SOF rows missing tracking_number
@@ -289,6 +327,7 @@ class ChannelTrackingApiFallbackService
             'aliexpress' => 'AliExpress',
             'alibaba' => 'Alibaba',
             'faire' => 'Faire',
+            'shein' => 'Shein',
             default => $slug,
         };
 
@@ -309,6 +348,7 @@ class ChannelTrackingApiFallbackService
             'aliexpress' => app(AliexpressOrderDetailService::class),
             'alibaba' => app(AlibabaOrderDetailService::class),
             'faire' => app(FaireOrderDetailService::class),
+            'shein' => app(SheinOrderDetailService::class),
             default => null,
         };
     }
@@ -336,6 +376,9 @@ class ChannelTrackingApiFallbackService
                 break;
             case 'faire':
                 $raw = FaireOrderMetric::query()->where('order_id', $orderId)->value('raw_payload');
+                break;
+            case 'shein':
+                $raw = SheinOrderMetric::query()->where('order_id', $orderId)->value('raw_payload');
                 break;
         }
 
