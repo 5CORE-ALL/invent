@@ -248,7 +248,7 @@ class ShopifyFulfillmentTrackingMatcher
 
         $quoted = preg_quote($orderId, '/');
 
-        return (bool) preg_match('/(?<![A-Za-z0-9])'.$quoted.'(?![A-Za-z0-9])/', $haystack);
+        return (bool) preg_match('/(?<![A-Za-z0-9])'.$quoted.'(?![A-Za-z0-9])/i', $haystack);
     }
 
     /**

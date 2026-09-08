@@ -4,11 +4,13 @@ namespace App\Console\Commands;
 
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 class FetchMarketplaceShopifyTrackingCommand extends Command
 {
     protected $signature = 'marketplace:fetch-shopify-tracking
-                            {--limit=250 : Max Shopify copies + linked marketplace orders to check}
+                            {--limit=500 : Max Shopify copies + linked marketplace orders to check}
+                            {--fresh : Recheck Shopify copies even if recently cached}
                             {--amazon= : Fulfill one Shopify copy by Amazon order id}
                             {--name= : Shopify order number, e.g. 331615}';
 
@@ -30,8 +32,17 @@ class FetchMarketplaceShopifyTrackingCommand extends Command
         }
 
         $limit = max(1, (int) $this->option('limit'));
+        $fresh = (bool) $this->option('fresh');
         $this->info('Checking every marketplace: Veeqo and GOFO (4Seller) labels → Shopify fulfill.');
-        $result = $sync->syncPendingUnfulfilled($limit);
+        if ($fresh) {
+            $this->info('Fresh pass: cached Shopify copies will be rechecked.');
+        }
+        if (PHP_OS_FAMILY === 'Windows') {
+            Cache::put('mm.label_ssl_broken', 1, now()->addHours(2));
+            Cache::put('mm.temu.ip_blocked', 1, now()->addHours(6));
+            $this->warn('This Windows machine cannot reach Veeqo/GOFO (SSL) or Temu (IP whitelist). Tracking is taken from the local marketplace row after the full marketplace order id matches.');
+        }
+        $result = $sync->syncPendingUnfulfilled($limit, $fresh);
         $this->info($result['message'] ?? 'Done.');
 
         return self::SUCCESS;

@@ -169,6 +169,7 @@ class VeeqoShopifyFulfillmentService
         $marketplaceOrderIds = app(ShopifyFulfillmentTrackingMatcher::class)->uniqueIds(
             $marketplaceOrderIds !== [] ? $marketplaceOrderIds : $refs
         );
+        $marketplaceOrderIds = $this->expandMarketplaceOrderIdVariants($marketplaceOrderIds);
         // Keep confirmed channel ids (Newegg/eBay/etc. are often 8–10 digits).
         // Only drop Shopify Admin 13-digit ids — never the marketplace order number.
         $marketplaceOrderIds = array_values(array_filter(
@@ -183,14 +184,6 @@ class VeeqoShopifyFulfillmentService
                 'skipped' => true,
                 'action' => 'order_id_required',
                 'message' => 'Marketplace order id missing — tracking not attached.',
-            ];
-        }
-        if ($strict && ($sku === '' || in_array($sku, ['__ORDER__', '__UNKNOWN__'], true))) {
-            return [
-                'success' => false,
-                'skipped' => true,
-                'action' => 'sku_required',
-                'message' => 'Marketplace SKU missing — tracking not attached.',
             ];
         }
 
@@ -219,6 +212,23 @@ class VeeqoShopifyFulfillmentService
                     'action' => 'order_id_mismatch',
                     'message' => 'Shopify order does not contain the full marketplace order id.',
                 ];
+            }
+            if ($sku === '' || in_array($sku, ['__ORDER__', '__UNKNOWN__'], true)) {
+                $lineCount = 0;
+                foreach ($orderCheck['line_items'] ?? [] as $line) {
+                    if (is_array($line)) {
+                        $lineCount++;
+                    }
+                }
+                if ($lineCount !== 1) {
+                    return [
+                        'success' => false,
+                        'skipped' => true,
+                        'action' => 'sku_required',
+                        'message' => 'Marketplace SKU missing — tracking not attached.',
+                    ];
+                }
+                $sku = '';
             }
             // Confirmed marketplace order ids only — do not drop numeric Newegg
             // ids as "Shopify-like", and never look up Veeqo by Shopify #.
@@ -394,6 +404,10 @@ class VeeqoShopifyFulfillmentService
             ];
         }
 
+        if (Cache::get('mm.label_ssl_broken')) {
+            return null;
+        }
+
         $clean = [];
         foreach ($refs as $ref) {
             $ref = trim((string) $ref);
@@ -521,17 +535,28 @@ class VeeqoShopifyFulfillmentService
      *
      * @return array{checked: int, fulfilled: int, skipped: int, failed: int, message: string}
      */
-    public function syncPendingUnfulfilled(int $limit = 80): array
+    public function syncPendingUnfulfilled(int $limit = 80, bool $fresh = false): array
     {
-        $limit = max(1, min(400, $limit));
+        $limit = max(1, min(2000, $limit));
         $marketplaces = MarketplaceManagerRegistry::slugs();
-        $shopifyScanLimit = max(20, (int) ceil($limit * 0.55));
+        $shopifyScanLimit = $fresh
+            ? $limit
+            : max(20, (int) ceil($limit * 0.9));
         $checked = 0;
         $fulfilled = 0;
         $skipped = 0;
         $failed = 0;
 
-        $shopifyScan = $this->syncUnfulfilledShopifyCopies($shopifyScanLimit);
+        if ($fresh) {
+            $localSweep = $this->syncLocalTrackedLinkedOrders(min(300, $limit));
+            $checked += (int) ($localSweep['checked'] ?? 0);
+            $fulfilled += (int) ($localSweep['fulfilled'] ?? 0);
+            $skipped += (int) ($localSweep['skipped'] ?? 0);
+            $failed += (int) ($localSweep['failed'] ?? 0);
+            $shopifyScanLimit = max(20, $limit - $checked);
+        }
+
+        $shopifyScan = $this->syncUnfulfilledShopifyCopies($shopifyScanLimit, $fresh);
         $checked += (int) ($shopifyScan['checked'] ?? 0);
         $fulfilled += (int) ($shopifyScan['fulfilled'] ?? 0);
         $skipped += (int) ($shopifyScan['skipped'] ?? 0);
@@ -587,7 +612,11 @@ class VeeqoShopifyFulfillmentService
             'fulfilled' => $fulfilled,
             'skipped' => $skipped,
             'failed' => $failed,
-            'message' => "Fetch tracking: checked {$checked}, fulfilled {$fulfilled}, skipped {$skipped}, failed {$failed}.",
+            'message' => 'Fetch tracking: checked '.$checked.', fulfilled '.$fulfilled.', skipped '.$skipped.', failed '.$failed
+                .' (Shopify copies: checked '.((int) ($shopifyScan['checked'] ?? 0))
+                .', fulfilled '.((int) ($shopifyScan['fulfilled'] ?? 0))
+                .', skipped '.((int) ($shopifyScan['skipped'] ?? 0))
+                .', failed '.((int) ($shopifyScan['failed'] ?? 0)).').',
         ];
     }
 
@@ -636,14 +665,68 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
+     * Write marketplace tracking we already stored locally onto the linked Shopify copy.
+     *
+     * @return array{checked: int, fulfilled: int, skipped: int, failed: int}
+     */
+    public function syncLocalTrackedLinkedOrders(int $limit = 200): array
+    {
+        $limit = max(1, min(400, $limit));
+        $checked = 0;
+        $fulfilled = 0;
+        $skipped = 0;
+        $failed = 0;
+        $seenShopify = [];
+
+        foreach (['temu', 'temu2'] as $slug) {
+            $class = $slug === 'temu2' ? Temu2Order::class : TemuOrder::class;
+            $table = (new $class)->getTable();
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'tracking_number') || ! Schema::hasColumn($table, 'shopify_order_id')) {
+                continue;
+            }
+            $rows = $class::query()
+                ->whereNotNull('tracking_number')
+                ->where('tracking_number', '!=', '')
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->where('shopify_order_id', 'not like', 'manual%')
+                ->orderByDesc('id')
+                ->limit($limit)
+                ->get(['id', 'shopify_order_id']);
+            foreach ($rows as $row) {
+                if ($checked >= $limit) {
+                    break 2;
+                }
+                $shopifyId = (string) ($row->shopify_order_id ?? '');
+                if ($shopifyId === '' || isset($seenShopify[$shopifyId])) {
+                    continue;
+                }
+                $seenShopify[$shopifyId] = true;
+                $checked++;
+                $result = $this->fulfillMarketplaceOrder($slug, (int) $row->id);
+                if (! empty($result['success']) && ($result['action'] ?? '') === 'shopify_fulfilled') {
+                    $fulfilled++;
+                } elseif (! empty($result['skipped']) || (($result['action'] ?? '') === 'already_on_shopify')) {
+                    $skipped++;
+                } else {
+                    $failed++;
+                }
+                usleep(80000);
+            }
+        }
+
+        return compact('checked', 'fulfilled', 'skipped', 'failed');
+    }
+
+    /**
      * Unfulfilled Marketplace Manager Shopify copies (any channel), even when
      * the local marketplace table has no shopify_order_id yet.
      *
      * @return array{checked: int, fulfilled: int, skipped: int, failed: int}
      */
-    public function syncUnfulfilledShopifyCopies(int $limit = 40): array
+    public function syncUnfulfilledShopifyCopies(int $limit = 40, bool $fresh = false): array
     {
-        $limit = max(1, min(120, $limit));
+        $limit = max(1, min(2000, $limit));
         $checked = 0;
         $fulfilled = 0;
         $skipped = 0;
@@ -668,28 +751,23 @@ class VeeqoShopifyFulfillmentService
                 if ($shopifyId === '' || $this->shopifyOrderLooksFba($order)) {
                     continue;
                 }
-                $refs = $this->marketplaceRefsFromShopifyOrder($order);
+                $identity = $this->marketplaceIdentityFromShopifyOrder($order);
+                $refs = $identity['refs'];
                 if ($refs === []) {
                     continue;
                 }
-                $marketplace = $this->marketplaceSlugFromShopifyOrder($order);
+                $marketplace = $identity['slug'];
+                $marketplaceOrderIds = $identity['ids'];
                 $skus = $this->skusFromShopifyOrder($order);
-                if ($this->isStrictTrackingMarketplace($marketplace) && $skus === []) {
-                    continue;
-                }
-                $skuPasses = $this->isStrictTrackingMarketplace($marketplace) && $skus !== []
-                    ? $skus
-                    : [''];
+                $skuPasses = $skus !== [] ? $skus : [''];
                 $checked++;
                 $cacheKey = 'mm_fetch_tracking_shopify_v2:'.$shopifyId;
-                if (Cache::has($cacheKey)) {
+                if (! $fresh && Cache::has($cacheKey)) {
                     $skipped++;
                     continue;
                 }
-                $local = $this->localTrackingFromShopifyOrder($order);
-                $marketplaceOrderIds = $this->isStrictTrackingMarketplace($marketplace)
-                    ? $this->marketplaceOrderIdsFromShopifyOrder($order, $marketplace)
-                    : [];
+                $local = $this->localTrackingFromShopifyOrder($order)
+                    ?? $this->localTrackingForMarketplaceRefs($marketplace, $marketplaceOrderIds);
                 $anyFulfilled = false;
                 $allMatched = true;
                 $lastResult = ['success' => false, 'action' => 'tracking_not_found'];
@@ -736,6 +814,14 @@ class VeeqoShopifyFulfillmentService
                     Cache::put($cacheKey, 1, now()->addMinutes(2));
                 }
                 usleep(120000);
+                if ($checked > 0 && $checked % 25 === 0) {
+                    Log::info('VeeqoShopifyFulfillmentService: Shopify copy catch-up', compact(
+                        'checked',
+                        'fulfilled',
+                        'skipped',
+                        'failed'
+                    ));
+                }
             }
         }
 
@@ -793,42 +879,52 @@ class VeeqoShopifyFulfillmentService
     protected function listUnfulfilledShopifyOrders(string $storeUrl, string $token, int $limit): array
     {
         $out = [];
-        $path = 'orders.json';
-        $payload = [
-            'status' => 'open',
-            'fulfillment_status' => 'unfulfilled',
-            'limit' => 50,
-            'created_at_min' => now()->subDays(45)->toIso8601String(),
-            'fields' => 'id,name,tags,note,note_attributes,source_name,source_identifier,fulfillment_status,line_items',
-        ];
-        for ($page = 0; $page < 8 && count($out) < $limit; $page++) {
-            try {
-                $res = $this->shopifyApi($storeUrl, $token, 'GET', $path, $payload);
-            } catch (\Throwable $e) {
-                break;
-            }
-            if ($res === null || ! $res->successful()) {
-                break;
-            }
-            $chunk = $res->json('orders') ?? [];
-            if (! is_array($chunk) || $chunk === []) {
-                break;
-            }
-            foreach ($chunk as $order) {
-                if (! is_array($order)) {
-                    continue;
-                }
-                $out[] = $order;
-                if (count($out) >= $limit) {
+        $seen = [];
+        foreach (['unfulfilled', 'partial'] as $fulfillmentStatus) {
+            $path = 'orders.json';
+            $payload = [
+                'status' => 'open',
+                'fulfillment_status' => $fulfillmentStatus,
+                'limit' => 250,
+                'created_at_min' => now()->subDays(90)->toIso8601String(),
+                'fields' => 'id,name,tags,note,note_attributes,source_name,source_identifier,fulfillment_status,line_items',
+            ];
+            for ($page = 0; $page < 25 && count($out) < $limit; $page++) {
+                try {
+                    $res = $this->shopifyApi($storeUrl, $token, 'GET', $path, $payload);
+                } catch (\Throwable $e) {
                     break;
                 }
+                if ($res === null || ! $res->successful()) {
+                    break;
+                }
+                $chunk = $res->json('orders') ?? [];
+                if (! is_array($chunk) || $chunk === []) {
+                    break;
+                }
+                foreach ($chunk as $order) {
+                    if (! is_array($order)) {
+                        continue;
+                    }
+                    $id = (string) ($order['id'] ?? '');
+                    if ($id !== '' && isset($seen[$id])) {
+                        continue;
+                    }
+                    if ($id !== '') {
+                        $seen[$id] = true;
+                    }
+                    $out[] = $order;
+                    if (count($out) >= $limit) {
+                        break;
+                    }
+                }
+                $next = $this->shopifyNextPage($res);
+                if ($next === null) {
+                    break;
+                }
+                $path = $next['path'];
+                $payload = $next['query'];
             }
-            $next = $this->shopifyNextPage($res);
-            if ($next === null) {
-                break;
-            }
-            $path = $next['path'];
-            $payload = $next['query'];
         }
 
         return $out;
@@ -908,48 +1004,88 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
-     * Marketplace order ids from Shopify tags (amazon-…, ebay1-…, temu-…, etc).
+     * Full marketplace identity from Shopify tags / notes.
+     * Accepts slug-id, slug_id (Faire), Temu PO-…, Amazon 3-7-7, and Best Buy BBY03-….
      *
      * @param  array<string, mixed>  $order
-     * @return list<string>
+     * @return array{slug: string, ids: list<string>, refs: list<string>}
      */
-    protected function marketplaceRefsFromShopifyOrder(array $order): array
+    protected function marketplaceIdentityFromShopifyOrder(array $order): array
     {
         $tagsRaw = (string) ($order['tags'] ?? '');
         $note = (string) ($order['note'] ?? '');
-        $hay = strtolower($tagsRaw.' '.$note);
+        $rawHay = $tagsRaw.' '.$note;
+        $hay = strtolower($rawHay);
         $sourceId = trim((string) ($order['source_identifier'] ?? ''));
-        if (
-            trim($hay) === ''
-            && empty($order['note_attributes'])
-            && trim((string) ($order['name'] ?? '')) === ''
-            && $sourceId === ''
-        ) {
-            return [];
-        }
-
         $slugs = MarketplaceManagerRegistry::slugs();
         usort($slugs, static fn ($a, $b) => strlen((string) $b) <=> strlen((string) $a));
 
+        $slug = '';
+        $ids = [];
         $refs = [];
-        $matched = false;
-        foreach ($slugs as $slug) {
-            $slug = strtolower((string) $slug);
-            if ($slug === '' || ! preg_match('/(?:^|[\s,])'.preg_quote($slug, '/').'-([^\s,]+)/i', $hay, $m)) {
+
+        $pushId = function (string $id) use (&$ids, &$refs): void {
+            $id = trim($id);
+            if ($id === '' || strlen($id) < 4) {
+                return;
+            }
+            foreach ($this->expandMarketplaceOrderIdVariants([$id]) as $variant) {
+                if ($variant !== '' && ! in_array($variant, $ids, true)) {
+                    $ids[] = $variant;
+                }
+                if ($variant !== '' && ! in_array($variant, $refs, true)) {
+                    $refs[] = $variant;
+                }
+            }
+        };
+
+        foreach ($slugs as $candidate) {
+            $candidate = strtolower((string) $candidate);
+            if ($candidate === '') {
                 continue;
             }
-            $matched = true;
-            $id = trim((string) ($m[1] ?? ''));
-            if ($id !== '') {
-                $refs[] = $id;
-                $refs[] = $slug.'-'.$id;
+            if (! preg_match_all('/(?:^|[\s,])'.preg_quote($candidate, '/').'[-_]([^\s,]+)/i', $rawHay, $matches)) {
+                continue;
+            }
+            if ($slug === '') {
+                $slug = $candidate;
+            }
+            foreach ($matches[1] as $id) {
+                $id = trim((string) $id, " \t");
+                if ($id === '') {
+                    continue;
+                }
+                $pushId($id);
+                $prefixed = $candidate.'-'.$id;
+                if (! in_array($prefixed, $refs, true)) {
+                    $refs[] = $prefixed;
+                }
             }
         }
 
-        if (preg_match_all('/PO-\d[\w-]{6,}/i', $tagsRaw.' '.$note, $poMatches)) {
-            $matched = true;
+        if (preg_match_all('/\b(BBY\d{2}-[A-Z0-9-]+)/i', $rawHay, $bbyMatches)) {
+            if ($slug === '') {
+                $slug = 'bestbuy';
+            }
+            foreach ($bbyMatches[1] as $id) {
+                $pushId((string) $id);
+            }
+        }
+
+        if (preg_match_all('/PO-\d[\w-]{6,}/i', $rawHay, $poMatches)) {
             foreach ($poMatches[0] as $po) {
-                $refs[] = $po;
+                $pushId((string) $po);
+            }
+            if ($slug === '') {
+                $slug = str_contains($hay, 'temu2') ? 'temu2' : (str_contains($hay, 'temu') ? 'temu' : $slug);
+            }
+        }
+
+        $amazonId = $this->amazonOrderIdFromShopifyOrder($order);
+        if ($amazonId !== '') {
+            $pushId($amazonId);
+            if ($slug === '') {
+                $slug = 'amazon';
             }
         }
 
@@ -957,26 +1093,28 @@ class VeeqoShopifyFulfillmentService
             if (! is_array($attr)) {
                 continue;
             }
-            $name = strtolower((string) ($attr['name'] ?? ''));
+            $name = strtolower((string) ($attr['name'] ?? $attr['key'] ?? ''));
             $val = trim((string) ($attr['value'] ?? ''));
-            if ($val === '' || strlen($val) < 6) {
-                continue;
-            }
-            if (str_contains($name, 'track')) {
+            if ($val === '' || strlen($val) < 6 || str_contains($name, 'track')) {
                 continue;
             }
             if (str_contains($name, 'order') || str_contains($name, 'po_') || $name === 'po') {
-                $matched = true;
-                if (! $this->isCollisionProneOrderRef($val)) {
-                    $refs[] = $val;
+                if (! $this->isCollisionProneOrderRef($val) && ! $this->isShopifyInternalIdRef($val)) {
+                    $pushId($val);
                 }
             }
-        }
-
-        $amazonId = $this->amazonOrderIdFromShopifyOrder($order);
-        if ($amazonId !== '') {
-            $matched = true;
-            $refs[] = $amazonId;
+            if ($slug === '') {
+                if (str_contains($name, 'doba') || str_contains(strtolower($val), 'doba')) {
+                    $slug = 'doba';
+                }
+                foreach ($slugs as $candidate) {
+                    $candidate = strtolower((string) $candidate);
+                    if ($candidate !== '' && ($name === $candidate.'_order_id' || str_contains($name, $candidate))) {
+                        $slug = $candidate;
+                        break;
+                    }
+                }
+            }
         }
 
         if (
@@ -984,23 +1122,60 @@ class VeeqoShopifyFulfillmentService
             && ! $this->isCollisionProneOrderRef($sourceId)
             && ! $this->isShopifyInternalIdRef($sourceId)
         ) {
-            $matched = true;
-            $refs[] = $sourceId;
+            $pushId($sourceId);
         }
 
-        if (! $matched) {
-            return [];
-        }
-
-        $unique = [];
-        foreach ($refs as $ref) {
-            $ref = trim((string) $ref);
-            if ($ref !== '' && ! in_array($ref, $unique, true)) {
-                $unique[] = $ref;
+        if ($slug === '') {
+            $source = strtolower((string) ($order['source_name'] ?? ''));
+            if (str_contains($source, 'doba') || $source === '145019994113' || str_contains($hay, 'doba')) {
+                $slug = 'doba';
+            } elseif (
+                (str_contains($hay, 'mirakl') || str_contains($source, 'mirakl'))
+                && (str_contains($hay, 'best buy') || str_contains($hay, 'bestbuy'))
+            ) {
+                $slug = 'bestbuy';
+            } else {
+                foreach ($slugs as $candidate) {
+                    $candidate = strtolower((string) $candidate);
+                    if ($candidate === '') {
+                        continue;
+                    }
+                    if ($source === $candidate || str_contains($source, $candidate)) {
+                        $slug = $candidate;
+                        break;
+                    }
+                    if (preg_match('/(?:^|[\s,])'.preg_quote($candidate, '/').'(?:[\s,]|$)/i', $hay)) {
+                        $slug = $candidate;
+                        break;
+                    }
+                }
             }
         }
 
-        return $unique;
+        $uniqueRefs = [];
+        foreach (array_merge($refs, $ids) as $ref) {
+            $ref = trim((string) $ref);
+            if ($ref !== '' && ! in_array($ref, $uniqueRefs, true)) {
+                $uniqueRefs[] = $ref;
+            }
+        }
+
+        return [
+            'slug' => $slug,
+            'ids' => $ids,
+            'refs' => $uniqueRefs,
+        ];
+    }
+
+    /**
+     * Marketplace order ids from Shopify tags (amazon-…, ebay1-…, temu-…, faire_…, BBY03-…).
+     *
+     * @param  array<string, mixed>  $order
+     * @return list<string>
+     */
+    protected function marketplaceRefsFromShopifyOrder(array $order): array
+    {
+        return $this->marketplaceIdentityFromShopifyOrder($order)['refs'];
     }
 
     /**
@@ -1008,53 +1183,7 @@ class VeeqoShopifyFulfillmentService
      */
     protected function marketplaceSlugFromShopifyOrder(array $order): string
     {
-        $hay = strtolower(trim((string) ($order['tags'] ?? '').' '.(string) ($order['note'] ?? '')));
-        $slugs = MarketplaceManagerRegistry::slugs();
-        usort($slugs, static fn ($a, $b) => strlen((string) $b) <=> strlen((string) $a));
-        foreach ($slugs as $slug) {
-            $slug = strtolower((string) $slug);
-            if ($slug !== '' && preg_match('/(?:^|[\s,])'.preg_quote($slug, '/').'-([^\s,]+)/i', $hay)) {
-                return $slug;
-            }
-        }
-
-        $source = strtolower((string) ($order['source_name'] ?? ''));
-        if (str_contains($source, 'doba') || $source === '145019994113') {
-            return 'doba';
-        }
-        if (str_contains($hay, 'doba')) {
-            return 'doba';
-        }
-        foreach ($slugs as $slug) {
-            $slug = strtolower((string) $slug);
-            if ($slug === '') {
-                continue;
-            }
-            if ($source === $slug || str_contains($source, $slug)) {
-                return $slug;
-            }
-            if (preg_match('/(?:^|[\s,])'.preg_quote($slug, '/').'(?:[\s,]|$)/i', $hay)) {
-                return $slug;
-            }
-        }
-        foreach ($order['note_attributes'] ?? [] as $attr) {
-            if (! is_array($attr)) {
-                continue;
-            }
-            $name = strtolower(trim((string) ($attr['name'] ?? $attr['key'] ?? '')));
-            $val = strtolower(trim((string) ($attr['value'] ?? '')));
-            if (str_contains($name, 'doba') || str_contains($val, 'doba')) {
-                return 'doba';
-            }
-            foreach ($slugs as $slug) {
-                $slug = strtolower((string) $slug);
-                if ($slug !== '' && (str_contains($name, $slug) || ($name === $slug.'_order_id'))) {
-                    return $slug;
-                }
-            }
-        }
-
-        return '';
+        return $this->marketplaceIdentityFromShopifyOrder($order)['slug'];
     }
 
     /**
@@ -1063,58 +1192,313 @@ class VeeqoShopifyFulfillmentService
      */
     protected function marketplaceOrderIdsFromShopifyOrder(array $order, string $marketplace = ''): array
     {
-        $hay = strtolower(trim((string) ($order['tags'] ?? '').' '.(string) ($order['note'] ?? '')));
-        $slugs = $marketplace !== ''
-            ? [strtolower(trim($marketplace))]
-            : MarketplaceManagerRegistry::slugs();
-        usort($slugs, static fn ($a, $b) => strlen((string) $b) <=> strlen((string) $a));
-        $ids = [];
-        foreach ($slugs as $slug) {
-            $slug = strtolower((string) $slug);
-            if ($slug === '' || ! preg_match('/(?:^|[\s,])'.preg_quote($slug, '/').'-([^\s,]+)/i', $hay, $m)) {
-                continue;
-            }
-            $id = trim((string) ($m[1] ?? ''));
-            if ($id !== '' && ! in_array($id, $ids, true)) {
-                $ids[] = $id;
-            }
+        $identity = $this->marketplaceIdentityFromShopifyOrder($order);
+        if ($marketplace !== '' && $identity['slug'] !== '' && $identity['slug'] !== strtolower(trim($marketplace))) {
+            return $identity['ids'];
         }
 
-        $sourceId = trim((string) ($order['source_identifier'] ?? ''));
-        if (
-            $sourceId !== ''
-            && strlen($sourceId) >= 6
-            && ! $this->isCollisionProneOrderRef($sourceId)
-            && ! $this->isShopifyInternalIdRef($sourceId)
-            && ! in_array($sourceId, $ids, true)
-        ) {
-            $ids[] = $sourceId;
-        }
+        return $identity['ids'];
+    }
 
-        foreach ($order['note_attributes'] ?? [] as $attr) {
-            if (! is_array($attr)) {
+    /**
+     * @param  list<string>  $ids
+     * @return list<string>
+     */
+    protected function expandMarketplaceOrderIdVariants(array $ids): array
+    {
+        $out = [];
+        foreach ($ids as $id) {
+            $id = trim((string) $id);
+            if ($id === '') {
                 continue;
             }
-            $name = strtolower(trim((string) ($attr['name'] ?? $attr['key'] ?? '')));
-            $val = trim((string) ($attr['value'] ?? ''));
-            if ($val === '' || strlen($val) < 6 || $this->isCollisionProneOrderRef($val)) {
-                continue;
-            }
-            if (
-                ($marketplace === 'doba' && (str_contains($name, 'doba order') || $name === 'doba_order_no'))
-                || ($marketplace !== '' && $name === $marketplace.'_order_id')
-                || str_contains($name, 'order no')
-                || str_contains($name, 'order number')
-                || str_contains($name, 'order_id')
-                || str_contains($name, 'order id')
+            $candidates = [$id];
+            if (preg_match('/^PO-(.+)$/i', $id, $m)) {
+                $tail = trim((string) ($m[1] ?? ''));
+                if ($tail !== '') {
+                    $candidates[] = $tail;
+                }
+            } elseif (
+                preg_match('/^\d{3}-[\w-]+$/', $id)
+                && ! preg_match('/^\d{3}-\d{7}-\d{7}$/', $id)
             ) {
-                if (! in_array($val, $ids, true)) {
-                    $ids[] = $val;
+                $candidates[] = 'PO-'.$id;
+            }
+            if (preg_match('/^BBY\d{2}-(.+)$/i', $id, $m)) {
+                $tail = trim((string) ($m[1] ?? ''));
+                if ($tail !== '') {
+                    $candidates[] = $tail;
+                }
+            }
+            foreach ($candidates as $candidate) {
+                if ($candidate !== '' && ! in_array($candidate, $out, true)) {
+                    $out[] = $candidate;
                 }
             }
         }
 
-        return $ids;
+        return $out;
+    }
+
+    /**
+     * Tracking already stored on the local marketplace order for these full ids.
+     *
+     * @param  list<string>  $ids
+     * @return array{tracking: string, carrier: string}|null
+     */
+    protected function localTrackingForMarketplaceRefs(string $marketplace, array $ids): ?array
+    {
+        $marketplace = strtolower(trim($marketplace));
+        $ids = $this->expandMarketplaceOrderIdVariants($ids);
+        if ($marketplace === '' || $ids === []) {
+            return null;
+        }
+
+        $model = $this->findMarketplaceOrderByChannelIds($marketplace, $ids);
+        $local = $model !== null
+            ? $this->trackingFromLoadedMarketplaceModel($marketplace, $model)
+            : null;
+        if ($local !== null) {
+            return $local;
+        }
+
+        return $this->pullLiveMarketplaceTracking($marketplace, $ids);
+    }
+
+    /**
+     * Confirm tracking on the marketplace by full order id (Temu / Faire / eBay / channel detail APIs).
+     *
+     * @param  list<string>  $ids
+     * @return array{tracking: string, carrier: string}|null
+     */
+    protected function pullLiveMarketplaceTracking(string $marketplace, array $ids): ?array
+    {
+        $ids = array_values(array_filter(array_map(static fn ($id) => trim((string) $id), $ids)));
+        if ($ids === []) {
+            return null;
+        }
+
+        if (in_array($marketplace, ['temu', 'temu2'], true)) {
+            if (Cache::get('mm.temu.ip_blocked')) {
+                $model = $this->findMarketplaceOrderByChannelIds($marketplace, $ids);
+
+                return $model !== null
+                    ? $this->trackingFromLoadedMarketplaceModel($marketplace, $model)
+                    : null;
+            }
+            $svc = $marketplace === 'temu2'
+                ? app(Temu2OrderTrackingPullService::class)
+                : app(TemuOrderTrackingPullService::class);
+            $api = $marketplace === 'temu2'
+                ? app(\App\Services\Temu2ApiService::class)
+                : app(\App\Services\TemuApiService::class);
+            foreach ($ids as $id) {
+                if (! preg_match('/^(PO-)?\d{3}-[\w-]+$/i', $id)) {
+                    continue;
+                }
+                if (method_exists($api, 'getShipmentInfo')) {
+                    try {
+                        $shipment = $api->getShipmentInfo($id);
+                        $msg = strtolower((string) ($shipment['message'] ?? ''));
+                        if (str_contains($msg, 'not_in_ip_white_list')) {
+                            Cache::put('mm.temu.ip_blocked', 1, now()->addHours(6));
+                        }
+                        $tn = strtoupper(preg_replace('/\s+/', '', (string) ($shipment['tracking_number'] ?? '')) ?? '');
+                        if (strlen($tn) >= 8) {
+                            return [
+                                'tracking' => $tn,
+                                'carrier' => trim((string) ($shipment['carrier'] ?? '')) ?: 'Other',
+                            ];
+                        }
+                    } catch (\Throwable $e) {
+                        Log::info('VeeqoShopifyFulfillmentService: Temu shipment lookup failed', [
+                            'marketplace' => $marketplace,
+                            'order_id' => $id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+                try {
+                    $result = $svc->pullForParentOrder($id, true);
+                } catch (\Throwable $e) {
+                    Log::info('VeeqoShopifyFulfillmentService: marketplace tracking pull failed', [
+                        'marketplace' => $marketplace,
+                        'order_id' => $id,
+                        'error' => $e->getMessage(),
+                    ]);
+                    continue;
+                }
+                $tn = strtoupper(preg_replace('/\s+/', '', (string) ($result['tracking_number'] ?? '')) ?? '');
+                if (strlen($tn) >= 8) {
+                    return [
+                        'tracking' => $tn,
+                        'carrier' => trim((string) ($result['carrier'] ?? '')) ?: 'Other',
+                    ];
+                }
+            }
+
+            $model = $this->findMarketplaceOrderByChannelIds($marketplace, $ids);
+
+            return $model !== null
+                ? $this->trackingFromLoadedMarketplaceModel($marketplace, $model)
+                : null;
+        }
+
+        if ($marketplace === 'faire') {
+            foreach ($ids as $id) {
+                if (strlen($id) < 6 || $this->isShopifyInternalIdRef($id)) {
+                    continue;
+                }
+                try {
+                    $res = app(\App\Services\FaireApiService::class)->getOrder($id);
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                $json = is_array($res['json'] ?? null) ? $res['json'] : (is_array($res) ? $res : null);
+                if (! is_array($json)) {
+                    continue;
+                }
+                $local = $this->trackingFromMixed($json);
+                if ($local !== null) {
+                    return $local;
+                }
+            }
+        }
+
+        if (in_array($marketplace, ['ebay1', 'ebay2', 'ebay3'], true)) {
+            foreach ($ids as $id) {
+                if (! preg_match('/^\d{2}-\d{5}-\d{5}$/', $id)) {
+                    continue;
+                }
+                try {
+                    $pulled = app(EbaySellFulfillmentTracking::class)->readTrackingFromEbay($marketplace, $id);
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                if (is_array($pulled) && strlen(trim((string) ($pulled['tracking'] ?? ''))) >= 8) {
+                    return $pulled;
+                }
+            }
+        }
+
+        if (in_array($marketplace, ['newegg', 'reverb', 'aliexpress', 'alibaba', 'faire'], true)) {
+            try {
+                app(ChannelTrackingApiFallbackService::class)->pullForMissingRows([
+                    [
+                        'mm_slug' => $marketplace,
+                        'order_id' => $ids[0],
+                        'order_id_api' => $ids[0],
+                        'order_number' => $ids[0],
+                        'tracking_number' => '',
+                    ],
+                ], 1, $marketplace);
+            } catch (\Throwable $e) {
+                Log::info('VeeqoShopifyFulfillmentService: channel API fallback failed', [
+                    'marketplace' => $marketplace,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+            $model = $this->findMarketplaceOrderByChannelIds($marketplace, $ids);
+
+            return $model !== null
+                ? $this->trackingFromLoadedMarketplaceModel($marketplace, $model)
+                : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $ids
+     */
+    protected function findMarketplaceOrderByChannelIds(string $marketplace, array $ids): ?object
+    {
+        $ids = array_values(array_filter(array_map(static fn ($id) => trim((string) $id), $ids)));
+        if ($ids === []) {
+            return null;
+        }
+
+        if ($marketplace === 'amazon' && Schema::hasTable('amazon_orders')) {
+            return AmazonOrder::query()->whereIn('amazon_order_id', $ids)->first();
+        }
+
+        $simple = match ($marketplace) {
+            'temu' => [TemuOrder::class, ['parent_order_sn', 'order_sn']],
+            'temu2' => [Temu2Order::class, ['parent_order_sn', 'order_sn']],
+            'ebay1' => [Ebay1OrderMetric::class, ['order_id', 'order_number']],
+            'ebay2' => [Ebay2OrderMetric::class, ['order_id', 'order_number']],
+            'ebay3' => [Ebay3OrderMetric::class, ['order_id', 'order_number']],
+            'newegg' => [NeweggOrderMetric::class, ['order_id', 'order_number']],
+            'shein' => [SheinOrderMetric::class, ['order_id', 'order_number']],
+            'reverb' => [ReverbOrderMetric::class, ['order_id', 'order_number']],
+            'faire' => [FaireOrderMetric::class, ['order_id', 'order_number']],
+            'aliexpress' => [AliexpressOrderMetric::class, ['order_id', 'order_number']],
+            'alibaba' => [AlibabaOrderMetric::class, ['order_id', 'order_number']],
+            'topdawg' => [TopDawgOrderMetric::class, ['order_id', 'order_number']],
+            'bestbuy' => [BestBuyOrderMetric::class, ['order_id', 'channel_order_id']],
+            'macy' => [MacyOrderMetric::class, ['order_id', 'channel_order_id']],
+            'wayfair' => [WayfairDailyData::class, ['po_number']],
+            'purchasingpower' => [PurchasingPowerSale::class, ['order_id', 'order_number']],
+            'doba' => [DobaDailyData::class, ['order_no', 'platform_order_no']],
+            'tiktok' => [TiktokOrder::class, ['order_id']],
+            'tiktok2' => [Tiktok2Order::class, ['order_id']],
+            'pls' => [PlsSale::class, ['order_name', 'order_number']],
+            default => null,
+        };
+        if ($simple === null) {
+            return null;
+        }
+
+        [$class, $refFields] = $simple;
+
+        return $class::query()
+            ->where(function ($query) use ($refFields, $ids): void {
+                foreach ($refFields as $i => $field) {
+                    if ($i === 0) {
+                        $query->whereIn($field, $ids);
+                    } else {
+                        $query->orWhereIn($field, $ids);
+                    }
+                }
+            })
+            ->first();
+    }
+
+    /**
+     * @return array{tracking: string, carrier: string}|null
+     */
+    protected function trackingFromLoadedMarketplaceModel(string $marketplace, object $model): ?array
+    {
+        $local = $this->trackingFromModel($model);
+        if ($local === null) {
+            foreach (['raw_payload', 'raw_json', 'raw_data'] as $rawField) {
+                $raw = $model->{$rawField} ?? null;
+                if (is_string($raw)) {
+                    $decoded = json_decode($raw, true);
+                    $raw = is_array($decoded) ? $decoded : null;
+                }
+                if (is_array($raw)) {
+                    $local = $this->trackingFromMixed($raw);
+                    if ($local !== null) {
+                        break;
+                    }
+                }
+            }
+        }
+        if ($local === null && in_array($marketplace, ['ebay1', 'ebay2', 'ebay3'], true)) {
+            $ebayOrderId = trim((string) ($model->order_id ?? ''));
+            if ($ebayOrderId !== '') {
+                $cacheKey = 'mm.ebay.pull-tracking.'.$marketplace.'.'.$ebayOrderId;
+                $pulled = Cache::remember($cacheKey, now()->addMinutes(20), function () use ($marketplace, $ebayOrderId) {
+                    return app(EbaySellFulfillmentTracking::class)->readTrackingFromEbay($marketplace, $ebayOrderId);
+                });
+                if (is_array($pulled) && trim((string) ($pulled['tracking'] ?? '')) !== '') {
+                    $local = $pulled;
+                }
+            }
+        }
+
+        return $local;
     }
 
     /**
