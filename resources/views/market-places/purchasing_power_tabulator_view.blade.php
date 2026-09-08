@@ -202,14 +202,12 @@
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color:black;font-weight:bold;">COGS: $0</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color:white;font-weight:bold;cursor:pointer;">&lt; Amz</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color:#28a745;color:white;font-weight:bold;cursor:pointer;">&gt; Amz</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color:white;font-weight:bold;cursor:pointer;">MISSING: 0</span>
                         <span class="badge fs-6 p-2" id="pp-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'purchasingpower-price-gt-lmp-badge', 'pglChannelKey' => 'purchasingpower', 'pglPriceField' => 'PP Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'purchasingpower-price-lt80-lmp-badge', 'pltChannelKey' => 'purchasingpower', 'pltPriceField' => 'PP Price'])
-                        <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color:white;font-weight:bold;cursor:pointer;">MAPPING: 0</span>
                     </div>
                 </div>
             </div>
@@ -871,9 +869,7 @@
         });
 
         // Sold filter is now owned by the #sold-filter dropdown (mirrors Amazon tabulator).
-        // Other "badge active" flags (Amz, mapping, missing) remain unchanged below.
         let lessAmzFilterActive = false, moreAmzFilterActive = false;
-        let missingFilterActive = false, mappingFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
         let blueTriangleFilterActive = false;
@@ -1005,8 +1001,6 @@
         });
         $('#less-amz-badge').on('click', function() { lessAmzFilterActive = !lessAmzFilterActive; moreAmzFilterActive = false; applyFilters(); });
         $('#more-amz-badge').on('click', function() { moreAmzFilterActive = !moreAmzFilterActive; lessAmzFilterActive = false; applyFilters(); });
-        $('#missing-badge').on('click', function() { missingFilterActive = !missingFilterActive; mappingFilterActive = false; applyFilters(); });
-        $('#mapping-badge').on('click', function() { mappingFilterActive = !mappingFilterActive; missingFilterActive = false; applyFilters(); });
 
         function updateSelectedCount() {
             const count = selectedSkus.size;
@@ -1025,14 +1019,6 @@
                 return +price.toFixed(2);
             }
             return Math.ceil(price) - 0.01; 
-        }
-
-        /** |INV − PP Stock| ≤ 3 → MAP; > 3 → N MP (same as Wayfair / TikTok / Reverb). */
-        function ppInvPpStockDiff(ourInv, ppInv) {
-            return Math.abs((parseFloat(ourInv) || 0) - (parseFloat(ppInv) || 0));
-        }
-        function ppInvPpStockWithinTolerance(ourInv, ppInv) {
-            return ppInvPpStockDiff(ourInv, ppInv) <= 3;
         }
 
         function applyDiscount() {
@@ -1370,32 +1356,6 @@
                     }
                 },
                 {
-                    title: "<span style='color:#a00211;'>Missing</span>", field: 'Missing', hozAlign: 'center', width: 60,
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData();
-                        const price = parseFloat(d['PP Price']) || 0, inv = parseFloat(d.INV) || 0, nrReq = d.nr_req || 'REQ';
-                        if (nrReq === 'NR' || inv === 0) return '';
-                        return price === 0 ? '<span style="color:#a00211;font-weight:600;">M</span>' : '';
-                    }
-                },
-                {
-                    title: 'Mapping',
-                    field: 'Mapping',
-                    hozAlign: 'center',
-                    width: 90,
-                    headerTooltip: 'MAP when |INV − PP Stock| ≤ 3; N MP when > 3 (NR rows excluded).',
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData();
-                        const ourInv = parseFloat(d.INV) || 0, mcInv = parseFloat(d['PP INV']) || 0;
-                        const price = parseFloat(d['PP Price']) || 0, nrReq = d.nr_req || 'REQ';
-                        if (nrReq === 'NR' || ourInv === 0 || price === 0) return '';
-                        const diff = ppInvPpStockDiff(ourInv, mcInv);
-                        return ppInvPpStockWithinTolerance(ourInv, mcInv)
-                            ? '<span style="color:#28a745;font-weight:600;background-color:#d4edda;padding:2px 6px;border-radius:3px;">MAP</span>'
-                            : `<span style="color:#a00211;font-weight:600;background-color:#f8d7da;padding:2px 6px;border-radius:3px;">N MP (${diff})</span>`;
-                    }
-                },
-                {
                     title: 'GPFT%', field: 'GPFT%', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
                         const p = parseFloat(cell.getValue());
@@ -1490,8 +1450,8 @@
                     width: 78
                 },
                 {
-                    title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', editor: 'number',
-                    editorParams: { min: 0, step: 0.01 }, sorter: 'number', width: 92,
+                    title: 'SPRICE', field: 'SPRICE', hozAlign: 'center',
+                    editable: false, sorter: 'number', width: 92,
                     headerTooltip: 'S PRC from Sprc Dil. Dil-matching Target GROI when PP L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
@@ -1808,11 +1768,6 @@
             else if (soldFilter === 'sold') table.addFilter('PP L30', '>', 0);
             if (lessAmzFilterActive) table.addFilter(d => { const mc = parseFloat(d['PP Price']) || 0, amz = parseFloat(d['A Price']) || 0; return amz > 0 && mc > 0 && mc < amz; });
             if (moreAmzFilterActive) table.addFilter(d => { const mc = parseFloat(d['PP Price']) || 0, amz = parseFloat(d['A Price']) || 0; return amz > 0 && mc > 0 && mc > amz; });
-            if (missingFilterActive) table.addFilter(d => { return (d.nr_req || 'REQ') === 'REQ' && (parseFloat(d.INV) || 0) > 0 && (parseFloat(d['PP Price']) || 0) === 0; });
-            if (mappingFilterActive) table.addFilter(d => {
-                const ourInv = parseFloat(d.INV) || 0, mcInv = parseFloat(d['PP INV']) || 0, price = parseFloat(d['PP Price']) || 0;
-                return (d.nr_req || 'REQ') === 'REQ' && ourInv > 0 && price > 0 && !ppInvPpStockWithinTolerance(ourInv, mcInv);
-            });
             if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                 table.addFilter(function(data) {
                     return PriceGtLmpBadge.hasRedTriangle(data, 'PP Price');
@@ -1869,16 +1824,15 @@
             const data = table.getData('active').filter(r => !(r.Parent && r.Parent.startsWith('PARENT')));
             let totalPft = 0, totalSales = 0, totalPrice = 0, priceCount = 0;
             let totalInv = 0, totalL30 = 0, zeroSold = 0, totalDil = 0, dilCount = 0;
-            let totalCogs = 0, missingCount = 0, mappingCount = 0;
+            let totalCogs = 0;
             let totalPpStock = 0;
 
             data.forEach(row => {
                 totalPft   += parseFloat(row.Profit) || 0;
                 totalSales += parseFloat(row['Sales L30']) || 0;
 
-                const price = parseFloat(row['PP Price']) || 0, inv = parseFloat(row.INV) || 0, nrReq = row.nr_req || 'REQ';
+                const price = parseFloat(row['PP Price']) || 0, inv = parseFloat(row.INV) || 0;
                 if (price > 0) { totalPrice += price; priceCount++; }
-                else if (nrReq === 'REQ' && inv > 0) missingCount++;
 
                 totalInv  += inv;
                 totalL30  += parseFloat(row['PP L30']) || 0;
@@ -1889,10 +1843,6 @@
 
                 const lp = parseFloat(row.LP_productmaster) || 0, l30 = parseFloat(row['PP L30']) || 0;
                 totalCogs += lp * l30;
-
-                if (nrReq === 'REQ' && inv > 0 && price > 0) {
-                    if (!ppInvPpStockWithinTolerance(inv, row['PP INV'])) mappingCount++;
-                }
 
                 totalPpStock += parseFloat(row['PP INV']) || 0;
             });
@@ -1929,8 +1879,6 @@
             $('#ads-percent-badge').text('Ads: 0%');
             $('#npft-percent-badge').text('NPFT: ' + gpftPctWeighted.toFixed(1) + '%');
             $('#nroi-percent-badge').text('NROI: ' + roiPctWeighted.toFixed(1) + '%');
-            $('#missing-badge').text(`MISSING: ${missingCount}`);
-            $('#mapping-badge').text(`MAPPING: ${mappingCount}`);
             $('#total-pp-stock-badge').text(`PP Stock: ${totalPpStock.toLocaleString()}`);
             if (window.PriceGtLmpBadge && table) {
                 PriceGtLmpBadge.update('#purchasingpower-price-gt-lmp-badge', table.getData(), 'purchasingpower', 'PP Price');
