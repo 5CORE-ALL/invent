@@ -137,7 +137,7 @@ class TemuAdsApiReport extends Model
         $row = static::query()
             ->inLatestWindow($period)
             ->selectRaw('
-                COUNT(*) AS rows,
+                COUNT(*) AS row_count,
                 COALESCE(SUM(ad_spend), 0) AS spend,
                 COALESCE(SUM(clicks), 0) AS clicks,
                 COALESCE(SUM(impressions), 0) AS impressions,
@@ -152,7 +152,7 @@ class TemuAdsApiReport extends Model
             'impressions' => (int) ($row->impressions ?? 0),
             'sold' => (int) ($row->sold ?? 0),
             'sales' => round((float) ($row->sales ?? 0), 2),
-            'rows' => (int) ($row->rows ?? 0),
+            'rows' => (int) ($row->row_count ?? 0),
         ];
     }
 
