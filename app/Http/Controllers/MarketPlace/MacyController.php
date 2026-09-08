@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\MacysApiService;
 use App\Support\MacysAmazonPriceCap;
+use App\Support\MacysRuleSpriceApply;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -680,6 +681,7 @@ class MacyController extends Controller
                     $imported++;
                 }
                 DB::commit();
+                MacysRuleSpriceApply::dispatch();
                 return response()->json([
                     'success' => "Successfully imported $imported price records (skipped $skipped)",
                     'imported' => $imported,

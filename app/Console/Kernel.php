@@ -656,6 +656,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('macys:rule-sprice-apply')
+            ->hourly()
+            ->name('macys-rule-sprice-apply')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         /*
         |--------------------------------------------------------------------------
         | PURCHASING POWER (MCM OF21 prices/stock + OR11 orders)

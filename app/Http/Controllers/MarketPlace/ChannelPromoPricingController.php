@@ -1463,6 +1463,9 @@ class ChannelPromoPricingController extends Controller
         if ($channel === 'shopify_b2c') {
             $this->queueShopifyB2cRuleSpriceApply();
         }
+        if ($channel === 'macys' || $channel === 'macy') {
+            \App\Support\MacysRuleSpriceApply::dispatch();
+        }
 
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
     }

@@ -1107,6 +1107,7 @@
                     const current = typeof chPromoGetSprice === 'function'
                         ? chPromoGetSprice(d)
                         : (Number(d && d.SPRICE) || 0);
+                    const live = Number(d && (d['MC Price'] != null ? d['MC Price'] : d.price)) || 0;
                     if (price > 0) {
                         if (nearly(current, price)) return;
                         const patch = (typeof chPromoSpricePatch === 'function')
@@ -1118,6 +1119,7 @@
                         n++;
                         return;
                     }
+                    if (current > 0 && live > 0 && nearly(current, live)) return;
                     if (current > 0) {
                         if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
                         else row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false, SGPFT: 0, SROI: 0, SPFT: 0 });
@@ -1515,8 +1517,12 @@
                     if (saved.length) ebayDilGroiRules = saved;
                     renderEbayDilGroiModalTable();
                 }
-                const n = await ebayApplySprcDilToTable({ persist: true, push: true });
-                $('#ebay-dil-groi-status').text('Saved via API. S PRC applied on ' + n + ' SKU(s); only S PRC ≠ Price were queued.');
+                const n = ebayDgIsMacys()
+                    ? ebayDgPaintMacysRuleSprice()
+                    : await ebayApplySprcDilToTable({ persist: true, push: true });
+                $('#ebay-dil-groi-status').text(ebayDgIsMacys()
+                    ? 'Saved via API. S PRC painted on ' + n + ' SKU(s); wipe + Dil apply queued in the background.'
+                    : ('Saved via API. S PRC applied on ' + n + ' SKU(s); only S PRC ≠ Price were queued.'));
                 return res;
             });
         }

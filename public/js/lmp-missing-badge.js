@@ -78,22 +78,40 @@
         el.style.fontWeight = '700';
     }
 
+    var reportState = { timer: null, lastSig: '', lastAt: 0 };
+
     function report(channelKey, n) {
-        if (!channelKey || !window.LMP_MISSING_REPORT_URL) return;
-        try {
-            fetch(window.LMP_MISSING_REPORT_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') || {}).content || '',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({ channel: channelKey, count: Number(n || 0) })
-            });
-        } catch (e) {
-            // ignore
-        }
+        var url = window.LMP_MISSING_REPORT_URL;
+        if (!channelKey || !url || typeof fetch !== 'function') return;
+        var count = Number(n || 0);
+        var sig = String(channelKey) + ':' + count;
+        var now = Date.now();
+        if (reportState.lastSig === sig && (now - reportState.lastAt) < 5000) return;
+        reportState.lastSig = sig;
+        reportState.lastAt = now;
+        if (reportState.timer) clearTimeout(reportState.timer);
+        reportState.timer = setTimeout(function () {
+            reportState.timer = null;
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            var req;
+            try {
+                req = fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') || {}).content || '',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({ channel: channelKey, count: count }),
+                    credentials: 'same-origin',
+                    keepalive: true
+                });
+            } catch (e) {
+                return;
+            }
+            if (req && typeof req.catch === 'function') req.catch(function () { /* ignore abort / offline */ });
+        }, 750);
     }
 
     function update(target, rows, channelKey) {

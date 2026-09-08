@@ -325,6 +325,7 @@ class FetchMacyProducts extends Command
 
         // Fetch and store Macy's products with channel-specific pricing
         $this->fetchChannelProducts($token, 'macys', "Macy's, Inc.", $skuSales);
+        \App\Support\MacysRuleSpriceApply::dispatch();
         
         // Close DB connection between channels to prevent buildup
         DB::connection()->disconnect();

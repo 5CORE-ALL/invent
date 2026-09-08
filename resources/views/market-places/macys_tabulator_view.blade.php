@@ -2539,6 +2539,9 @@
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData['MC Price']) || 0;
+                        if (!(value > 0) && live > 0 && (hasCustom || status === 'applied' || status === 'pushed')) {
+                            value = live;
+                        }
                         const lmp = parseFloat(rowData.lmp_price) || 0;
 
                         let bgColor = '';
