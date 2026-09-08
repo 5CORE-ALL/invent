@@ -1477,22 +1477,7 @@ class ChannelMasterController extends Controller
                 $row['CVR'] = $mapMiss['cvr_pct'];
             }
 
-            // Temu 2: overlay live Spend from temu2_campaign_reports (same as /temu2/ads).
-            // Temu 1: overlay Active L30 from temu_ads_api_reports (same as /temu/ads).
-            if ($isTemu2) {
-                $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
-                $l30ForAds = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
-                if ($liveSales) {
-                    $l30ForAds = (float) ($liveSales['total_revenue'] ?? $l30ForAds);
-                }
-                $adsPct = $l30ForAds > 0 ? ($totalAdSpend / $l30ForAds) * 100 : 0;
-                $gProfitPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Gprofit%'] ?? 0));
-                $row['Total Ad Spend'] = round($totalAdSpend, 2);
-                $row['KW Spent'] = round($totalAdSpend, 2);
-                $row['Ads%'] = round($adsPct, 2).'%';
-                $row['TACOS %'] = round($adsPct, 2).'%';
-                $row['N PFT'] = round($gProfitPct - $adsPct, 2).'%';
-            }
+            // Temu 2 spend is applied in overlayLiveTemu2AdsOnChannelRows.
 
             if ($isTemu3 && $liveSales) {
                 $gProfitPct = (float) ($liveSales['gpft_percent'] ?? 0);
@@ -1518,6 +1503,8 @@ class ChannelMasterController extends Controller
             $row['N ROI'] = round($gRoi - $adsPctForNroi, 2);
         }
         unset($row);
+
+        $rows = $this->overlayLiveTemu2AdsOnChannelRows($rows);
 
         return $this->overlayLiveTemu1AdsOnChannelRows($rows);
     }
@@ -1589,7 +1576,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 1 ads on /all-marketplace-master — same Active L30 source as /temu/ads and /temu-decrease.
+     * Temu 1 ads on /all-marketplace-master — same Spend badge as /temu/ads (latest window, including paused).
      *
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<int, array<string, mixed>>
@@ -2148,8 +2135,51 @@ class ChannelMasterController extends Controller
         $rows = $this->overlayLiveMiraklTodaySalesOnChannelRows($rows);
         // FB Marketplace L30/L60/Y/L7 from /facebook-marketplace uploads (not stale sheet cache)
         $rows = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($rows);
+        $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
-        return $this->overlayLiveTodaySalesOnChannelRows($rows);
+        try {
+            // /temu/ads Spend badge → Temu row + toolbar Spend / Ads% / NPFT.
+            $rows = $this->overlayLiveTemu1AdsOnChannelRows($rows);
+            $rows = $this->overlayLiveTemu2AdsOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Temu ads overlay failed: '.$e->getMessage());
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Temu 2 Spend on Active Channels — same L30 upload total as /temu2/ads.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function overlayLiveTemu2AdsOnChannelRows(array $rows): array
+    {
+        $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($name !== 'Temu 2') {
+                continue;
+            }
+
+            $l30ForAds = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
+            $adsPct = $l30ForAds > 0 ? ($totalAdSpend / $l30ForAds) * 100 : 0.0;
+            $gProfitPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Gprofit%'] ?? 0));
+            $gRoi = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['G Roi'] ?? 0));
+
+            $row['Total Ad Spend'] = round($totalAdSpend, 2);
+            $row['KW Spent'] = round($totalAdSpend, 2);
+            $row['Ads%'] = round($adsPct, 2).'%';
+            $row['TACOS %'] = round($adsPct, 2).'%';
+            $row['TACOS'] = round($adsPct, 2);
+            $row['N PFT'] = round($gProfitPct - $adsPct, 2).'%';
+            $row['N ROI'] = round($gRoi - $adsPct, 2);
+        }
+        unset($row);
+
+        return $rows;
     }
 
     /**
@@ -7838,6 +7868,8 @@ class ChannelMasterController extends Controller
         $finalData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($finalData);
         // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
         $finalData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($finalData);
+        $finalData = $this->overlayLiveTemu1AdsOnChannelRows($finalData);
+        $finalData = $this->overlayLiveTemu2AdsOnChannelRows($finalData);
 
         // Sum of (inventory * Amazon price) for INV Val badge and TAT (save in first row for daily history)
         $inventoryValueAmazon = $this->getInventoryValueAmazon();
