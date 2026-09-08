@@ -81,6 +81,47 @@ class TemuAdsApiReport extends Model
         return $query->where('ad_status', 'Active');
     }
 
+    /** Active plus Temu Paused (stored as Inactive or Paused). */
+    public function scopeLiveAds($query)
+    {
+        return $query->whereIn('ad_status', ['Active', 'Inactive', 'Paused']);
+    }
+
+    /**
+     * Most recent stored Temu date window for a period (start_ts / end_ts).
+     * Older L30 rows can still hold a prior month's range after a status-only refresh.
+     *
+     * @return array{start_ts: int, end_ts: int}|null
+     */
+    public static function latestWindow(string $period): ?array
+    {
+        $row = static::query()
+            ->where('period', strtoupper($period))
+            ->whereNotNull('start_ts')
+            ->orderByDesc('start_ts')
+            ->first(['start_ts', 'end_ts']);
+        if (! $row || $row->start_ts === null) {
+            return null;
+        }
+
+        return [
+            'start_ts' => (int) $row->start_ts,
+            'end_ts' => (int) ($row->end_ts ?? 0),
+        ];
+    }
+
+    public function scopeInLatestWindow($query, string $period)
+    {
+        $period = strtoupper($period);
+        $window = static::latestWindow($period);
+        $query->where('period', $period);
+        if ($window) {
+            $query->where('start_ts', $window['start_ts']);
+        }
+
+        return $query;
+    }
+
     /**
      * Decode stored raw API payload.
      */

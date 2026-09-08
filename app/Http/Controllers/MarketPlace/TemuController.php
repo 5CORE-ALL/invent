@@ -3287,8 +3287,8 @@ class TemuController extends Controller
                 $viewL7ByGoods = [];
                 if (Schema::hasTable('temu_ads_api_reports')) {
                     TemuAdsApiReport::query()
-                        ->activeAds()
-                        ->where('period', 'L7')
+                        ->liveAds()
+                        ->inLatestWindow('L7')
                         ->whereNotNull('goods_id')
                         ->get(['goods_id', 'clicks'])
                         ->each(function ($row) use (&$viewL7ByGoods) {
@@ -4348,15 +4348,15 @@ class TemuController extends Controller
                     : null;
                 $totalCampaignCount = $apiAds
                     ? (int) TemuAdsApiReport::query()
-                        ->activeAds()
-                        ->where('period', $campaignRange)
+                        ->liveAds()
+                        ->inLatestWindow($campaignRange)
                         ->distinct()
                         ->count('goods_id')
                     : 0;
-                // Same spend total as /temu/ads (all ads for the period, not Active-only).
+                // Same spend total as /temu/ads (latest window, Active + Paused + ended).
                 $totalAdSpend = $apiAds
                     ? round((float) TemuAdsApiReport::query()
-                        ->where('period', $campaignRange)
+                        ->inLatestWindow($campaignRange)
                         ->sum('ad_spend'), 2)
                     : 0.0;
             }
@@ -4490,7 +4490,7 @@ class TemuController extends Controller
     }
 
     /**
-     * Ads Views for Temu 1 from temu_ads_api_reports — Active ads only.
+     * Ads Views for Temu 1 from temu_ads_api_reports — Active and Paused.
      *
      * @return \Illuminate\Support\Collection<string, object{ads_views: int}>
      */
@@ -4501,8 +4501,8 @@ class TemuController extends Controller
         }
 
         return TemuAdsApiReport::query()
-            ->activeAds()
-            ->where('period', $period)
+            ->liveAds()
+            ->inLatestWindow($period)
             ->whereNotNull('goods_id')
             ->get(['goods_id', 'clicks'])
             ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))

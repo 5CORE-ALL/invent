@@ -454,7 +454,7 @@
                             <span class="badge fs-6 p-2 temu-ads-chart-badge" id="spend-sum"
                                 data-metric="spend" data-label="Spend"
                                 style="background-color: #6f42c1; color: white; font-weight: bold;"
-                                title="Click for history">Spend: <span class="temu-ads-badge-val">$0</span><span class="temu-ads-history-dot" title="History"></span></span>
+                                title="Temu Last 30 days spend in the current date window (Active + Paused + ended). Click for history">Spend: <span class="temu-ads-badge-val">$0</span><span class="temu-ads-history-dot" title="History"></span></span>
                             <span class="badge fs-6 p-2 temu-ads-chart-badge" id="y-spend-sum"
                                 data-metric="y_spend" data-label="Y spend"
                                 style="background-color: #4c1d95; color: white; font-weight: bold;"
@@ -484,7 +484,7 @@
                                 title="Create ads for selected No ad rows (Inv > 0). If nothing is selected, uses all visible Create rows.">Create: <span class="temu-ads-badge-val">0</span><span class="temu-ads-history-dot" data-metric="create" data-label="Create" title="History"></span></span>
                             <span class="badge fs-6 p-2" id="pause-run-count"
                                 style="background-color: #212529; color: white; font-weight: bold; cursor: pointer;"
-                                title="Pause and Run counts. Click for running ads budget and details.">
+                                title="Pause and Run counts (live ads). Click for Pause + Run budget and details.">
                                 Pause <span id="pause-count-num" style="color:#ff8a80;">0</span><span class="temu-ads-history-dot" data-metric="pause" data-label="Pause" title="Pause history"></span>
                                 / Run <span id="run-count-num" style="color:#81c784;">0</span><span class="temu-ads-history-dot" data-metric="run" data-label="Run" title="Run history"></span>
                             </span>
@@ -686,7 +686,7 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Running ads</h5>
+                    <h5 class="modal-title">Pause / Run ads</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -1088,8 +1088,9 @@
                 let pauseN = 0;
                 let runN = 0;
                 list.forEach(function (r) {
-                    if (rowPauseRunAction(r) === 'run') runN++;
-                    else pauseN++;
+                    const action = rowPauseRunAction(r);
+                    if (action === 'run') runN++;
+                    else if (action === 'pause') pauseN++;
                 });
                 const pauseEl = document.getElementById('pause-count-num');
                 const runEl = document.getElementById('run-count-num');
@@ -1210,16 +1211,19 @@
                 const periodKey = currentPeriodKey();
                 let impr = 0, clicks = 0, spend = 0, ySpend = 0, sold = 0, sales = 0, tacosSpend = 0, createN = 0, pauseN = 0, runN = 0;
                 list.forEach(function (r) {
-                    const rowSpend = parseFloat(r.ad_spend) || 0;
-                    impr += parseFloat(r.impressions) || 0;
-                    clicks += parseFloat(r.clicks) || 0;
-                    spend += rowSpend;
-                    if (periodKey !== 'ALL' || String(r.period || '') === 'L30') {
+                    const inWindow = r.in_window !== false;
+                    const rowSpend = inWindow ? (parseFloat(r.ad_spend) || 0) : 0;
+                    if (inWindow) {
+                        impr += parseFloat(r.impressions) || 0;
+                        clicks += parseFloat(r.clicks) || 0;
+                        spend += rowSpend;
+                        ySpend += parseFloat(r.spend_l1) || 0;
+                        sold += parseFloat(r.order_pay_cnt) || 0;
+                        sales += parseFloat(r.order_pay_amt) || 0;
+                    }
+                    if (inWindow && (periodKey !== 'ALL' || String(r.period || '') === 'L30')) {
                         tacosSpend += rowSpend;
                     }
-                    ySpend += parseFloat(r.spend_l1) || 0;
-                    sold += parseFloat(r.order_pay_cnt) || 0;
-                    sales += parseFloat(r.order_pay_amt) || 0;
                     if (canCreateAdRow(r)) createN++;
                     const action = rowPauseRunAction(r);
                     if (action === 'run') runN++;
@@ -1509,7 +1513,8 @@
                 const seen = {};
                 const out = [];
                 (rows || []).forEach(function (r) {
-                    if (rowPauseRunAction(r) !== 'run') return;
+                    const action = rowPauseRunAction(r);
+                    if (action !== 'run' && action !== 'pause') return;
                     const gid = String(r.goods_id || '').trim();
                     const key = gid || ('sku:' + String(r.sku || ''));
                     if (seen[key]) return;
@@ -1534,7 +1539,11 @@
                 const budgetEach = dailyCreateBudget();
                 const totalBudget = rows.length * budgetEach;
                 let spend = 0, impr = 0, clicks7 = 0, clicks30 = 0, orders = 0, orderAmt = 0;
+                let pauseN = 0, runN = 0;
                 rows.forEach(function (r) {
+                    const action = rowPauseRunAction(r);
+                    if (action === 'pause') pauseN++;
+                    else if (action === 'run') runN++;
                     spend += parseFloat(r.ad_spend) || 0;
                     impr += parseFloat(r.impressions) || 0;
                     clicks7 += parseFloat(r.clicks_l7) || 0;
@@ -1545,7 +1554,8 @@
                 const roas = spend > 0 ? (orderAmt / spend) : 0;
                 const summary = document.getElementById('pause-run-running-summary');
                 const pills = [
-                    ['Running ads', rows.length.toLocaleString()],
+                    ['Pause ads', pauseN.toLocaleString()],
+                    ['Run ads', runN.toLocaleString()],
                     ['Daily budget each', moneyText(budgetEach)],
                     ['Total ads budget', moneyText(totalBudget)],
                     ['Spend', moneyText(spend)],
@@ -1575,7 +1585,7 @@
                         '<td>' + String(Math.round(Number(r.acos) || 0)) + '%</td>' +
                         '<td>' + moneyText(budgetEach) + '</td>' +
                         '</tr>';
-                }).join('') : '<tr><td colspan="12" class="text-center text-muted">No running ads in the current view.</td></tr>';
+                }).join('') : '<tr><td colspan="12" class="text-center text-muted">No Pause / Run ads in the current view.</td></tr>';
             }
 
             function setBadges(rows, response) {

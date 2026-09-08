@@ -46,7 +46,8 @@ class TemuAdsController extends Controller
         $hasCreateReject = Schema::hasColumn('temu_ads_api_reports', 'ad_create_reject');
         $hasPauseRunOk = Schema::hasColumn('temu_ads_api_reports', 'pause_run_ok');
         $listColumns = [
-            'id', 'goods_id', 'sku', 'period', 'impressions', 'clicks', 'ctr',
+            'id', 'goods_id', 'sku', 'period', 'start_ts', 'end_ts',
+            'impressions', 'clicks', 'ctr',
             'cart_cnt', 'order_pay_cnt', 'order_pay_amt', 'ad_spend', 'roas', 'acos',
             'ad_status', 'success', 'error_msg', 'fetched_at', 'updated_at',
         ];
@@ -62,9 +63,19 @@ class TemuAdsController extends Controller
             }
         }
         $records = $query->get($listColumns);
-        $spendSum = round((float) $records->sum(fn (TemuAdsApiReport $r) => (float) ($r->ad_spend ?? 0)), 2);
-        $imprSum = (int) $records->sum(fn (TemuAdsApiReport $r) => (int) ($r->impressions ?? 0));
-        $clickSum = (int) $records->sum(fn (TemuAdsApiReport $r) => (int) ($r->clicks ?? 0));
+        $windowPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
+        $spendWindow = TemuAdsApiReport::latestWindow($windowPeriod);
+        $inSpendWindow = function (TemuAdsApiReport $r) use ($period, $spendWindow): bool {
+            if (! in_array($period, ['L7', 'L30', 'L60'], true) || ! $spendWindow) {
+                return true;
+            }
+
+            return (int) $r->start_ts === $spendWindow['start_ts'];
+        };
+        $windowRecords = $records->filter($inSpendWindow);
+        $spendSum = round((float) $windowRecords->sum(fn (TemuAdsApiReport $r) => (float) ($r->ad_spend ?? 0)), 2);
+        $imprSum = (int) $windowRecords->sum(fn (TemuAdsApiReport $r) => (int) ($r->impressions ?? 0));
+        $clickSum = (int) $windowRecords->sum(fn (TemuAdsApiReport $r) => (int) ($r->clicks ?? 0));
 
         $l7ClicksByGoods = TemuAdsApiReport::query()
             ->where('period', 'L7')
@@ -109,7 +120,7 @@ class TemuAdsController extends Controller
         $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skus);
         $productMasterByNorm = $this->productMasterByNormalizedSku($skus);
 
-        $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $hasPauseRunOk) {
+        $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $hasPauseRunOk, $inSpendWindow) {
             $clicks = (int) ($r->clicks ?? 0);
             $orders = (int) ($r->order_pay_cnt ?? 0);
             $gid = (string) $r->goods_id;
@@ -144,6 +155,8 @@ class TemuAdsController extends Controller
                 'ovl30' => $ovl30,
                 'dil_percent' => $dilPercent,
                 'period' => $r->period,
+                'start_ts' => $r->start_ts,
+                'in_window' => $inSpendWindow($r),
                 'impressions' => $r->impressions,
                 'impressions_l7' => $impressionsL7,
                 'clicks' => $r->clicks,
@@ -177,7 +190,7 @@ class TemuAdsController extends Controller
         $tacosPeriod = in_array($period, ['L7', 'L30', 'L60'], true) ? $period : 'L30';
         $channelSales = $this->temuChannelSalesForPeriod($tacosPeriod);
         $tacosSpend = $tacosPeriod === 'L30' && ! in_array($period, ['L7', 'L30', 'L60'], true)
-            ? round((float) TemuAdsApiReport::query()->where('period', 'L30')->sum('ad_spend'), 2)
+            ? round((float) TemuAdsApiReport::query()->inLatestWindow('L30')->sum('ad_spend'), 2)
             : $spendSum;
             
         $tacos = $channelSales > 0
@@ -1120,16 +1133,19 @@ class TemuAdsController extends Controller
         $useL30SpendForTacos = strtoupper($period) === 'ALL';
 
         foreach ($rows as $row) {
-            $impr += (float) ($row['impressions'] ?? 0);
-            $clicks += (float) ($row['clicks'] ?? 0);
-            $rowSpend = (float) ($row['ad_spend'] ?? 0);
-            $spend += $rowSpend;
-            if (! $useL30SpendForTacos || strtoupper((string) ($row['period'] ?? '')) === 'L30') {
-                $tacosSpend += $rowSpend;
+            $inWindow = ! array_key_exists('in_window', $row) || $row['in_window'];
+            if ($inWindow) {
+                $impr += (float) ($row['impressions'] ?? 0);
+                $clicks += (float) ($row['clicks'] ?? 0);
+                $rowSpend = (float) ($row['ad_spend'] ?? 0);
+                $spend += $rowSpend;
+                if (! $useL30SpendForTacos || strtoupper((string) ($row['period'] ?? '')) === 'L30') {
+                    $tacosSpend += $rowSpend;
+                }
+                $ySpend += (float) ($row['spend_l1'] ?? 0);
+                $sold += (float) ($row['order_pay_cnt'] ?? 0);
+                $sales += (float) ($row['order_pay_amt'] ?? 0);
             }
-            $ySpend += (float) ($row['spend_l1'] ?? 0);
-            $sold += (float) ($row['order_pay_cnt'] ?? 0);
-            $sales += (float) ($row['order_pay_amt'] ?? 0);
             if (($row['ad_status'] ?? '') === 'No ad') {
                 $createN++;
             }
@@ -1389,14 +1405,14 @@ class TemuAdsController extends Controller
         }
 
         try {
-            $q = TemuAdsApiReport::query()->where('period', 'L30');
+            $q = TemuAdsApiReport::query()->inLatestWindow('L30');
 
             return [
                 'spend' => round((float) $q->clone()->sum('ad_spend'), 2),
                 'clicks' => (int) $q->clone()->sum('clicks'),
                 'sold' => (int) $q->clone()->sum('order_pay_cnt'),
                 'sales' => round((float) $q->clone()->sum('order_pay_amt'), 2),
-                'active' => (int) $q->clone()->where('ad_status', 'Active')->count(),
+                'active' => (int) $q->clone()->liveAds()->count(),
             ];
         } catch (\Throwable $e) {
             Log::warning('Advertisement Master Temu L30 metrics failed: '.$e->getMessage());

@@ -627,8 +627,8 @@ class ChannelMasterController extends Controller
             $adsByGid = [];
             if (Schema::hasTable('temu_ads_api_reports')) {
                 TemuAdsApiReport::query()
-                    ->activeAds()
-                    ->where('period', 'L30')
+                    ->liveAds()
+                    ->inLatestWindow('L30')
                     ->whereNotNull('goods_id')
                     ->get(['goods_id', 'clicks'])
                     ->each(function ($row) use (&$adsByGid) {
@@ -1648,7 +1648,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Active Temu 1 ads totals from temu_ads_api_reports (same as /temu/ads).
+     * Temu 1 ads totals from temu_ads_api_reports (same as /temu/ads: latest window, including paused).
      *
      * @return array{clicks: int, ad_sales: float, ad_sold: int, Total Ad Spend: float, KW Spent: float, KW Clicks: int, KW Sales: float, KW Sold: int, KW ACOS: float, KW CVR: float}
      */
@@ -1678,20 +1678,12 @@ class ChannelMasterController extends Controller
             COALESCE(SUM(order_pay_cnt), 0) AS ad_sold
         ';
 
+        // Same window as /temu/ads Spend (latest stored Last-30 range, all statuses).
+        // Do not mix leftover rows whose start_ts is still a prior month.
         $tot = TemuAdsApiReport::query()
-            ->activeAds()
-            ->where('period', $period)
+            ->inLatestWindow($period)
             ->selectRaw($select)
             ->first();
-
-        // Status is often still "No ad" / empty until temu:refresh-ad-status runs
-        // from a whitelisted IP. Fall back to all L30 API rows so Spend/Ads% show.
-        if ((float) ($tot->spend ?? 0) <= 0) {
-            $tot = TemuAdsApiReport::query()
-                ->where('period', $period)
-                ->selectRaw($select)
-                ->first();
-        }
 
         $sp = round((float) ($tot->spend ?? 0), 2);
         $c = (int) ($tot->clicks ?? 0);
@@ -5437,9 +5429,9 @@ class ChannelMasterController extends Controller
     {
         if (Schema::hasTable('temu_ads_api_reports')) {
             $pairs = [];
-            $q = TemuAdsApiReport::query()->activeAds()->where('period', 'L30');
+            $q = TemuAdsApiReport::query()->liveAds()->inLatestWindow('L30');
             if (! (clone $q)->where('ad_spend', '>', 0)->exists()) {
-                $q = TemuAdsApiReport::query()->where('period', 'L30');
+                $q = TemuAdsApiReport::query()->inLatestWindow('L30');
             }
             foreach ($q->get(['sku', 'goods_id', 'ad_spend']) as $r) {
                 $name = trim((string) ($r->sku ?: $r->goods_id));
