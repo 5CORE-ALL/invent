@@ -386,11 +386,23 @@ class LqsMasterController extends Controller
                 ->get()
                 ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
-            $shopifyBySku = ShopifySku::all()
-                ->keyBy(fn ($row) => $normalizeSku($row->sku));
+            $shopifyBySku = [];
+            foreach (ShopifySku::all() as $shopifyRow) {
+                foreach ([
+                    $normalizeSku($shopifyRow->sku),
+                    ShopifySku::normalizeSkuForShopifyLookup($shopifyRow->sku),
+                ] as $shopifyKey) {
+                    if ($shopifyKey !== '' && ! isset($shopifyBySku[$shopifyKey])) {
+                        $shopifyBySku[$shopifyKey] = $shopifyRow;
+                    }
+                }
+            }
 
-            $amazonBySku = AmazonDatasheet::all()
-                ->keyBy(fn ($row) => $normalizeSku($row->sku));
+            $amazonAll = AmazonDatasheet::all();
+            $amazonByExactSku = $amazonAll->keyBy(fn ($row) => $normalizeSku($row->sku));
+            $amazonByGrouped = $amazonAll->groupBy(
+                fn ($row) => AmazonDatasheet::normalizeSkuForLookup($row->sku ?? '')
+            );
 
             // Load latest action per SKU (one query, keyed by uppercase SKU)
             $latestActionsBySku = LqsAmzAction::with('user')
@@ -399,17 +411,27 @@ class LqsMasterController extends Controller
                 ->groupBy(fn ($r) => strtoupper(trim($r->sku)))
                 ->map(fn ($group) => $group->first());
 
-            // JungleScout keyed by normalized ASIN and by normalized SKU
+            // JungleScout: ASIN lives on the asin column (not data.asin). Also
+            // index compact SKUs so "MS 080 WH 2 PCS" matches "MS 080 WH 2PC".
             $jsAll = JungleScoutProductData::all();
             $jsByAsin = [];
             $jsBySku  = [];
             foreach ($jsAll as $jsRow) {
-                $normalizedJs = $normalizeSku($jsRow->sku);
-                $jsBySku[$normalizedJs][] = $jsRow;
-                if (is_array($jsRow->data)) {
-                    $asin = strtoupper(trim((string) ($jsRow->data['asin'] ?? '')));
-                    if ($asin) {
-                        $jsByAsin[$asin][] = $jsRow;
+                foreach ([
+                    $normalizeSku($jsRow->sku),
+                    AmazonDatasheet::normalizeSkuForLookup($jsRow->sku),
+                ] as $jsSkuKey) {
+                    if ($jsSkuKey !== '') {
+                        $jsBySku[$jsSkuKey][] = $jsRow;
+                    }
+                }
+                $asinCandidates = [
+                    strtoupper(trim((string) ($jsRow->asin ?? ''))),
+                    is_array($jsRow->data) ? strtoupper(trim((string) ($jsRow->data['asin'] ?? ''))) : '',
+                ];
+                foreach ($asinCandidates as $jsAsin) {
+                    if ($jsAsin !== '') {
+                        $jsByAsin[$jsAsin][] = $jsRow;
                     }
                 }
             }
@@ -417,8 +439,15 @@ class LqsMasterController extends Controller
             $rows = [];
             foreach ($productMastersBySku->keys() as $normalizedSku) {
                 $productMaster = $productMastersBySku->get($normalizedSku);
-                $shopifyRow    = $shopifyBySku->get($normalizedSku);
-                $amazonRow     = $amazonBySku->get($normalizedSku);
+                $pmSku         = (string) ($productMaster->sku ?? $normalizedSku);
+                $shopifyRow    = $shopifyBySku[$normalizedSku]
+                    ?? $shopifyBySku[ShopifySku::normalizeSkuForShopifyLookup($pmSku)]
+                    ?? null;
+                $amazonCompact = AmazonDatasheet::normalizeSkuForLookup($pmSku);
+                $amazonRow     = AmazonDatasheet::pickBestForProductSku(
+                    $pmSku,
+                    $amazonByGrouped->get($amazonCompact)
+                ) ?? $amazonByExactSku->get($normalizedSku);
 
                 $inv      = $shopifyRow ? (int)   ($shopifyRow->inv          ?? 0) : 0;
                 $imageSrc = $shopifyRow ?          ($shopifyRow->image_src    ?? null) : null;
@@ -439,15 +468,15 @@ class LqsMasterController extends Controller
                 $reviews = null;
 
                 $jsEntries = [];
-                if ($asin && !empty($jsByAsin[$asin])) {
-                    foreach ($jsByAsin[$asin] as $jsRow) {
-                        if (is_array($jsRow->data)) {
-                            $jsEntries[] = $jsRow->data;
-                        }
-                    }
+                $jsBuckets = [];
+                if ($asin !== '') {
+                    $jsBuckets[] = $jsByAsin[$asin] ?? [];
                 }
-                if (!empty($jsBySku[$normalizedSku])) {
-                    foreach ($jsBySku[$normalizedSku] as $jsRow) {
+                foreach (array_unique(array_filter([$normalizedSku, $amazonCompact])) as $jsSkuKey) {
+                    $jsBuckets[] = $jsBySku[$jsSkuKey] ?? [];
+                }
+                foreach ($jsBuckets as $bucket) {
+                    foreach ($bucket as $jsRow) {
                         if (is_array($jsRow->data)) {
                             $jsEntries[] = $jsRow->data;
                         }

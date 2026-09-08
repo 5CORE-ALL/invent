@@ -59,6 +59,7 @@ class AmazonSpCampaignReports extends Command
             // L30 campaigns visible on /amazon-ads/all (calendar = latest day) by writing
             // zero-metric daily + L1 rows when yesterday's download skipped them.
             $this->backfillMissingDailyFromL30($profileId, $adType, $yesterday);
+            $this->syncEnabledCampaignsFromAmazonList($profileId, $yesterday);
             DB::connection()->disconnect();
 
             $this->info("✅ All Sponsored Products reports processed successfully.");
@@ -179,6 +180,20 @@ class AmazonSpCampaignReports extends Command
             $this->info("[SPONSORED_PRODUCTS] Backfilled {$stored} zero-activity daily/L1 row(s) from L30 for {$dayYmd}.");
         } catch (\Exception $e) {
             $this->warn('[SPONSORED_PRODUCTS] Daily backfill from L30 failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Amazon campaign list includes ENABLED campaigns the daily/L30 reports omit
+     * (no impressions). Write zero-metric rows so /amazon-ads/all can count them.
+     */
+    private function syncEnabledCampaignsFromAmazonList($profileId, string $dayYmd): void
+    {
+        try {
+            $result = app(\App\Support\AmazonAdsEnabledCampaignSync::class)->syncSp((string) $profileId, $dayYmd);
+            $this->info("[SPONSORED_PRODUCTS] Synced ENABLED campaigns from Amazon list: created={$result['created']} skipped={$result['skipped']}.");
+        } catch (\Exception $e) {
+            $this->warn('[SPONSORED_PRODUCTS] ENABLED campaign-list sync failed: '.$e->getMessage());
         }
     }
 

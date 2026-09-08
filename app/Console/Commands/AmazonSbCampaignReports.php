@@ -67,6 +67,8 @@ class AmazonSbCampaignReports extends Command
 
             $this->info("✅ All Sponsored Brands reports processed successfully.");
             $this->backfillNullHlCampaignStatus();
+            $this->backfillMissingDailyFromL30($profileId, $adType, $yesterday);
+            $this->syncEnabledCampaignsFromAmazonList($profileId, $yesterday);
         } catch (\Exception $e) {
             $this->error("Error in handle: " . $e->getMessage());
             $this->info("Error trace: " . $e->getTraceAsString());
@@ -464,6 +466,88 @@ class AmazonSbCampaignReports extends Command
 
         if ($n > 0) {
             $this->info("Backfilled campaignStatus=ENABLED for {$n} L30 SB row(s) where status was NULL.");
+        }
+    }
+
+    private function backfillMissingDailyFromL30($profileId, string $adType, string $dayYmd): void
+    {
+        try {
+            $existingDailyIds = AmazonSbCampaignReport::query()
+                ->where('profile_id', $profileId)
+                ->where('ad_type', $adType)
+                ->where('report_date_range', $dayYmd)
+                ->whereNotNull('campaign_id')
+                ->pluck('campaign_id')
+                ->map(static fn ($id) => (string) $id)
+                ->flip()
+                ->all();
+
+            $l30Rows = AmazonSbCampaignReport::query()
+                ->where('profile_id', $profileId)
+                ->where('ad_type', $adType)
+                ->where('report_date_range', 'L30')
+                ->whereNotNull('campaign_id')
+                ->whereRaw("UPPER(TRIM(COALESCE(campaignStatus, ''))) = 'ENABLED'")
+                ->get();
+
+            $stored = 0;
+            foreach ($l30Rows as $row) {
+                $cid = trim((string) $row->campaign_id);
+                if ($cid === '' || isset($existingDailyIds[$cid])) {
+                    continue;
+                }
+
+                $payload = [
+                    'profile_id' => $profileId,
+                    'campaign_id' => $cid,
+                    'campaignName' => $row->campaignName,
+                    'ad_type' => $adType,
+                    'campaignStatus' => $row->campaignStatus,
+                    'campaignBudgetAmount' => $row->campaignBudgetAmount,
+                    'campaignBudgetCurrencyCode' => $row->campaignBudgetCurrencyCode,
+                    'impressions' => 0,
+                    'clicks' => 0,
+                    'cost' => 0,
+                    'costPerClick' => 0,
+                    'last_sbid' => $row->last_sbid,
+                    'sbid' => $row->sbid,
+                    'sbid_m' => $row->sbid_m,
+                    'yes_sbid' => $row->yes_sbid,
+                ];
+
+                AmazonSbCampaignReport::updateOrCreate(
+                    [
+                        'campaign_id' => $cid,
+                        'profile_id' => $profileId,
+                        'report_date_range' => $dayYmd,
+                    ],
+                    array_merge($payload, ['report_date_range' => $dayYmd])
+                );
+                AmazonSbCampaignReport::updateOrCreate(
+                    [
+                        'campaign_id' => $cid,
+                        'profile_id' => $profileId,
+                        'report_date_range' => 'L1',
+                    ],
+                    array_merge($payload, ['report_date_range' => 'L1'])
+                );
+                $existingDailyIds[$cid] = true;
+                $stored++;
+            }
+
+            $this->info("[SPONSORED_BRANDS] Backfilled {$stored} zero-activity daily/L1 row(s) from L30 for {$dayYmd}.");
+        } catch (\Exception $e) {
+            $this->warn('[SPONSORED_BRANDS] Daily backfill from L30 failed: '.$e->getMessage());
+        }
+    }
+
+    private function syncEnabledCampaignsFromAmazonList($profileId, string $dayYmd): void
+    {
+        try {
+            $result = app(\App\Support\AmazonAdsEnabledCampaignSync::class)->syncSb((string) $profileId, $dayYmd);
+            $this->info("[SPONSORED_BRANDS] Synced ENABLED campaigns from Amazon list: created={$result['created']} skipped={$result['skipped']}.");
+        } catch (\Exception $e) {
+            $this->warn('[SPONSORED_BRANDS] ENABLED campaign-list sync failed: '.$e->getMessage());
         }
     }
 

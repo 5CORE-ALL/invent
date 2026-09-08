@@ -190,12 +190,13 @@
                         </select>
 
                         {{-- LQS filter --}}
-                        <select id="amz-score-filter" class="form-select form-select-sm" style="width:130px;">
-                            <option value="all">All LQS</option>
+                        <select id="amz-score-filter" class="form-select form-select-sm" style="width:140px;">
+                            <option value="all" selected>All LQS</option>
                             <option value="8-10">High (8-10)</option>
                             <option value="6-7">Good (6-7)</option>
                             <option value="4-5">Medium (4-5)</option>
                             <option value="1-3">Low (1-3)</option>
+                            <option value="below-9">Below 9</option>
                             <option value="missing">No LQS</option>
                         </select>
 
@@ -440,6 +441,8 @@
     <script>
         let amzTable = null;
         let amzSummaryCache = [];
+        let amzAllRows = [];
+        let amzApplyingFilters = false;
 
         function amzNotify(msg, type) {
             if (window.toastr) {
@@ -456,69 +459,111 @@
             return d && (d.is_parent === true || d.is_parent === 1 || d.is_parent === '1');
         }
 
-        function amzApplyFilters() {
-            if (!amzTable || typeof amzTable.setFilter !== 'function') return;
+        function amzRowKey(d) {
+            return (amzIsParentRow(d) ? 'p:' : 'c:') + String(d && d.sku != null ? d.sku : '');
+        }
 
+        function amzMatchesSearch(d, skuSearch) {
+            if (!skuSearch) return true;
+            const sku    = String(d.sku || '').toLowerCase();
+            const asin   = String(d.asin || '').toLowerCase();
+            const parent = String(d.parent || '').toLowerCase();
+            return sku.includes(skuSearch) || asin.includes(skuSearch) || parent.includes(skuSearch);
+        }
+
+        function amzMatchesInv(d, invFilter) {
+            if (invFilter === 'all') return true;
+            const inv = parseInt(d.inv, 10) || 0;
+            if (invFilter === 'zero') return inv <= 0;
+            if (invFilter === 'more') return inv > 0;
+            return true;
+        }
+
+        function amzMatchesLqs(d, lqsFilter) {
+            if (lqsFilter === 'all') return true;
+            const lqs = parseFloat(d.lqs);
+            const hasLqs = d.lqs !== null && d.lqs !== '' && !isNaN(lqs) && lqs > 0;
+            if (lqsFilter === 'missing') return !hasLqs;
+            if (!hasLqs) return false;
+            if (lqsFilter === '8-10') return lqs >= 8;
+            if (lqsFilter === '6-7')  return lqs >= 6 && lqs < 8;
+            if (lqsFilter === '4-5')  return lqs >= 4 && lqs < 6;
+            if (lqsFilter === '1-3')  return lqs >= 1 && lqs < 4;
+            if (lqsFilter === 'below-9') return lqs < 9;
+            return true;
+        }
+
+        function amzMatchesDil(d, dilColor) {
+            if (dilColor === 'all') return true;
+            const inv = parseInt(d.inv, 10) || 0;
+            const l30 = parseFloat(d.l30) || 0;
+            const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+            if (dilColor === 'red')   return dil < 25;
+            if (dilColor === 'green') return dil >= 25 && dil < 50;
+            if (dilColor === 'pink')  return dil >= 50;
+            return true;
+        }
+
+        function amzGetFilteredRows() {
             const skuSearch = ($('#amz-sku-search').val() || '').toLowerCase().trim();
             const rowType   = $('#amz-row-type-filter').val() || 'all';
             const invFilter = $('#amz-inv-filter').val() || 'all';
             const lqsFilter = $('#amz-score-filter').val() || 'all';
-            const dilColor  = $('.amz-dil-item.active').data('color') || 'all';
+            const dilColor  = ($('.amz-dil-item.active').attr('data-color') || 'all');
 
-            const hasAny = !!(skuSearch || rowType !== 'all' || invFilter !== 'all'
-                || lqsFilter !== 'all' || dilColor !== 'all');
+            const matchingChildren = [];
+            const parentKeys = {};
 
-            if (!hasAny) {
-                amzTable.clearFilter();
-                return;
+            amzAllRows.forEach(function(d) {
+                if (amzIsParentRow(d)) return;
+                if (!amzMatchesSearch(d, skuSearch)) return;
+                if (!amzMatchesInv(d, invFilter)) return;
+                if (!amzMatchesLqs(d, lqsFilter)) return;
+                if (!amzMatchesDil(d, dilColor)) return;
+                matchingChildren.push(d);
+                parentKeys[String(d.parent || d.sku)] = true;
+            });
+
+            if (rowType === 'skus') {
+                return matchingChildren;
             }
 
-            // One combined predicate — Tabulator 6.3 often drops stacked addFilter(fn) calls.
-            amzTable.setFilter(function(d) {
-                const isParent = amzIsParentRow(d);
+            const childSet = new Set(matchingChildren);
 
-                if (skuSearch) {
-                    const sku    = String(d.sku || '').toLowerCase();
-                    const asin   = String(d.asin || '').toLowerCase();
-                    const parent = String(d.parent || '').toLowerCase();
-                    if (!sku.includes(skuSearch) && !asin.includes(skuSearch) && !parent.includes(skuSearch)) {
-                        return false;
-                    }
+            return amzAllRows.filter(function(d) {
+                if (amzIsParentRow(d)) {
+                    if (rowType === 'skus') return false;
+                    return !!parentKeys[String(d.sku || '')];
                 }
+                if (rowType === 'parents') return false;
+                return childSet.has(d);
+            });
+        }
 
-                if (rowType === 'parents' && !isParent) return false;
-                if (rowType === 'skus' && isParent) return false;
+        function amzApplyFilters() {
+            if (!amzTable || amzApplyingFilters) return;
 
-                const inv = parseInt(d.inv, 10) || 0;
-                if (invFilter === 'zero' && inv !== 0) return false;
-                if (invFilter === 'more' && inv <= 0) return false;
+            const filtered = amzGetFilteredRows();
+            const current  = amzNormalizeRows(amzTable.getData());
+            const sameLen  = current.length === filtered.length;
+            const sameKeys = sameLen && current.every(function(row, i) {
+                return amzRowKey(row) === amzRowKey(filtered[i]);
+            });
 
-                if (lqsFilter !== 'all') {
-                    // Parent rows have no LQS — hide them so the band actually filters the table.
-                    if (isParent) return false;
-                    const lqs = parseFloat(d.lqs);
-                    const hasLqs = d.lqs !== null && d.lqs !== '' && !isNaN(lqs) && lqs > 0;
-                    if (lqsFilter === 'missing') {
-                        if (hasLqs) return false;
+            if (!sameKeys) {
+                amzApplyingFilters = true;
+                try {
+                    if (typeof amzTable.replaceData === 'function') {
+                        amzTable.replaceData(filtered);
                     } else {
-                        if (!hasLqs) return false;
-                        if (lqsFilter === '8-10' && !(lqs >= 8 && lqs <= 10)) return false;
-                        if (lqsFilter === '6-7'  && !(lqs >= 6 && lqs < 8))  return false;
-                        if (lqsFilter === '4-5'  && !(lqs >= 4 && lqs < 6))  return false;
-                        if (lqsFilter === '1-3'  && !(lqs >= 1 && lqs < 4))  return false;
+                        amzTable.setData(filtered);
                     }
+                } finally {
+                    amzApplyingFilters = false;
                 }
+            }
 
-                if (dilColor !== 'all') {
-                    const l30 = parseFloat(d.l30) || 0;
-                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
-                    if (dilColor === 'red'    && !(dil < 25)) return false;
-                    if (dilColor === 'green'  && !(dil >= 25 && dil < 50)) return false;
-                    if (dilColor === 'pink'   && !(dil >= 50)) return false;
-                }
-
-                return true;
-            }, {});
+            amzUpdateSummary(filtered);
         }
 
         function amzNormalizeRows(input) {
@@ -531,14 +576,15 @@
             return [];
         }
 
-        function amzUpdateSummary(input = null) {
-            let rows = amzNormalizeRows(input);
-            if (!rows.length && amzTable && typeof amzTable.getData === 'function') {
-                const active = amzNormalizeRows(amzTable.getData('active'));
-                const all    = amzNormalizeRows(amzTable.getData());
-                rows = active.length ? active : all;
+        function amzUpdateSummary(input) {
+            let rows;
+            if (arguments.length > 0) {
+                rows = amzNormalizeRows(input);
+            } else if (amzTable && typeof amzTable.getData === 'function') {
+                rows = amzNormalizeRows(amzTable.getData());
+            } else {
+                rows = amzNormalizeRows(amzAllRows.length ? amzAllRows : amzSummaryCache);
             }
-            if (!rows.length) rows = amzNormalizeRows(amzSummaryCache);
 
             let totalInv = 0, totalL30 = 0, totalSess = 0, totalSold = 0, totalSessions = 0;
             let dilSum = 0, dilCount = 0;
@@ -585,11 +631,21 @@
             amzTable = new Tabulator('#amz-lqs-table', {
                 ajaxURL: '{{ route("lqs.amz.data") }}',
                 ajaxResponse: function(url, params, response) {
-                    amzSummaryCache = amzNormalizeRows(response);
-                    amzUpdateSummary(amzSummaryCache);
-                    return response;
+                    if (!Array.isArray(response)) {
+                        amzNotify((response && response.error) || 'Failed to load LQS Amz data', 'error');
+                        amzAllRows = [];
+                        amzSummaryCache = [];
+                        return [];
+                    }
+                    amzAllRows = amzNormalizeRows(response);
+                    amzSummaryCache = amzAllRows;
+                    amzUpdateSummary(amzAllRows);
+                    return amzAllRows;
                 },
                 layout: 'fitDataStretch',
+                filterMode: 'local',
+                paginationMode: 'local',
+                sortMode: 'local',
                 pagination: true,
                 paginationSize: 100,
                 initialSort: [],
@@ -635,7 +691,6 @@
                         field: 'sku',
                         minWidth: 180,
                         frozen: true,
-                        headerFilter: 'input',
                         formatter: function(cell) {
                             const d   = cell.getRow().getData();
                             const val = cell.getValue() || '';
@@ -841,13 +896,12 @@
                         }
                     }
                 ],
-                dataLoaded:    function() {
+                dataLoaded: function() {
+                    if (amzApplyingFilters) {
+                        return;
+                    }
                     amzApplyFilters();
-                    amzUpdateSummary();
-                },
-                dataFiltered:  function(filters, rows) { amzUpdateSummary(rows); },
-                dataProcessed: function()             { amzUpdateSummary(); },
-                renderComplete: function()            { amzUpdateSummary(); }
+                }
             });
 
             // ── Filter events ──────────────────────────────────────────

@@ -235,6 +235,82 @@ class AmazonAdsService
     }
 
     /**
+     * All SP campaigns for the given states (walks nextToken).
+     *
+     * @param  list<string>  $states
+     * @return list<array<string, mixed>>
+     */
+    public function listAllSpCampaigns(array $states = ['ENABLED']): array
+    {
+        return $this->paginateCampaignList(
+            '/sp/campaigns/list',
+            $states,
+            [
+                'Content-Type' => 'application/vnd.spCampaign.v3+json',
+                'Accept' => 'application/vnd.spCampaign.v3+json',
+            ]
+        );
+    }
+
+    /**
+     * All SB campaigns for the given states (walks nextToken).
+     *
+     * @param  list<string>  $states
+     * @return list<array<string, mixed>>
+     */
+    public function listAllSbCampaigns(array $states = ['ENABLED']): array
+    {
+        return $this->paginateCampaignList(
+            '/sb/v4/campaigns/list',
+            $states,
+            [
+                'Content-Type' => 'application/vnd.sbcampaignresource.v4+json',
+                'Accept' => 'application/vnd.sbcampaignresource.v4+json',
+            ]
+        );
+    }
+
+    /**
+     * @param  list<string>  $states
+     * @param  array<string, string>  $headers
+     * @return list<array<string, mixed>>
+     */
+    protected function paginateCampaignList(string $path, array $states, array $headers, int $maxPages = 50): array
+    {
+        $out = [];
+        $nextToken = null;
+        $pages = 0;
+        $states = array_values(array_filter(array_map('strval', $states)));
+        if ($states === []) {
+            $states = ['ENABLED'];
+        }
+
+        do {
+            $pages++;
+            $body = [
+                'stateFilter' => ['include' => $states],
+                'maxResults' => 100,
+            ];
+            if (is_string($nextToken) && $nextToken !== '') {
+                $body['nextToken'] = $nextToken;
+            }
+            $response = $this->post($path, $body, $headers);
+            $batch = $response['campaigns'] ?? [];
+            if (! is_array($batch)) {
+                $batch = [];
+            }
+            foreach ($batch as $campaign) {
+                if (is_array($campaign)) {
+                    $out[] = $campaign;
+                }
+            }
+            $nextToken = $response['nextToken'] ?? null;
+        } while (is_string($nextToken) && $nextToken !== '' && $pages < $maxPages);
+
+        return $out;
+    }
+
+    /**
      * Sponsored Products ad groups for a single campaign.
      *
      */
