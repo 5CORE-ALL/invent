@@ -80,6 +80,14 @@
             margin-left: 4px;
             cursor: help;
         }
+        .macys-sprice-cap-lbl {
+            color: #fd7e14;
+            font-weight: 800;
+            font-size: 10px;
+            line-height: 1;
+            margin-left: 3px;
+            cursor: help;
+        }
     </style>
 @endsection
 
@@ -115,6 +123,10 @@
                         style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                         title="Blue triangle: S PRC ≠ MC Price. Click to show only those rows. Click again to clear.">
                         <i class="fas fa-exclamation-triangle"></i> 0</span>
+                    <span class="badge fs-6 p-2" id="macys-amz-cap-badge"
+                        style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
+                        title="S PRC capped to Amazon. Click to show only Amz rows."
+                        aria-label="S PRC capped to Amazon">Amz 0</span>
                     <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
                     <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
                     <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
@@ -414,6 +426,7 @@
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
     let blueTriangleFilterActive = false;
+    let amzCapFilterActive = false;
     let allTableData = []; // Full dataset for ParentExpand
     let decreaseModeActive = true;
     let increaseModeActive = false;
@@ -435,7 +448,29 @@
             const calc = chPromoLiveSprice(data);
             if (calc > 0) sprice = calc;
         }
+        if (typeof chPromoCapSpriceToAmz === 'function' && sprice > 0) {
+            sprice = Number(chPromoCapSpriceToAmz(data, sprice)) || sprice;
+        }
         return sprice;
+    }
+    function macysAmazonPriceForRow(data) {
+        return Math.round((Number(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0) * 100) / 100;
+    }
+    function macysUncappedDil(data) {
+        if (typeof ebaySprcDilForRow === 'function' && data && !isMacysParentRow(data)) {
+            const dil = Number(ebaySprcDilForRow(data));
+            if (dil > 0) return Math.round(dil * 100) / 100;
+        }
+        return 0;
+    }
+    /** Same as /temu1-data: Dil is above A Price and the shown S PRC is the Amazon cap. */
+    function macysHasAmzCap(data) {
+        if (isMacysParentRow(data)) return false;
+        const discounted = macysUncappedDil(data);
+        const amz = macysAmazonPriceForRow(data);
+        if (!(discounted > 0) || !(amz > 0) || discounted <= amz + 0.0001) return false;
+        const shown = macysRowSpriceForAlert(data);
+        return shown > 0 && Math.abs(shown - amz) <= 0.015;
     }
     function macysHasBlueTriangle(data) {
         if (isMacysParentRow(data)) return false;
@@ -447,6 +482,10 @@
         $('#macys-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
             outlineOffset: blueTriangleFilterActive ? '2px' : ''
+        });
+        $('#macys-amz-cap-badge').css({
+            outline: amzCapFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: amzCapFilterActive ? '2px' : ''
         });
     }
 
@@ -1133,7 +1172,7 @@
         }
 
         function macysAmazonPrice(rowData) {
-            return Math.round((Number(rowData && (rowData['A Price'] != null ? rowData['A Price'] : (rowData.a_price || rowData.amazon_price))) || 0) * 100) / 100;
+            return macysAmazonPriceForRow(rowData);
         }
 
         function macysCappedPushPrice(rowData) {
@@ -2524,7 +2563,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when MC L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ MC Price. Red text = S PRC > LMP.",
+                    headerTooltip: "S PRC from Sprc Dil, then capped at Amazon A Price (same as /temu1-data) and LMP. Orange Amz = Dil was above Amazon. Blue triangle = S PRC ≠ MC Price. Red text = S PRC > LMP.",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -2551,6 +2590,9 @@
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
                         if (!(value > 0)) return '';
+                        if (typeof chPromoCapSpriceToAmz === 'function') {
+                            value = Number(chPromoCapSpriceToAmz(rowData, value)) || value;
+                        }
                         const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
                         if (cap && cap.shown > 0) value = cap.shown;
                         const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
@@ -2559,13 +2601,18 @@
                         const priceHtml = overLmp
                             ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
                             : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
+                        const amz = macysAmazonPriceForRow(rowData);
+                        const amzLbl = macysHasAmzCap(rowData)
+                            ? '<span class="macys-sprice-cap-lbl" title="S PRC capped to Amazon $'
+                                + Number(amz).toFixed(2) + '">Amz</span>'
+                            : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ MC Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
                     },
-                    width: 96
+                    width: 118
                 },
                 {
                     title: "Push",
@@ -2933,6 +2980,11 @@
                     return macysHasBlueTriangle(data);
                 });
             }
+            if (amzCapFilterActive) {
+                table.addFilter(function(data) {
+                    return macysHasAmzCap(data);
+                });
+            }
 
             if (mappingFilterActive) {
                 table.addFilter(function(data) {
@@ -2952,6 +3004,10 @@
                 getActive: function() { return lmpMissingFilterActive; },
                 onToggle: function(on) {
                     lmpMissingFilterActive = on;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        amzCapFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
@@ -2962,7 +3018,10 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
-                    if (on) blueTriangleFilterActive = false;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        amzCapFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
@@ -2973,7 +3032,10 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                    if (on) blueTriangleFilterActive = false;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        amzCapFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
@@ -2985,6 +3047,17 @@
                 lmpMissingFilterActive = false;
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
+                amzCapFilterActive = false;
+            }
+            applyFilters();
+        });
+        $('#macys-amz-cap-badge').on('click', function() {
+            amzCapFilterActive = !amzCapFilterActive;
+            if (amzCapFilterActive) {
+                lmpMissingFilterActive = false;
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+                blueTriangleFilterActive = false;
             }
             applyFilters();
         });
@@ -3092,12 +3165,15 @@
                 PriceLt80LmpBadge.update('#macys-price-lt80-lmp-badge', table.getData(), 'macys', 'MC Price');
             }
             let blueTriangleCount = 0;
+            let amzCapCount = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (macysHasBlueTriangle(row)) blueTriangleCount++;
+                if (macysHasAmzCap(row)) amzCapCount++;
             });
             $('#macys-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
+            $('#macys-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
             if (typeof syncMacysTriangleBadgeState === 'function') syncMacysTriangleBadgeState();
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount.toLocaleString()}`);
             $('#avg-dil-badge').text(`DIL%: ${Math.round(avgDil * 100)}%`);

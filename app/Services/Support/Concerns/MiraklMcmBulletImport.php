@@ -26,6 +26,13 @@ trait MiraklMcmBulletImport
      */
     private static array $miraklMcmOfferSkuIndex = [];
 
+    /**
+     * Uploaded offers-sheet index (macys_price_data / bestbuy_price_data): offer_sku preferred.
+     *
+     * @var array<string, array{exact: array<string, string>, norm: array<string, string>, compact: array<string, string>}>
+     */
+    private static array $miraklMcmSheetOfferSkuIndex = [];
+
     abstract protected function miraklMcmConfigKey(): string;
 
     abstract protected function miraklMcmMarketplaceLabel(): string;
@@ -233,12 +240,18 @@ trait MiraklMcmBulletImport
         $sku = trim($sku);
         $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
 
+        $compact = ShopifySku::compactSkuForLookup($sku);
+
         return array_values(array_unique(array_filter([
             $sku,
             strtoupper($sku),
             $norm,
             str_replace('-', ' ', $sku),
             (string) preg_replace('/\s+/u', ' ', $sku),
+            str_replace(' ', '', $sku),
+            strtoupper(str_replace(' ', '', $sku)),
+            (string) preg_replace('/\s+/u', '-', $sku),
+            $compact,
         ], static fn ($value) => is_string($value) && $value !== '')));
     }
 
@@ -309,26 +322,117 @@ trait MiraklMcmBulletImport
     }
 
     /**
-     * Resolve the live MCM shop_sku for PRI01.
-     * Local listing tables are the source of truth during bulk push so OF21 429s
-     * are not reported as "offer not found".
+     * @return array{exact: array<string, string>, norm: array<string, string>, compact: array<string, string>}
      */
-    protected function resolveMcmOfferSku(string $sku, string $apiKey, string $baseUrl): ?string
+    protected function miraklMcmSheetOfferSkuIndex(string $table): array
     {
-        $table = $this->miraklMcmOfferProductsTable();
-        $hasLocalIndex = false;
-        if ($table !== null && Schema::hasTable($table) && Schema::hasColumn($table, 'sku')) {
-            $hasLocalIndex = $this->miraklMcmOfferSkuIndex($table)['exact'] !== [];
+        if (isset(self::$miraklMcmSheetOfferSkuIndex[$table])) {
+            return self::$miraklMcmSheetOfferSkuIndex[$table];
         }
 
-        $local = $this->resolveLocalMcmOfferSku($sku);
-        if ($local !== null) {
-            return $local;
+        $exact = [];
+        $norm = [];
+        $compact = [];
+        $hasSku = Schema::hasColumn($table, 'sku');
+        $hasOffer = Schema::hasColumn($table, 'offer_sku');
+        $hasProduct = Schema::hasColumn($table, 'product_sku');
+        $columns = array_values(array_filter([
+            $hasSku ? 'sku' : null,
+            $hasOffer ? 'offer_sku' : null,
+            $hasProduct ? 'product_sku' : null,
+        ]));
+        if ($columns === []) {
+            return self::$miraklMcmSheetOfferSkuIndex[$table] = [
+                'exact' => [],
+                'norm' => [],
+                'compact' => [],
+            ];
         }
-        if ($hasLocalIndex) {
+
+        try {
+            foreach (DB::table($table)->select($columns)->cursor() as $row) {
+                $offer = $hasOffer ? trim((string) ($row->offer_sku ?? '')) : '';
+                $sheetSku = $hasSku ? trim((string) ($row->sku ?? '')) : '';
+                $productSku = $hasProduct ? trim((string) ($row->product_sku ?? '')) : '';
+                $shop = $offer !== '' ? $offer : $sheetSku;
+                if ($shop === '') {
+                    continue;
+                }
+                foreach (array_unique(array_filter([$offer, $sheetSku, $productSku])) as $key) {
+                    $exact[strtoupper($key)] = $shop;
+                    $n = ShopifySku::normalizeSkuForShopifyLookup($key);
+                    if ($n !== '' && ! isset($norm[$n])) {
+                        $norm[$n] = $shop;
+                    }
+                    $c = ShopifySku::compactSkuForLookup($key);
+                    if ($c !== '' && ! isset($compact[$c])) {
+                        $compact[$c] = $shop;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning($this->miraklMcmMarketplaceLabel().' sheet offer SKU index failed', [
+                'table' => $table,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return self::$miraklMcmSheetOfferSkuIndex[$table] = [
+            'exact' => $exact,
+            'norm' => $norm,
+            'compact' => $compact,
+        ];
+    }
+
+    protected function resolveLocalMcmSheetOfferSku(string $sku): ?string
+    {
+        $table = $this->miraklMcmHierarchyTable();
+        if ($table === null || ! Schema::hasTable($table)) {
             return null;
         }
 
+        $index = $this->miraklMcmSheetOfferSkuIndex($table);
+        $upper = strtoupper(trim($sku));
+        if (isset($index['exact'][$upper])) {
+            return $index['exact'][$upper];
+        }
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '' && isset($index['norm'][$norm])) {
+            return $index['norm'][$norm];
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        if ($compact !== '' && isset($index['compact'][$compact])) {
+            return $index['compact'][$compact];
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve the live MCM shop_sku for PRI01.
+     * Prefer the uploaded offers sheet, then OF21 when the local Connect SKU
+     * has spaces (e.g. "SS HD 1PK 3FT BLK WOB" vs compact shop_sku).
+     */
+    protected function resolveMcmOfferSku(string $sku, string $apiKey, string $baseUrl): ?string
+    {
+        $sheet = $this->resolveLocalMcmSheetOfferSku($sku);
+        $local = $sheet ?? $this->resolveLocalMcmOfferSku($sku);
+        $localLooksLikeConnectId = $local !== null && preg_match('/\s/u', $local) === 1;
+
+        if ($local !== null && ! $localLooksLikeConnectId) {
+            return $local;
+        }
+
+        $fromApi = $this->resolveMcmOfferSkuFromOffersApi($sku, $apiKey, $baseUrl);
+        if ($fromApi !== null) {
+            return $fromApi;
+        }
+
+        return $local;
+    }
+
+    protected function resolveMcmOfferSkuFromOffersApi(string $sku, string $apiKey, string $baseUrl): ?string
+    {
         $wantedNorm = ShopifySku::normalizeSkuForShopifyLookup($sku);
         $wantedCompact = ShopifySku::compactSkuForLookup($sku);
 
@@ -371,6 +475,14 @@ trait MiraklMcmBulletImport
         }
 
         return null;
+    }
+
+    public static function isMiraklOfferNotFoundError(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return str_contains($m, 'no existing offer with sku')
+            || str_contains($m, 'is not listed on');
     }
 
     /**
