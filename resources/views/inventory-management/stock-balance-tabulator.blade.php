@@ -198,8 +198,10 @@
 
                 <!-- Filters -->
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-                    <select id="parent-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="">All Parents</option>
+                    <label for="row-filter" class="mb-0 small text-muted">Row</label>
+                    <select id="row-filter" class="form-select form-select-sm" style="width: auto;">
+                        <option value="sku" selected>Sku</option>
+                        <option value="parent">Parent</option>
                     </select>
                     
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto;">
@@ -1017,12 +1019,13 @@
                 $row.find('.to-parent-display').val(fromParent);
                 $row.find('.from-inv-display').val(fromInv);
                 $row.find('.from-sold-display').val(meta.sold);
-                $row.find('.from-qty-input').val(fromInv);
+                const data = row.getData();
+                const keepQty = !!options.keepQty && data._from_qty != null && data._from_qty !== '';
+                const qtyToShow = keepQty ? data._from_qty : fromInv;
+                $row.find('.from-qty-input').val(qtyToShow);
                 setFromDilDisplay($row, meta.dil);
 
-                // Update row data in place (avoids extra Tabulator re-renders during restore)
-                const data = row.getData();
-                data._from_qty = fromInv;
+                data._from_qty = qtyToShow;
                 data._from_dil = meta.dil;
                 data._from_sku = fromSku;
             } else {
@@ -1047,7 +1050,6 @@
             const row = table.getRow($row[0]);
             if (!row) return;
             applyFromSkuToRow($row, row, $select.val(), { silent: false });
-            applyAllFilters();
         });
         
         // Ratio change handler (inline in table)
@@ -1074,7 +1076,7 @@
             calculateToQty($row);
         });
         
-        // FROM Qty input change handler
+        // FROM Qty input change handler — do not re-filter (that re-sorts and jumps the row)
         $(document).on('input', '.from-qty-input', function() {
             if (restoringFromSku) return;
             const $row = $(this).closest('.tabulator-row');
@@ -1083,7 +1085,6 @@
             const qty = raw === '' ? null : (parseInt(raw, 10) || 0);
             if (row) {
                 row.getData()._from_qty = qty;
-                applyAllFilters();
             }
             calculateToQty($row);
         });
@@ -1519,9 +1520,9 @@
             ]
         });
         
-        // SKU Search
-        $('#sku-search').on('keyup', function() {
-            table.setFilter("SKU", "like", $(this).val());
+        // SKU Search — go through applyAllFilters so Row / DIL / Action stay applied
+        $('#sku-search').on('input', function() {
+            applyAllFilters();
         });
 
         // Refresh inventory data (reload from server so INV/Sold are up to date)
@@ -1537,8 +1538,12 @@
             });
         });
         
+        function isParentRow(data) {
+            return String((data && data.SKU) || '').toUpperCase().trim().startsWith('PARENT');
+        }
+
         // Filters
-        $('#parent-filter').on('change', function() {
+        $('#row-filter').on('change', function() {
             applyAllFilters();
         });
         
@@ -1575,12 +1580,21 @@
             if (!table || isApplyingFilters || restoringFromSku) return;
             isApplyingFilters = true;
             try {
-                const parentVal = $('#parent-filter').val();
+                const rowVal = $('#row-filter').val() || 'sku';
                 const dilVal = $('#dil-filter').val();
                 const actionVal = $('#action-filter').val();
+                const searchVal = ($('#sku-search').val() || '').trim().toLowerCase();
 
                 table.setFilter(function(data) {
-                    if (parentVal && data.Parent !== parentVal) return false;
+                    if (searchVal) {
+                        const sku = String(data.SKU || '').toLowerCase();
+                        const parent = String(data.Parent || '').toLowerCase();
+                        if (sku.indexOf(searchVal) === -1 && parent.indexOf(searchVal) === -1) return false;
+                    }
+
+                    const parent = isParentRow(data);
+                    if (rowVal === 'sku' && parent) return false;
+                    if (rowVal === 'parent' && !parent) return false;
 
                     if (dilVal) {
                         const dil = dilToPercent(data.DIL);
@@ -1637,19 +1651,7 @@
             });
         });
         
-        // Populate parent filter and apply default filters
         table.on('dataLoaded', function() {
-            const parents = new Set();
-            allTableData.forEach(function(item) {
-                if (item.Parent) parents.add(item.Parent);
-            });
-            
-            $('#parent-filter').html('<option value="">All Parents</option>');
-            Array.from(parents).sort().forEach(function(parent) {
-                $('#parent-filter').append('<option value="' + parent + '">' + parent + '</option>');
-            });
-            
-            // Apply default RB filter
             applyAllFilters();
         });
         
@@ -1674,7 +1676,7 @@
                     $row.find('.ratio-select').val(ratioToRestore);
                     if (fromSkuToRestore) {
                         $select.val(fromSkuToRestore);
-                        applyFromSkuToRow($row, row, fromSkuToRestore, { silent: true });
+                        applyFromSkuToRow($row, row, fromSkuToRestore, { silent: true, keepQty: true });
                         if (!savedFromSku && fromSkuToRestore && !(serverPref && serverPref.fromSku)) {
                             savedData.fromSku = fromSkuToRestore;
                             localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
