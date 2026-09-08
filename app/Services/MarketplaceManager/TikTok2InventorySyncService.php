@@ -273,6 +273,16 @@ class TikTok2InventorySyncService
         }
 
         $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
+        if ($shopifyStock === null) {
+            $onShopify = ShopifySku::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->exists();
+            if (! $onShopify) {
+                $empty['skipped'] = 1;
+
+                return $empty;
+            }
+        }
         $pushQty = MarketplaceLiveInventoryRules::qtyForMismatchPush(
             $shopifyStock,
             $exactShopifyQty,

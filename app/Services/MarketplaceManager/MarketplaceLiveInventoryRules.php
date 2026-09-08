@@ -132,10 +132,13 @@ final class MarketplaceLiveInventoryRules
     }
 
     /**
-     * Shopify must never be lower than marketplace stock (or the Qty % target).
+     * Shopify must never be lower than marketplace stock.
+     * Qty % is a scheduled-sync target, not a ceiling for the mismatch tab —
+     * exact Shopify (mismatch button) must not count as overstock.
      */
     public static function marketplaceQtyExceedsShopify(?int $shopifyQty, ?int $marketplaceQty, ?string $marketplace = null): bool
     {
+        unset($marketplace);
         if ($marketplaceQty === null) {
             return false;
         }
@@ -146,11 +149,7 @@ final class MarketplaceLiveInventoryRules
             return $marketplaceQty > 0;
         }
 
-        $target = $marketplace
-            ? self::expectedMarketplaceQty($shopifyQty, $marketplace)
-            : $shopifyQty;
-
-        return $marketplaceQty > $target;
+        return $marketplaceQty > $shopifyQty;
     }
 
     /**
@@ -296,10 +295,11 @@ final class MarketplaceLiveInventoryRules
     }
 
     /**
-     * Listings / skip rule:
-     * Compare marketplace qty to the target for that channel (Qty % of Shopify when $marketplace is set).
-     * Marketplace qty above Shopify / target is never a match.
-     * Otherwise matched when equal, or target − marketplace ≤ max(3 units, 3% of target).
+     * Listings match band:
+     * Marketplace above Shopify is never a match.
+     * Otherwise match when qty sits at Shopify (mismatch-button exact push),
+     * at the channel Qty % target (scheduled sync), or is short of that target
+     * by at most max(3 units, 3% of target).
      * Missing marketplace qty is never treated as within tolerance.
      */
     public static function qtyWithinMismatchTolerance(int $shopifyQty, ?int $marketplaceQty, ?string $marketplace = null): bool
@@ -317,14 +317,14 @@ final class MarketplaceLiveInventoryRules
         $target = $marketplace
             ? self::expectedMarketplaceQty($shopifyQty, $marketplace)
             : $shopifyQty;
-        if ($marketplaceQty === $target) {
+        if ($marketplaceQty === $target || $marketplaceQty === $shopifyQty) {
             return true;
         }
 
-        $diff = $target - $marketplaceQty;
         $threshold = self::mismatchIgnoreThreshold($target);
+        $low = max(0, $target - $threshold);
 
-        return $diff >= 0 && $diff <= $threshold;
+        return $marketplaceQty >= $low && $marketplaceQty <= $shopifyQty;
     }
 
     /**
