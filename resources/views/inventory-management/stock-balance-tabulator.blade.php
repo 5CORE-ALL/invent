@@ -51,6 +51,20 @@
         .dil-yellow { color: #ffc107; font-weight: 600; }
         .dil-green { color: #28a745; font-weight: 600; }
         .dil-pink { color: #e83e8c; font-weight: 600; }
+
+        /* Parent rows (SKU starts with PARENT) */
+        .tabulator-row.parent-row,
+        .tabulator-row.parent-row .tabulator-cell,
+        .tabulator-row.tabulator-row-even.parent-row,
+        .tabulator-row.tabulator-row-odd.parent-row,
+        .tabulator-row.tabulator-row-even.parent-row .tabulator-cell,
+        .tabulator-row.tabulator-row-odd.parent-row .tabulator-cell {
+            background-color: #fff3cd !important;
+        }
+        .tabulator-row.parent-row:hover,
+        .tabulator-row.parent-row:hover .tabulator-cell {
+            background-color: #ffe69c !important;
+        }
         
         /* Custom success toast styling */
         .toast-container {
@@ -1221,6 +1235,15 @@
                 column: "DIL",
                 dir: "desc"
             }],
+            rowFormatter: function(row) {
+                const sku = String((row.getData() || {}).SKU || '').toUpperCase().trim();
+                const el = row.getElement();
+                if (sku.startsWith('PARENT')) {
+                    el.classList.add('parent-row');
+                } else {
+                    el.classList.remove('parent-row');
+                }
+            },
             columns: [
                 {
                     title: "<input type='checkbox' id='select-all-checkbox'>",
