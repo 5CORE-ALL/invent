@@ -1262,12 +1262,14 @@
         return f === true || f === 1 || f === '1' || f === 'true';
     }
 
-    /** S PRC to show / push. Sprc Dil wins (same as /tiktok-2-pricing), then CVR Disc / 0-sold / Std. Sugg Amz keeps A Price. */
+    /** S PRC to show / push. Sprc Dil wins (same as /tiktok-2-pricing), then CVR Disc / 0-sold / Std. Sugg Amz tracks live A Price. */
     function shopifyB2cDisplayedSprice(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
         const stored = parseFloat(data.SPRICE) || 0;
-        if (shopifyB2cIsAmzSuggApplied(data) && stored > 0) {
-            return Math.round(stored * 100) / 100;
+        if (shopifyB2cIsAmzSuggApplied(data)) {
+            const amz = shopifyB2cAmzPrice(data);
+            if (amz > 0) return Math.round(amz * 100) / 100;
+            return stored > 0 ? Math.round(stored * 100) / 100 : 0;
         }
         if (typeof chPromoLiveSprice === 'function') {
             const calc = chPromoLiveSprice(data);
@@ -1500,12 +1502,12 @@
         if (!row || typeof row.getData !== 'function') return 0;
         const d = row.getData() || {};
         if (isShopifyB2cParentRow(d)) return 0;
-        if (shopifyB2cIsAmzSuggApplied(d)) return 0;
+        const amzSugg = shopifyB2cIsAmzSuggApplied(d);
         const shown = shopifyB2cShownSprice(d);
         if (!(shown > 0)) return 0;
         const stored = parseFloat(d.SPRICE) || 0;
         if (!opts.force && Math.abs(stored - shown) < 0.005) return 0;
-        row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false, AMZ_SUGG_APPLIED: false });
+        row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false, AMZ_SUGG_APPLIED: amzSugg });
         shopifyB2cApplySpriceMetricsToRow(row, shown);
         if (opts.persist === false) return shown;
         const sku = d['(Child) sku'] || d.sku;
@@ -2689,7 +2691,8 @@
         // SAVE SPRICE to database with retry
         function saveSpriceWithRetry(sku, sprice, row, retryCount = 0, skipClear) {
             const maxRetries = 3;
-            if (row && Number(sprice) > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+            const amzSugg = row && typeof row.getData === 'function' && shopifyB2cIsAmzSuggApplied(row.getData());
+            if (row && Number(sprice) > 0 && typeof chPromoFinalSpriceToSave === 'function' && !amzSugg) {
                 sprice = chPromoFinalSpriceToSave(row.getData(), sprice);
             }
             if (!skipClear && !(retryCount > 0) && Number(sprice) > 0) {
@@ -2708,7 +2711,7 @@
                     }
                 }).always(function() {
                     if (row && typeof row.update === 'function') {
-                        row.update({ SPRICE: sprice, has_custom_sprice: true });
+                        row.update({ SPRICE: sprice, has_custom_sprice: true, AMZ_SUGG_APPLIED: amzSugg });
                     }
                     saveSpriceWithRetry(sku, sprice, row, 0, true);
                 });
@@ -2721,7 +2724,7 @@
                 data: {
                     sku: sku,
                     sprice: sprice,
-                    amz_sugg: 0,
+                    amz_sugg: amzSugg ? 1 : 0,
                     _token: '{{ csrf_token() }}'
                 },
                 success: function(response) {

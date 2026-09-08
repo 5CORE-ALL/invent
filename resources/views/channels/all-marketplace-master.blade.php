@@ -5726,9 +5726,11 @@
                     if (range.start) params.start_date = range.start;
                 }
 
+                params._ = Date.now();
                 adChartAjax = $.ajax({
                     url: url,
                     method: 'GET',
+                    cache: false,
                     data: params,
                     success: function(response) {
                         adChartAjax = null;

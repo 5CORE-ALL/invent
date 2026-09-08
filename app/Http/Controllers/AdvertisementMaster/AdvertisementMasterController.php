@@ -25,6 +25,7 @@ use App\Models\AmazonOrder;
 use App\Models\ChannelMaster;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\ChannelMasterCalculatedData;
+use App\Support\AmazonAdsAdvertisementMasterHistory;
 use App\Support\Marketplace\MappingChannelCounts;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -1709,6 +1710,20 @@ class AdvertisementMasterController extends Controller
             $cursor->addDay();
         }
 
+        // Amazon snapshots are whatever L30 summary existed on page load.
+        // When that pull lagged, spend dipped to ~$6.5k then jumped on refresh.
+        // Overlay a dated daily rolling L30 so the chart matches real delivery.
+        try {
+            $computed = AmazonAdsAdvertisementMasterHistory::computedL30ByChannel($from, $end);
+            [$byDate, $byChannel] = AmazonAdsAdvertisementMasterHistory::overlayOnHistory(
+                $byDate,
+                $byChannel,
+                $computed
+            );
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master Amazon history overlay failed: '.$e->getMessage());
+        }
+
         // Rolled-up "All channels" series carries tcos + ssales (both need the
         // store-level net sales). Per-channel series get tcos too, lensed to
         // that channel's spend against the same store S Sales.
@@ -1724,6 +1739,10 @@ class AdvertisementMasterController extends Controller
             'labels'   => array_map(fn ($d) => date('M d', strtotime($d)), $labels),
             'metrics'  => $metrics,
             'channels' => $this->buildChannelSeries($byChannel, $labels, $ssalesByDate),
+        ])->withHeaders([
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+            'Expires' => '0',
         ]);
     }
 

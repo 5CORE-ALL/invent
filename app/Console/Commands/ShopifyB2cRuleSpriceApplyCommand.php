@@ -8,7 +8,7 @@ use App\Services\ShopifyB2cRuleSpriceApplyService;
 use Illuminate\Console\Command;
 
 /**
- * Recalc Shopify B2C S PRC from Dil / PRMT / CVR Disc / 0 Sold and save SPRICE.
+ * Recalc Shopify B2C S PRC from Sprc Dil (then Amz floor) / CVR Disc and save SPRICE.
  * Runs whether or not /shopify-b2c-pricing is open (same idea as amazon:dil-prmt-auto-push).
  */
 class ShopifyB2cRuleSpriceApplyCommand extends Command
@@ -19,7 +19,7 @@ class ShopifyB2cRuleSpriceApplyCommand extends Command
         {--dry-run : Compute S PRC but do not write shopifyb2c_data_view}
         {--limit= : Max SKUs (for testing)}';
 
-    protected $description = 'Shopify B2C: apply Dil/PRMT/CVR Disc/0 Sold rules and save S PRC (page not required).';
+    protected $description = 'Shopify B2C: apply Sprc Dil + Amz floor (CVR Disc fallback) and save S PRC (page not required).';
 
     protected string $monitorJobName = 'Shopify B2C Rule S PRC Apply';
 
