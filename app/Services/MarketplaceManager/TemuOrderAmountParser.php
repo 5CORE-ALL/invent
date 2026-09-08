@@ -63,6 +63,39 @@ class TemuOrderAmountParser
     }
 
     /**
+     * Official Temu line sales from bg.order.amount.query.
+     *
+     * Seller Central's daily "sales" / estimated-revenue bar is
+     * orderList.basePrice + orderList.shipAmountTotal (freight), not base
+     * alone. Summing that (excluding canceled) matches parent
+     * estimatedRevenue — e.g. Sep 7 PT = $1,999.61 (~$2,000 on site).
+     */
+    public static function lineSalesAmount(object $order): ?float
+    {
+        $decoded = self::decodePayload($order->amount_raw_json ?? null);
+        if ($decoded !== null) {
+            $decoded = self::unwrapResult($decoded);
+            $orderSn = trim((string) ($order->order_sn ?? ''));
+            foreach ($decoded['orderList'] ?? [] as $entry) {
+                if (! is_array($entry)) {
+                    continue;
+                }
+                if ($orderSn === '' || trim((string) ($entry['orderSn'] ?? '')) !== $orderSn) {
+                    continue;
+                }
+                $base = self::pickMoney($entry, ['basePrice', 'basePriceTotal', 'goodsAmount']);
+                $ship = self::pickMoney($entry, ['shipAmountTotal', 'shippingAmountTotal', 'shipAmount']);
+                $sum = (float) ($base ?? 0) + (float) ($ship ?? 0);
+                if ($sum > 0) {
+                    return round($sum, 2);
+                }
+            }
+        }
+
+        return self::firstPositive($order->order_base_amount ?? null);
+    }
+
+    /**
      * Line sale (dollars) from stored amount JSON, then columns.
      */
     public static function amountFromOrder(object $order): ?float

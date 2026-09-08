@@ -2,8 +2,9 @@
   Sprc Dil — same Dil → Target GROI slabs as Amazon.
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  Amazon / eBay 1–3 / Doba Pickup / Macys: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
-  Macys: if Sprc Dil S PRC is below A Price, S PRC is raised to A Price.
+  Amazon / eBay 1–3 / Doba Pickup: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
+  Macys: Dil-matching when Dil is in a slab. If Dil is out of box and 0 Sold, use min Target GROI.
+  If that Dil / min-ROI S PRC is below A Price, S PRC = A Price (do not keep Std Prc).
   Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
   Dil slab edits and table load recalculate display only.
   Save and Apply deletes old S PRC (saves 0), then writes the new Dil S PRC.
@@ -174,7 +175,7 @@
 @if($ebaySprcDilPart === 'buttons' || $ebaySprcDilPart === 'all')
                     <button type="button" class="btn btn-sm" id="ebay-dil-groi-btn"
                         title="{{ !empty($ebaySprcDilIsMacys)
-                            ? 'Dil slabs → Target GROI% (including 0 Sold). If Sprc Dil < A Price, S PRC = A Price.'
+                            ? 'Dil-matching slab, or min GROI when Dil is out of box and 0 Sold. If that S PRC < A Price, use A Price.'
                             : ($ebaySprcDilZeroSoldUsesMinGroi
                             ? 'Dil slabs → Target GROI%. '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.'
                             : 'Dil slabs → Target GROI%. Every INV > 0 SKU uses the Dil-matching slab.') }}">
@@ -239,15 +240,17 @@
                         <li>
                             <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
                             use that slab’s Target GROI (first match; last slab includes the To value).
-                            @if(!empty($ebaySprcDilIsMacys))
-                            0 Sold ({{ $ebaySprcDilSoldLabel }} = 0) uses the <strong>same Dil-matching slab</strong> — not min Target GROI.
-                            @endif
                         </li>
                         @if(!empty($ebaySprcDilIsMacys))
                         <li>
-                            <strong>When</strong> Sprc Dil S PRC is <strong>below A Price</strong>:
-                            S PRC is raised to <strong>A Price</strong> (not min GROI).
-                            If Sprc Dil is at or above A Price, keep the Dil rule.
+                            <strong>When</strong> Dil is <strong>out of box</strong> (no From–To match) and
+                            {{ $ebaySprcDilSoldLabel }} = 0 (0 Sold):
+                            take the <strong>minimum Target GROI</strong> from the slabs.
+                        </li>
+                        <li>
+                            <strong>When</strong> that Dil / min-ROI S PRC is <strong>below A Price</strong>:
+                            do not keep the slab price — S PRC uses <strong>A Price</strong>.
+                            If it is at or above A Price, keep the Dil / min-ROI price (not Std Prc).
                         </li>
                         @endif
                         <li>
@@ -592,6 +595,7 @@
             let label = '';
             let key = '';
             let zeroSoldMin = false;
+            const rule = ebayDilGroiMatch(dil);
             if (EBAY_DIL_GROI_ZERO_SOLD_MIN && ebayDgIsZeroSold(d)) {
                 const minSlab = ebayDilGroiMinSlab();
                 if (!minSlab) return null;
@@ -599,12 +603,19 @@
                 label = '0 Sold · min GROI ' + minSlab.groi + '% from ' + minSlab.label;
                 key = minSlab.key || 'zero-sold-min';
                 zeroSoldMin = true;
-            } else {
-                const rule = ebayDilGroiMatch(dil);
-                if (!rule) return null;
+            } else if (rule) {
                 groi = rule.groi;
                 label = rule.label;
                 key = rule.key;
+            } else if (ebayDgIsMacys() && ebayDgIsZeroSold(d)) {
+                const minSlab = ebayDilGroiMinSlab();
+                if (!minSlab) return null;
+                groi = minSlab.groi;
+                label = 'out of box · 0 Sold · min GROI ' + minSlab.groi + '% from ' + minSlab.label;
+                key = minSlab.key || 'zero-sold-min';
+                zeroSoldMin = true;
+            } else {
+                return null;
             }
             const rawSprc = ebaySpriceFromGroi(d, groi);
             if (!(rawSprc > 0)) return null;
@@ -1170,11 +1181,11 @@
                     ? fbMpRoundSprice(price)
                     : ebayDgRound2(price);
             }
-            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+            if (!ebayDgIsMacys() && typeof chPromoSpriceFromStdTPromo === 'function') {
                 const cvr = Number(chPromoSpriceFromStdTPromo(d, { skip_lmp_cap: true })) || 0;
                 if (cvr > 0) {
                     let price = ebayDgRound2(cvr);
-                    if ((ebayDgIsShopifyB2c() || ebayDgIsMacys()) && typeof chPromoFinalSpriceToSave === 'function') {
+                    if (ebayDgIsShopifyB2c() && typeof chPromoFinalSpriceToSave === 'function') {
                         price = chPromoFinalSpriceToSave(d, price);
                     }
                     return price > 0 ? ebayDgRound2(price) : 0;

@@ -2502,7 +2502,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target GROI% slabs (including 0 Sold). If Sprc Dil < A Price, S PRC uses A Price. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                    headerTooltip: "Dil-matching slab when Dil is in range. Out of box + 0 Sold uses min Target GROI. If that S PRC < A Price, S PRC = A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isMacysParentRow(rowData)) return '';
@@ -2526,7 +2526,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC from Sprc Dil. If Sprc Dil < A Price, S PRC = A Price. Otherwise keep Dil. Orange Amz = raised to Amazon. Blue triangle = S PRC ≠ MC Price. Red text = S PRC > LMP. Not editable — use Apply / Dil rules.",
+                    headerTooltip: "S PRC from Dil slab, or min GROI when Dil is out of box and 0 Sold. If that price < A Price, S PRC = A Price. Orange Amz = raised to Amazon. Not editable — use Apply / Dil rules.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {

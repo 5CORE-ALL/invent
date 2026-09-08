@@ -14,6 +14,7 @@ use App\Models\Temu3Order;
 use App\Models\Temu3Pricing;
 use App\Models\TemuMetric;
 use App\Models\TemuOrder;
+use App\Services\MarketplaceManager\TemuOrderAmountParser;
 use App\Support\Marketplace\Temu3OrderSheet;
 use App\Support\ProductMasterTemuShip;
 use Carbon\Carbon;
@@ -344,17 +345,22 @@ class TemuShopifySalesService
         foreach ($rows as $r) {
             $qty = (int) ($r['quantity_purchased'] ?? 0);
             $base = (float) ($r['base_price_total'] ?? 0);
-            if ($qty <= 0 || $base <= 0) {
+            $lineSales = (float) ($r['line_sales'] ?? 0);
+            if ($qty <= 0 || ($base <= 0 && $lineSales <= 0)) {
                 continue;
             }
 
-            $fbPrice = self::computeFbPrice($base, $qty);
-            // `sales` keeps the FB-adjusted figure (base + $2.99/unit freight recovery) used
-            // for margin math (GPFT%, ROI) so it stays consistent with /temu-decrease and the
-            // /temu-tabulator profit columns. `base_sales` is the raw base price × qty, which
-            // mirrors Temu Seller Central's "Base price sales" tile — use it for reported sales.
-            $totalSales += $fbPrice * $qty;
-            $totalBaseSales += $base * $qty;
+            // Official sales from bg.order.amount.query = basePrice + shipAmountTotal
+            // (Temu Seller Central daily sales / estimated revenue). Do not add the
+            // synthetic +$2.99 FB freight on top — that shipping is already in the API.
+            if ($lineSales > 0) {
+                $totalSales += $lineSales;
+                $totalBaseSales += $lineSales;
+            } else {
+                $fbPrice = self::computeFbPrice($base, $qty);
+                $totalSales += $fbPrice * $qty;
+                $totalBaseSales += $base * $qty;
+            }
             $totalQty += $qty;
             $totalCogs += ((float) ($r['lp'] ?? 0)) * $qty;
             $totalPft += (float) ($r['pft'] ?? 0);
@@ -397,8 +403,14 @@ class TemuShopifySalesService
             if (! isset($out[$d])) {
                 $out[$d] = ['sales' => 0.0, 'base_sales' => 0.0, 'qty' => 0, 'oids' => []];
             }
-            $out[$d]['sales'] += self::lineSales($base, $qty);
-            $out[$d]['base_sales'] += $base * $qty;
+            $lineSales = (float) ($r['line_sales'] ?? 0);
+            if ($lineSales > 0) {
+                $out[$d]['sales'] += $lineSales;
+                $out[$d]['base_sales'] += $lineSales;
+            } else {
+                $out[$d]['sales'] += self::lineSales($base, $qty);
+                $out[$d]['base_sales'] += $base * $qty;
+            }
             $out[$d]['qty'] += $qty;
             $oid = trim((string) ($r['order_id'] ?? ''));
             if ($oid !== '') {
@@ -435,10 +447,8 @@ class TemuShopifySalesService
         $start = $yesterday->copy()->startOfDay();
         $end = $yesterday->copy()->endOfDay();
 
-        // Y Sales = yesterday's reported base-price sales, matching Temu Seller Central's
-        // "Base price sales" daily chart (e.g. Jul 12 = $1,814.97) and staying consistent
-        // with L7/L30/L60 + the tabulator, which all use base_sales. Using the FB-adjusted
-        // figure (base + $2.99/unit freight) here inflated Y Sales above what Temu reports.
+        // Y Sales = yesterday's Temu amount-API sales (base + freight), matching
+        // Seller Central's daily sales bar (e.g. Sep 7 PT = $1,999.61).
         return (float) self::computeMetricsFromOrders($start, $end)['base_sales'];
     }
 
@@ -1070,13 +1080,11 @@ class TemuShopifySalesService
 
             $quantity = (int) ($o->quantity ?? 0);
 
-            // Prefer Temu's ACTUAL reported base amount (bg.order.amount.query, stored on
-            // temu_orders / temu2_orders.order_base_amount) over catalog price × qty — the
-            // same principle as Amazon summing real per-order item price. order_base_amount
-            // is the line total for this sub-order, so per-unit = amount / qty. Fall back
-            // to metrics catalog price when the amount hasn't been fetched yet.
+            // Official line sales from bg.order.amount.query: basePrice + shipAmountTotal
+            // (same total as parent estimatedRevenue). Fall back to stored base, then catalog.
             $price = (float) ($priceBySku[$sku] ?? 0);
-            $orderAmount = $o->order_base_amount !== null ? (float) $o->order_base_amount : 0.0;
+            $lineSales = TemuOrderAmountParser::lineSalesAmount($o);
+            $orderAmount = $lineSales ?? ((float) ($o->order_base_amount ?? 0) ?: 0.0);
             if ($orderAmount > 0 && $quantity > 0) {
                 $price = $orderAmount / $quantity;
             }
@@ -1090,7 +1098,9 @@ class TemuShopifySalesService
                 }
             }
 
-            $fbPrice = self::computeFbPrice($price, $quantity);
+            $hasApiSales = $lineSales !== null && $lineSales > 0;
+            $officialUnit = $hasApiSales && $quantity > 0 ? $lineSales / $quantity : $price;
+            $fbPrice = $hasApiSales ? $officialUnit : self::computeFbPrice($price, $quantity);
             $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;
             $pft = $pftDecimal * $fbPrice * $quantity;
 
@@ -1103,7 +1113,8 @@ class TemuShopifySalesService
                 'quantity_purchased' => $quantity,
                 'quantity_shipped' => 0,
                 'quantity_to_ship' => 0,
-                'base_price_total' => round($price, 2),
+                'base_price_total' => round($officialUnit > 0 ? $officialUnit : $price, 2),
+                'line_sales' => $hasApiSales ? round($lineSales, 2) : round(self::lineSales($price, $quantity), 2),
                 'fb_price' => round($fbPrice, 2),
                 'lp' => $lp,
                 'temu_ship' => $temuShip,

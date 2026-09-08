@@ -1032,9 +1032,8 @@ class ChannelMasterController extends Controller
                 return [
                     'total_orders' => $m['orders'],
                     'total_quantity' => $m['qty'],
-                    // Reported sales = base price × qty (Temu "Base price sales"), NOT the
-                    // FB-adjusted figure, so /all-marketplace-master matches the /temu-tabulator
-                    // Total Revenue badge and Temu Seller Central.
+                    // Reported sales = bg.order.amount.query line sales (base + freight),
+                    // matching Temu Seller Central's daily sales / estimated-revenue bar.
                     'total_revenue' => $m['base_sales'],
                 ];
             } catch (\Throwable $e) {
@@ -11233,10 +11232,9 @@ class ChannelMasterController extends Controller
         $l30 = TemuShopifySalesService::computeMetricsFromOrders($l30Start, $l30End);
         $l60 = TemuShopifySalesService::computeMetricsFromOrders($l60Start, $l60End);
 
-        // Margin math (GPFT%, ROI, TACOS%) stays on the FB-adjusted `sales` so it matches
-        // /temu-decrease and the /temu-tabulator profit columns. The *displayed* L30/L60
-        // Sales use `base_sales` (base price × qty) so the row mirrors Temu Seller Central's
-        // "Base price sales" — the +$2.99/unit freight uplift was overstating reported sales.
+        // Displayed L30/L60 Sales use amount-API line sales (base + freight), the same
+        // total Temu Seller Central shows on the daily sales bar. Margin math stays on
+        // `sales` (same official total when the amount API is present).
         $l30Sales = $l30['sales'];
         $l30Orders = $l30['orders'];
         $totalQuantity = $l30['qty'];
@@ -11245,7 +11243,7 @@ class ChannelMasterController extends Controller
         $l60Sales = $l60['sales'];
         $l60Orders = $l60['orders'];
 
-        // Reported (base-price) sales for display + growth.
+        // Reported sales for display + growth: amount-API base + freight.
         $l30SalesReported = $l30['base_sales'];
         $l60SalesReported = $l60['base_sales'];
 

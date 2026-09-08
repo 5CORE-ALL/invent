@@ -110,7 +110,7 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge fs-6 p-2" id="y-sales-badge"
                             style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="Yesterday's Temu base-price sales — matches Temu Seller Central's 'Base price sales' daily chart and the Temu row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($temuYSales ?? 0), 0) }}</span>
+                            title="Yesterday's Temu sales from bg.order.amount.query (base + freight) — matches Seller Central's daily sales bar and the Temu row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($temuYSales ?? 0), 0) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
@@ -597,7 +597,8 @@
                     // Same as /temu-decrease: GROI $ on R Price; GPFT% on Full Temu Price.
                     const pftDecimal = fbPrice > 0 ? (fbPrice * TEMU_MARGIN - lp - temuShip) / fbPrice : 0;
                     totalPft += pftDecimal * fbPrice * quantity;
-                    totalL30Sales += quantity * fbPrice;
+                    const apiLineSales = parseFloat(row.line_sales) || 0;
+                    totalL30Sales += apiLineSales > 0 ? apiLineSales : (quantity * fbPrice);
                     totalTemuFullPriceSales += quantity * temuPrice;
                     totalProfitFull += (temuPrice * TEMU_MARGIN - lp - temuShip) * quantity;
                     totalCogs += lp * quantity;
@@ -759,8 +760,9 @@
                             const hasSales = quantity > 0 && basePrice > 0;
                             
                             if (hasSales) {
+                                const apiLineSales = parseFloat(row.line_sales) || 0;
                                 const fbPrice = temuFbPrice(basePrice, quantity);
-                                totalL60Sales += quantity * fbPrice;
+                                totalL60Sales += apiLineSales > 0 ? apiLineSales : (quantity * fbPrice);
                             }
                         });
                         
