@@ -3505,9 +3505,10 @@
                 return chPromoRound2(requested);
             }
             const skipCap = extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(d);
+            const afterAmz = d ? chPromoCapSpriceToAmz(d, fill) : chPromoRound2(fill);
             const capped = skipCap
-                ? chPromoRound2(fill)
-                : (d ? chPromoCapSpriceToLmp(d, fill, extra) : chPromoRound2(fill));
+                ? chPromoRound2(afterAmz)
+                : (d ? chPromoCapSpriceToLmp(d, afterAmz, extra) : chPromoRound2(afterAmz));
             const out = d ? chPromoFloorShopifySpriceToAmz(d, capped) : capped;
             return chPromoRoundChannelSprice(out);
         }
@@ -3607,6 +3608,17 @@
             const s = chPromoRound2(sprice);
             const amz = chPromoRound2(chPromoAmazonPrice(d));
             if (s > 0 && amz > 0 && s < amz) return amz;
+            return s;
+        }
+        /** Macys (same as /temu1-data): if S PRC is above A Price, cap it at Amz. */
+        function chPromoUsesAmzSpriceCap() {
+            return CHANNEL_PROMO_CHANNEL === 'macys' || CHANNEL_PROMO_CHANNEL === 'macy';
+        }
+        function chPromoCapSpriceToAmz(d, sprice) {
+            if (!chPromoUsesAmzSpriceCap()) return chPromoRound2(sprice);
+            const s = chPromoRound2(sprice);
+            const amz = chPromoRound2(chPromoAmazonPrice(d));
+            if (s > 0 && amz > 0 && s > amz) return amz;
             return s;
         }
         function chPromoRowDataFromExtra(extra) {
@@ -3783,16 +3795,16 @@
             if (!d || !chPromoIsChildRow(d)) return 0;
             if (typeof ebaySprcDilForRow === 'function') {
                 const sprcDil = ebaySprcDilForRow(d);
-                if (sprcDil > 0) {
+                    if (sprcDil > 0) {
                     if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c' && typeof chPromoFinalSpriceToSave === 'function') {
                         return chPromoFinalSpriceToSave(d, sprcDil);
                     }
-                    return chPromoCapSpriceToLmp(d, sprcDil);
+                    return chPromoCapSpriceToLmp(d, chPromoCapSpriceToAmz(d, sprcDil));
                 }
             }
             const zeroSold = typeof chPromoZeroSoldRuleSprice === 'function' ? chPromoZeroSoldRuleSprice(d) : 0;
             if (typeof chPromoUsesSprcDilOnlySprice === 'function' && chPromoUsesSprcDilOnlySprice()) {
-                return zeroSold > 0 ? chPromoCapSpriceToLmp(d, zeroSold) : 0;
+                return zeroSold > 0 ? chPromoCapSpriceToLmp(d, chPromoCapSpriceToAmz(d, zeroSold)) : 0;
             }
             const dilSgroi = (!zeroSold && typeof chPromoDilSgroiRuleSprice === 'function')
                 ? chPromoDilSgroiRuleSprice(d)
@@ -3808,7 +3820,7 @@
                 ? (zeroSold > 0 ? zeroSold : dilSgroi)
                 : chPromoResolveTemuSprice(d, start, { use_passed_as_discounted: start > 0 });
             if (!(live > 0)) return 0;
-            return chPromoIsFairePromoChannel() ? chPromoRound2(live) : chPromoCapSpriceToLmp(d, live);
+            return chPromoIsFairePromoChannel() ? chPromoRound2(live) : chPromoCapSpriceToLmp(d, chPromoCapSpriceToAmz(d, live));
         }
         /** Cell / S GPFT / S GROI: saved SPRICE only. No live fallback. */
         function chPromoSavedOrLiveSprice(d) {
@@ -4380,6 +4392,7 @@
                     ? chPromoRound2(sprice)
                     : (rowData ? chPromoCapSpriceToLmp(rowData, sprice, extra) : chPromoRound2(sprice));
                 if (rowData) val = chPromoFloorShopifySpriceToAmz(rowData, val);
+                if (rowData) val = chPromoCapSpriceToAmz(rowData, val);
                 if (val > 0) val = chPromoRoundChannelSprice(val);
             }
             if (!sku || !chPromoCfg.saveSpriceUrl) {
@@ -4440,11 +4453,14 @@
                 : ((typeof temuPrepareSpriceForSave === 'function'
                     && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2' || CHANNEL_PROMO_CHANNEL === 'temu3'))
                     ? temuPrepareSpriceForSave(d, sprice)
-                    : chPromoFloorShopifySpriceToAmz(
+                    : chPromoCapSpriceToAmz(
                         d,
-                        extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(d)
-                            ? chPromoRound2(sprice)
-                            : chPromoCapSpriceToLmp(d, sprice, extra)
+                        chPromoFloorShopifySpriceToAmz(
+                            d,
+                            extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(d)
+                                ? chPromoRound2(sprice)
+                                : chPromoCapSpriceToLmp(d, sprice, extra)
+                        )
                     ));
             extra.row = extra.row || row;
             if (!sku) return Promise.resolve(null);
@@ -11639,6 +11655,7 @@
         window.chPromoCvrDiscForRow = chPromoCvrDiscForRow;
         window.chPromoShopifyPromoBlockedByAmz = chPromoShopifyPromoBlockedByAmz;
         window.chPromoFloorShopifySpriceToAmz = chPromoFloorShopifySpriceToAmz;
+        window.chPromoCapSpriceToAmz = chPromoCapSpriceToAmz;
         window.chPromoStdBase = chPromoStdBase;
         window.chPromoSyncEbayPrmtColumnFromSlabs = chPromoSyncEbayPrmtColumnFromSlabs;
         window.chPromoDilColorBand = chPromoDilColorBand;

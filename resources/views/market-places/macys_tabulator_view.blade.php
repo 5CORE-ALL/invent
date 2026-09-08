@@ -80,6 +80,14 @@
             margin-left: 4px;
             cursor: help;
         }
+        .macys-sprice-cap-lbl {
+            color: #fd7e14;
+            font-weight: 800;
+            font-size: 10px;
+            line-height: 1;
+            margin-left: 3px;
+            cursor: help;
+        }
     </style>
 @endsection
 
@@ -115,6 +123,10 @@
                         style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                         title="Blue triangle: S PRC ≠ MC Price. Click to show only those rows. Click again to clear.">
                         <i class="fas fa-exclamation-triangle"></i> 0</span>
+                    <span class="badge fs-6 p-2" id="macys-amz-cap-badge"
+                        style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
+                        title="S PRC capped to Amazon. Click to show only Amz rows."
+                        aria-label="S PRC capped to Amazon">Amz 0</span>
                     <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
                     <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
                     <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
@@ -414,6 +426,7 @@
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
     let blueTriangleFilterActive = false;
+    let amzCapFilterActive = false;
     let allTableData = []; // Full dataset for ParentExpand
     let decreaseModeActive = true;
     let increaseModeActive = false;
@@ -435,7 +448,29 @@
             const calc = chPromoLiveSprice(data);
             if (calc > 0) sprice = calc;
         }
+        if (typeof chPromoCapSpriceToAmz === 'function' && sprice > 0) {
+            sprice = Number(chPromoCapSpriceToAmz(data, sprice)) || sprice;
+        }
         return sprice;
+    }
+    function macysAmazonPriceForRow(data) {
+        return Math.round((Number(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0) * 100) / 100;
+    }
+    function macysUncappedDil(data) {
+        if (typeof ebaySprcDilForRow === 'function' && data && !isMacysParentRow(data)) {
+            const dil = Number(ebaySprcDilForRow(data));
+            if (dil > 0) return Math.round(dil * 100) / 100;
+        }
+        return 0;
+    }
+    /** Same as /temu1-data: Dil is above A Price and the shown S PRC is the Amazon cap. */
+    function macysHasAmzCap(data) {
+        if (isMacysParentRow(data)) return false;
+        const discounted = macysUncappedDil(data);
+        const amz = macysAmazonPriceForRow(data);
+        if (!(discounted > 0) || !(amz > 0) || discounted <= amz + 0.0001) return false;
+        const shown = macysRowSpriceForAlert(data);
+        return shown > 0 && Math.abs(shown - amz) <= 0.015;
     }
     function macysHasBlueTriangle(data) {
         if (isMacysParentRow(data)) return false;
@@ -447,6 +482,10 @@
         $('#macys-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
             outlineOffset: blueTriangleFilterActive ? '2px' : ''
+        });
+        $('#macys-amz-cap-badge').css({
+            outline: amzCapFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: amzCapFilterActive ? '2px' : ''
         });
     }
 
@@ -1132,6 +1171,112 @@
                 || (rowData.Parent && String(rowData.Parent).startsWith('PARENT'))));
         }
 
+        function macysAmazonPrice(rowData) {
+            return macysAmazonPriceForRow(rowData);
+        }
+
+        function macysCappedPushPrice(rowData) {
+            let p = 0;
+            if (typeof chPromoLiveSprice === 'function' && rowData && !isMacysParentRow(rowData)) {
+                p = Number(chPromoLiveSprice(rowData)) || 0;
+            }
+            if (!(p > 0)) p = parseFloat(rowData && rowData.SPRICE) || 0;
+            if (typeof chPromoCapSpriceToLmp === 'function' && p > 0) {
+                p = Number(chPromoCapSpriceToLmp(rowData, p)) || p;
+            } else if (window.SpriceLmpCap && p > 0) {
+                p = Number(SpriceLmpCap.prepare(rowData, p)) || p;
+            }
+            p = Math.round((Number(p) || 0) * 100) / 100;
+            const amz = macysAmazonPrice(rowData);
+            if (p > 0 && amz > 0 && p > amz) return amz;
+            return p;
+        }
+
+        function macysFindRowBySku(sku) {
+            const want = String(sku || '').trim().toUpperCase();
+            if (!want || typeof table === 'undefined' || !table) return null;
+            try {
+                const exact = table.searchRows('(Child) sku', '=', sku);
+                if (exact && exact.length) return exact[0];
+            } catch (e) { /* ignore */ }
+            let found = null;
+            try {
+                (table.getRows() || []).forEach(function(row) {
+                    if (found) return;
+                    const d = row.getData() || {};
+                    if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) found = row;
+                });
+            } catch (e) { /* ignore */ }
+            return found;
+        }
+
+        function macysApplyPushResults(results) {
+            (results || []).forEach(function(r) {
+                if (!r || !r.sku) return;
+                const row = macysFindRowBySku(r.sku);
+                if (!row) return;
+                const ok = !!r.success;
+                const live = Number(r.price) || 0;
+                const patch = {
+                    SPRICE_STATUS: ok ? 'pushed' : 'error',
+                    push_status: ok ? 'pushed' : 'error',
+                };
+                if (ok && live > 0) {
+                    patch.SPRICE_PUSHED_VALUE = live;
+                    patch['MC Price'] = live;
+                }
+                try { row.update(patch); } catch (e) { /* ignore */ }
+                try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
+            });
+        }
+
+        function macysPushPriceForRow(row) {
+            if (!row || typeof row.getData !== 'function') return;
+            const d = row.getData() || {};
+            if (isMacysParentRow(d)) return;
+            const sku = String(d['(Child) sku'] || '').trim();
+            const price = macysCappedPushPrice(d);
+            const status = String(d.push_status || d.SPRICE_STATUS || '');
+            if (!sku || !(price > 0)) {
+                showToast('Set a valid SPRICE before pushing', 'error');
+                return;
+            }
+            if (status === 'pushing' || status === 'processing' || status === 'queued') return;
+            try { row.update({ SPRICE_STATUS: 'queued', push_status: 'queued' }); } catch (e) { /* ignore */ }
+            if (typeof enqueueChannelPushSpriceAfterSave === 'function'
+                && typeof chPushSpriceAutoPushAllowed === 'function'
+                && chPushSpriceAutoPushAllowed()) {
+                enqueueChannelPushSpriceAfterSave(sku, price, row, { force: true });
+                return;
+            }
+            $.ajax({
+                url: '/macys-push-price',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Accept': 'application/json'
+                },
+                data: { sku: sku, price: price }
+            }).done(function(resp) {
+                macysApplyPushResults([{
+                    sku: sku,
+                    success: !!(resp && resp.success),
+                    price: (resp && resp.price != null) ? resp.price : price,
+                    message: (resp && resp.message) || ''
+                }]);
+                if (resp && resp.success) {
+                    showToast(resp.capped
+                        ? (sku + ': pushed $' + Number(resp.price).toFixed(2) + ' (capped at A Price)')
+                        : (sku + ': price pushed'), 'success');
+                } else {
+                    showToast((resp && resp.message) || 'Macy price push failed', 'error');
+                }
+            }).fail(function(xhr) {
+                macysApplyPushResults([{ sku: sku, success: false, price: price }]);
+                showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Macy price push failed', 'error');
+            });
+        }
+
         function macysAmazonToSpricePatch(rowData, amazonPrice) {
             const percentage = getMacysMargin(rowData);
             const lp = parseFloat(rowData['LP_productmaster']) || 0;
@@ -1267,6 +1412,9 @@
                             } else if (pushOk > 0) {
                                 showToast(`Macy price push successful for ${pushOk} SKU(s)`, 'success');
                             }
+                        }
+                        if (Array.isArray(response.price_push_results)) {
+                            macysApplyPushResults(response.price_push_results);
                         }
                     }
                 },
@@ -2415,7 +2563,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when MC L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ MC Price. Red text = S PRC > LMP.",
+                    headerTooltip: "S PRC from Sprc Dil, then capped at Amazon A Price (same as /temu1-data) and LMP. Orange Amz = Dil was above Amazon. Blue triangle = S PRC ≠ MC Price. Red text = S PRC > LMP.",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -2442,6 +2590,9 @@
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
                         if (!(value > 0)) return '';
+                        if (typeof chPromoCapSpriceToAmz === 'function') {
+                            value = Number(chPromoCapSpriceToAmz(rowData, value)) || value;
+                        }
                         const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
                         if (cap && cap.shown > 0) value = cap.shown;
                         const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
@@ -2450,13 +2601,87 @@
                         const priceHtml = overLmp
                             ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
                             : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
+                        const amz = macysAmazonPriceForRow(rowData);
+                        const amzLbl = macysHasAmzCap(rowData)
+                            ? '<span class="macys-sprice-cap-lbl" title="S PRC capped to Amazon $'
+                                + Number(amz).toFixed(2) + '">Amz</span>'
+                            : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ MC Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
                     },
-                    width: 96
+                    width: 118
+                },
+                {
+                    title: "Push",
+                    field: "push_status",
+                    hozAlign: "center",
+                    headerSort: true,
+                    width: 52,
+                    headerTooltip: "Price push status. Double tick = pushed to Macy. Cross = failed. Click to push or retry. Autopush is capped at Amazon A Price.",
+                    sorter: function(a, b, aRow, bRow) {
+                        const rank = function(d) {
+                            const status = String((d && (d.push_status || d.SPRICE_STATUS)) || '');
+                            if (status === 'pushed') return 4;
+                            if (status === 'queued' || status === 'pushing' || status === 'processing') return 3;
+                            if (status === 'error' || status === 'failed') return 2;
+                            return macysCappedPushPrice(d) > 0 ? 1 : 0;
+                        };
+                        return rank(aRow.getData()) - rank(bRow.getData());
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isMacysParentRow(rowData)) return '';
+                        const sku = String(rowData['(Child) sku'] || '');
+                        const price = macysCappedPushPrice(rowData);
+                        if (!sku || !(price > 0)) return '';
+                        const status = String(rowData.push_status || rowData.SPRICE_STATUS || '');
+                        const amz = macysAmazonPrice(rowData);
+                        const pushedValue = rowData.SPRICE_PUSHED_VALUE;
+                        const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT || '';
+                        const pushedBy = rowData.SPRICE_PUSHED_BY || '';
+                        let icon = '<i class="fas fa-upload"></i>';
+                        let color = '#0d6efd';
+                        let tip = 'Push $' + price.toFixed(2) + ' to Macy';
+                        if (amz > 0 && price + 0.0001 >= amz && (parseFloat(rowData.SPRICE) || 0) > amz + 0.0001) {
+                            tip += ' (capped at A Price $' + amz.toFixed(2) + ')';
+                        }
+                        if (status === 'pushing' || status === 'processing' || status === 'queued') {
+                            icon = '<i class="fas fa-spinner fa-spin"></i>';
+                            color = '#ffc107';
+                            tip = 'Pushing to Macy…';
+                        } else if (status === 'pushed') {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            color = '#28a745';
+                            tip = 'Pushed to Macy';
+                        } else if (status === 'error' || status === 'failed') {
+                            icon = '<i class="fa-solid fa-x"></i>';
+                            color = '#dc3545';
+                            tip = 'Push failed — click to retry';
+                        }
+                        if (pushedValue != null && pushedValue !== '') {
+                            tip += ' | Last $' + (parseFloat(pushedValue) || 0).toFixed(2);
+                        }
+                        if (updatedAt) tip += ' | ' + updatedAt;
+                        if (pushedBy) tip += ' | by ' + pushedBy;
+                        return '<button type="button" class="macys-push-single-btn" data-sku="'
+                            + sku.replace(/"/g, '&quot;') + '" data-price="' + price.toFixed(2)
+                            + '" data-status="' + status.replace(/"/g, '&quot;')
+                            + '" title="' + String(tip).replace(/"/g, '&quot;')
+                            + '" style="border:none;background:none;color:' + color
+                            + ';padding:0;cursor:pointer;font-size:16px;">' + icon + '</button>';
+                    },
+                    cellClick: function(e, cell) {
+                        const t = e.target;
+                        if (!t || typeof t.closest !== 'function') return;
+                        const btn = t.closest('.macys-push-single-btn');
+                        if (!btn) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        macysPushPriceForRow(cell.getRow());
+                    }
                 },
                 {
                     title: "SGPFT",
@@ -2755,6 +2980,11 @@
                     return macysHasBlueTriangle(data);
                 });
             }
+            if (amzCapFilterActive) {
+                table.addFilter(function(data) {
+                    return macysHasAmzCap(data);
+                });
+            }
 
             if (mappingFilterActive) {
                 table.addFilter(function(data) {
@@ -2774,6 +3004,10 @@
                 getActive: function() { return lmpMissingFilterActive; },
                 onToggle: function(on) {
                     lmpMissingFilterActive = on;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        amzCapFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
@@ -2784,7 +3018,10 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
-                    if (on) blueTriangleFilterActive = false;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        amzCapFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
@@ -2795,7 +3032,10 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                    if (on) blueTriangleFilterActive = false;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        amzCapFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
@@ -2807,6 +3047,17 @@
                 lmpMissingFilterActive = false;
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
+                amzCapFilterActive = false;
+            }
+            applyFilters();
+        });
+        $('#macys-amz-cap-badge').on('click', function() {
+            amzCapFilterActive = !amzCapFilterActive;
+            if (amzCapFilterActive) {
+                lmpMissingFilterActive = false;
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+                blueTriangleFilterActive = false;
             }
             applyFilters();
         });
@@ -2914,12 +3165,15 @@
                 PriceLt80LmpBadge.update('#macys-price-lt80-lmp-badge', table.getData(), 'macys', 'MC Price');
             }
             let blueTriangleCount = 0;
+            let amzCapCount = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (macysHasBlueTriangle(row)) blueTriangleCount++;
+                if (macysHasAmzCap(row)) amzCapCount++;
             });
             $('#macys-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
+            $('#macys-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
             if (typeof syncMacysTriangleBadgeState === 'function') syncMacysTriangleBadgeState();
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount.toLocaleString()}`);
             $('#avg-dil-badge').text(`DIL%: ${Math.round(avgDil * 100)}%`);

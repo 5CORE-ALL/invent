@@ -112,6 +112,19 @@
             function chPushSpriceRound2(n) {
                 return Math.round((Number(n) || 0) * 100) / 100;
             }
+            function chPushSpriceAmazonPrice(d) {
+                if (!d) return 0;
+                return chPushSpriceRound2(d['A Price'] != null ? d['A Price'] : (d.a_price || d.amazon_price));
+            }
+            function chPushSpriceCapMacysToAmz(d, price) {
+                if (CH_PUSH_SPRICE_CHANNEL !== 'macys' && CH_PUSH_SPRICE_CHANNEL !== 'macy') {
+                    return chPushSpriceRound2(price);
+                }
+                const p = chPushSpriceRound2(price);
+                const amz = chPushSpriceAmazonPrice(d);
+                if (p > 0 && amz > 0 && p > amz) return amz;
+                return p;
+            }
             function chPushSpriceNearlyEqual(a, b) {
                 return Math.abs(Number(a) - Number(b)) < 0.005;
             }
@@ -313,6 +326,7 @@
                     let priceChanged = false;
                     if (st === 'ok') {
                         if (d.SPRICE_STATUS !== 'pushed') patch.SPRICE_STATUS = 'pushed';
+                        if (d.push_status !== 'pushed') patch.push_status = 'pushed';
                         if (live > 0 && !chPushSpriceNearlyEqual(d.SPRICE_PUSHED_VALUE, live)) {
                             patch.SPRICE_PUSHED_VALUE = live;
                         }
@@ -337,6 +351,7 @@
                         }
                     } else if (st === 'failed') {
                         if (d.SPRICE_STATUS !== 'error') patch.SPRICE_STATUS = 'error';
+                        if (d.push_status !== 'error') patch.push_status = 'error';
                         const err = String(t.error || t.message || '').toLowerCase();
                         if (err.indexOf('291') !== -1 || err.indexOf('ended listing') !== -1) {
                             if (d.listing_status !== 'ENDED') patch.listing_status = 'ENDED';
@@ -344,6 +359,7 @@
                         }
                     } else if (st === 'pushing' || st === 'pending' || st === 'queued') {
                         if (d.SPRICE_STATUS !== 'queued') patch.SPRICE_STATUS = 'queued';
+                        if (d.push_status !== 'queued') patch.push_status = 'queued';
                     } else {
                         return false;
                     }
@@ -662,6 +678,7 @@
                         p = chPromoFloorShopifySpriceToAmz(d, p);
                     }
                 }
+                p = chPushSpriceCapMacysToAmz(d, p);
                 if (!sku || !(p > 0)) return false;
                 if (!CH_PUSH_SPRICE_CAN_LIVE) return false;
                 if (!chPushSpriceAutoPushAllowed()) {
@@ -684,7 +701,9 @@
                     if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return false;
                 }
                 try {
-                    if (row && typeof row.update === 'function') row.update({ SPRICE_STATUS: 'queued' });
+                    if (row && typeof row.update === 'function') {
+                        row.update({ SPRICE_STATUS: 'queued', push_status: 'queued' });
+                    }
                 } catch (e) { /* ignore */ }
                 if (chPushSpriceUsesClientPump()) {
                     enqueueChannelPushSpriceClient([{ sku: sku, price: p, row: row }]);
@@ -734,6 +753,7 @@
                 const patch = {};
                 if (ok) {
                     patch.SPRICE_STATUS = 'pushed';
+                    patch.push_status = 'pushed';
                     patch.PUSH_PRC_STATUS = 'pushed';
                     patch.push_prc = 'pushed';
                     if (live > 0) {
@@ -744,6 +764,7 @@
                     }
                 } else {
                     patch.SPRICE_STATUS = 'error';
+                    patch.push_status = 'error';
                     patch.PUSH_PRC_STATUS = 'error';
                     patch.push_prc = 'error';
                     const err = String(errMsg || '').toLowerCase();
@@ -806,7 +827,7 @@
                     const item = chPushClientQ.shift();
                     chPushClientInflight++;
                     if (item.row && typeof item.row.update === 'function') {
-                        try { item.row.update({ SPRICE_STATUS: 'queued' }); } catch (e) { /* ignore */ }
+                        try { item.row.update({ SPRICE_STATUS: 'queued', push_status: 'queued' }); } catch (e) { /* ignore */ }
                     }
                     chPushClientSetProgress(true);
                     $.ajax({
@@ -984,7 +1005,8 @@
                     const key = sku.toUpperCase();
                     if (!sku || seen.has(key)) return;
                     seen.add(key);
-                    const saved = chPushSpriceSavedFromRow(d);
+                    let saved = chPushSpriceSavedFromRow(d);
+                    saved = chPushSpriceCapMacysToAmz(d, saved);
                     if (!(saved > 0)) return;
                     const live = chPushSpriceLiveFromRow(d);
                     if (!(live > 0) || chPushSpriceNearlyEqual(saved, live)) return;

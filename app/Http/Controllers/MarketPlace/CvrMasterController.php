@@ -47,6 +47,7 @@ use App\Models\ReverbViewData;
 use App\Models\Shopifyb2cDataView;
 use App\Models\ShopifyB2BDataView;
 use App\Services\StorePricePushService;
+use App\Support\MacysAmazonPriceCap;
 use App\Models\DobaMetric;
 use App\Models\WalmartPriceData;
 use App\Models\WalmartOrderData;
@@ -8727,13 +8728,22 @@ class CvrMasterController extends Controller
      */
     private function pushToMacy($sku, $price)
     {
+        $applied = MacysAmazonPriceCap::applyForSku((string) $sku, (float) $price);
+        $price = (float) $applied['price'];
         try {
             $result = app(MacysApiService::class)->updatePrice($sku, $price);
             if (!empty($result['success'])) {
                 $this->savePricePushStatus($sku, 'macy', 'pushed', $price);
+                $message = $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to Macy for SKU: $sku");
+                if ($applied['capped']) {
+                    $message .= ' (capped at Amazon $' . number_format($price, 2) . ')';
+                }
                 return response()->json([
                     'success' => true,
-                    'message' => $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to Macy for SKU: $sku"),
+                    'message' => $message,
+                    'price' => $price,
+                    'capped' => $applied['capped'],
+                    'amazon_price' => $applied['amazon_price'],
                     'result' => $result,
                 ]);
             }
@@ -8741,11 +8751,20 @@ class CvrMasterController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $result['message'] ?? 'Failed to push price to Macy',
+                'price' => $price,
+                'capped' => $applied['capped'],
+                'amazon_price' => $applied['amazon_price'],
             ], 400);
         } catch (\Exception $e) {
             $this->savePricePushStatus($sku, 'macy', 'error', $price);
             Log::error('CVR Master - Macy push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Macy API error: ' . $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'message' => 'Macy API error: ' . $e->getMessage(),
+                'price' => $price,
+                'capped' => $applied['capped'],
+                'amazon_price' => $applied['amazon_price'],
+            ], 500);
         }
     }
 

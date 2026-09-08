@@ -15,6 +15,7 @@ use App\Services\AliExpressApiService;
 use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
+use App\Support\MacysAmazonPriceCap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -224,6 +225,18 @@ class ChannelPushSpriceRunner
             try {
                 if ($sku === '' || ! ($price > 0)) {
                     throw new \RuntimeException('SKU and S PRC > 0 required');
+                }
+                if (in_array($this->channel, ['macys', 'macy'], true)) {
+                    $capped = MacysAmazonPriceCap::capForSku($sku, $price);
+                    if ($capped > 0 && abs($capped - $price) >= 0.005) {
+                        $logger->info('S PRC capped at Amazon price', [
+                            'channel' => $this->channel,
+                            'sku' => $sku,
+                            'requested' => $price,
+                            'capped' => $capped,
+                        ]);
+                        $price = $capped;
+                    }
                 }
                 $pushRes = $this->pushPrice($sku, $price);
                 $payload = method_exists($pushRes, 'getData') ? $pushRes->getData(true) : [];

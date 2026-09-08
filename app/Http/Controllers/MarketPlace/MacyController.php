@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\MacysApiService;
+use App\Support\MacysAmazonPriceCap;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -299,6 +300,7 @@ class MacyController extends Controller
             $savedSprice = null;
             $savedStatus = null;
             $hasSavedSprice = false;
+            $raw = null;
             if (isset($dataViews[$pm->sku])) {
                 $raw = $dataViews[$pm->sku];
                 if (!is_array($raw)) {
@@ -326,6 +328,14 @@ class MacyController extends Controller
                 $row['has_custom_sprice'] = false;
                 $row['SPRICE_STATUS'] = $savedStatus;
             }
+            $row['push_status'] = $row['SPRICE_STATUS'];
+            $row['SPRICE_PUSHED_VALUE'] = (is_array($raw ?? null) && isset($raw['SPRICE_PUSHED_VALUE']))
+                ? floatval($raw['SPRICE_PUSHED_VALUE'])
+                : null;
+            $row['SPRICE_STATUS_UPDATED_AT'] = is_array($raw ?? null)
+                ? ($raw['SPRICE_STATUS_UPDATED_AT'] ?? $raw['SPRICE_PUSHED_AT'] ?? null)
+                : null;
+            $row['SPRICE_PUSHED_BY'] = is_array($raw ?? null) ? ($raw['SPRICE_PUSHED_BY'] ?? null) : null;
 
             // Calculate SGPFT based on SPRICE
             $sprice = $row['SPRICE'] ?? 0;
@@ -593,6 +603,9 @@ class MacyController extends Controller
             'price_push_message' => (string) ($pushResult['message'] ?? ''),
             'price_push_status_code' => $pushResult['status_code'] ?? null,
             'price_push_skipped' => $skipPush,
+            'price' => $pushResult['price'] ?? null,
+            'price_push_capped' => (bool) ($pushResult['capped'] ?? false),
+            'amazon_price' => $pushResult['amazon_price'] ?? null,
         ]);
     }
 
@@ -858,10 +871,19 @@ class MacyController extends Controller
             $pricePushSuccess = 0;
             $pricePushFailed = 0;
             $pricePushErrors = [];
+            $pricePushResults = [];
             $singlePushResult = null;
             if (! $skipPush) {
                 foreach ($pricePushQueue as $pushItem) {
                     $pushResult = $this->pushPriceToMacy($pushItem['sku'], (float) $pushItem['sprice']);
+                    $pricePushResults[] = [
+                        'sku' => $pushItem['sku'],
+                        'success' => (bool) ($pushResult['success'] ?? false),
+                        'price' => $pushResult['price'] ?? null,
+                        'capped' => (bool) ($pushResult['capped'] ?? false),
+                        'amazon_price' => $pushResult['amazon_price'] ?? null,
+                        'message' => (string) ($pushResult['message'] ?? ''),
+                    ];
                     if (count($pricePushQueue) === 1) {
                         $singlePushResult = $pushResult;
                     }
@@ -881,6 +903,7 @@ class MacyController extends Controller
                 'price_push_success_count' => $pricePushSuccess,
                 'price_push_failed_count' => $pricePushFailed,
                 'price_push_skipped' => $skipPush,
+                'price_push_results' => $pricePushResults,
             ];
 
             // Include calculated metrics for single updates (manual cell edits)
@@ -1325,25 +1348,87 @@ class MacyController extends Controller
             'success' => (bool) ($result['success'] ?? false),
             'message' => (string) ($result['message'] ?? ''),
             'status_code' => $result['status_code'] ?? null,
+            'price' => $result['price'] ?? null,
+            'capped' => (bool) ($result['capped'] ?? false),
+            'amazon_price' => $result['amazon_price'] ?? null,
         ], ($result['success'] ?? false) ? 200 : 422);
     }
 
     /**
-     * Push saved SPRICE to Macy marketplace API.
+     * Push saved SPRICE to Macy marketplace API, capped at Amazon A Price.
      *
-     * @return array{success:bool,message:string}
+     * @return array{success:bool,message:string,price?:float,amazon_price?:float,capped?:bool,status_code?:mixed}
      */
     private function pushPriceToMacy(string $sku, float $sprice): array
     {
+        $applied = MacysAmazonPriceCap::applyForSku($sku, $sprice);
+        $sprice = (float) $applied['price'];
         if ($sprice <= 0) {
-            return ['success' => false, 'message' => 'Skipping push for non-positive price'];
+            return [
+                'success' => false,
+                'message' => 'Skipping push for non-positive price',
+                'price' => $sprice,
+                'amazon_price' => $applied['amazon_price'],
+                'capped' => $applied['capped'],
+            ];
         }
 
         try {
-            return app(MacysApiService::class)->updatePrice($sku, $sprice);
+            $result = app(MacysApiService::class)->updatePrice($sku, $sprice);
+            $ok = (bool) ($result['success'] ?? false);
+            $this->persistMacysPushStatus($sku, $ok ? 'pushed' : 'error', $sprice);
+            $result['price'] = $sprice;
+            $result['amazon_price'] = $applied['amazon_price'];
+            $result['capped'] = $applied['capped'];
+            if ($ok && $applied['capped']) {
+                $result['message'] = trim((string) ($result['message'] ?? 'Price pushed'))
+                    .' (capped at Amazon $'.number_format($sprice, 2).')';
+            }
+
+            return $result;
         } catch (\Throwable $e) {
+            $this->persistMacysPushStatus($sku, 'error', $sprice);
             Log::error('Macy price push call failed', ['sku' => $sku, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => $e->getMessage()];
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'price' => $sprice,
+                'amazon_price' => $applied['amazon_price'],
+                'capped' => $applied['capped'],
+            ];
+        }
+    }
+
+    private function persistMacysPushStatus(string $sku, string $status, ?float $price = null): void
+    {
+        try {
+            $skuKey = strtoupper(trim($sku));
+            $dataView = MacyDataView::whereRaw('UPPER(TRIM(sku)) = ?', [$skuKey])->first()
+                ?: MacyDataView::firstOrNew(['sku' => $skuKey]);
+            $existing = is_array($dataView->value)
+                ? $dataView->value
+                : (json_decode((string) ($dataView->value ?? ''), true) ?: []);
+            if (! is_array($existing)) {
+                $existing = [];
+            }
+            $existing['SPRICE_STATUS'] = $status;
+            $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            $existing['SPRICE_PUSHED_AT'] = now()->toDateTimeString();
+            if ($price !== null) {
+                $existing['SPRICE_PUSHED_VALUE'] = round((float) $price, 2);
+            }
+            if (auth()->check()) {
+                $existing['SPRICE_PUSHED_BY'] = auth()->user()->name ?? auth()->user()->email;
+                $existing['SPRICE_PUSHED_BY_ID'] = auth()->id();
+            }
+            $dataView->value = $existing;
+            $dataView->save();
+        } catch (\Throwable $e) {
+            Log::warning('Macys persist push status failed', [
+                'sku' => $sku,
+                'status' => $status,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
