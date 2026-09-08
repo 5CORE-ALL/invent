@@ -757,7 +757,8 @@ class TaskController extends Controller
     }
 
     /**
-     * Last-30-days work hours (in-app attendance, then Team Logger for Shobha / Mariya).
+     * Last-30-days active work hours (in-app attendance, then Team Logger for Shobha / Mariya).
+     * Wall-clock / idle sessions are ignored so L30 cannot inflate past 300.
      *
      * @param  array<int, int|string>  $userIds
      * @return array<int, float>
@@ -783,8 +784,10 @@ class TaskController extends Controller
                 ->get(['user_id', 'work_date', 'total_work_seconds', 'active_seconds'])
                 ->each(function ($row) use (&$hours, &$todayFromSummary, $toDate) {
                     $uid = (int) $row->user_id;
-                    $seconds = max((int) ($row->total_work_seconds ?? 0), (int) ($row->active_seconds ?? 0));
-                    $dayHours = $seconds / 3600;
+                    $dayHours = AttL30Metrics::dayHoursFromSeconds(
+                        (int) ($row->active_seconds ?? 0),
+                        (int) ($row->total_work_seconds ?? 0)
+                    );
                     $hours[$uid] = ($hours[$uid] ?? 0) + $dayHours;
                     $day = optional($row->work_date)->format('Y-m-d') ?: (string) $row->work_date;
                     if ($day === $toDate) {
@@ -800,12 +803,12 @@ class TaskController extends Controller
                 ->whereIn('user_id', $userIds)
                 ->where('started_at', '>=', $windowStart)
                 ->where('started_at', '<', $windowEnd)
-                ->selectRaw('user_id, SUM(COALESCE(total_active_seconds, 0) + COALESCE(total_idle_seconds, 0)) as work_seconds')
+                ->selectRaw('user_id, SUM(COALESCE(total_active_seconds, 0)) as work_seconds')
                 ->groupBy('user_id')
                 ->get()
                 ->each(function ($row) use (&$hours, $todayFromSummary) {
                     $uid = (int) $row->user_id;
-                    $sessionHours = ((int) $row->work_seconds) / 3600;
+                    $sessionHours = AttL30Metrics::dayHoursFromSeconds((int) $row->work_seconds);
                     $alreadyToday = $todayFromSummary[$uid] ?? 0;
                     if ($sessionHours > $alreadyToday) {
                         $hours[$uid] = ($hours[$uid] ?? 0) - $alreadyToday + $sessionHours;
@@ -814,6 +817,10 @@ class TaskController extends Controller
         }
 
         $this->applyTeamLoggerHoursFallback($userIds, $hours, $fromDate, $toDate);
+
+        foreach ($hours as $uid => $value) {
+            $hours[(int) $uid] = AttL30Metrics::clampWindowHours((float) $value);
+        }
 
         return $hours;
     }

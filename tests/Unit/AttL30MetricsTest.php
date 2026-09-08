@@ -11,6 +11,24 @@ class AttL30MetricsTest extends TestCase
     {
         $this->assertSame(30, AttL30Metrics::WINDOW_DAYS);
         $this->assertSame(200, AttL30Metrics::TARGET_HOURS);
+        $this->assertSame(12, AttL30Metrics::MAX_DAY_HOURS);
+        $this->assertSame(300, AttL30Metrics::MAX_WINDOW_HOURS);
+    }
+
+    public function test_day_hours_prefer_active_and_cap_at_12(): void
+    {
+        $this->assertSame(0.0, AttL30Metrics::dayHoursFromSeconds(0, 0));
+        $this->assertSame(8.0, AttL30Metrics::dayHoursFromSeconds(8 * 3600, 16 * 3600));
+        $this->assertSame(9.0, AttL30Metrics::dayHoursFromSeconds(0, 9 * 3600));
+        $this->assertSame(12.0, AttL30Metrics::dayHoursFromSeconds(20 * 3600, 20 * 3600));
+    }
+
+    public function test_window_hours_never_exceed_300(): void
+    {
+        $this->assertSame(220.0, AttL30Metrics::clampWindowHours(220));
+        $this->assertSame(300.0, AttL30Metrics::clampWindowHours(435));
+        $this->assertSame(300.0, AttL30Metrics::forHours(435)['att_l30_hours']);
+        $this->assertSame(150, AttL30Metrics::forHours(435)['att_l30_pct']);
     }
 
     public function test_percent_is_hours_over_target_of_200(): void
