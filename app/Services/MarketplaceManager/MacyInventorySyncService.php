@@ -99,13 +99,22 @@ class MacyInventorySyncService
                     $shopifyStock = $this->resolveShopifyQty($shopifyQty, $requested);
                 }
             }
-            // Match AliExpress/Amazon: missing Shopify qty => push 0 (do not skip).
+            if ($shopifyStock === null) {
+                $onShopify = ShopifySku::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                    ->exists();
+                if (! $onShopify) {
+                    $skipped++;
+                    continue;
+                }
+            }
             $qty = MarketplaceLiveInventoryRules::qtyForMismatchPush(
                 $shopifyStock,
                 $exactShopifyQty,
                 $qtyPercent,
                 $maxQty
             );
+            $qty = MarketplaceLiveInventoryRules::clampPushQty($qty, $shopifyStock ?? 0);
 
             $apiItems[] = [
                 'sku' => $sku,
@@ -249,14 +258,13 @@ class MacyInventorySyncService
             $sku = (string) $row['sku'];
             $qty = (int) $row['quantity'];
             MacyProduct::query()
-                ->where('sku', $sku)
-                ->orWhere('sku', strtoupper($sku))
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
                 ->update(['stock' => $qty]);
 
             if (Schema::hasTable('product_stock_mappings')
                 && Schema::hasColumn('product_stock_mappings', 'inventory_macy')) {
                 ProductStockMapping::query()
-                    ->where('sku', $sku)
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
                     ->update(['inventory_macy' => (string) $qty]);
             }
         }

@@ -17,6 +17,7 @@ use App\Services\MarketplaceManager\MacyOrderDetailService;
 use App\Services\MarketplaceManager\MacyOrderPushService;
 use App\Services\MarketplaceManager\MacyOrderSyncService;
 use App\Services\MarketplaceManager\MacyTrackingSyncService;
+use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
@@ -27,6 +28,7 @@ use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -750,14 +752,93 @@ class MacySyncController extends Controller
     {
         @set_time_limit(300);
 
-        $settings = MarketplaceSyncSettings::getFor('macy');
-        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+        try {
+            $settings = MarketplaceSyncSettings::getFor('macy');
+            if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
+                ], 422);
+            }
+
+            $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
+            $offset = max(0, (int) $request->input('offset', 0));
+            $limit = max(1, min(40, (int) $request->input('limit', 25)));
+            $cacheKey = 'macy_mismatch_sync_list_'.(string) (auth()->id() ?? 'guest').'_'.$scope;
+
+            // Rebuild mismatch list only on first batch; later offsets reuse cache (avoids stale live qty).
+            $mismatch = null;
+            if ($offset > 0) {
+                $cached = Cache::get($cacheKey);
+                if (is_array($cached)) {
+                    $mismatch = $cached;
+                }
+            }
+            if (! is_array($mismatch)) {
+                $mismatch = $this->resolveMacyMismatchSkuList($scope);
+                Cache::put($cacheKey, array_values($mismatch), now()->addMinutes(30));
+            }
+
+            $total = count($mismatch);
+            $batch = array_slice($mismatch, $offset, $limit);
+
+            if ($batch === []) {
+                Cache::forget($cacheKey);
+                $this->forgetMacyMismatchLiveCaches();
+
+                return response()->json([
+                    'success' => true,
+                    'done' => true,
+                    'total' => $total,
+                    'offset' => $offset,
+                    'updated' => 0,
+                    'failed' => 0,
+                    'skipped' => 0,
+                    'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'All mismatch batches finished.',
+                ]);
+            }
+
+            $result = app(MacyInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
+            $nextOffset = $offset + count($batch);
+            $done = $nextOffset >= $total;
+            if ($done) {
+                Cache::forget($cacheKey);
+                $this->forgetMacyMismatchLiveCaches();
+            }
+
+            return response()->json([
+                'success' => true,
+                'done' => $done,
+                'queued' => false,
+                'total' => $total,
+                'offset' => $nextOffset,
+                'batch' => count($batch),
+                'updated' => (int) ($result['updated'] ?? 0),
+                'failed' => (int) ($result['failed'] ?? 0),
+                'skipped' => (int) ($result['skipped'] ?? 0),
+                'message' => $result['message'] ?? ($done
+                    ? 'Mismatch inventory sync complete.'
+                    : 'Synced batch '.$nextOffset.' / '.$total.'…'),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Macy syncMismatchInventoryNow failed', [
+                'error' => $e->getMessage(),
+                'offset' => (int) $request->input('offset', 0),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
-            ], 422);
+                'done' => false,
+                'message' => 'Sync failed: '.$e->getMessage(),
+            ], 500);
         }
+    }
 
+    /**
+     * @return array<int, string>
+     */
+    protected function resolveMacyMismatchSkuList(string $scope): array
+    {
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(MacyLiveListingsService::class);
         $linkedSkus = $this->linkedMacySkus();
@@ -767,47 +848,18 @@ class MacySyncController extends Controller
             $this->macyStockMapForSkus($verified)
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'macy');
-        $mismatchQty = $classified['mismatch'] ?? [];
-        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
-        $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
-        $mismatch = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
 
-        $offset = max(0, (int) $request->input('offset', 0));
-        $limit = max(1, min(40, (int) $request->input('limit', 25)));
-        $total = count($mismatch);
-        $batch = array_slice($mismatch, $offset, $limit);
+        return MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
+    }
 
-        if ($batch === []) {
-            return response()->json([
-                'success' => true,
-                'done' => true,
-                'total' => $total,
-                'offset' => $offset,
-                'updated' => 0,
-                'failed' => 0,
-                'skipped' => 0,
-                'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'All mismatch batches finished.',
-            ]);
+    protected function forgetMacyMismatchLiveCaches(): void
+    {
+        try {
+            app(MacyLiveListingsService::class)->clearCache();
+            Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'macy');
+        } catch (\Throwable $e) {
+            // ignore
         }
-
-        $result = app(MacyInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
-        $nextOffset = $offset + count($batch);
-        $done = $nextOffset >= $total;
-
-        return response()->json([
-            'success' => true,
-            'done' => $done,
-            'queued' => false,
-            'total' => $total,
-            'offset' => $nextOffset,
-            'batch' => count($batch),
-            'updated' => (int) ($result['updated'] ?? 0),
-            'failed' => (int) ($result['failed'] ?? 0),
-            'skipped' => (int) ($result['skipped'] ?? 0),
-            'message' => $result['message'] ?? ($done
-                ? 'Mismatch inventory sync complete.'
-                : 'Synced batch '.$nextOffset.' / '.$total.'…'),
-        ]);
     }
 
     public function pushOrderToShopify(Request $request): JsonResponse
