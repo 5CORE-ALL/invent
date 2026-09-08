@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonDataView;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\MacyDataView;
 use App\Models\MacyProduct;
@@ -147,13 +148,9 @@ class MacysRuleSpriceApplyService
             return null;
         }
 
-        $lp = (float) ($row['lp'] ?? 0);
-        if (! ($lp > 0)) {
-            return null;
-        }
-
         $dil = (float) ($row['dil'] ?? 0);
         $sold = (float) ($row['mc_l30'] ?? 0);
+        $amz = round((float) ($row['amz'] ?? 0), 2);
         $rule = AmazonDilGroiRule::match($dil, $dilRules);
         $groi = null;
         if ($rule !== null) {
@@ -162,6 +159,17 @@ class MacysRuleSpriceApplyService
             $groi = AmazonDilGroiRule::minTarget($dilRules);
         }
         if ($groi === null) {
+            $std = round((float) ($row['std'] ?? 0), 2);
+            if (! ($std > 0)) {
+                return null;
+            }
+            $sprice = ($amz > 0 && $std < $amz) ? $amz : $std;
+
+            return ['sprice' => round($sprice, 2)];
+        }
+
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
             return null;
         }
 
@@ -171,7 +179,6 @@ class MacysRuleSpriceApplyService
             return null;
         }
 
-        $amz = round((float) ($row['amz'] ?? 0), 2);
         $sprice = ($amz > 0 && $raw < $amz) ? $amz : $raw;
 
         return ['sprice' => round($sprice, 2)];
@@ -223,6 +230,16 @@ class MacysRuleSpriceApplyService
             ->get(['sku', 'price'])
             ->keyBy(static fn ($r) => strtoupper(trim((string) $r->sku)));
 
+        $stdBySku = [];
+        foreach (AmazonDataView::query()->whereIn('sku', $lookup)->get(['sku', 'value']) as $adv) {
+            $val = $this->decodeValue($adv->value);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            $key = strtoupper(trim((string) $adv->sku));
+            if (is_numeric($std) && (float) $std > 0) {
+                $stdBySku[$key] = round((float) $std, 2);
+            }
+        }
+
         $savedBySku = [];
         foreach (MacyDataView::query()->whereIn('sku', $lookup)->get(['sku', 'value']) as $view) {
             $val = $this->decodeValue($view->value);
@@ -264,6 +281,7 @@ class MacysRuleSpriceApplyService
                 'lp' => $lp,
                 'ship' => $ship,
                 'amz' => isset($amzBySku[$sku]) ? (float) ($amzBySku[$sku]->price ?? 0) : 0.0,
+                'std' => $stdBySku[$sku] ?? 0.0,
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
             ];
         }

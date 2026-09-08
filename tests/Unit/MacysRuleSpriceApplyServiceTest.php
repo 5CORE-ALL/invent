@@ -56,7 +56,7 @@ class MacysRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(39.60, $out['sprice'], 0.001);
     }
 
-    public function test_out_of_box_with_sales_does_not_use_min_groi(): void
+    public function test_out_of_box_with_sales_uses_std_then_amazon_floor(): void
     {
         $out = $this->compute([
             'inv' => 2,
@@ -64,10 +64,26 @@ class MacysRuleSpriceApplyServiceTest extends TestCase
             'mc_l30' => 4,
             'lp' => 10,
             'ship' => 0,
+            'std' => 95.99,
             'amz' => 94.07,
         ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
 
-        $this->assertNull($out);
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(95.99, $out['sprice'], 0.001);
+    }
+
+    public function test_out_of_box_std_below_amazon_uses_a_price(): void
+    {
+        $out = $this->compute([
+            'inv' => 2,
+            'dil' => 300,
+            'mc_l30' => 1,
+            'std' => 10.00,
+            'amz' => 13.99,
+        ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(13.99, $out['sprice'], 0.001);
     }
 
     public function test_skips_when_inventory_is_zero(): void

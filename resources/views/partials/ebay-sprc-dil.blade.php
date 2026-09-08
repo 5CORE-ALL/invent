@@ -250,7 +250,11 @@
                         <li>
                             <strong>When</strong> that Dil / min-ROI S PRC is <strong>below A Price</strong>:
                             do not keep the slab price — S PRC uses <strong>A Price</strong>.
-                            If it is at or above A Price, keep the Dil / min-ROI price (not Std Prc).
+                            If it is at or above A Price, keep the Dil / min-ROI price.
+                        </li>
+                        <li>
+                            <strong>When</strong> Dil is <strong>out of box</strong> and {{ $ebaySprcDilSoldLabel }} &gt; 0:
+                            S PRC uses <strong>Std Prc</strong>. If Std Prc is below A Price, S PRC = A Price.
                         </li>
                         @endif
                         <li>
@@ -1233,7 +1237,19 @@
                     ? fbMpRoundSprice(price)
                     : ebayDgRound2(price);
             }
-            if (!ebayDgIsMacys() && typeof chPromoSpriceFromStdTPromo === 'function') {
+            if (ebayDgIsMacys()) {
+                const std = (typeof chPromoStdBase === 'function')
+                    ? Number(chPromoStdBase(d))
+                    : (Number(d && d.STANDARD_PRICE) || 0);
+                if (std > 0) {
+                    const price = (typeof chPromoFinalSpriceToSave === 'function')
+                        ? Number(chPromoFinalSpriceToSave(d, std))
+                        : ebayDgRound2(std);
+                    return price > 0 ? ebayDgRound2(price) : 0;
+                }
+                return 0;
+            }
+            if (typeof chPromoSpriceFromStdTPromo === 'function') {
                 const cvr = Number(chPromoSpriceFromStdTPromo(d, { skip_lmp_cap: true })) || 0;
                 if (cvr > 0) {
                     let price = ebayDgRound2(cvr);

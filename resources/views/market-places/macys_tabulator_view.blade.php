@@ -2526,7 +2526,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC from Dil slab, or min GROI when Dil is out of box and 0 Sold. If that price < A Price, S PRC = A Price. Orange Amz = raised to Amazon. Not editable — use Apply / Dil rules.",
+                    headerTooltip: "S PRC from Dil slab, or min GROI when Dil is out of box and 0 Sold. Out of box + sold uses Std Prc. If that price < A Price, S PRC = A Price.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {
