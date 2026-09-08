@@ -155,6 +155,8 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingMacysController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingMercariWoShipController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingNeweggB2BController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingNeweggB2CController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingPurchasingPowerController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTopDawgController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingOfferupController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingPlsController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingPoshmarkController;
@@ -4816,6 +4818,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-neweggb2c', [ListingNeweggB2CController::class, 'listingNeweggB2C'])->name('listing.neweggb2c');
     Route::get('/listing_neweggb2c/view-data', [ListingNeweggB2CController::class, 'getViewListingNeweggB2CData']);
     Route::post('/listing_neweggb2c/save-status', [ListingNeweggB2CController::class, 'saveStatus']);
+    Route::post('/listing_neweggb2c/import', [ListingNeweggB2CController::class, 'import'])->name('listing_neweggb2c.import');
+    Route::get('/listing_neweggb2c/export', [ListingNeweggB2CController::class, 'export'])->name('listing_neweggb2c.export');
 
     // listing audit reverb
     Route::get('/listing-reverb', [ListingReverbController::class, 'listingReverb'])->name('listing.reverb');
@@ -5911,6 +5915,20 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-neweggb2b', [ListingNeweggB2BController::class, 'listingNeweggB2B'])->name('listing.neweggb2b');
     Route::get('/listing_neweggb2b/view-data', [ListingNeweggB2BController::class, 'getViewListingNeweggB2BData']);
     Route::post('/listing_neweggb2b/save-status', [ListingNeweggB2BController::class, 'saveStatus']);
+    Route::post('/listing_neweggb2b/import', [ListingNeweggB2BController::class, 'import'])->name('listing_neweggb2b.import');
+    Route::get('/listing_neweggb2b/export', [ListingNeweggB2BController::class, 'export'])->name('listing_neweggb2b.export');
+
+    Route::get('/listing-topdawg', [ListingTopDawgController::class, 'listingTopDawg'])->name('listing.topdawg');
+    Route::get('/listing_topdawg/view-data', [ListingTopDawgController::class, 'getViewListingTopDawgData']);
+    Route::post('/listing_topdawg/save-status', [ListingTopDawgController::class, 'saveStatus']);
+    Route::post('/listing_topdawg/import', [ListingTopDawgController::class, 'import'])->name('listing_topdawg.import');
+    Route::get('/listing_topdawg/export', [ListingTopDawgController::class, 'export'])->name('listing_topdawg.export');
+
+    Route::get('/listing-purchasingpower', [ListingPurchasingPowerController::class, 'listingPurchasingPower'])->name('listing.purchasingpower');
+    Route::get('/listing_purchasingpower/view-data', [ListingPurchasingPowerController::class, 'getViewListingPurchasingPowerData']);
+    Route::post('/listing_purchasingpower/save-status', [ListingPurchasingPowerController::class, 'saveStatus']);
+    Route::post('/listing_purchasingpower/import', [ListingPurchasingPowerController::class, 'import'])->name('listing_purchasingpower.import');
+    Route::get('/listing_purchasingpower/export', [ListingPurchasingPowerController::class, 'export'])->name('listing_purchasingpower.export');
 
     // Appscenic
     Route::get('/zero-appscenic', [AppscenicZeroController::class, 'appscenicZeroview'])->name('zero.appscenic');

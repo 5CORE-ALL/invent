@@ -349,7 +349,7 @@ class ChannelListingRegistry
             ],
             'topdawg' => [
                 'dataView' => \App\Models\TopDawgDataView::class,
-                'status' => null,
+                'status' => \App\Models\TopDawgListingStatus::class,
                 'listed' => ['type' => 'column', 'model' => TopDawgProduct::class, 'column' => 'topdawg_listing_id', 'reject_sku' => true],
                 'id_field' => 'topdawg_listing_id',
                 'buyer_tpl' => null,
@@ -357,7 +357,7 @@ class ChannelListingRegistry
             ],
             'purchasingpower' => [
                 'dataView' => \App\Models\PurchasingPowerDataView::class,
-                'status' => null,
+                'status' => \App\Models\PurchasingPowerListingStatus::class,
                 'listed' => ['type' => 'column', 'model' => PurchasingPowerProduct::class, 'column' => 'sku'],
                 'id_field' => 'sku',
                 'buyer_tpl' => null,
@@ -476,6 +476,9 @@ class ChannelListingRegistry
     public static function overlayListingStatusNr($nrValues, $statusClass, array $skus)
     {
         if (! is_string($statusClass) || $statusClass === '' || ! class_exists($statusClass) || $skus === []) {
+            return $nrValues;
+        }
+        if (! \Illuminate\Support\Facades\Schema::hasTable((new $statusClass)->getTable())) {
             return $nrValues;
         }
 

@@ -693,6 +693,9 @@
                     return;
                 }
 
+                const source = (allListingData && allListingData.length)
+                    ? allListingData
+                    : (neweggb2cListingTable.getData() || []);
                 const rows = neweggb2cListingTable.getData('active') || [];
                 const metrics = {
                     invTotal: 0,
@@ -703,7 +706,7 @@
                     pendingTotal: 0
                 };
 
-                rows.forEach(item => {
+                source.forEach(item => {
                     if (parseFloat(item.INV) > 0 && !isParentSku(item.sku)) {
                         metrics.invTotal += parseFloat(item.INV) || 0;
 
@@ -849,6 +852,7 @@
 
         $(document).ready(function () {
             showLoader();
+            let missingLFilterActive = false;
 
             neweggb2cListingTable = new Tabulator('#neweggb2cListing-table', {
                 ajaxURL: '/listing_neweggb2c/view-data',
@@ -970,6 +974,16 @@
 
             neweggb2cListingTable.on('dataProcessed', function () {
                 hideLoader();
+                if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__neweggb2cMissingApplied) {
+                    window.__neweggb2cMissingApplied = true;
+                    $('#row-data-type').val('sku');
+                    $('#inv-filter').val('inv-only');
+                    $('#nr-req-filter').val('REQ');
+                    $('#link-filter').val('all');
+                    $('#listed-filter').val('Pending');
+                    $('#missing-l-badge').addClass('is-active');
+                    missingLFilterActive = true;
+                }
                 applyListingFilters();
             });
             neweggb2cListingTable.on('dataFiltered', function () {
@@ -983,7 +997,6 @@
             $('#row-data-type, #inv-filter, #nr-req-filter, #link-filter, #listed-filter').on('change', applyListingFilters);
 
             // Missing L badge → filter table to unlisted REQ SKUs (toggle)
-            let missingLFilterActive = false;
             function applyMissingLBadgeFilter(forceOff) {
                 if (forceOff === true) {
                     missingLFilterActive = false;
