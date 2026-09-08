@@ -198,6 +198,11 @@ class DobaApiService
         }
     }
 
+    public function resolveItemNo(string $identifier): ?string
+    {
+        return $this->resolveSkuToItemNo($identifier);
+    }
+
     private function resolveSkuToItemNo(string $identifier): ?string
     {
         $id = trim($identifier);
