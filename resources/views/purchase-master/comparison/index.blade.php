@@ -2876,6 +2876,7 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentCdRow = null;
     let comparisonBulkEditSkus = null;
     let currentSheetCells = [];
+    let sheetCellsSku = '';
     let currentSheetFormats = { cells: {}, rows: {}, cols: {} };
     let selectedSheetRow = null;
     let selectedSheetCol = null;
@@ -5081,11 +5082,25 @@ document.addEventListener('DOMContentLoaded', function () {
     function getSupplierNameForColumn(colIndex, cells) {
         const sheetCells = cells || currentSheetCells;
         const specCol = detectSpecColumnIndex(sheetCells);
-        const supplierRowIndex = findSupplierNameRowIndex(sheetCells, specCol);
-        if (supplierRowIndex === null) {
+        const firstSupplierCol = getFirstSupplierColumnIndex(sheetCells, specCol);
+        if (colIndex < firstSupplierCol || colIndex === specCol) {
             return '';
         }
-        return String((sheetCells[supplierRowIndex] || [])[colIndex] || '').trim();
+        const supplierRowIndex = findSupplierNameRowIndex(sheetCells, specCol);
+        if (supplierRowIndex !== null) {
+            const fromRow = String((sheetCells[supplierRowIndex] || [])[colIndex] || '').trim();
+            if (fromRow) {
+                return fromRow;
+            }
+        }
+        // Google-imported sheets store company names on the stamped header row.
+        const header = String((sheetCells[0] || [])[colIndex] || '').trim();
+        const headerKey = header.toLowerCase();
+        const headerSkip = ['amazon', 'amz', '5 core', '5core', '5-core', 'critical', 'qc', 'supplier', 'spec'];
+        if (header && !headerSkip.includes(headerKey) && !/^[A-Z]{1,3}$/.test(header)) {
+            return header;
+        }
+        return '';
     }
 
     function countNamedSupplierColumns(cells) {
@@ -5103,6 +5118,40 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
         return count;
+    }
+
+    function sheetLooksMeaningful(cells) {
+        const sheet = cells || [];
+        if (!sheet.length) {
+            return false;
+        }
+        const specCol = detectSpecColumnIndex(sheet);
+        const skip = new Set(['', 'amazon', 'amz', '5 core', '5core', '5-core', 'critical', 'qc', 'supplier', 'normal', 'important']);
+        let score = 0;
+        sheet.forEach((row, rowIndex) => {
+            (row || []).forEach((value, colIndex) => {
+                if (colIndex === specCol) {
+                    return;
+                }
+                const text = String(value || '').trim();
+                if (!text) {
+                    return;
+                }
+                if (text.startsWith('data:image/') || text.startsWith('[cmp-photo:') || text.startsWith('[embedded-image:')) {
+                    score += 5;
+                    return;
+                }
+                const key = text.toLowerCase();
+                if (skip.has(key)) {
+                    return;
+                }
+                if (rowIndex === 0 && skip.has(key)) {
+                    return;
+                }
+                score += 1;
+            });
+        });
+        return score >= 1;
     }
 
     function updateSupplierCountBadge(cells) {
@@ -6574,7 +6623,13 @@ document.addEventListener('DOMContentLoaded', function () {
         const needle = labelNeedle.toLowerCase();
         for (let rowIndex = 0; rowIndex < cells.length; rowIndex++) {
             const label = String((cells[rowIndex] || [])[labelCol] || '').trim().toLowerCase();
+            if (!label) {
+                continue;
+            }
             if (label.includes(needle)) {
+                return rowIndex;
+            }
+            if (needle === 'product photo' && label.includes('product picture')) {
                 return rowIndex;
             }
         }
@@ -6787,10 +6842,25 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!label || label.includes('company name')) {
             return false;
         }
-        if (label.includes('supplier name')) {
+        if (label.includes('person name review') || label.includes('supplier name')) {
             return true;
         }
-        return label === 'supplier' || label === 'suppliers';
+        // Spec header is often just "Supplier" — that is a column title, not names.
+        return label === 'suppliers';
+    }
+
+    function isChromeHeaderRow(cells, rowIndex) {
+        if (rowIndex !== 0) {
+            return false;
+        }
+        const joined = ((cells && cells[0]) || []).map(function (value) {
+            return String(value || '').trim().toLowerCase();
+        }).join(' ');
+        return joined.includes('amazon')
+            || joined.includes('amz')
+            || joined.includes('5 core')
+            || joined.includes('5core')
+            || joined.includes('critical');
     }
 
     function isSupplierNameRow(cells, rowIndex, specCol) {
@@ -6803,7 +6873,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (colIndex === specCol) {
                 return true;
             }
-            if (text.length <= 48) {
+            if (text.length <= 48 && !isChromeHeaderRow(cells, rowIndex)) {
                 return true;
             }
         }
@@ -7231,6 +7301,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (live) {
                 live.dataset.value = data.token;
             }
+            sheetReadyForAutoSave = true;
             scheduleAutoSaveComparisonSheet(300, { rerender: false, refreshTable: false });
         }).catch(function () {
             const reader = new FileReader();
@@ -7435,6 +7506,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (currentSheetCells.length === 0) {
             currentSheetCells = [['Amz', '5 Core', 'Product Photo', 'Critical', 'QC', '', '']];
         }
+        sheetCellsSku = String(currentCdRow?.sku || sheetCellsSku || '');
 
         const colCountBeforeMove = Math.max(...currentSheetCells.map(row => row.length), 1);
         for (let r = 0; r < currentSheetCells.length; r++) {
@@ -7986,6 +8058,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         currentSheetCells[rowIndex][colIndex] = liveText;
         cell.dataset.value = liveText;
+        if (liveText !== '') {
+            sheetReadyForAutoSave = true;
+        }
     }
 
     function mergeReturnedPhotoTokens(localCells, returnedCells) {
@@ -8155,7 +8230,18 @@ document.addEventListener('DOMContentLoaded', function () {
         updateSiblingsBadge(currentSiblingsData);
         currentSheetFormats = normalizeSheetFormats(data.formats || {});
         // Drop any residual data:image values before any scans / DOM work.
-        const safeCells = sanitizeSheetCellsForUi(data.cells || []);
+        let safeCells = sanitizeSheetCellsForUi(data.cells || []);
+        const incomingSku = String(row?.sku || currentCdRow?.sku || '');
+        // Never replace a filled on-screen sheet with a blank/default payload
+        // for the same SKU (failed/partial reload used to look like data loss).
+        if (
+            incomingSku
+            && incomingSku === sheetCellsSku
+            && sheetLooksMeaningful(currentSheetCells)
+            && !sheetLooksMeaningful(safeCells)
+        ) {
+            safeCells = currentSheetCells;
+        }
         applyAutoSheetFormatsFromPayload(data, safeCells);
         // Fast first paint: skip dim/wt migration + price sort (those block the UI).
         let sheetCells = ensureLeadColumns(safeCells);
@@ -8168,7 +8254,9 @@ document.addEventListener('DOMContentLoaded', function () {
             : String(row?.category || currentCdRow?.category || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
         loadComparisonSuppliersForCategory(categoryNames);
         sheetEditorHydrating = false;
-        sheetReadyForAutoSave = true;
+        // Blank default template must not autosave. That 0→11-row write is what
+        // made a filled sheet look gone the next time someone opened it.
+        sheetReadyForAutoSave = !!data.has_sheet_data;
 
         // Apply Dim/Wt rows after the page is responsive (cancel prior timer on rapid SKU switches).
         const applySku = String(row?.sku || currentCdRow?.sku || '');
@@ -8291,10 +8379,12 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .catch(err => {
             sheetEditorHydrating = true;
-            sheetReadyForAutoSave = false;
+            sheetReadyForAutoSave = sheetLooksMeaningful(currentSheetCells);
             cancelScheduledAutoSave();
-            currentSheetFormats = normalizeSheetFormats({});
-            renderSheetEditor([]);
+            if (!sheetLooksMeaningful(currentSheetCells)) {
+                currentSheetFormats = normalizeSheetFormats({});
+                renderSheetEditor([]);
+            }
             sheetEditorHydrating = false;
             setSheetStatus(err.message || 'Could not load comparison sheet.', true);
         })
@@ -12876,6 +12966,9 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!cell) return;
         // Keep memory in sync while typing so a later rebuild cannot drop extra cells.
         writeLiveSheetCellToMemory(cell);
+        if (!sheetEditorHydrating && currentCdRow && String(cell.textContent || '').trim() !== '') {
+            sheetReadyForAutoSave = true;
+        }
     });
 
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('blur', function (e) {

@@ -1347,9 +1347,10 @@ class TaskController extends Controller
             ->orderBy('id', 'asc')
             ->get();
 
-        // Map emails to names and avatar URLs for display
+        // Map emails/names to user records (older tasks store assignor as a display name)
         $defaultAvatar = asset('images/users/avatar-2.jpg');
-        $tasks->each(function($task) use ($defaultAvatar) {
+        $teamUsers = User::query()->get(['id', 'name', 'email', 'avatar', 'designation']);
+        $tasks->each(function($task) use ($defaultAvatar, $teamUsers) {
             // Normalize datetime fields to local string format so frontend date parsing
             // doesn't shift dates because of UTC ISO serialization ("...Z").
             foreach (['start_date', 'due_date', 'completion_date', 'created_at', 'updated_at'] as $dtField) {
@@ -1367,9 +1368,9 @@ class TaskController extends Controller
                 }
             }
 
-            // Find users by email and get their names + avatars
+            // Find assignor by email or name (older rows store "Amarjit", not an email)
             if ($task->assignor) {
-                $assignorUser = User::where('email', $task->assignor)->first();
+                $assignorUser = TaskPolicy::findUserForAssignorValue($task->assignor, $teamUsers);
                 $task->assignor_name = $assignorUser ? $assignorUser->name : $task->assignor;
                 $task->assignor_id = $assignorUser ? $assignorUser->id : null;
                 $task->assignor_designation = $assignorUser ? $assignorUser->designation : null;
@@ -1716,7 +1717,7 @@ class TaskController extends Controller
             $taskData = $task->toArray();
             
             if ($task->assignor) {
-                $assignorUser = User::where('email', $task->assignor)->first();
+                $assignorUser = TaskPolicy::findUserForAssignorValue($task->assignor);
                 $taskData['assignor_name'] = $assignorUser ? $assignorUser->name : $task->assignor;
                 $taskData['assignor_id'] = $assignorUser ? $assignorUser->id : null;
             } else {
@@ -1902,10 +1903,9 @@ class TaskController extends Controller
             'assign_to' => $taskModel->assign_to,
         ];
         
-        // Map email addresses to user IDs for the form
+        // Map assignor (email or older display-name rows) to user IDs for the form
         if ($taskModel->assignor) {
-            $assignorEmail = trim($taskModel->assignor);
-            $assignorUser = User::where('email', $assignorEmail)->first();
+            $assignorUser = TaskPolicy::findUserForAssignorValue($taskModel->assignor);
             $task->assignor_id = $assignorUser ? $assignorUser->id : null;
         }
         
@@ -2621,23 +2621,16 @@ class TaskController extends Controller
                     ]);
                 } else {
                     try {
-                        // Special permission: Jasmine, Ritu mam, Joy sir can delete any task; others only their own
-                        if (TaskPolicy::userHasSpecialTaskPermission($user)) {
-                            $tasksToDelete = Task::whereIn('id', $taskIds)->get();
-                        } else {
-                            $tasksToDelete = Task::whereIn('id', $taskIds)
-                                ->where('assignor', $user->email)
-                                ->get();
-                        }
-
-                        $skippedCa = 0;
-                        if (! TaskPolicy::userCanDeleteCorrectiveTasks($user)) {
-                            $beforeCaFilter = $tasksToDelete->count();
-                            $tasksToDelete = $tasksToDelete
-                                ->reject(fn ($task) => TaskPolicy::taskIsCorrectiveAction($task))
-                                ->values();
-                            $skippedCa = $beforeCaFilter - $tasksToDelete->count();
-                        }
+                        // President / special users can delete any task; assignors can delete
+                        // their own even when older rows stored assignor as a name ("Amarjit").
+                        $selectedTasks = Task::whereIn('id', $taskIds)->get();
+                        $skippedCa = $selectedTasks
+                            ->filter(fn ($task) => TaskPolicy::taskIsCorrectiveAction($task)
+                                && ! TaskPolicy::userCanDeleteCorrectiveTasks($user))
+                            ->count();
+                        $tasksToDelete = $selectedTasks
+                            ->filter(fn ($task) => TaskPolicy::userCanDeleteTask($user, $task))
+                            ->values();
 
                         $deletedCount = $tasksToDelete->count();
                         $requestedCount = count($taskIds);
@@ -2645,7 +2638,7 @@ class TaskController extends Controller
                         if ($deletedCount === 0) {
                             $message = $skippedCa > 0
                                 ? 'Corrective action tasks can only be deleted by president@5core.com.'
-                                : 'You can only delete tasks you created. None of the selected tasks belong to you.';
+                                : 'You can only delete tasks you assigned. None of the selected tasks belong to you.';
 
                             return response()->json([
                                 'success' => false,
@@ -2695,7 +2688,7 @@ class TaskController extends Controller
                             $skipReasons = [];
                             $otherSkipped = $skipped - $skippedCa;
                             if ($otherSkipped > 0) {
-                                $skipReasons[] = $otherSkipped.' task(s) skipped — you can only delete tasks you created';
+                                $skipReasons[] = $otherSkipped.' task(s) skipped — you can only delete tasks you assigned';
                             }
                             if ($skippedCa > 0) {
                                 $skipReasons[] = $skippedCa.' corrective action task(s) skipped — only president@5core.com can delete those';
@@ -3468,10 +3461,9 @@ class TaskController extends Controller
             'schedule_time' => $taskModel->schedule_time ?? '12:01',
         ];
         
-        // Map email addresses to user IDs for the form
+        // Map assignor (email or older display-name rows) to user IDs for the form
         if ($taskModel->assignor) {
-            $assignorEmail = trim($taskModel->assignor);
-            $assignorUser = User::where('email', $assignorEmail)->first();
+            $assignorUser = TaskPolicy::findUserForAssignorValue($taskModel->assignor);
             $task->assignor_id = $assignorUser ? $assignorUser->id : null;
         }
         

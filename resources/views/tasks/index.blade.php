@@ -2686,7 +2686,7 @@
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
                         <strong>Delete Selected Tasks</strong>
-                        <small class="d-block text-muted">{{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'You can delete any selected task' : 'You can only delete tasks you created' }}{{ empty($canDeleteCorrectiveTasks) ? '. CA tasks can only be deleted by president@5core.com' : '' }}</small>
+                        <small class="d-block text-muted">{{ isset($canDeleteAnyTask) && $canDeleteAnyTask ? 'You can delete any selected task' : 'You can only delete tasks you assigned' }}{{ empty($canDeleteCorrectiveTasks) ? '. CA tasks can only be deleted by president@5core.com' : '' }}</small>
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-assign-assignee-btn">
                         <i class="mdi mdi-account-plus text-success me-2"></i>
@@ -3158,6 +3158,7 @@
             var canDeleteCorrectiveTasks = {{ !empty($canDeleteCorrectiveTasks) ? 'true' : 'false' }};
             var currentUserId = {{ Auth::id() }};
             var currentUserEmail = {!! json_encode(Auth::user()->email) !!};
+            var currentUserName = {!! json_encode(Auth::user()->name) !!};
             var suppressAssignFilterApply = false;
             /** Set from session (e.g. Task Summary dot); OR filter assignor/assignee; cleared when assignee dropdown changes away from this name */
             var taskManagerSessionUserFocus = @json(trim((string) ($selectedUserName ?? '')));
@@ -3193,10 +3194,23 @@
                 return v === true || v === 1 || v === '1';
             }
 
-            function userCanDeleteTaskRow(rowData) {
+            function currentUserIsAssignorOnTask(rowData) {
                 if (!rowData) return false;
                 var assignorId = rowData.assignor_id != null ? parseInt(rowData.assignor_id, 10) : NaN;
-                var baseCan = canDeleteAnyTask || (!isNaN(assignorId) && assignorId === currentUserId);
+                if (!isNaN(assignorId) && assignorId === currentUserId) return true;
+                var stored = String(rowData.assignor_email || rowData.assignor || '').trim().toLowerCase();
+                if (!stored) return false;
+                var meEmail = String(currentUserEmail || '').trim().toLowerCase();
+                if (meEmail && stored === meEmail) return true;
+                var meName = String(currentUserName || '').trim().toLowerCase();
+                if (meName && stored === meName) return true;
+                var meFirst = meName.split(/\s+/)[0] || '';
+                return meFirst !== '' && stored.indexOf(' ') === -1 && stored === meFirst;
+            }
+
+            function userCanDeleteTaskRow(rowData) {
+                if (!rowData) return false;
+                var baseCan = canDeleteAnyTask || currentUserIsAssignorOnTask(rowData);
                 if (!baseCan) return false;
                 if (taskIsCorrectiveAction(rowData) && !canDeleteCorrectiveTasks) return false;
                 return true;
@@ -4486,19 +4500,19 @@
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var id = rowData.id;
-                            var assignorId = rowData.assignor_id;
                             var st = rowData.status || '';
                             
                             // Determine permissions (special: Jasmine, Ritu mam, Joy sir can delete/edit any task)
                             // Full edit (title, group, date, assignee, etc): assignor + president override.
                             // Assignees get an "Add Links" mode of the same edit page so they can attach
                             // proof / SOP / reference links to make review easier.
-                            var isAssigneeOnly = !(canDeleteAnyTask || assignorId === currentUserId) && currentUserIsAssigneeOnTask(rowData);
-                            var canEdit = canDeleteAnyTask || assignorId === currentUserId || isAssigneeOnly;
+                            var isAssignor = currentUserIsAssignorOnTask(rowData);
+                            var isAssigneeOnly = !(canDeleteAnyTask || isAssignor) && currentUserIsAssigneeOnTask(rowData);
+                            var canEdit = canDeleteAnyTask || isAssignor || isAssigneeOnly;
                             var canDelete = userCanDeleteTaskRow(rowData);
-                            var wouldDeleteWithoutCa = canDeleteAnyTask || assignorId === currentUserId;
-                            var canView = isAdmin || assignorId === currentUserId || currentUserIsAssigneeOnTask(rowData);
-                            var canReworkQuick = (isAdmin || canDeleteAnyTask || assignorId === currentUserId) && st !== 'Rework' && st !== 'Archived';
+                            var wouldDeleteWithoutCa = canDeleteAnyTask || isAssignor;
+                            var canView = isAdmin || isAssignor || currentUserIsAssigneeOnTask(rowData);
+                            var canReworkQuick = (isAdmin || canDeleteAnyTask || isAssignor) && st !== 'Rework' && st !== 'Archived';
                             
                             var buttons = '';
                             
