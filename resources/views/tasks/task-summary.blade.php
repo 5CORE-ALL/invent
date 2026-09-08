@@ -1374,46 +1374,13 @@
                                             $darTarget = (int) ($row['dar_l30_target'] ?? 25);
                                             $darPct = (int) ($row['dar_l30_pct'] ?? 0);
                                             $darBand = (string) ($row['dar_l30_band'] ?? 'low');
-                                            $darSeries = $row['dar_l30_series'] ?? [];
-                                            $darUserId = (int) ($row['user_id'] ?? 0);
                                             $darBandClass = $darBand === 'high'
                                                 ? 'is-dar-high'
                                                 : ($darBand === 'mid' ? 'is-dar-mid' : 'is-dar-low');
-                                            $darFileUrl = $darUserId > 0
-                                                ? route('dar.index', ['user_id' => $darUserId, 'days' => 30])
-                                                : '';
                                         @endphp
                                         <td class="task-summary-num task-summary-col-dar {{ $darBandClass }}"
-                                            title="{{ $darCount }}/{{ $darTarget }} unique DAR days in the last 30 days ({{ $darPct }}%)">
-                                            <span class="task-summary-dar-cell">
-                                                <span class="task-summary-dar-pct">{{ $darPct }}%</span>
-                                                {!! \App\Support\DarL30Metrics::sparklineSvg(is_array($darSeries) ? $darSeries : []) !!}
-                                                <button type="button"
-                                                        class="cl-history-dot is-dar task-summary-dar-history-btn"
-                                                        data-user-name="{{ e($row['team_member']) }}"
-                                                        data-dar-count="{{ $darCount }}"
-                                                        data-dar-target="{{ $darTarget }}"
-                                                        data-dar-pct="{{ $darPct }}"
-                                                        data-series="{{ e(json_encode($darSeries)) }}"
-                                                        title="Rolling last-30-days DAR history for {{ e($row['team_member']) }}"
-                                                        aria-label="DAR history for {{ e($row['team_member']) }}">
-                                                    <i class="ri-line-chart-line" aria-hidden="true"></i>
-                                                </button>
-                                                @if($darFileUrl !== '')
-                                                    <a href="{{ $darFileUrl }}"
-                                                       target="_blank"
-                                                       rel="noopener noreferrer"
-                                                       class="task-summary-dar-arrow"
-                                                       title="Open last 30 days of DAR for {{ e($row['team_member']) }} (latest first)"
-                                                       aria-label="Open last 30 days of DAR for {{ e($row['team_member']) }}">
-                                                        <i class="ri-arrow-right-up-line" aria-hidden="true"></i>
-                                                    </a>
-                                                @else
-                                                    <span class="task-summary-dar-arrow is-disabled" aria-hidden="true">
-                                                        <i class="ri-arrow-right-up-line"></i>
-                                                    </span>
-                                                @endif
-                                            </span>
+                                            title="{{ $darCount }}/{{ $darTarget }}">
+                                            {{ $darPct }}%
                                         </td>
                                         @php
                                             $tat = $row['tat_l30_days'] ?? null;
