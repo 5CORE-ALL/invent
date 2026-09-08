@@ -128,4 +128,24 @@ class AmazonAdsAdvertisementMasterHistoryTest extends TestCase
         $this->assertSame(8800.0, $byChannel['Amazon']['2026-09-06']['spend']);
         $this->assertArrayNotHasKey('2026-09-06', $byDate);
     }
+
+    public function test_channel_master_as_of_date_is_snapshot_minus_one_pacific_day(): void
+    {
+        $this->assertSame(
+            '2026-09-04',
+            AmazonAdsAdvertisementMasterHistory::channelMasterAsOfDate('2026-09-05')
+        );
+    }
+
+    public function test_rewrite_channel_master_amazon_spend_replaces_stale_l30(): void
+    {
+        $sd = AmazonAdsAdvertisementMasterHistory::rewriteChannelMasterAmazonSpend(
+            ['total_ad_spend' => 6544.0, 'l30_sales' => 100000],
+            ['2026-09-05' => ['spend' => 9825.53]],
+            '2026-09-05'
+        );
+
+        $this->assertSame(9825.53, $sd['total_ad_spend']);
+        $this->assertSame(100000, $sd['l30_sales']);
+    }
 }

@@ -1406,7 +1406,7 @@
             function loadAdmHistory() {
                 const days = parseInt(document.getElementById('adm-trend-days').value || '30', 10);
                 admSetTrendTitle();
-                fetch(historyUrl + '?days=' + encodeURIComponent(days), { credentials: 'same-origin' })
+                fetch(historyUrl + '?days=' + encodeURIComponent(days) + '&_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
                     .then(function (r) { return r.json(); })
                     .then(function (payload) { admTrendCache = payload; renderAdmChart(); })
                     .catch(function () { admTrendCache = { labels: [], metrics: {}, channels: {} }; renderAdmChart(); });

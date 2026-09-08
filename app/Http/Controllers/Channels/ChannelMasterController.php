@@ -44,6 +44,7 @@ use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
 use App\Http\Controllers\MarketPlace\EbayThreeController as MarketPlaceEbayThreeController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Support\EbayCampaignReportRollup;
+use App\Support\AmazonAdsAdvertisementMasterHistory;
 use App\Support\Marketplace\ChannelMasterViewsGuard;
 use App\Support\Marketplace\ChannelMetricDotPair;
 use App\Support\Marketplace\ChartDatePad;
@@ -16948,6 +16949,14 @@ class ChannelMasterController extends Controller
                 $this->applyL7WindowToChannelSummaries($history);
             }
 
+            if (! $useDailyWindow && ! $useL7Window && in_array($metric, ['ad_spend', 'ads_pct', 'pft', 'npft', 'nroi', 'acos', 'p_npft'], true)) {
+                try {
+                    $this->overlayAmazonRollingL30SpendOnChannelSummaries($history);
+                } catch (\Throwable $e) {
+                    \Log::warning('All Marketplace Amazon spend overlay failed: '.$e->getMessage());
+                }
+            }
+
             // Group by marketplace as-of date (snapshot_date − 1 Pacific day).
             // Example: row saved 2026-07-22 → chart label "Jul 21" (last day APIs have closed).
             $grouped = $history->groupBy(function ($row) {
@@ -17375,11 +17384,54 @@ class ChannelMasterController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $chartData,
+            ])->withHeaders([
+                'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                'Pragma' => 'no-cache',
+                'Expires' => '0',
             ]);
 
         } catch (\Exception $e) {
             \Log::error('getChannelMetricChartData error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
+        }
+    }
+
+    /**
+     * Replace stale Amazon L30 spend on ChannelMasterSummary rows with dated
+     * daily rolling L30 (same source as Advertisement Master).
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\ChannelMasterSummary>  $history
+     */
+    private function overlayAmazonRollingL30SpendOnChannelSummaries($history): void
+    {
+        $amazonRows = [];
+        foreach ($history as $row) {
+            if ($this->allMarketplaceSnapshotKey((string) $row->channel) === 'amazon') {
+                $amazonRows[] = $row;
+            }
+        }
+        if ($amazonRows === []) {
+            return;
+        }
+
+        $asOfDates = [];
+        foreach ($amazonRows as $row) {
+            $snap = $row->snapshot_date instanceof Carbon
+                ? $row->snapshot_date->toDateString()
+                : (string) $row->snapshot_date;
+            $asOfDates[] = AmazonAdsAdvertisementMasterHistory::channelMasterAsOfDate($snap);
+        }
+
+        $computed = AmazonAdsAdvertisementMasterHistory::computedL30ByChannel(min($asOfDates), max($asOfDates));
+        $parent = $computed[AmazonAdsAdvertisementMasterHistory::PARENT] ?? [];
+
+        foreach ($amazonRows as $row) {
+            $snap = $row->snapshot_date instanceof Carbon
+                ? $row->snapshot_date->toDateString()
+                : (string) $row->snapshot_date;
+            $asOf = AmazonAdsAdvertisementMasterHistory::channelMasterAsOfDate($snap);
+            $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+            $row->summary_data = AmazonAdsAdvertisementMasterHistory::rewriteChannelMasterAmazonSpend($sd, $parent, $asOf);
         }
     }
 

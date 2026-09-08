@@ -30,6 +30,30 @@ final class AmazonAdsAdvertisementMasterHistory
     }
 
     /**
+     * All Marketplace Master labels a snapshot saved on Pacific day D as D−1
+     * (metrics are treated as closed through yesterday).
+     */
+    public static function channelMasterAsOfDate(string $snapshotDate): string
+    {
+        return Carbon::parse($snapshotDate, 'America/Los_Angeles')->subDay()->toDateString();
+    }
+
+    /**
+     * @param  array<string, mixed>  $summaryData
+     * @param  array<string, array{spend: float}>  $computedParentByDate
+     * @return array<string, mixed>
+     */
+    public static function rewriteChannelMasterAmazonSpend(array $summaryData, array $computedParentByDate, string $asOfDate): array
+    {
+        if (! isset($computedParentByDate[$asOfDate]['spend'])) {
+            return $summaryData;
+        }
+        $summaryData['total_ad_spend'] = round((float) $computedParentByDate[$asOfDate]['spend'], 2);
+
+        return $summaryData;
+    }
+
+    /**
      * Sum daily measures over the inclusive 30-day window ending on each
      * chart day. {@see $active} on a day is that day's ENABLED count, not an L30 sum.
      *

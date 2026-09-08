@@ -1739,6 +1739,10 @@ class AdvertisementMasterController extends Controller
             'labels'   => array_map(fn ($d) => date('M d', strtotime($d)), $labels),
             'metrics'  => $metrics,
             'channels' => $this->buildChannelSeries($byChannel, $labels, $ssalesByDate),
+        ])->withHeaders([
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+            'Expires' => '0',
         ]);
     }
 
