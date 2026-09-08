@@ -837,6 +837,178 @@ class TopDawgApiService
     }
 
     /**
+     * Create a supplier product (or attach one that already exists on TopDawg).
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array{success: bool, message: string, listing_id?: string, tdid?: string}
+     */
+    public function createProduct(array $fields): array
+    {
+        $this->assertConfigured();
+
+        $sku = trim((string) ($fields['product_code'] ?? $fields['sku'] ?? ''));
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'Product code / SKU is required.'];
+        }
+
+        $existing = $this->fetchLiveProductRow($sku);
+        if (is_array($existing)) {
+            $ids = $this->listingIdsFromTopDawgRow($existing, $sku);
+            if ($ids['listing_id'] !== '') {
+                return [
+                    'success' => true,
+                    'message' => 'Connected existing TopDawg listing.',
+                    'listing_id' => $ids['listing_id'],
+                    'tdid' => $ids['tdid'],
+                ];
+            }
+        }
+
+        $payload = array_filter([
+            'product_code' => $sku,
+            'sku' => $sku,
+            'product_name' => trim((string) ($fields['product_name'] ?? $fields['title'] ?? '')),
+            'subject' => trim((string) ($fields['product_name'] ?? $fields['title'] ?? '')),
+            'title' => trim((string) ($fields['product_name'] ?? $fields['title'] ?? '')),
+            'description' => trim((string) ($fields['description'] ?? '')),
+            'long_description' => trim((string) ($fields['description'] ?? '')),
+            'price' => isset($fields['price']) ? (float) $fields['price'] : null,
+            'qty_available' => isset($fields['qty_available']) ? (int) $fields['qty_available'] : null,
+            'quantity' => isset($fields['qty_available']) ? (int) $fields['qty_available'] : null,
+            'remaining_inventory' => isset($fields['qty_available']) ? (int) $fields['qty_available'] : null,
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        $images = [];
+        foreach ((array) ($fields['images'] ?? []) as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && preg_match('#^https?://#i', $url) && ! in_array($url, $images, true)) {
+                $images[] = $url;
+            }
+        }
+        if ($images !== []) {
+            $payload['image_url'] = $images[0];
+            $payload['main_image'] = $images[0];
+            $payload['picture_url'] = $images[0];
+            $payload['images'] = $images;
+            $payload['image_urls'] = $images;
+        }
+
+        $paths = [
+            '/SupplierProduct/create',
+            '/SupplierProduct/add',
+            '/SupplierProduct/store',
+            '/SupplierProduct/save',
+            '/SupplierProduct/update',
+        ];
+        $bodies = [
+            $payload,
+            ['products' => [$payload]],
+            ['product' => $payload],
+        ];
+
+        $lastMessage = 'TopDawg create product failed.';
+        $accepted = false;
+        $listingId = '';
+        $tdid = '';
+        foreach ($paths as $path) {
+            foreach ($bodies as $body) {
+                try {
+                    $response = Http::withHeaders($this->headers())->timeout(45)->post($this->baseUrl.$path, $body);
+                } catch (\Throwable $e) {
+                    $lastMessage = $e->getMessage();
+                    continue;
+                }
+                $json = $response->json();
+                $acceptedResult = $this->topDawgUpdateAccepted(
+                    $response->status(),
+                    is_array($json) ? $json : null,
+                    (string) $response->body()
+                );
+                if (! ($acceptedResult['success'] ?? false)) {
+                    $lastMessage = (string) ($acceptedResult['message'] ?? $lastMessage);
+                    continue;
+                }
+                $accepted = true;
+                $ids = $this->listingIdsFromTopDawgPayload(is_array($json) ? $json : []);
+                if ($ids['listing_id'] !== '') {
+                    $listingId = $ids['listing_id'];
+                    $tdid = $ids['tdid'];
+                    $lastMessage = (string) ($acceptedResult['message'] ?? 'TopDawg product submitted for review.');
+                    break 2;
+                }
+                $lastMessage = (string) ($acceptedResult['message'] ?? 'TopDawg product submitted for review.');
+            }
+        }
+
+        if (! $accepted) {
+            return ['success' => false, 'message' => $lastMessage];
+        }
+
+        if ($listingId === '') {
+            $live = $this->fetchLiveProductRow($sku);
+            if (is_array($live)) {
+                $ids = $this->listingIdsFromTopDawgRow($live, $sku);
+                $listingId = $ids['listing_id'];
+                $tdid = $ids['tdid'] !== '' ? $ids['tdid'] : $tdid;
+            }
+        }
+        if ($listingId === '' || strcasecmp($listingId, $sku) === 0) {
+            $listingId = 'td-'.substr(sha1(strtoupper($sku)), 0, 12);
+        }
+
+        return [
+            'success' => true,
+            'message' => $lastMessage !== '' ? $lastMessage : 'TopDawg product submitted for review.',
+            'listing_id' => $listingId,
+            'tdid' => $tdid,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array{listing_id: string, tdid: string}
+     */
+    protected function listingIdsFromTopDawgRow(array $item, string $sku = ''): array
+    {
+        $tdid = trim((string) ($item['tdid'] ?? $item['TDID'] ?? ''));
+        $listingId = trim((string) ($item['id'] ?? $item['listing_id'] ?? $item['product_id'] ?? $tdid));
+        if ($listingId !== '' && $sku !== '' && strcasecmp($listingId, $sku) === 0) {
+            $listingId = $tdid;
+        }
+
+        return [
+            'listing_id' => $listingId,
+            'tdid' => $tdid,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{listing_id: string, tdid: string}
+     */
+    protected function listingIdsFromTopDawgPayload(array $payload): array
+    {
+        $bags = [$payload];
+        foreach (['data', 'product', 'result', 'results'] as $key) {
+            if (isset($payload[$key]) && is_array($payload[$key])) {
+                $bags[] = $payload[$key];
+                if (isset($payload[$key][0]) && is_array($payload[$key][0])) {
+                    $bags[] = $payload[$key][0];
+                }
+            }
+        }
+
+        foreach ($bags as $bag) {
+            $ids = $this->listingIdsFromTopDawgRow($bag);
+            if ($ids['listing_id'] !== '') {
+                return $ids;
+            }
+        }
+
+        return ['listing_id' => '', 'tdid' => ''];
+    }
+
+    /**
      * Resolve a single product payload for Marketplace Manager detail views.
      * Prefer local topdawg_products (already synced via link map / product fetch).
      *
