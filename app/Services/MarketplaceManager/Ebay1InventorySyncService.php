@@ -65,9 +65,7 @@ class Ebay1InventorySyncService
         );
 
         if ($exactShopifyQty) {
-            foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($fetchSkus) as $key => $qty) {
-                $shopifyQty[$key] = (int) $qty;
-            }
+            $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $fetchSkus);
         }
 
         $metrics = EbayMetric::query()
@@ -119,9 +117,21 @@ class Ebay1InventorySyncService
                     $shopifyStock = $this->resolveShopifyQty($shopifyQty, $requested);
                 }
             }
-            $pushQty = $shopifyStock === null
-                ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            if ($shopifyStock === null) {
+                $onShopify = ShopifySku::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                    ->exists();
+                if (! $onShopify) {
+                    $skipped++;
+                    continue;
+                }
+            }
+            $pushQty = MarketplaceLiveInventoryRules::qtyForMismatchPush(
+                $shopifyStock,
+                $exactShopifyQty,
+                $qtyPercent,
+                $maxQty
+            );
             $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
 
             // Mismatch pass already classified live eBay vs the % target — always push.
