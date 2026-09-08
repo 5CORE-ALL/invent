@@ -10,61 +10,55 @@ use Illuminate\Auth\Access\Response;
 class TaskPolicy
 {
     /**
-     * Emails with this permission can delete or modify anybody's task (case-insensitive),
-     * including bulk edit/delete. Sourced from users table:
-     * Hritiksha, Srimanta, Jisan, Nishtha, President (Amarjit), Shobha,
-     * Ritu, Joy (SJOY), Jasmine.
+     * Known login emails for full task access (any action on any task).
+     * Permission is always checked against the logged-in email — never the display name.
      */
-    private const SPECIAL_TASK_DELETE_MODIFY_EMAILS = [
-        'president@5core.com',          // Amarjit (President)
+    private const FULL_ACCESS_EMAILS = [
+        'president@5core.com',          // Amarjit Singh
+        'presiden@5core.com',           // Known typo login used by President
+        'sr.manager@5core.com',         // Jasmine
+        'inventory@5core.com',          // Ritu
+        'ritu.kaur013@gmail.com',       // Ritu
+        'sjoy7486@gmail.com',           // Joy (SJOY)
+        'sourcing@5core.com',           // Joy Huang
+        'ineetkalra@5core.com',         // Ineet / Innet
+        'priyanka@5core.com',           // Priyanka
+        'priyankakalra@5core.com',      // Priyanka Kalra
         'software5@5core.com',          // Shobha
         'mgr-operations@5core.com',     // Hritiksha
         'mgr-content@5core.com',        // Srimanta
         'support@5core.com',            // Jisan
         'mgr-advertisement@5core.com',  // Nishtha
-        'ritu.kaur013@gmail.com',       // RITU
-        'inventory@5core.com',          // Ritu
-        'sjoy7486@gmail.com',           // SJOY (Joy)
-        'sr.manager@5core.com',         // Jasmine
     ];
 
     /**
-     * Names from the users table that get the same full-access permission as the
-     * special emails above (full name or first token, case-insensitive).
+     * Users.name tokens used only to look up extra emails from the users table
+     * (in case a login email changed). Not used to grant access by display name.
      */
-    private const SPECIAL_TASK_DELETE_MODIFY_NAMES = [
-        'hritiksha',
-        'srimanta',
-        'jisan',
-        'nishtha',
-        'president',
-        'amarjit',
-        'shobha',
-        'ritu',
-        'sjoy',
-        'joy',
+    private const FULL_ACCESS_NAME_NEEDLES = [
         'jasmine',
+        'ritu',
+        'joy',
+        'sjoy',
+        'ineet',
+        'innet',
+        'priyanka',
+        'amarjit',
+        'president',
+        'shobha',
     ];
 
-    /** Only this email may delete a task whose CA (corrective action) column is set. */
-    private const CORRECTIVE_ACTION_DELETE_EMAIL = 'president@5core.com';
+    /** @var list<string>|null */
+    private static ?array $fullAccessEmailCache = null;
 
-    /** Cleanup Missed Daily, Today Deleted, and related revert/archive tools. */
-    private const TASK_MAINTENANCE_TOOL_EMAILS = [
-        'president@5core.com',
-        'presiden@5core.com',
-        'software5@5core.com',
-    ];
+    public static function resetFullAccessEmailCache(): void
+    {
+        self::$fullAccessEmailCache = null;
+    }
 
     public static function userCanDeleteCorrectiveTasks(?User $user): bool
     {
-        if ($user === null) {
-            return false;
-        }
-
-        $email = strtolower(trim((string) ($user->email ?? '')));
-
-        return $email !== '' && $email === self::CORRECTIVE_ACTION_DELETE_EMAIL;
+        return $user !== null && self::userHasFullTaskAccess($user);
     }
 
     public static function taskIsCorrectiveAction(Task $task): bool
@@ -74,17 +68,7 @@ class TaskPolicy
 
     public static function userCanAccessTaskMaintenanceTools(?User $user): bool
     {
-        if ($user === null) {
-            return false;
-        }
-
-        if (SuperAdminAccess::is($user)) {
-            return true;
-        }
-
-        $email = strtolower(trim((string) ($user->email ?? '')));
-
-        return $email !== '' && in_array($email, self::TASK_MAINTENANCE_TOOL_EMAILS, true);
+        return $user !== null && self::userHasFullTaskAccess($user);
     }
 
     /**
@@ -118,31 +102,151 @@ class TaskPolicy
     }
 
     /**
-     * Check if user has special permission to delete/modify any task.
+     * Older task rows store assignor as a display name; newer rows store an email.
+     * Match either, case-insensitive, including first-name-only stored values
+     * (e.g. assignor "Amarjit" vs users.name "Amarjit Singh").
+     */
+    public static function userIsAssignor(User $user, mixed $assignor): bool
+    {
+        $assignor = strtolower(trim((string) $assignor));
+        if ($assignor === '') {
+            return false;
+        }
+
+        $email = strtolower(trim((string) ($user->email ?? '')));
+        if ($email !== '' && $assignor === $email) {
+            return true;
+        }
+
+        $name = strtolower(trim((string) ($user->name ?? '')));
+        if ($name === '') {
+            return false;
+        }
+        if ($assignor === $name) {
+            return true;
+        }
+
+        $nameFirst = strtolower(trim((string) (preg_split('/\s+/', $name, 2)[0] ?? '')));
+
+        return $nameFirst !== '' && ! str_contains($assignor, ' ') && $assignor === $nameFirst;
+    }
+
+    /**
+     * Look up the user recorded as assignor (email or name on older rows).
      *
-     * Resolution order (all sourced from the users table):
-     *   1. users.email matches one of SPECIAL_TASK_DELETE_MODIFY_EMAILS
-     *   2. users.name (full string OR first token) matches one of
-     *      SPECIAL_TASK_DELETE_MODIFY_NAMES — lets us grant access by
-     *      person-name (e.g. "Hritiksha" → row "Hritiksha Deb") without
-     *      having to know their current login email.
+     * @param  iterable<int, User>|null  $users
+     */
+    public static function findUserForAssignorValue(?string $assignor, $users = null): ?User
+    {
+        $value = trim((string) $assignor);
+        if ($value === '') {
+            return null;
+        }
+
+        $pool = $users ?? User::query()->get(['id', 'name', 'email', 'avatar', 'designation']);
+        foreach ($pool as $candidate) {
+            if ($candidate instanceof User && self::userIsAssignor($candidate, $value)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Single source of truth for delete (row + bulk).
+     * Full-access emails can delete any task (including CA); assignors can delete their own.
+     */
+    public static function userCanDeleteTask(User $user, Task $task): bool
+    {
+        if (self::userHasFullTaskAccess($user)) {
+            return true;
+        }
+
+        if (self::taskIsCorrectiveAction($task)) {
+            return false;
+        }
+
+        return self::userIsAssignor($user, $task->assignor);
+    }
+
+    /**
+     * Full task access: any action on any task. Checked by login email only.
+     * Extra emails are pulled from users.name (Jasmine, Ritu, Joy, Ineet, Priyanka, Amarjit, Shobha).
+     */
+    public static function userHasFullTaskAccess(User $user): bool
+    {
+        return SuperAdminAccess::is($user) || self::userHasSpecialTaskPermission($user);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function fullAccessEmails(): array
+    {
+        if (self::$fullAccessEmailCache !== null) {
+            return self::$fullAccessEmailCache;
+        }
+
+        $emails = [];
+        foreach (self::FULL_ACCESS_EMAILS as $email) {
+            $email = strtolower(trim($email));
+            if ($email !== '') {
+                $emails[$email] = $email;
+            }
+        }
+
+        try {
+            $users = User::query()
+                ->select(['name', 'email'])
+                ->whereNotNull('email')
+                ->where('email', '!=', '')
+                ->get();
+            foreach ($users as $candidate) {
+                if (! self::userNameMatchesFullAccessNeedles((string) ($candidate->name ?? ''))) {
+                    continue;
+                }
+                $candidateEmail = strtolower(trim((string) ($candidate->email ?? '')));
+                if ($candidateEmail !== '') {
+                    $emails[$candidateEmail] = $candidateEmail;
+                }
+            }
+        } catch (\Throwable $e) {
+            // users table unavailable (tests / boot) — hardcoded emails still apply
+        }
+
+        self::$fullAccessEmailCache = array_values($emails);
+
+        return self::$fullAccessEmailCache;
+    }
+
+    public static function userNameMatchesFullAccessNeedles(string $name): bool
+    {
+        $name = strtolower(trim($name));
+        if ($name === '') {
+            return false;
+        }
+
+        $tokens = preg_split('/\s+/', $name) ?: [];
+        foreach ($tokens as $token) {
+            $token = trim((string) $token);
+            if ($token !== '' && in_array($token, self::FULL_ACCESS_NAME_NEEDLES, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if the logged-in email is on the full-access list.
+     * Display name on the session user is never enough by itself.
      */
     public static function userHasSpecialTaskPermission(User $user): bool
     {
         $email = trim(strtolower((string) ($user->email ?? '')));
-        if ($email !== '' && in_array($email, self::SPECIAL_TASK_DELETE_MODIFY_EMAILS, true)) {
-            return true;
-        }
 
-        $name = trim(strtolower((string) ($user->name ?? '')));
-        if ($name === '') {
-            return false;
-        }
-        if (in_array($name, self::SPECIAL_TASK_DELETE_MODIFY_NAMES, true)) {
-            return true;
-        }
-        $firstToken = trim((string) (preg_split('/\s+/', $name, 2)[0] ?? ''));
-        return $firstToken !== '' && in_array($firstToken, self::SPECIAL_TASK_DELETE_MODIFY_NAMES, true);
+        return $email !== '' && in_array($email, self::fullAccessEmails(), true);
     }
 
     /**
@@ -159,13 +263,12 @@ class TaskPolicy
      */
     public function view(User $user, Task $task): bool
     {
-        // Admin can view all tasks
-        if ($this->isAdmin($user)) {
+        if ($this->isAdmin($user) || self::userHasFullTaskAccess($user)) {
             return true;
         }
 
-        // User can view if they are the assignor OR assignee (old table uses emails; assign_to can list several)
-        return $task->assignor === $user->email || $this->userIsAssignee($user, $task);
+        // User can view if they are the assignor OR assignee (assignor may be name or email)
+        return self::userIsAssignor($user, $task->assignor) || $this->userIsAssignee($user, $task);
     }
 
     /**
@@ -186,13 +289,12 @@ class TaskPolicy
      */
     public function update(User $user, Task $task): bool
     {
-        // President override can modify any task.
-        if (self::userHasSpecialTaskPermission($user)) {
+        if (self::userHasFullTaskAccess($user)) {
             return true;
         }
 
-        // Otherwise only the assignor (task creator) can edit their own task.
-        return $task->assignor === $user->email;
+        // Otherwise only the assignor can edit their own task (name or email).
+        return self::userIsAssignor($user, $task->assignor);
     }
 
     /**
@@ -218,13 +320,12 @@ class TaskPolicy
      */
     public function updateStatus(User $user, Task $task): bool
     {
-        // Admin can update status on all tasks
-        if ($this->isAdmin($user)) {
+        if ($this->isAdmin($user) || self::userHasFullTaskAccess($user)) {
             return true;
         }
 
         // User can update status if they are assignor OR assignee (assign_to can be comma-separated)
-        return $task->assignor === $user->email || $this->userIsAssignee($user, $task);
+        return self::userIsAssignor($user, $task->assignor) || $this->userIsAssignee($user, $task);
     }
 
     /**
@@ -232,17 +333,7 @@ class TaskPolicy
      */
     public function delete(User $user, Task $task): bool
     {
-        if (self::taskIsCorrectiveAction($task) && ! self::userCanDeleteCorrectiveTasks($user)) {
-            return false;
-        }
-
-        // Special permission: listed emails can delete any task
-        if (self::userHasSpecialTaskPermission($user)) {
-            return true;
-        }
-
-        // Only the assignor (task creator) can delete - even admins cannot delete unless they are the assignor
-        return $task->assignor === $user->email;
+        return self::userCanDeleteTask($user, $task);
     }
 
     /**
@@ -250,7 +341,7 @@ class TaskPolicy
      */
     public function bulkUpdate(User $user): bool
     {
-        return $this->isAdmin($user) || self::userHasSpecialTaskPermission($user);
+        return $this->isAdmin($user) || self::userHasFullTaskAccess($user);
     }
 
     /**
@@ -258,7 +349,7 @@ class TaskPolicy
      */
     public function restore(User $user, Task $task): bool
     {
-        return $this->isAdmin($user);
+        return $this->isAdmin($user) || self::userHasFullTaskAccess($user);
     }
 
     /**
@@ -266,6 +357,6 @@ class TaskPolicy
      */
     public function forceDelete(User $user, Task $task): bool
     {
-        return $this->isAdmin($user);
+        return $this->isAdmin($user) || self::userHasFullTaskAccess($user);
     }
 }

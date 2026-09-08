@@ -1051,9 +1051,6 @@
                                     <th scope="col" class="task-summary-th-sort task-summary-col-member" data-sort-key="member" data-sort-type="text" title="Member — sort by team member name" role="button" tabindex="0">
                                         Member <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" title="TM — open Task Manager for this member as assignee (new tab)">
-                                        TM
-                                    </th>
                                     <th scope="col" title="Monitor — open Team Monitoring for this employee (new tab)">
                                         Monitor
                                     </th>
@@ -1078,7 +1075,10 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="task" data-sort-type="number" title="Sort by assignee task count" role="button" tabindex="0">
                                         Task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="l30_hrs" data-sort-type="number" title="Attendance — today's hours from the in-app logger (Shobha and Mariya use Team Logger) as a % of 200" role="button" tabindex="0">
+                                    <th scope="col" title="TM — open Task Manager for this member as assignee (new tab)">
+                                        TM
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="l30_hrs" data-sort-type="number" title="Attendance — last 30 days hours from the in-app logger (Shobha and Mariya use Team Logger) as a % of 200" role="button" tabindex="0">
                                         ATT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="assignor_task" data-sort-type="number" title="Task Given — sort by tasks this member has assigned to others" role="button" tabindex="0">
@@ -1174,15 +1174,6 @@
                                             <span class="task-summary-member-cell-inner">
                                                 <span class="task-summary-member-name">{{ $row['team_member'] }}</span>
                                             </span>
-                                        </td>
-                                        <td class="task-summary-col-tm text-center">
-                                            <a href="{{ route('tasks.index', array_filter(['assignee' => $row['team_member'], 'user_id' => (int) ($row['user_id'] ?? 0)])) }}"
-                                               target="_blank"
-                                               rel="noopener noreferrer"
-                                               class="task-summary-tm-badge task-summary-user-tasks-dot {{ $tmBadgeMod }}"
-                                               data-user-name="{{ e($row['team_member']) }}"
-                                               title="Open Task Manager for {{ e($row['team_member']) }} (assignee filter)"
-                                               aria-label="Open Task Manager for {{ e($row['team_member']) }} as assignee">TM</a>
                                         </td>
                                         <td class="task-summary-col-monitor text-center">
                                             @php $monitorUserId = (int) ($row['user_id'] ?? 0); @endphp
@@ -1310,19 +1301,6 @@
                                                     aria-label="Open CL R&R for {{ e($row['team_member']) }}">
                                                 <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
                                             </button>
-                                            @unless($rrDisabled)
-                                                <span class="cl-score-chip is-clrr" title="CL R&R score">{{ (int) ($row['score_clrr'] ?? 0) }}%</span>
-                                                <button type="button"
-                                                        class="cl-history-dot is-clrr task-summary-score-history-btn"
-                                                        data-user-id="{{ $rrUserId }}"
-                                                        data-user-name="{{ e($row['team_member']) }}"
-                                                        data-designation="{{ e($rrDesignation) }}"
-                                                        data-score-type="clrr"
-                                                        title="View lifetime CL R&R score history"
-                                                        aria-label="CL R&R score history for {{ e($row['team_member']) }}">
-                                                    <i class="ri-line-chart-line" aria-hidden="true"></i>
-                                                </button>
-                                            @endunless
                                         </td>
                                         <td class="task-summary-clmgr-cell text-center">
                                             @php
@@ -1342,19 +1320,6 @@
                                                     aria-label="Open CL Mgr for {{ e($row['team_member']) }}">
                                                 <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
                                             </button>
-                                            @unless($rrDisabled)
-                                                <span class="cl-score-chip is-clmgr" title="CL Mgr own score (combined includes juniors — open modal)">{{ (int) ($row['score_clmgr'] ?? 0) }}%</span>
-                                                <button type="button"
-                                                        class="cl-history-dot is-clmgr task-summary-score-history-btn"
-                                                        data-user-id="{{ $rrUserId }}"
-                                                        data-user-name="{{ e($row['team_member']) }}"
-                                                        data-designation="{{ e($rrDesignation) }}"
-                                                        data-score-type="clmgr"
-                                                        title="View lifetime CL Mgr combined score history"
-                                                        aria-label="CL Mgr score history for {{ e($row['team_member']) }}">
-                                                    <i class="ri-line-chart-line" aria-hidden="true"></i>
-                                                </button>
-                                            @endunless
                                         </td>
                                         <td class="task-summary-clgen-cell text-center">
                                             @php
@@ -1376,21 +1341,17 @@
                                                     aria-label="Open General Checklist for {{ e($row['team_member']) }}">
                                                 <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
                                             </button>
-                                            @if($rrUserId > 0)
-                                                <span class="cl-score-chip is-clgen" title="CL Gen (global) score">{{ (int) ($row['score_clgen'] ?? 0) }}%</span>
-                                                <button type="button"
-                                                        class="cl-history-dot is-clgen task-summary-score-history-btn"
-                                                        data-user-id="{{ $rrUserId }}"
-                                                        data-user-name="{{ e($row['team_member']) }}"
-                                                        data-designation="{{ e($row['designation'] ?? '') }}"
-                                                        data-score-type="clgen"
-                                                        title="View lifetime CL Gen score history"
-                                                        aria-label="CL Gen score history for {{ e($row['team_member']) }}">
-                                                    <i class="ri-line-chart-line" aria-hidden="true"></i>
-                                                </button>
-                                            @endif
                                         </td>
                                         <td class="task-summary-num">{{ $row['task'] }}</td>
+                                        <td class="task-summary-col-tm text-center">
+                                            <a href="{{ route('tasks.index', array_filter(['assignee' => $row['team_member'], 'user_id' => (int) ($row['user_id'] ?? 0)])) }}"
+                                               target="_blank"
+                                               rel="noopener noreferrer"
+                                               class="task-summary-tm-badge task-summary-user-tasks-dot {{ $tmBadgeMod }}"
+                                               data-user-name="{{ e($row['team_member']) }}"
+                                               title="Open Task Manager for {{ e($row['team_member']) }} (assignee filter)"
+                                               aria-label="Open Task Manager for {{ e($row['team_member']) }} as assignee">TM</a>
+                                        </td>
                                         @php
                                             $attHours = (float) ($row['l30_hrs'] ?? 0);
                                             $attHoursDisplay = (int) round($attHours);
@@ -1402,8 +1363,8 @@
                                                 : ($attBand === 'mid' ? 'is-att-mid' : 'is-att-low');
                                         @endphp
                                         <td class="task-summary-num task-summary-col-att {{ $attBandClass }}"
-                                            title="{{ $attHoursDisplay }}/{{ $attTarget }} hours today ({{ $attPct }}%)">
-                                            {{ $attHoursDisplay }}/{{ $attTarget }} · {{ $attPct }}%
+                                            title="{{ $attHoursDisplay }}/{{ $attTarget }}">
+                                            {{ $attPct }}%
                                         </td>
                                         <td class="task-summary-num">{{ $row['assignor_task'] }}</td>
                                         <td class="task-summary-num task-summary-col-done">{{ $row['done'] }}</td>
@@ -1425,7 +1386,7 @@
                                         <td class="task-summary-num task-summary-col-dar {{ $darBandClass }}"
                                             title="{{ $darCount }}/{{ $darTarget }} unique DAR days in the last 30 days ({{ $darPct }}%)">
                                             <span class="task-summary-dar-cell">
-                                                <span class="task-summary-dar-pct">{{ $darCount }}/{{ $darTarget }} · {{ $darPct }}%</span>
+                                                <span class="task-summary-dar-pct">{{ $darPct }}%</span>
                                                 {!! \App\Support\DarL30Metrics::sparklineSvg(is_array($darSeries) ? $darSeries : []) !!}
                                                 <button type="button"
                                                         class="cl-history-dot is-dar task-summary-dar-history-btn"

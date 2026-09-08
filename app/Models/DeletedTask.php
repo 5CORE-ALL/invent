@@ -38,6 +38,7 @@ class DeletedTask extends Model
         'link8',
         'link9',
         'image',
+        'screenshots',
         'task_type',
         'rework_reason',
         'deleted_by_email',
@@ -49,6 +50,7 @@ class DeletedTask extends Model
         'start_date' => 'datetime',
         'completion_date' => 'datetime',
         'deleted_at' => 'datetime',
+        'screenshots' => 'array',
     ];
 
     // Ensure datetime fields can be null

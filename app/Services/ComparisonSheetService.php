@@ -1506,7 +1506,7 @@ class ComparisonSheetService
         }
 
         $labelCol = $this->detectSpecColumnIndex($cells);
-        $photoRowIndex = $this->findRowIndexByLabel($cells, 'product photo', $labelCol);
+        $photoRowIndex = $this->findRowIndexByLabels($cells, ['product photo', 'product pictures', 'product picture'], $labelCol);
         if ($photoRowIndex === null) {
             $photoRowIndex = 0;
         }
@@ -1580,7 +1580,11 @@ class ComparisonSheetService
         $supplierNameRow = null;
         foreach ($cells as $rowIndex => $row) {
             $label = strtolower(trim((string) ($row[$specCol] ?? '')));
-            if ($label === 'supplier name' || $label === 'supplier' || $label === 'suppliers') {
+            if (
+                $label === 'supplier name'
+                || $label === 'suppliers'
+                || str_contains($label, 'person name review')
+            ) {
                 $supplierNameRow = (int) $rowIndex;
                 break;
             }
@@ -1659,11 +1663,38 @@ class ComparisonSheetService
             return false;
         }
 
-        if (str_contains($text, 'supplier name')) {
+        if (str_contains($text, 'person name review') || str_contains($text, 'supplier name')) {
             return true;
         }
 
-        return in_array($text, ['supplier', 'suppliers'], true);
+        // The Spec header is often just "Supplier". That is a column title, not
+        // the row where vendor names live.
+        return $text === 'suppliers';
+    }
+
+    /**
+     * Stamped lead-row (Amazon / 5 Core / Spec / Critical / QC).
+     *
+     * @param  array<int, array<int, string>>  $cells
+     */
+    public function isChromeHeaderRow(array $cells, int $rowIndex): bool
+    {
+        if ($rowIndex !== 0) {
+            return false;
+        }
+
+        $row = $cells[0] ?? [];
+        if (! is_array($row)) {
+            return false;
+        }
+
+        $joined = strtolower(implode(' ', $row));
+
+        return str_contains($joined, 'amazon')
+            || str_contains($joined, 'amz')
+            || str_contains($joined, '5 core')
+            || str_contains($joined, '5core')
+            || str_contains($joined, 'critical');
     }
 
     /**
@@ -1688,12 +1719,94 @@ class ComparisonSheetService
                 return true;
             }
 
-            if (strlen($text) <= 48) {
+            if (strlen($text) <= 48 && ! $this->isChromeHeaderRow($cells, $rowIndex)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Count filled cells that are not spec labels / priority chrome.
+     * A default 11-row template scores 0; a real imported sheet scores much higher.
+     *
+     * @param  array<int, array<int, string>>  $cells
+     */
+    public function filledCellScore(array $cells): int
+    {
+        if ($cells === []) {
+            return 0;
+        }
+
+        $cells = ComparisonData::normalizeCells($cells);
+        $specCol = $this->detectSpecColumnIndex($cells);
+        $score = 0;
+        $headerSkip = ['amazon', 'amz', '5 core', '5core', '5-core', 'critical', 'qc', 'product photo', 'supplier'];
+
+        foreach ($cells as $rowIndex => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            foreach ($row as $colIndex => $value) {
+                if ((int) $colIndex === $specCol) {
+                    continue;
+                }
+                $text = is_string($value) ? $value : (string) $value;
+                if ($text === '') {
+                    continue;
+                }
+                if (
+                    str_starts_with($text, 'data:image/')
+                    || str_starts_with($text, '[cmp-photo:')
+                    || str_starts_with($text, '[embedded-image:')
+                ) {
+                    $score += 5;
+                    continue;
+                }
+                $trim = strtolower(trim($text));
+                if ($trim === '' || in_array($trim, ['normal', 'critical', 'important'], true)) {
+                    continue;
+                }
+                if ($rowIndex === 0 && in_array($trim, $headerSkip, true)) {
+                    continue;
+                }
+                $score += 1;
+            }
+        }
+
+        return $score;
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    public function hasMeaningfulContent(array $cells): bool
+    {
+        return $this->filledCellScore($cells) >= 1;
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    public function countNamedSupplierColumns(array $cells): int
+    {
+        if ($cells === []) {
+            return 0;
+        }
+
+        $cells = ComparisonData::normalizeCells($cells);
+        $specCol = $this->detectSpecColumnIndex($cells);
+        $firstSupplierCol = $this->getFirstSupplierColumnIndex($cells, $specCol);
+        $colCount = $this->sheetColumnCount($cells);
+        $count = 0;
+        for ($col = $firstSupplierCol; $col < $colCount; $col++) {
+            if ($this->supplierNameForColumn($cells, $col) !== '') {
+                $count++;
+            }
+        }
+
+        return $count;
     }
 
     /**
@@ -2430,7 +2543,7 @@ class ComparisonSheetService
             } else {
                 $name = $this->supplierNameForColumn($cells, $col);
                 if ($name !== '') {
-                    $key = 'name:'.$name;
+                    $key = 'name:'.strtolower($name);
                     if (! isset($keys[$key])) {
                         $keys[$key] = $col;
                     }
@@ -2499,12 +2612,28 @@ class ComparisonSheetService
     public function supplierNameForColumn(array $cells, int $col): string
     {
         $specCol = $this->detectSpecColumnIndex($cells);
+        $firstSupplierCol = $this->getFirstSupplierColumnIndex($cells, $specCol);
+        if ($col < $firstSupplierCol || $col === $specCol) {
+            return '';
+        }
+
         foreach ($cells as $rowIndex => $row) {
             if (! $this->isSupplierNameRow($cells, (int) $rowIndex, $specCol)) {
                 continue;
             }
 
-            return strtolower(trim((string) ($row[$col] ?? '')));
+            $name = trim((string) ($row[$col] ?? ''));
+            if ($name !== '') {
+                return $name;
+            }
+        }
+
+        // Google-imported sheets put company names on the stamped header row.
+        $header = trim((string) ($cells[0][$col] ?? ''));
+        $headerKey = strtolower($header);
+        $headerSkip = ['amazon', 'amz', '5 core', '5core', '5-core', 'critical', 'qc', 'supplier', 'spec'];
+        if ($header !== '' && ! in_array($headerKey, $headerSkip, true) && ! preg_match('/^[A-Z]{1,3}$/', $header)) {
+            return $header;
         }
 
         return '';
@@ -2530,8 +2659,8 @@ class ComparisonSheetService
         $existingColCount = max(array_map(fn ($row) => is_array($row) ? count($row) : 0, $existing) ?: [0]);
         $incomingSpec = $this->detectSpecColumnIndex($incoming);
         $existingSpec = $this->detectSpecColumnIndex($existing);
-        $incomingPhotoRow = $this->findRowIndexByLabel($incoming, 'product photo', $incomingSpec);
-        $existingPhotoRow = $this->findRowIndexByLabel($existing, 'product photo', $existingSpec);
+        $incomingPhotoRow = $this->findRowIndexByLabels($incoming, ['product photo', 'product pictures', 'product picture'], $incomingSpec);
+        $existingPhotoRow = $this->findRowIndexByLabels($existing, ['product photo', 'product pictures', 'product picture'], $existingSpec);
         if ($incomingPhotoRow === null || $existingPhotoRow === null) {
             return $incoming;
         }
@@ -2539,7 +2668,7 @@ class ComparisonSheetService
         $existingColByKey = [];
         for ($col = 0; $col < $existingColCount; $col++) {
             $name = $this->supplierNameForColumn($existing, $col);
-            $key = $name !== '' ? 'name:'.$name : 'col:'.$col;
+            $key = $name !== '' ? 'name:'.strtolower($name) : 'col:'.$col;
             if (! isset($existingColByKey[$key])) {
                 $existingColByKey[$key] = $col;
             }
@@ -2570,7 +2699,7 @@ class ComparisonSheetService
                 }
 
                 $name = $this->supplierNameForColumn($incoming, (int) $colIndex);
-                $key = $name !== '' ? 'name:'.$name : 'col:'.$colIndex;
+                $key = $name !== '' ? 'name:'.strtolower($name) : 'col:'.$colIndex;
                 $sourceCol = $existingColByKey[$key] ?? (int) $colIndex;
                 $existingVal = trim((string) ($existing[$sourceRow][$sourceCol] ?? ''));
                 if ($this->isStoredPhotoCellValue($existingVal)) {
@@ -2614,9 +2743,17 @@ class ComparisonSheetService
      */
     public function findRowIndexByLabel(array $cells, string $labelNeedle, int $labelCol): ?int
     {
+        $needle = strtolower(trim($labelNeedle));
         foreach ($cells as $rowIndex => $row) {
             $label = strtolower(trim((string) ($row[$labelCol] ?? '')));
-            if (str_contains($label, strtolower($labelNeedle))) {
+            if ($label === '') {
+                continue;
+            }
+            if (str_contains($label, $needle)) {
+                return $rowIndex;
+            }
+            // Google imports often use "Product Pictures" instead of "Product Photo".
+            if ($needle === 'product photo' && str_contains($label, 'product picture')) {
                 return $rowIndex;
             }
         }

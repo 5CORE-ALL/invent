@@ -450,18 +450,16 @@ class ComparisonController extends Controller
         $this->linkedSkuGroupService->reset();
         $skuGroup = $this->normalizeSkuGroup($sku, $linkedSkus);
 
-        // Prefer this SKU's own stored sheet. Falling back to a sibling while
-        // the user was typing on a blank grid made their edits vanish on reload.
-        $ownFilePayload = $this->sheetStorage->load($sku);
-        $ownHasStoredSheet = (is_array($ownFilePayload) && ! empty($ownFilePayload['cells']))
-            || ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
-                ->whereNotNull('sheet_data')
-                ->exists();
+        // Always show the richest filled grid. A blank 11-row template in the
+        // file must not hide filled cells that still exist in DB (or a sibling).
+        $ownSources = $this->loadSheetSources($sku);
+        $ownCells = $this->richerSheetCells($ownSources['file_cells'], $ownSources['db_cells']);
+        $ownHasStoredSheet = $this->sheetService->hasMeaningfulContent($ownCells);
         if ($ownHasStoredSheet) {
             $sheetSku = $sku;
             $sharedSheet = [
                 'sheet_sku' => $sku,
-                'has_sheet_data' => $this->skuHasSheetContent($sku),
+                'has_sheet_data' => true,
             ];
         } else {
             $sharedSheet = $this->resolveSharedSheetSku($skuGroup);
@@ -470,10 +468,13 @@ class ComparisonController extends Controller
 
         $sharedClink = $this->linkedSkuGroupService->resolveSharedClink($skuGroup);
         $clink = (string) ($sharedClink['clink'] ?? $this->clinkForSku($sku));
-        $record = ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sheetSku)])->first();
-        $filePayload = $this->sheetStorage->load($sheetSku);
+        $sources = strcasecmp($sheetSku, $sku) === 0 ? $ownSources : $this->loadSheetSources($sheetSku);
+        $record = $sources['record'];
+        $filePayload = $sources['file_payload'];
+        $cells = $this->richerSheetCells($sources['file_cells'], $sources['db_cells']);
+        $hadStoredSheet = $this->sheetService->hasMeaningfulContent($cells);
 
-        if (! $record && is_array($filePayload) && ! empty($filePayload['cells'])) {
+        if (! $record && $hadStoredSheet && is_array($filePayload) && ! empty($filePayload['cells'])) {
             $record = ComparisonData::updateOrCreate(
                 ['sku' => $sheetSku],
                 [
@@ -489,12 +490,9 @@ class ComparisonController extends Controller
             );
         }
 
-        $fileCells = is_array($filePayload) && ! empty($filePayload['cells']) && is_array($filePayload['cells'])
-            ? ComparisonData::normalizeCells($filePayload['cells'])
-            : null;
-        $cells = $fileCells
-            ?? $record?->sheet_data['cells']
-            ?? ComparisonData::defaultSheetCells();
+        if (! $hadStoredSheet) {
+            $cells = ComparisonData::defaultSheetCells();
+        }
         $cells = $this->sheetService->ensureLeadColumns($cells);
         // 5 Core PRICE USD ← CP Master (product_master.Values.cp) for the opened SKU.
         $cells = $this->sheetService->enrichFiveCoreCpPrice($cells, $this->resolveCpForSku($sku));
@@ -505,8 +503,6 @@ class ComparisonController extends Controller
         // Extract base64 / legacy placeholders into stable photo files + DB-safe tokens.
         // Persist in the stored column order — do not write the price-sorted grid back
         // on GET (that parked photos on the wrong supplier after the next save).
-        $hadStoredSheet = $fileCells !== null
-            || (is_array($record?->sheet_data['cells'] ?? null) && $record->sheet_data['cells'] !== []);
         $cellsBeforePhotos = $cells;
         $cells = $this->sheetStorage->persistPhotosInCells($sheetSku, $cells);
         $browserCells = $this->sheetService->moveLowestPriceSupplierAfterSpec(
@@ -514,7 +510,12 @@ class ComparisonController extends Controller
         );
         // GET must not write a default/blank template — that raced with autosave
         // and wiped cells the user had just typed on an empty sheet.
-        if ($hadStoredSheet && $this->sheetCellsDiffer($cellsBeforePhotos, $cells)) {
+        if (
+            $hadStoredSheet
+            && $this->sheetCellsDiffer($cellsBeforePhotos, $cells)
+            && $this->sheetService->hasMeaningfulContent($cells)
+            && ! $this->isDestructiveSheetOverwrite($cellsBeforePhotos, $cells)
+        ) {
             $this->sheetStorage->save($sheetSku, array_merge(
                 is_array($filePayload) ? $filePayload : [],
                 [
@@ -545,8 +546,7 @@ class ComparisonController extends Controller
             ?: ($filePayload['google_sheet_url'] ?? null)
             ?: ($this->sheetStorage->isGoogleSheetUrl($this->clinkForSku($sheetSku)) ? $this->clinkForSku($sheetSku) : null);
         $hasSheetData = (bool) ($sharedSheet['has_sheet_data'] ?? false)
-            || $fileCells !== null
-            || $this->sheetHasContent($browserCells);
+            || $this->sheetService->hasMeaningfulContent($browserCells);
 
         $parent = trim((string) $request->query('parent', ''));
         if ($parent === '') {
@@ -1048,23 +1048,35 @@ class ComparisonController extends Controller
         $cells = ComparisonData::normalizeCells($validated['cells']);
         $cells = $this->sheetService->ensureLeadColumns($cells);
 
-        $existingForGuard = $this->sheetStorage->cellsForSku($sku);
-        if (! is_array($existingForGuard)) {
-            $existingRecord = ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])->first();
-            $existingForGuard = is_array($existingRecord?->sheet_data['cells'] ?? null)
-                ? $existingRecord->sheet_data['cells']
-                : [];
-        }
+        $existingSources = $this->loadSheetSources($sku);
+        $existingForGuard = $this->richerSheetCells(
+            $existingSources['file_cells'],
+            $existingSources['db_cells']
+        );
         if ($this->isDestructiveSheetOverwrite($existingForGuard, $cells)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Save blocked: this grid looks empty/default and would wipe a fuller saved sheet. Reload the page and try again.',
             ], 409);
         }
+        // Opening a SKU used to autosave the blank 11-row template (0 → 11 rows).
+        // That fake "saved sheet" then hid the real filled data on the next open.
+        if (! $this->sheetService->hasMeaningfulContent($cells)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Nothing to save yet — add supplier or spec values first.',
+                'cells' => $this->sheetStorage->cellsForBrowser($cells, $sku),
+                'formats' => ComparisonData::normalizeFormats($validated['formats'] ?? []),
+                'auto_formats' => $this->sheetService->computeAutoFormats(
+                    $this->sheetStorage->cellsForBrowser($cells, $sku)
+                ),
+                'updated_at_iso' => now()->toIso8601String(),
+            ]);
+        }
         // Keep the editor's column order on save. Reordering here (lowest-price
         // first) used to desync quiet saves: the DOM stayed in the old order
         // while memory adopted the shuffled grid, so extra/manual cells vanished.
-        $existingFileCells = $this->sheetStorage->cellsForSku($sku);
+        $existingFileCells = $existingForGuard !== [] ? $existingForGuard : null;
         if (is_array($existingFileCells)) {
             $existingFileCells = $this->sheetService->ensureLeadColumns($existingFileCells);
             $existingFileCells = $this->sheetStorage->persistPhotosInCells($sku, $existingFileCells);
@@ -1360,11 +1372,13 @@ class ComparisonController extends Controller
             $cells = $this->sheetService->normalizeComparisonLayout($cells);
 
             $record = ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])->first();
+            $existingSources = $this->loadSheetSources($sku);
+            $richestLocal = $this->richerSheetCells(
+                $existingSources['file_cells'],
+                $existingSources['db_cells']
+            );
             if ($localCells === null) {
-                $fileCells = $this->sheetStorage->cellsForSku($sku);
-                $localCells = is_array($fileCells)
-                    ? $fileCells
-                    : ($record?->sheet_data['cells'] ?? null);
+                $localCells = $richestLocal !== [] ? $richestLocal : null;
             }
             if (is_array($localCells) && $localCells !== []) {
                 $cells = $this->sheetService->mergeImportedSheetPreservingLocal($cells, $localCells);
@@ -1380,6 +1394,13 @@ class ComparisonController extends Controller
             $autoFormats = $this->sheetService->computeAutoFormats($cells);
 
             $oldCells = $record?->sheet_data['cells'] ?? [];
+            $existingForGuard = $richestLocal;
+            if ($this->isDestructiveSheetOverwrite($existingForGuard, $cells)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'C Link Refresh blocked: the Google Sheet looks empty/default and would wipe this SKU’s saved comparison data.',
+                ], 409);
+            }
             $formats = ComparisonData::normalizeFormats(
                 is_array($record?->sheet_data) ? ($record->sheet_data['formats'] ?? []) : []
             );
@@ -1433,6 +1454,14 @@ class ComparisonController extends Controller
         ?array $formats = null
     ): void {
         $cells = ComparisonData::normalizeCells($cells);
+        $existingSources = $this->loadSheetSources($sku);
+        $existing = $this->richerSheetCells($existingSources['file_cells'], $existingSources['db_cells']);
+        if (
+            $this->isDestructiveSheetOverwrite($existing, $cells)
+            || ! $this->sheetService->hasMeaningfulContent($cells)
+        ) {
+            return;
+        }
         // Always extract photos to disk + keep [cmp-photo:…] tokens in file and DB.
         $cells = $this->sheetStorage->persistPhotosInCells($sku, $cells);
         $formats = ComparisonData::normalizeFormats($formats);
@@ -1473,29 +1502,7 @@ class ComparisonController extends Controller
      */
     private function sheetHasContent(array $cells): bool
     {
-        foreach ($cells as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            foreach ($row as $value) {
-                if (! is_string($value)) {
-                    if (trim((string) $value) !== '') {
-                        return true;
-                    }
-
-                    continue;
-                }
-                if ($value === '') {
-                    continue;
-                }
-                // Avoid trim() on multi-MB base64 strings.
-                if (str_starts_with($value, 'data:image/') || trim($value) !== '') {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        return $this->sheetService->hasMeaningfulContent($cells);
     }
 
     /**
@@ -1503,27 +1510,7 @@ class ComparisonController extends Controller
      */
     private function countSupplierColumns(array $cells): int
     {
-        if ($cells === []) {
-            return 0;
-        }
-
-        $headerRow = null;
-        foreach ($cells as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            $joined = strtolower(implode(' ', $row));
-            if (str_contains($joined, 'person name review') || str_contains($joined, 'product photo')) {
-                $headerRow = $row;
-                break;
-            }
-        }
-
-        if ($headerRow === null) {
-            $headerRow = $cells[0] ?? [];
-        }
-
-        return count(array_filter($headerRow, fn ($value) => trim((string) $value) !== ''));
+        return $this->sheetService->countNamedSupplierColumns($cells);
     }
 
     public function suppliersForSku(Request $request)
@@ -2893,10 +2880,9 @@ class ComparisonController extends Controller
         $sheetSku = (string) ($this->resolveSharedSheetSku($skuGroup)['sheet_sku'] ?? $sku);
 
         $record = ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sheetSku)])->first();
-        $cells = $record?->sheet_data['cells'] ?? [];
-        if ($cells === []) {
-            $cells = $this->sheetStorage->cellsForSku($sheetSku) ?? [];
-        }
+        $fileCells = $this->sheetStorage->cellsForSku($sheetSku) ?? [];
+        $dbCells = is_array($record?->sheet_data['cells'] ?? null) ? $record->sheet_data['cells'] : [];
+        $cells = $this->richerSheetCells($fileCells, $dbCells);
         if ($cells === []) {
             $cells = ComparisonData::defaultSheetCells();
         }
@@ -2968,12 +2954,39 @@ class ComparisonController extends Controller
             return false;
         }
 
-        $record = ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])->first();
-        $fileCells = $this->sheetStorage->cellsForSku($sku) ?? [];
-        $dbCells = $record?->sheet_data['cells'] ?? [];
-        $cells = $fileCells !== [] ? $fileCells : $dbCells;
+        $sources = $this->loadSheetSources($sku);
 
-        return $this->sheetHasContent(is_array($cells) ? $cells : []);
+        return $this->sheetService->hasMeaningfulContent(
+            $this->richerSheetCells($sources['file_cells'], $sources['db_cells'])
+        );
+    }
+
+    /**
+     * File + DB copies for a SKU. Callers must pick the richer grid so a blank
+     * template in one store cannot hide filled cells in the other.
+     *
+     * @return array{record: ?ComparisonData, file_payload: ?array, file_cells: array<int, array<int, string>>, db_cells: array<int, array<int, string>>}
+     */
+    private function loadSheetSources(string $sku): array
+    {
+        $sku = trim($sku);
+        $record = $sku !== ''
+            ? ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])->first()
+            : null;
+        $filePayload = $sku !== '' ? $this->sheetStorage->load($sku) : null;
+        $fileCells = is_array($filePayload) && ! empty($filePayload['cells']) && is_array($filePayload['cells'])
+            ? ComparisonData::normalizeCells($filePayload['cells'])
+            : [];
+        $dbCells = is_array($record?->sheet_data['cells'] ?? null)
+            ? ComparisonData::normalizeCells($record->sheet_data['cells'])
+            : [];
+
+        return [
+            'record' => $record,
+            'file_payload' => is_array($filePayload) ? $filePayload : null,
+            'file_cells' => $fileCells,
+            'db_cells' => $dbCells,
+        ];
     }
 
     /**
@@ -3013,38 +3026,25 @@ class ComparisonController extends Controller
             return 0;
         }
 
-        $specCol = $this->sheetService->detectSpecColumnIndex($cells);
-        $score = 0;
-        $headerSkip = ['amazon', 'amz', '5 core', '5core', '5-core', 'critical', 'qc', 'product photo'];
+        return $this->sheetService->filledCellScore($cells);
+    }
 
-        foreach ($cells as $rowIndex => $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            foreach ($row as $colIndex => $value) {
-                if ((int) $colIndex === $specCol) {
-                    continue;
-                }
-                $text = is_string($value) ? $value : (string) $value;
-                if ($text === '') {
-                    continue;
-                }
-                if (str_starts_with($text, 'data:image/') || str_starts_with($text, '[cmp-photo:') || str_starts_with($text, '[embedded-image:')) {
-                    $score += 5;
-                    continue;
-                }
-                $trim = strtolower(trim($text));
-                if ($trim === '' || in_array($trim, ['normal', 'critical', 'important'], true)) {
-                    continue;
-                }
-                if ($rowIndex === 0 && in_array($trim, $headerSkip, true)) {
-                    continue;
-                }
-                $score += 1;
-            }
+    /**
+     * Prefer the grid that actually has supplier/spec values (file first on a tie).
+     *
+     * @param  array<int, array<int, string>>  $left
+     * @param  array<int, array<int, string>>  $right
+     * @return array<int, array<int, string>>
+     */
+    private function richerSheetCells(array $left, array $right): array
+    {
+        $leftScore = $this->sheetService->filledCellScore($left);
+        $rightScore = $this->sheetService->filledCellScore($right);
+        if ($rightScore > $leftScore) {
+            return $right;
         }
 
-        return $score;
+        return $left !== [] ? $left : $right;
     }
 
     /**
@@ -3188,7 +3188,7 @@ class ComparisonController extends Controller
             }
 
             $cells = $record->sheet_data['cells'] ?? [];
-            if (! is_array($cells) || $cells === []) {
+            if (! is_array($cells) || ! $this->sheetService->hasMeaningfulContent($cells)) {
                 continue;
             }
 
@@ -3501,13 +3501,13 @@ class ComparisonController extends Controller
     ): void {
         $targets = $this->persistSkuTargets($primarySku, $linkedSkus, $bulkEditSkus);
         foreach ($targets as $targetSku) {
-            $isPrimary = strcasecmp(trim($targetSku), trim($primarySku)) === 0;
-            if (! $isPrimary) {
-                $existingTarget = $this->sheetStorage->cellsForSku($targetSku)
-                    ?? (ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($targetSku))])->first()?->sheet_data['cells'] ?? []);
-                if ($this->isDestructiveSheetOverwrite(is_array($existingTarget) ? $existingTarget : [], $cells)) {
-                    continue;
-                }
+            $targetSources = $this->loadSheetSources($targetSku);
+            $existingTarget = $this->richerSheetCells($targetSources['file_cells'], $targetSources['db_cells']);
+            if ($this->isDestructiveSheetOverwrite($existingTarget, $cells)) {
+                continue;
+            }
+            if (! $this->sheetService->hasMeaningfulContent($cells)) {
+                continue;
             }
             $targetParent = (string) (ProductMaster::query()
                 ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($targetSku))])
