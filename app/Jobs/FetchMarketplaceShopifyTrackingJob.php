@@ -22,16 +22,17 @@ class FetchMarketplaceShopifyTrackingJob implements ShouldQueue, ShouldBeUnique
 
     public int $tries = 3;
 
-    public int $timeout = 1500;
+    public int $timeout = 2400;
 
-    public int $uniqueFor = 1800;
+    public int $uniqueFor = 2400;
 
     public bool $failOnTimeout = false;
 
     public array $backoff = [20, 60, 120];
 
     public function __construct(
-        public int $limit = 250,
+        public int $limit = 500,
+        public bool $all = false,
     ) {
         $this->onQueue(MarketplaceManagerRegistry::QUEUE_TRACKING);
     }
@@ -44,7 +45,7 @@ class FetchMarketplaceShopifyTrackingJob implements ShouldQueue, ShouldBeUnique
     public function handle(VeeqoShopifyFulfillmentService $sync): void
     {
         try {
-            $result = $sync->syncPendingUnfulfilled($this->limit);
+            $result = $sync->syncPendingUnfulfilled($this->limit, false, $this->all);
             Log::info('FetchMarketplaceShopifyTrackingJob: completed', $result);
         } catch (\Throwable $e) {
             Log::error('FetchMarketplaceShopifyTrackingJob: failed', [

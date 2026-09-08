@@ -190,6 +190,24 @@ class ShopifyFulfillmentTrackingMatcher
         return $sku;
     }
 
+    /**
+     * @param  array<string, mixed>  $order
+     */
+    public function orderHasSku(array $order, string $sku): bool
+    {
+        $sku = trim($sku);
+        if ($sku === '' || in_array($sku, ['__ORDER__', '__UNKNOWN__'], true)) {
+            return false;
+        }
+        foreach ($order['line_items'] ?? [] as $line) {
+            if (is_array($line) && $this->lineSkuEquals($line, $sku)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function skusEqual(string $a, string $b): bool
     {
         $left = $this->normalizeSku($a);

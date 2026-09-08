@@ -67,7 +67,9 @@ class PushMarketplaceOrdersTrackingFulfillment extends Command
 
         $this->info('3/4 Auto-fulfill Shopify copies from Veeqo/GOFO (full order id + SKU)…');
         $this->runIsolated('marketplace:fetch-shopify-tracking', [
-            '--limit' => 500,
+            '--limit' => 2000,
+            '--all' => true,
+            '--fresh' => true,
         ], $failed, 'shopify-fulfill');
 
         $this->info('4/4 Push tracking to each marketplace…');

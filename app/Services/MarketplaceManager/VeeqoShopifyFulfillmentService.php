@@ -214,21 +214,41 @@ class VeeqoShopifyFulfillmentService
                 ];
             }
             if ($sku === '' || in_array($sku, ['__ORDER__', '__UNKNOWN__'], true)) {
-                $lineCount = 0;
-                foreach ($orderCheck['line_items'] ?? [] as $line) {
-                    if (is_array($line)) {
-                        $lineCount++;
+                $lineSkus = $this->skusFromShopifyOrder($orderCheck);
+                if (count($lineSkus) === 1) {
+                    $sku = $lineSkus[0];
+                } else {
+                    $lineCount = 0;
+                    foreach ($orderCheck['line_items'] ?? [] as $line) {
+                        if (is_array($line)) {
+                            $lineCount++;
+                        }
                     }
+                    if ($lineCount !== 1) {
+                        return [
+                            'success' => false,
+                            'skipped' => true,
+                            'action' => 'sku_required',
+                            'message' => 'Marketplace SKU missing — tracking not attached.',
+                        ];
+                    }
+                    $sku = '';
                 }
-                if ($lineCount !== 1) {
-                    return [
-                        'success' => false,
-                        'skipped' => true,
-                        'action' => 'sku_required',
-                        'message' => 'Marketplace SKU missing — tracking not attached.',
-                    ];
-                }
-                $sku = '';
+            }
+            if ($sku !== '' && ! app(ShopifyFulfillmentTrackingMatcher::class)->orderHasSku($orderCheck, $sku)) {
+                Log::info('VeeqoShopifyFulfillmentService: skip fulfill — Shopify SKU mismatch', [
+                    'marketplace' => $marketplace,
+                    'shopify_order_id' => $shopifyOrderId,
+                    'sku' => $sku,
+                    'matched_order_id' => $matchedOrderId,
+                ]);
+
+                return [
+                    'success' => false,
+                    'skipped' => true,
+                    'action' => 'sku_mismatch',
+                    'message' => 'Shopify order does not contain this marketplace SKU.',
+                ];
             }
             // Confirmed marketplace order ids only — do not drop numeric Newegg
             // ids as "Shopify-like", and never look up Veeqo by Shopify #.
@@ -535,11 +555,11 @@ class VeeqoShopifyFulfillmentService
      *
      * @return array{checked: int, fulfilled: int, skipped: int, failed: int, message: string}
      */
-    public function syncPendingUnfulfilled(int $limit = 80, bool $fresh = false): array
+    public function syncPendingUnfulfilled(int $limit = 80, bool $fresh = false, bool $all = false): array
     {
-        $limit = max(1, min(2000, $limit));
+        $limit = max(1, min($all ? 8000 : 2000, $limit));
         $marketplaces = MarketplaceManagerRegistry::slugs();
-        $shopifyScanLimit = $fresh
+        $shopifyScanLimit = ($fresh || $all)
             ? $limit
             : max(20, (int) ceil($limit * 0.9));
         $checked = 0;
@@ -556,7 +576,7 @@ class VeeqoShopifyFulfillmentService
             $shopifyScanLimit = max(20, $limit - $checked);
         }
 
-        $shopifyScan = $this->syncUnfulfilledShopifyCopies($shopifyScanLimit, $fresh);
+        $shopifyScan = $this->syncUnfulfilledShopifyCopies($shopifyScanLimit, $fresh, $all);
         $checked += (int) ($shopifyScan['checked'] ?? 0);
         $fulfilled += (int) ($shopifyScan['fulfilled'] ?? 0);
         $skipped += (int) ($shopifyScan['skipped'] ?? 0);
@@ -724,9 +744,9 @@ class VeeqoShopifyFulfillmentService
      *
      * @return array{checked: int, fulfilled: int, skipped: int, failed: int}
      */
-    public function syncUnfulfilledShopifyCopies(int $limit = 40, bool $fresh = false): array
+    public function syncUnfulfilledShopifyCopies(int $limit = 40, bool $fresh = false, bool $all = false): array
     {
-        $limit = max(1, min(2000, $limit));
+        $limit = max(1, min($all ? 8000 : 2000, $limit));
         $checked = 0;
         $fulfilled = 0;
         $skipped = 0;
@@ -742,8 +762,17 @@ class VeeqoShopifyFulfillmentService
                 continue;
             }
 
-            $need = ($limit - $checked) * 3;
-            foreach ($this->listUnfulfilledShopifyOrders($storeUrl, $token, $need) as $order) {
+            $remaining = $limit - $checked;
+            $listed = $all
+                ? $this->listUnfulfilledShopifyOrders($storeUrl, $token, max($remaining * 2, $remaining), [
+                    'days' => 400,
+                    'max_pages' => 80,
+                ])
+                : $this->listUnfulfilledShopifyOrdersMixed($storeUrl, $token, $remaining);
+            $orders = $all
+                ? $this->interleaveNewestAndOldest($listed, $remaining * 3)
+                : $listed;
+            foreach ($orders as $order) {
                 if ($checked >= $limit) {
                     break;
                 }
@@ -759,6 +788,13 @@ class VeeqoShopifyFulfillmentService
                 $marketplace = $identity['slug'];
                 $marketplaceOrderIds = $identity['ids'];
                 $skus = $this->skusFromShopifyOrder($order);
+                if ($marketplace === 'amazon') {
+                    foreach ($this->amazonSkusForOrderIds($marketplaceOrderIds) as $amazonSku) {
+                        if (! in_array($amazonSku, $skus, true)) {
+                            $skus[] = $amazonSku;
+                        }
+                    }
+                }
                 $skuPasses = $skus !== [] ? $skus : [''];
                 $checked++;
                 $cacheKey = 'mm_fetch_tracking_shopify_v2:'.$shopifyId;
@@ -805,10 +841,10 @@ class VeeqoShopifyFulfillmentService
                     Cache::put($cacheKey, 1, now()->addDays(7));
                 } elseif (in_array($action, ['tracking_not_found', 'not_linked'], true)) {
                     $skipped++;
-                    Cache::put($cacheKey, 1, now()->addMinutes(8));
+                    Cache::put($cacheKey, 1, now()->addMinutes(25));
                 } elseif (! empty($lastResult['skipped'])) {
                     $skipped++;
-                    Cache::put($cacheKey, 1, now()->addHours(2));
+                    Cache::put($cacheKey, 1, now()->addMinutes(40));
                 } else {
                     $failed++;
                     Cache::put($cacheKey, 1, now()->addMinutes(2));
@@ -876,20 +912,123 @@ class VeeqoShopifyFulfillmentService
     /**
      * @return list<array<string, mixed>>
      */
-    protected function listUnfulfilledShopifyOrders(string $storeUrl, string $token, int $limit): array
+    /**
+     * Newest open copies plus a rotating older window so Friday Amazon FBM
+     * orders are not starved behind thousands of newer Unfulfilled rows.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function listUnfulfilledShopifyOrdersMixed(string $storeUrl, string $token, int $limit): array
+    {
+        $newestNeed = min(400, max(80, (int) ceil($limit * 0.45)));
+        $olderNeed = max($limit, (int) ceil($limit * 1.5));
+        $newest = $this->listUnfulfilledShopifyOrders($storeUrl, $token, $newestNeed, [
+            'days' => 12,
+            'max_pages' => 8,
+        ]);
+
+        $cacheKey = 'mm.unfulfilled.window_end:'.strtolower($storeUrl);
+        $windowEnd = Cache::get($cacheKey);
+        if (! is_string($windowEnd) || trim($windowEnd) === '') {
+            $windowEnd = now()->subDays(12)->toIso8601String();
+        }
+        $windowStart = \Illuminate\Support\Carbon::parse($windowEnd)->subDays(21);
+        $older = $this->listUnfulfilledShopifyOrders($storeUrl, $token, $olderNeed, [
+            'created_at_min' => $windowStart->toIso8601String(),
+            'created_at_max' => $windowEnd,
+            'max_pages' => 20,
+        ]);
+
+        if ($windowStart->lt(now()->subDays(400))) {
+            Cache::forget($cacheKey);
+        } else {
+            Cache::put($cacheKey, $windowStart->toIso8601String(), now()->addDays(14));
+        }
+
+        $out = [];
+        $seen = [];
+        foreach (array_merge($older, $newest) as $order) {
+            if (! is_array($order)) {
+                continue;
+            }
+            $id = (string) ($order['id'] ?? '');
+            if ($id !== '' && isset($seen[$id])) {
+                continue;
+            }
+            if ($id !== '') {
+                $seen[$id] = true;
+            }
+            $out[] = $order;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $orders
+     * @return list<array<string, mixed>>
+     */
+    protected function interleaveNewestAndOldest(array $orders, int $limit): array
+    {
+        $limit = max(1, $limit);
+        $n = count($orders);
+        if ($n <= $limit) {
+            return $orders;
+        }
+        $pick = [];
+        $i = 0;
+        $j = $n - 1;
+        while (count($pick) < $limit && $i <= $j) {
+            $pick[] = $orders[$i++];
+            if (count($pick) < $limit && $i <= $j) {
+                $pick[] = $orders[$j--];
+            }
+        }
+
+        return $pick;
+    }
+
+    /**
+     * @param  list<string>  $ids
+     * @return list<string>
+     */
+    protected function amazonSkusForOrderIds(array $ids): array
+    {
+        if ($ids === [] || ! Schema::hasTable('amazon_orders')) {
+            return [];
+        }
+        $row = AmazonOrder::query()->whereIn('amazon_order_id', $ids)->first();
+        if ($row === null) {
+            return [];
+        }
+
+        return $this->skuListFromMarketplaceModel('amazon', $row);
+    }
+
+    /**
+     * @param  array{days?: int, created_at_min?: string, created_at_max?: string, max_pages?: int}  $range
+     * @return list<array<string, mixed>>
+     */
+    protected function listUnfulfilledShopifyOrders(string $storeUrl, string $token, int $limit, array $range = []): array
     {
         $out = [];
         $seen = [];
+        $maxPages = max(1, (int) ($range['max_pages'] ?? 80));
+        $createdMin = (string) ($range['created_at_min'] ?? now()->subDays((int) ($range['days'] ?? 400))->toIso8601String());
+        $createdMax = isset($range['created_at_max']) ? (string) $range['created_at_max'] : '';
         foreach (['unfulfilled', 'partial'] as $fulfillmentStatus) {
             $path = 'orders.json';
             $payload = [
                 'status' => 'open',
                 'fulfillment_status' => $fulfillmentStatus,
                 'limit' => 250,
-                'created_at_min' => now()->subDays(90)->toIso8601String(),
+                'created_at_min' => $createdMin,
                 'fields' => 'id,name,tags,note,note_attributes,source_name,source_identifier,fulfillment_status,line_items',
             ];
-            for ($page = 0; $page < 25 && count($out) < $limit; $page++) {
+            if ($createdMax !== '') {
+                $payload['created_at_max'] = $createdMax;
+            }
+            for ($page = 0; $page < $maxPages && count($out) < $limit; $page++) {
                 try {
                     $res = $this->shopifyApi($storeUrl, $token, 'GET', $path, $payload);
                 } catch (\Throwable $e) {
