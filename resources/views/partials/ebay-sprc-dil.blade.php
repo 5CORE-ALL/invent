@@ -1074,7 +1074,8 @@
                     return;
                 }
                 ebayDgAutoApplyWaits = 0;
-                Promise.resolve(ebayApplySprcDilToTable({ persist: false, push: false })).catch(function() { /* retry on next change */ });
+                const persistMacys = typeof ebayDgIsMacys === 'function' && ebayDgIsMacys();
+                Promise.resolve(ebayApplySprcDilToTable({ persist: persistMacys, push: false })).catch(function() { /* retry on next change */ });
             }, delay);
         }
         window.ebayScheduleSprcDilAutoApply = ebayScheduleSprcDilAutoApply;

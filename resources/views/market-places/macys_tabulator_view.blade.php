@@ -443,11 +443,7 @@
         return false;
     }
     function macysRowSpriceForAlert(data) {
-        let sprice = parseFloat(data && data.SPRICE) || 0;
-        if (typeof chPromoCapSpriceToAmz === 'function' && sprice > 0) {
-            sprice = Number(chPromoCapSpriceToAmz(data, sprice)) || sprice;
-        }
-        return sprice;
+        return parseFloat(data && data.SPRICE) || 0;
     }
     function macysAmazonPriceForRow(data) {
         return Math.round((Number(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0) * 100) / 100;
@@ -2544,11 +2540,7 @@
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
                         if (!(value > 0)) return '';
-                        if (typeof chPromoCapSpriceToAmz === 'function') {
-                            value = Number(chPromoCapSpriceToAmz(rowData, value)) || value;
-                        }
                         const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                        if (cap && cap.shown > 0) value = cap.shown;
                         const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                         const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         const formatted = '$' + value.toFixed(2);
@@ -3225,12 +3217,47 @@
             applyColumnVisibilityFromServer();
         });
 
+        function macysWipeAllSpriceCells() {
+            function wipeData(d) {
+                if (!d || isMacysParentRow(d)) return;
+                if (typeof chPromoSpricePatch === 'function') {
+                    Object.assign(d, chPromoSpricePatch(0), {
+                        has_custom_sprice: false,
+                        SGPFT: 0,
+                        SPFT: 0,
+                        SROI: 0,
+                        sgpft: 0,
+                        sroi: 0,
+                    });
+                } else {
+                    d.SPRICE = 0;
+                    d.sprice = 0;
+                    d.has_custom_sprice = false;
+                }
+            }
+            if (Array.isArray(allTableData)) allTableData.forEach(wipeData);
+            if (!table) return;
+            const blocked = typeof table.blockRedraw === 'function';
+            if (blocked) table.blockRedraw();
+            try {
+                (table.getRows() || []).forEach(function(row) {
+                    const d = row.getData() || {};
+                    if (isMacysParentRow(d)) return;
+                    if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                    else wipeData(d);
+                });
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+        }
+
         table.on('dataLoaded', function() {
+            macysWipeAllSpriceCells();
             setTimeout(function() {
                 applyFilters();
             }, 100);
             if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                ebayScheduleSprcDilAutoApply();
+                ebayScheduleSprcDilAutoApply({ delay: 250 });
             }
         });
 
