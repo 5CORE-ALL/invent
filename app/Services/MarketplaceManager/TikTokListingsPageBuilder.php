@@ -344,15 +344,24 @@ class TikTokListingsPageBuilder
     {
         @set_time_limit(300);
 
-        $liveService = $this->liveService();
+        $settings = MarketplaceSyncSettings::getFor($this->channel);
+        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+            return [
+                'success' => false,
+                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
+            ];
+        }
+
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
         $offset = max(0, (int) $request->input('offset', 0));
         // One SKU per request so nginx/gateway (~60s) cannot 504 the first batch.
         $limit = 1;
+        $cacheKey = $this->channel.'_mismatch_sync_list_'.(string) (auth()->id() ?? 'guest').'_'.$scope;
 
         $hasReadyFlag = $request->exists('ready');
         if ($offset === 0 && $hasReadyFlag && ! $request->boolean('ready')) {
-            $mismatch = $this->mismatchSkusForSync($scope);
+            $mismatch = $this->resolveTikTokMismatchSkuList($scope);
+            Cache::put($cacheKey, array_values($mismatch), now()->addMinutes(30));
             $total = count($mismatch);
 
             return [
@@ -368,11 +377,25 @@ class TikTokListingsPageBuilder
             ];
         }
 
-        $mismatch = $this->mismatchSkusForSync($scope);
+        $mismatch = null;
+        if ($offset > 0) {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached)) {
+                $mismatch = $cached;
+            }
+        }
+        if (! is_array($mismatch)) {
+            $mismatch = $this->resolveTikTokMismatchSkuList($scope);
+            Cache::put($cacheKey, array_values($mismatch), now()->addMinutes(30));
+        }
+
         $total = count($mismatch);
         $batch = array_slice($mismatch, $offset, $limit);
 
         if ($batch === []) {
+            Cache::forget($cacheKey);
+            $this->forgetTikTokMismatchLiveCaches();
+
             return [
                 'success' => true,
                 'done' => true,
@@ -388,10 +411,9 @@ class TikTokListingsPageBuilder
         $result = $this->inventoryService()->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
-
         if ($done) {
-            $liveService->clearCache();
-            $this->forgetMismatchSkuCache();
+            Cache::forget($cacheKey);
+            $this->forgetTikTokMismatchLiveCaches();
         }
 
         return [
@@ -683,31 +705,16 @@ class TikTokListingsPageBuilder
     /**
      * @return list<string>
      */
-    protected function mismatchSkusForSync(string $scope): array
+    /**
+     * Fresh mismatch list for this push (do not reuse the products-page cache —
+     * that list shrinks after each persist and later offsets skip SKUs).
+     *
+     * @return list<string>
+     */
+    protected function resolveTikTokMismatchSkuList(string $scope): array
     {
         if (in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)) {
             return [];
-        }
-        if ($scope === 'linked_mismatch') {
-            $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-            $linkedSkus = $this->linkedSkus();
-            $verified = $catalog->filterLinkedToVerified($linkedSkus);
-            $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
-                $this->liveService()->peekCached(),
-                $this->stockMapForSkus($verified)
-            );
-            $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: $this->channel) ?? [];
-
-            return MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
-        }
-
-        try {
-            $cached = Cache::get($this->mismatchSkuCacheKey());
-            if (is_array($cached) && $cached !== []) {
-                return array_values(array_filter(array_map('strval', $cached)));
-            }
-        } catch (\Throwable $e) {
-            // ignore
         }
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
@@ -718,9 +725,18 @@ class TikTokListingsPageBuilder
             $this->stockMapForSkus($verified)
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: $this->channel) ?? [];
-        $mismatch = array_values($classified['mismatch'] ?? []);
-        $this->rememberMismatchSkus($mismatch);
 
-        return $mismatch;
+        return MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
+    }
+
+    protected function forgetTikTokMismatchLiveCaches(): void
+    {
+        try {
+            $this->liveService()->clearCache();
+            $this->forgetMismatchSkuCache();
+            Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.$this->channel);
+        } catch (\Throwable $e) {
+            // ignore
+        }
     }
 }

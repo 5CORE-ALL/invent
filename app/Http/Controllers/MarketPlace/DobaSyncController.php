@@ -17,6 +17,7 @@ use App\Services\MarketplaceManager\DobaOrderDetailService;
 use App\Services\MarketplaceManager\DobaOrderPushService;
 use App\Services\MarketplaceManager\DobaOrderSyncService;
 use App\Services\MarketplaceManager\DobaTrackingSyncService;
+use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
@@ -27,6 +28,7 @@ use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -192,11 +194,17 @@ class DobaSyncController extends Controller
                 if (! $this->isShopifySkuLinkedOnDoba($metric, (string) $sku)) {
                     continue;
                 }
-                $pid = (string) ($metric->sku ?? '');
+                $itemId = trim((string) ($metric->item_id ?? ''));
+                $skuKey = trim((string) ($metric->sku ?? ''));
+                $pid = $itemId !== '' ? $itemId : $skuKey;
                 if ($pid === '') {
                     continue;
                 }
                 $productIds[] = $pid;
+                if ($skuKey !== '') {
+                    $productIds[] = $skuKey;
+                    $idToSku[$skuKey] = (string) $sku;
+                }
                 $idToSku[$pid] = (string) $sku;
             }
             $liveMpByUpper = [];
@@ -751,14 +759,93 @@ class DobaSyncController extends Controller
     {
         @set_time_limit(300);
 
-        $settings = MarketplaceSyncSettings::getFor('doba');
-        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+        try {
+            $settings = MarketplaceSyncSettings::getFor('doba');
+            if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
+                ], 422);
+            }
+
+            $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
+            $offset = max(0, (int) $request->input('offset', 0));
+            $limit = max(1, min(40, (int) $request->input('limit', 25)));
+            $cacheKey = 'doba_mismatch_sync_list_'.(string) (auth()->id() ?? 'guest').'_'.$scope;
+
+            // Rebuild mismatch list only on first batch; later offsets reuse cache (avoids stale live qty).
+            $mismatch = null;
+            if ($offset > 0) {
+                $cached = Cache::get($cacheKey);
+                if (is_array($cached)) {
+                    $mismatch = $cached;
+                }
+            }
+            if (! is_array($mismatch)) {
+                $mismatch = $this->resolveDobaMismatchSkuList($scope);
+                Cache::put($cacheKey, array_values($mismatch), now()->addMinutes(30));
+            }
+
+            $total = count($mismatch);
+            $batch = array_slice($mismatch, $offset, $limit);
+
+            if ($batch === []) {
+                Cache::forget($cacheKey);
+                $this->forgetDobaMismatchLiveCaches();
+
+                return response()->json([
+                    'success' => true,
+                    'done' => true,
+                    'total' => $total,
+                    'offset' => $offset,
+                    'updated' => 0,
+                    'failed' => 0,
+                    'skipped' => 0,
+                    'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'All mismatch batches finished.',
+                ]);
+            }
+
+            $result = app(DobaInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
+            $nextOffset = $offset + count($batch);
+            $done = $nextOffset >= $total;
+            if ($done) {
+                Cache::forget($cacheKey);
+                $this->forgetDobaMismatchLiveCaches();
+            }
+
+            return response()->json([
+                'success' => true,
+                'done' => $done,
+                'queued' => false,
+                'total' => $total,
+                'offset' => $nextOffset,
+                'batch' => count($batch),
+                'updated' => (int) ($result['updated'] ?? 0),
+                'failed' => (int) ($result['failed'] ?? 0),
+                'skipped' => (int) ($result['skipped'] ?? 0),
+                'message' => $result['message'] ?? ($done
+                    ? 'Mismatch inventory sync complete.'
+                    : 'Synced batch '.$nextOffset.' / '.$total.'…'),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Doba syncMismatchInventoryNow failed', [
+                'error' => $e->getMessage(),
+                'offset' => (int) $request->input('offset', 0),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
-            ], 422);
+                'done' => false,
+                'message' => 'Sync failed: '.$e->getMessage(),
+            ], 500);
         }
+    }
 
+    /**
+     * @return array<int, string>
+     */
+    protected function resolveDobaMismatchSkuList(string $scope): array
+    {
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(DobaLiveListingsService::class);
         $linkedSkus = $this->linkedDobaSkus();
@@ -768,47 +855,18 @@ class DobaSyncController extends Controller
             $this->dobaStockMapForSkus($verified)
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'doba');
-        $mismatchQty = $classified['mismatch'] ?? [];
-        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
-        $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
-        $mismatch = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
 
-        $offset = max(0, (int) $request->input('offset', 0));
-        $limit = max(1, min(40, (int) $request->input('limit', 25)));
-        $total = count($mismatch);
-        $batch = array_slice($mismatch, $offset, $limit);
+        return MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
+    }
 
-        if ($batch === []) {
-            return response()->json([
-                'success' => true,
-                'done' => true,
-                'total' => $total,
-                'offset' => $offset,
-                'updated' => 0,
-                'failed' => 0,
-                'skipped' => 0,
-                'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'All mismatch batches finished.',
-            ]);
+    protected function forgetDobaMismatchLiveCaches(): void
+    {
+        try {
+            app(DobaLiveListingsService::class)->clearCache();
+            Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'doba');
+        } catch (\Throwable $e) {
+            // ignore
         }
-
-        $result = app(DobaInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
-        $nextOffset = $offset + count($batch);
-        $done = $nextOffset >= $total;
-
-        return response()->json([
-            'success' => true,
-            'done' => $done,
-            'queued' => false,
-            'total' => $total,
-            'offset' => $nextOffset,
-            'batch' => count($batch),
-            'updated' => (int) ($result['updated'] ?? 0),
-            'failed' => (int) ($result['failed'] ?? 0),
-            'skipped' => (int) ($result['skipped'] ?? 0),
-            'message' => $result['message'] ?? ($done
-                ? 'Mismatch inventory sync complete.'
-                : 'Synced batch '.$nextOffset.' / '.$total.'…'),
-        ]);
     }
 
     public function pushOrderToShopify(Request $request): JsonResponse

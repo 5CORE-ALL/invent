@@ -91,6 +91,9 @@ class DobaInventorySyncService
             $sku = (string) $product->sku;
             $itemNo = trim((string) ($product->item_id ?? ''));
             if ($itemNo === '') {
+                $itemNo = trim((string) ($this->dobaApi->resolveItemNo($sku) ?? ''));
+            }
+            if ($itemNo === '') {
                 $skipped++;
                 continue;
             }
@@ -105,13 +108,22 @@ class DobaInventorySyncService
                     $shopifyStock = $this->resolveShopifyQty($shopifyQty, $requested);
                 }
             }
-            // Match AliExpress/Amazon: missing Shopify qty => push 0 (do not skip).
+            if ($shopifyStock === null) {
+                $onShopify = ShopifySku::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                    ->exists();
+                if (! $onShopify) {
+                    $skipped++;
+                    continue;
+                }
+            }
             $qty = MarketplaceLiveInventoryRules::qtyForMismatchPush(
                 $shopifyStock,
                 $exactShopifyQty,
                 $qtyPercent,
                 $maxQty
             );
+            $qty = MarketplaceLiveInventoryRules::clampPushQty($qty, $shopifyStock ?? 0);
 
             $result = $this->dobaApi->updateItemInventory($itemNo, $qty);
             if (! empty($result['success'])) {
@@ -251,14 +263,13 @@ class DobaInventorySyncService
     protected function persistLocalStock(string $sku, int $qty): void
     {
         DobaMetric::query()
-            ->where('sku', $sku)
-            ->orWhere('sku', strtoupper($sku))
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
             ->update(['inventory' => $qty]);
 
         if (Schema::hasTable('product_stock_mappings')
             && Schema::hasColumn('product_stock_mappings', 'inventory_doba')) {
             ProductStockMapping::query()
-                ->where('sku', $sku)
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
                 ->update(['inventory_doba' => (int) $qty]);
         }
     }
