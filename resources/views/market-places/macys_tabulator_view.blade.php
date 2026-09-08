@@ -2533,6 +2533,9 @@
                         const rowData = cell.getRow().getData();
                         if (isMacysParentRow(rowData)) return '';
                         let value = parseFloat(cell.getValue() || 0);
+                        if (!(value > 0) && typeof ebaySprcDilForRow === 'function') {
+                            value = Number(ebaySprcDilForRow(rowData)) || 0;
+                        }
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData['MC Price']) || 0;
@@ -3245,13 +3248,9 @@
         }
 
         table.on('dataLoaded', function() {
-            macysWipeAllSpriceCells();
             setTimeout(function() {
                 applyFilters();
             }, 100);
-            if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                ebayScheduleSprcDilAutoApply({ delay: 250 });
-            }
         });
 
         table.on('renderComplete', function() {

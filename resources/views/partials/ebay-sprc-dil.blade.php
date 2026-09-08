@@ -621,7 +621,7 @@
             if (!(rawSprc > 0)) return null;
             let sprc = rawSprc;
             let amzApplied = false;
-            if (ebayDgIsShopifyB2c() || ebayDgIsMacys()) {
+            if (ebayDgIsShopifyB2c()) {
                 const floored = (typeof chPromoFinalSpriceToSave === 'function')
                     ? Number(chPromoFinalSpriceToSave(d, rawSprc))
                     : ((typeof chPromoFloorShopifySpriceToAmz === 'function')
@@ -630,6 +630,14 @@
                 if (floored > 0) {
                     amzApplied = floored > rawSprc + 0.001;
                     sprc = ebayDgRound2(floored);
+                }
+            } else if (ebayDgIsMacys()) {
+                const amz = (typeof chPromoAmazonPrice === 'function')
+                    ? ebayDgRound2(chPromoAmazonPrice(d))
+                    : ebayDgRound2(d && (d['A Price'] != null ? d['A Price'] : (d.a_price || d.amazon_price)));
+                if (rawSprc > 0 && amz > 0 && rawSprc < amz) {
+                    amzApplied = true;
+                    sprc = amz;
                 }
             }
             return {
@@ -1083,6 +1091,45 @@
             redrawEbaySprcDilColumn();
             ebayScheduleSprcDilAutoApply({ delay: 250 });
         }
+        /** Macys load / slab edit: write Dil S PRC in the grid only. No catalog wipe or batch POST. */
+        function ebayDgPaintMacysRuleSprice() {
+            if (typeof table === 'undefined' || !table) return 0;
+            const nearly = typeof chPromoNearlyEqual === 'function'
+                ? chPromoNearlyEqual
+                : function(a, b) { return Math.abs((Number(a) || 0) - (Number(b) || 0)) < 0.005; };
+            const blocked = typeof table.blockRedraw === 'function';
+            let n = 0;
+            if (blocked) table.blockRedraw();
+            try {
+                ebaySprcDilEachCatalogRow(function(row, d) {
+                    if (!ebayDgIsChild(d) || !row || typeof row.update !== 'function') return;
+                    const price = ebayTiktokRuleDiscount(d);
+                    const current = typeof chPromoGetSprice === 'function'
+                        ? chPromoGetSprice(d)
+                        : (Number(d && d.SPRICE) || 0);
+                    if (price > 0) {
+                        if (nearly(current, price)) return;
+                        const patch = (typeof chPromoSpricePatch === 'function')
+                            ? chPromoSpricePatch(price)
+                            : { SPRICE: price, sprice: price, has_custom_sprice: true };
+                        row.update(Object.assign({}, patch, ebayTiktokMetricsPatch(d, price), {
+                            SPRICE_STATUS: 'applied',
+                        }));
+                        n++;
+                        return;
+                    }
+                    if (current > 0) {
+                        if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                        else row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false, SGPFT: 0, SROI: 0, SPFT: 0 });
+                        n++;
+                    }
+                });
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+            redrawEbaySprcDilColumn();
+            return n;
+        }
         function ebayScheduleSprcDilAutoApply(opts) {
             if (!ebayDgAutoApplies()) return;
             opts = opts || {};
@@ -1099,8 +1146,11 @@
                     return;
                 }
                 ebayDgAutoApplyWaits = 0;
-                const persistMacys = typeof ebayDgIsMacys === 'function' && ebayDgIsMacys();
-                Promise.resolve(ebayApplySprcDilToTable({ persist: persistMacys, push: false })).catch(function() { /* retry on next change */ });
+                if (typeof ebayDgIsMacys === 'function' && ebayDgIsMacys()) {
+                    ebayDgPaintMacysRuleSprice();
+                    return;
+                }
+                Promise.resolve(ebayApplySprcDilToTable({ persist: false, push: false })).catch(function() { /* retry on next change */ });
             }, delay);
         }
         window.ebayScheduleSprcDilAutoApply = ebayScheduleSprcDilAutoApply;
