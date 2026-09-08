@@ -340,7 +340,9 @@
             return EBAY_DIL_GROI_CHANNEL === 'shopify_b2c';
         }
         function ebayDgUsesClearThenApply() {
-            return ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c() || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsTopdawg();
+            return ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
+                || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsTopdawg()
+                || ebayDgIsMacys();
         }
         function ebayDgIsBestbuy() {
             return EBAY_DIL_GROI_CHANNEL === 'bestbuy';
@@ -1145,7 +1147,7 @@
                 let price = ebayDgIsFbMarketplace() && typeof fbMpRoundSprice === 'function'
                     ? fbMpRoundSprice(meta.sprc)
                     : ebayDgRound2(meta.sprc);
-                if (ebayDgIsShopifyB2c() && typeof chPromoFinalSpriceToSave === 'function') {
+                if ((ebayDgIsShopifyB2c() || ebayDgIsMacys()) && typeof chPromoFinalSpriceToSave === 'function') {
                     price = chPromoFinalSpriceToSave(d, price);
                 }
                 if (!(price > 0)) return 0;
@@ -1157,7 +1159,7 @@
                 const cvr = Number(chPromoSpriceFromStdTPromo(d, { skip_lmp_cap: true })) || 0;
                 if (cvr > 0) {
                     let price = ebayDgRound2(cvr);
-                    if (ebayDgIsShopifyB2c() && typeof chPromoFinalSpriceToSave === 'function') {
+                    if ((ebayDgIsShopifyB2c() || ebayDgIsMacys()) && typeof chPromoFinalSpriceToSave === 'function') {
                         price = chPromoFinalSpriceToSave(d, price);
                     }
                     return price > 0 ? ebayDgRound2(price) : 0;
@@ -1166,7 +1168,7 @@
             return 0;
         }
         /**
-         * TikTok / TikTok 2 / FB Marketplace / Shopify B2C / Doba / Doba Pickup / TopDawg:
+         * TikTok / TikTok 2 / FB Marketplace / Shopify B2C / Doba / Doba Pickup / TopDawg / Macys:
          * wipe every stored S PRC and save 0, then insert the Dil / 0 Sold / CVR discount (not the LMP Diff).
          */
         async function ebayTiktokClearThenApplyAllRules(opts) {

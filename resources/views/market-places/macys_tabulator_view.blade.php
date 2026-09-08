@@ -444,10 +444,6 @@
     }
     function macysRowSpriceForAlert(data) {
         let sprice = parseFloat(data && data.SPRICE) || 0;
-        if (typeof chPromoLiveSprice === 'function' && !isMacysParentRow(data)) {
-            const calc = chPromoLiveSprice(data);
-            if (calc > 0) sprice = calc;
-        }
         if (typeof chPromoCapSpriceToAmz === 'function' && sprice > 0) {
             sprice = Number(chPromoCapSpriceToAmz(data, sprice)) || sprice;
         }
@@ -840,17 +836,6 @@
                 const newSprice = +candidate.toFixed(2);
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * MACYS_MARGIN - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const spft  = sgpft; // Same as SGPFT for Macys (no ads)
-                const sroi  = lp > 0 ? Math.round(((newSprice * MACYS_MARGIN - lp - ship) / lp) * 100 * 100) / 100 : 0;
-
-                row.update({
-                    SPRICE: newSprice,
-                    SGPFT: sgpft,
-                    SPFT: spft,
-                    SROI: sroi,
-                    has_custom_sprice: true
-                });
                 updates.push({ sku: sku, sprice: newSprice });
                 updatedCount++;
             });
@@ -915,17 +900,6 @@
                 const newSprice = +candidate.toFixed(2);
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * MACYS_MARGIN - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const spft  = sgpft; // Same as SGPFT for Macys (no ads)
-                const sroi  = lp > 0 ? Math.round(((newSprice * MACYS_MARGIN - lp - ship) / lp) * 100 * 100) / 100 : 0;
-
-                row.update({
-                    SPRICE: newSprice,
-                    SGPFT: sgpft,
-                    SPFT: spft,
-                    SROI: sroi,
-                    has_custom_sprice: true
-                });
                 updates.push({ sku: sku, sprice: newSprice });
                 updatedCount++;
             });
@@ -1127,24 +1101,6 @@
                         // Ensure minimum price
                         newSprice = Math.max(0.99, newSprice);
 
-                        // Use the same take-home margin as GPFT% (row.percentage from API)
-                        const percentage = getMacysMargin(rowData);
-                        const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-
-                        const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                        const spft = sgpft; // Same as SGPFT for Macys (no ads)
-                        const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
-
-                        // Update SPRICE and metrics in table
-                        row.update({
-                            SPRICE: newSprice,
-                            SGPFT: sgpft,
-                            SPFT: spft,
-                            SROI: sroi
-                        });
-
-                        // Store update for backend saving
                         updates.push({
                             sku: sku,
                             sprice: newSprice
@@ -1175,12 +1131,34 @@
             return macysAmazonPriceForRow(rowData);
         }
 
-        function macysCappedPushPrice(rowData) {
-            let p = 0;
-            if (typeof chPromoLiveSprice === 'function' && rowData && !isMacysParentRow(rowData)) {
-                p = Number(chPromoLiveSprice(rowData)) || 0;
+        function macysPaintSavedSprice(sku, sprice) {
+            const row = macysFindRowBySku(sku);
+            if (!row) return;
+            const d = row.getData() || {};
+            const val = Number(sprice) || 0;
+            if (!(val > 0)) {
+                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                else row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false, SGPFT: 0, SPFT: 0, SROI: 0 });
+                return;
             }
-            if (!(p > 0)) p = parseFloat(rowData && rowData.SPRICE) || 0;
+            const percentage = getMacysMargin(d);
+            const lp = parseFloat(d.LP_productmaster) || 0;
+            const ship = parseFloat(d.Ship_productmaster) || 0;
+            const sgpft = Math.round(((val * percentage - ship - lp) / val) * 10000) / 100;
+            const sroi = lp > 0 ? Math.round(((val * percentage - lp - ship) / lp) * 10000) / 100 : 0;
+            const patch = typeof chPromoSpricePatch === 'function'
+                ? chPromoSpricePatch(val)
+                : { SPRICE: val, sprice: val, has_custom_sprice: true };
+            row.update(Object.assign({}, patch, {
+                SGPFT: sgpft,
+                SPFT: sgpft,
+                SROI: sroi,
+                SPRICE_STATUS: 'applied',
+            }));
+        }
+
+        function macysCappedPushPrice(rowData) {
+            let p = parseFloat(rowData && rowData.SPRICE) || 0;
             if (typeof chPromoCapSpriceToLmp === 'function' && p > 0) {
                 p = Number(chPromoCapSpriceToLmp(rowData, p)) || p;
             } else if (window.SpriceLmpCap && p > 0) {
@@ -1317,24 +1295,6 @@
                     const amazonPrice = parseFloat(rowData['A Price']);
                     
                     if (amazonPrice && amazonPrice > 0) {
-                        // Calculate metrics with the same margin GPFT% uses
-                        const percentage = getMacysMargin(rowData);
-                        const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                        
-                        const sgpft = amazonPrice > 0 ? Math.round(((amazonPrice * percentage - ship - lp) / amazonPrice) * 100 * 100) / 100 : 0;
-                        const spft = sgpft; // Same as SGPFT for Macys (no ads)
-                        const sroi = lp > 0 ? Math.round(((amazonPrice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
-                        
-                        // Update the row with Amazon price and calculated metrics
-                        row.update({
-                            SPRICE: amazonPrice,
-                            SGPFT: sgpft,
-                            SPFT: spft,
-                            SROI: sroi
-                        });
-                        
-                        // Store update for backend saving
                         updates.push({
                             sku: sku,
                             sprice: amazonPrice
@@ -1367,6 +1327,9 @@
             opts = opts || {};
             if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
                 chPromoBatchClearThenSave(updates, function(next) {
+                    (next || []).forEach(function(u) {
+                        macysPaintSavedSprice(u.sku, u.sprice);
+                    });
                     saveSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
                 }, {
                     wipeFn: function(zeros) {
@@ -1443,28 +1406,23 @@
             let clearedCount = 0;
             const updates = [];
 
-            // Get all rows and filter by selected SKUs
             table.getRows().forEach(row => {
                 const rowData = row.getData();
                 const sku = rowData['(Child) sku'];
-                
-                if (selectedSkus.has(sku)) {
-                    // Clear SPRICE in table
+                if (!selectedSkus.has(sku)) return;
+                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                else {
                     row.update({
                         SPRICE: 0,
+                        sprice: 0,
                         SGPFT: 0,
                         SPFT: 0,
-                        SROI: 0
+                        SROI: 0,
+                        has_custom_sprice: false,
                     });
-                    
-                    // Store update for backend saving
-                    updates.push({
-                        sku: sku,
-                        sprice: 0
-                    });
-                    
-                    clearedCount++;
                 }
+                updates.push({ sku: sku, sprice: 0 });
+                clearedCount++;
             });
 
             // Save to backend if there are updates
@@ -2574,10 +2532,6 @@
                         const rowData = cell.getRow().getData();
                         if (isMacysParentRow(rowData)) return '';
                         let value = parseFloat(cell.getValue() || 0);
-                        if (typeof chPromoLiveSprice === 'function') {
-                            const calc = chPromoLiveSprice(rowData);
-                            if (calc > 0) value = calc;
-                        }
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData['MC Price']) || 0;
@@ -2828,23 +2782,11 @@
                 const rowData = row.getData();
                 const sku = rowData['(Child) sku'];
                 const newSprice = parseFloat(cell.getValue()) || 0;
-                
-                // Recalculate SGPFT, SPFT, SROI with the same margin as GPFT%
-                const percentage = getMacysMargin(rowData);
-                const lp = rowData['LP_productmaster'] || 0;
-                const ship = rowData['Ship_productmaster'] || 0;
-                
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const spft = sgpft;
-                const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
-                
-                row.update({
-                    SGPFT: sgpft,
-                    SPFT: spft,
-                    SROI: sroi,
-                    has_custom_sprice: true
-                });
-                showToast(`SPRICE updated for ${sku}.`, 'info');
+                if (!sku) return;
+                saveSpriceUpdates([{ sku: sku, sprice: newSprice }]);
+                showToast(newSprice > 0
+                    ? ('S PRC cleared, then $' + newSprice.toFixed(2) + ' saved for ' + sku)
+                    : ('S PRC cleared for ' + sku), 'info');
             }
         });
 
