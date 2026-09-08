@@ -478,6 +478,7 @@ class FetchMacyProducts extends Command
             } while ($hasMore);
 
             $this->info("Purchasing Power MCM price sync complete. Updated: {$totalUpdated}");
+            \App\Support\PurchasingPowerRuleSpriceApply::dispatch();
         } catch (\Throwable $e) {
             $this->error('Purchasing Power MCM price sync error: '.$e->getMessage());
             Log::error('Purchasing Power MCM price sync error', ['error' => $e->getMessage()]);

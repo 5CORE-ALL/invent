@@ -8,7 +8,9 @@
   Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
   Dil slab edits and table load recalculate display only.
   Save and Apply deletes old S PRC (saves 0), then writes the new Dil S PRC.
-  Live push is only for saved S PRC ≠ Price.
+  Macys / Purchasing Power persist in the background (page can close).
+  Purchasing Power also pushes listed price via MCM when S PRC ≠ PP Price.
+  Live push on other pages is only for saved S PRC ≠ Price.
 --}}
 @php
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
@@ -364,6 +366,9 @@
             return ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
                 || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsTopdawg()
                 || ebayDgIsMacys();
+        }
+        function ebayDgUsesBackgroundRuleApply() {
+            return ebayDgIsMacys() || ebayDgIsPurchasingPower();
         }
         function ebayDgIsBestbuy() {
             return EBAY_DIL_GROI_CHANNEL === 'bestbuy';
@@ -1095,7 +1100,7 @@
             redrawEbaySprcDilColumn();
             ebayScheduleSprcDilAutoApply({ delay: 250 });
         }
-        /** Macys load / slab edit: write Dil S PRC in the grid only. No catalog wipe or batch POST. */
+        /** Macys / Purchasing Power load / slab edit: write Dil S PRC in the grid only. No catalog wipe or batch POST. */
         function ebayDgPaintMacysRuleSprice() {
             if (typeof table === 'undefined' || !table) return 0;
             const nearly = typeof chPromoNearlyEqual === 'function'
@@ -1187,7 +1192,7 @@
                     return;
                 }
                 ebayDgAutoApplyWaits = 0;
-                if (typeof ebayDgIsMacys === 'function' && ebayDgIsMacys()) {
+                if (typeof ebayDgUsesBackgroundRuleApply === 'function' && ebayDgUsesBackgroundRuleApply()) {
                     if (opts.flashClear) {
                         Promise.resolve(ebayDgFlashThenPaintMacysRuleSprice({
                             toast: opts.toast !== false,
@@ -1574,12 +1579,14 @@
                     if (saved.length) ebayDilGroiRules = saved;
                     renderEbayDilGroiModalTable();
                 }
-                const n = ebayDgIsMacys()
+                const n = ebayDgUsesBackgroundRuleApply()
                     ? await ebayDgFlashThenPaintMacysRuleSprice({ toast: true })
                     : await ebayApplySprcDilToTable({ persist: true, push: true });
-                $('#ebay-dil-groi-status').text(ebayDgIsMacys()
-                    ? 'Saved via API. SPRICE cleared, then Dil painted on ' + n + ' SKU(s); persist queued in the background.'
-                    : ('Saved via API. S PRC applied on ' + n + ' SKU(s); only S PRC ≠ Price were queued.'));
+                $('#ebay-dil-groi-status').text(ebayDgIsPurchasingPower()
+                    ? 'Saved via API. SPRICE cleared, then Dil painted on ' + n + ' SKU(s); apply + MCM price push queued in the background.'
+                    : (ebayDgIsMacys()
+                        ? 'Saved via API. SPRICE cleared, then Dil painted on ' + n + ' SKU(s); persist queued in the background.'
+                        : ('Saved via API. S PRC applied on ' + n + ' SKU(s); only S PRC ≠ Price were queued.')));
                 return res;
             });
         }

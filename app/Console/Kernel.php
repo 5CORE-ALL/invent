@@ -675,6 +675,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('purchasing-power:rule-sprice-apply')
+            ->hourly()
+            ->name('purchasing-power-rule-sprice-apply')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
      
         $ist($schedule->command('app:fetch-wayfair-data')
             ->everyFiveMinutes()
