@@ -1294,23 +1294,20 @@
             return aliases[k] || k;
         }
 
-        // Banded % metrics (GROI / PFT / Ads%) use the same absolute color as the
-        // table cell. Other metrics stay day-over-day (tooltip "vs Yesterday").
-        // ACOS & TAcos % invert when falling back to trend (lower is better).
+        // Chart points follow the previous day (tooltip "vs Yesterday"):
+        // green = up, red = down. Table cell text stays on absolute bands.
+        // ACOS & TAcos % invert (lower is better).
         function metricChartDotColors(values, isInverted, metric) {
             var gray = '#6c757d';
-            if (metric) {
-                var banded = values.map(function(v) { return ammMetricCellColor(metric, v); });
-                if (banded.some(function(c) { return !!c; })) {
-                    return banded.map(function(c) { return c || gray; });
-                }
-            }
             var green = '#28a745';
             var red = '#dc3545';
+            var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
+                || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct'
+                || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
             return values.map(function(v, i) {
                 if (i === 0) return gray;
                 var prev = values[i - 1];
-                if (v === prev) return gray;
+                if (Math.abs(v - prev) <= eps) return gray;
                 if (isInverted) return v < prev ? green : red;
                 return v > prev ? green : red;
             });
@@ -1451,40 +1448,6 @@
             const n = parseFloat(String(value).replace(/[^0-9.-]/g, ''));
             return isFinite(n) ? n : null;
         }
-        function ammRoiBandColor(value) {
-            const v = ammPctNumber(value);
-            if (v == null) return null;
-            if (v <= 50) return '#a00211';
-            if (v <= 75) return '#ffc107';
-            if (v <= 125) return '#28a745';
-            return '#8000ff';
-        }
-        function ammRoiBandStyle(value) {
-            const v = ammPctNumber(value);
-            if (v == null) return '';
-            if (v <= 50) return 'color:#a00211;';
-            if (v <= 75) return 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
-            if (v <= 125) return 'color:#28a745;';
-            return 'color:#8000ff;';
-        }
-        function ammPftBandColor(value) {
-            const v = ammPctNumber(value);
-            if (v == null) return null;
-            if (v >= 0 && v <= 10) return '#a00211';
-            if (v > 10 && v <= 18) return '#ffc107';
-            if (v > 18 && v <= 25) return '#3591dc';
-            if (v > 25 && v <= 40) return '#28a745';
-            return '#e83e8c';
-        }
-        function ammPftBandStyle(value) {
-            const v = ammPctNumber(value);
-            if (v == null) return '';
-            if (v >= 0 && v <= 10) return 'color:#a00211;';
-            if (v > 10 && v <= 18) return 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
-            if (v > 18 && v <= 25) return 'color:#3591dc;';
-            if (v > 25 && v <= 40) return 'color:#28a745;';
-            return 'color:#e83e8c;';
-        }
         function ammAdsPctBandColor(value) {
             const v = ammPctNumber(value);
             if (v == null) return null;
@@ -1499,23 +1462,78 @@
             if (v <= 10) return 'color:#28a745;';
             return 'color:#a00211;';
         }
-        function ammMetricCellColor(metric, value) {
+        // Official MetricPctColors: NROI and NPFT are different metrics, but they
+        // share the same red / yellow / green / pink language (no extra NPFT blue).
+        function ammMetricKind(metric) {
             switch (metric) {
+                case 'nroi': return 'nroi';
                 case 'groi':
                 case 'y_groi_pct':
-                case 'p_groi_pct':
-                case 'nroi':
-                    return ammRoiBandColor(value);
-                case 'gprofit':
+                case 'p_groi_pct': return 'groi';
                 case 'npft':
                 case 'p_npft':
-                case 'y_npft_pct':
-                    return ammPftBandColor(value);
-                case 'ads_pct':
-                    return ammAdsPctBandColor(value);
-                default:
-                    return null;
+                case 'y_npft_pct': return 'npft';
+                case 'gprofit': return 'gpft';
+                default: return null;
             }
+        }
+        function ammFallbackBandColor(kind, value) {
+            const v = ammPctNumber(value);
+            if (v == null) return null;
+            if (kind === 'nroi') {
+                if (v < 40) return '#dc3545';
+                if (v < 70) return '#ffc107';
+                if (v < 125) return '#28a745';
+                return '#e83e8c';
+            }
+            if (kind === 'groi') {
+                if (v < 60) return '#dc3545';
+                if (v < 90) return '#ffc107';
+                if (v < 150) return '#28a745';
+                return '#e83e8c';
+            }
+            if (kind === 'npft') {
+                if (v <= 10) return '#dc3545';
+                if (v < 20) return '#ffc107';
+                if (v < 33) return '#28a745';
+                return '#e83e8c';
+            }
+            if (kind === 'gpft') {
+                if (v <= 20) return '#dc3545';
+                if (v < 30) return '#ffc107';
+                if (v < 43) return '#28a745';
+                return '#4e0dab';
+            }
+            return null;
+        }
+        function ammMetricCellColor(metric, value) {
+            if (metric === 'ads_pct') return ammAdsPctBandColor(value);
+            const kind = ammMetricKind(metric);
+            if (!kind) return null;
+            if (window.MetricPctColors) {
+                return MetricPctColors.colorFor(kind, value) || null;
+            }
+            return ammFallbackBandColor(kind, value);
+        }
+        function ammMetricCellStyle(metric, value) {
+            if (metric === 'ads_pct') return ammAdsPctBandStyle(value);
+            const kind = ammMetricKind(metric);
+            if (!kind) return '';
+            let band = null;
+            let st = '';
+            if (window.MetricPctColors) {
+                band = MetricPctColors.bandFor(kind, value);
+                st = MetricPctColors.styleFor(kind, value) || '';
+            } else {
+                const c = ammFallbackBandColor(kind, value);
+                if (!c) return '';
+                if (c === '#ffc107') band = 'yellow';
+                else st = 'color:' + c + ';font-weight:700;';
+            }
+            if (band === 'yellow') {
+                return 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
+            }
+            return st;
         }
 
         function channelAdsPageUrl(name) {
@@ -1883,22 +1901,10 @@
                 return channelKeys;
             }
             function paintMetricDots(channelKeys) {
-                var data = table && table.getData ? table.getData() : [];
-                var rowByCh = {};
-                for (var i = 0; i < data.length; i++) {
-                    var ck = snapshotChannelKey(data[i]['Channel '] || data[i]['Channel'] || '');
-                    if (ck) rowByCh[ck] = data[i];
-                }
                 document.querySelectorAll('i.metric-chart-icon, i.ad-chart-icon').forEach(function(el) {
                     var ch = el.getAttribute('data-channel');
                     var metric = el.getAttribute('data-metric');
                     var color = getMetricDotColor(ch, metric || 'ad_spend');
-                    if (metric) {
-                        var row = rowByCh[snapshotChannelKey(ch)];
-                        var live = row ? liveMetricFromRow(row, metric) : null;
-                        var band = ammMetricCellColor(metric, live);
-                        if (band) color = band;
-                    }
                     el.style.color = color;
                     el.style.display = '';
 
@@ -2473,12 +2479,12 @@
                             const ySales = parseNumber(row['Y Sales'] || 0);
                             const value = parseNumber(cell.getValue());
                             const channel = (row['Channel '] || '').trim();
-                            const dotColor = ammMetricCellColor('y_groi_pct', value) || getMetricDotColor(channel, 'y_groi_pct');
+                            const dotColor = getMetricDotColor(channel, 'y_groi_pct');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="y_groi_pct" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             if (!ySales) {
                                 return `<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>${chartIcon}`;
                             }
-                            return `<span style="${ammRoiBandStyle(value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                            return `<span style="${ammMetricCellStyle('y_groi_pct', value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -2517,12 +2523,12 @@
                             const ySales = parseNumber(row['Y Sales'] || 0);
                             const value = parseNumber(cell.getValue());
                             const channel = (row['Channel '] || '').trim();
-                            const dotColor = ammMetricCellColor('y_npft_pct', value) || getMetricDotColor(channel, 'y_npft_pct');
+                            const dotColor = getMetricDotColor(channel, 'y_npft_pct');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="y_npft_pct" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             if (!ySales) {
                                 return `<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>${chartIcon}`;
                             }
-                            return `<span style="${ammPftBandStyle(value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                            return `<span style="${ammMetricCellStyle('y_npft_pct', value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -2724,12 +2730,12 @@
                             const l7 = parseNumber(row['L7 Sales'] || 0);
                             const value = parseNumber(cell.getValue());
                             const channel = (row['Channel '] || '').trim();
-                            const dotColor = ammMetricCellColor('p_groi_pct', value) || getMetricDotColor(channel, 'p_groi_pct');
+                            const dotColor = getMetricDotColor(channel, 'p_groi_pct');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_groi_pct" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             if (!l7) {
                                 return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
                             }
-                            return `<span style="${ammRoiBandStyle(value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                            return `<span style="${ammMetricCellStyle('p_groi_pct', value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -2768,13 +2774,13 @@
                             const l7 = parseNumber(row['L7 Sales'] || 0);
                             const value = cell.getValue();
                             const channel = (row['Channel '] || '').trim();
-                            const dotColor = ammMetricCellColor('p_npft', value) || getMetricDotColor(channel, 'p_npft');
+                            const dotColor = getMetricDotColor(channel, 'p_npft');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_npft" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             if (!l7 || value === null || value === undefined) {
                                 return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
                             }
                             const pct = parseNumber(value);
-                            return `<span style="${ammPftBandStyle(pct)}font-weight:600;">${pct.toFixed(1)}%</span>${chartIcon}`;
+                            return `<span style="${ammMetricCellStyle('p_npft', pct)}font-weight:600;">${pct.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -3036,9 +3042,9 @@
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const dotColor = ammMetricCellColor('groi', value) || getMetricDotColor(channel, 'groi');
+                            const dotColor = getMetricDotColor(channel, 'groi');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="groi" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
-                            return `<span style="${ammRoiBandStyle(value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                            return `<span style="${ammMetricCellStyle('groi', value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -3055,9 +3061,9 @@
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const dotColor = ammMetricCellColor('gprofit', value) || getMetricDotColor(channel, 'gprofit');
+                            const dotColor = getMetricDotColor(channel, 'gprofit');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="gprofit" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
-                            return `<span style="${ammPftBandStyle(value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                            return `<span style="${ammMetricCellStyle('gprofit', value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -3126,7 +3132,7 @@
                                 adsPercent = parseNumber(cell.getValue() || 0);
                             }
 
-                            const dotColor = ammMetricCellColor('ads_pct', adsPercent) || getMetricDotColor(channelRaw, 'ads_pct');
+                            const dotColor = getMetricDotColor(channelRaw, 'ads_pct');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channelRaw}" data-metric="ads_pct" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             return `<span style="${ammAdsPctBandStyle(adsPercent)}font-weight:600;">${adsPercent.toFixed(1)}%</span>${adsArrow}${chartIcon}`;
                         },
@@ -3188,9 +3194,9 @@
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const dotColor = ammMetricCellColor('nroi', value) || getMetricDotColor(channel, 'nroi');
+                            const dotColor = getMetricDotColor(channel, 'nroi');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nroi" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
-                            return `<span style="${ammRoiBandStyle(value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                            return `<span style="${ammMetricCellStyle('nroi', value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -3207,9 +3213,9 @@
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const dotColor = ammMetricCellColor('npft', value) || getMetricDotColor(channel, 'npft');
+                            const dotColor = getMetricDotColor(channel, 'npft');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="npft" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
-                            return `<span style="${ammPftBandStyle(value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                            return `<span style="${ammMetricCellStyle('npft', value)}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -6154,8 +6160,7 @@
                 const isInverted = invertedMetrics.includes(currentChartMetric);
                 const dotColors = metricChartDotColors(values, isInverted, currentChartMetric);
 
-                // Labels + High/Low use the same color as the dots (cell bands for
-                // GROI/PFT/Ads%, otherwise day-over-day).
+                // Labels + High/Low use the same day-over-day color as the dots.
                 const labelColors = dotColors.slice();
                 const refGray = '#6c757d';
                 let maxIdx = 0, minIdx = 0;
@@ -6609,8 +6614,8 @@
 
             // Same GPFT/NPFT + GROI/NROI bands as the Active Channels table on this page.
             function yMpBandColor(value, kind) {
-                if (kind === 'gpft' || kind === 'npft') return ammPftBandColor(value);
-                return ammRoiBandColor(value);
+                const metric = kind === 'gpft' ? 'gprofit' : kind === 'npft' ? 'npft' : kind === 'nroi' ? 'nroi' : 'groi';
+                return ammMetricCellColor(metric, value);
             }
 
             function yMpChartDot(channel, metric, value, color) {
@@ -6632,20 +6637,9 @@
                 }
                 const v = parseNumber(value);
                 if (v == null || isNaN(v)) return '<span class="text-muted">—</span>';
-                let style = 'font-weight:600;';
-                if (kind === 'gpft' || kind === 'npft') {
-                    if (v <= 10) style += 'color:#a00211;';
-                    else if (v <= 18) style += 'background:#ffc107;color:#000;padding:2px 6px;border-radius:4px;';
-                    else if (v <= 25) style += 'color:#3591dc;';
-                    else if (v <= 40) style += 'color:#28a745;';
-                    else style += 'color:#e83e8c;';
-                } else {
-                    if (v <= 50) style += 'color:#a00211;';
-                    else if (v <= 75) style += 'background:#ffc107;color:#000;padding:2px 6px;border-radius:4px;';
-                    else if (v <= 125) style += 'color:#28a745;';
-                    else style += 'color:#8000ff;';
-                }
-                const color = yMpBandColor(v, kind);
+                const metricKey = metric || (kind === 'gpft' ? 'gprofit' : kind === 'npft' ? 'npft' : kind === 'nroi' ? 'nroi' : 'groi');
+                const style = ammMetricCellStyle(metricKey, v) + 'font-weight:600;';
+                const color = ammMetricCellColor(metricKey, v);
                 return yMpWrap(channel, metric, v, `<span style="${style}">${Math.round(v)}%</span>`, color);
             }
 
