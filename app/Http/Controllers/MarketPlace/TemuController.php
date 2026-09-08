@@ -4355,9 +4355,7 @@ class TemuController extends Controller
                     : 0;
                 // Same spend total as /temu/ads (latest window, Active + Paused + ended).
                 $totalAdSpend = $apiAds
-                    ? round((float) TemuAdsApiReport::query()
-                        ->inLatestWindow($campaignRange)
-                        ->sum('ad_spend'), 2)
+                    ? TemuAdsApiReport::badgeTotals($campaignRange)['spend']
                     : 0.0;
             }
 
@@ -4445,29 +4443,17 @@ class TemuController extends Controller
                     $adTotals['row_count'] = (int) $tot->row_count;
                 }
             } elseif (Schema::hasTable('temu_ads_api_reports')) {
-                // Match /temu/ads spend_sum / clicks_sum: every report row for the period.
-                $tot = TemuAdsApiReport::query()
-                    ->where('period', $campaignRange)
-                    ->selectRaw("
-                        COUNT(*) AS row_count,
-                        COALESCE(SUM(ad_spend), 0) AS spend,
-                        COALESCE(SUM(clicks), 0) AS clicks,
-                        COALESCE(SUM(order_pay_cnt), 0) AS sub_orders,
-                        COALESCE(SUM(order_pay_amt), 0) AS base_price_sales,
-                        COALESCE(SUM(impressions), 0) AS impressions,
-                        COALESCE(SUM(cart_cnt), 0) AS add_to_cart_number
-                    ")->first();
-                if ($tot) {
-                    $adTotals = [
-                        'spend'              => round((float) $tot->spend, 2),
-                        'clicks'             => (int) $tot->clicks,
-                        'sub_orders'         => (int) $tot->sub_orders,
-                        'base_price_sales'   => round((float) $tot->base_price_sales, 2),
-                        'impressions'        => (int) $tot->impressions,
-                        'add_to_cart_number' => (int) $tot->add_to_cart_number,
-                        'row_count'          => (int) $tot->row_count,
-                    ];
-                }
+                // Same Spend badge as /temu/ads — current date window only.
+                $tot = TemuAdsApiReport::badgeTotals($campaignRange);
+                $adTotals = [
+                    'spend'              => $tot['spend'],
+                    'clicks'             => $tot['clicks'],
+                    'sub_orders'         => $tot['sold'],
+                    'base_price_sales'   => $tot['sales'],
+                    'impressions'        => $tot['impressions'],
+                    'add_to_cart_number' => 0,
+                    'row_count'          => $tot['rows'],
+                ];
             }
 
             return response()->json([
@@ -4521,7 +4507,7 @@ class TemuController extends Controller
             $raw = collect();
             if (Schema::hasTable('temu_ads_api_reports')) {
                 $raw = TemuAdsApiReport::query()
-                    ->where('period', $period)
+                    ->inLatestWindow($period)
                     ->whereNotNull('goods_id')
                     ->get()
                     ->map(function (TemuAdsApiReport $r) {

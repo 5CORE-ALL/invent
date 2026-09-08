@@ -123,6 +123,40 @@ class TemuAdsApiReport extends Model
     }
 
     /**
+     * Same Spend / clicks / sales as the /temu/ads badges for a period.
+     *
+     * @return array{spend: float, clicks: int, impressions: int, sold: int, sales: float, rows: int}
+     */
+    public static function badgeTotals(string $period = 'L30'): array
+    {
+        $period = strtoupper($period);
+        if (! in_array($period, ['L7', 'L30', 'L60'], true)) {
+            $period = 'L30';
+        }
+
+        $row = static::query()
+            ->inLatestWindow($period)
+            ->selectRaw('
+                COUNT(*) AS rows,
+                COALESCE(SUM(ad_spend), 0) AS spend,
+                COALESCE(SUM(clicks), 0) AS clicks,
+                COALESCE(SUM(impressions), 0) AS impressions,
+                COALESCE(SUM(order_pay_cnt), 0) AS sold,
+                COALESCE(SUM(order_pay_amt), 0) AS sales
+            ')
+            ->first();
+
+        return [
+            'spend' => round((float) ($row->spend ?? 0), 2),
+            'clicks' => (int) ($row->clicks ?? 0),
+            'impressions' => (int) ($row->impressions ?? 0),
+            'sold' => (int) ($row->sold ?? 0),
+            'sales' => round((float) ($row->sales ?? 0), 2),
+            'rows' => (int) ($row->rows ?? 0),
+        ];
+    }
+
+    /**
      * Decode stored raw API payload.
      */
     public function getRawPayloadAttribute(): ?array
