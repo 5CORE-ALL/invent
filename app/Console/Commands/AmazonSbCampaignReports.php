@@ -508,7 +508,6 @@ class AmazonSbCampaignReports extends Command
                     'impressions' => 0,
                     'clicks' => 0,
                     'cost' => 0,
-                    'spend' => 0,
                     'costPerClick' => 0,
                     'last_sbid' => $row->last_sbid,
                     'sbid' => $row->sbid,

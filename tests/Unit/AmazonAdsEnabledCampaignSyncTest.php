@@ -40,4 +40,14 @@ class AmazonAdsEnabledCampaignSyncTest extends TestCase
         $this->assertSame(5.0, $row['campaignBudgetAmount']);
         $this->assertSame('USD', $row['campaignBudgetCurrencyCode']);
     }
+
+    public function test_filter_to_columns_drops_spend_when_table_has_only_cost(): void
+    {
+        $filtered = AmazonAdsEnabledCampaignSync::filterToColumns(
+            ['cost' => 0, 'spend' => 0, 'clicks' => 0],
+            ['cost', 'clicks']
+        );
+
+        $this->assertSame(['cost' => 0, 'clicks' => 0], $filtered);
+    }
 }

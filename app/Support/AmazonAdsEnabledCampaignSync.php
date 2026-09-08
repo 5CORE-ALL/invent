@@ -6,6 +6,7 @@ use App\Models\AmazonSbCampaignReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Services\AmazonAdsService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Reporting APIs omit ENABLED campaigns with no impressions. Amazon's campaign
@@ -62,7 +63,10 @@ class AmazonAdsEnabledCampaignSync
                 continue;
             }
 
-            $payload = self::zeroMetricPayload($campaign, $profileId, $cid, $adType, $l30Window);
+            $payload = self::filterToColumns(
+                self::zeroMetricPayload($campaign, $profileId, $cid, $adType, $l30Window),
+                Schema::getColumnListing((new $modelClass)->getTable())
+            );
             $wrote = false;
             foreach ([$dayYmd, 'L30', 'L1'] as $range) {
                 $existing = $modelClass::query()
@@ -113,6 +117,26 @@ class AmazonAdsEnabledCampaignSync
             'spend' => 0,
             'costPerClick' => 0,
         ];
+    }
+
+    /**
+     * SB reports have `cost` but no `spend`; drop keys the table does not have.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  list<string>  $columns
+     * @return array<string, mixed>
+     */
+    public static function filterToColumns(array $payload, array $columns): array
+    {
+        $cols = array_flip($columns);
+        $out = [];
+        foreach ($payload as $key => $value) {
+            if (isset($cols[$key])) {
+                $out[$key] = $value;
+            }
+        }
+
+        return $out;
     }
 
     /**
