@@ -2517,12 +2517,8 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC from Sprc Dil, then capped at Amazon A Price (same as /temu1-data) and LMP. Orange Amz = Dil was above Amazon. Blue triangle = S PRC ≠ MC Price. Red text = S PRC > LMP.",
-                    editor: "number",
-                    editorParams: {
-                        min: 0,
-                        step: 0.01
-                    },
+                    headerTooltip: "S PRC from Sprc Dil, then capped at Amazon A Price (same as /temu1-data) and LMP. Orange Amz = Dil was above Amazon. Blue triangle = S PRC ≠ MC Price. Red text = S PRC > LMP. Not editable — use Apply / Dil rules.",
+                    editable: false,
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -2767,18 +2763,6 @@
                     }
                 });
                 return;
-            }
-
-            if (field === 'SPRICE') {
-                const row = cell.getRow();
-                const rowData = row.getData();
-                const sku = rowData['(Child) sku'];
-                const newSprice = parseFloat(cell.getValue()) || 0;
-                if (!sku) return;
-                saveSpriceUpdates([{ sku: sku, sprice: newSprice }]);
-                showToast(newSprice > 0
-                    ? ('S PRC cleared, then $' + newSprice.toFixed(2) + ' saved for ' + sku)
-                    : ('S PRC cleared for ' + sku), 'info');
             }
         });
 
