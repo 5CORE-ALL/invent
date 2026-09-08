@@ -1132,6 +1132,112 @@
                 || (rowData.Parent && String(rowData.Parent).startsWith('PARENT'))));
         }
 
+        function macysAmazonPrice(rowData) {
+            return Math.round((Number(rowData && (rowData['A Price'] != null ? rowData['A Price'] : (rowData.a_price || rowData.amazon_price))) || 0) * 100) / 100;
+        }
+
+        function macysCappedPushPrice(rowData) {
+            let p = 0;
+            if (typeof chPromoLiveSprice === 'function' && rowData && !isMacysParentRow(rowData)) {
+                p = Number(chPromoLiveSprice(rowData)) || 0;
+            }
+            if (!(p > 0)) p = parseFloat(rowData && rowData.SPRICE) || 0;
+            if (typeof chPromoCapSpriceToLmp === 'function' && p > 0) {
+                p = Number(chPromoCapSpriceToLmp(rowData, p)) || p;
+            } else if (window.SpriceLmpCap && p > 0) {
+                p = Number(SpriceLmpCap.prepare(rowData, p)) || p;
+            }
+            p = Math.round((Number(p) || 0) * 100) / 100;
+            const amz = macysAmazonPrice(rowData);
+            if (p > 0 && amz > 0 && p > amz) return amz;
+            return p;
+        }
+
+        function macysFindRowBySku(sku) {
+            const want = String(sku || '').trim().toUpperCase();
+            if (!want || typeof table === 'undefined' || !table) return null;
+            try {
+                const exact = table.searchRows('(Child) sku', '=', sku);
+                if (exact && exact.length) return exact[0];
+            } catch (e) { /* ignore */ }
+            let found = null;
+            try {
+                (table.getRows() || []).forEach(function(row) {
+                    if (found) return;
+                    const d = row.getData() || {};
+                    if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) found = row;
+                });
+            } catch (e) { /* ignore */ }
+            return found;
+        }
+
+        function macysApplyPushResults(results) {
+            (results || []).forEach(function(r) {
+                if (!r || !r.sku) return;
+                const row = macysFindRowBySku(r.sku);
+                if (!row) return;
+                const ok = !!r.success;
+                const live = Number(r.price) || 0;
+                const patch = {
+                    SPRICE_STATUS: ok ? 'pushed' : 'error',
+                    push_status: ok ? 'pushed' : 'error',
+                };
+                if (ok && live > 0) {
+                    patch.SPRICE_PUSHED_VALUE = live;
+                    patch['MC Price'] = live;
+                }
+                try { row.update(patch); } catch (e) { /* ignore */ }
+                try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
+            });
+        }
+
+        function macysPushPriceForRow(row) {
+            if (!row || typeof row.getData !== 'function') return;
+            const d = row.getData() || {};
+            if (isMacysParentRow(d)) return;
+            const sku = String(d['(Child) sku'] || '').trim();
+            const price = macysCappedPushPrice(d);
+            const status = String(d.push_status || d.SPRICE_STATUS || '');
+            if (!sku || !(price > 0)) {
+                showToast('Set a valid SPRICE before pushing', 'error');
+                return;
+            }
+            if (status === 'pushing' || status === 'processing' || status === 'queued') return;
+            try { row.update({ SPRICE_STATUS: 'queued', push_status: 'queued' }); } catch (e) { /* ignore */ }
+            if (typeof enqueueChannelPushSpriceAfterSave === 'function'
+                && typeof chPushSpriceAutoPushAllowed === 'function'
+                && chPushSpriceAutoPushAllowed()) {
+                enqueueChannelPushSpriceAfterSave(sku, price, row, { force: true });
+                return;
+            }
+            $.ajax({
+                url: '/macys-push-price',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Accept': 'application/json'
+                },
+                data: { sku: sku, price: price }
+            }).done(function(resp) {
+                macysApplyPushResults([{
+                    sku: sku,
+                    success: !!(resp && resp.success),
+                    price: (resp && resp.price != null) ? resp.price : price,
+                    message: (resp && resp.message) || ''
+                }]);
+                if (resp && resp.success) {
+                    showToast(resp.capped
+                        ? (sku + ': pushed $' + Number(resp.price).toFixed(2) + ' (capped at A Price)')
+                        : (sku + ': price pushed'), 'success');
+                } else {
+                    showToast((resp && resp.message) || 'Macy price push failed', 'error');
+                }
+            }).fail(function(xhr) {
+                macysApplyPushResults([{ sku: sku, success: false, price: price }]);
+                showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Macy price push failed', 'error');
+            });
+        }
+
         function macysAmazonToSpricePatch(rowData, amazonPrice) {
             const percentage = getMacysMargin(rowData);
             const lp = parseFloat(rowData['LP_productmaster']) || 0;
@@ -1267,6 +1373,9 @@
                             } else if (pushOk > 0) {
                                 showToast(`Macy price push successful for ${pushOk} SKU(s)`, 'success');
                             }
+                        }
+                        if (Array.isArray(response.price_push_results)) {
+                            macysApplyPushResults(response.price_push_results);
                         }
                     }
                 },
@@ -2457,6 +2566,75 @@
                         return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
                     },
                     width: 96
+                },
+                {
+                    title: "Push",
+                    field: "push_status",
+                    hozAlign: "center",
+                    headerSort: true,
+                    width: 52,
+                    headerTooltip: "Price push status. Double tick = pushed to Macy. Cross = failed. Click to push or retry. Autopush is capped at Amazon A Price.",
+                    sorter: function(a, b, aRow, bRow) {
+                        const rank = function(d) {
+                            const status = String((d && (d.push_status || d.SPRICE_STATUS)) || '');
+                            if (status === 'pushed') return 4;
+                            if (status === 'queued' || status === 'pushing' || status === 'processing') return 3;
+                            if (status === 'error' || status === 'failed') return 2;
+                            return macysCappedPushPrice(d) > 0 ? 1 : 0;
+                        };
+                        return rank(aRow.getData()) - rank(bRow.getData());
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isMacysParentRow(rowData)) return '';
+                        const sku = String(rowData['(Child) sku'] || '');
+                        const price = macysCappedPushPrice(rowData);
+                        if (!sku || !(price > 0)) return '';
+                        const status = String(rowData.push_status || rowData.SPRICE_STATUS || '');
+                        const amz = macysAmazonPrice(rowData);
+                        const pushedValue = rowData.SPRICE_PUSHED_VALUE;
+                        const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT || '';
+                        const pushedBy = rowData.SPRICE_PUSHED_BY || '';
+                        let icon = '<i class="fas fa-upload"></i>';
+                        let color = '#0d6efd';
+                        let tip = 'Push $' + price.toFixed(2) + ' to Macy';
+                        if (amz > 0 && price + 0.0001 >= amz && (parseFloat(rowData.SPRICE) || 0) > amz + 0.0001) {
+                            tip += ' (capped at A Price $' + amz.toFixed(2) + ')';
+                        }
+                        if (status === 'pushing' || status === 'processing' || status === 'queued') {
+                            icon = '<i class="fas fa-spinner fa-spin"></i>';
+                            color = '#ffc107';
+                            tip = 'Pushing to Macy…';
+                        } else if (status === 'pushed') {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            color = '#28a745';
+                            tip = 'Pushed to Macy';
+                        } else if (status === 'error' || status === 'failed') {
+                            icon = '<i class="fa-solid fa-x"></i>';
+                            color = '#dc3545';
+                            tip = 'Push failed — click to retry';
+                        }
+                        if (pushedValue != null && pushedValue !== '') {
+                            tip += ' | Last $' + (parseFloat(pushedValue) || 0).toFixed(2);
+                        }
+                        if (updatedAt) tip += ' | ' + updatedAt;
+                        if (pushedBy) tip += ' | by ' + pushedBy;
+                        return '<button type="button" class="macys-push-single-btn" data-sku="'
+                            + sku.replace(/"/g, '&quot;') + '" data-price="' + price.toFixed(2)
+                            + '" data-status="' + status.replace(/"/g, '&quot;')
+                            + '" title="' + String(tip).replace(/"/g, '&quot;')
+                            + '" style="border:none;background:none;color:' + color
+                            + ';padding:0;cursor:pointer;font-size:16px;">' + icon + '</button>';
+                    },
+                    cellClick: function(e, cell) {
+                        const t = e.target;
+                        if (!t || typeof t.closest !== 'function') return;
+                        const btn = t.closest('.macys-push-single-btn');
+                        if (!btn) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        macysPushPriceForRow(cell.getRow());
+                    }
                 },
                 {
                     title: "SGPFT",
