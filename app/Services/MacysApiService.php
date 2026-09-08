@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use App\Models\ProductStockMapping;
-use App\Models\ShopifySku;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\Concerns\MiraklMcmBulletImport;
@@ -187,8 +186,18 @@ class MacysApiService
             ];
         }
 
-        $offerSku = $this->resolveMcmOfferSku($sku, $apiKey, $baseUrl);
-        if ($offerSku === null || $offerSku === '') {
+        $sheetProduct = $this->resolveLocalMcmSheetProductSku($sku);
+        $sheetOffer = $this->resolveLocalMcmSheetOfferSku($sku);
+        $live = $this->resolveMcmOfferSkuFromOffersApi($sku, $apiKey, $baseUrl, array_values(array_filter([
+            $sheetProduct,
+            $sheetOffer,
+        ])));
+        $queue = $this->miraklMcmPricingOfferSkuQueue($sku, [
+            'live' => $live,
+            'sheet_offer' => $sheetOffer,
+            'sheet_product' => $sheetProduct,
+        ]);
+        if ($queue === []) {
             return [
                 'success' => false,
                 'message' => "SKU is not listed on Macy MCM: {$sku}",
@@ -198,31 +207,26 @@ class MacysApiService
 
         try {
             $tried = [];
-            $last = $this->runMacyPricingImport($sku, $offerSku, $price, $apiKey, $baseUrl);
-            $tried[strtoupper($offerSku)] = true;
-            if (($last['success'] ?? false) === true
-                || ! self::isMiraklOfferNotFoundError((string) ($last['message'] ?? ''))) {
-                return $last;
-            }
-
-            $alternates = [];
-            $live = $this->resolveMcmOfferSkuFromOffersApi($sku, $apiKey, $baseUrl);
-            foreach ([$live, ShopifySku::compactSkuForLookup($sku), str_replace(' ', '', $sku)] as $alt) {
-                $alt = trim((string) $alt);
-                if ($alt === '' || isset($tried[strtoupper($alt)])) {
+            $last = [
+                'success' => false,
+                'message' => "SKU is not listed on Macy MCM: {$sku}",
+                'status_code' => 404,
+            ];
+            foreach (array_slice($queue, 0, 6) as $trySku) {
+                if (isset($tried[$trySku])) {
                     continue;
                 }
-                $alternates[] = $alt;
-            }
-
-            foreach (array_slice($alternates, 0, 2) as $trySku) {
-                $tried[strtoupper($trySku)] = true;
+                $tried[$trySku] = true;
                 $last = $this->runMacyPricingImport($sku, $trySku, $price, $apiKey, $baseUrl);
                 if (($last['success'] ?? false) === true
                     || ! self::isMiraklOfferNotFoundError((string) ($last['message'] ?? ''))) {
                     return $last;
                 }
             }
+
+            $triedList = implode(', ', array_keys($tried));
+            $last['message'] = 'Macy price push failed: No existing offer for '.$sku
+                .' (tried: '.$triedList.')';
 
             return $last;
         } catch (\Throwable $e) {
@@ -1910,6 +1914,9 @@ class MacysApiService
             }
 
             $body = trim((string) $response->body());
+            if (preg_match('/No existing offer with SKU [\'"]([^\'"]+)[\'"] found/i', $body, $m)) {
+                return "No existing offer with SKU '{$m[1]}' found";
+            }
             $lines = preg_split("/\r\n|\n|\r/", $body) ?: [];
             foreach ($lines as $idx => $line) {
                 if ($idx === 0) {
@@ -1918,9 +1925,6 @@ class MacysApiService
                 $line = trim($line);
                 if ($line === '') {
                     continue;
-                }
-                if (preg_match("/No existing offer with SKU '([^']+)' found/i", $line, $m)) {
-                    return "No existing offer with SKU '{$m[1]}' found";
                 }
 
                 return substr($line, 0, 300);

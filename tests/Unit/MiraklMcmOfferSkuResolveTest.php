@@ -30,6 +30,20 @@ class MiraklMcmOfferSkuResolveTest extends TestCase
         $this->assertFalse($this->service()::isMiraklOfferNotFoundError('HTTP 500 timeout'));
     }
 
+    public function test_pricing_queue_keeps_sheet_offer_case_and_product_sku(): void
+    {
+        $queue = $this->service()->queue('SS HD 1PK 3FT BLK WOB', [
+            'live' => 'SS HD 1PK 3FT BLK WOB',
+            'sheet_offer' => 'SS HD 1PK 3FT BLK WoB',
+            'sheet_product' => '810144134161_20303673_12',
+        ]);
+
+        $this->assertSame('SS HD 1PK 3FT BLK WOB', $queue[0]);
+        $this->assertContains('SS HD 1PK 3FT BLK WoB', $queue);
+        $this->assertContains('810144134161_20303673_12', $queue);
+        $this->assertContains('SSHD1PK3FTBLKWOB', $queue);
+    }
+
     private function service(): object
     {
         return new class
@@ -49,6 +63,11 @@ class MiraklMcmOfferSkuResolveTest extends TestCase
             public function candidates(string $sku): array
             {
                 return $this->miraklMcmOfferSkuCandidates($sku);
+            }
+
+            public function queue(string $sku, array $hints = []): array
+            {
+                return $this->miraklMcmPricingOfferSkuQueue($sku, $hints);
             }
         };
     }
