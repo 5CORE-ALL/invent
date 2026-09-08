@@ -1520,22 +1520,25 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        if (in_array($marketplace, ['newegg', 'reverb', 'aliexpress', 'alibaba', 'faire'], true)) {
-            try {
-                app(ChannelTrackingApiFallbackService::class)->pullForMissingRows([
-                    [
-                        'mm_slug' => $marketplace,
-                        'order_id' => $ids[0],
-                        'order_id_api' => $ids[0],
-                        'order_number' => $ids[0],
-                        'tracking_number' => '',
-                    ],
-                ], 1, $marketplace);
-            } catch (\Throwable $e) {
-                Log::info('VeeqoShopifyFulfillmentService: channel API fallback failed', [
-                    'marketplace' => $marketplace,
-                    'error' => $e->getMessage(),
-                ]);
+        if (in_array($marketplace, ['newegg', 'reverb', 'aliexpress', 'alibaba', 'faire', 'shein'], true)) {
+            $fallback = app(ChannelTrackingApiFallbackService::class);
+            foreach ($ids as $id) {
+                if (strlen($id) < 5 || $this->isShopifyInternalIdRef($id)) {
+                    continue;
+                }
+                try {
+                    $pulled = $fallback->pullTrackingForOrder($marketplace, $id);
+                } catch (\Throwable $e) {
+                    Log::info('VeeqoShopifyFulfillmentService: channel API fallback failed', [
+                        'marketplace' => $marketplace,
+                        'order_id' => $id,
+                        'error' => $e->getMessage(),
+                    ]);
+                    continue;
+                }
+                if (is_array($pulled) && strlen(trim((string) ($pulled['tracking'] ?? ''))) >= 8) {
+                    return $pulled;
+                }
             }
             $model = $this->findMarketplaceOrderByChannelIds($marketplace, $ids);
 
@@ -2347,9 +2350,7 @@ class VeeqoShopifyFulfillmentService
     protected function extractShipment(array $order, string $sku = ''): ?array
     {
         $want = app(ShopifyFulfillmentTrackingMatcher::class)->normalizeSku($sku);
-        if ($want !== '' && $this->payloadHasSkuFields($order) && ! $this->payloadContainsSku($order, $want)) {
-            return null;
-        }
+        $skuMiss = $want !== '' && $this->payloadHasSkuFields($order) && ! $this->payloadContainsSku($order, $want);
 
         $buckets = [];
         if (isset($order['allocations']) && is_array($order['allocations'])) {
@@ -2370,13 +2371,19 @@ class VeeqoShopifyFulfillmentService
             if ($tracking === null) {
                 continue;
             }
+            if ($skuMiss && count($buckets) !== 1) {
+                continue;
+            }
             $carrier = $this->carrierFrom($shipment, $row, $tracking);
 
             return ['tracking' => $tracking, 'carrier' => $carrier];
         }
 
         $direct = $this->trackingNumberFrom($order);
-        if ($direct !== null) {
+        if ($direct !== null && ! $skuMiss) {
+            return ['tracking' => $direct, 'carrier' => $this->carrierFrom($order, [], $direct)];
+        }
+        if ($direct !== null && $skuMiss) {
             return ['tracking' => $direct, 'carrier' => $this->carrierFrom($order, [], $direct)];
         }
 
@@ -2592,13 +2599,11 @@ class VeeqoShopifyFulfillmentService
                 return ['success' => false, 'message' => (string) $prepared['error']];
             }
             $lineItems = $prepared['line_items'] ?? [];
+            if ($lineItems === [] && trim($sku) !== '') {
+                $prepared = $this->prepareShopifyFulfillmentOrders($storeUrl, $token, $shopifyOrderId, false, '');
+                $lineItems = $prepared['line_items'] ?? [];
+            }
             if ($lineItems === []) {
-                if (trim($sku) !== '') {
-                    return [
-                        'success' => false,
-                        'message' => 'No open Shopify fulfillment lines match this marketplace SKU.',
-                    ];
-                }
                 $updated = $this->updateExistingShopifyFulfillmentTracking($storeUrl, $token, $shopifyOrderId, $tracking, $carrier);
                 if (! empty($updated['success'])) {
                     return $updated;
@@ -2631,6 +2636,10 @@ class VeeqoShopifyFulfillmentService
             }
 
             if (! $post->successful()) {
+                $updated = $this->updateExistingShopifyFulfillmentTracking($storeUrl, $token, $shopifyOrderId, $tracking, $carrier);
+                if (! empty($updated['success'])) {
+                    return $updated;
+                }
                 $snippet = $this->shopifyErrorSnippet($post);
                 Log::warning('VeeqoShopifyFulfillmentService: Shopify fulfill failed', [
                     'shopify_order_id' => $shopifyOrderId,
@@ -3104,7 +3113,7 @@ class VeeqoShopifyFulfillmentService
                 }
                 $fallback[] = ['id' => (int) $li['id'], 'quantity' => $qty];
             }
-            if (count($fallback) === 1 && count($orderLines) <= 1) {
+            if (count($fallback) === 1) {
                 return $fallback;
             }
         }
