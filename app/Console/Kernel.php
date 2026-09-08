@@ -87,6 +87,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\UpdateStockMappingDaily::class,
         AmazonSpCampaignReports::class,
         AmazonSbCampaignReports::class,
+        \App\Console\Commands\AmazonAdsSyncEnabledCampaigns::class,
         AmazonSdCampaignReports::class,
         AmazonSpKeywordReports::class,
         AmazonSpNegativeKeywords::class,

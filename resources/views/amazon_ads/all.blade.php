@@ -237,7 +237,7 @@
                 <div class="card-body">
                     <div class="amz-ads-toolbar d-flex flex-wrap align-items-center gap-2 mb-2">
                         <div class="amz-stat-badges py-1">
-                            <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching current filters">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
+                            <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching Table + Stat + calendar. Amazon Enabled SP+SB is ~199; Stat=Enabled + All includes zero-activity ENABLED campaigns synced from Amazon.">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
                             <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS from Amazon L30 (all campaigns matching Stat / search / U% filters — not only the calendar day's rows)">ACOS:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
                             <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Amazon L30 spend for the selected table (SP+SB on All). Includes paused campaigns that spent in L30 even if they have no row on the calendar day.">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
                             <span id="amazonAdsClicksBadgeWrap" class="amz-stat-badge amz-stat-badge--clicks" title="Clicks (L30) — same Amazon L30 universe as Spend">CLICKS:<span id="amazonAdsClicksBadgeValue">0</span></span>
@@ -340,8 +340,8 @@
                             <div class="amz-raw-filter-field">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterCampaignStatus">Stat</label>
                                 <select id="amazonAdsFilterCampaignStatus" class="form-select form-select-sm amz-raw-filter-select">
-                                    <option value="" selected>All</option>
-                                    <option value="ENABLED">Enabled</option>
+                                    <option value="">All</option>
+                                    <option value="ENABLED" selected>Enabled</option>
                                     <option value="PAUSED">Paused</option>
                                     <option value="ARCHIVED">Archived</option>
                                 </select>
