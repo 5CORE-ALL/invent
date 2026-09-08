@@ -52,7 +52,7 @@
                         <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1, 'clear_cache' => null]) }}" class="btn btn-sm btn-outline-success">
                             <i class="ri-flashlight-line"></i> Refresh live
                         </a>
-                        <a href="{{ request()->fullUrlWithQuery(['clear_cache' => 1, 'refresh_live' => null]) }}" class="btn btn-sm btn-outline-secondary" onclick="return confirm(\"Clear the warm Macy's live listings cache? Counts will refresh after Refresh live.');">
+                        <a href="{{ request()->fullUrlWithQuery(['clear_cache' => 1, 'refresh_live' => null]) }}" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Clear the warm Macy\'s live listings cache? Counts will refresh after Refresh live.');">
                             <i class="ri-delete-bin-line"></i> Clear cache
                         </a>
                     @endif
@@ -270,7 +270,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
         }).then(function (r) { return r.json(); });
     }
 
-    if (!confirm("Sync all Macy's listings and refresh SKU ↔ product_id mappings? This may take a few minutes.')) {
+    if (!confirm('Sync all Macy\'s listings and refresh SKU ↔ product_id mappings? This may take a few minutes.')) {
         return;
     }
 
@@ -313,56 +313,11 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 
     runPage(true);
 });
-
-document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
-    var btn = this;
-    var scope = btn.getAttribute('data-scope') || 'mismatch';
-    var tabLabel = scope === 'linked_mismatch' ? 'Linked mismatch SKU' : 'Inv SKU Mismatch';
-    if (!confirm('Push the actual live Shopify quantity to every ' + tabLabel + ' on Macy\'s right now (no queue)? This runs in batches and may take a few minutes.')) {
-        return;
-    }
-    btn.disabled = true;
-    var original = btn.innerHTML;
-    var url = '{{ route('marketplace.manager.macy.sync.mismatch.inventory') }}';
-    var offset = 0;
-    var totals = { updated: 0, failed: 0, skipped: 0 };
-
-    function tick() {
-        btn.innerHTML = '<i class="ri-loader-4-line"></i> Syncing… ' + offset;
-        return fetch(url, {
-            method: 'POST',
-            headers: {
-                'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ offset: offset, limit: 25, scope: scope }),
-        }).then(function (r) { return r.json(); }).then(function (data) {
-            if (!data.success) {
-                alert(data.message || 'Sync failed.');
-                btn.disabled = false;
-                btn.innerHTML = original;
-                return;
-            }
-            totals.updated += data.updated || 0;
-            totals.failed += data.failed || 0;
-            totals.skipped += data.skipped || 0;
-            offset = data.offset || offset;
-            if (data.done) {
-                alert((data.message || 'Done.') + '\nUpdated: ' + totals.updated + ', Failed: ' + totals.failed + ', Skipped: ' + totals.skipped);
-                location.reload();
-                return;
-            }
-            setTimeout(tick, 200);
-        }).catch(function () {
-            alert('Request failed.');
-            btn.disabled = false;
-            btn.innerHTML = original;
-        });
-    }
-
-    tick();
-});
 </script>
+@include('marketplace._sync-mismatch-now', [
+    'url' => route('marketplace.manager.macy.sync.mismatch.inventory'),
+    'confirm' => "Push the actual live Shopify quantity to every Inv SKU Mismatch on Macy's right now (batched, no queue)?",
+    'limit' => 25,
+])
 @include('marketplace._listings-instant-map-js')
 @endsection
