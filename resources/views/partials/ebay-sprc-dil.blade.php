@@ -1136,6 +1136,41 @@
             redrawEbaySprcDilColumn();
             return n;
         }
+        /** Blank SPRICE in the grid only (no POST of zeros) so the clear is visible. */
+        function ebayDgWipeMacysSpriceCells() {
+            if (typeof macysWipeAllSpriceCells === 'function') {
+                macysWipeAllSpriceCells();
+            } else {
+                ebaySprcDilEachCatalogRow(function(row, d) {
+                    if (!ebayDgIsChild(d) || !row) return;
+                    if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                    else if (typeof row.update === 'function') {
+                        row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false, SGPFT: 0, SROI: 0, SPFT: 0 });
+                    }
+                });
+            }
+            redrawEbaySprcDilColumn();
+        }
+        let ebayDgMacysFlashRunning = false;
+        function ebayDgFlashThenPaintMacysRuleSprice(opts) {
+            opts = opts || {};
+            if (ebayDgMacysFlashRunning) {
+                return Promise.resolve(ebayDgPaintMacysRuleSprice());
+            }
+            ebayDgMacysFlashRunning = true;
+            const wait = opts.delay != null ? Number(opts.delay) : 350;
+            ebayDgWipeMacysSpriceCells();
+            if (opts.toast !== false) {
+                ebayDgToast('info', 'SPRICE cleared');
+            }
+            return new Promise(function(resolve) {
+                setTimeout(function() {
+                    const n = ebayDgPaintMacysRuleSprice();
+                    ebayDgMacysFlashRunning = false;
+                    resolve(n);
+                }, isFinite(wait) && wait > 0 ? wait : 350);
+            });
+        }
         function ebayScheduleSprcDilAutoApply(opts) {
             if (!ebayDgAutoApplies()) return;
             opts = opts || {};
@@ -1153,7 +1188,13 @@
                 }
                 ebayDgAutoApplyWaits = 0;
                 if (typeof ebayDgIsMacys === 'function' && ebayDgIsMacys()) {
-                    ebayDgPaintMacysRuleSprice();
+                    if (opts.flashClear) {
+                        Promise.resolve(ebayDgFlashThenPaintMacysRuleSprice({
+                            toast: opts.toast !== false,
+                        })).catch(function() { /* ignore */ });
+                    } else {
+                        ebayDgPaintMacysRuleSprice();
+                    }
                     return;
                 }
                 Promise.resolve(ebayApplySprcDilToTable({ persist: false, push: false })).catch(function() { /* retry on next change */ });
@@ -1169,11 +1210,11 @@
             if (table._ebaySprcDilAutofillBound) return;
             table._ebaySprcDilAutofillBound = true;
             table.on('dataLoaded', function() {
-                ebayScheduleSprcDilAutoApply({ delay: 500 });
+                ebayScheduleSprcDilAutoApply({ delay: 500, flashClear: true, toast: true });
             });
             try {
                 if ((typeof table.getDataCount === 'function' ? table.getDataCount() : 0) > 0) {
-                    ebayScheduleSprcDilAutoApply({ delay: 500 });
+                    ebayScheduleSprcDilAutoApply({ delay: 500, flashClear: true, toast: true });
                 }
             } catch (e) { /* wait for dataLoaded */ }
         }
@@ -1534,10 +1575,10 @@
                     renderEbayDilGroiModalTable();
                 }
                 const n = ebayDgIsMacys()
-                    ? ebayDgPaintMacysRuleSprice()
+                    ? await ebayDgFlashThenPaintMacysRuleSprice({ toast: true })
                     : await ebayApplySprcDilToTable({ persist: true, push: true });
                 $('#ebay-dil-groi-status').text(ebayDgIsMacys()
-                    ? 'Saved via API. S PRC painted on ' + n + ' SKU(s); wipe + Dil apply queued in the background.'
+                    ? 'Saved via API. SPRICE cleared, then Dil painted on ' + n + ' SKU(s); persist queued in the background.'
                     : ('Saved via API. S PRC applied on ' + n + ' SKU(s); only S PRC ≠ Price were queued.'));
                 return res;
             });
