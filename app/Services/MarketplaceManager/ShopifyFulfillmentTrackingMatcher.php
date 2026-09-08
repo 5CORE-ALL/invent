@@ -2,6 +2,7 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -191,8 +192,22 @@ class ShopifyFulfillmentTrackingMatcher
 
     public function skusEqual(string $a, string $b): bool
     {
-        return $this->normalizeSku($a) !== ''
-            && $this->normalizeSku($a) === $this->normalizeSku($b);
+        $left = $this->normalizeSku($a);
+        $right = $this->normalizeSku($b);
+        if ($left !== '' && $left === $right) {
+            return true;
+        }
+
+        $normLeft = ShopifySku::normalizeSkuForShopifyLookup($a);
+        $normRight = ShopifySku::normalizeSkuForShopifyLookup($b);
+        if ($normLeft !== '' && $normLeft === $normRight) {
+            return true;
+        }
+
+        $compactLeft = ShopifySku::compactSkuForLookup($a);
+        $compactRight = ShopifySku::compactSkuForLookup($b);
+
+        return $compactLeft !== '' && $compactLeft === $compactRight;
     }
 
     /**
