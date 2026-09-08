@@ -2,7 +2,8 @@
   Sprc Dil — same Dil → Target GROI slabs as Amazon.
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  Amazon / eBay 1–3 / Doba Pickup: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
+  Amazon / eBay 1–3 / Doba Pickup / Macys: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
+  Macys: if Sprc Dil S PRC is below A Price, S PRC is raised to A Price.
   Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
   Dil slab edits and table load recalculate display only.
   Save and Apply deletes old S PRC (saves 0), then writes the new Dil S PRC.
@@ -11,7 +12,8 @@
 @php
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
-    $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'doba_withoutship'], true);
+    $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'doba_withoutship', 'macys', 'macy'], true);
+    $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg'], true);
     $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace'], true);
     $ebaySprcDilSoldLabel = match ($ebaySprcDilChannel) {
@@ -171,9 +173,11 @@
 
 @if($ebaySprcDilPart === 'buttons' || $ebaySprcDilPart === 'all')
                     <button type="button" class="btn btn-sm" id="ebay-dil-groi-btn"
-                        title="{{ $ebaySprcDilZeroSoldUsesMinGroi
+                        title="{{ !empty($ebaySprcDilIsMacys)
+                            ? 'Dil slabs → Target GROI% (including 0 Sold). If Sprc Dil < A Price, S PRC = A Price.'
+                            : ($ebaySprcDilZeroSoldUsesMinGroi
                             ? 'Dil slabs → Target GROI%. '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.'
-                            : 'Dil slabs → Target GROI%. Every INV > 0 SKU uses the Dil-matching slab.' }}">
+                            : 'Dil slabs → Target GROI%. Every INV > 0 SKU uses the Dil-matching slab.') }}">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
 @endif
@@ -235,7 +239,17 @@
                         <li>
                             <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
                             use that slab’s Target GROI (first match; last slab includes the To value).
+                            @if(!empty($ebaySprcDilIsMacys))
+                            0 Sold ({{ $ebaySprcDilSoldLabel }} = 0) uses the <strong>same Dil-matching slab</strong> — not min Target GROI.
+                            @endif
                         </li>
+                        @if(!empty($ebaySprcDilIsMacys))
+                        <li>
+                            <strong>When</strong> Sprc Dil S PRC is <strong>below A Price</strong>:
+                            S PRC is raised to <strong>A Price</strong> (not min GROI).
+                            If Sprc Dil is at or above A Price, keep the Dil rule.
+                        </li>
+                        @endif
                         <li>
                             <strong>When</strong> a price is calculated from a Dil slab match:
                             it auto-applies to <strong>S PRC</strong> and is <strong>queued for Push Prc</strong>
@@ -596,7 +610,7 @@
             if (!(rawSprc > 0)) return null;
             let sprc = rawSprc;
             let amzApplied = false;
-            if (ebayDgIsShopifyB2c()) {
+            if (ebayDgIsShopifyB2c() || ebayDgIsMacys()) {
                 const floored = (typeof chPromoFinalSpriceToSave === 'function')
                     ? Number(chPromoFinalSpriceToSave(d, rawSprc))
                     : ((typeof chPromoFloorShopifySpriceToAmz === 'function')

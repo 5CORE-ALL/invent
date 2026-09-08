@@ -34,15 +34,18 @@ return [
     | These rules apply ONLY to automated tasks (is_automate_task = 1) — never to
     | normal/manual tasks.
     |   daily   = 24 hours
-    |   weekly  = 144 hours (6 days)
-    |   monthly = 720 hours (30 days)
+    |   weekly  = 144 hours (6 days from created_at)
+    |   monthly = 144 hours (6 days from created_at)
     |
     */
     'missed_after_hours' => [
         'daily' => (int) env('TASK_MISSED_AFTER_HOURS_DAILY', 24),
         'weekly' => (int) env('TASK_MISSED_AFTER_HOURS_WEEKLY', 144),
-        'monthly' => (int) env('TASK_MISSED_AFTER_HOURS_MONTHLY', 720),
+        'monthly' => (int) env('TASK_MISSED_AFTER_HOURS_MONTHLY', 144),
     ],
+
+    /** Calendar days after created_at when weekly/monthly auto tasks become overdue. */
+    'weekly_monthly_overdue_days' => (int) env('TASK_WEEKLY_MONTHLY_OVERDUE_DAYS', 6),
 
     /*
     |--------------------------------------------------------------------------
@@ -52,8 +55,8 @@ return [
     | Automated tasks whose checklist was not filled by the cutoff are marked
     | missed and soft-deleted. The cutoff is calculated in this timezone.
     |   daily   = same calendar day as start_date at cutoff_time
-    |   weekly  = 7 days after start_date at cutoff_time
-    |   monthly = last day of start_date's month at cutoff_time
+    |   weekly  = 6 days after created_at at cutoff_time
+    |   monthly = 6 days after created_at at cutoff_time
     |
     */
     'missed_task_timezone' => env('TASK_MISSED_TASK_TIMEZONE', 'America/Los_Angeles'),

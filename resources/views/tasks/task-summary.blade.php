@@ -2181,7 +2181,24 @@
             }
 
             function tsTaskIsOverdueForPanel(t) {
-                if (!t || !t.start_date || t.status === 'Archived') {
+                if (!t || t.status === 'Archived') {
+                    return false;
+                }
+                var isAuto = t.is_automate_task == 1 || t.is_automate_task === true || t.is_automate_task === '1';
+                var freq = String(t.schedule_type || '').toLowerCase();
+                var now = new Date();
+                now.setHours(0, 0, 0, 0);
+                if (isAuto && (freq === 'weekly' || freq === 'monthly')) {
+                    var createdStr = t.created_at ? String(t.created_at).slice(0, 10) : String(t.start_date || '').slice(0, 10);
+                    var parts = createdStr.split('-').map(Number);
+                    if (parts.length < 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) {
+                        return false;
+                    }
+                    var overdueOn = new Date(parts[0], parts[1] - 1, parts[2] + 6);
+                    overdueOn.setHours(0, 0, 0, 0);
+                    return now >= overdueOn;
+                }
+                if (!t.start_date) {
                     return false;
                 }
                 var startDate = new Date(t.start_date);
@@ -2190,8 +2207,6 @@
                 }
                 startDate.setHours(0, 0, 0, 0);
                 startDate.setDate(startDate.getDate() + 1);
-                var now = new Date();
-                now.setHours(0, 0, 0, 0);
                 return now > startDate;
             }
 

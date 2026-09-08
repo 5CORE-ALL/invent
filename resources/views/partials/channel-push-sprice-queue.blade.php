@@ -122,7 +122,7 @@
                 }
                 const p = chPushSpriceRound2(price);
                 const amz = chPushSpriceAmazonPrice(d);
-                if (p > 0 && amz > 0 && p > amz) return amz;
+                if (p > 0 && amz > 0 && p < amz) return amz;
                 return p;
             }
             function chPushSpriceNearlyEqual(a, b) {

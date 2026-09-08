@@ -16,9 +16,9 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Mark and soft-delete automated tasks whose checklist was not filled by the
  * scheduled PST cutoff. Daily tasks expire at 11:59 PM PST the same day;
- * weekly tasks expire 7 days later at 11:59 PM PST; monthly tasks expire on the
- * last day of the month at 11:59 PM PST. If a checklist is attached, the task's
- * report is updated with a red missed marker before deletion.
+ * weekly and monthly tasks expire 6 days after created_at at 11:59 PM PST.
+ * If a checklist is attached, the task's report is updated with a red missed
+ * marker before deletion.
  */
 class ExpireMissedAutomatedTasks extends Command
 {
@@ -144,39 +144,27 @@ class ExpireMissedAutomatedTasks extends Command
     /**
      * Calculate the PST cutoff for an automated task instance.
      *   daily   -> same day at cutoff_time
-     *   weekly  -> start_date + 7 days at cutoff_time
-     *   monthly -> last day of start_date's month at cutoff_time
+     *   weekly  -> created_at + 6 days at cutoff_time
+     *   monthly -> created_at + 6 days at cutoff_time
      */
     private function cutoffFor(Task $task, string $tz, string $cutoffTime): ?Carbon
     {
-        $scheduleType = strtolower(trim((string) ($task->schedule_type ?? '')));
-        if (! in_array($scheduleType, ['daily', 'weekly', 'monthly'], true)) {
-            return null;
-        }
-
-        try {
-            $start = Carbon::parse($task->start_date)->setTimezone($tz);
-        } catch (Exception $e) {
-            Log::warning('ExpireMissedAutomatedTasks: invalid start_date', [
+        $cutoff = TaskBusinessTime::missedCutoffFor(
+            $task->getRawOriginal('created_at') ?? $task->created_at,
+            $task->getRawOriginal('start_date') ?? $task->start_date,
+            $task->schedule_type,
+            $tz,
+            $cutoffTime
+        );
+        if ($cutoff === null) {
+            Log::warning('ExpireMissedAutomatedTasks: invalid start/created date', [
                 'task_id' => $task->id,
                 'start_date' => $task->start_date,
-                'error' => $e->getMessage(),
+                'created_at' => $task->created_at,
             ]);
-
-            return null;
         }
 
-        $parts = array_map('intval', explode(':', $cutoffTime));
-        $hour = $parts[0] ?? 23;
-        $minute = $parts[1] ?? 59;
-        $second = $parts[2] ?? 0;
-
-        return match ($scheduleType) {
-            'daily' => $start->copy()->setTime($hour, $minute, $second),
-            'weekly' => $start->copy()->addDays(7)->setTime($hour, $minute, $second),
-            'monthly' => $start->copy()->endOfMonth()->setTime($hour, $minute, $second),
-            default => null,
-        };
+        return $cutoff;
     }
 
     /**

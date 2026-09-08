@@ -134,6 +134,7 @@ use App\Support\TemuGoodsIdHelper;
 use App\Jobs\RunPricingErrorsFixPushJob;
 use App\Models\BadgeData;
 use App\Services\PricingErrorsFixCvrCacheBuilder;
+use App\Services\PrcCprReportService;
 use App\Services\Support\PricingErrorsFixPushJobStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\View\View;
@@ -169,6 +170,40 @@ class CvrMasterController extends Controller
             "mode" => $mode,
             "demo" => $demo,
         ]);
+    }
+
+    /**
+     * Price comparison report for selected pricing-master-cvr SKUs (Prc Cpr).
+     */
+    public function getPrcCprReport(Request $request, PrcCprReportService $reportService)
+    {
+        $skus = $request->input('skus', []);
+        if (! is_array($skus)) {
+            return response()->json(['error' => 'skus must be an array'], 422);
+        }
+        $skus = $reportService->normalizeRequestedSkus($skus);
+        if ($skus === []) {
+            return response()->json(['error' => 'Select at least one product'], 422);
+        }
+        if (count($skus) > PrcCprReportService::MAX_SKUS) {
+            return response()->json([
+                'error' => 'Select at most '.PrcCprReportService::MAX_SKUS.' products',
+            ], 422);
+        }
+
+        try {
+            $payload = $reportService->build($skus);
+
+            return response()->json([
+                'success' => true,
+                'products' => $payload['products'],
+                'excluded' => $payload['excluded'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Prc Cpr report failed: '.$e->getMessage());
+
+            return response()->json(['error' => 'Failed to generate report'], 500);
+        }
     }
 
     /**
@@ -8736,7 +8771,7 @@ class CvrMasterController extends Controller
                 $this->savePricePushStatus($sku, 'macy', 'pushed', $price);
                 $message = $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to Macy for SKU: $sku");
                 if ($applied['capped']) {
-                    $message .= ' (capped at Amazon $' . number_format($price, 2) . ')';
+                    $message .= ' (raised to Amazon $' . number_format($price, 2) . ')';
                 }
                 return response()->json([
                     'success' => true,

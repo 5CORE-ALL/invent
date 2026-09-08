@@ -1355,7 +1355,7 @@ class MacyController extends Controller
     }
 
     /**
-     * Push saved SPRICE to Macy marketplace API, capped at Amazon A Price.
+     * Push saved SPRICE to Macy marketplace API, raised to Amazon A Price when below it.
      *
      * @return array{success:bool,message:string,price?:float,amazon_price?:float,capped?:bool,status_code?:mixed}
      */
@@ -1382,7 +1382,7 @@ class MacyController extends Controller
             $result['capped'] = $applied['capped'];
             if ($ok && $applied['capped']) {
                 $result['message'] = trim((string) ($result['message'] ?? 'Price pushed'))
-                    .' (capped at Amazon $'.number_format($sprice, 2).')';
+                    .' (raised to Amazon $'.number_format($sprice, 2).')';
             }
 
             return $result;

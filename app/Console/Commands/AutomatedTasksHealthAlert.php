@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\AutomatedTaskSchedule;
 use App\Support\TaskBusinessTime;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -178,11 +179,7 @@ class AutomatedTasksHealthAlert extends Command
         $days = array_filter(array_map('trim', explode(',', (string) ($task->schedule_days ?? ''))));
 
         if ($scheduleType === 'weekly') {
-            $normalizedDays = array_map(function ($d) {
-                $d = strtolower($d);
-                return strlen($d) >= 3 ? substr($d, 0, 3) : $d;
-            }, $days);
-            return in_array($currentDow, $normalizedDays, true);
+            return in_array($currentDow, AutomatedTaskSchedule::weeklyDayTokens($task->schedule_days ?? ''), true);
         }
 
         if ($scheduleType === 'monthly') {

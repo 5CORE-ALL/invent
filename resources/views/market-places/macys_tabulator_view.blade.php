@@ -125,8 +125,8 @@
                         <i class="fas fa-exclamation-triangle"></i> 0</span>
                     <span class="badge fs-6 p-2" id="macys-amz-cap-badge"
                         style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
-                        title="S PRC capped to Amazon. Click to show only Amz rows."
-                        aria-label="S PRC capped to Amazon">Amz 0</span>
+                        title="S PRC raised to Amazon. Click to show only Amz rows."
+                        aria-label="S PRC raised to Amazon">Amz 0</span>
                     <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
                     <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
                     <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
@@ -449,18 +449,23 @@
         return Math.round((Number(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0) * 100) / 100;
     }
     function macysUncappedDil(data) {
+        if (data && !isMacysParentRow(data) && typeof ebayDilGroiMetaForRow === 'function') {
+            const meta = ebayDilGroiMetaForRow(data);
+            const raw = Number(meta && meta.rawSprc);
+            if (raw > 0) return Math.round(raw * 100) / 100;
+        }
         if (typeof ebaySprcDilForRow === 'function' && data && !isMacysParentRow(data)) {
             const dil = Number(ebaySprcDilForRow(data));
             if (dil > 0) return Math.round(dil * 100) / 100;
         }
         return 0;
     }
-    /** Same as /temu1-data: Dil is above A Price and the shown S PRC is the Amazon cap. */
+    /** Dil / rule S PRC is below A Price and the shown S PRC was raised to Amazon. */
     function macysHasAmzCap(data) {
         if (isMacysParentRow(data)) return false;
         const discounted = macysUncappedDil(data);
         const amz = macysAmazonPriceForRow(data);
-        if (!(discounted > 0) || !(amz > 0) || discounted <= amz + 0.0001) return false;
+        if (!(discounted > 0) || !(amz > 0) || discounted >= amz - 0.0001) return false;
         const shown = macysRowSpriceForAlert(data);
         return shown > 0 && Math.abs(shown - amz) <= 0.015;
     }
@@ -1162,7 +1167,7 @@
             }
             p = Math.round((Number(p) || 0) * 100) / 100;
             const amz = macysAmazonPrice(rowData);
-            if (p > 0 && amz > 0 && p > amz) return amz;
+            if (p > 0 && amz > 0 && p < amz) return amz;
             return p;
         }
 
@@ -1240,7 +1245,7 @@
                 }]);
                 if (resp && resp.success) {
                     showToast(resp.capped
-                        ? (sku + ': pushed $' + Number(resp.price).toFixed(2) + ' (capped at A Price)')
+                        ? (sku + ': pushed $' + Number(resp.price).toFixed(2) + ' (raised to A Price)')
                         : (sku + ': price pushed'), 'success');
                 } else {
                     showToast((resp && resp.message) || 'Macy price push failed', 'error');
@@ -2497,19 +2502,23 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (MC L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                    headerTooltip: "S PRC from Dil → Target GROI% slabs (including 0 Sold). If Sprc Dil < A Price, S PRC uses A Price. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isMacysParentRow(rowData)) return '';
                         if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                         const meta = ebayDilGroiMetaForRow(rowData);
                         if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                        const dilShown = (meta.rawSprc > 0) ? meta.rawSprc : meta.sprc;
+                        let tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                             + ' → ' + meta.label
                             + ' → GROI ' + meta.groi + '%'
-                            + ' → $' + meta.sprc.toFixed(2);
+                            + ' → $' + Number(dilShown).toFixed(2);
+                        if (meta.amzApplied) {
+                            tip += ' → A Price $' + Number(meta.sprc).toFixed(2);
+                        }
                         return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + meta.sprc.toFixed(2) + '</span>';
+                            + Number(dilShown).toFixed(2) + '</span>';
                     },
                     width: 78
                 },
@@ -2517,7 +2526,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC from Sprc Dil, then capped at Amazon A Price (same as /temu1-data) and LMP. Orange Amz = Dil was above Amazon. Blue triangle = S PRC ≠ MC Price. Red text = S PRC > LMP. Not editable — use Apply / Dil rules.",
+                    headerTooltip: "S PRC from Sprc Dil. If Sprc Dil < A Price, S PRC = A Price. Otherwise keep Dil. Orange Amz = raised to Amazon. Blue triangle = S PRC ≠ MC Price. Red text = S PRC > LMP. Not editable — use Apply / Dil rules.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {
@@ -2545,7 +2554,7 @@
                             : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         const amz = macysAmazonPriceForRow(rowData);
                         const amzLbl = macysHasAmzCap(rowData)
-                            ? '<span class="macys-sprice-cap-lbl" title="S PRC capped to Amazon $'
+                            ? '<span class="macys-sprice-cap-lbl" title="S PRC raised to Amazon $'
                                 + Number(amz).toFixed(2) + '">Amz</span>'
                             : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
@@ -2562,7 +2571,7 @@
                     hozAlign: "center",
                     headerSort: true,
                     width: 52,
-                    headerTooltip: "Price push status. Double tick = pushed to Macy. Cross = failed. Click to push or retry. Autopush is capped at Amazon A Price.",
+                    headerTooltip: "Price push status. Double tick = pushed to Macy. Cross = failed. Click to push or retry. If S PRC is below A Price, push uses A Price.",
                     sorter: function(a, b, aRow, bRow) {
                         const rank = function(d) {
                             const status = String((d && (d.push_status || d.SPRICE_STATUS)) || '');
@@ -2587,8 +2596,8 @@
                         let icon = '<i class="fas fa-upload"></i>';
                         let color = '#0d6efd';
                         let tip = 'Push $' + price.toFixed(2) + ' to Macy';
-                        if (amz > 0 && price + 0.0001 >= amz && (parseFloat(rowData.SPRICE) || 0) > amz + 0.0001) {
-                            tip += ' (capped at A Price $' + amz.toFixed(2) + ')';
+                        if (amz > 0 && Math.abs(price - amz) <= 0.015 && (parseFloat(rowData.SPRICE) || 0) < amz - 0.0001) {
+                            tip += ' (raised to A Price $' + amz.toFixed(2) + ')';
                         }
                         if (status === 'pushing' || status === 'processing' || status === 'queued') {
                             icon = '<i class="fas fa-spinner fa-spin"></i>';

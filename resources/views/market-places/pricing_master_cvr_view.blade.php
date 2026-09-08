@@ -866,12 +866,37 @@
             max-width: 100%;
         }
 
+        #prcCprModal .prc-cpr-sku-block + .prc-cpr-sku-block {
+            margin-top: 1.25rem;
+            padding-top: 1.15rem;
+            border-top: 1px dashed #cbd5e1;
+        }
+        #prcCprModal .prc-cpr-sku-header {
+            background: #fff8e1;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            padding: 10px 12px;
+        }
+        #prcCprModal .prc-cpr-buyer-text {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 11px;
+            word-break: break-all;
+            user-select: text;
+            color: #212529;
+            white-space: pre-wrap;
+        }
+        #prcCprModal .prc-cpr-table th {
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
     </style>
 @endsection
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 @endsection
 
 @section('content')
@@ -880,6 +905,38 @@
         'sub_title' => 'Master Analytics Data with Editable SPRICE',
     ])
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
+
+    <!-- Prc Cpr Report Modal -->
+    <div class="modal fade" id="prcCprModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #ffc107;">
+                    <h5 class="modal-title">
+                        <i class="fas fa-balance-scale me-2"></i>
+                        Prc Cpr Report
+                        <span id="prc-cpr-count" class="small fw-normal ms-1"></span>
+                    </h5>
+                    <div class="ms-auto d-flex align-items-center gap-2">
+                        <button type="button" id="prc-cpr-export-btn" class="btn btn-sm btn-success" disabled>
+                            <i class="fas fa-file-excel me-1"></i> Export Excel
+                        </button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3" id="prc-cpr-excluded-note"></p>
+                    <div id="prc-cpr-loading" class="text-center py-5 d-none">
+                        <div class="spinner-border text-warning" role="status"></div>
+                        <div class="mt-2 text-muted">Generating report…</div>
+                    </div>
+                    <div id="prc-cpr-report"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <!-- Remark History Modal -->
     <div class="modal fade" id="remarkHistoryModal" tabindex="-1" aria-hidden="true">
@@ -1652,6 +1709,10 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
+                    <button id="prc-cpr-btn" class="btn btn-sm btn-warning" type="button"
+                        title="Price compare selected products against Temu 2">
+                        <i class="fas fa-balance-scale"></i> Prc Cpr
+                    </button>
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
@@ -7462,6 +7523,169 @@
             document.body.removeChild(link);
             
             showToast('Export downloaded successfully!', 'success');
+        });
+
+        // ==================== PRC CPR REPORT ====================
+        let prcCprReportProducts = [];
+
+        function getSelectedProductSkusForPrcCpr() {
+            const skus = [];
+            selectedSkus.forEach((sku) => {
+                const value = String(sku || '').trim();
+                if (!value || value.toUpperCase().startsWith('PARENT ')) {
+                    return;
+                }
+                const row = (typeof fullDataset !== 'undefined' ? fullDataset : []).find((r) => r.sku === value);
+                if (row && row.is_parent_summary === true) {
+                    return;
+                }
+                skus.push(value);
+            });
+            return skus;
+        }
+
+        function escapePrcCprHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function formatPrcCprPrice(value) {
+            const n = parseFloat(value);
+            return Number.isFinite(n) && n > 0 ? ('$' + n.toFixed(2)) : '-';
+        }
+
+        function formatPrcCprBuyerText(link) {
+            const text = String(link || '').trim();
+            if (!text) {
+                return '<span class="text-muted">-</span>';
+            }
+            return '<span class="prc-cpr-buyer-text">' + escapePrcCprHtml(text) + '</span>';
+        }
+
+        function renderPrcCprReport(products, excluded) {
+            const excludedNote = Array.isArray(excluded) && excluded.length
+                ? ('Excluded channels: ' + excluded.join(', ') + '.')
+                : '';
+            $('#prc-cpr-excluded-note').text(excludedNote);
+            $('#prc-cpr-count').text(products.length ? ('(' + products.length + ' SKU' + (products.length === 1 ? '' : 's') + ')') : '');
+
+            if (!products.length) {
+                $('#prc-cpr-report').html('<div class="text-muted text-center py-4">No products to compare.</div>');
+                return;
+            }
+
+            let html = '';
+            products.forEach((product) => {
+                const sku = escapePrcCprHtml(product.sku || '');
+                const temu2 = product.temu2 || {};
+                html += '<div class="prc-cpr-sku-block">';
+                html += '<div class="prc-cpr-sku-header mb-2">';
+                html += '<div class="fw-semibold mb-1">Temu 2</div>';
+                html += '<div class="row g-2 small">';
+                html += '<div class="col-md-3"><span class="text-muted">SKU</span><div class="fw-bold">' + sku + '</div></div>';
+                html += '<div class="col-md-2"><span class="text-muted">Price</span><div class="fw-bold">' + formatPrcCprPrice(temu2.price) + '</div></div>';
+                html += '<div class="col-md-7"><span class="text-muted">Buyer Link</span><div>' + formatPrcCprBuyerText(temu2.buyer_link) + '</div></div>';
+                html += '</div></div>';
+                html += '<div class="table-responsive"><table class="table table-sm table-bordered mb-0 prc-cpr-table">';
+                html += '<thead class="table-light"><tr><th>SKU</th><th>Channel</th><th>Price</th><th>Buyer Link</th></tr></thead><tbody>';
+                (product.channels || []).forEach((row) => {
+                    html += '<tr>';
+                    html += '<td>' + sku + '</td>';
+                    html += '<td>' + escapePrcCprHtml(row.channel || '') + '</td>';
+                    html += '<td>' + formatPrcCprPrice(row.price) + '</td>';
+                    html += '<td>' + formatPrcCprBuyerText(row.buyer_link) + '</td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table></div></div>';
+            });
+            $('#prc-cpr-report').html(html);
+        }
+
+        function exportPrcCprExcel() {
+            if (!prcCprReportProducts.length) {
+                showToast('Generate a report first', 'error');
+                return;
+            }
+            if (typeof XLSX === 'undefined') {
+                showToast('Excel library failed to load', 'error');
+                return;
+            }
+            const header = ['SKU', 'Temu2 Price', 'Temu2 Buyer Link', 'Channel', 'Channel Price', 'Channel Buyer Link'];
+            const aoa = [header];
+            prcCprReportProducts.forEach((product) => {
+                const sku = product.sku || '';
+                const temu2Price = product.temu2 && product.temu2.price != null ? product.temu2.price : '';
+                const temu2Link = (product.temu2 && product.temu2.buyer_link) ? String(product.temu2.buyer_link) : '';
+                const channels = product.channels || [];
+                if (!channels.length) {
+                    aoa.push([sku, temu2Price, temu2Link, '', '', '']);
+                    return;
+                }
+                channels.forEach((row) => {
+                    aoa.push([
+                        sku,
+                        temu2Price,
+                        temu2Link,
+                        row.channel || '',
+                        row.price != null ? row.price : '',
+                        row.buyer_link ? String(row.buyer_link) : '',
+                    ]);
+                });
+            });
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            ws['!cols'] = [
+                { wch: 22 }, { wch: 14 }, { wch: 48 }, { wch: 14 }, { wch: 14 }, { wch: 48 },
+            ];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Prc Cpr');
+            XLSX.writeFile(wb, 'prc_cpr_report_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+            showToast('Prc Cpr Excel downloaded', 'success');
+        }
+
+        $('#prc-cpr-btn').on('click', function() {
+            const skus = getSelectedProductSkusForPrcCpr();
+            if (!skus.length) {
+                showToast('Select at least one product', 'error');
+                return;
+            }
+            const $btn = $(this);
+            $btn.prop('disabled', true);
+            prcCprReportProducts = [];
+            $('#prc-cpr-export-btn').prop('disabled', true);
+            $('#prc-cpr-report').empty();
+            $('#prc-cpr-loading').removeClass('d-none');
+            const modalEl = document.getElementById('prcCprModal');
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+
+            $.ajax({
+                url: '/cvr-master-prc-cpr',
+                method: 'POST',
+                data: { skus: skus },
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+            }).done(function(resp) {
+                const products = (resp && resp.products) ? resp.products : [];
+                prcCprReportProducts = products;
+                renderPrcCprReport(products, resp.excluded || []);
+                $('#prc-cpr-export-btn').prop('disabled', products.length === 0);
+                if (!products.length) {
+                    showToast('No report rows for the selected products', 'error');
+                }
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to generate Prc Cpr report';
+                $('#prc-cpr-report').html('<div class="text-danger text-center py-4">' + escapePrcCprHtml(msg) + '</div>');
+                showToast(msg, 'error');
+            }).always(function() {
+                $('#prc-cpr-loading').addClass('d-none');
+                $btn.prop('disabled', false);
+            });
+        });
+
+        $('#prc-cpr-export-btn').on('click', function() {
+            exportPrcCprExcel();
         });
 
         // ==================== PRICING MASTER ROLLING L30 CHARTS (SKU-wise: Inv, OV L30, Price, CVR) ====================

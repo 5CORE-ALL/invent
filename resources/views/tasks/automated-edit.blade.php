@@ -251,6 +251,10 @@
             // Show correct options on load
             if (currentSchedule === 'weekly') {
                 $('#weekly-options').show();
+                if (!currentDays) {
+                    currentDays = 'Mon';
+                    $('#schedule_days').val('Mon');
+                }
                 if (currentDays) {
                     selectedDays = currentDays.split(',');
                     selectedDays.forEach(function(day) {
@@ -285,18 +289,20 @@
                 
                 // Show/hide day/date selection
                 $('.schedule-options').hide();
-                if (scheduleType === 'weekly') {
-                    $('#weekly-options').show();
-                } else if (scheduleType === 'monthly') {
-                    $('#monthly-options').show();
-                }
-                
-                // Reset selections
                 selectedDays = [];
                 selectedDates = [];
                 $('.day-btn').css('background', '#6c757d');
                 $('.date-btn').css('background', '#e9ecef');
                 $('#schedule_days').val('');
+
+                if (scheduleType === 'weekly') {
+                    $('#weekly-options').show();
+                    selectedDays = ['Mon'];
+                    $('.day-btn[data-day="Mon"]').css('background', '#0d6efd');
+                    $('#schedule_days').val('Mon');
+                } else if (scheduleType === 'monthly') {
+                    $('#monthly-options').show();
+                }
             });
 
             // Weekday Selection (for Weekly)

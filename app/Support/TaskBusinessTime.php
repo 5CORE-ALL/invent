@@ -13,7 +13,9 @@ class TaskBusinessTime
 {
     public static function tz(): string
     {
-        return (string) config('tasks.business_timezone', 'America/Los_Angeles');
+        $configured = static::configValue('tasks.business_timezone');
+
+        return (string) ($configured ?: 'America/Los_Angeles');
     }
 
     public static function label(): string
@@ -74,30 +76,141 @@ class TaskBusinessTime
         return (string) config('tasks.daily_generate_time', '00:01:00');
     }
 
+    public const WEEKLY_MONTHLY_OVERDUE_DAYS = 6;
+
+    public static function isWeeklyOrMonthly(?string $scheduleType): bool
+    {
+        return in_array(strtolower(trim((string) $scheduleType)), ['weekly', 'monthly'], true);
+    }
+
     /**
-     * Hours after an automated task's generated start time before it is "missed".
-     * daily=24, weekly=144, monthly=720 (configurable). Auto tasks only.
+     * Calendar days after created_at when a weekly/monthly automated task is overdue.
+     */
+    public static function weeklyMonthlyOverdueDays(): int
+    {
+        $fromConfig = static::configValue('tasks.weekly_monthly_overdue_days');
+        if ($fromConfig !== null && $fromConfig !== '') {
+            return (int) $fromConfig;
+        }
+
+        return self::WEEKLY_MONTHLY_OVERDUE_DAYS;
+    }
+
+    /**
+     * Grace days before a task counts as overdue.
+     * Weekly/monthly automated tasks: 6 days from created_at. Everything else: 1 day from TID.
+     */
+    public static function overdueGraceDays(?string $scheduleType, bool $isAutomateTask = false): int
+    {
+        if ($isAutomateTask && static::isWeeklyOrMonthly($scheduleType)) {
+            return static::weeklyMonthlyOverdueDays();
+        }
+
+        return 1;
+    }
+
+    /** due_date / completion_date window when an automated instance is created. */
+    public static function completionWindowDays(?string $scheduleType): int
+    {
+        return static::isWeeklyOrMonthly($scheduleType)
+            ? static::weeklyMonthlyOverdueDays()
+            : 5;
+    }
+
+    /**
+     * Hours after the generated start (or created_at for weekly/monthly) before it is "missed".
+     * daily=24, weekly/monthly=144 (6 days). Auto tasks only.
      */
     public static function missedAfterHours(?string $scheduleType): int
     {
-        $map = (array) config('tasks.missed_after_hours', []);
+        $map = (array) (static::configValue('tasks.missed_after_hours') ?? []);
         $key = strtolower(trim((string) $scheduleType));
-        $defaults = ['daily' => 24, 'weekly' => 144, 'monthly' => 720];
+        $defaults = ['daily' => 24, 'weekly' => 144, 'monthly' => 144];
 
         return (int) ($map[$key] ?? $defaults[$key] ?? 24);
     }
 
     /**
-     * The moment an automated task (generated at $startDate, of $scheduleType) becomes missed.
+     * The moment an automated task becomes missed.
+     * Weekly/monthly are anchored to created_at (falls back to start_date).
      */
-    public static function missedAtFor(mixed $startDate, ?string $scheduleType): ?Carbon
+    public static function missedAtFor(mixed $startDate, ?string $scheduleType, mixed $createdAt = null): ?Carbon
     {
-        if ($startDate === null || $startDate === '') {
+        $anchor = (static::isWeeklyOrMonthly($scheduleType) && $createdAt !== null && $createdAt !== '')
+            ? $createdAt
+            : $startDate;
+        if ($anchor === null || $anchor === '') {
             return null;
         }
 
         try {
-            return static::parse($startDate)->addHours(static::missedAfterHours($scheduleType));
+            return static::parse($anchor)->addHours(static::missedAfterHours($scheduleType));
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Y-m-d when a weekly/monthly auto task becomes overdue (created date + 6 days).
+     */
+    public static function weeklyMonthlyOverdueOnDate(mixed $createdAt, mixed $startDate = null): ?string
+    {
+        $ymd = static::businessDateFromStart($createdAt ?: $startDate);
+        if ($ymd === null) {
+            return null;
+        }
+
+        try {
+            return static::parse($ymd)->addDays(static::weeklyMonthlyOverdueDays())->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * PST (or configured) cutoff when an automated instance is marked missed and deleted.
+     *   daily   = created/start calendar day at cutoff_time
+     *   weekly  = created_at calendar day + 6 days at cutoff_time
+     *   monthly = created_at calendar day + 6 days at cutoff_time
+     */
+    public static function missedCutoffFor(
+        mixed $createdAt,
+        mixed $startDate,
+        ?string $scheduleType,
+        string $tz,
+        string $cutoffTime
+    ): ?Carbon {
+        $type = strtolower(trim((string) $scheduleType));
+        if (! in_array($type, ['daily', 'weekly', 'monthly'], true)) {
+            return null;
+        }
+
+        $anchor = (static::isWeeklyOrMonthly($type) && $createdAt !== null && $createdAt !== '')
+            ? $createdAt
+            : $startDate;
+        $ymd = static::businessDateFromStart($anchor);
+        if ($ymd === null) {
+            return null;
+        }
+
+        $parts = array_map('intval', explode(':', $cutoffTime));
+        $cutoff = Carbon::parse($ymd, $tz)->setTime($parts[0] ?? 23, $parts[1] ?? 59, $parts[2] ?? 0);
+
+        if (static::isWeeklyOrMonthly($type)) {
+            return $cutoff->addDays(static::weeklyMonthlyOverdueDays());
+        }
+
+        return $cutoff;
+    }
+
+    private static function configValue(string $key): mixed
+    {
+        if (! function_exists('config')) {
+            return null;
+        }
+
+        try {
+            return config($key);
         } catch (\Throwable) {
             return null;
         }

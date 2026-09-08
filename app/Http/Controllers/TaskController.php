@@ -33,6 +33,7 @@ use App\Policies\TaskPolicy;
 use App\Services\TaskWhatsAppNotificationService;
 use App\Support\AttL30Metrics;
 use App\Support\AutomatedTaskChecklistIds;
+use App\Support\AutomatedTaskSchedule;
 use App\Support\Badges\BadgeDataCatalog;
 use App\Support\DarL30Metrics;
 use App\Support\OpenAiRequest;
@@ -75,7 +76,7 @@ class TaskController extends Controller
             });
         }
 
-        // Overdue = TID business calendar day + 1 day grace (office timezone).
+        // Overdue = TID + 1 day, except weekly/monthly auto tasks (created_at + 6 days).
         $overdueQuery = $this->whereOverdueByBusinessTid(clone $tasksQuery)
             ->where('status', '!=', 'Archived');
 
@@ -421,13 +422,22 @@ class TaskController extends Controller
 
     /**
      * Overdue when office-calendar TID day + 1 full day has passed (matches UI grace).
+     * Weekly/monthly automated tasks are overdue 6 days after created_at.
      */
     protected function whereOverdueByBusinessTid(Builder $query): Builder
     {
         TaskBusinessTime::applyDatabaseSession();
+        $weeklyMonthlyDays = (int) TaskBusinessTime::weeklyMonthlyOverdueDays();
 
         return $query->whereNotNull('start_date')
-            ->whereRaw('DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < CURDATE()');
+            ->whereRaw(
+                "(CASE
+                    WHEN COALESCE(is_automate_task, 0) = 1
+                         AND LOWER(COALESCE(schedule_type, '')) IN ('weekly', 'monthly')
+                    THEN DATE_ADD(DATE(COALESCE(created_at, start_date)), INTERVAL {$weeklyMonthlyDays} DAY) <= CURDATE()
+                    ELSE DATE(DATE_ADD(DATE(start_date), INTERVAL 1 DAY)) < CURDATE()
+                END)"
+            );
     }
 
     /**
@@ -494,7 +504,7 @@ class TaskController extends Controller
     {
         $tasksQuery = $this->taskManagerVisibilityQuery();
 
-        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date', 'completion_date', 'is_automate_task', 'is_missed', 'eta_time']);
+        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date', 'created_at', 'completion_date', 'is_automate_task', 'is_missed', 'eta_time', 'schedule_type']);
 
         // tat_sum_days + tat_count are used to compute the average L30 TAT
         // (Turn-Around Time, in calendar days) for tasks the user closed
@@ -554,12 +564,23 @@ class TaskController extends Controller
                 if (($task->status ?? '') === 'Need Approval') {
                     $byEmail[$email]['need_approval']++;
                 }
-                $graceEnd = $task->start_date
-                    ? \Carbon\Carbon::parse($task->start_date)->copy()->addDay()
-                    : null;
-                $isOverdue = $graceEnd
-                    && ($task->status ?? '') !== 'Archived'
-                    && $graceEnd->lt(now());
+                $isAuto = ! empty($task->is_automate_task);
+                $isOverdue = false;
+                if (($task->status ?? '') !== 'Archived') {
+                    if ($isAuto && TaskBusinessTime::isWeeklyOrMonthly($task->schedule_type ?? '')) {
+                        $overdueOn = TaskBusinessTime::weeklyMonthlyOverdueOnDate(
+                            $task->getRawOriginal('created_at') ?? $task->created_at,
+                            $task->getRawOriginal('start_date') ?? $task->start_date
+                        );
+                        $isOverdue = $overdueOn !== null
+                            && $overdueOn <= TaskBusinessTime::today()->toDateString();
+                    } else {
+                        $graceEnd = $task->start_date
+                            ? \Carbon\Carbon::parse($task->start_date)->copy()->addDay()
+                            : null;
+                        $isOverdue = $graceEnd && $graceEnd->lt(now());
+                    }
+                }
                 if ($isOverdue) {
                     $byEmail[$email]['overdue']++;
                 }
@@ -2991,6 +3012,15 @@ class TaskController extends Controller
                 $updated = \DB::table('automate_tasks')
                     ->whereIn('id', $taskIds)
                     ->update(['schedule_type' => $validated['freq'], 'updated_at' => now()]);
+
+                if (strtolower((string) $validated['freq']) === 'weekly') {
+                    \DB::table('automate_tasks')
+                        ->whereIn('id', $taskIds)
+                        ->where(function ($q) {
+                            $q->whereNull('schedule_days')->orWhere('schedule_days', '');
+                        })
+                        ->update(['schedule_days' => AutomatedTaskSchedule::DEFAULT_WEEKLY_DAYS]);
+                }
                 
                 return response()->json([
                     'success' => true,
@@ -3369,6 +3399,10 @@ class TaskController extends Controller
         if (($validated['schedule_type'] ?? '') === 'daily') {
             $validated['schedule_time'] = '12:01:00';
         }
+        $validated['schedule_days'] = AutomatedTaskSchedule::applyDefaultDays(
+            (string) ($validated['schedule_type'] ?? ''),
+            $validated['schedule_days'] ?? ''
+        );
 
         $user = Auth::user();
         $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
@@ -3518,6 +3552,10 @@ class TaskController extends Controller
         if (($validated['schedule_type'] ?? '') === 'daily') {
             $validated['schedule_time'] = '12:01:00';
         }
+        $validated['schedule_days'] = AutomatedTaskSchedule::applyDefaultDays(
+            (string) ($validated['schedule_type'] ?? ''),
+            $validated['schedule_days'] ?? ''
+        );
 
         $user = Auth::user();
         $existing = \DB::table('automate_tasks')->where('id', $id)->first();

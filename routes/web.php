@@ -3804,6 +3804,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/cvr-master-siblings', [CvrMasterController::class, 'getSiblingSkus'])->name('cvr.master.siblings');
     Route::get('/cvr-master-push-history', [CvrMasterController::class, 'getSkuPushHistory'])->name('cvr.master.push.history');
     Route::post('/cvr-master-bulk-change-price', [CvrMasterController::class, 'bulkChangePrice'])->name('cvr.master.bulk.change.price');
+    Route::post('/cvr-master-prc-cpr', [CvrMasterController::class, 'getPrcCprReport'])->name('cvr.master.prc.cpr');
 
     // Pricing Master CVR Route (uses CVR Master controller)
     Route::get('/pricing-master-cvr', [CvrMasterController::class, 'pricingMasterCvrView'])->name('pricing.master.cvr');

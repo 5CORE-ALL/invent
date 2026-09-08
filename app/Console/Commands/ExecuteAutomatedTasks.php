@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Task;
 use App\Services\TaskWhatsAppNotificationService;
 use App\Support\AutomatedTaskChecklistIds;
+use App\Support\AutomatedTaskSchedule;
 use App\Support\AutomatedTaskSubtaskFirer;
 use App\Support\TaskBusinessTime;
 use Carbon\Carbon;
@@ -57,12 +58,10 @@ class ExecuteAutomatedTasks extends Command
                     break;
 
                 case 'weekly':
-                    // Run on specific days of week (schedule_days can be "Mon,Tue" or "Monday,Tuesday")
-                    if ($task->schedule_days && $task->schedule_time) {
-                        $scheduledDays = array_map(function ($d) {
-                            $d = strtolower(trim($d));
-                            return strlen($d) >= 3 ? substr($d, 0, 3) : $d; // mon, tue, etc.
-                        }, explode(',', $task->schedule_days));
+                    // Run on specific days of week (schedule_days can be "Mon,Tue" or "Monday,Tuesday").
+                    // Empty weekdays default to Monday so bulk-freq / incomplete templates still fire.
+                    if ($task->schedule_time) {
+                        $scheduledDays = AutomatedTaskSchedule::weeklyDayTokens($task->schedule_days ?? '');
                         $taskTime = Carbon::parse($task->schedule_time)->format('H:i');
                         // Use >= to recover missed exact-minute runs if scheduler is delayed.
                         $shouldRun = in_array($currentDay, $scheduledDays, true) && ($currentTime >= $taskTime);
@@ -124,8 +123,8 @@ class ExecuteAutomatedTasks extends Command
                 $second = $timeParts[2] ?? 0;
                 $startDate = TaskBusinessTime::today()->setTime($hour, $minute, $second);
 
-                // For automated tasks: due_date = start_date + 5 days (standard completion window)
-                $dueDate = $startDate->copy()->addDays(5);
+                // Weekly/monthly: due 6 days after create/start. Daily stays 5 days.
+                $dueDate = $startDate->copy()->addDays(TaskBusinessTime::completionWindowDays($task->schedule_type));
                 $completionDate = $dueDate->copy();
 
                 $taskData = [

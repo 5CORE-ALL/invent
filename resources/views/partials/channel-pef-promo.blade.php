@@ -3599,9 +3599,12 @@
         window.chPromoFinalSpriceToSave = chPromoFinalSpriceToSave;
         window.chPromoWipeSpriceRow = chPromoWipeSpriceRow;
         window.chPromoBatchClearThenSave = chPromoBatchClearThenSave;
-        /** Shopify B2C + Newegg: if S PRC is below A Price, raise it to Amz. Above Amz is kept. */
+        /** Shopify B2C + Newegg + Macys: if S PRC is below A Price, raise it to Amz. Above Amz is kept. */
         function chPromoUsesAmzSpriceFloor() {
-            return CHANNEL_PROMO_CHANNEL === 'shopify_b2c' || CHANNEL_PROMO_CHANNEL === 'newegg';
+            return CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                || CHANNEL_PROMO_CHANNEL === 'newegg'
+                || CHANNEL_PROMO_CHANNEL === 'macys'
+                || CHANNEL_PROMO_CHANNEL === 'macy';
         }
         function chPromoFloorShopifySpriceToAmz(d, sprice) {
             if (!chPromoUsesAmzSpriceFloor()) return chPromoRound2(sprice);
@@ -3610,9 +3613,9 @@
             if (s > 0 && amz > 0 && s < amz) return amz;
             return s;
         }
-        /** Macys (same as /temu1-data): if S PRC is above A Price, cap it at Amz. */
+        /** Unused: Macys now floors to Amz (see chPromoUsesAmzSpriceFloor), it does not cap down. */
         function chPromoUsesAmzSpriceCap() {
-            return CHANNEL_PROMO_CHANNEL === 'macys' || CHANNEL_PROMO_CHANNEL === 'macy';
+            return false;
         }
         function chPromoCapSpriceToAmz(d, sprice) {
             if (!chPromoUsesAmzSpriceCap()) return chPromoRound2(sprice);
@@ -3799,12 +3802,12 @@
                     if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c' && typeof chPromoFinalSpriceToSave === 'function') {
                         return chPromoFinalSpriceToSave(d, sprcDil);
                     }
-                    return chPromoCapSpriceToLmp(d, chPromoCapSpriceToAmz(d, sprcDil));
+                    return chPromoFloorShopifySpriceToAmz(d, chPromoCapSpriceToLmp(d, sprcDil));
                 }
             }
             const zeroSold = typeof chPromoZeroSoldRuleSprice === 'function' ? chPromoZeroSoldRuleSprice(d) : 0;
             if (typeof chPromoUsesSprcDilOnlySprice === 'function' && chPromoUsesSprcDilOnlySprice()) {
-                return zeroSold > 0 ? chPromoCapSpriceToLmp(d, chPromoCapSpriceToAmz(d, zeroSold)) : 0;
+                return zeroSold > 0 ? chPromoFloorShopifySpriceToAmz(d, chPromoCapSpriceToLmp(d, zeroSold)) : 0;
             }
             const dilSgroi = (!zeroSold && typeof chPromoDilSgroiRuleSprice === 'function')
                 ? chPromoDilSgroiRuleSprice(d)
@@ -3820,7 +3823,9 @@
                 ? (zeroSold > 0 ? zeroSold : dilSgroi)
                 : chPromoResolveTemuSprice(d, start, { use_passed_as_discounted: start > 0 });
             if (!(live > 0)) return 0;
-            return chPromoIsFairePromoChannel() ? chPromoRound2(live) : chPromoCapSpriceToLmp(d, chPromoCapSpriceToAmz(d, live));
+            return chPromoIsFairePromoChannel()
+                ? chPromoRound2(live)
+                : chPromoFloorShopifySpriceToAmz(d, chPromoCapSpriceToLmp(d, live));
         }
         /** Cell / S GPFT / S GROI: saved SPRICE only. No live fallback. */
         function chPromoSavedOrLiveSprice(d) {
@@ -4391,8 +4396,8 @@
                 val = extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(rowData)
                     ? chPromoRound2(sprice)
                     : (rowData ? chPromoCapSpriceToLmp(rowData, sprice, extra) : chPromoRound2(sprice));
-                if (rowData) val = chPromoFloorShopifySpriceToAmz(rowData, val);
                 if (rowData) val = chPromoCapSpriceToAmz(rowData, val);
+                if (rowData) val = chPromoFloorShopifySpriceToAmz(rowData, val);
                 if (val > 0) val = chPromoRoundChannelSprice(val);
             }
             if (!sku || !chPromoCfg.saveSpriceUrl) {
@@ -4453,14 +4458,11 @@
                 : ((typeof temuPrepareSpriceForSave === 'function'
                     && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2' || CHANNEL_PROMO_CHANNEL === 'temu3'))
                     ? temuPrepareSpriceForSave(d, sprice)
-                    : chPromoCapSpriceToAmz(
+                    : chPromoFloorShopifySpriceToAmz(
                         d,
-                        chPromoFloorShopifySpriceToAmz(
-                            d,
-                            extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(d)
-                                ? chPromoRound2(sprice)
-                                : chPromoCapSpriceToLmp(d, sprice, extra)
-                        )
+                        extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(d)
+                            ? chPromoRound2(sprice)
+                            : chPromoCapSpriceToLmp(d, sprice, extra)
                     ));
             extra.row = extra.row || row;
             if (!sku) return Promise.resolve(null);

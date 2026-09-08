@@ -482,6 +482,11 @@
                 min-width: 52px;
                 max-width: 68px;
             }
+            .task-toolbar-wrap .toolbar-field-overdue {
+                flex: 0 0 88px;
+                min-width: 78px;
+                max-width: 104px;
+            }
             .task-toolbar-wrap .toolbar-field-group,
             .task-toolbar-wrap .toolbar-field-task {
                 flex: 1 1 58px;
@@ -1036,6 +1041,15 @@
         .stat-card-ca {
             border-left-color: #dc3545;
             cursor: pointer;
+        }
+        .stats-row .stat-card-red.filter-overdue-active {
+            outline: 2px solid #fff;
+            outline-offset: 2px;
+            box-shadow: 0 0 0 3px #dc3545;
+        }
+        .task-stat-trigger[data-metric="overdue"] {
+            user-select: none;
+            -webkit-user-select: none;
         }
         .stat-card-ca .stat-icon {
             background: transparent;
@@ -1808,7 +1822,7 @@
 
             <!-- Overdue Tasks -->
             <div class="col">
-                <div class="stat-card stat-card-red task-stat-trigger" data-metric="overdue" data-value="{{ $stats['overdue'] }}" title="Click to view history">
+                <div class="stat-card stat-card-red task-stat-trigger" data-metric="overdue" data-value="{{ $stats['overdue'] }}" title="Click to filter overdue tasks. Double-click to view history.">
                     <div class="stat-icon">
                         <i class="mdi mdi-alert-circle"></i>
                     </div>
@@ -1984,6 +1998,9 @@
                             <div class="quick-filter-chip" data-filter="high" style="background: #fff3e6; border-color: #fd7e14; color: #b35400;">
                                 <i class="mdi mdi-alert"></i> Urgent
                             </div>
+                            <div class="quick-filter-chip" data-filter="overdue" style="background: #fff5f5; border-color: #dc3545; color: #dc3545;">
+                                <i class="mdi mdi-alert-circle"></i> Overdue
+                            </div>
                         </div>
 
                         <!-- Toolbar + Filters (desktop: one line) -->
@@ -2063,6 +2080,13 @@
                                     <option value="">All</option>
                                     <option value="1">Yes</option>
                                     <option value="0">No</option>
+                                </select>
+                            </div>
+                            <div class="col-12 mb-2 toolbar-field toolbar-field-overdue">
+                                <select id="filter-overdue" class="form-select form-select-sm" title="Overdue">
+                                    <option value="">Overdue All</option>
+                                    <option value="1">Overdue</option>
+                                    <option value="0">Not Overdue</option>
                                 </select>
                             </div>
                             <div class="col-12 mb-2 toolbar-field toolbar-field-group">
@@ -3298,6 +3322,7 @@
                     localStorage.setItem(TASK_INDEX_FILTERS_KEY, JSON.stringify({
                         search: $('#filter-search').val() || '',
                         ca: $('#filter-ca').val() || '',
+                        overdue: $('#filter-overdue').val() || '',
                         group: $('#filter-group').val() || '',
                         task: $('#filter-task').val() || '',
                         assignor: $('#filter-assignor').val() || '',
@@ -3317,6 +3342,7 @@
                     if (!s || typeof s !== 'object') return;
                     $('#filter-search').val(s.search || '');
                     $('#filter-ca').val(s.ca || '');
+                    $('#filter-overdue').val(s.overdue || '');
                     $('#filter-group').val(s.group || '');
                     $('#filter-task').val(s.task || '');
                     $('#filter-status').val(s.status || '');
@@ -3506,12 +3532,43 @@
                 return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
             }
 
+            function isWeeklyOrMonthlyAutoTask(rowData) {
+                if (!rowData) {
+                    return false;
+                }
+                var isAuto = rowData.is_automate_task == 1 || rowData.is_automate_task === true || rowData.is_automate_task === '1';
+                var freq = String(rowData.schedule_type || '').toLowerCase();
+                return isAuto && (freq === 'weekly' || freq === 'monthly');
+            }
+
+            function createdBusinessDate(rowData) {
+                if (!rowData) {
+                    return null;
+                }
+                var created = rowData.created_at ? String(rowData.created_at).slice(0, 10) : '';
+                if (/^\d{4}-\d{2}-\d{2}$/.test(created)) {
+                    return created;
+                }
+                return rowData.tid_business_date || null;
+            }
+
             function isOverdueByBusinessTid(rowData) {
                 if (!rowData || rowData.status === 'Archived' || rowData.status === 'Done') {
                     return false;
                 }
+                if (!taskBusinessToday) {
+                    return false;
+                }
+                // Weekly/monthly automated tasks: overdue 6 days after created_at.
+                if (isWeeklyOrMonthlyAutoTask(rowData)) {
+                    var created = createdBusinessDate(rowData);
+                    if (!created) {
+                        return false;
+                    }
+                    return taskBusinessToday >= addDaysYmd(created, 6);
+                }
                 var bd = rowData.tid_business_date;
-                if (!bd || !taskBusinessToday) {
+                if (!bd) {
                     return false;
                 }
                 return taskBusinessToday > addDaysYmd(bd, 1);
@@ -4653,23 +4710,9 @@
                     }).length
                 };
                 
-                // Overdue calculation:
-                // Task is overdue when TID/start_date + 1 day has already passed and it's not archived.
-                var now = new Date();
+                // Overdue: normal/daily = TID + 1 day; weekly/monthly auto = created_at + 6 days.
                 stats.overdue = filteredData.filter(function(t) {
-                    if (t.start_date && t.status !== 'Archived') {
-                        var tidDate = new Date(t.start_date);
-                        if (isNaN(tidDate.getTime())) return false;
-                        tidDate.setHours(0, 0, 0, 0);
-
-                        // Give all tasks a 1-day grace before overdue.
-                        tidDate.setDate(tidDate.getDate() + 1);
-
-                        var current = new Date(now);
-                        current.setHours(0, 0, 0, 0);
-                        return current > tidDate;
-                    }
-                    return false;
+                    return isOverdueByBusinessTid(t);
                 }).length;
                 
                 // TAT calculation: Average days from start_date to completion_date for Done tasks completed in last 30 days
@@ -4975,6 +5018,25 @@
                 }
             }
 
+            function appendOverdueFilter(filters) {
+                var overdueValue = $('#filter-overdue').val();
+                if (overdueValue === '1') {
+                    filters.push(function (data) {
+                        return isOverdueByBusinessTid(data);
+                    });
+                } else if (overdueValue === '0') {
+                    filters.push(function (data) {
+                        return !isOverdueByBusinessTid(data);
+                    });
+                }
+            }
+
+            function syncOverdueFilterUi() {
+                var overdueOn = $('#filter-overdue').val() === '1';
+                $('.task-stat-trigger[data-metric="overdue"]').toggleClass('filter-overdue-active', overdueOn);
+                $('.quick-filter-chip[data-filter="overdue"]').toggleClass('active', overdueOn);
+            }
+
             function applyFilters() {
                 console.log('🔍 Applying filters...');
                 
@@ -5013,6 +5075,7 @@
                             return !data.assignor_name || data.assignor_name === '-' || data.assignor_name === '';
                         });
                         appendTaskTypeFilter(filters);
+                        appendOverdueFilter(filters);
                         table.setFilter(filters);
                         applyDuplicateTitleFilter();
                         console.log('✓ Filter applied: No Assignor');
@@ -5025,6 +5088,7 @@
                             syncTaskTableHeaderSelectAllCheckbox();
                         }, 100);
                         persistTaskIndexFilters();
+                        syncOverdueFilterUi();
                         return;
                     } else {
                         // Use "like" so tasks show when this person is assignor (exact or in list)
@@ -5056,6 +5120,7 @@
                         table.clearFilter();
                         filters.push({field:"assignee_name", type:"=", value:"-"});
                         appendTaskTypeFilter(filters);
+                        appendOverdueFilter(filters);
                         table.setFilter(filters);
                         applyDuplicateTitleFilter();
                         
@@ -5073,6 +5138,7 @@
                             syncTaskTableHeaderSelectAllCheckbox();
                         }, 100);
                         persistTaskIndexFilters();
+                        syncOverdueFilterUi();
                         return; // Skip other filters
                     } else {
                         // Use "like" so tasks show when this person is assignee (single or in list: "Shobha N" or "Srimanta, Shobha N")
@@ -5082,9 +5148,14 @@
                 }
                 
                 appendTaskTypeFilter(filters);
+                appendOverdueFilter(filters);
                 var taskTypeValue = $('#filter-task-type').val();
                 if (taskTypeValue === 'automated' || taskTypeValue === 'normal') {
                     console.log('Filter - Task type:', taskTypeValue === 'automated' ? 'Automated' : 'Normal');
+                }
+                var overdueValue = $('#filter-overdue').val();
+                if (overdueValue === '1' || overdueValue === '0') {
+                    console.log('Filter - Overdue:', overdueValue === '1' ? 'Overdue' : 'Not Overdue');
                 }
                 
                 // Status filter - Try case-insensitive
@@ -5143,6 +5214,7 @@
                     syncTaskTableHeaderSelectAllCheckbox();
                 }, 100);
                 persistTaskIndexFilters();
+                syncOverdueFilterUi();
             }
 
             function applyUrlAssigneePreset() {
@@ -5164,6 +5236,7 @@
                 }
                 $('#filter-search').val('');
                 $('#filter-ca').val('');
+                $('#filter-overdue').val('');
                 $('#filter-group').val('');
                 $('#filter-task').val('');
                 $('#filter-status').val('');
@@ -5249,6 +5322,7 @@
             $('#filter-status, #filter-task-type').on('change', applyFilters);
             $('#filter-priority').on('change', applyFilters);
             $('#filter-ca').on('change', applyFilters);
+            $('#filter-overdue').on('change', applyFilters);
 
             $('#filter-duplicates-btn, #filter-duplicates-btn-mobile').on('click', function () {
                 duplicateFilterActive = !duplicateFilterActive;
@@ -5821,9 +5895,18 @@
             // ==========================================
             $('.quick-filter-chip').on('click', function() {
                 const filterType = $(this).data('filter');
+
+                if (filterType === 'overdue') {
+                    $('#filter-overdue').val($('#filter-overdue').val() === '1' ? '' : '1');
+                    applyFilters();
+                    if (navigator.vibrate) {
+                        navigator.vibrate(10);
+                    }
+                    return;
+                }
                 
-                // Update active state
-                $('.quick-filter-chip').removeClass('active');
+                // Update active state (Overdue stacks independently)
+                $('.quick-filter-chip').not('[data-filter="overdue"]').removeClass('active');
                 $(this).addClass('active');
                 
                 console.log('Quick filter:', filterType);
@@ -5837,6 +5920,7 @@
                         $('#filter-status').val('');
                         $('#filter-priority').val('');
                         $('#filter-task-type').val('');
+                        $('#filter-overdue').val('');
                         $('#filter-assignor').val('');
                         $('#filter-assignee').val('');
                         console.log('✓ Showing all tasks');
@@ -8004,9 +8088,31 @@
             $('#filter-ca').val(current === '1' ? '' : '1').trigger('change');
         });
 
+        var overdueBadgeClickTimer = null;
+        $(document).on('click', '.task-stat-trigger[data-metric="overdue"]', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            clearTimeout(overdueBadgeClickTimer);
+            overdueBadgeClickTimer = setTimeout(function () {
+                var current = $('#filter-overdue').val();
+                $('#filter-overdue').val(current === '1' ? '' : '1').trigger('change');
+            }, 280);
+        });
+        $(document).on('dblclick', '.task-stat-trigger[data-metric="overdue"]', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            clearTimeout(overdueBadgeClickTimer);
+            currentTaskMetric = 'overdue';
+            var currentValue = parseFloat(this.getAttribute('data-value')) || 0;
+            showTaskHistoryChart('overdue', currentTaskPeriod, currentValue);
+        });
+
         // Stat card click handlers
         document.querySelectorAll('.task-stat-trigger').forEach(card => {
             card.addEventListener('click', function() {
+                if (this.getAttribute('data-metric') === 'overdue') {
+                    return;
+                }
                 currentTaskMetric = this.getAttribute('data-metric');
                 const currentValue = parseFloat(this.getAttribute('data-value')) || 0;
                 showTaskHistoryChart(currentTaskMetric, currentTaskPeriod, currentValue);

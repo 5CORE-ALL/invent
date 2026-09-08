@@ -5,7 +5,8 @@ namespace App\Support;
 use App\Models\AmazonDatasheet;
 
 /**
- * Macys live price push must not exceed the Amazon datasheet price (A Price).
+ * Macys live price push must not go below the Amazon datasheet price (A Price).
+ * Dil / rule SPRICE is kept when it is at or above A Price.
  */
 class MacysAmazonPriceCap
 {
@@ -13,7 +14,7 @@ class MacysAmazonPriceCap
     {
         $price = round($price, 2);
         $amazon = $amazonPrice !== null ? round((float) $amazonPrice, 2) : 0.0;
-        if ($price > 0 && $amazon > 0 && $price > $amazon) {
+        if ($price > 0 && $amazon > 0 && $price < $amazon) {
             return $amazon;
         }
 
@@ -42,18 +43,20 @@ class MacysAmazonPriceCap
     }
 
     /**
-     * @return array{price: float, amazon_price: float, capped: bool}
+     * @return array{price: float, amazon_price: float, capped: bool, floored: bool}
      */
     public static function applyForSku(string $sku, float $price): array
     {
         $requested = round($price, 2);
         $amazon = self::amazonPriceForSku($sku);
-        $capped = self::cap($requested, $amazon);
+        $applied = self::cap($requested, $amazon);
+        $floored = $amazon > 0 && $requested > 0 && $applied > $requested + 0.0001;
 
         return [
-            'price' => $capped,
+            'price' => $applied,
             'amazon_price' => $amazon,
-            'capped' => $amazon > 0 && $requested > 0 && $capped < $requested - 0.0001,
+            'capped' => $floored,
+            'floored' => $floored,
         ];
     }
 

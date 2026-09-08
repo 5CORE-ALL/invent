@@ -227,15 +227,15 @@ class ChannelPushSpriceRunner
                     throw new \RuntimeException('SKU and S PRC > 0 required');
                 }
                 if (in_array($this->channel, ['macys', 'macy'], true)) {
-                    $capped = MacysAmazonPriceCap::capForSku($sku, $price);
-                    if ($capped > 0 && abs($capped - $price) >= 0.005) {
-                        $logger->info('S PRC capped at Amazon price', [
+                    $floored = MacysAmazonPriceCap::capForSku($sku, $price);
+                    if ($floored > 0 && abs($floored - $price) >= 0.005) {
+                        $logger->info('S PRC raised to Amazon price', [
                             'channel' => $this->channel,
                             'sku' => $sku,
                             'requested' => $price,
-                            'capped' => $capped,
+                            'floored' => $floored,
                         ]);
-                        $price = $capped;
+                        $price = $floored;
                     }
                 }
                 $pushRes = $this->pushPrice($sku, $price);
