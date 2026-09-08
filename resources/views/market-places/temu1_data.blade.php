@@ -578,7 +578,7 @@
                             title="Recovery Price = Sales × 0.88 (Full Temu Price × 0.88 × Qty)">Recovery: $0</span>
                         <span class="badge fs-6 p-2" id="total-spend-badge"
                             style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; font-weight: bold;"
-                            title="Sum of Spend from Temu Ads">Spend: $0</span>
+                            title="Same Spend as /temu/ads (current Last 30 days window, including paused)">Spend: $0</span>
                         <span class="badge fs-6 p-2 temu-badge-history" id="qty-sold-badge"
                             data-badge-metric="total_quantity" data-badge-label="QTY"
                             style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
@@ -3546,7 +3546,7 @@
 
         let totalCampaignCountFromBackend = 0;
         let salesSummaryFromBackend = null;
-        let adTotalsFromBackend = null; // authoritative Spend from temu2_campaign_reports
+        let adTotalsFromBackend = null; // same Spend as /temu/ads (current window)
         let badgeAvgAds = null; // Ads % from badge — shown in ADS% column for all rows
         let currentCampaignPeriod = 'L30';
 

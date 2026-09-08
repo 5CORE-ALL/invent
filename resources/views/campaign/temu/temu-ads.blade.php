@@ -1281,8 +1281,17 @@
                 });
             }
 
-            function paintMetricBadges(rows) {
+            function paintMetricBadges(rows, response) {
                 const m = badgeCounts(rows);
+                if (response && response.spend_sum != null && isFinite(parseFloat(response.spend_sum))) {
+                    m.spend = parseFloat(response.spend_sum);
+                }
+                if (response && response.clicks_sum != null && isFinite(parseFloat(response.clicks_sum))) {
+                    m.clicks = parseFloat(response.clicks_sum);
+                }
+                if (response && response.impressions_sum != null && isFinite(parseFloat(response.impressions_sum))) {
+                    m.impressions = parseFloat(response.impressions_sum);
+                }
                 currentAvgCtr = Number(m.ctr) || 0;
                 setBadgeVal('row-count', Number(m.rows).toLocaleString());
                 setBadgeVal('impr-sum', Math.round(m.impressions).toLocaleString());
@@ -1595,7 +1604,7 @@
                 if (response && response.tacos != null && isFinite(parseFloat(response.tacos))) {
                     channelTacos = parseFloat(response.tacos);
                 }
-                paintMetricBadges(rows);
+                paintMetricBadges(rows, response);
                 updateFilterCounts(rows);
             }
 

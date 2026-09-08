@@ -73,9 +73,16 @@ class TemuAdsController extends Controller
             return (int) $r->start_ts === $spendWindow['start_ts'];
         };
         $windowRecords = $records->filter($inSpendWindow);
-        $spendSum = round((float) $windowRecords->sum(fn (TemuAdsApiReport $r) => (float) ($r->ad_spend ?? 0)), 2);
-        $imprSum = (int) $windowRecords->sum(fn (TemuAdsApiReport $r) => (int) ($r->impressions ?? 0));
-        $clickSum = (int) $windowRecords->sum(fn (TemuAdsApiReport $r) => (int) ($r->clicks ?? 0));
+        if (in_array($period, ['L7', 'L30', 'L60'], true)) {
+            $badge = TemuAdsApiReport::badgeTotals($period);
+            $spendSum = $badge['spend'];
+            $imprSum = $badge['impressions'];
+            $clickSum = $badge['clicks'];
+        } else {
+            $spendSum = round((float) $windowRecords->sum(fn (TemuAdsApiReport $r) => (float) ($r->ad_spend ?? 0)), 2);
+            $imprSum = (int) $windowRecords->sum(fn (TemuAdsApiReport $r) => (int) ($r->impressions ?? 0));
+            $clickSum = (int) $windowRecords->sum(fn (TemuAdsApiReport $r) => (int) ($r->clicks ?? 0));
+        }
 
         $l7ClicksByGoods = TemuAdsApiReport::query()
             ->where('period', 'L7')
@@ -1405,14 +1412,14 @@ class TemuAdsController extends Controller
         }
 
         try {
-            $q = TemuAdsApiReport::query()->inLatestWindow('L30');
+            $tot = TemuAdsApiReport::badgeTotals('L30');
 
             return [
-                'spend' => round((float) $q->clone()->sum('ad_spend'), 2),
-                'clicks' => (int) $q->clone()->sum('clicks'),
-                'sold' => (int) $q->clone()->sum('order_pay_cnt'),
-                'sales' => round((float) $q->clone()->sum('order_pay_amt'), 2),
-                'active' => (int) $q->clone()->liveAds()->count(),
+                'spend' => $tot['spend'],
+                'clicks' => $tot['clicks'],
+                'sold' => $tot['sold'],
+                'sales' => $tot['sales'],
+                'active' => (int) TemuAdsApiReport::query()->inLatestWindow('L30')->liveAds()->count(),
             ];
         } catch (\Throwable $e) {
             Log::warning('Advertisement Master Temu L30 metrics failed: '.$e->getMessage());

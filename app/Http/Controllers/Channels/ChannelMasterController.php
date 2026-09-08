@@ -1593,7 +1593,7 @@ class ChannelMasterController extends Controller
 
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if (strcasecmp($name, 'Temu') !== 0) {
+            if ($this->allMarketplaceSnapshotKey($name) !== 'temu') {
                 continue;
             }
 
@@ -1658,24 +1658,11 @@ class ChannelMasterController extends Controller
             return $empty;
         }
 
-        $select = '
-            COALESCE(SUM(ad_spend), 0) AS spend,
-            COALESCE(SUM(clicks), 0) AS clicks,
-            COALESCE(SUM(order_pay_amt), 0) AS ad_sales,
-            COALESCE(SUM(order_pay_cnt), 0) AS ad_sold
-        ';
-
-        // Same window as /temu/ads Spend (latest stored Last-30 range, all statuses).
-        // Do not mix leftover rows whose start_ts is still a prior month.
-        $tot = TemuAdsApiReport::query()
-            ->inLatestWindow($period)
-            ->selectRaw($select)
-            ->first();
-
-        $sp = round((float) ($tot->spend ?? 0), 2);
-        $c = (int) ($tot->clicks ?? 0);
-        $s = round((float) ($tot->ad_sales ?? 0), 2);
-        $u = (int) ($tot->ad_sold ?? 0);
+        $tot = TemuAdsApiReport::badgeTotals($period);
+        $sp = (float) $tot['spend'];
+        $c = (int) $tot['clicks'];
+        $s = (float) $tot['sales'];
+        $u = (int) $tot['sold'];
 
         return [
             'clicks' => $c,
