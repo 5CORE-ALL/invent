@@ -171,6 +171,10 @@ class PurchasingPowerController extends Controller
             $row['SPRICE']          = null;
             $row['has_custom_sprice'] = false;
             $row['SPRICE_STATUS']   = null;
+            $row['push_status']     = null;
+            $row['SPRICE_PUSHED_VALUE'] = null;
+            $row['SPRICE_STATUS_UPDATED_AT'] = null;
+            $row['SPRICE_PUSHED_BY'] = null;
             $row['B Link']          = '';
             $row['S Link']          = '';
 
@@ -191,7 +195,14 @@ class PurchasingPowerController extends Controller
                         $row['SPRICE_STATUS']     = $raw['SPRICE_STATUS'] ?? 'saved';
                     } else {
                         $row['SPRICE'] = isset($dataViews[$pm->sku]) ? 0 : null;
+                        $row['SPRICE_STATUS'] = $raw['SPRICE_STATUS'] ?? null;
                     }
+                    $row['push_status'] = $row['SPRICE_STATUS'];
+                    $row['SPRICE_PUSHED_VALUE'] = isset($raw['SPRICE_PUSHED_VALUE'])
+                        ? floatval($raw['SPRICE_PUSHED_VALUE'])
+                        : null;
+                    $row['SPRICE_STATUS_UPDATED_AT'] = $raw['SPRICE_STATUS_UPDATED_AT'] ?? $raw['SPRICE_PUSHED_AT'] ?? null;
+                    $row['SPRICE_PUSHED_BY'] = $raw['SPRICE_PUSHED_BY'] ?? null;
                 }
             }
 
@@ -353,6 +364,11 @@ class PurchasingPowerController extends Controller
             Log::info('PP SPRICE saved', ['sku' => $sku, 'sprice' => $sprice]);
 
             $skipPush = $request->boolean('skip_push') || $sprice <= 0;
+            if ($sprice <= 0) {
+                $this->persistPpPushStatus($sku, 'cleared', 0);
+            } elseif ($skipPush) {
+                $this->persistPpPushStatus($sku, 'applied', $sprice);
+            }
             $pushResult = $skipPush
                 ? ['success' => true, 'message' => 'Saved without marketplace push', 'skipped' => true]
                 : $this->pushPriceToPurchasingPower($sku, $sprice);
@@ -366,6 +382,9 @@ class PurchasingPowerController extends Controller
                 'price_push_message' => (string) ($pushResult['message'] ?? ''),
                 'price_push_status_code' => $pushResult['status_code'] ?? null,
                 'price_push_skipped' => $skipPush,
+                'push_status'        => $skipPush
+                    ? ($sprice <= 0 ? 'cleared' : 'applied')
+                    : ((($pushResult['success'] ?? false) === true) ? 'pushed' : 'error'),
             ]);
         } catch (\Exception $e) {
             Log::error('PP SPRICE tabulator save failed: ' . $e->getMessage());
@@ -413,6 +432,8 @@ class PurchasingPowerController extends Controller
 
                 if ($sprice == 0) {
                     unset($stored['SPRICE'], $stored['SPFT'], $stored['SROI'], $stored['SGPFT']);
+                    $stored['SPRICE_STATUS'] = 'cleared';
+                    $stored['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
                 } else {
                     $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp) / $sprice) * 100, 2) : 0;
                     $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp) / $lp)     * 100, 2) : 0;
@@ -421,6 +442,8 @@ class PurchasingPowerController extends Controller
                     $stored['SGPFT']  = $sgpft;
                     $stored['SPFT']   = $sgpft;
                     $stored['SROI']   = $sroi;
+                    $stored['SPRICE_STATUS'] = 'applied';
+                    $stored['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
                 }
 
                 $view->value = $stored;
@@ -435,13 +458,21 @@ class PurchasingPowerController extends Controller
             $pricePushSuccess = 0;
             $pricePushFailed = 0;
             $pricePushErrors = [];
+            $pricePushResults = [];
             $singlePushResult = null;
             foreach ($skipPush ? [] : $pricePushQueue as $pushItem) {
                 $pushResult = $this->pushPriceToPurchasingPower($pushItem['sku'], (float) $pushItem['sprice']);
+                $ok = ($pushResult['success'] ?? false) === true;
+                $pricePushResults[] = [
+                    'sku' => $pushItem['sku'],
+                    'success' => $ok,
+                    'price' => (float) $pushItem['sprice'],
+                    'message' => (string) ($pushResult['message'] ?? ''),
+                ];
                 if (count($pricePushQueue) === 1) {
                     $singlePushResult = $pushResult;
                 }
-                if (($pushResult['success'] ?? false) === true) {
+                if ($ok) {
                     $pricePushSuccess++;
                 } else {
                     $pricePushFailed++;
@@ -456,6 +487,7 @@ class PurchasingPowerController extends Controller
                 'price_push_success_count' => $pricePushSuccess,
                 'price_push_failed_count'  => $pricePushFailed,
                 'price_push_skipped'       => $skipPush,
+                'price_push_results'       => $pricePushResults,
             ];
             if ($pricePushErrors !== []) {
                 $response['price_push_errors'] = $pricePushErrors;
@@ -723,6 +755,25 @@ class PurchasingPowerController extends Controller
         });
     }
 
+    public function pushPriceTabulator(Request $request)
+    {
+        $sku = strtoupper(trim((string) $request->input('sku', '')));
+        $price = $request->input('price', $request->input('sprice'));
+        if ($sku === '' || ! is_numeric($price) || (float) $price <= 0) {
+            return response()->json(['success' => false, 'message' => 'SKU and price required'], 422);
+        }
+
+        $result = $this->pushPriceToPurchasingPower($sku, (float) $price);
+
+        return response()->json([
+            'success' => (bool) ($result['success'] ?? false),
+            'message' => (string) ($result['message'] ?? ''),
+            'status_code' => $result['status_code'] ?? null,
+            'price' => (float) $price,
+            'push_status' => (($result['success'] ?? false) === true) ? 'pushed' : 'error',
+        ], ($result['success'] ?? false) ? 200 : 422);
+    }
+
     /**
      * @return array{success: bool, message: string, status_code?: int|null}
      */
@@ -733,11 +784,55 @@ class PurchasingPowerController extends Controller
         }
 
         try {
-            return app(PurchasingPowerApiService::class)->updatePrice($sku, $sprice);
+            $result = app(PurchasingPowerApiService::class)->updatePrice($sku, $sprice);
+            $this->persistPpPushStatus(
+                $sku,
+                (($result['success'] ?? false) === true) ? 'pushed' : 'error',
+                $sprice
+            );
+
+            return $result;
         } catch (\Throwable $e) {
+            $this->persistPpPushStatus($sku, 'error', $sprice);
             Log::error('Purchasing Power price push call failed', ['sku' => $sku, 'error' => $e->getMessage()]);
 
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private function persistPpPushStatus(string $sku, string $status, ?float $price = null): void
+    {
+        try {
+            $skuKey = strtoupper(trim($sku));
+            $dataView = PurchasingPowerDataView::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuKey])
+                ->first()
+                ?: PurchasingPowerDataView::firstOrNew(['sku' => $skuKey]);
+            $existing = is_array($dataView->value)
+                ? $dataView->value
+                : (json_decode((string) ($dataView->value ?? ''), true) ?: []);
+            if (! is_array($existing)) {
+                $existing = [];
+            }
+            $existing['SPRICE_STATUS'] = $status;
+            $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            $existing['SPRICE_PUSHED_AT'] = now()->toDateTimeString();
+            if ($price !== null) {
+                $existing['SPRICE_PUSHED_VALUE'] = round((float) $price, 2);
+            }
+            if (auth()->check()) {
+                $existing['SPRICE_PUSHED_BY'] = auth()->user()->name ?? auth()->user()->email;
+                $existing['SPRICE_PUSHED_BY_ID'] = auth()->id();
+            }
+            $dataView->sku = $dataView->sku ?: $skuKey;
+            $dataView->value = $existing;
+            $dataView->save();
+        } catch (\Throwable $e) {
+            Log::warning('Purchasing Power persist push status failed', [
+                'sku' => $sku,
+                'status' => $status,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }

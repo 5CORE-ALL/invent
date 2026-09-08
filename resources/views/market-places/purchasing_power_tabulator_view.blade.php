@@ -881,6 +881,95 @@
         function ppIsParentRow(d) {
             return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
         }
+        function ppPushPriceValue(d) {
+            let p = parseFloat(d && d.SPRICE) || 0;
+            if (typeof chPromoFinalSpriceToSave === 'function' && p > 0) {
+                p = Number(chPromoFinalSpriceToSave(d, p)) || p;
+            } else if (window.SpriceLmpCap && p > 0) {
+                p = Number(SpriceLmpCap.prepare(d, p)) || p;
+            }
+            return Math.round((Number(p) || 0) * 100) / 100;
+        }
+        function ppFindRowBySku(sku) {
+            const want = String(sku || '').trim().toUpperCase();
+            if (!want || typeof table === 'undefined' || !table) return null;
+            try {
+                const exact = table.searchRows('(Child) sku', '=', sku);
+                if (exact && exact.length) return exact[0];
+            } catch (e) { /* ignore */ }
+            let found = null;
+            try {
+                (table.getRows() || []).forEach(function(row) {
+                    if (found) return;
+                    const d = row.getData() || {};
+                    if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) found = row;
+                });
+            } catch (e) { /* ignore */ }
+            return found;
+        }
+        function ppApplyPushResults(results) {
+            (results || []).forEach(function(r) {
+                if (!r || !r.sku) return;
+                const row = ppFindRowBySku(r.sku);
+                if (!row) return;
+                const ok = !!r.success;
+                const live = Number(r.price) || 0;
+                const patch = {
+                    SPRICE_STATUS: ok ? 'pushed' : 'error',
+                    push_status: ok ? 'pushed' : 'error',
+                };
+                if (ok && live > 0) {
+                    patch.SPRICE_PUSHED_VALUE = live;
+                    patch['PP Price'] = live;
+                }
+                try { row.update(patch); } catch (e) { /* ignore */ }
+                try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
+            });
+        }
+        function ppPushPriceForRow(row) {
+            if (!row || typeof row.getData !== 'function') return;
+            const d = row.getData() || {};
+            if (ppIsParentRow(d)) return;
+            const sku = String(d['(Child) sku'] || '').trim();
+            const price = ppPushPriceValue(d);
+            const status = String(d.push_status || d.SPRICE_STATUS || '');
+            if (!sku || !(price > 0)) {
+                showToast('Set a valid SPRICE before pushing', 'error');
+                return;
+            }
+            if (status === 'pushing' || status === 'processing' || status === 'queued') return;
+            try { row.update({ SPRICE_STATUS: 'queued', push_status: 'queued' }); } catch (e) { /* ignore */ }
+            if (typeof enqueueChannelPushSpriceAfterSave === 'function'
+                && typeof chPushSpriceAutoPushAllowed === 'function'
+                && chPushSpriceAutoPushAllowed()) {
+                enqueueChannelPushSpriceAfterSave(sku, price, row, { force: true });
+                return;
+            }
+            $.ajax({
+                url: '/pp-push-price',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Accept': 'application/json'
+                },
+                data: { sku: sku, price: price }
+            }).done(function(resp) {
+                ppApplyPushResults([{
+                    sku: sku,
+                    success: !!(resp && resp.success),
+                    price: (resp && resp.price != null) ? resp.price : price,
+                    message: (resp && resp.message) || ''
+                }]);
+                if (resp && resp.success) {
+                    showToast(sku + ': price pushed', 'success');
+                } else {
+                    showToast((resp && resp.message) || 'Purchasing Power price push failed', 'error');
+                }
+            }).fail(function(xhr) {
+                ppApplyPushResults([{ sku: sku, success: false, price: price }]);
+                showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Purchasing Power price push failed', 'error');
+            });
+        }
         function ppRowSpriceForAlert(data) {
             let sprice = parseFloat(data && data.SPRICE) || 0;
             if (typeof chPromoLiveSprice === 'function' && !ppIsParentRow(data)) {
@@ -1052,6 +1141,9 @@
                 success: function(response) {
                     if (response.success) {
                         console.log('PP SPRICE saved:', response.updated, 'records');
+                        if (Array.isArray(response.price_push_results) && response.price_push_results.length) {
+                            ppApplyPushResults(response.price_push_results);
+                        }
                         if (response.price_push_success_count !== undefined || response.price_push_failed_count !== undefined) {
                             const pushOk = Number(response.price_push_success_count || 0);
                             const pushFail = Number(response.price_push_failed_count || 0);
@@ -1113,13 +1205,21 @@
                 success: function(response) {
                     const pushOk = response.price_push_success === true || response.price_push_skipped === true;
                     const pushMsg = response.price_push_message ? ` — ${response.price_push_message}` : '';
+                    const status = response.push_status
+                        || (response.price_push_skipped ? 'applied' : (pushOk ? 'pushed' : 'error'));
                     showToast(
                         (pushOk ? '✓ SPRICE saved' : '⚠ SPRICE saved, push failed') + `: ${sku} = $${parseFloat(sprice).toFixed(2)}` + pushMsg,
                         pushOk ? 'success' : 'warning'
                     );
-                    if (response.spft_percent  !== undefined) row.update({ SPFT:  response.spft_percent });
-                    if (response.sroi_percent  !== undefined) row.update({ SROI:  response.sroi_percent });
-                    if (response.sgpft_percent !== undefined) row.update({ SGPFT: response.sgpft_percent });
+                    const patch = { SPRICE_STATUS: status, push_status: status };
+                    if (response.spft_percent  !== undefined) patch.SPFT = response.spft_percent;
+                    if (response.sroi_percent  !== undefined) patch.SROI = response.sroi_percent;
+                    if (response.sgpft_percent !== undefined) patch.SGPFT = response.sgpft_percent;
+                    if (status === 'pushed' && Number(sprice) > 0) {
+                        patch.SPRICE_PUSHED_VALUE = Number(sprice);
+                        patch['PP Price'] = Number(sprice);
+                    }
+                    row.update(patch);
                 },
                 error: function(xhr) {
                     if (retryCount < 3) setTimeout(() => saveSpriceWithRetry(sku, sprice, row, retryCount + 1, true), 2000);
@@ -1404,6 +1504,7 @@
                         let bg = '';
                         if (d.SPRICE_STATUS === 'pushed') bg = 'background-color:#fff3cd;';
                         else if (d.SPRICE_STATUS === 'applied') bg = 'background-color:#d4edda;';
+                        else if (d.SPRICE_STATUS === 'error') bg = 'background-color:#f8d7da;';
                         else if (d.has_custom_sprice) bg = 'background-color:#e7f1ff;';
                         if (!(value > 0)) return '';
                         const live = parseFloat(d['PP Price']) || 0;
@@ -1421,6 +1522,71 @@
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
                         return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                    }
+                },
+                {
+                    title: 'Push',
+                    field: 'push_status',
+                    hozAlign: 'center',
+                    headerSort: true,
+                    width: 52,
+                    headerTooltip: 'Price push status. Double tick = pushed to Purchasing Power. Cross = failed. Click to push or retry.',
+                    sorter: function(a, b, aRow, bRow) {
+                        const rank = function(d) {
+                            const status = String((d && (d.push_status || d.SPRICE_STATUS)) || '');
+                            if (status === 'pushed') return 4;
+                            if (status === 'queued' || status === 'pushing' || status === 'processing') return 3;
+                            if (status === 'error' || status === 'failed') return 2;
+                            return ppPushPriceValue(d) > 0 ? 1 : 0;
+                        };
+                        return rank(aRow.getData()) - rank(bRow.getData());
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (ppIsParentRow(rowData)) return '';
+                        const sku = String(rowData['(Child) sku'] || '');
+                        const price = ppPushPriceValue(rowData);
+                        if (!sku || !(price > 0)) return '';
+                        const status = String(rowData.push_status || rowData.SPRICE_STATUS || '');
+                        const pushedValue = rowData.SPRICE_PUSHED_VALUE;
+                        const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT || '';
+                        const pushedBy = rowData.SPRICE_PUSHED_BY || '';
+                        let icon = '<i class="fas fa-upload"></i>';
+                        let color = '#0d6efd';
+                        let tip = 'Push $' + price.toFixed(2) + ' to Purchasing Power';
+                        if (status === 'pushing' || status === 'processing' || status === 'queued') {
+                            icon = '<i class="fas fa-spinner fa-spin"></i>';
+                            color = '#ffc107';
+                            tip = 'Pushing to Purchasing Power…';
+                        } else if (status === 'pushed') {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            color = '#28a745';
+                            tip = 'Pushed to Purchasing Power';
+                        } else if (status === 'error' || status === 'failed') {
+                            icon = '<i class="fa-solid fa-x"></i>';
+                            color = '#dc3545';
+                            tip = 'Push failed — click to retry';
+                        }
+                        if (pushedValue != null && pushedValue !== '') {
+                            tip += ' | Last $' + (parseFloat(pushedValue) || 0).toFixed(2);
+                        }
+                        if (updatedAt) tip += ' | ' + updatedAt;
+                        if (pushedBy) tip += ' | by ' + pushedBy;
+                        return '<button type="button" class="pp-push-single-btn" data-sku="'
+                            + sku.replace(/"/g, '&quot;') + '" data-price="' + price.toFixed(2)
+                            + '" data-status="' + status.replace(/"/g, '&quot;')
+                            + '" title="' + String(tip).replace(/"/g, '&quot;')
+                            + '" style="border:none;background:none;color:' + color
+                            + ';padding:0;cursor:pointer;font-size:16px;">' + icon + '</button>';
+                    },
+                    cellClick: function(e, cell) {
+                        const t = e.target;
+                        if (!t || typeof t.closest !== 'function') return;
+                        const btn = t.closest('.pp-push-single-btn');
+                        if (!btn) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        ppPushPriceForRow(cell.getRow());
                     }
                 },
                 {

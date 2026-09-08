@@ -3729,6 +3729,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/pp-update-links', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'updateLinks'])->name('pp.update.links');
     Route::post('/pp-save-sprice-tabulator', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'saveSpriceTabulator'])->name('pp.save.sprice.tabulator');
     Route::post('/pp-save-sprice-batch', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'saveSpriceUpdates'])->name('pp.save.sprice.batch');
+    Route::post('/pp-push-price', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'pushPriceTabulator'])->name('pp.push.price');
     Route::get('/pp-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'getColumnVisibility'])->name('pp.pricing.column.get');
     Route::post('/pp-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'setColumnVisibility'])->name('pp.pricing.column.set');
 
