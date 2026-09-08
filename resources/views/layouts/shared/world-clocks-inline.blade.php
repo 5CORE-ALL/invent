@@ -94,8 +94,8 @@
     </div>
     <div class="wc-divider" aria-hidden="true"></div>
     <div class="wc-zone">
-        <div class="wc-flag-row" role="img" aria-label="Shobha Time, India">
-            <span class="wc-code wc-place-name">Shobha</span>
+        <div class="wc-flag-row" role="img" aria-label="India">
+            <span class="wc-code wc-place-name">India</span>
             <img class="wc-flag-img" src="https://flagcdn.com/w40/in.png" width="18" height="14" alt="" decoding="async" loading="eager">
         </div>
         <div class="wc-time" id="wc-in-time">—</div>
