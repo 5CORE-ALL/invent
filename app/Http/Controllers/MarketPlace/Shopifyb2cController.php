@@ -845,8 +845,15 @@ class Shopifyb2cController extends Controller
             ->get()
             ->keyBy('sku');
 
-        // Fetch Amazon prices
-        $amazonData = AmazonDatasheet::whereIn("sku", $skus)->get()->keyBy("sku");
+        // Fetch Amazon prices (uppercase key — same as /newegg; exact sku keyBy missed case drift)
+        $amazonBySku = [];
+        foreach (AmazonDatasheet::whereIn('sku', $skus)->get(['sku', 'price']) as $amzRow) {
+            $key = strtoupper(trim((string) $amzRow->sku));
+            if ($key === '') {
+                continue;
+            }
+            $amazonBySku[$key] = (float) ($amzRow->price ?? 0);
+        }
 
         // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
         $amazonStandardPrices = [];
@@ -974,11 +981,7 @@ class Shopifyb2cController extends Controller
             }
 
             // Amazon Price
-            if (isset($amazonData[$sku])) {
-                $processedItem["A Price"] = $amazonData[$sku]->price ?? 0;
-            } else {
-                $processedItem["A Price"] = 0;
-            }
+            $processedItem["A Price"] = $amazonBySku[strtoupper(trim((string) $sku))] ?? 0;
 
             // Get NR/REQ from shopify_b2c_listing_statuses
             $processedItem["nr_req"] = 'REQ'; // Default value

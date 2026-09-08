@@ -11,12 +11,14 @@ use App\Models\ProductMaster;
 use App\Models\ShopifyB2CDailyData;
 use App\Models\ShopifySku;
 use App\Models\Shopifyb2cDataView;
+use App\Support\AmazonDilGroiRule;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Page-less CVR Disc → S PRC. 0 Sold Dil/Min ROI is removed; Sprc Dil owns 0 Sold on the page.
+ * Page-less Sprc Dil → S PRC (same as /shopify-b2c-pricing), then raise to A Price when below Amz.
+ * CVR Disc is the fallback when Dil does not match and B2C L30 > 0.
  * Writes shopifyb2c_data_view SPRICE + PEF_CPN_PCT even if /shopify-b2c-pricing is closed.
  */
 class ShopifyB2cRuleSpriceApplyService
@@ -33,6 +35,7 @@ class ShopifyB2cRuleSpriceApplyService
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
         $cvrRules = $this->loadCvrRules();
+        $dilRules = $this->loadDilGroiRules();
         $zeroRules = [];
         $zeroMinRoi = 0.0;
         $margin = MarketplacePercentage::takeHomeForPromoChannel('shopify_b2c');
@@ -40,7 +43,7 @@ class ShopifyB2cRuleSpriceApplyService
             $margin = 0.95;
         }
 
-        $this->log($logger, 'Loaded CVR slabs='.count($cvrRules).' (0 Sold Dil rule removed)');
+        $this->log($logger, 'Loaded Dil slabs='.count($dilRules).' CVR slabs='.count($cvrRules));
 
         $stats = [
             'candidates' => 0,
@@ -77,6 +80,7 @@ class ShopifyB2cRuleSpriceApplyService
                 ->orderBy('id')
                 ->chunkById(150, function ($rows) use (
                     $cvrRules,
+                    $dilRules,
                     $zeroRules,
                     $zeroMinRoi,
                     $margin,
@@ -98,7 +102,7 @@ class ShopifyB2cRuleSpriceApplyService
                             return false;
                         }
                         try {
-                            $computed = $this->computeTarget($row, $cvrRules, $zeroRules, $zeroMinRoi, $margin);
+                            $computed = $this->computeTarget($row, $cvrRules, $zeroRules, $zeroMinRoi, $margin, $dilRules);
                             if ($computed === null) {
                                 $stats['skipped']++;
                                 continue;
@@ -228,7 +232,8 @@ class ShopifyB2cRuleSpriceApplyService
                 'lp' => $lp,
                 'ship' => $ship,
                 'std' => $stdBySku[$sku] ?? 0.0,
-                'amz' => (float) ($amzPrices[$sku]->price ?? 0),
+                'amz' => isset($amzPrices[$sku]) ? (float) ($amzPrices[$sku]->price ?? 0) : 0.0,
+                'amz_sugg' => ! empty($saved['AMZ_SUGG_APPLIED']),
                 'saved_sprice' => is_numeric($saved['SPRICE'] ?? null) ? (float) $saved['SPRICE'] : 0.0,
                 'saved_prmt' => is_numeric($saved['PEF_PRMT_PCT'] ?? null) ? (float) $saved['PEF_PRMT_PCT'] : null,
                 'saved_cpn' => is_numeric($saved['PEF_CPN_PCT'] ?? null) ? (float) $saved['PEF_CPN_PCT'] : null,
@@ -242,9 +247,10 @@ class ShopifyB2cRuleSpriceApplyService
      * @param  array<string, mixed>  $row
      * @param  list<array{key:string,label:string,cpn:float}>  $cvrRules
      * @param  array{red:float,green:float,pink:float}  $zeroRules
-     * @return array{sprice:float,prmt:float,cpn:float}|null
+     * @param  list<array{key:string,label:string,min:float,max:float,groi:float}>  $dilRules
+     * @return array{sprice:float,prmt:float,cpn:float,amz_sugg:bool}|null
      */
-    protected function computeTarget(array $row, array $cvrRules, array $zeroRules, float $zeroMinRoi, float $margin): ?array
+    protected function computeTarget(array $row, array $cvrRules, array $zeroRules, float $zeroMinRoi, float $margin, array $dilRules = []): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         $dil = (float) ($row['dil'] ?? 0);
@@ -253,23 +259,32 @@ class ShopifyB2cRuleSpriceApplyService
         $zeroSold = $sold <= 0;
         $prmt = 0.0;
         $cpn = $inv > 0 ? $this->cvrCpnRules->cpnForCvr($cvr, $cvrRules) : 0.0;
+        $amz = (float) ($row['amz'] ?? 0);
+        $amzSugg = ! empty($row['amz_sugg']) && $amz > 0;
 
         $sprice = 0.0;
-        if ($zeroSold) {
-            // 0 Sold Dil / Min ROI rule removed. Sprc Dil on /shopify-b2c-pricing owns 0 Sold.
-            return null;
-        } else {
-            $std = (float) ($row['std'] ?? 0);
-            if (! ($std > 0)) {
-                return null;
-            }
-            $t = min(99.99, max(0, $prmt + $cpn));
-            $sprice = $t > 0 ? round($std * (1 - $t / 100), 2) : round($std, 2);
-        }
-
-        $amz = (float) ($row['amz'] ?? 0);
-        if ($sprice > 0 && $amz > 0 && $sprice < $amz) {
+        if ($amzSugg) {
             $sprice = round($amz, 2);
+        } else {
+            $lp = (float) ($row['lp'] ?? 0);
+            $ship = (float) ($row['ship'] ?? 0);
+            $groi = $zeroSold
+                ? AmazonDilGroiRule::minTarget($dilRules)
+                : AmazonDilGroiRule::groiForDil($dil, $dilRules);
+            if ($groi !== null && $lp > 0 && $margin > 0) {
+                $sprice = round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
+            } elseif (! $zeroSold) {
+                $std = (float) ($row['std'] ?? 0);
+                if (! ($std > 0)) {
+                    return null;
+                }
+                $t = min(99.99, max(0, $prmt + $cpn));
+                $sprice = $t > 0 ? round($std * (1 - $t / 100), 2) : round($std, 2);
+            }
+
+            if ($sprice > 0 && $amz > 0 && $sprice < $amz) {
+                $sprice = round($amz, 2);
+            }
         }
 
         if (! is_finite($sprice) || $sprice < 0.01) {
@@ -280,12 +295,13 @@ class ShopifyB2cRuleSpriceApplyService
             'sprice' => $sprice,
             'prmt' => round($prmt, 2),
             'cpn' => round($cpn, 2),
+            'amz_sugg' => $amzSugg,
         ];
     }
 
     /**
-     * @param  array{saved_sprice:float,saved_prmt:?float,saved_cpn:?float}  $row
-     * @param  array{sprice:float,prmt:float,cpn:float}  $computed
+     * @param  array{saved_sprice:float,saved_prmt:?float,saved_cpn:?float,amz_sugg?:bool}  $row
+     * @param  array{sprice:float,prmt:float,cpn:float,amz_sugg?:bool}  $computed
      */
     protected function isUnchanged(array $row, array $computed): bool
     {
@@ -295,12 +311,15 @@ class ShopifyB2cRuleSpriceApplyService
         if (abs(((float) ($row['saved_prmt'] ?? 0)) - $computed['prmt']) >= 0.005) {
             return false;
         }
+        if (! empty($row['amz_sugg']) !== ! empty($computed['amz_sugg'])) {
+            return false;
+        }
 
         return abs(((float) ($row['saved_cpn'] ?? 0)) - $computed['cpn']) < 0.005;
     }
 
     /**
-     * @param  array{sprice:float,prmt:float,cpn:float}  $computed
+     * @param  array{sprice:float,prmt:float,cpn:float,amz_sugg?:bool}  $computed
      */
     protected function saveSpriceAndPromo(string $sku, array $computed): void
     {
@@ -317,7 +336,7 @@ class ShopifyB2cRuleSpriceApplyService
         $existing['SPRICE'] = round($computed['sprice'], 2);
         $existing['PEF_PRMT_PCT'] = round($computed['prmt'], 2);
         $existing['PEF_CPN_PCT'] = round($computed['cpn'], 2);
-        $existing['AMZ_SUGG_APPLIED'] = false;
+        $existing['AMZ_SUGG_APPLIED'] = ! empty($computed['amz_sugg']);
         $existing['SPRICE_STATUS'] = 'saved';
         $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
 
@@ -342,6 +361,19 @@ class ShopifyB2cRuleSpriceApplyService
         ];
 
         return $this->loadStoredRules('shopify_b2c_cvr_vs_cpn', $defaults, 'cpn');
+    }
+
+    /** @return list<array{key:string,label:string,min:float,max:float,groi:float}> */
+    protected function loadDilGroiRules(): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'shopify_b2c_dil_vs_groi')->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
+            $saved = $saved['rules'];
+        }
+        $rules = AmazonDilGroiRule::normalizeList(is_array($saved) ? $saved : []);
+
+        return $rules !== [] ? $rules : AmazonDilGroiRule::defaults();
     }
 
     /** @return array{red:float,green:float,pink:float} */
@@ -394,7 +426,6 @@ class ShopifyB2cRuleSpriceApplyService
 
     /** @param  array{red:float,green:float,pink:float}  $zeroRules */
     protected function zeroSoldGroi(float $dil, array $zeroRules, float $minRoi = 0.0): ?float
-    {
     {
         $minGroi = null;
         foreach (['red', 'green', 'pink'] as $key) {

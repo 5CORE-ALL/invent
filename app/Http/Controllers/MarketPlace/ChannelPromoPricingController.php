@@ -1460,6 +1460,10 @@ class ChannelPromoPricingController extends Controller
             ['visibility' => $rules, 'column_order' => array_column($rules, 'key')]
         );
 
+        if ($channel === 'shopify_b2c') {
+            $this->queueShopifyB2cRuleSpriceApply();
+        }
+
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
     }
 
