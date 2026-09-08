@@ -27,9 +27,9 @@ class MappingChannelCounts
 
     public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v1';
 
-    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v7';
+    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v8';
 
-    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v7';
+    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v8';
 
     public const LINKED_MISMATCH_TOTAL_CACHE_KEY = 'linked_mismatch_sku_total_v2';
 
@@ -214,6 +214,8 @@ class MappingChannelCounts
             Cache::forget('inactive_listings_master_rows_v5');
             Cache::forget('inactive_listings_total_v6');
             Cache::forget('inactive_listings_master_rows_v6');
+            Cache::forget('inactive_listings_total_v7');
+            Cache::forget('inactive_listings_master_rows_v7');
         } catch (\Throwable $e) {
             // ignore
         }
@@ -312,7 +314,7 @@ class MappingChannelCounts
         try {
             $rows = Cache::get(self::INACTIVE_MASTER_ROWS_CACHE_KEY);
             if (is_array($rows) && $rows !== []) {
-                return (int) collect($rows)->sum('inactive_listings');
+                return (int) collect($rows)->sum(fn ($row) => (int) ($row['inactive_child'] ?? $row['inactive_listings'] ?? 0));
             }
         } catch (\Throwable $e) {
             // ignore
@@ -331,9 +333,10 @@ class MappingChannelCounts
     }
 
     /**
-     * Master table rows: Marketplace Manager Inactive SKU tab only.
+     * Master table rows: seller-platform inactive parent / child counts.
+     * Badge + inactive_listings = child SKUs only (parents are shown separately).
      *
-     * @return list<array{channel: string, channel_slug: string, image: ?string, inactive_listings: int, detail_url: string, listings_url: ?string, has_sku_detail: bool, api_status: string, api_connected: bool, api_updated_at: ?string, api_label: string}>
+     * @return list<array{channel: string, channel_slug: string, image: ?string, inactive_listings: int, inactive_parent: int, inactive_child: int, detail_url: string, listings_url: ?string, has_sku_detail: bool, api_status: string, api_connected: bool, api_updated_at: ?string, api_label: string}>
      */
     public static function inactiveMasterRows(bool $useCache = false): array
     {
@@ -348,7 +351,6 @@ class MappingChannelCounts
             }
         }
 
-        $inactiveCounts = self::collectListingsInactiveCounts();
         $apiStatuses = self::collectApiStatuses();
         $logos = self::logoMap();
         $displayNames = self::displayNameMap();
@@ -374,13 +376,19 @@ class MappingChannelCounts
                 'api_label' => 'API not linked',
             ];
 
+            $inactive = ListingInactiveParentChildCounts::forChannel($slug);
+            $child = (int) ($inactive['child'] ?? 0);
+            $parent = (int) ($inactive['parent'] ?? 0);
+
             $rows[] = [
                 'channel' => $label,
                 'channel_slug' => $slug,
                 'image' => $logos[$slug] ?? null,
-                'inactive_listings' => (int) ($inactiveCounts[$slug] ?? 0),
+                'inactive_listings' => $child,
+                'inactive_parent' => $parent,
+                'inactive_child' => $child,
                 'detail_url' => url('/inactive-listings/channel/'.$slug),
-                'listings_url' => self::listingsInactiveUrlForSlug($slug),
+                'listings_url' => $inactive['url'] ?? self::listingsInactiveUrlForSlug($slug),
                 'has_sku_detail' => MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null,
                 'api_status' => $api['api_status'],
                 'api_connected' => $api['api_connected'],
@@ -392,7 +400,7 @@ class MappingChannelCounts
         try {
             $ttl = MarketplacePortalInactiveCount::$portalSyncIncomplete ? 1 : 10;
             Cache::put(self::INACTIVE_MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes($ttl));
-            self::storeInactiveTotal((int) collect($rows)->sum('inactive_listings'));
+            self::storeInactiveTotal((int) collect($rows)->sum('inactive_child'));
         } catch (\Throwable $e) {
             // ignore
         }

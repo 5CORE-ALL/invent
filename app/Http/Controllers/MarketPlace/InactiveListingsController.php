@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
 use App\Support\Marketplace\MappingChannelCounts;
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
+use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
 use App\Services\ShopifyPlsTokenService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -27,7 +28,7 @@ class InactiveListingsController extends Controller
         try {
             @set_time_limit(400);
             $data = collect(MappingChannelCounts::inactiveMasterRows(true))->values();
-            $total = (int) $data->sum('inactive_listings');
+            $total = (int) $data->sum(fn ($row) => (int) ($row['inactive_child'] ?? $row['inactive_listings'] ?? 0));
             MappingChannelCounts::storeInactiveTotal($total);
 
             return response()->json([
@@ -35,6 +36,8 @@ class InactiveListingsController extends Controller
                 'data' => $data,
                 'count' => $data->count(),
                 'total_inactive' => $total,
+                'total_inactive_child' => $total,
+                'total_inactive_parent' => (int) $data->sum(fn ($row) => (int) ($row['inactive_parent'] ?? 0)),
             ]);
         } catch (\Throwable $e) {
             Log::error('Inactive Listings masterData failed: '.$e->getMessage());
@@ -102,13 +105,25 @@ class InactiveListingsController extends Controller
             }
 
             $data = collect(app(MarketplaceListingQtyMatchService::class)->inactiveListingRows($mmChannel, true))
-                ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
+                ->map(function (array $row) use ($resolved) {
+                    $sku = (string) ($row['sku'] ?? '');
+                    $kind = MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku) ? 'parent' : 'child';
+
+                    return $row + [
+                        'channel' => $resolved['name'],
+                        'kind' => $kind,
+                    ];
+                })
                 ->values();
+
+            $childCount = $data->filter(fn (array $row) => ($row['kind'] ?? '') === 'child')->count();
 
             $payload = [
                 'success' => true,
                 'data' => $data,
                 'count' => $data->count(),
+                'child_count' => $childCount,
+                'parent_count' => $data->count() - $childCount,
                 'channel' => $resolved['name'],
             ];
 

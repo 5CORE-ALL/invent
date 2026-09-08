@@ -29,10 +29,13 @@
                     <a href="{{ url('/inactive-listings') }}" class="btn btn-sm btn-outline-secondary">
                         <i class="fas fa-arrow-left me-1"></i> Inactive Listings
                     </a>
-                    <span class="badge bg-warning text-dark badge-mmc-stat">
-                        Inactive Listings: <span id="ilc-total-count">0</span>
+                    <span class="badge bg-warning text-dark badge-mmc-stat" title="Inactive child SKUs only">
+                        Inactive Child SKUs: <span id="ilc-child-count">0</span>
                     </span>
-                    <span class="text-muted small">{{ $channelName }} — same as Marketplace Manager Inactive SKU.</span>
+                    <span class="badge bg-secondary badge-mmc-stat" title="Inactive parent listings">
+                        Parent: <span id="ilc-parent-count">0</span>
+                    </span>
+                    <span class="text-muted small">{{ $channelName }} — all inactive SKUs (parent and child).</span>
                     @if (!empty($listingsUrl))
                         <a href="{{ $listingsUrl }}" class="btn btn-sm btn-outline-primary">Open listings</a>
                     @endif
@@ -79,7 +82,10 @@
             ajaxURL: "{{ url('/inactive-listings/channel/' . $channelSlug . '/data') }}",
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
-                $('#ilc-total-count').text(Number(response && response.count != null ? response.count : data.length).toLocaleString('en-US'));
+                const child = Number(response && response.child_count != null ? response.child_count : data.filter(function (r) { return String(r.kind || '') !== 'parent'; }).length);
+                const parent = Number(response && response.parent_count != null ? response.parent_count : data.filter(function (r) { return String(r.kind || '') === 'parent'; }).length);
+                $('#ilc-child-count').text(child.toLocaleString('en-US'));
+                $('#ilc-parent-count').text(parent.toLocaleString('en-US'));
                 return data;
             },
             layout: "fitDataStretch",
@@ -94,6 +100,21 @@
                     field: "sku",
                     minWidth: 180,
                     headerFilter: "input",
+                },
+                {
+                    title: "Type",
+                    field: "kind",
+                    width: 110,
+                    hozAlign: "center",
+                    headerFilter: "list",
+                    headerFilterParams: { values: { parent: "Parent", child: "Child" }, clearable: true },
+                    formatter: function(cell) {
+                        const v = String(cell.getValue() || 'child');
+                        if (v === 'parent') {
+                            return '<span class="badge bg-dark">Parent</span>';
+                        }
+                        return '<span class="badge bg-primary">Child</span>';
+                    },
                 },
                 {
                     title: "Channel SKU",
@@ -160,7 +181,8 @@
             ilcTable.setFilter(function(row) {
                 return String(row.sku || '').toLowerCase().includes(q)
                     || String(row.channel_sku || '').toLowerCase().includes(q)
-                    || String(row.status || '').toLowerCase().includes(q);
+                    || String(row.status || '').toLowerCase().includes(q)
+                    || String(row.kind || '').toLowerCase().includes(q);
             });
         });
 

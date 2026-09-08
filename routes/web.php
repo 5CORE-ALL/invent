@@ -3280,6 +3280,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Inactive Listings (master + per-channel SKU pages)
     Route::redirect('/inactive_listings', '/inactive-listings');
+    Route::redirect('/inactive-listing', '/inactive-listings');
     Route::get('/inactive-listings', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'index'])->name('inactive.listings');
     Route::get('/inactive-listings/channels-data', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'masterData'])->name('inactive.listings.channels');
     Route::get('/inactive-listings/channel/{channel}', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'channel'])->name('inactive.listings.channel');

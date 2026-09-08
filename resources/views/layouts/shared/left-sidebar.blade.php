@@ -256,7 +256,7 @@
                     @php
                         $inactiveListingsCount = \App\Support\Marketplace\MappingChannelCounts::cachedInactiveTotalOrZero();
                     @endphp
-                    <span class="badge rounded-pill ms-auto inactive-listings-badge" title="Inactive SKU from Marketplace Manager" @if($inactiveListingsCount <= 0) style="display:none" @endif>{{ number_format($inactiveListingsCount) }}</span>
+                    <span class="badge rounded-pill ms-auto inactive-listings-badge" title="Inactive child SKUs (parents excluded from this count)" @if($inactiveListingsCount <= 0) style="display:none" @endif>{{ number_format($inactiveListingsCount) }}</span>
                 </a>
             </li>
 

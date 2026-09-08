@@ -6,7 +6,7 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         .tabulator-paginator label { margin-right: 5px; }
-        .mm-channel-logo {
+        .il-channel-logo {
             width: 28px;
             height: 28px;
             object-fit: contain;
@@ -16,7 +16,7 @@
             padding: 1px;
             display: inline-block;
         }
-        .mm-channel-logo-placeholder {
+        .il-channel-logo-placeholder {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -28,7 +28,20 @@
             color: #adb5bd;
             font-size: 12px;
         }
-        .mm-listings-arrow {
+        .il-channel-link {
+            color: inherit;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .il-channel-link:hover {
+            color: #0d6efd;
+            text-decoration: underline;
+        }
+        .il-inactive-count {
+            font-weight: 700;
+            text-decoration: none;
+        }
+        .il-listings-arrow {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -36,33 +49,34 @@
             text-decoration: none;
             line-height: 1;
         }
-        .mm-listings-arrow-on {
-            color: #0d6efd;
-        }
-        .mm-listings-arrow-on:hover {
-            color: #0a58ca;
-        }
-        .mm-listings-arrow-off {
-            color: #dc3545;
-            cursor: default;
-        }
-        .mm-api-dot {
+        .il-listings-arrow-on { color: #0d6efd; }
+        .il-listings-arrow-on:hover { color: #0a58ca; }
+        .il-listings-arrow-off { color: #dc3545; cursor: default; }
+        .il-api-dot {
             display: inline-block;
             width: 14px;
             height: 14px;
             border-radius: 50%;
             box-shadow: 0 0 0 2px rgba(0,0,0,0.06);
         }
-        .mm-api-dot-green { background: #198754; }
-        .mm-api-dot-yellow { background: #ffc107; }
-        .mm-api-dot-red { background: #dc3545; }
+        .il-api-dot-green { background: #198754; }
+        .il-api-dot-yellow { background: #ffc107; }
+        .il-api-dot-red { background: #dc3545; }
         #stat-inactive-listings.badge,
-        .badge-mm-stat {
+        .badge-il-stat {
             font-size: 1.35rem !important;
             line-height: 1.35;
             padding: 0.75rem 1.25rem !important;
             border-radius: 0.35rem !important;
             font-weight: 700;
+        }
+        .tabulator .tabulator-header .tabulator-col.tabulator-col-group {
+            background: #eef4fb;
+            text-align: center;
+        }
+        .tabulator .tabulator-header .tabulator-col.tabulator-col-group .tabulator-col-title {
+            font-weight: 700;
+            color: #6c2c2c;
         }
     </style>
 @endsection
@@ -77,9 +91,10 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-warning text-dark badge-mm-stat" id="stat-inactive-listings" title="Inactive SKU from Marketplace Manager listings">
-                        Inactive Listings: <span id="total-inactive-listings">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedInactiveTotalOrZero()) }}</span>
+                    <span class="badge bg-warning text-dark badge-il-stat" id="stat-inactive-listings" title="Inactive child SKUs only (parent listings are shown in their own column)">
+                        Inactive Child SKUs: <span id="total-inactive-listings">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedInactiveTotalOrZero()) }}</span>
                     </span>
+                    <span class="text-muted small">Parent and child columns are both shown. The badge counts child SKUs only. Click a marketplace to open every inactive SKU.</span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -115,7 +130,7 @@
         if (totalInactive !== undefined && totalInactive !== null && !isNaN(Number(totalInactive))) {
             total = Number(totalInactive);
         } else {
-            total = (rows || []).reduce((sum, r) => sum + Number(r.inactive_listings || 0), 0);
+            total = (rows || []).reduce((sum, r) => sum + Number(r.inactive_child || r.inactive_listings || 0), 0);
         }
         $('#total-inactive-listings').text(total.toLocaleString('en-US'));
         updateSidebarInactiveCount(total);
@@ -137,19 +152,38 @@
         return '/storage/' + v.replace(/^\/+/, '');
     }
 
+    function skuDetailUrl(row) {
+        return String((row && row.detail_url) || '').trim();
+    }
+
+    function formatInactiveCount(cell, field) {
+        const v = Number(cell.getValue() || 0);
+        const row = cell.getRow().getData();
+        const url = skuDetailUrl(row);
+        const color = v === 0 ? '#198754' : '#b45309';
+        const label = v.toLocaleString('en-US');
+        if (!url) {
+            return `<span class="il-inactive-count" style="color:${color};">${label}</span>`;
+        }
+        const title = field === 'inactive_parent'
+            ? 'Open all inactive SKUs (parent listings)'
+            : 'Open all inactive child SKUs';
+        return `<a href="${escapeHtml(url)}" class="il-inactive-count" style="color:${color};" title="${title}">${label}</a>`;
+    }
+
     $(document).ready(function() {
         table = new Tabulator("#inactive-listings-table", {
             ajaxURL: "{{ url('/inactive-listings/channels-data') }}",
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
-                updateStats(data, response && response.total_inactive);
+                updateStats(data, response && (response.total_inactive_child != null ? response.total_inactive_child : response.total_inactive));
                 return data;
             },
             layout: "fitDataStretch",
             pagination: true,
             paginationSize: 50,
             paginationSizeSelector: [25, 50, 100, 200, 500],
-            initialSort: [{ column: "inactive_listings", dir: "desc" }],
+            initialSort: [{ column: "inactive_child", dir: "desc" }],
             placeholder: "No channels found.",
             columns: [
                 {
@@ -162,22 +196,22 @@
                         const logo = cell.getValue();
                         const channel = (cell.getRow().getData().channel || '').trim();
                         if (!logo) {
-                            return '<span class="mm-channel-logo-placeholder" title="No logo"><i class="fas fa-image"></i></span>';
+                            return '<span class="il-channel-logo-placeholder" title="No logo"><i class="fas fa-image"></i></span>';
                         }
                         const src = mmLogoSrc(logo);
-                        return `<img src="${escapeHtml(src)}" alt="${escapeHtml(channel)}" class="mm-channel-logo" onerror="this.style.display='none'">`;
+                        return `<img src="${escapeHtml(src)}" alt="${escapeHtml(channel)}" class="il-channel-logo" onerror="this.style.display='none'">`;
                     }
                 },
                 {
                     title: "Channel",
                     field: "channel",
-                    minWidth: 260,
+                    minWidth: 240,
                     formatter: function(cell) {
                         const name = (cell.getValue() || '').trim();
-                        const url = (cell.getRow().getData().listings_url || '').trim();
+                        const url = skuDetailUrl(cell.getRow().getData());
                         if (!name) return '';
                         if (!url) return escapeHtml(name);
-                        return `<a href="${escapeHtml(url)}" class="mm-channel-link" style="color:inherit;font-weight:600;text-decoration:none;">${escapeHtml(name)}</a>`;
+                        return `<a href="${escapeHtml(url)}" class="il-channel-link" title="Open all inactive SKUs for ${escapeHtml(name)}">${escapeHtml(name)}</a>`;
                     },
                 },
                 {
@@ -194,44 +228,69 @@
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const status = String(row.api_status || 'red').toLowerCase();
-                        const cls = status === 'green' ? 'mm-api-dot-green'
-                            : (status === 'yellow' ? 'mm-api-dot-yellow' : 'mm-api-dot-red');
+                        const cls = status === 'green' ? 'il-api-dot-green'
+                            : (status === 'yellow' ? 'il-api-dot-yellow' : 'il-api-dot-red');
                         const title = escapeHtml(row.api_label || status);
-                        return `<span class="mm-api-dot ${cls}" title="${title}"></span>`;
+                        return `<span class="il-api-dot ${cls}" title="${title}"></span>`;
                     },
                 },
                 {
-                    title: "Link",
+                    title: "Inactive Listing",
+                    headerHozAlign: "center",
+                    headerTooltip: "Seller-platform inactive listings with inventory (0 Inv SKUs excluded): parent products vs child SKUs. Badge / page total uses Child only.",
+                    columns: [
+                        {
+                            title: "Parent",
+                            field: "inactive_parent",
+                            width: 110,
+                            hozAlign: "center",
+                            sorter: "number",
+                            headerTooltip: "Inactive parent listings on the seller platform",
+                            formatter: function(cell) {
+                                return formatInactiveCount(cell, 'inactive_parent');
+                            },
+                            bottomCalc: function(values, data) {
+                                return (data || []).reduce((sum, row) => sum + Number(row.inactive_parent || 0), 0);
+                            },
+                            bottomCalcFormatter: function(cell) {
+                                return Number(cell.getValue() || 0).toLocaleString('en-US');
+                            },
+                        },
+                        {
+                            title: "Child",
+                            field: "inactive_child",
+                            width: 110,
+                            hozAlign: "center",
+                            sorter: "number",
+                            headerTooltip: "Inactive child / variation SKUs. This is the page count. If the channel has no parent listings, this is the full in-stock inactive count.",
+                            formatter: function(cell) {
+                                return formatInactiveCount(cell, 'inactive_child');
+                            },
+                            bottomCalc: function(values, data) {
+                                return (data || []).reduce((sum, row) => sum + Number(row.inactive_child || row.inactive_listings || 0), 0);
+                            },
+                            bottomCalcFormatter: function(cell) {
+                                return Number(cell.getValue() || 0).toLocaleString('en-US');
+                            },
+                        },
+                    ],
+                },
+                {
+                    title: "Listings",
                     field: "listings_url",
                     headerSort: false,
                     width: 90,
                     hozAlign: "center",
                     headerHozAlign: "center",
+                    headerTooltip: "Open Marketplace Manager Inactive SKU tab",
                     formatter: function(cell) {
                         const url = (cell.getValue() || '').trim();
                         const name = (cell.getRow().getData().channel || 'channel').trim();
                         if (!url) {
-                            return '<span class="mm-listings-arrow mm-listings-arrow-off" title="Listings link not available"><i class="fas fa-arrow-up-right-from-square"></i></span>';
+                            return '<span class="il-listings-arrow il-listings-arrow-off" title="Listings link not available"><i class="fas fa-arrow-up-right-from-square"></i></span>';
                         }
-                        return `<a href="${escapeHtml(url)}" class="mm-listings-arrow mm-listings-arrow-on" title="Open ${escapeHtml(name)} Inactive SKU listings" target="_self"><i class="fas fa-arrow-up-right-from-square"></i></a>`;
+                        return `<a href="${escapeHtml(url)}" class="il-listings-arrow il-listings-arrow-on" title="Open ${escapeHtml(name)} Inactive SKU listings" target="_self"><i class="fas fa-arrow-up-right-from-square"></i></a>`;
                     },
-                },
-                {
-                    title: "Inactive Listings",
-                    field: "inactive_listings",
-                    width: 230,
-                    hozAlign: "center",
-                    sorter: "number",
-                    headerTooltip: "Inactive SKU from Marketplace Manager listings",
-                    formatter: function(cell) {
-                        const v = Number(cell.getValue() || 0);
-                        const url = (cell.getRow().getData().listings_url || '').trim();
-                        const color = v === 0 ? '#198754' : '#dc3545';
-                        const html = `<span style="color:${color};font-weight:700;">${v.toLocaleString('en-US')}</span>`;
-                        if (!url) return html;
-                        return `<a href="${escapeHtml(url)}" style="text-decoration:none;">${html}</a>`;
-                    },
-                    bottomCalc: "sum",
                 },
             ],
         });
