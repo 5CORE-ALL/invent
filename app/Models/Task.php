@@ -45,6 +45,7 @@ class Task extends Model
         'link8',
         'link9',
         'image',
+        'screenshots',
         'automate_task_id',
         'cl_id',
         'task_type',
@@ -74,6 +75,7 @@ class Task extends Model
         'is_corrective_action' => 'boolean',
         'parent_task_id' => 'integer',
         'subtask_order' => 'integer',
+        'screenshots' => 'array',
     ];
 
     // Helper methods to maintain compatibility with new code
@@ -137,5 +139,40 @@ class Task extends Model
     public function isSubtask(): bool
     {
         return $this->parent_task_id !== null && $this->parent_task_id > 0;
+    }
+
+    /**
+     * All screenshot filenames: screenshots JSON plus legacy single image column.
+     *
+     * @return list<string>
+     */
+    public function screenshotFilenames(): array
+    {
+        $names = [];
+        $raw = $this->getAttributes()['screenshots'] ?? null;
+        if ($raw === null) {
+            $raw = $this->screenshots ?? null;
+        }
+        if (is_array($raw)) {
+            $names = $raw;
+        } elseif (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $names = $decoded;
+            }
+        }
+
+        $image = trim((string) ($this->getAttributes()['image'] ?? ''));
+        if ($image !== '' && ! in_array($image, $names, true)) {
+            array_unshift($names, $image);
+        }
+
+        return array_values(array_filter(array_map(static function ($name) {
+            $name = trim((string) $name);
+
+            return $name !== '' && ! str_contains($name, '/') && ! str_contains($name, '\\')
+                ? $name
+                : '';
+        }, $names)));
     }
 }

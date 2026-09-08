@@ -7,6 +7,12 @@ use PHPUnit\Framework\TestCase;
 
 class AttL30MetricsTest extends TestCase
 {
+    public function test_window_is_last_30_days_against_200_hours(): void
+    {
+        $this->assertSame(30, AttL30Metrics::WINDOW_DAYS);
+        $this->assertSame(200, AttL30Metrics::TARGET_HOURS);
+    }
+
     public function test_percent_is_hours_over_target_of_200(): void
     {
         $this->assertSame(0, AttL30Metrics::percent(0));

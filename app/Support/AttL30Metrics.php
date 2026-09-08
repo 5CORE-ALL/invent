@@ -6,6 +6,8 @@ class AttL30Metrics
 {
     public const TARGET_HOURS = 200;
 
+    public const WINDOW_DAYS = 30;
+
     /**
      * Only these people still track time in Team Logger.
      * Everyone else uses in-app attendance.

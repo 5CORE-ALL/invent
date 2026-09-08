@@ -1701,6 +1701,49 @@
         border-left: 4px solid #198754 !important;
     }
 
+    #tf_screenshot_paste {
+        border: 1px dashed #667eea;
+        background: #f8f9ff;
+        cursor: text;
+        font-size: 11px;
+        color: #5b6abf;
+        line-height: 1.4;
+    }
+    #tf_screenshot_paste:focus {
+        outline: 2px solid #667eea;
+        background: #eef2ff;
+    }
+    .tf-ss-thumb {
+        position: relative;
+        width: 72px;
+        height: 72px;
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid #dee2e6;
+        background: #fff;
+    }
+    .tf-ss-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+    .tf-ss-thumb .tf-ss-remove {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        width: 18px;
+        height: 18px;
+        line-height: 16px;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: #dc3545;
+        color: #fff;
+        font-size: 12px;
+        cursor: pointer;
+    }
+
     </style>
 @endsection
 
@@ -3040,6 +3083,19 @@
                 </label>
             </div>
 
+            <div class="mb-2 tf-image-wrap">
+                <label class="form-label fw-bold mb-1" style="font-size: 12px;">
+                    <i class="mdi mdi-monitor-screenshot me-1"></i>Screenshots
+                </label>
+                <div id="tf_screenshot_list" class="d-flex flex-wrap gap-2 mb-2"></div>
+                <div id="tf_screenshot_paste" class="rounded px-2 py-2 text-center mb-1" tabindex="0" contenteditable="true">
+                    Click here, then <strong>Ctrl+V</strong> / <strong>Cmd+V</strong> to paste.
+                    You can add multiple screenshots.
+                </div>
+                <input type="file" class="form-control form-control-sm" id="tf_screenshots" accept="image/*" multiple>
+                <div class="form-text mb-0" style="font-size:10px;">Win+Shift+S or Cmd+Shift+4, then paste. Or choose files. Max 12.</div>
+            </div>
+
             <div class="mb-2">
                 <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="tf-toggle-more" style="font-size: 11px;">
                     <i class="mdi mdi-chevron-down" id="tf-toggle-icon"></i> More Fields
@@ -3098,11 +3154,7 @@
                     <label for="tf_checklist_link" class="form-label fw-bold" style="font-size: 12px;">Checklist</label>
                     <input type="text" class="form-control form-control-sm" id="tf_checklist_link" name="checklist_link" placeholder="Checklist">
                 </div>
-                <div class="mb-2 tf-image-wrap">
-                    <label class="form-label fw-bold" style="font-size: 12px;">Image</label>
-                    <div id="tf_image_current" class="mb-1"></div>
-                    <input type="file" class="form-control form-control-sm" id="tf_image" name="image" accept="image/*">
-                </div>
+                {{-- Screenshots live above More Fields so they are visible while creating --}}
             </div>
 
             <div class="mt-3">
@@ -3214,6 +3266,29 @@
                 if (!baseCan) return false;
                 if (taskIsCorrectiveAction(rowData) && !canDeleteCorrectiveTasks) return false;
                 return true;
+            }
+
+            function taskScreenshotNames(data) {
+                var names = [];
+                if (data && Array.isArray(data.screenshots)) {
+                    names = data.screenshots.slice();
+                }
+                if (data && data.image && names.indexOf(data.image) === -1) {
+                    names.unshift(data.image);
+                }
+                return names.filter(function(name) { return !!name; });
+            }
+
+            function taskScreenshotsViewHtml(data) {
+                var names = taskScreenshotNames(data);
+                if (!names.length) return '';
+                var thumbs = names.map(function(name) {
+                    var url = '/uploads/tasks/' + escapeHtml(name);
+                    return '<a href="' + url + '" target="_blank" rel="noopener" class="me-1 mb-1 d-inline-block">' +
+                        '<img src="' + url + '" class="img-thumbnail" style="max-width:140px;max-height:140px;object-fit:cover;cursor:zoom-in;">' +
+                        '</a>';
+                }).join('');
+                return '<tr><th style="color:#6c757d;font-weight:600;vertical-align:top;">Screenshots:</th><td>' + thumbs + '</td></tr>';
             }
 
             var TASK_INDEX_FILTERS_KEY = 'taskManager.indexFilters.v1';
@@ -4481,10 +4556,11 @@
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
-                            var value = cell.getValue();
-                            if (value) {
-                                return `<a href="/uploads/tasks/${value}" target="_blank" title="View Screenshot">
-                                    <i class="mdi mdi-camera text-primary" style="font-size: 18px; cursor: pointer;"></i>
+                            var row = cell.getRow().getData();
+                            var names = taskScreenshotNames(row);
+                            if (names.length) {
+                                return `<a href="/uploads/tasks/${names[0]}" target="_blank" title="${names.length} screenshot(s)">
+                                    <i class="mdi mdi-camera text-primary" style="font-size: 18px; cursor: pointer;"></i>${names.length > 1 ? '<small>' + names.length + '</small>' : ''}
                                 </a>`;
                             }
                             return '-';
@@ -6663,16 +6739,7 @@
                         '<tr><th style="color: #6c757d; font-weight: 600;">Video Link:</th><td>' + linkCell(video) + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">Form Report Link:</th><td>' + linkCell(formReport) + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + checklistViewCell(data, function(url) { return linkCell(url); }) + '</td></tr>' +
-                        (data.image
-                            ? '<tr><th style="color: #6c757d; font-weight: 600; vertical-align: top;">Image:</th><td>' +
-                              '<a href="/uploads/tasks/' + escapeHtml(data.image) + '" target="_blank" rel="noopener" title="Open full-size image in a new tab">' +
-                              '<img src="/uploads/tasks/' + escapeHtml(data.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px; cursor: zoom-in;">' +
-                              '</a>' +
-                              '<div class="mt-1">' +
-                              '<a href="/uploads/tasks/' + escapeHtml(data.image) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-open-in-new"></i> View full image</a>' +
-                              '</div>' +
-                              '</td></tr>'
-                            : '') +
+                        taskScreenshotsViewHtml(data) +
                         '</table></div>';
                     syncViewTaskReworkButton(taskId, data);
                     $('#task-details').html(html);
@@ -6720,16 +6787,7 @@
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Video Link:</th><td>' + linkCell(video) + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Form Report Link:</th><td>' + linkCell(formReport) + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + checklistViewCell(response, function(url) { return linkCell(url); }) + '</td></tr>' +
-                                (response.image
-                                    ? '<tr><th style="color: #6c757d; font-weight: 600; vertical-align: top;">Image:</th><td>' +
-                                      '<a href="/uploads/tasks/' + escapeHtml(response.image) + '" target="_blank" rel="noopener" title="Open full-size image in a new tab">' +
-                                      '<img src="/uploads/tasks/' + escapeHtml(response.image) + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px; cursor: zoom-in;">' +
-                                      '</a>' +
-                                      '<div class="mt-1">' +
-                                      '<a href="/uploads/tasks/' + escapeHtml(response.image) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary"><i class="mdi mdi-open-in-new"></i> View full image</a>' +
-                                      '</div>' +
-                                      '</td></tr>'
-                                    : '') +
+                                taskScreenshotsViewHtml(response) +
                                 '</table></div>';
                             syncViewTaskReworkButton(taskId, response);
                             $('#task-details').html(html);
@@ -6927,11 +6985,94 @@
                 return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
             }
 
+            var tfNewScreenshots = [];
+            var tfKeptScreenshots = [];
+            var TF_SCREENSHOT_MAX = 12;
+            var tfScreenshotUploadBase = @json(asset('uploads/tasks'));
+
+            function tfScreenshotCount() {
+                return tfKeptScreenshots.length + tfNewScreenshots.length;
+            }
+
+            function tfResetScreenshots() {
+                tfNewScreenshots.forEach(function(item) {
+                    if (item && item.url) {
+                        try { URL.revokeObjectURL(item.url); } catch (e) {}
+                    }
+                });
+                tfNewScreenshots = [];
+                tfKeptScreenshots = [];
+                $('#tf_screenshots').val('');
+                tfRenderScreenshots();
+            }
+
+            function tfLoadExistingScreenshots(names) {
+                tfResetScreenshots();
+                tfKeptScreenshots = (names || []).slice();
+                tfRenderScreenshots();
+            }
+
+            function tfAddScreenshotFile(file) {
+                if (!file || !file.type || String(file.type).indexOf('image/') !== 0) return false;
+                if (tfScreenshotCount() >= TF_SCREENSHOT_MAX) {
+                    alert('You can attach up to ' + TF_SCREENSHOT_MAX + ' screenshots.');
+                    return false;
+                }
+                tfNewScreenshots.push({
+                    id: 'n' + Date.now() + Math.random(),
+                    file: file,
+                    url: URL.createObjectURL(file)
+                });
+                tfRenderScreenshots();
+                return true;
+            }
+
+            function tfRenderScreenshots() {
+                var $list = $('#tf_screenshot_list');
+                if (!$list.length) return;
+                $list.empty();
+                tfKeptScreenshots.forEach(function(name, i) {
+                    $list.append(tfScreenshotThumbHtml(tfScreenshotUploadBase + '/' + name, 'kept', i));
+                });
+                tfNewScreenshots.forEach(function(item, i) {
+                    $list.append(tfScreenshotThumbHtml(item.url, 'new', i));
+                });
+                if (!tfScreenshotCount()) {
+                    $list.append('<span class="text-muted" style="font-size:11px;"><i class="mdi mdi-image-off-outline"></i> No screenshots yet. Paste or choose files.</span>');
+                }
+            }
+
+            function tfScreenshotThumbHtml(src, kind, index) {
+                return '<div class="tf-ss-thumb" data-kind="' + kind + '" data-index="' + index + '">' +
+                    '<a href="' + src + '" target="_blank" rel="noopener"><img src="' + src + '" alt="Screenshot"></a>' +
+                    '<button type="button" class="tf-ss-remove" title="Remove">&times;</button>' +
+                    '</div>';
+            }
+
+            function tfHandlePasteEvent(e) {
+                var clipboard = e && e.clipboardData;
+                if (!clipboard || !clipboard.items) return false;
+                var added = false;
+                for (var i = 0; i < clipboard.items.length; i++) {
+                    if (clipboard.items[i].type && clipboard.items[i].type.indexOf('image/') === 0) {
+                        var blob = clipboard.items[i].getAsFile();
+                        if (!blob) continue;
+                        var file = new File([blob], 'screenshot_' + Date.now() + '_' + i + '.png', { type: blob.type || 'image/png' });
+                        if (tfAddScreenshotFile(file)) added = true;
+                    }
+                }
+                if (added) {
+                    e.preventDefault();
+                    return true;
+                }
+                return false;
+            }
+
             function openTaskPanel(mode, rowData) {
                 tfInitSelect2();
                 rowData = rowData || {};
                 $('#task-form-alert').empty();
-                $('#tf_image').val('');
+                tfResetScreenshots();
 
                 // Permissions (mirror the actions-column logic).
                 var assignorId = parseInt(rowData.assignor_id, 10);
@@ -6962,7 +7103,7 @@
                     }
                     tfSetVal('tf_tid', tfNowLocal());
                     ['tf_l1','tf_l2','tf_training_link','tf_video_link','tf_form_report_link','tf_checklist_link'].forEach(function(id){ tfSetVal(id, ''); });
-                    $('#tf_image_current').empty();
+                    tfResetScreenshots();
                     tfSetMoreFields(false);
                 } else {
                     var id = rowData.id;
@@ -6992,12 +7133,7 @@
                     tfSetVal('tf_form_report_link', rowData.link6);
                     tfSetVal('tf_checklist_link', rowData.link7);
 
-                    if (rowData.image) {
-                        var url = '{{ asset('uploads/tasks') }}/' + rowData.image;
-                        $('#tf_image_current').html('<a href="' + url + '" target="_blank" rel="noopener"><img src="' + url + '" class="img-thumbnail" style="max-width: 160px; cursor: zoom-in;"></a>');
-                    } else {
-                        $('#tf_image_current').html('<span class="text-muted small" style="font-size:11px;"><i class="mdi mdi-image-off-outline"></i> No image attached.</span>');
-                    }
+                    tfLoadExistingScreenshots(taskScreenshotNames(rowData));
 
                     if (userCanDeleteTaskRow(rowData)) {
                         $('#tf-delete-btn').data('id', id).attr('data-id', id);
@@ -7022,6 +7158,53 @@
                 tfSetMoreFields($('#tf-more-fields').is(':hidden'));
             });
 
+            $('#tf_screenshots').on('change', function() {
+                var files = this.files || [];
+                for (var i = 0; i < files.length; i++) {
+                    tfAddScreenshotFile(files[i]);
+                }
+                this.value = '';
+            });
+
+            $('#tf_screenshot_list').on('click', '.tf-ss-remove', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var $thumb = $(this).closest('.tf-ss-thumb');
+                var kind = $thumb.data('kind');
+                var index = parseInt($thumb.data('index'), 10);
+                if (kind === 'kept') {
+                    tfKeptScreenshots.splice(index, 1);
+                } else if (kind === 'new' && tfNewScreenshots[index]) {
+                    if (tfNewScreenshots[index].url) {
+                        try { URL.revokeObjectURL(tfNewScreenshots[index].url); } catch (err) {}
+                    }
+                    tfNewScreenshots.splice(index, 1);
+                }
+                tfRenderScreenshots();
+            });
+
+            $('#tf_screenshot_paste').on('click', function() {
+                this.focus();
+            });
+
+            $('#tf_screenshot_paste').on('paste', function(e) {
+                var ev = e.originalEvent || e;
+                if (tfHandlePasteEvent(ev)) {
+                    var box = this;
+                    setTimeout(function() {
+                        box.innerHTML = 'Click here, then <strong>Ctrl+V</strong> / <strong>Cmd+V</strong> to paste. You can add multiple screenshots.';
+                    }, 0);
+                }
+            });
+
+            $(document).on('paste.tfScreenshots', function(e) {
+                if (!$('#taskFormOffcanvas').hasClass('show')) return;
+                var t = e.target;
+                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+                if (t && t.id === 'tf_screenshot_paste') return;
+                tfHandlePasteEvent(e.originalEvent || e);
+            });
+
             // Submit (Add or Edit) via AJAX so the task list stays in place.
             $('#task-form').on('submit', function(e) {
                 e.preventDefault();
@@ -7031,6 +7214,16 @@
 
                 var formData = new FormData(this);
                 if (!isEdit) formData.delete('_method');
+                formData.delete('image');
+                formData.delete('screenshots[]');
+                formData.delete('screenshots');
+                formData.append('existing_screenshots_sent', '1');
+                tfKeptScreenshots.forEach(function(name) {
+                    formData.append('existing_screenshots[]', name);
+                });
+                tfNewScreenshots.forEach(function(item) {
+                    if (item && item.file) formData.append('screenshots[]', item.file, item.file.name || 'screenshot.png');
+                });
 
                 var $btn = $('#tf-submit-btn');
                 var prevHtml = $btn.html();

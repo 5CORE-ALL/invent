@@ -1078,7 +1078,7 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="task" data-sort-type="number" title="Sort by assignee task count" role="button" tabindex="0">
                                         Task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="l30_hrs" data-sort-type="number" title="Attendance — today's hours from the in-app logger (Shobha and Mariya use Team Logger) as a % of 200" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="l30_hrs" data-sort-type="number" title="Attendance — last 30 days hours from the in-app logger (Shobha and Mariya use Team Logger) as a % of 200" role="button" tabindex="0">
                                         ATT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="assignor_task" data-sort-type="number" title="Task Given — sort by tasks this member has assigned to others" role="button" tabindex="0">
@@ -1402,7 +1402,7 @@
                                                 : ($attBand === 'mid' ? 'is-att-mid' : 'is-att-low');
                                         @endphp
                                         <td class="task-summary-num task-summary-col-att {{ $attBandClass }}"
-                                            title="{{ $attHoursDisplay }}/{{ $attTarget }} hours today ({{ $attPct }}%)">
+                                            title="{{ $attHoursDisplay }}/{{ $attTarget }} hours in the last 30 days ({{ $attPct }}%)">
                                             {{ $attHoursDisplay }}/{{ $attTarget }} · {{ $attPct }}%
                                         </td>
                                         <td class="task-summary-num">{{ $row['assignor_task'] }}</td>

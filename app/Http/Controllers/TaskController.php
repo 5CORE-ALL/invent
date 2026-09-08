@@ -757,8 +757,7 @@ class TaskController extends Controller
     }
 
     /**
-     * Today's work hours only (in-app attendance, then Team Logger for people
-     * who do not use the desktop agent).
+     * Last-30-days work hours (in-app attendance, then Team Logger for Shobha / Mariya).
      *
      * @param  array<int, int|string>  $userIds
      * @return array<int, float>
@@ -771,35 +770,32 @@ class TaskController extends Controller
         }
 
         $tz = \App\Services\Attendance\AttendanceTimelineService::defaultTimezone();
-        $ptToday = now()->timezone($tz)->toDateString();
-        $istToday = now('Asia/Kolkata')->toDateString();
-        $todayDates = array_values(array_unique([$ptToday, $istToday]));
+        $today = now()->timezone($tz)->startOfDay();
+        $fromDate = $today->copy()->subDays(AttL30Metrics::WINDOW_DAYS - 1)->toDateString();
+        $toDate = $today->toDateString();
         $hours = [];
+        $todayFromSummary = [];
 
         if (Schema::hasTable('attendance_daily_summaries')) {
-            $byUserDay = [];
             AttendanceDailySummary::query()
                 ->whereIn('user_id', $userIds)
-                ->whereIn('work_date', $todayDates)
+                ->whereBetween('work_date', [$fromDate, $toDate])
                 ->get(['user_id', 'work_date', 'total_work_seconds', 'active_seconds'])
-                ->each(function ($row) use (&$byUserDay) {
+                ->each(function ($row) use (&$hours, &$todayFromSummary, $toDate) {
                     $uid = (int) $row->user_id;
-                    $day = optional($row->work_date)->format('Y-m-d') ?: (string) $row->work_date;
                     $seconds = max((int) ($row->total_work_seconds ?? 0), (int) ($row->active_seconds ?? 0));
-                    $byUserDay[$uid][$day] = ($byUserDay[$uid][$day] ?? 0) + $seconds;
+                    $dayHours = $seconds / 3600;
+                    $hours[$uid] = ($hours[$uid] ?? 0) + $dayHours;
+                    $day = optional($row->work_date)->format('Y-m-d') ?: (string) $row->work_date;
+                    if ($day === $toDate) {
+                        $todayFromSummary[$uid] = ($todayFromSummary[$uid] ?? 0) + $dayHours;
+                    }
                 });
-            foreach ($byUserDay as $uid => $days) {
-                $hours[(int) $uid] = (max($days) ?: 0) / 3600;
-            }
         }
 
         if (Schema::hasTable('attendance_sessions')) {
-            $ptStart = now()->timezone($tz)->startOfDay();
-            $istStart = now('Asia/Kolkata')->startOfDay();
-            $windowStart = $ptStart->lt($istStart) ? $ptStart->copy() : $istStart->copy();
-            $ptEnd = $ptStart->copy()->addDay();
-            $istEnd = $istStart->copy()->addDay();
-            $windowEnd = $ptEnd->gt($istEnd) ? $ptEnd : $istEnd;
+            $windowStart = $today->copy();
+            $windowEnd = $today->copy()->addDay();
             AttendanceSession::query()
                 ->whereIn('user_id', $userIds)
                 ->where('started_at', '>=', $windowStart)
@@ -807,25 +803,28 @@ class TaskController extends Controller
                 ->selectRaw('user_id, SUM(COALESCE(total_active_seconds, 0) + COALESCE(total_idle_seconds, 0)) as work_seconds')
                 ->groupBy('user_id')
                 ->get()
-                ->each(function ($row) use (&$hours) {
+                ->each(function ($row) use (&$hours, $todayFromSummary) {
                     $uid = (int) $row->user_id;
                     $sessionHours = ((int) $row->work_seconds) / 3600;
-                    $hours[$uid] = max($hours[$uid] ?? 0, $sessionHours);
+                    $alreadyToday = $todayFromSummary[$uid] ?? 0;
+                    if ($sessionHours > $alreadyToday) {
+                        $hours[$uid] = ($hours[$uid] ?? 0) - $alreadyToday + $sessionHours;
+                    }
                 });
         }
 
-        $this->applyTeamLoggerHoursFallback($userIds, $hours);
+        $this->applyTeamLoggerHoursFallback($userIds, $hours, $fromDate, $toDate);
 
         return $hours;
     }
 
     /**
-     * Today's Team Logger hours for Shobha and Mariya only.
+     * Last-30-days Team Logger hours for Shobha and Mariya only.
      *
      * @param  array<int, int>  $userIds
      * @param  array<int, float>  $hours
      */
-    protected function applyTeamLoggerHoursFallback(array $userIds, array &$hours): void
+    protected function applyTeamLoggerHoursFallback(array $userIds, array &$hours, string $fromDate, string $toDate): void
     {
         $users = User::query()
             ->whereIn('id', $userIds)
@@ -846,7 +845,7 @@ class TaskController extends Controller
 
         if (Schema::hasTable('team_logger_daily_hours')) {
             TeamLoggerDailyHours::query()
-                ->whereDate('work_date', $tlDay)
+                ->whereBetween('work_date', [$fromDate, $toDate])
                 ->selectRaw('employee_email, SUM(COALESCE(productive_hours, active_hours, 0)) as hours')
                 ->groupBy('employee_email')
                 ->get()
@@ -1503,6 +1502,10 @@ class TaskController extends Controller
             }
 
             $row['is_corrective_action'] = !empty($task->is_corrective_action) ? 1 : 0;
+            $row['screenshots'] = $task->screenshotFilenames();
+            if (empty($row['image']) && ! empty($row['screenshots'][0])) {
+                $row['image'] = $row['screenshots'][0];
+            }
 
             return $row;
         })->values();
@@ -1550,6 +1553,8 @@ class TaskController extends Controller
             'pl' => 'nullable|string',
             'process' => 'nullable|string',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240', // 10MB max
+            'screenshots' => 'nullable|array|max:12',
+            'screenshots.*' => 'image|mimes:jpeg,png,jpg,gif,webp|max:10240',
             'is_corrective_action' => 'nullable|boolean',
         ]);
 
@@ -1600,13 +1605,8 @@ class TaskController extends Controller
         
         \Log::info('💾 Final assignee to save:', ['assign_to' => $assigneeEmail]);
         
-        // Handle image upload
-        $imageName = null;
-        if ($request->hasFile('image')) {
-            $image = $request->file('image');
-            $imageName = time() . '_' . $image->getClientOriginalName();
-            $image->move(public_path('uploads/tasks'), $imageName);
-        }
+        $screenshotNames = $this->collectUploadedTaskScreenshots($request);
+        $imageName = $screenshotNames[0] ?? null;
         
         // Calculate completion_date = TID + 5 days for manual tasks
         $startDate = $validated['tid'] ?? now();
@@ -1655,6 +1655,10 @@ class TaskController extends Controller
 
         if (Schema::hasColumn('tasks', 'is_corrective_action')) {
             $taskData['is_corrective_action'] = $request->boolean('is_corrective_action') ? 1 : 0;
+        }
+
+        if (Schema::hasColumn('tasks', 'screenshots')) {
+            $taskData['screenshots'] = $screenshotNames;
         }
 
         $task = Task::create($taskData);
@@ -1742,6 +1746,10 @@ class TaskController extends Controller
             $taskData['process'] = $task->getAttribute('link9') ?: $task->getAttribute('process') ?: '';
             $taskData['report'] = $task->getAttribute('report') ?: '';
             $taskData['reference_link'] = $task->getAttribute('reference_link') ?: '';
+            $taskData['screenshots'] = $task->screenshotFilenames();
+            if (empty($taskData['image']) && ! empty($taskData['screenshots'][0])) {
+                $taskData['image'] = $taskData['screenshots'][0];
+            }
 
             $clMeta = AutomatedTaskChecklistIds::metaForAutomateTask((int) $task->automate_task_id);
             $taskData['has_checklist_form'] = (bool) $clMeta;
@@ -1963,6 +1971,10 @@ class TaskController extends Controller
                 'pl' => 'nullable|string',
                 'process' => 'nullable|string',
                 'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240', // 10MB max
+                'screenshots' => 'nullable|array|max:12',
+                'screenshots.*' => 'image|mimes:jpeg,png,jpg,gif,webp|max:10240',
+                'existing_screenshots' => 'nullable|array',
+                'existing_screenshots.*' => 'nullable|string|max:255',
             ]);
         } else {
             // Assignee-only: links are the only thing they can change.
@@ -2001,17 +2013,8 @@ class TaskController extends Controller
                 }
             }
 
-            // Handle image upload (only the assignor / admin can replace it).
-            $imageName = $task->image;
-            if ($request->hasFile('image')) {
-                if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
-                    unlink(public_path('uploads/tasks/' . $task->image));
-                }
-
-                $image = $request->file('image');
-                $imageName = time() . '_' . $image->getClientOriginalName();
-                $image->move(public_path('uploads/tasks'), $imageName);
-            }
+            $screenshotNames = $this->mergeTaskScreenshotsFromRequest($task, $request);
+            $imageName = $screenshotNames[0] ?? null;
 
             $updateData = [
                 'title' => $validated['title'],
@@ -2034,6 +2037,10 @@ class TaskController extends Controller
                 'link9' => $validated['process'] ?? '',
                 'image' => $imageName,
             ];
+
+            if (Schema::hasColumn('tasks', 'screenshots')) {
+                $updateData['screenshots'] = $screenshotNames;
+            }
 
             if (Schema::hasColumn('tasks', 'is_corrective_action')) {
                 $updateData['is_corrective_action'] = $request->boolean('is_corrective_action') ? 1 : 0;
@@ -2099,11 +2106,7 @@ class TaskController extends Controller
         // Cascade soft-delete any subtasks so they don't become orphaned.
         $subtasks = Task::where('parent_task_id', $task->id)->get();
 
-        // Delete associated image file if exists
-        if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
-            unlink(public_path('uploads/tasks/' . $task->image));
-            \Log::info('🗑️ Image deleted for deleted task:', ['task_id' => $task->id, 'image' => $task->image]);
-        }
+        $this->deleteTaskScreenshotFiles($task->screenshotFilenames());
 
         // Save task to deleted_tasks before deletion
         $this->saveDeletedTask($task);
@@ -2650,19 +2653,15 @@ class TaskController extends Controller
                         $imagesDeleted = 0;
                         $archiveFailed = 0;
                         foreach ($tasksToDelete as $task) {
-                            // Delete image file if exists (don't fail bulk delete if file delete fails)
-                            if (!empty($task->image)) {
-                                $imagePath = public_path('uploads/tasks/' . $task->image);
-                                if (file_exists($imagePath) && is_file($imagePath)) {
-                                    try {
-                                        if (@unlink($imagePath)) {
-                                            $imagesDeleted++;
-                                            \Log::info('🗑️ Image deleted:', ['task_id' => $task->id, 'image' => $task->image]);
-                                        }
-                                    } catch (\Throwable $e) {
-                                        \Log::warning('Bulk delete: could not delete image file', ['path' => $imagePath, 'error' => $e->getMessage()]);
-                                    }
-                                }
+                            try {
+                                $shotNames = $task->screenshotFilenames();
+                                $this->deleteTaskScreenshotFiles($shotNames);
+                                $imagesDeleted += count($shotNames);
+                            } catch (\Throwable $e) {
+                                \Log::warning('Bulk delete: could not delete screenshot files', [
+                                    'task_id' => $task->id,
+                                    'error' => $e->getMessage(),
+                                ]);
                             }
                             // Archive to deleted_tasks (best-effort: don't fail bulk delete when archiving other users' tasks)
                             try {
@@ -4108,6 +4107,83 @@ class TaskController extends Controller
     }
 
     /**
+     * @return list<string>
+     */
+    private function collectUploadedTaskScreenshots(Request $request): array
+    {
+        $dir = public_path('uploads/tasks');
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+
+        $files = [];
+        if ($request->hasFile('screenshots')) {
+            $uploaded = $request->file('screenshots');
+            $files = is_array($uploaded) ? $uploaded : [$uploaded];
+        }
+        if ($request->hasFile('image')) {
+            $files[] = $request->file('image');
+        }
+
+        $names = [];
+        foreach ($files as $file) {
+            if (! $file || ! $file->isValid()) {
+                continue;
+            }
+            $original = preg_replace('/[^A-Za-z0-9._-]/', '_', (string) $file->getClientOriginalName()) ?: 'screenshot.png';
+            $name = time().'_'.bin2hex(random_bytes(4)).'_'.$original;
+            $file->move($dir, $name);
+            $names[] = $name;
+        }
+
+        return $names;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function mergeTaskScreenshotsFromRequest(Task $task, Request $request): array
+    {
+        $current = $task->screenshotFilenames();
+        $hasExistingField = $request->boolean('existing_screenshots_sent') || $request->exists('existing_screenshots');
+        $hasNewUploads = $request->hasFile('screenshots') || $request->hasFile('image');
+
+        if ($hasExistingField) {
+            $kept = array_values(array_intersect(
+                array_map('strval', (array) $request->input('existing_screenshots', [])),
+                $current
+            ));
+        } elseif ($hasNewUploads && $request->hasFile('image') && ! $request->hasFile('screenshots')) {
+            $this->deleteTaskScreenshotFiles($current);
+            $kept = [];
+        } else {
+            $kept = $current;
+        }
+
+        $removed = array_values(array_diff($current, $kept));
+        $this->deleteTaskScreenshotFiles($removed);
+
+        return array_values(array_unique(array_merge($kept, $this->collectUploadedTaskScreenshots($request))));
+    }
+
+    /**
+     * @param  list<string>|array<int, string>  $filenames
+     */
+    private function deleteTaskScreenshotFiles(array $filenames): void
+    {
+        foreach ($filenames as $name) {
+            $name = basename((string) $name);
+            if ($name === '' || str_contains($name, '..')) {
+                continue;
+            }
+            $path = public_path('uploads/tasks/'.$name);
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+    }
+
+    /**
      * Save task to deleted_tasks table before deletion.
      * Never throws: safe for server (no Schema calls, all errors caught).
      */
@@ -4180,6 +4256,7 @@ class TaskController extends Controller
                 'link8' => $str($task->link8),
                 'link9' => $str($task->link9),
                 'image' => $str($task->image),
+                'screenshots' => json_encode($task->screenshotFilenames()),
                 'task_type' => $str($task->task_type),
                 'rework_reason' => $task->rework_reason !== null ? $str((string) $task->rework_reason, 65535) : null,
                 'report' => $task->report !== null ? $str((string) $task->report, 65535) : null,

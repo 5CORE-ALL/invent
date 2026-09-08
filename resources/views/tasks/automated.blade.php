@@ -2506,7 +2506,7 @@
                                 <button class="action-btn-icon action-btn-edit edit-automated-task" data-id="${id}" title="Edit" style="background: #0dcaf0; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
                                     <i class="mdi mdi-pencil"></i>
                                 </button>
-                                <button class="action-btn-icon action-btn-delete delete-automated-task" data-id="${id}" title="Delete" style="background: #fd7e14; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
+                                <button class="action-btn-icon action-btn-delete delete-automated-task" data-id="${id}" title="Delete (or delete all selected)" style="background: #fd7e14; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
                                     <i class="mdi mdi-delete"></i>
                                 </button>
                                 <button class="action-btn-icon action-btn-subtasks manage-subtasks" data-id="${id}" title="Manage subtasks" style="background: #4facfe; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
@@ -3824,12 +3824,22 @@
                 window.location.href = '/tasks/automated/' + taskId + '/edit';
             });
 
-            // Delete Automated Task (no confirmation)
+            // Delete Automated Task: single row, or all selected if this row is in a multi-selection.
             $(document).on('click', '.delete-automated-task', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                
-                var taskId = $(this).data('id');
+
+                var taskId = String($(this).data('id'));
+                var selectedIdSet = new Set((selectedTasks || []).map(function(sid) { return String(sid); }));
+                var deleteMany = selectedTasks.length > 1 && selectedIdSet.has(taskId);
+
+                if (deleteMany) {
+                    if (!confirm('Delete ' + selectedTasks.length + ' selected automated task(s)? This cannot be undone.')) {
+                        return;
+                    }
+                    bulkUpdate('delete', {});
+                    return;
+                }
                 
                 $.ajax({
                     url: '/tasks/automated/' + taskId,
