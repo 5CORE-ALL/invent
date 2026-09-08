@@ -307,7 +307,7 @@
     let transferModeActive = false;
     let selectedSkus = new Set();
     let allTableData = [];
-    let serverSavedPreferences = {}; // FROM SKU & ratio per to_sku (synced across devices)
+    let serverSavedPreferences = {}; // FROM SKU & ratio per to_sku (shared — latest save from any user)
     let restoringFromSku = false; // batch restore; skip side effects
     let isApplyingFilters = false; // prevent filter↔render infinite loop
     
@@ -842,7 +842,7 @@
             const $wrap = $(this).closest('.custom-from-sku-wrap');
             fillCustomSkuDropdownSingle($wrap, $(this).val());
         });
-        $(document).on('click', '.custom-sku-option', function(e) {
+        $(document).on('mousedown', '.custom-sku-option', function(e) {
             e.preventDefault();
             const sku = $(this).attr('data-sku');
             if (!sku || $(this).hasClass('text-muted')) return;
@@ -852,9 +852,26 @@
             $(this).closest('.custom-from-sku-wrap').removeClass('open');
             syncDisplayFromSkuSingle($row);
         });
+        $(document).on('keydown', '.custom-sku-search', function(e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            commitTypedFromSku($(this));
+            $(this).closest('.custom-from-sku-wrap').removeClass('open');
+            $(this).blur();
+        });
+        $(document).on('blur', '.custom-sku-search', function() {
+            const $input = $(this);
+            setTimeout(function() {
+                if ($input.closest('.custom-from-sku-wrap').hasClass('open') && $input.is(':focus')) return;
+                commitTypedFromSku($input);
+            }, 150);
+        });
         $(document).on('click', function(e) {
             if (!$(e.target).closest('.custom-from-sku-wrap').length) {
-                $('.custom-from-sku-wrap.open').removeClass('open');
+                $('.custom-from-sku-wrap.open').each(function() {
+                    commitTypedFromSku($(this).find('.custom-sku-search'));
+                    $(this).removeClass('open');
+                });
             }
         });
         
@@ -862,16 +879,69 @@
             return String(sku || '').trim().toUpperCase().replace(/\s+/g, ' ');
         }
 
+        function findExactFromSku(typed, excludeSku) {
+            const term = normalizeSkuKey(typed);
+            if (!term) return '';
+            const exclude = normalizeSkuKey(excludeSku);
+            let found = '';
+            allTableData.forEach(function(item) {
+                if (!item.SKU) return;
+                const key = normalizeSkuKey(item.SKU);
+                if (!key || key === exclude || key.indexOf('PARENT') !== -1) return;
+                if (key === term) found = item.SKU;
+            });
+            return found;
+        }
+
+        function commitTypedFromSku($input) {
+            if (restoringFromSku || !$input || !$input.length || !table) return;
+            const $row = $input.closest('.tabulator-row');
+            if (!$row.length) return;
+            const row = table.getRow($row[0]);
+            if (!row) return;
+
+            const typed = ($input.val() || '').trim();
+            const $select = $row.find('.to-sku-select');
+            const current = $select.val() || '';
+            const toSku = row.getData().SKU;
+
+            if (!typed) {
+                if (current) {
+                    $select.val('').trigger('change');
+                } else {
+                    syncDisplayFromSkuSingle($row);
+                }
+                return;
+            }
+
+            let matched = findExactFromSku(typed, toSku);
+            if (!matched) {
+                const $opts = $input.closest('.custom-from-sku-wrap').find('.custom-sku-option[data-sku]');
+                if ($opts.length === 1) {
+                    matched = $opts.first().attr('data-sku') || '';
+                }
+            }
+
+            if (!matched) {
+                syncDisplayFromSkuSingle($row);
+                return;
+            }
+            if (normalizeSkuKey(matched) === normalizeSkuKey(current)) {
+                syncDisplayFromSkuSingle($row);
+                return;
+            }
+            if (!$select.find('option').filter(function() { return $(this).val() === matched; }).length) {
+                $select.append($('<option>', { value: matched, text: matched }));
+            }
+            $select.val(matched).trigger('change');
+            syncDisplayFromSkuSingle($row);
+        }
+
         // DIL is stored as ratio (e.g. 14.6 => 1460%). Always convert like the column formatter.
         function dilToPercent(dil) {
             const n = parseFloat(dil);
             if (isNaN(n)) return 0;
             return n * 100;
-        }
-
-        // Same pink rule as DIL% / FROM DIL% column styling (>= 50%)
-        function isDilPink(dil) {
-            return dilToPercent(dil) >= 50;
         }
 
         function getFromSkuMeta(fromSku) {
@@ -898,26 +968,33 @@
             $dilSpan.attr('class', 'from-dil-percent ' + dilClass).text(fromDilPercent + '%');
         }
 
+        function persistFromSkuPreference(toSku, fromSku, ratio) {
+            const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+            savedData.fromSku = fromSku || '';
+            savedData.ratio = ratio || savedData.ratio || '1:1';
+            localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+            serverSavedPreferences[toSku] = serverSavedPreferences[toSku] || {};
+            serverSavedPreferences[toSku].fromSku = fromSku || '';
+            serverSavedPreferences[toSku].ratio = savedData.ratio;
+            $.post('/stock-balance-transfer-preferences', {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                to_sku: toSku,
+                from_sku: fromSku || '',
+                ratio: savedData.ratio
+            });
+        }
+
         function applyFromSkuToRow($row, row, fromSku, options) {
             options = options || {};
             const silent = !!options.silent;
             const toSku = row.getData().SKU;
+            fromSku = fromSku || '';
+
+            if (!silent) {
+                persistFromSkuPreference(toSku, fromSku, $row.find('.ratio-select').val() || '1:1');
+            }
 
             if (fromSku) {
-                if (!silent) {
-                    const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
-                    savedData.fromSku = fromSku;
-                    localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
-                    serverSavedPreferences[toSku] = serverSavedPreferences[toSku] || {};
-                    serverSavedPreferences[toSku].fromSku = fromSku;
-                    $.post('/stock-balance-transfer-preferences', {
-                        _token: $('meta[name="csrf-token"]').attr('content'),
-                        to_sku: toSku,
-                        from_sku: fromSku,
-                        ratio: $row.find('.ratio-select').val() || '1:1'
-                    });
-                }
-
                 const selectedOption = $row.find('.to-sku-select option:selected');
                 const meta = getFromSkuMeta(fromSku);
                 const fromParent = selectedOption.attr('data-parent') || meta.parent || '';
@@ -1470,26 +1547,6 @@
             return (serverPref && serverPref.fromSku) || savedFromSku || lastUpdateFromSku || null;
         }
 
-        // Hide when FROM Qty is 0, or both DIL + FROM DIL are pink (>= 50%)
-        function shouldHideTransferRow(data) {
-            const fromSku = resolveFromSkuForRow(data);
-            if (!fromSku) return false;
-
-            const meta = getFromSkuMeta(fromSku);
-            const fromQty = (data._from_qty != null && data._from_qty !== '')
-                ? (parseInt(data._from_qty, 10) || 0)
-                : meta.inv;
-            if (fromQty === 0) return true;
-
-            const fromDil = (data._from_dil != null && data._from_dil !== '')
-                ? data._from_dil
-                : meta.dil;
-            // e.g. DIL 14.6 (1460%) and FROM DIL 7.83 (783%) are both pink
-            if (isDilPink(data.DIL) && isDilPink(fromDil)) return true;
-
-            return false;
-        }
-
         // Apply all filters together (guarded to avoid renderComplete recursion)
         function applyAllFilters() {
             if (!table || isApplyingFilters || restoringFromSku) return;
@@ -1499,7 +1556,6 @@
                 const dilVal = $('#dil-filter').val();
                 const actionVal = $('#action-filter').val();
 
-                // Single function filter — live-resolves FROM SKU DIL/INV (no stale _from_dil)
                 table.setFilter(function(data) {
                     if (parentVal && data.Parent !== parentVal) return false;
 
@@ -1518,7 +1574,6 @@
                         }
                     }
 
-                    if (shouldHideTransferRow(data)) return false;
                     return true;
                 });
             } finally {
@@ -1528,7 +1583,7 @@
             }
         }
 
-        // Precompute hide-filter fields on data objects (same refs Tabulator uses)
+        // Precompute FROM SKU fields on data objects (same refs Tabulator uses)
         function enrichTransferMetaFromPreferences() {
             allTableData.forEach(function(data) {
                 const fromSku = resolveFromSkuForRow(data);

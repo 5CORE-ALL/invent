@@ -1710,8 +1710,8 @@ class StockBalanceController extends Controller
     }
 
     /**
-     * Get transfer preferences (FROM SKU, ratio) for the current user, keyed by to_sku.
-     * Used so saved preferences sync across devices.
+     * Get transfer preferences (FROM SKU, ratio) keyed by to_sku.
+     * Latest save from any user wins so the table stays shared.
      */
     public function getTransferPreferences()
     {
@@ -1719,9 +1719,15 @@ class StockBalanceController extends Controller
         if (!$user) {
             return response()->json(['preferences' => []]);
         }
-        $rows = StockBalanceTransferPreference::where('user_id', $user->id)->get();
+        $rows = StockBalanceTransferPreference::query()
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get();
         $preferences = [];
         foreach ($rows as $row) {
+            if (isset($preferences[$row->to_sku])) {
+                continue;
+            }
             $preferences[$row->to_sku] = [
                 'fromSku' => $row->from_sku,
                 'ratio' => $row->ratio ?? '1:1',
@@ -1731,7 +1737,8 @@ class StockBalanceController extends Controller
     }
 
     /**
-     * Save transfer preference for one to_sku (FROM SKU and ratio). Persists across devices.
+     * Save transfer preference for one to_sku (FROM SKU and ratio).
+     * Any user's save is visible to everyone (latest updated_at wins).
      */
     public function saveTransferPreference(Request $request)
     {
