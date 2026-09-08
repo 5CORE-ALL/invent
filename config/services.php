@@ -661,6 +661,8 @@ return [
         'base_url'    => env('NEWEGG_BASE_URL', 'https://api.newegg.com'),
         'http_timeout'    => (int) env('NEWEGG_HTTP_TIMEOUT', 60),
         'connect_timeout' => (int) env('NEWEGG_CONNECT_TIMEOUT', 15),
+        'default_subcategory_id' => env('NEWEGG_DEFAULT_SUBCATEGORY_ID'),
+        'default_manufacturer' => env('NEWEGG_DEFAULT_MANUFACTURER', env('LISTING_MANAGER_DEFAULT_BRAND', '5 Core Inc.')),
     ],
 
     /*

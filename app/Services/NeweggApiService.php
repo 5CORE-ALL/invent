@@ -1676,4 +1676,398 @@ class NeweggApiService
 
         return ['success' => false, 'message' => $lastMessage];
     }
+
+    /**
+     * Look up an already-listed Newegg item by Seller Part # (SKU).
+     *
+     * @return array{success: bool, message: string, item_number: string, blocked_by_cloudflare: bool}
+     */
+    public function lookupSellerItem(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.', 'item_number' => '', 'blocked_by_cloudflare' => false];
+        }
+
+        foreach ($this->neweggSkuCandidates($sku) as $candidate) {
+            $inv = $this->getItemInventory($candidate, 1);
+            if (! empty($inv['blocked_by_cloudflare'])) {
+                return [
+                    'success' => false,
+                    'message' => 'Blocked by Cloudflare (managed challenge). Whitelist this server IP in the Newegg Seller Portal.',
+                    'item_number' => '',
+                    'blocked_by_cloudflare' => true,
+                ];
+            }
+            $itemNumber = $this->extractNeweggItemNumber(is_array($inv['json'] ?? null) ? $inv['json'] : []);
+            if ($itemNumber !== '') {
+                return [
+                    'success' => true,
+                    'message' => 'Newegg item already exists.',
+                    'item_number' => $itemNumber,
+                    'blocked_by_cloudflare' => false,
+                ];
+            }
+            if (! empty($inv['ok']) && $this->inventoryPayloadLooksListed(is_array($inv['json'] ?? null) ? $inv['json'] : [])) {
+                return [
+                    'success' => true,
+                    'message' => 'Newegg item already exists.',
+                    'item_number' => $this->listedPlaceholderId($candidate, $sku),
+                    'blocked_by_cloudflare' => false,
+                ];
+            }
+        }
+
+        return ['success' => false, 'message' => 'Item is not on Newegg yet.', 'item_number' => '', 'blocked_by_cloudflare' => false];
+    }
+
+    /**
+     * Create a Newegg listing (or attach an existing catalog item).
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array{success: bool, message: string, item_number?: string, request_id?: string, blocked_by_cloudflare?: bool}
+     */
+    public function createListing(array $fields): array
+    {
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'message' => 'Newegg API credentials are not configured. Set NEWEGG_SELLER_ID, NEWEGG_API_KEY, and NEWEGG_SECRET_KEY.'];
+        }
+
+        $sku = trim((string) ($fields['sku'] ?? ''));
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+
+        $existing = $this->lookupSellerItem($sku);
+        if (! empty($existing['blocked_by_cloudflare'])) {
+            return $existing;
+        }
+        if (! empty($existing['success']) && trim((string) ($existing['item_number'] ?? '')) !== '') {
+            return [
+                'success' => true,
+                'message' => 'Connected existing Newegg listing.',
+                'item_number' => (string) $existing['item_number'],
+            ];
+        }
+
+        $platform = strtolower(trim((string) ($fields['platform'] ?? 'b2c'))) === 'b2b' ? 'b2b' : 'b2c';
+        $upc = $this->normalizeUpc((string) ($fields['upc'] ?? ''));
+        $subcategoryId = trim((string) ($fields['subcategory_id'] ?? config('services.newegg.default_subcategory_id', '')));
+
+        $submitted = null;
+        if ($upc !== '') {
+            $submitted = $this->submitExistingItemFeed($sku, $fields, $platform);
+        }
+        if (($submitted === null || empty($submitted['success'])) && $subcategoryId !== '') {
+            $fields['subcategory_id'] = $subcategoryId;
+            $created = $this->submitItemCreateFeed($sku, $fields, $platform);
+            if (! empty($created['success']) || $submitted === null || empty($submitted['success'])) {
+                $submitted = $created;
+            }
+        }
+
+        if ($submitted === null) {
+            return [
+                'success' => false,
+                'message' => 'Cannot create a Newegg listing without a UPC/barcode or SubCategoryID. Add a UPC on Product Master or set NEWEGG_DEFAULT_SUBCATEGORY_ID.',
+            ];
+        }
+        if (empty($submitted['success'])) {
+            return $submitted;
+        }
+
+        $itemNumber = '';
+        for ($attempt = 0; $attempt < 3 && $itemNumber === ''; $attempt++) {
+            if ($attempt > 0) {
+                usleep(400000);
+            }
+            $lookup = $this->lookupSellerItem($sku);
+            if (! empty($lookup['blocked_by_cloudflare'])) {
+                break;
+            }
+            $itemNumber = trim((string) ($lookup['item_number'] ?? ''));
+        }
+        if ($itemNumber === '') {
+            $itemNumber = trim((string) ($submitted['request_id'] ?? ''));
+        }
+        if ($itemNumber === '' || strcasecmp($itemNumber, $sku) === 0) {
+            $itemNumber = $this->listedPlaceholderId($sku, $sku);
+        }
+
+        return [
+            'success' => true,
+            'message' => (string) ($submitted['message'] ?? 'Newegg listing feed submitted.'),
+            'item_number' => $itemNumber,
+            'request_id' => (string) ($submitted['request_id'] ?? ''),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $fields
+     * @return array{success: bool, message: string, request_id?: string, blocked_by_cloudflare?: bool}
+     */
+    protected function submitExistingItemFeed(string $sku, array $fields, string $platform): array
+    {
+        $sellerPart = htmlspecialchars($this->neweggSkuCandidates($sku)[0] ?? $sku, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $manufacturer = htmlspecialchars($this->neweggManufacturer($fields), ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $mpn = htmlspecialchars(trim((string) ($fields['mpn'] ?? $sku)), ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $upc = htmlspecialchars($this->normalizeUpc((string) ($fields['upc'] ?? '')), ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $price = number_format(max(0.01, (float) ($fields['price'] ?? 0)), 2, '.', '');
+        $qty = max(0, (int) ($fields['inventory'] ?? 0));
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>'
+            .'<NeweggEnvelope>'
+            .'<Header><DocumentVersion>2.0</DocumentVersion></Header>'
+            .'<MessageType>BatchItemCreation</MessageType>'
+            .'<Message><Itemfeed><SummaryInfo/>'
+            .'<Item><BasicInfo>'
+            .'<SellerPartNumber>'.$sellerPart.'</SellerPartNumber>'
+            .'<Manufacturer>'.$manufacturer.'</Manufacturer>'
+            .'<ManufacturerPartsNumber>'.$mpn.'</ManufacturerPartsNumber>'
+            .'<UPCOrISBN>'.$upc.'</UPCOrISBN>'
+            .'<Currency>USD</Currency>'
+            .'<SellingPrice>'.$price.'</SellingPrice>'
+            .'<Shipping>Default</Shipping>'
+            .'<Inventory>'.$qty.'</Inventory>'
+            .'<ItemCondition>New</ItemCondition>'
+            .'<PacksOrSets>1</PacksOrSets>'
+            .'<ActivationMark>True</ActivationMark>'
+            .'</BasicInfo></Item>'
+            .'</Itemfeed></Message></NeweggEnvelope>';
+
+        return $this->submitXmlFeed($xml, 'ITEM_DATA', $platform);
+    }
+
+    /**
+     * @param  array<string, mixed>  $fields
+     * @return array{success: bool, message: string, request_id?: string, blocked_by_cloudflare?: bool}
+     */
+    protected function submitItemCreateFeed(string $sku, array $fields, string $platform): array
+    {
+        $sellerPart = htmlspecialchars($this->neweggSkuCandidates($sku)[0] ?? $sku, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $manufacturer = htmlspecialchars($this->neweggManufacturer($fields), ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $mpn = htmlspecialchars(trim((string) ($fields['mpn'] ?? $sku)), ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $upc = htmlspecialchars($this->normalizeUpc((string) ($fields['upc'] ?? '')), ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $subcategoryId = htmlspecialchars(trim((string) ($fields['subcategory_id'] ?? '')), ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $title = trim((string) ($fields['title'] ?? ''));
+        $safeTitle = str_replace(']]>', ']] >', $title);
+        $description = trim((string) ($fields['description'] ?? $title));
+        $safeDescription = str_replace(']]>', ']] >', $description);
+        $bullets = [];
+        foreach ((array) ($fields['bullets'] ?? []) as $bullet) {
+            $bullet = trim((string) $bullet);
+            if ($bullet !== '') {
+                $bullets[] = str_replace(['^^', ']]>'], [' ', ']] >'], $bullet);
+            }
+        }
+        $bulletXml = $bullets !== []
+            ? '<BulletDescription><![CDATA['.implode('^^', array_slice($bullets, 0, 5)).']]></BulletDescription>'
+            : '';
+        $imageXml = $this->neweggItemImagesXml([
+            'ItemImages' => is_array($fields['images'] ?? null) ? $fields['images'] : [],
+        ]);
+        $price = number_format(max(0.01, (float) ($fields['price'] ?? 0)), 2, '.', '');
+        $qty = max(0, (int) ($fields['inventory'] ?? 0));
+        $length = $this->neweggDimension((float) ($fields['length'] ?? 1));
+        $width = $this->neweggDimension((float) ($fields['width'] ?? 1));
+        $height = $this->neweggDimension((float) ($fields['height'] ?? 1));
+        $weight = $this->neweggDimension((float) ($fields['weight'] ?? 1));
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>'
+            .'<NeweggEnvelope>'
+            .'<Header><DocumentVersion>2.0</DocumentVersion></Header>'
+            .'<MessageType>BatchItemCreation</MessageType>'
+            .'<Message><Itemfeed>'
+            .'<SummaryInfo><SubCategoryID>'.$subcategoryId.'</SubCategoryID></SummaryInfo>'
+            .'<Item><Action>Create Item</Action><BasicInfo>'
+            .'<SellerPartNumber>'.$sellerPart.'</SellerPartNumber>'
+            .'<Manufacturer>'.$manufacturer.'</Manufacturer>'
+            .'<ManufacturerPartsNumber>'.$mpn.'</ManufacturerPartsNumber>'
+            .'<UPCOrISBN>'.$upc.'</UPCOrISBN>'
+            .'<WebsiteShortTitle><![CDATA['.$safeTitle.']]></WebsiteShortTitle>'
+            .'<ProductDescription><![CDATA['.$safeDescription.']]></ProductDescription>'
+            .$bulletXml
+            .'<ItemDimension>'
+            .'<ItemLength>'.$length.'</ItemLength>'
+            .'<ItemWidth>'.$width.'</ItemWidth>'
+            .'<ItemHeight>'.$height.'</ItemHeight>'
+            .'</ItemDimension>'
+            .'<ItemWeight>'.$weight.'</ItemWeight>'
+            .'<PacksOrSets>1</PacksOrSets>'
+            .'<ItemCondition>New</ItemCondition>'
+            .'<ItemPackage>Retail</ItemPackage>'
+            .'<ShippingRestriction>No</ShippingRestriction>'
+            .'<Currency>USD</Currency>'
+            .'<SellingPrice>'.$price.'</SellingPrice>'
+            .'<Shipping>Default</Shipping>'
+            .'<Inventory>'.$qty.'</Inventory>'
+            .'<ActivationMark>True</ActivationMark>'
+            .$imageXml
+            .'</BasicInfo></Item>'
+            .'</Itemfeed></Message></NeweggEnvelope>';
+
+        return $this->submitXmlFeed($xml, 'ITEM_DATA', $platform);
+    }
+
+    /**
+     * @return array{success: bool, message: string, request_id?: string, blocked_by_cloudflare?: bool}
+     */
+    protected function submitXmlFeed(string $xml, string $requestType, string $platform = 'b2c'): array
+    {
+        $paths = $platform === 'b2b'
+            ? ['/marketplace/b2b/datafeedmgmt/feeds/submitfeed', '/marketplace/datafeedmgmt/feeds/submitfeed']
+            : ['/marketplace/datafeedmgmt/feeds/submitfeed', '/marketplace/b2b/datafeedmgmt/feeds/submitfeed'];
+
+        $last = ['success' => false, 'message' => 'Newegg feed submit failed.'];
+        foreach ($paths as $path) {
+            $url = $this->baseUrl.$path.'?'.http_build_query([
+                'sellerid' => $this->sellerId,
+                'requesttype' => $requestType,
+            ]);
+            try {
+                $response = Http::withHeaders([
+                    'Authorization' => $this->apiKey,
+                    'SecretKey' => $this->secretKey,
+                    'Content-Type' => 'application/xml',
+                    'Accept' => 'application/json',
+                ])
+                    ->timeout($this->timeout)
+                    ->connectTimeout($this->connectTimeout)
+                    ->withBody($xml, 'application/xml')
+                    ->post($url);
+            } catch (\Throwable $e) {
+                $last = ['success' => false, 'message' => 'Newegg feed submit failed: '.$e->getMessage()];
+                continue;
+            }
+
+            $normalized = $this->normalize($response);
+            if (! empty($normalized['blocked_by_cloudflare'])) {
+                return [
+                    'success' => false,
+                    'message' => 'Blocked by Cloudflare (managed challenge). Whitelist this server IP in the Newegg Seller Portal.',
+                    'blocked_by_cloudflare' => true,
+                ];
+            }
+
+            if ($response->successful() || in_array($response->status(), [200, 201, 202], true)) {
+                $json = $response->json();
+                if (is_array($json) && (empty($json[0]['Message']) && data_get($json, 'NeweggAPIResponse.IsSuccess') !== false)) {
+                    $requestId = $this->extractFeedRequestId($json);
+
+                    return [
+                        'success' => true,
+                        'message' => $requestId !== ''
+                            ? 'Newegg item feed submitted (RequestId '.$requestId.').'
+                            : 'Newegg item feed submitted.',
+                        'request_id' => $requestId,
+                    ];
+                }
+            }
+
+            $last = ['success' => false, 'message' => $this->extractItemError($normalized)];
+        }
+
+        return $last;
+    }
+
+    /**
+     * @param  array<string, mixed>  $json
+     */
+    protected function extractFeedRequestId(array $json): string
+    {
+        foreach ([
+            'NeweggAPIResponse.ResponseBody.ResponseList.0.RequestId',
+            'ResponseBody.ResponseList.0.RequestId',
+            'NeweggAPIResponse.ResponseBody.RequestId',
+            'ResponseBody.RequestId',
+            'RequestId',
+        ] as $path) {
+            $value = trim((string) data_get($json, $path, ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $json
+     */
+    protected function extractNeweggItemNumber(array $json): string
+    {
+        foreach ([
+            'NeweggItemNumber',
+            'ItemNumber',
+            'NEItemNumber',
+            'NeweggAPIResponse.ResponseBody.ItemNumber',
+            'NeweggAPIResponse.ResponseBody.NeweggItemNumber',
+            'ResponseBody.ItemNumber',
+            'ResponseBody.NeweggItemNumber',
+            'Inventory.ItemNumber',
+        ] as $path) {
+            $value = trim((string) data_get($json, $path, ''));
+            if ($value !== '' && (str_starts_with(strtoupper($value), '9SI') || strcasecmp($value, '0') !== 0)) {
+                if (preg_match('/^9SI/i', $value) || (strlen($value) >= 6 && strcasecmp($value, (string) data_get($json, 'SellerPartNumber', '')) !== 0)) {
+                    return $value;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $json
+     */
+    protected function inventoryPayloadLooksListed(array $json): bool
+    {
+        if ($json === []) {
+            return false;
+        }
+        foreach (['SellerPartNumber', 'Inventory', 'AvailableQuantity', 'ItemNumber', 'NeweggItemNumber'] as $key) {
+            if (trim((string) data_get($json, $key, '')) !== '' || trim((string) data_get($json, 'ResponseBody.'.$key, '')) !== '') {
+                return ! isset($json[0]['Message']);
+            }
+        }
+
+        return false;
+    }
+
+    protected function listedPlaceholderId(string $candidate, string $sku): string
+    {
+        $candidate = trim($candidate);
+        if ($candidate !== '' && strcasecmp($candidate, $sku) !== 0) {
+            return $candidate;
+        }
+
+        return 'NE-'.substr(sha1(strtoupper($sku)), 0, 12);
+    }
+
+    /**
+     * @param  array<string, mixed>  $fields
+     */
+    protected function neweggManufacturer(array $fields): string
+    {
+        $manufacturer = trim((string) ($fields['manufacturer'] ?? ''));
+        if ($manufacturer === '') {
+            $manufacturer = trim((string) config('services.newegg.default_manufacturer', '5 Core Inc.'));
+        }
+
+        return $manufacturer !== '' ? $manufacturer : '5 Core Inc.';
+    }
+
+    protected function normalizeUpc(string $raw): string
+    {
+        $digits = preg_replace('/\D+/', '', $raw) ?? '';
+
+        return (strlen($digits) >= 8 && strlen($digits) <= 14) ? $digits : '';
+    }
+
+    protected function neweggDimension(float $value): string
+    {
+        $value = $value > 0 ? $value : 1.0;
+
+        return number_format($value, 2, '.', '');
+    }
 }

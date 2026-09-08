@@ -21,6 +21,8 @@ class ListingVariationPreviewService
         private EbayListingPublishService $ebay,
         private TikTokListingPublishService $tiktok,
         private SheinListingPublishService $shein,
+        private NeweggListingPublishService $newegg,
+        private TopDawgListingPublishService $topdawg,
     ) {
     }
 
@@ -120,6 +122,12 @@ class ListingVariationPreviewService
         }
         if ($this->isSheinChannel($channel)) {
             return $this->shein->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName, $weightLb);
+        }
+        if ($this->isNeweggChannel($channel)) {
+            return $this->newegg->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $categoryId);
+        }
+        if (in_array($channel, ['topdawg', 'top-dawg', 'top_dawg'], true)) {
+            return $this->topdawg->publishSkus($skus, $expandSiblings, $mode, $parentHint);
         }
 
         $label = $this->channelLabel($channel);
@@ -311,6 +319,14 @@ class ListingVariationPreviewService
         ], true);
     }
 
+    private function isNeweggChannel(string $channel): bool
+    {
+        return in_array($channel, [
+            'newegg', 'neweggb2c', 'newegg-b2c', 'newegg_b2c',
+            'neweggb2b', 'newegg-b2b', 'newegg_b2b',
+        ], true);
+    }
+
     private function channelLabel(string $channel): string
     {
         $labels = [
@@ -333,6 +349,8 @@ class ListingVariationPreviewService
             'bestbuyusa' => 'Best Buy USA',
             'neweggb2c' => 'Newegg B2C',
             'neweggb2b' => 'Newegg B2B',
+            'topdawg' => 'TOPDAWG',
+            'purchasingpower' => 'Purchasing Power',
             'tiktokshop' => 'TikTok Shop',
             'tiktokshop2' => 'TikTok Shop 2',
             'fbmarketplace' => 'FB Marketplace',
