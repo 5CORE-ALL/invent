@@ -218,6 +218,8 @@ class AmazonListingPublishService
             'color' => $text($color),
             'country_of_origin' => $attr($origin),
             'dangerous_goods_regulations' => $attr($dgr),
+            'supplier_declared_dg_hz_regulation' => $attr($dgr),
+            'batteries_required' => $attr(false),
             'bullet_point' => array_map(static fn (string $line) => [
                 'value' => $line,
                 'language_tag' => 'en_US',

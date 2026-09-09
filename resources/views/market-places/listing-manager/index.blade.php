@@ -672,6 +672,7 @@
                                     <option value="ghs">GHS</option>
                                     <option value="storage">Storage</option>
                                     <option value="transport">Transport</option>
+                                    <option value="waste">Waste</option>
                                     <option value="other">Other</option>
                                 </select>
                             </div>

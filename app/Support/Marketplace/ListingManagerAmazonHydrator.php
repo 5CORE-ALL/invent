@@ -438,7 +438,7 @@ class ListingManagerAmazonHydrator
     public static function amazonDangerousGoods(string $value): string
     {
         $value = strtolower(trim($value));
-        $allowed = ['not_applicable', 'ghs', 'storage', 'transport', 'other'];
+        $allowed = ['not_applicable', 'ghs', 'storage', 'transport', 'waste', 'other'];
         if (in_array($value, $allowed, true)) {
             return $value;
         }
