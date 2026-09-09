@@ -46,6 +46,7 @@ class FetchMarketplaceShopifyTrackingJob implements ShouldQueue, ShouldBeUnique
     {
         try {
             $result = $sync->syncPendingUnfulfilled($this->limit, false, $this->all);
+            \App\Services\MarketplaceManager\MarketplaceChannelFulfillmentHub::dispatchAllTrackingJobs(40);
             Log::info('FetchMarketplaceShopifyTrackingJob: completed', $result);
         } catch (\Throwable $e) {
             Log::error('FetchMarketplaceShopifyTrackingJob: failed', [

@@ -907,7 +907,7 @@ class VeeqoShopifyFulfillmentService
                 }
                 $skuPasses = $skus !== [] ? $skus : [''];
                 $checked++;
-                $cacheKey = 'mm_fetch_tracking_shopify_v2:'.$shopifyId;
+                $cacheKey = 'mm_fetch_tracking_shopify_v3:'.$shopifyId;
                 $orderLabel = trim((string) ($order['name'] ?? '')).' '.($marketplace !== '' ? $marketplace : 'marketplace');
                 if (! $fresh && Cache::has($cacheKey)) {
                     $skipped++;
@@ -961,7 +961,7 @@ class VeeqoShopifyFulfillmentService
                     ]);
                 } elseif ($allMatched && $action === 'already_on_shopify') {
                     $skipped++;
-                    Cache::put($cacheKey, 1, now()->addDays(7));
+                    Cache::put($cacheKey, 1, now()->addMinutes(25));
                     $this->bumpProgress('skipped', [
                         'label' => trim($orderLabel),
                         'marketplace' => $marketplace,
@@ -3866,8 +3866,14 @@ class VeeqoShopifyFulfillmentService
     protected function rememberAutoFetchResult(string $marketplace, int $orderId, array $result): void
     {
         $action = (string) ($result['action'] ?? '');
-        if (in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
-            Cache::put($this->autoFetchCacheKey($marketplace, $orderId, 'done'), 1, now()->addDays(7));
+        if ($action === 'shopify_fulfilled') {
+            Cache::put($this->autoFetchCacheKey($marketplace, $orderId, 'done'), 1, now()->addHours(6));
+
+            return;
+        }
+        if ($action === 'already_on_shopify') {
+            // Shopify has a label — keep retrying the marketplace declare.
+            Cache::put($this->autoFetchCacheKey($marketplace, $orderId, 'done'), 1, now()->addMinutes(20));
 
             return;
         }
@@ -3879,7 +3885,7 @@ class VeeqoShopifyFulfillmentService
 
     protected function autoFetchCacheKey(string $marketplace, int $orderId, string $kind): string
     {
-        return 'mm_fetch_tracking_'.$kind.':'.$marketplace.':'.$orderId;
+        return 'mm_fetch_tracking_v2_'.$kind.':'.$marketplace.':'.$orderId;
     }
 
     /**
