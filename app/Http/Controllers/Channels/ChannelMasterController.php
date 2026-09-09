@@ -1054,8 +1054,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 2 L30 for Active Channel: temu2_orders + Temu Price
-     * (Base × 1.1364; +$2.99 if that result ≤ $26.99). No sheet, no −$2.99 on Base.
+     * Temu 2 L30 for Active Channel: same Temu Price math as /temu-tabulator.
      *
      * @return array{total_orders: int, total_quantity: int, total_revenue: float, total_pft: float, total_cogs: float, gpft_percent: float, groi_percent: float}|null
      */
@@ -18241,16 +18240,11 @@ class ChannelMasterController extends Controller
 
             if ($channel === 'temu' || $channel === 'temu2') {
                 $day = Carbon::parse($ymd, TemuShopifySalesService::PST);
-                $dayMetrics = TemuShopifySalesService::computeMetricsFromOrders(
+                self::$pacificDayYSalesCache[$key] = (float) TemuShopifySalesService::computeMetricsFromOrders(
                     $day->copy()->startOfDay(),
                     $day->copy()->endOfDay(),
                     $channel === 'temu2'
-                );
-                self::$pacificDayYSalesCache[$key] = (float) (
-                    $channel === 'temu2'
-                        ? ($dayMetrics['sales'] ?? 0)
-                        : ($dayMetrics['base_sales'] ?? 0)
-                );
+                )['base_sales'];
 
                 return self::$pacificDayYSalesCache[$key];
             }

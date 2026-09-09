@@ -403,7 +403,7 @@ class TemuShopifySalesService
 
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
-            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, $margin, $lp, $ship, ! $isTemu2);
+            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, $margin, $lp, $ship);
 
             // L30 Sales / GPFT / GROI on Temu Price (same as /temu-tabulator).
             $totalSales += $calc['sales'];
@@ -454,7 +454,7 @@ class TemuShopifySalesService
             }
             $lineSales = (float) ($r['line_sales'] ?? 0);
             $rawUnit = ($lineSales > 0 && $qty > 0) ? ($lineSales / $qty) : $base;
-            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, self::temuMarginDecimal(), 0.0, 0.0, false);
+            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, self::temuMarginDecimal(), 0.0, 0.0);
             $out[$d]['sales'] += $calc['sales'];
             $out[$d]['base_sales'] += $calc['base'] * $qty;
             $out[$d]['qty'] += $qty;
@@ -511,7 +511,7 @@ class TemuShopifySalesService
             $yesterday->copy()->startOfDay(),
             $yesterday->copy()->endOfDay(),
             true
-        )['sales'];
+        )['base_sales'];
     }
 
     /** L7 Sales from temu2_orders: seven wall-clock Pacific days ending yesterday. */
@@ -523,7 +523,7 @@ class TemuShopifySalesService
 
         [$start, $end] = self::channelMasterL7Window();
 
-        return (float) self::computeMetricsFromOrders($start, $end, true)['sales'];
+        return (float) self::computeMetricsFromOrders($start, $end, true)['base_sales'];
     }
 
     /**

@@ -126,7 +126,7 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge fs-6 p-2" id="y-sales-badge"
                             style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="Yesterday's Temu 2 Temu Price sales — (Base × 1.1364); +$2.99 if that result ≤ $26.99. Same as Active Channel Temu 2 Y Sales.">Y Sales: ${{ number_format((float) ($temu2YSales ?? 0), 0) }}</span>
+                            title="Yesterday's Temu 2 sales from bg.order.amount.query (base + freight) — same definition as /temu-tabulator Y Sales.">Y Sales: ${{ number_format((float) ($temu2YSales ?? 0), 0) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
@@ -171,9 +171,13 @@
     const TEMU_PRICE_MULT = 1.1364;
     const TEMU_FREIGHT = 2.99;
     const TEMU_FREIGHT_CAP = 26.99;
+    /** Same as /temu-tabulator: Base = unit − $2.99 when unit < $26.99. */
     function temuGoodsBase(rawUnit) {
         const b = parseFloat(rawUnit) || 0;
         if (b <= 0) return 0;
+        if (b < TEMU_FREIGHT_CAP) {
+            return Math.max(0, +(b - TEMU_FREIGHT).toFixed(2));
+        }
         return +b.toFixed(2);
     }
     function temuRowBase(row) {
@@ -184,7 +188,7 @@
         if (b <= 0) return 0;
         let price = b * TEMU_PRICE_MULT;
         if (price <= TEMU_FREIGHT_CAP) price += TEMU_FREIGHT;
-        return +price.toFixed(2);
+        return price;
     }
     function temuPriceHoverText(row) {
         const base = temuRowBase(row);
@@ -459,7 +463,7 @@
                         return temuGoodsBase(a) - temuGoodsBase(b);
                     },
                     width: 120,
-                    headerTooltip: "Temu 2 Base Price = API unit as stored (no −$2.99).",
+                    headerTooltip: "Base = stored/API unit − $2.99 when that unit is < $26.99. Otherwise stored/API unit. Same as /temu-tabulator.",
                     accessorDownload: function(value) {
                         const n = temuGoodsBase(value);
                         return n > 0 ? n.toFixed(2) : '';
@@ -468,7 +472,10 @@
                         const raw = parseFloat(cell.getValue()) || 0;
                         const base = temuGoodsBase(raw);
                         if (!(base > 0)) return '';
-                        return `<span title="API unit $${raw.toFixed(2)} (no −$2.99)">$${base.toFixed(2)}</span>`;
+                        const tip = raw < TEMU_FREIGHT_CAP
+                            ? ('$' + raw.toFixed(2) + ' − $2.99 (unit < $26.99)')
+                            : ('$' + raw.toFixed(2) + ' (unit ≥ $26.99, no −$2.99)');
+                        return `<span title="${tip}">$${base.toFixed(2)}</span>`;
                     }
                 },
                 {
@@ -512,7 +519,7 @@
                     visible: true,
                     headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     mutator: function(value, data) {
-                        return temuRowTemuPrice(data);
+                        return temuPriceFromBase(temuRowBase(data));
                     },
                     tooltip: function(e, cell) {
                         return temuPriceHoverText(cell.getRow().getData());
