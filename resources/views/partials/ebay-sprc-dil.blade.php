@@ -3,6 +3,7 @@
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
   Amazon / eBay 1–3 / Doba Pickup: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
+  eBay 1–3 CVR overlay on Target GROI: Down and < 7% = -10; Up and > 10% = +10.
   Macys: Dil-matching when Dil is in a slab. If Dil is out of box and 0 Sold, use min Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price (do not keep Std Prc).
   Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
@@ -16,6 +17,7 @@
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'doba_withoutship', 'macys', 'macy'], true);
+    $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg'], true);
     $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace'], true);
@@ -180,7 +182,7 @@
                             ? 'Dil-matching slab, or min GROI when Dil is out of box and 0 Sold. If that S PRC < A Price, use A Price.'
                             : ($ebaySprcDilZeroSoldUsesMinGroi
                             ? 'Dil slabs → Target GROI%. '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.'
-                            : 'Dil slabs → Target GROI%. Every INV > 0 SKU uses the Dil-matching slab.') }}">
+                            : 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR Down < 7% subtracts 10 from Target GROI%; CVR Up > 10% adds 10.' : '').' Every INV > 0 SKU uses the Dil-matching slab.') }}">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
 @endif
@@ -243,6 +245,16 @@
                             <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
                             use that slab’s Target GROI (first match; last slab includes the To value).
                         </li>
+                        @if(!empty($ebaySprcDilCvrGroiAdj))
+                        <li>
+                            <strong>When</strong> CVR is Down and CVR L30 is below 7%:
+                            subtract 10 from that slab’s Target GROI% (not below 0).
+                        </li>
+                        <li>
+                            <strong>When</strong> CVR is Up and CVR L30 is above 10%:
+                            add 10 to that slab’s Target GROI%.
+                        </li>
+                        @endif
                         @if(!empty($ebaySprcDilIsMacys))
                         <li>
                             <strong>When</strong> Dil is <strong>out of box</strong> (no From–To match) and
@@ -322,6 +334,7 @@
 @if($ebaySprcDilPart === 'script' || $ebaySprcDilPart === 'all')
         const EBAY_DIL_GROI_CHANNEL = @json($ebaySprcDilChannel);
         const EBAY_DIL_GROI_ZERO_SOLD_MIN = @json($ebaySprcDilZeroSoldUsesMinGroi);
+        const EBAY_DIL_GROI_CVR_ADJ = @json(!empty($ebaySprcDilCvrGroiAdj));
         const EBAY_DIL_GROI_HIDE_CVR_PIE = @json(!empty($ebaySprcDilHideCvrPie));
         function ebayDgIsMacys() {
             return EBAY_DIL_GROI_CHANNEL === 'macys' || EBAY_DIL_GROI_CHANNEL === 'macy';
@@ -414,7 +427,7 @@
             '#7c3aed', '#0ea5e9',
         ];
         const EBAY_DG_CVR_BANDS = [
-            { key: 'down-lt7', label: 'Down · < 7%', color: '#dc3545' },
+            { key: 'down-lt7', label: EBAY_DIL_GROI_CVR_ADJ ? 'Down · < 7% (−10 GROI)' : 'Down · < 7%', color: '#dc3545' },
             { key: 'down-7-10', label: 'Down · 7–10%', color: '#fd7e14' },
             { key: 'down-gt10', label: 'Down · > 10%', color: '#f59e0b' },
             { key: 'flat-lt7', label: 'Flat · < 7%', color: '#94a3b8' },
@@ -422,7 +435,7 @@
             { key: 'flat-gt10', label: 'Flat · > 10%', color: '#475569' },
             { key: 'up-lt7', label: 'UP · < 7%', color: '#86efac' },
             { key: 'up-7-10', label: 'UP · 7–10%', color: '#20c997' },
-            { key: 'up-gt10', label: 'UP · > 10%', color: '#198754' },
+            { key: 'up-gt10', label: EBAY_DIL_GROI_CVR_ADJ ? 'UP · > 10% (+10 GROI)' : 'UP · > 10%', color: '#198754' },
         ];
 
         function ebayDgRound2(n) {
@@ -479,6 +492,19 @@
             const trend = ebayDgCvrTrend(d);
             const bucket = cvr < 7 ? 'lt7' : (cvr > 10 ? 'gt10' : '7-10');
             return trend + '-' + bucket;
+        }
+        /** -10 when CVR is Down and < 7%; +10 when CVR is Up and > 10%. eBay 1–3 only. */
+        function ebayDilGroiCvrAdj(d) {
+            if (!EBAY_DIL_GROI_CVR_ADJ) return 0;
+            const cvr = ebayDgCvr30(d);
+            const trend = ebayDgCvrTrend(d);
+            if (trend === 'down' && cvr < 7) return -10;
+            if (trend === 'up' && cvr > 10) return 10;
+            return 0;
+        }
+        function ebayDilGroiApplyCvrAdj(slabGroi, d) {
+            const groi = ebayDgRound2((Number(slabGroi) || 0) + ebayDilGroiCvrAdj(d));
+            return groi < 0 ? 0 : groi;
         }
         function ebayDgIsZeroSold(d) {
             if (typeof chPromoIsZeroSoldRow === 'function') return chPromoIsZeroSoldRow(d);
@@ -626,6 +652,9 @@
             } else {
                 return null;
             }
+            const slabGroi = groi;
+            const cvrAdj = ebayDilGroiCvrAdj(d);
+            groi = ebayDilGroiApplyCvrAdj(slabGroi, d);
             const rawSprc = ebaySpriceFromGroi(d, groi);
             if (!(rawSprc > 0)) return null;
             let sprc = rawSprc;
@@ -653,12 +682,27 @@
                 dil: dil,
                 key: key,
                 label: label,
+                slabGroi: slabGroi,
                 groi: groi,
+                cvrAdj: cvrAdj,
                 sprc: sprc,
                 rawSprc: rawSprc,
                 amzApplied: amzApplied,
                 zeroSoldMin: zeroSoldMin,
             };
+        }
+        function ebayDilGroiTipText(meta) {
+            if (!meta || !(meta.sprc > 0)) return '';
+            const slabGroi = (meta.slabGroi != null) ? meta.slabGroi : meta.groi;
+            let tip = 'Dil ' + (isFinite(meta.dil) ? Number(meta.dil).toFixed(1) : '0') + '%'
+                + ' → ' + meta.label
+                + ' → GROI ' + slabGroi + '%';
+            if (meta.cvrAdj) {
+                const sign = meta.cvrAdj > 0 ? '+' : '';
+                const why = meta.cvrAdj > 0 ? 'CVR Up > 10%' : 'CVR Down < 7%';
+                tip += ' ' + sign + meta.cvrAdj + ' (' + why + ') → ' + meta.groi + '%';
+            }
+            return tip + ' → $' + Number(meta.sprc).toFixed(2);
         }
         function ebaySprcDilForRow(d) {
             const meta = ebayDilGroiMetaForRow(d);
@@ -671,6 +715,7 @@
         window.ebayDilGroiMetaForRow = ebayDilGroiMetaForRow;
         window.ebaySprcDilForRow = ebaySprcDilForRow;
         window.ebayDilGroiOwnsRow = ebayDilGroiOwnsRow;
+        window.ebayDilGroiTipText = ebayDilGroiTipText;
 
         function ebayDgEachInvChild(fn) {
             const walk = function(row, d) {
