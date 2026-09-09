@@ -216,16 +216,78 @@ class AmazonDilGroiRule
     }
 
     /**
-     * Target GROI% after the Amazon CVR overlay:
-     * Down and CVR L30 < 7% → −10 points; Up and CVR L30 > 10% → +10 points.
+     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}
      */
-    public static function adjustGroiForCvr(float $groi, float $cvrL30, string $trend): float
+    public static function defaultCvrAdj(): array
     {
+        return [
+            'down_lt' => 7.0,
+            'down_adj' => -10.0,
+            'up_gt' => 10.0,
+            'up_adj' => 10.0,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $raw
+     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}
+     */
+    public static function normalizeCvrAdj(?array $raw): array
+    {
+        $out = self::defaultCvrAdj();
+        if (! is_array($raw)) {
+            return $out;
+        }
+        foreach (['down_lt', 'down_adj', 'up_gt', 'up_adj'] as $key) {
+            if (! isset($raw[$key]) || ! is_numeric($raw[$key])) {
+                continue;
+            }
+            $n = round((float) $raw[$key], 2);
+            if (! is_finite($n)) {
+                continue;
+            }
+            if (($key === 'down_lt' || $key === 'up_gt') && $n < 0) {
+                $n = 0.0;
+            }
+            $out[$key] = $n;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $saved
+     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}}
+     */
+    public static function unpackStored(?array $saved): array
+    {
+        $rulesRaw = $saved;
+        $cvrRaw = null;
+        if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
+            $rulesRaw = $saved['rules'];
+            $cvrRaw = is_array($saved['cvr_adj'] ?? null) ? $saved['cvr_adj'] : null;
+        }
+        $rules = self::normalizeList(is_array($rulesRaw) ? $rulesRaw : []);
+
+        return [
+            'rules' => $rules,
+            'cvr_adj' => self::normalizeCvrAdj($cvrRaw),
+        ];
+    }
+
+    /**
+     * Target GROI% after the CVR overlay (defaults: Down & < 7% → −10; Up & > 10% → +10).
+     *
+     * @param  array<string, mixed>|null  $cvrAdj
+     */
+    public static function adjustGroiForCvr(float $groi, float $cvrL30, string $trend, ?array $cvrAdj = null): float
+    {
+        $cfg = self::normalizeCvrAdj($cvrAdj);
         $adj = 0.0;
-        if ($trend === 'down' && $cvrL30 < 7) {
-            $adj = -10.0;
-        } elseif ($trend === 'up' && $cvrL30 > 10) {
-            $adj = 10.0;
+        if ($trend === 'down' && $cvrL30 < $cfg['down_lt']) {
+            $adj = $cfg['down_adj'];
+        } elseif ($trend === 'up' && $cvrL30 > $cfg['up_gt']) {
+            $adj = $cfg['up_adj'];
         }
         $out = $groi + $adj;
         if (! is_finite($out) || $out < 0) {
@@ -233,6 +295,25 @@ class AmazonDilGroiRule
         }
 
         return round($out, 2);
+    }
+
+    /**
+     * Level-only overlay (Reverb / Faire / TikTok / Shopify B2C): no prior-period CVR.
+     * CVR &lt; down_lt → down_adj; CVR &gt; up_gt → up_adj.
+     *
+     * @param  array<string, mixed>|null  $cvrAdj
+     */
+    public static function adjustGroiForCvrLevel(float $groi, float $cvr, ?array $cvrAdj = null): float
+    {
+        $cfg = self::normalizeCvrAdj($cvrAdj);
+        $trend = 'flat';
+        if ($cvr < $cfg['down_lt']) {
+            $trend = 'down';
+        } elseif ($cvr > $cfg['up_gt']) {
+            $trend = 'up';
+        }
+
+        return self::adjustGroiForCvr($groi, $cvr, $trend, $cfg);
     }
 
     public static function keyFor(float $min, float $max): string

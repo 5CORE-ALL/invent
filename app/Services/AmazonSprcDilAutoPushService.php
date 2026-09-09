@@ -42,7 +42,9 @@ class AmazonSprcDilAutoPushService
         ?callable $logger = null,
         bool $pushAll = false
     ): array {
-        $dilRules = $this->loadDilGroiRules();
+        $dilStore = $this->loadDilGroiStore();
+        $dilRules = $dilStore['rules'];
+        $cvrGroiAdj = $dilStore['cvr_adj'];
         $cvrRules = $this->loadCvrDiscRules();
         $review = $this->loadReviewDiscRules();
 
@@ -92,7 +94,8 @@ class AmazonSprcDilAutoPushService
                         $dilRules,
                         $cvrRules,
                         $review['rules'],
-                        $review['max_reviews']
+                        $review['max_reviews'],
+                        $cvrGroiAdj
                     );
                     if ($computed === null) {
                         $stats['skipped']++;
@@ -183,6 +186,7 @@ class AmazonSprcDilAutoPushService
      * @param  list<array{key:string,label:string,min:float,max:float,groi:float}>  $dilRules
      * @param  list<array{key:string,label:string,disc:float}>  $cvrRules
      * @param  list<array{key:string,min:int,max:int,disc:float}>  $reviewRules
+     * @param  array<string, mixed>|null  $cvrAdj
      * @return array{sprice:float,dil:float,groi:?float,cvr_disc:float,review_disc:float,dil_groi:bool,lmp_capped:bool,base:float}|null
      */
     public function computeTarget(
@@ -190,7 +194,8 @@ class AmazonSprcDilAutoPushService
         array $dilRules,
         array $cvrRules,
         array $reviewRules,
-        int $reviewMax
+        int $reviewMax,
+        ?array $cvrAdj = null
     ): ?array {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
@@ -219,7 +224,8 @@ class AmazonSprcDilAutoPushService
             $groi = AmazonDilGroiRule::adjustGroiForCvr(
                 $groi,
                 $cvrL30,
-                AmazonDilGroiRule::cvrTrend($cvrL30, $cvrL45)
+                AmazonDilGroiRule::cvrTrend($cvrL30, $cvrL45),
+                $cvrAdj
             );
             $dilPrice = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi);
             if ($dilPrice !== null && ! ($dilPrice >= 0.01)) {
@@ -734,17 +740,19 @@ class AmazonSprcDilAutoPushService
         }
     }
 
-    /** @return list<array{key:string,label:string,min:float,max:float,groi:float}> */
-    protected function loadDilGroiRules(): array
+    /**
+     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}}
+     */
+    protected function loadDilGroiStore(): array
     {
         $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_dil_vs_groi')->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
-        if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
-            $saved = $saved['rules'];
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
+        if ($unpacked['rules'] === []) {
+            $unpacked['rules'] = AmazonDilGroiRule::defaults();
         }
-        $rules = AmazonDilGroiRule::normalizeList(is_array($saved) ? $saved : []);
 
-        return $rules !== [] ? $rules : AmazonDilGroiRule::defaults();
+        return $unpacked;
     }
 
     /** @return list<array{key:string,label:string,disc:float}> */

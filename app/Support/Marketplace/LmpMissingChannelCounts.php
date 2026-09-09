@@ -144,6 +144,14 @@ class LmpMissingChannelCounts
             'sku_col' => 'sku',
             'competitor' => ['table' => 'temu_lmp', 'sku' => 'sku', 'price' => 'lmp'],
         ],
+        'temu3' => [
+            'label' => 'Temu 3',
+            'url' => '/temu3-decrease',
+            'aliases' => ['temu3', 'temuthree'],
+            'sku_table' => 'temu3_pricing',
+            'sku_col' => 'sku',
+            'competitor' => ['table' => 'temu_lmp', 'sku' => 'sku', 'price' => 'lmp'],
+        ],
         'doba' => [
             'label' => 'Doba Paid',
             'url' => '/doba-tabulator',

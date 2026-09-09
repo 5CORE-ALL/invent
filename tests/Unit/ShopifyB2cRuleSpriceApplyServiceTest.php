@@ -37,7 +37,7 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
             'ship' => 0,
             'std' => 100,
             'amz' => 10,
-            'cvr' => 1,
+            'cvr' => 8,
         ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
 
         $this->assertNotNull($out);
@@ -82,6 +82,42 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(55.25, $out['sprice'], 0.001);
         $this->assertTrue($out['amz_sugg']);
+    }
+
+    public function test_cvr_below_7_lowers_target_groi_by_10(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 5,
+            'b2c_l30' => 2,
+            'lp' => 20,
+            'ship' => 0,
+            'std' => 100,
+            'amz' => 1,
+            'cvr' => 6.9,
+        ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
+
+        $this->assertNotNull($out);
+        // GROI 50 − 10 = 40 → (20 × 1.40) / 0.95
+        $this->assertEqualsWithDelta(29.47, $out['sprice'], 0.01);
+    }
+
+    public function test_cvr_above_10_raises_target_groi_by_10(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 5,
+            'b2c_l30' => 2,
+            'lp' => 20,
+            'ship' => 0,
+            'std' => 100,
+            'amz' => 1,
+            'cvr' => 10.1,
+        ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
+
+        $this->assertNotNull($out);
+        // GROI 50 + 10 = 60 → (20 × 1.60) / 0.95
+        $this->assertEqualsWithDelta(33.68, $out['sprice'], 0.01);
     }
 
     /**

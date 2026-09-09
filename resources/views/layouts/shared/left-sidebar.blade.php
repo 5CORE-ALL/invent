@@ -206,12 +206,12 @@
             <li class="side-nav-item">
                 <a href="{{ route('price.gt.lmp') }}" class="side-nav-link price-gt-lmp-nav">
                     <i class="ri-arrow-up-circle-line"></i>
-                    <span>price &gt;lmp</span>
+                    <span>LMP Issues</span>
                     @php
                         $priceGtLmpSidebarCount = \App\Support\Marketplace\PriceGtLmpChannelCounts::cachedTotalOrZero();
                     @endphp
                     @if($priceGtLmpSidebarCount > 0)
-                        <span class="badge rounded-pill ms-auto price-gt-lmp-sidebar-badge" title="price &gt;lmp (red triangle) total from analytics pages">{{ number_format($priceGtLmpSidebarCount) }}</span>
+                        <span class="badge rounded-pill ms-auto price-gt-lmp-sidebar-badge" title="LMP Issues live total (Price &gt; LMP)">{{ number_format($priceGtLmpSidebarCount) }}</span>
                     @endif
                 </a>
             </li>

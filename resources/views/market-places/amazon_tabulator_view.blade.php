@@ -4360,7 +4360,12 @@
                                 + ' → GROI ' + slabGroi + '%';
                             if (meta.cvrAdj) {
                                 const sign = meta.cvrAdj > 0 ? '+' : '';
-                                const why = meta.cvrAdj > 0 ? 'CVR Up > 10%' : 'CVR Down < 7%';
+                                const cfg = (typeof amzCvrGroiAdjNow === 'function')
+                                    ? amzCvrGroiAdjNow()
+                                    : { down_lt: 7, up_gt: 10 };
+                                const why = meta.cvrAdj > 0
+                                    ? ('CVR Up > ' + cfg.up_gt + '%')
+                                    : ('CVR Down < ' + cfg.down_lt + '%');
                                 tip += ' ' + sign + meta.cvrAdj + ' (' + why + ') → ' + meta.groi + '%';
                             }
                             tip += ' → $' + meta.sprc.toFixed(2);

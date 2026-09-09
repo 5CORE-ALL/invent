@@ -193,10 +193,24 @@
         #amzDilGroiModal .amz-dg-add-btn {
             font-size: 12px;
         }
+        #amz-cvr-groi-table .amz-cvr-groi-input {
+            max-width: 72px;
+            display: inline-block;
+            text-align: right;
+            font-weight: 600;
+        }
+        #amz-cvr-groi-table .amz-dg-count {
+            font-weight: 700;
+            text-align: center;
+        }
         #amz-dil-groi-table .amz-dg-count {
             font-weight: 700;
             text-align: center;
             white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
         }
         #amzDilGroiModal .amz-dg-pies {
             display: flex;
@@ -522,7 +536,7 @@
                         </ul>
                     </div>
                     <button type="button" class="btn btn-sm" id="amz-dil-groi-btn"
-                        title="Dil slabs → Target GROI%. CVR Down &lt; 7% subtracts 10 from Target GROI%; CVR Up &gt; 10% adds 10. Every INV &gt; 0 SKU uses the Dil-matching slab.">
+                        title="Dil slabs → Target GROI%. CVR overlay (editable, with Count) adjusts Target GROI. Every INV &gt; 0 SKU uses the Dil-matching slab.">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
 @endif
@@ -677,12 +691,8 @@
                             use that slab’s Target GROI (first match; last slab includes the To value).
                         </li>
                         <li>
-                            <strong>When</strong> CVR is Down and CVR L30 is below 7%:
-                            subtract 10 from that slab’s Target GROI% (not below 0).
-                        </li>
-                        <li>
-                            <strong>When</strong> CVR is Up and CVR L30 is above 10%:
-                            add 10 to that slab’s Target GROI%.
+                            <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table:
+                            apply that Adj GROI to the Dil slab Target GROI (Count updates as you edit).
                         </li>
                         <li>
                             <strong>When</strong> a price is calculated from a Dil slab match:
@@ -717,6 +727,43 @@
                     <button type="button" class="btn btn-sm btn-outline-primary amz-dg-add-btn mt-2" id="amz-dil-groi-add-btn">
                         <i class="fas fa-plus me-1"></i> Add slab
                     </button>
+                    <div class="amz-dg-rules-title mt-3">CVR overlay — Target GROI</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="amz-cvr-groi-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>When</th>
+                                    <th class="text-center">CVR%</th>
+                                    <th class="text-end">Adj GROI</th>
+                                    <th class="text-center" style="width:80px;">Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr data-row="down">
+                                    <td>Down</td>
+                                    <td class="text-center">
+                                        &lt;
+                                        <input type="number" min="0" step="0.1" class="form-control form-control-sm amz-cvr-groi-input amz-cvr-groi-down-lt" value="7">
+                                    </td>
+                                    <td class="text-end">
+                                        <input type="number" step="1" class="form-control form-control-sm amz-cvr-groi-input amz-cvr-groi-down-adj" value="-10">
+                                    </td>
+                                    <td class="amz-dg-count"><span class="amz-cvr-groi-down-count">0</span></td>
+                                </tr>
+                                <tr data-row="up">
+                                    <td>Up</td>
+                                    <td class="text-center">
+                                        &gt;
+                                        <input type="number" min="0" step="0.1" class="form-control form-control-sm amz-cvr-groi-input amz-cvr-groi-up-gt" value="10">
+                                    </td>
+                                    <td class="text-end">
+                                        <input type="number" step="1" class="form-control form-control-sm amz-cvr-groi-input amz-cvr-groi-up-adj" value="10">
+                                    </td>
+                                    <td class="amz-dg-count"><span class="amz-cvr-groi-up-count">0</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                     <div class="small text-muted mt-2" id="amz-dil-groi-status"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
@@ -792,17 +839,59 @@
             '#eab308', '#f59e0b', '#ea580c', '#dc3545', '#e83e8c',
             '#7c3aed', '#0ea5e9',
         ];
-        const AMZ_DG_CVR_BANDS = [
-            { key: 'down-lt7', label: 'Down · < 7% (−10 GROI)', color: '#dc3545' },
-            { key: 'down-7-10', label: 'Down · 7–10%', color: '#fd7e14' },
-            { key: 'down-gt10', label: 'Down · > 10%', color: '#f59e0b' },
-            { key: 'flat-lt7', label: 'Flat · < 7%', color: '#94a3b8' },
-            { key: 'flat-7-10', label: 'Flat · 7–10%', color: '#64748b' },
-            { key: 'flat-gt10', label: 'Flat · > 10%', color: '#475569' },
-            { key: 'up-lt7', label: 'UP · < 7%', color: '#86efac' },
-            { key: 'up-7-10', label: 'UP · 7–10%', color: '#20c997' },
-            { key: 'up-gt10', label: 'UP · > 10% (+10 GROI)', color: '#198754' },
-        ];
+        let amzCvrGroiAdj = { down_lt: 7, down_adj: -10, up_gt: 10, up_adj: 10 };
+        function amzNormalizeCvrGroiAdj(raw) {
+            const out = { down_lt: 7, down_adj: -10, up_gt: 10, up_adj: 10 };
+            if (!raw) return out;
+            const downLt = Number(raw.down_lt);
+            const downAdj = Number(raw.down_adj);
+            const upGt = Number(raw.up_gt);
+            const upAdj = Number(raw.up_adj);
+            if (isFinite(downLt) && downLt >= 0) out.down_lt = amzPefRound2(downLt);
+            if (isFinite(downAdj)) out.down_adj = amzPefRound2(downAdj);
+            if (isFinite(upGt) && upGt >= 0) out.up_gt = amzPefRound2(upGt);
+            if (isFinite(upAdj)) out.up_adj = amzPefRound2(upAdj);
+            return out;
+        }
+        function amzCvrGroiAdjNow() {
+            const $tbl = $('#amz-cvr-groi-table');
+            if ($tbl.length) {
+                return amzNormalizeCvrGroiAdj({
+                    down_lt: parseFloat($tbl.find('.amz-cvr-groi-down-lt').val()),
+                    down_adj: parseFloat($tbl.find('.amz-cvr-groi-down-adj').val()),
+                    up_gt: parseFloat($tbl.find('.amz-cvr-groi-up-gt').val()),
+                    up_adj: parseFloat($tbl.find('.amz-cvr-groi-up-adj').val()),
+                });
+            }
+            return amzNormalizeCvrGroiAdj(amzCvrGroiAdj);
+        }
+        function amzPaintCvrGroiAdjTable(cfg) {
+            cfg = amzNormalizeCvrGroiAdj(cfg);
+            amzCvrGroiAdj = cfg;
+            const $tbl = $('#amz-cvr-groi-table');
+            if (!$tbl.length) return;
+            $tbl.find('.amz-cvr-groi-down-lt').val(cfg.down_lt);
+            $tbl.find('.amz-cvr-groi-down-adj').val(cfg.down_adj);
+            $tbl.find('.amz-cvr-groi-up-gt').val(cfg.up_gt);
+            $tbl.find('.amz-cvr-groi-up-adj').val(cfg.up_adj);
+        }
+        function amzDgCvrBands() {
+            const cfg = amzCvrGroiAdjNow();
+            const lo = cfg.down_lt;
+            const hi = cfg.up_gt;
+            const mid = lo + '–' + hi;
+            return [
+                { key: 'down-lt', label: 'Down · < ' + lo + '% (' + cfg.down_adj + ' GROI)', color: '#dc3545' },
+                { key: 'down-mid', label: 'Down · ' + mid + '%', color: '#fd7e14' },
+                { key: 'down-gt', label: 'Down · > ' + hi + '%', color: '#f59e0b' },
+                { key: 'flat-lt', label: 'Flat · < ' + lo + '%', color: '#94a3b8' },
+                { key: 'flat-mid', label: 'Flat · ' + mid + '%', color: '#64748b' },
+                { key: 'flat-gt', label: 'Flat · > ' + hi + '%', color: '#475569' },
+                { key: 'up-lt', label: 'UP · < ' + lo + '%', color: '#86efac' },
+                { key: 'up-mid', label: 'UP · ' + mid + '%', color: '#20c997' },
+                { key: 'up-gt', label: 'UP · > ' + hi + '% (' + (cfg.up_adj > 0 ? '+' : '') + cfg.up_adj + ' GROI)', color: '#198754' },
+            ];
+        }
         let amzPageReloadPushEnabled = @json($amazonPageReloadPushEnabled ?? false);
 
         function amzPefCsrf() {
@@ -1256,15 +1345,16 @@
         function amzDilGroiCvrBandKey(d) {
             const cvr = amzPefCvrL30Live(d);
             const trend = amzPefCvrTrend(d);
-            const bucket = cvr < 7 ? 'lt7' : (cvr > 10 ? 'gt10' : '7-10');
+            const cfg = amzCvrGroiAdjNow();
+            const bucket = cvr < cfg.down_lt ? 'lt' : (cvr > cfg.up_gt ? 'gt' : 'mid');
             return trend + '-' + bucket;
         }
-        /** -10 when CVR is Down and < 7%; +10 when CVR is Up and > 10%. */
         function amzDilGroiCvrAdj(d) {
             const cvr = amzPefCvrL30Live(d);
             const trend = amzPefCvrTrend(d);
-            if (trend === 'down' && cvr < 7) return -10;
-            if (trend === 'up' && cvr > 10) return 10;
+            const cfg = amzCvrGroiAdjNow();
+            if (trend === 'down' && cvr < cfg.down_lt) return cfg.down_adj;
+            if (trend === 'up' && cvr > cfg.up_gt) return cfg.up_adj;
             return 0;
         }
         function amzDilGroiApplyCvrAdj(slabGroi, d) {
@@ -1284,12 +1374,26 @@
         }
         function amzDilGroiCollectCvrCounts() {
             const counts = {};
-            AMZ_DG_CVR_BANDS.forEach(function(b) { counts[b.key] = 0; });
+            amzDgCvrBands().forEach(function(b) { counts[b.key] = 0; });
             amzDgEachInvChild(function(d) {
                 const key = amzDilGroiCvrBandKey(d);
                 counts[key] = (counts[key] || 0) + 1;
             });
             return counts;
+        }
+        function amzDilGroiCollectCvrAdjCounts() {
+            const counts = { down: 0, up: 0 };
+            amzDgEachInvChild(function(d) {
+                const adj = amzDilGroiCvrAdj(d);
+                if (adj < 0) counts.down++;
+                else if (adj > 0) counts.up++;
+            });
+            return counts;
+        }
+        function amzPaintCvrGroiAdjCounts() {
+            const counts = amzDilGroiCollectCvrAdjCounts();
+            $('#amz-cvr-groi-table .amz-cvr-groi-down-count').text(counts.down);
+            $('#amz-cvr-groi-table .amz-cvr-groi-up-count').text(counts.up);
         }
         function amzDgSlabColor(idx) {
             return AMZ_DG_SLAB_COLORS[idx % AMZ_DG_SLAB_COLORS.length];
@@ -1349,7 +1453,7 @@
                 }).join('');
         }
         function amzDgDrawHist(chart, band, rows) {
-            const slices = chart === 'cvr' ? AMZ_DG_CVR_BANDS : amzDgDilSlices;
+            const slices = chart === 'cvr' ? amzDgCvrBands() : amzDgDilSlices;
             const spec = slices.find(function(s) { return s.key === band; })
                 || { key: band, label: band, color: '#6f42c1' };
             $('#amz-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : 'Dil ') + spec.label + ' count');
@@ -1486,12 +1590,14 @@
                 if (dilLegend) dilLegend.innerHTML = amzDgPieLegendHtml('Dil', dilSlices, dilCounts, 'dil');
                 amzDgDrawPie('amz-dg-dil-pie', 'dil', dilSlices, dilCounts);
 
+                const cvrBands = amzDgCvrBands();
                 const cvrCounts = amzDilGroiCollectCvrCounts();
                 amzDgCvrLiveCounts = cvrCounts;
                 amzDgSnapLocal('amz_dil_groi_cvr_hist', cvrCounts);
                 const cvrLegend = document.getElementById('amz-dg-cvr-legend');
-                if (cvrLegend) cvrLegend.innerHTML = amzDgPieLegendHtml('CVR Up / Down · CVR%', AMZ_DG_CVR_BANDS, cvrCounts, 'cvr');
-                amzDgDrawPie('amz-dg-cvr-pie', 'cvr', AMZ_DG_CVR_BANDS, cvrCounts);
+                if (cvrLegend) cvrLegend.innerHTML = amzDgPieLegendHtml('CVR Up / Down · CVR%', cvrBands, cvrCounts, 'cvr');
+                amzDgDrawPie('amz-dg-cvr-pie', 'cvr', cvrBands, cvrCounts);
+                amzPaintCvrGroiAdjCounts();
 
                 $('#amz-dil-groi-tbody tr').each(function(i) {
                     const r = rules[i];
@@ -1631,6 +1737,7 @@
                         const r = rules[i];
                         $(this).find('.amz-dg-count-n').text(r ? (dilCounts[r.key] || 0) : 0);
                     });
+                    amzPaintCvrGroiAdjCounts();
                 } catch (e) { /* ignore */ }
             }
         }
@@ -1711,6 +1818,7 @@
                 if (fromServer.length) {
                     amzDilGroiRules = fromServer;
                 }
+                if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
                 renderAmzDilGroiModalTable();
                 redrawAmzSprcDilColumn();
                 if (fromServer.length && !(res && res.is_default)) {
@@ -1727,6 +1835,8 @@
         }
         function saveAmzDilGroiRules() {
             const rules = readAmzDilGroiRulesFromModal();
+            const cvrAdj = amzCvrGroiAdjNow();
+            amzCvrGroiAdj = cvrAdj;
             return $.ajax({
                 url: '/channel-promo-pricing/amazon/dil-groi',
                 method: 'POST',
@@ -1735,7 +1845,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, _token: amzPefCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, _token: amzPefCsrf() }),
             }).then(function(res) {
                 if (res && Array.isArray(res.rules)) {
                     const saved = amzNormalizeDilGroiList(res.rules);
@@ -1744,6 +1854,7 @@
                     }
                     renderAmzDilGroiModalTable();
                 }
+                if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
                 amzAfterDilGroiRulesChanged();
                 $('#amz-dil-groi-status').text('Saved via API and applied. S PRC written from Sprc Dil.');
                 return res;
@@ -1758,6 +1869,7 @@
         }
         window.amzSprcDilForRow = amzSprcDilForRow;
         window.amzDilGroiMetaForRow = amzDilGroiMetaForRow;
+        window.amzCvrGroiAdjNow = amzCvrGroiAdjNow;
         window.openAmzDilGroiModal = openAmzDilGroiModal;
 
 
@@ -2547,7 +2659,10 @@
                 let groiNote = 'Sprc Dil GROI ' + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%';
                 if (plan.dilGroiCvrAdj) {
                     const sign = plan.dilGroiCvrAdj > 0 ? '+' : '';
-                    const why = plan.dilGroiCvrAdj > 0 ? 'CVR Up > 10%' : 'CVR Down < 7%';
+                    const cfg = amzCvrGroiAdjNow();
+                    const why = plan.dilGroiCvrAdj > 0
+                        ? ('CVR Up > ' + cfg.up_gt + '%')
+                        : ('CVR Down < ' + cfg.down_lt + '%');
                     groiNote = 'Sprc Dil GROI ' + (plan.dilGroiSlabGroi != null ? plan.dilGroiSlabGroi : '') + '%'
                         + ' ' + sign + plan.dilGroiCvrAdj + ' (' + why + ') → '
                         + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%';
@@ -3792,6 +3907,13 @@
             $(document).off('input.amzDilGroi change.amzDilGroi', '#amz-dil-groi-tbody .amz-dil-groi-input')
                 .on('input.amzDilGroi change.amzDilGroi', '#amz-dil-groi-tbody .amz-dil-groi-input', function() {
                     amzOnDilGroiNumberChanged(this);
+                });
+            $(document).off('input.amzCvrGroi change.amzCvrGroi', '#amz-cvr-groi-table .amz-cvr-groi-input')
+                .on('input.amzCvrGroi change.amzCvrGroi', '#amz-cvr-groi-table .amz-cvr-groi-input', function() {
+                    amzCvrGroiAdj = amzCvrGroiAdjNow();
+                    if ($('#amzDilGroiModal').hasClass('show')) renderAmzDilGroiPies();
+                    else amzPaintCvrGroiAdjCounts();
+                    amzAfterDilGroiRulesChanged();
                 });
             $('#amzDilGroiModal').off('shown.bs.modal.amzdg').on('shown.bs.modal.amzdg', function() {
                 setTimeout(function() { renderAmzDilGroiPies(); }, 50);
