@@ -1245,14 +1245,34 @@
                 });
             }
 
-            function paintMetricBadges(rows) {
+            function paintMetricBadges(rows, response) {
                 const m = badgeCounts(rows);
+                if (response && response.spend_sum != null && isFinite(parseFloat(response.spend_sum))) {
+                    m.spend = parseFloat(response.spend_sum);
+                }
+                if (response && response.clicks_sum != null && isFinite(parseFloat(response.clicks_sum))) {
+                    m.clicks = parseFloat(response.clicks_sum);
+                }
+                if (response && response.impressions_sum != null && isFinite(parseFloat(response.impressions_sum))) {
+                    m.impressions = parseFloat(response.impressions_sum);
+                }
+                if (response && response.sales_sum != null && isFinite(parseFloat(response.sales_sum))) {
+                    m.sales = parseFloat(response.sales_sum);
+                }
+                if (response && response.sold_sum != null && isFinite(parseFloat(response.sold_sum))) {
+                    m.sold = parseFloat(response.sold_sum);
+                }
+                m.ctr = m.impressions > 0 ? (m.clicks / m.impressions) * 100 : 0;
+                m.cvr = m.clicks > 0 ? (m.sold / m.clicks) * 100 : 0;
+                m.roas = m.spend > 0 ? (m.sales / m.spend) : 0;
+                m.acos = m.sales > 0 ? (m.spend / m.sales) * 100 : (m.spend > 0 ? 100 : 0);
+                m.tacos = m.all_sales > 0 ? (m.spend / m.all_sales) * 100 : (m.spend > 0 ? 100 : 0);
                 currentAvgCtr = Number(m.ctr) || 0;
                 setBadgeVal('row-count', Number(m.rows).toLocaleString());
                 setBadgeVal('impr-sum', Math.round(m.impressions).toLocaleString());
                 setBadgeVal('click-sum', Math.round(m.clicks).toLocaleString());
-                setBadgeVal('spend-sum', '$' + Math.round(Number(m.spend) || 0).toLocaleString('en-US'));
-                setBadgeVal('y-spend-sum', '$' + Math.round(Number(m.y_spend) || 0).toLocaleString('en-US'));
+                setBadgeVal('spend-sum', '$' + Number(m.spend || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                setBadgeVal('y-spend-sum', '$' + Number(m.y_spend || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
                 setBadgeVal('roas-sum', Number(m.roas || 0).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
                 setBadgeVal('acos-sum', Number(m.acos || 0).toFixed(1) + '%');
                 setBadgeVal('tacos-sum', Number(m.tacos || 0).toFixed(1) + '%');
@@ -1546,8 +1566,8 @@
                 }).join('') : '<tr><td colspan="12" class="text-center text-muted">No running ads in the current view.</td></tr>';
             }
 
-            function setBadges(rows) {
-                paintMetricBadges(rows);
+            function setBadges(rows, response) {
+                paintMetricBadges(rows, response);
                 updateFilterCounts(rows);
             }
 

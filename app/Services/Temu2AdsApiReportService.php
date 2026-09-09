@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Fetch temu.searchrec.ad.reports.goods.query and store full raw + Overall summary fields.
- * Uses reportInfo.summary.*.total (Seller Center Overall), not ad-only reportsSummary.*All.
+ * Spend / Net spend = reportsSummary.adSpendAll (Ads page).
+ * Sales / ROAS Overall = reportInfo.summary.*.total.
  */
 class Temu2AdsApiReportService
 {
@@ -192,8 +193,8 @@ class Temu2AdsApiReportService
     }
 
     /**
-     * Seller Center "Overall" totals live in reportInfo.summary.*.total.
-     * reportInfo.reportsSummary.*All is ad-only (often much smaller than L7 Overall).
+     * Ads page Spend / Net spend = reportsSummary.adSpendAll (not Overall summary.spend).
+     * Base price sales (Overall) / ROAS (Overall) still use reportInfo.summary.*.total.
      * Money is cents; CTR/ACOS are percent*100; raw ROAS can overflow decimal(12,4).
      *
      * @return array{impressions: ?int, clicks: ?int, ctr: float, cart_cnt: ?int, order_pay_cnt: ?int, order_pay_amt: ?float, ad_spend: ?float, roas: float, acos: float}
@@ -211,7 +212,9 @@ class Temu2AdsApiReportService
             $this->nestedVal($overall, ['orderPayAmt', 'total']) ?? $this->val($adOnly, 'orderPayAmtAll')
         );
         $spend = $this->centsToDollars(
-            $this->nestedVal($overall, ['spend', 'total']) ?? $this->val($adOnly, 'adSpendAll')
+            $this->val($adOnly, 'adSpendAll')
+            ?? $this->val($adOnly, 'netAdSpendAll')
+            ?? $this->nestedVal($overall, ['spend', 'total'])
         );
 
         $impr = (int) ($impressions ?? 0);

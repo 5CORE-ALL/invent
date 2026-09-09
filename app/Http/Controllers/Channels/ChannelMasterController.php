@@ -6106,19 +6106,12 @@ class ChannelMasterController extends Controller
                 }
 
                 case 'temu2': {
-                    // Authoritative L30 totals from temu2_campaign_reports (/temu2/ads upload)
-                    $tot = Temu2CampaignReport::where('report_range', 'L30')
-                        ->selectRaw('
-                            COALESCE(SUM(spend), 0) AS spend,
-                            COALESCE(SUM(clicks), 0) AS clicks,
-                            COALESCE(SUM(COALESCE(base_price_sales, 0)), 0) AS base_price_sales,
-                            COALESCE(SUM(COALESCE(sub_orders, 0)), 0) AS sub_orders
-                        ')
-                        ->first();
-                    $sp = round((float) ($tot->spend ?? 0), 2);
-                    $c = (int) ($tot->clicks ?? 0);
-                    $s = round((float) ($tot->base_price_sales ?? 0), 2);
-                    $u = (int) ($tot->sub_orders ?? 0);
+                    // Same unique-goods L30 totals as /temu2/ads Spend badge
+                    $tot = Temu2CampaignReport::badgeTotals('L30');
+                    $sp = $tot['spend'];
+                    $c = $tot['clicks'];
+                    $s = $tot['sales'];
+                    $u = $tot['sold'];
 
                     $liveSales = $this->getTemuLiveSalesSummaryFromTabulator(true);
                     $salesRevenue = (float) ($liveSales['total_revenue'] ?? 0);
@@ -6244,8 +6237,8 @@ class ChannelMasterController extends Controller
                 return round((float) ($metrics['Total Ad Spend'] ?? 0), 2);
 
             case 'temu2':
-                // Same source as /temu2/ads Spend badge — SUM(spend) on L30 upload
-                return round((float) (Temu2CampaignReport::where('report_range', 'L30')->sum('spend') ?? 0), 2);
+                // Same unique-goods L30 total as /temu2/ads Spend badge
+                return Temu2CampaignReport::badgeTotals('L30')['spend'];
 
             case 'topdawg':
                 return 0.0;

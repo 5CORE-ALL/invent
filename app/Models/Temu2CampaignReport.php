@@ -76,4 +76,49 @@ class Temu2CampaignReport extends Model
 
         return $status;
     }
+
+    /**
+     * /temu2/ads Spend badge — one row per goods_id (latest), selected period.
+     *
+     * @return array{spend: float, clicks: int, impressions: int, sold: int, sales: float, rows: int}
+     */
+    public static function badgeTotals(?string $period = 'L30'): array
+    {
+        $period = strtoupper((string) $period);
+        $query = static::query();
+        if (in_array($period, ['L7', 'L30', 'L60'], true)) {
+            $query->where('report_range', $period);
+        }
+
+        $ids = (clone $query)
+            ->whereNotNull('goods_id')
+            ->where('goods_id', '!=', '')
+            ->selectRaw('MAX(id) as id')
+            ->groupBy('goods_id')
+            ->pluck('id');
+
+        // Not Created is the column default for never-status-synced API leftovers.
+        // Those rows stored Overall spend and inflated /temu2/ads vs Seller Center.
+        $row = static::query()
+            ->whereIn('id', $ids)
+            ->whereRaw("LOWER(TRIM(COALESCE(status, ''))) != 'not created'")
+            ->selectRaw('
+                COUNT(*) AS row_count,
+                COALESCE(SUM(spend), 0) AS spend,
+                COALESCE(SUM(clicks), 0) AS clicks,
+                COALESCE(SUM(impressions), 0) AS impressions,
+                COALESCE(SUM(sub_orders), 0) AS sold,
+                COALESCE(SUM(base_price_sales), 0) AS sales
+            ')
+            ->first();
+
+        return [
+            'spend' => round((float) ($row->spend ?? 0), 2),
+            'clicks' => (int) ($row->clicks ?? 0),
+            'impressions' => (int) ($row->impressions ?? 0),
+            'sold' => (int) ($row->sold ?? 0),
+            'sales' => round((float) ($row->sales ?? 0), 2),
+            'rows' => (int) ($row->row_count ?? 0),
+        ];
+    }
 }
