@@ -820,7 +820,7 @@
                         </span>
                         <span class="badge fs-6 p-2" id="amazon-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue alert: Price ≠ S PRC. Click to show only those SKUs. Auto-push skips SKUs where Price already equals S PRC.">
+                            title="Blue alert: INV > 0 and Price ≠ S PRC (needs push). Click to show only those SKUs. Cron and Push on reload skip Price = S PRC.">
                             <i class="fas fa-exclamation-triangle"></i> 0
                         </span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'amazon-lmp-missing-badge', 'lmpChannelKey' => 'amazon'])
@@ -1471,6 +1471,8 @@
             if (!data || data.is_parent_summary) return false;
             const sku = String(data['(Child) sku'] || data.sku || '').trim().toUpperCase();
             if (!sku || sku.indexOf('PARENT') === 0) return false;
+            // Same as S PRC column + cron: INV=0 is not a live rule price / not pushable.
+            if (!(parseFloat(data.INV) > 0)) return false;
             const price = parseFloat(data.price) || 0;
             const sprice = amazonRowSprice(data);
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
@@ -5014,6 +5016,20 @@
 
                 table.clearFilter(true);
 
+                // Blue triangle click = only Price ≠ S PRC children (INV > 0).
+                // Do not stack INV/Sold/GPFT — that made Row: 430 vs badge 597.
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return amazonHasBlueTriangle(data);
+                    });
+                    updateSummary();
+                    amazonTabulatorFinalizeFilterApply(sortSnapshot);
+                    setTimeout(function() {
+                        updateRowSelectAllCheckbox();
+                    }, 100);
+                    return;
+                }
+
                 // When Play is active: apply ONLY playback filter so parent summary row always shows (no other filter can hide it)
                 if (isProductNavigationActive && productUniqueParents.length > 0 && currentProductParentIndex >= 0) {
                     var currentKey = productUniqueParents[currentProductParentIndex];
@@ -5265,12 +5281,6 @@
                 if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
                     table.addFilter(function(data) {
                         return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
-                    });
-                }
-                if (blueTriangleFilterActive) {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        return amazonHasBlueTriangle(data);
                     });
                 }
                 updateSummary();

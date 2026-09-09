@@ -3483,6 +3483,8 @@
                 const sku = amzPefSku(d);
                 const key = sku.toUpperCase();
                 if (!sku || seen[key]) return;
+                // Same set as the blue triangle badge: INV > 0 and Price ≠ live S PRC.
+                if (typeof amazonHasBlueTriangle === 'function' && !amazonHasBlueTriangle(d)) return;
                 const plan = amzPushPrcPlanForQueue(d);
                 if (!plan || !(plan.effective > 0)) return;
                 const live = amzPefRound2(Number(d.price) || 0);
