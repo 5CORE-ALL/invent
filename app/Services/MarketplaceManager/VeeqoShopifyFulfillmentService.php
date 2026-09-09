@@ -43,12 +43,63 @@ class VeeqoShopifyFulfillmentService
 {
     private const SHOPIFY_API_VERSION = '2025-01';
 
+    /** @var (callable(array<string, mixed>): void)|null */
+    protected $progressReporter = null;
+
+    /** @var array{checked: int, fulfilled: int, skipped: int, failed: int} */
+    protected array $progressTotals = [
+        'checked' => 0,
+        'fulfilled' => 0,
+        'skipped' => 0,
+        'failed' => 0,
+    ];
+
     public function __construct(
         protected VeeqoApiService $veeqo,
         protected GofoExpressService $gofo,
         protected FourSellerApiService $fourSeller,
         protected ShopifyStoreSelector $stores,
     ) {}
+
+    /**
+     * @param  (callable(array<string, mixed>): void)|null  $reporter
+     */
+    public function setProgressReporter(?callable $reporter): static
+    {
+        $this->progressReporter = $reporter;
+
+        return $this;
+    }
+
+    /**
+     * @param  array<string, mixed>  $event
+     */
+    protected function reportProgress(array $event): void
+    {
+        if ($this->progressReporter === null) {
+            return;
+        }
+        ($this->progressReporter)($event);
+    }
+
+    /**
+     * @param  array<string, mixed>  $extra
+     */
+    protected function bumpProgress(string $outcome, array $extra = []): void
+    {
+        $this->progressTotals['checked']++;
+        if ($outcome === 'fulfilled') {
+            $this->progressTotals['fulfilled']++;
+        } elseif ($outcome === 'failed') {
+            $this->progressTotals['failed']++;
+        } else {
+            $this->progressTotals['skipped']++;
+        }
+        $this->reportProgress(array_merge($this->progressTotals, $extra, [
+            'type' => 'tick',
+            'success' => $outcome === 'fulfilled',
+        ]));
+    }
 
     /**
      * @return array{
@@ -567,6 +618,16 @@ class VeeqoShopifyFulfillmentService
         $skipped = 0;
         $failed = 0;
 
+        $this->progressTotals = ['checked' => 0, 'fulfilled' => 0, 'skipped' => 0, 'failed' => 0];
+        $this->reportProgress([
+            'type' => 'start',
+            'max' => $limit,
+            'checked' => 0,
+            'fulfilled' => 0,
+            'skipped' => 0,
+            'failed' => 0,
+        ]);
+
         if ($fresh) {
             $localSweep = $this->syncLocalTrackedLinkedOrders(min(300, $limit));
             $checked += (int) ($localSweep['checked'] ?? 0);
@@ -618,14 +679,37 @@ class VeeqoShopifyFulfillmentService
                 $this->rememberAutoFetchResult((string) $slug, $orderId, $result);
                 if (! empty($result['success']) && ($result['action'] ?? '') === 'shopify_fulfilled') {
                     $fulfilled++;
+                    $this->bumpProgress('fulfilled', [
+                        'label' => $slug.' #'.$orderId,
+                        'marketplace' => $slug,
+                        'tracking' => (string) ($result['tracking'] ?? ''),
+                        'carrier' => (string) ($result['carrier'] ?? ''),
+                        'message' => (string) ($result['message'] ?? ''),
+                    ]);
                 } elseif (! empty($result['skipped']) || (($result['action'] ?? '') === 'already_on_shopify')) {
                     $skipped++;
+                    $this->bumpProgress('skipped', [
+                        'label' => $slug.' #'.$orderId,
+                        'marketplace' => $slug,
+                    ]);
                 } else {
                     $failed++;
+                    $this->bumpProgress('failed', [
+                        'label' => $slug.' #'.$orderId,
+                        'marketplace' => $slug,
+                    ]);
                 }
                 usleep(120000);
             }
         }
+
+        $this->reportProgress([
+            'type' => 'finish',
+            'checked' => $checked,
+            'fulfilled' => $fulfilled,
+            'skipped' => $skipped,
+            'failed' => $failed,
+        ]);
 
         return [
             'checked' => $checked,
@@ -726,10 +810,19 @@ class VeeqoShopifyFulfillmentService
                 $result = $this->fulfillMarketplaceOrder($slug, (int) $row->id);
                 if (! empty($result['success']) && ($result['action'] ?? '') === 'shopify_fulfilled') {
                     $fulfilled++;
+                    $this->bumpProgress('fulfilled', [
+                        'label' => $slug.' Shopify '.$shopifyId,
+                        'marketplace' => $slug,
+                        'tracking' => (string) ($result['tracking'] ?? ''),
+                        'carrier' => (string) ($result['carrier'] ?? ''),
+                        'message' => (string) ($result['message'] ?? ''),
+                    ]);
                 } elseif (! empty($result['skipped']) || (($result['action'] ?? '') === 'already_on_shopify')) {
                     $skipped++;
+                    $this->bumpProgress('skipped', ['label' => $slug.' Shopify '.$shopifyId, 'marketplace' => $slug]);
                 } else {
                     $failed++;
+                    $this->bumpProgress('failed', ['label' => $slug.' Shopify '.$shopifyId, 'marketplace' => $slug]);
                 }
                 usleep(80000);
             }
@@ -798,8 +891,13 @@ class VeeqoShopifyFulfillmentService
                 $skuPasses = $skus !== [] ? $skus : [''];
                 $checked++;
                 $cacheKey = 'mm_fetch_tracking_shopify_v2:'.$shopifyId;
+                $orderLabel = trim((string) ($order['name'] ?? '')).' '.($marketplace !== '' ? $marketplace : 'marketplace');
                 if (! $fresh && Cache::has($cacheKey)) {
                     $skipped++;
+                    $this->bumpProgress('skipped', [
+                        'label' => trim($orderLabel),
+                        'marketplace' => $marketplace,
+                    ]);
                     continue;
                 }
                 $local = $this->localTrackingFromShopifyOrder($order)
@@ -836,18 +934,29 @@ class VeeqoShopifyFulfillmentService
                         $this->linkAmazonOrderToShopify($amazonId, $shopifyId);
                     }
                     Cache::put($cacheKey, 1, $allMatched ? now()->addDays(7) : now()->addMinutes(8));
+                    $this->bumpProgress('fulfilled', [
+                        'label' => trim((string) ($order['name'] ?? $shopifyId).' '.$marketplace),
+                        'marketplace' => $marketplace,
+                        'tracking' => (string) ($lastResult['tracking'] ?? ''),
+                        'carrier' => (string) ($lastResult['carrier'] ?? ''),
+                        'message' => (string) ($lastResult['message'] ?? ''),
+                    ]);
                 } elseif ($allMatched && $action === 'already_on_shopify') {
                     $skipped++;
                     Cache::put($cacheKey, 1, now()->addDays(7));
+                    $this->bumpProgress('skipped', ['label' => trim($orderLabel), 'marketplace' => $marketplace]);
                 } elseif (in_array($action, ['tracking_not_found', 'not_linked'], true)) {
                     $skipped++;
                     Cache::put($cacheKey, 1, now()->addMinutes(25));
+                    $this->bumpProgress('skipped', ['label' => trim($orderLabel), 'marketplace' => $marketplace]);
                 } elseif (! empty($lastResult['skipped'])) {
                     $skipped++;
                     Cache::put($cacheKey, 1, now()->addMinutes(40));
+                    $this->bumpProgress('skipped', ['label' => trim($orderLabel), 'marketplace' => $marketplace]);
                 } else {
                     $failed++;
                     Cache::put($cacheKey, 1, now()->addMinutes(2));
+                    $this->bumpProgress('failed', ['label' => trim($orderLabel), 'marketplace' => $marketplace]);
                 }
                 usleep(120000);
                 if ($checked > 0 && $checked % 25 === 0) {
