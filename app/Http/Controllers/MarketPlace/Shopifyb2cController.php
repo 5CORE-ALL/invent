@@ -41,6 +41,11 @@ class Shopifyb2cController extends Controller
         'avg_price', 'total_inv',
     ];
 
+    /** Short-lived grid payload so refresh / Google Ads do not rebuild the catalog. */
+    public const TABULAR_CACHE_KEY = 'shopify_b2c_tabular_data_v3';
+
+    private const TABULAR_CACHE_TTL = 60;
+
     protected $apiController;
 
     public function __construct(ApiController $apiController)
@@ -544,6 +549,7 @@ class Shopifyb2cController extends Controller
 
         $shopifyDataView->value = $merged;
         $saved = $shopifyDataView->save();
+        self::forgetTabularDataCache();
         
         Log::info('SPRICE saved to shopifyb2c_data_view', [
             'sku' => $sku,
@@ -604,6 +610,7 @@ class Shopifyb2cController extends Controller
         // Save back to DB
         $product->value = $currentValue;
         $product->save();
+        self::forgetTabularDataCache();
 
         return response()->json(['success' => true]);
     }
@@ -795,102 +802,89 @@ class Shopifyb2cController extends Controller
 
     public function shopifyB2cDataJson()
     {
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(180);
+
         $data = $this->getViewShopifyB2cTabularData();
 
-        // Save snapshot after JSON is sent so the table is not blocked (same as eBay).
-        $rows = is_array($data) ? $data : [];
-        dispatch(function () use ($rows) {
-            $level = ob_get_level();
-            ob_start();
-            try {
-                app(self::class)->snapshotDailyBadgeSummary($rows);
-            } catch (\Throwable $e) {
-                Log::error('Error saving daily Shopify B2C summary: ' . $e->getMessage());
-            } finally {
-                while (ob_get_level() > $level) {
-                    ob_end_clean();
-                }
+        // Persist today's badge snapshot in-request from the rows we already built.
+        // Do not clone the full catalog into afterResponse — that doubled memory and
+        // was taking the PHP worker down on this page.
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+            $hasToday = AmazonChannelSummary::where('channel', self::BADGE_CHANNEL)
+                ->where('snapshot_date', $today)
+                ->exists();
+            if (! $hasToday) {
+                $this->snapshotDailyBadgeSummary(is_array($data) ? $data : []);
             }
-        })->afterResponse();
+        } catch (\Throwable $e) {
+            Log::error('Error saving daily Shopify B2C summary: ' . $e->getMessage());
+        }
 
         return response()->json([
             'data' => $data,
+        ])->withHeaders([
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
         ]);
+    }
+
+    public static function forgetTabularDataCache(): void
+    {
+        Cache::forget(self::TABULAR_CACHE_KEY);
     }
 
     public function getViewShopifyB2cTabularData()
     {
-        // Hardcoded 95% margin for Shopify B2C
-        $percentage = 95;
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(180);
+
+        try {
+            return Cache::remember(self::TABULAR_CACHE_KEY, self::TABULAR_CACHE_TTL, function () {
+                return $this->buildViewShopifyB2cTabularData();
+            });
+        } catch (\Throwable $e) {
+            Log::warning('Shopify B2C tabular cache failed, building live: ' . $e->getMessage());
+
+            return $this->buildViewShopifyB2cTabularData();
+        }
+    }
+
+    /**
+     * Lean catalog build for /shopify-b2c-data-json.
+     * Avoids ProductMaster.Values blobs, fat Google competitor models, and
+     * thousands-wide WHERE IN lists that were OOMing / hanging this page.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildViewShopifyB2cTabularData(): array
+    {
         $percentageValue = 0.95;
 
-        $productMasterRows = ProductMaster::query()
-            ->select(['id', 'sku', 'parent', 'Values'])
-            ->where('sku', 'not like', '%PARENT%')
-            ->get()
-            ->keyBy('sku');
-
-        // Get all unique SKUs from product master
-        $skus = $productMasterRows->pluck("sku")->toArray();
-
-        // Fetch shopify data for these SKUs
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-
-        // Fetch L30 orders from shopify_b2c_daily_data (period = 'l30')
-        $shopifyB2COrders = ShopifyB2CDailyData::whereIn('sku', $skus)
-            ->where('period', 'l30')
-            ->where('financial_status', '!=', 'refunded')
-            ->selectRaw('sku, SUM(quantity) as total_quantity')
-            ->groupBy('sku')
-            ->get()
-            ->keyBy('sku');
-
-        // Fetch Amazon prices (uppercase key — same as /newegg; exact sku keyBy missed case drift)
-        $amazonBySku = [];
-        foreach (AmazonDatasheet::whereIn('sku', $skus)->get(['sku', 'price']) as $amzRow) {
-            $key = strtoupper(trim((string) $amzRow->sku));
-            if ($key === '') {
-                continue;
-            }
-            $amazonBySku[$key] = (float) ($amzRow->price ?? 0);
+        $productMasterRows = $this->shopifyB2cLoadProductMasters();
+        $skus = [];
+        foreach ($productMasterRows as $sku => $_row) {
+            $skus[] = (string) $sku;
         }
 
-        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
-        $amazonStandardPrices = [];
-        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
-            $val = is_array($adv->value)
-                ? $adv->value
-                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
-            $std = $val['STANDARD_PRICE'] ?? null;
-            if (is_numeric($std) && (float) $std > 0) {
-                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
-            }
-        }
+        $shopifyData = $this->shopifyB2cSlimSkuMap($skus);
+        $shopifyB2COrders = $this->shopifyB2cL30QtyBySku();
+        $amazonBySku = $this->shopifyB2cAmazonPriceBySku();
+        $amazonStandardPrices = $this->shopifyB2cAmazonStandardPrices();
 
-        // PRMT%/CPN%/DSC%/Appr/Push Prc — shopify_b2c_promo_pricing (site-specific)
-        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('shopify_b2c', $skus);
+        $viewBySku = $this->shopifyB2cDataViewBySku();
+        $promoService = app(ChannelPromoPricingService::class);
+        $promoMap = $promoService->mapFromDecodedValues($viewBySku);
+        $listingStatusData = $this->shopifyB2cListingStatusBySku();
 
-        // Fetch listing status data
-        $listingStatusData = ShopifyB2CListingStatus::whereIn('sku', $skus)
-            ->orderBy('updated_at', 'desc')
-            ->get()
-            ->keyBy('sku');
-
-        // Fetch SPRICE data from shopifyb2c_data_view
-        $shopifyB2cViewData = Shopifyb2cDataView::whereIn('sku', $skus)
-            ->get()
-            ->keyBy('sku');
-
-        // Google LMP from /repricer/google-search → google_sku_competitors
-        $googleLmpDetails = collect();
+        $googleLmpDetails = [];
         try {
-            $googleLmpLookups = GoogleSkuCompetitor::buildGroupedLookup('google');
-            $googleLmpDetails = $googleLmpLookups['details'];
+            $googleLmpDetails = GoogleSkuCompetitor::buildLeanOfferLookup('google');
         } catch (\Throwable $e) {
             Log::warning('Shopify B2C Google LMP lookup failed: ' . $e->getMessage());
         }
 
-        // Sku Link LMP — shared lmp_sku_links groups (same as Amazon / Newegg / Shein)
         $lmpGroupService = new LmpSkuGroupService();
         try {
             $lmpGroupService->prepareForSkus(array_values(array_filter(array_map(
@@ -901,15 +895,13 @@ class Shopifyb2cController extends Controller
             Log::warning('LmpSkuGroupService prepare failed (Shopify B2C): ' . $e->getMessage());
         }
 
-        // Fetch Google Ads spend per SKU (L30 - last 30 days)
-        $yesterday = \Carbon\Carbon::yesterday();
-        $startDate = $yesterday->copy()->subDays(29);
-        $startDateStr = $startDate->format('Y-m-d');
+        $yesterday = Carbon::yesterday();
+        $startDateStr = $yesterday->copy()->subDays(29)->format('Y-m-d');
         $yesterdayStr = $yesterday->format('Y-m-d');
 
         $googleSpentData = DB::table('google_ads_campaigns')
-            ->whereDate('date', '>=', $startDateStr)
-            ->whereDate('date', '<=', $yesterdayStr)
+            ->where('date', '>=', $startDateStr)
+            ->where('date', '<=', $yesterdayStr)
             ->where('advertising_channel_type', 'SHOPPING')
             ->whereNotNull('campaign_name')
             ->where('campaign_name', '!=', '')
@@ -918,14 +910,6 @@ class Shopifyb2cController extends Controller
             ->pluck('total_spend', 'sku_key')
             ->toArray();
 
-        // Build Google spend lookup by SKU
-        $googleSpentBySku = [];
-        foreach ($skus as $sku) {
-            $skuUpper = strtoupper(trim($sku));
-            $googleSpentBySku[$sku] = $googleSpentData[$skuUpper] ?? 0;
-        }
-
-        // Channel Ads% (TCOS badge) — used for SNROI when row ADS% is 0, same as NROI badge
         $channelAdsPct = 0.0;
         try {
             $snapshot = $this->shopifyDirectL30SnapshotCached();
@@ -941,13 +925,10 @@ class Shopifyb2cController extends Controller
             $processedItem["(Child) sku"] = $sku;
             $processedItem["Parent"] = $productMaster->parent ?? null;
 
-            // Get Values field
-            $values = is_array($productMaster->Values)
-                ? $productMaster->Values
-                : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
-
-            $lp = $values["lp"] ?? ($productMaster->lp ?? 0);
-            $ship = $values["ship"] ?? ($productMaster->ship ?? 0);
+            $skuKey = strtoupper(trim((string) $sku));
+            $lp = $this->shopifyB2cMasterMoney($productMaster, 'lp');
+            $ship = $this->shopifyB2cMasterMoney($productMaster, 'ship');
+            $masterImage = $this->shopifyB2cMasterImage($productMaster);
 
             $processedItem["LP_productmaster"] = $lp;
             $processedItem["Ship_productmaster"] = $ship;
@@ -959,19 +940,16 @@ class Shopifyb2cController extends Controller
                 $processedItem["L30"] = $shopifyItem->quantity ?? 0; // OV L30 - Overall sales from shopify_skus
                 $processedItem["Price"] = $shopifyItem->price ?? 0;
                 $processedItem["Views"] = $shopifyItem->views ?? 0;
-                $processedItem["image_path"] = $shopifyItem->image_src ?? ($values["image_path"] ?? ($productMaster->image_path ?? null));
+                $processedItem["image_path"] = $shopifyItem->image_src ?? $masterImage;
             } else {
                 $processedItem["INV"] = 0;
                 $processedItem["L30"] = 0;
                 $processedItem["Price"] = 0;
                 $processedItem["Views"] = 0;
-                $processedItem["image_path"] = $values["image_path"] ?? ($productMaster->image_path ?? null);
+                $processedItem["image_path"] = $masterImage;
             }
 
-            // Get B2C L30 orders from shopify_b2c_daily_data (B2C sales only)
-            $b2cOrder = $shopifyB2COrders[$sku] ?? null;
-            $processedItem["L30"] = $processedItem["L30"]; // Keep OV L30 from shopify_skus
-            $processedItem["B2B L30"] = $b2cOrder ? $b2cOrder->total_quantity : 0;
+            $processedItem["B2B L30"] = $shopifyB2COrders[$skuKey] ?? ($shopifyB2COrders[$sku] ?? 0);
 
             // Check if SKU exists in Shopify (Missing column)
             if ($shopifyItem) {
@@ -988,11 +966,11 @@ class Shopifyb2cController extends Controller
             $processedItem["B Link"] = '';
             $processedItem["S Link"] = '';
             
-            if (isset($listingStatusData[$sku])) {
-                $listingStatus = $listingStatusData[$sku];
-                $statusValue = is_array($listingStatus->value) 
-                    ? $listingStatus->value 
-                    : (json_decode($listingStatus->value, true) ?? []);
+            $listingStatus = $listingStatusData[$skuKey] ?? ($listingStatusData[$sku] ?? null);
+            if ($listingStatus) {
+                $statusValue = is_array($listingStatus->value)
+                    ? $listingStatus->value
+                    : (json_decode((string) $listingStatus->value, true) ?? []);
                 
                 $rlNrl = $statusValue['rl_nrl'] ?? null;
                 
@@ -1047,7 +1025,7 @@ class Shopifyb2cController extends Controller
             $processedItem["CVR%"] = $views > 0 ? ($b2cL30 / $views) * 100 : 0;
 
             // Add Google Ads Spend for this SKU
-            $adSpend = (float) ($googleSpentBySku[$sku] ?? 0);
+            $adSpend = (float) ($googleSpentData[$skuKey] ?? 0);
             $processedItem["googleSpent"] = $adSpend;
 
             // Calculate ADS% = (googleSpent / Sales L30) * 100
@@ -1075,11 +1053,8 @@ class Shopifyb2cController extends Controller
             $processedItem["has_custom_sprice"] = false;
             $processedItem["AMZ_SUGG_APPLIED"] = false;
 
-            if (isset($shopifyB2cViewData[$sku])) {
-                $viewData = $shopifyB2cViewData[$sku];
-                $valuesArr = is_array($viewData->value)
-                    ? $viewData->value
-                    : (json_decode($viewData->value, true) ?: []);
+            $valuesArr = $viewBySku[$skuKey] ?? ($viewBySku[$sku] ?? null);
+            if (is_array($valuesArr)) {
                 
                 $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
                 $processedItem["has_custom_sprice"] = $processedItem["SPRICE"] > 0;
@@ -1123,7 +1098,7 @@ class Shopifyb2cController extends Controller
                 }
             }
             $processedItem['STANDARD_PRICE'] = $stdPrc;
-            $processedItem = app(ChannelPromoPricingService::class)->applyToRow($processedItem, $promoMap, (string) $sku);
+            $processedItem = $promoService->applyToRow($processedItem, $promoMap, (string) $sku);
 
             $seenLmp = [];
             $lmpCount = 0;
@@ -1131,22 +1106,20 @@ class Shopifyb2cController extends Controller
             $skusForLmp = $linkedLmpSkus !== [] ? $linkedLmpSkus : [$sku];
             foreach ($skusForLmp as $linkedSku) {
                 $linkedKey = GoogleSkuCompetitor::normalizeSkuKey((string) $linkedSku);
-                $groupEntries = $googleLmpDetails->get($linkedKey);
-                if (! $groupEntries instanceof \Illuminate\Support\Collection) {
+                $groupEntries = $googleLmpDetails[$linkedKey] ?? [];
+                if ($groupEntries === []) {
                     continue;
                 }
                 foreach ($groupEntries as $comp) {
-                    $dedupeKey = GoogleSkuCompetitor::offerDedupeKey($comp);
-                    if (isset($seenLmp[$dedupeKey])) {
+                    $dedupeKey = (string) ($comp['d'] ?? '');
+                    if ($dedupeKey === '' || isset($seenLmp[$dedupeKey])) {
                         continue;
                     }
                     $seenLmp[$dedupeKey] = true;
                     $lmpCount++;
-                    if (is_numeric($comp->price ?? null)) {
-                        $price = (float) $comp->price;
-                        if ($price > 0 && ($lowestLmpPrice === null || $price < $lowestLmpPrice)) {
-                            $lowestLmpPrice = $price;
-                        }
+                    $offerPrice = (float) ($comp['p'] ?? 0);
+                    if ($offerPrice > 0 && ($lowestLmpPrice === null || $offerPrice < $lowestLmpPrice)) {
+                        $lowestLmpPrice = $offerPrice;
                     }
                 }
             }
@@ -1238,6 +1211,234 @@ class Shopifyb2cController extends Controller
     }
 
     /**
+     * @return \Illuminate\Support\Collection<string, \App\Models\ProductMaster>
+     */
+    private function shopifyB2cLoadProductMasters()
+    {
+        try {
+            return ProductMaster::query()
+                ->select(['id', 'sku', 'parent'])
+                ->selectRaw("CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`Values`, '$.lp')), JSON_UNQUOTE(JSON_EXTRACT(`Values`, '$.LP'))) AS DECIMAL(12,4)) as lp_val")
+                ->selectRaw("CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`Values`, '$.ship')), JSON_UNQUOTE(JSON_EXTRACT(`Values`, '$.Ship'))) AS DECIMAL(12,4)) as ship_val")
+                ->selectRaw("COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`Values`, '$.image_path')), JSON_UNQUOTE(JSON_EXTRACT(`Values`, '$.image_src'))) as image_path_val")
+                ->where('sku', 'not like', '%PARENT%')
+                ->get()
+                ->keyBy('sku');
+        } catch (\Throwable $e) {
+            Log::warning('Shopify B2C lean product_master extract failed, loading Values: '.$e->getMessage());
+
+            return ProductMaster::query()
+                ->select(['id', 'sku', 'parent', 'Values'])
+                ->where('sku', 'not like', '%PARENT%')
+                ->get()
+                ->keyBy('sku');
+        }
+    }
+
+    private function shopifyB2cMasterMoney(object $productMaster, string $field): float
+    {
+        $extracted = $field === 'ship' ? ($productMaster->ship_val ?? null) : ($productMaster->lp_val ?? null);
+        if (is_numeric($extracted) && (float) $extracted != 0.0) {
+            return (float) $extracted;
+        }
+
+        $values = $this->shopifyB2cMasterValues($productMaster);
+        $raw = $values[$field] ?? ($values[strtoupper($field)] ?? ($productMaster->{$field} ?? 0));
+
+        return is_numeric($raw) ? (float) $raw : 0.0;
+    }
+
+    private function shopifyB2cMasterImage(object $productMaster): ?string
+    {
+        $extracted = $productMaster->image_path_val ?? null;
+        if (is_string($extracted) && $extracted !== '' && strcasecmp($extracted, 'null') !== 0) {
+            return $extracted;
+        }
+
+        $values = $this->shopifyB2cMasterValues($productMaster);
+        $path = $values['image_path'] ?? ($values['image_src'] ?? ($productMaster->image_path ?? null));
+
+        return is_string($path) && $path !== '' ? $path : null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function shopifyB2cMasterValues(object $productMaster): array
+    {
+        if (! isset($productMaster->Values)) {
+            return [];
+        }
+        $values = $productMaster->Values;
+        if (is_array($values)) {
+            return $values;
+        }
+        if (is_string($values) && $values !== '') {
+            $decoded = json_decode($values, true);
+
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  list<string>  $productSkus
+     * @return array<string, ShopifySku>
+     */
+    private function shopifyB2cSlimSkuMap(array $productSkus): array
+    {
+        $byNorm = [];
+        ShopifySku::query()
+            ->select(['id', 'sku', 'inv', 'quantity', 'price', 'views', 'image_src'])
+            ->orderBy('id')
+            ->chunkById(2500, function ($rows) use (&$byNorm) {
+                foreach ($rows as $row) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup($row->sku);
+                    if ($k !== '' && ! isset($byNorm[$k])) {
+                        $byNorm[$k] = $row;
+                    }
+                }
+            });
+
+        $out = [];
+        foreach ($productSkus as $pmSku) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            if ($k !== '' && isset($byNorm[$k])) {
+                $out[(string) $pmSku] = $byNorm[$k];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function shopifyB2cL30QtyBySku(): array
+    {
+        $out = [];
+        $rows = ShopifyB2CDailyData::query()
+            ->where('period', 'l30')
+            ->where('financial_status', '!=', 'refunded')
+            ->selectRaw('sku, SUM(quantity) as total_quantity')
+            ->groupBy('sku')
+            ->get();
+        foreach ($rows as $row) {
+            $qty = (float) ($row->total_quantity ?? 0);
+            $raw = trim((string) $row->sku);
+            if ($raw === '') {
+                continue;
+            }
+            $out[$raw] = $qty;
+            $out[strtoupper($raw)] = $qty;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function shopifyB2cAmazonPriceBySku(): array
+    {
+        $amazonBySku = [];
+        foreach (AmazonDatasheet::query()->select(['sku', 'price'])->cursor() as $amzRow) {
+            $key = strtoupper(trim((string) $amzRow->sku));
+            if ($key === '') {
+                continue;
+            }
+            $amazonBySku[$key] = (float) ($amzRow->price ?? 0);
+        }
+
+        return $amazonBySku;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function shopifyB2cAmazonStandardPrices(): array
+    {
+        $amazonStandardPrices = [];
+        AmazonDataView::query()
+            ->select(['id', 'sku', 'value'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($rows) use (&$amazonStandardPrices) {
+                foreach ($rows as $adv) {
+                    $val = $this->shopifyB2cDecodeViewValue($adv->value);
+                    $std = $val['STANDARD_PRICE'] ?? null;
+                    if (is_numeric($std) && (float) $std > 0) {
+                        $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+                    }
+                }
+            });
+
+        return $amazonStandardPrices;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function shopifyB2cDataViewBySku(): array
+    {
+        $viewBySku = [];
+        Shopifyb2cDataView::query()
+            ->select(['id', 'sku', 'value'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($rows) use (&$viewBySku) {
+                foreach ($rows as $view) {
+                    $key = strtoupper(trim((string) $view->sku));
+                    if ($key === '') {
+                        continue;
+                    }
+                    $viewBySku[$key] = $this->shopifyB2cDecodeViewValue($view->value);
+                }
+            });
+
+        return $viewBySku;
+    }
+
+    /**
+     * @return array<string, ShopifyB2CListingStatus>
+     */
+    private function shopifyB2cListingStatusBySku(): array
+    {
+        $listingStatusData = [];
+        ShopifyB2CListingStatus::query()
+            ->select(['id', 'sku', 'value'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($rows) use (&$listingStatusData) {
+                foreach ($rows as $row) {
+                    $raw = trim((string) $row->sku);
+                    if ($raw === '') {
+                        continue;
+                    }
+                    $listingStatusData[$raw] = $row;
+                    $listingStatusData[strtoupper($raw)] = $row;
+                }
+            });
+
+        return $listingStatusData;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function shopifyB2cDecodeViewValue(mixed $value): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+        if (is_string($value) && $value !== '') {
+            $decoded = json_decode($value, true);
+
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return [];
+    }
+
+    /**
      * Sku Link LMP group for a Shopify B2C row — shared lmp_sku_links service.
      *
      * @return list<string>
@@ -1301,6 +1502,8 @@ class Shopifyb2cController extends Controller
                 'value' => ['rl_nrl' => $rlNrlValue]
             ]);
         }
+
+        self::forgetTabularDataCache();
 
         return response()->json(['success' => true, 'message' => 'Status updated successfully']);
     }

@@ -32,6 +32,7 @@ use App\Models\WalmartDataView;
 use App\Models\WayfairDataView;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -162,14 +163,44 @@ class ChannelPromoPricingService
             return [];
         }
 
-        $rows = $modelClass::query()
-            ->whereIn(DB::raw('UPPER(TRIM(sku))'), array_keys($norm))
-            ->get(['sku', 'value']);
+        $keys = array_keys($norm);
+        $query = $modelClass::query()->select(['sku', 'value']);
+        // Huge UPPER(TRIM(sku)) IN (...) lists time out / hang the Shopify B2C grid.
+        if (count($keys) < 400) {
+            $query->whereIn(DB::raw('UPPER(TRIM(sku))'), $keys);
+        }
+        $rows = $query->get();
 
         $out = [];
         foreach ($rows as $row) {
             $key = strtoupper(trim((string) $row->sku));
+            if ($key === '' || ! isset($norm[$key])) {
+                continue;
+            }
             $val = $this->decodeValue($row->value);
+            $mapped = $this->mapFromValue($val);
+            if ($mapped !== null) {
+                $out[$key] = $mapped;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Promo map from already-decoded data_view.value blobs (avoids a second table scan).
+     *
+     * @param  array<string, array<string, mixed>>  $decodedBySku
+     * @return array<string, array<string, mixed>>
+     */
+    public function mapFromDecodedValues(array $decodedBySku): array
+    {
+        $out = [];
+        foreach ($decodedBySku as $sku => $val) {
+            $key = strtoupper(trim((string) $sku));
+            if ($key === '' || ! is_array($val)) {
+                continue;
+            }
             $mapped = $this->mapFromValue($val);
             if ($mapped !== null) {
                 $out[$key] = $mapped;
@@ -420,6 +451,9 @@ class ChannelPromoPricingService
 
             if ($channel === 'ebay1') {
                 $this->syncEbay1DailyPromo($skuNorm, $existing);
+            }
+            if ($channel === 'shopify_b2c') {
+                Cache::forget(\App\Http\Controllers\MarketPlace\Shopifyb2cController::TABULAR_CACHE_KEY);
             }
 
             return $this->mapFromValue($existing) ?? [

@@ -44,6 +44,14 @@ class LmpSkuGroupService
             return;
         }
 
+        // Full-catalog pages (Shopify B2C / Amazon) pass thousands of SKUs.
+        // One table scan is cheaper than N×100 IN() lookups.
+        if (count($normList) >= 250) {
+            $this->loadAllLinks();
+
+            return;
+        }
+
         foreach (array_chunk($normList, 100) as $chunk) {
             LmpSkuLink::query()
                 ->select(['id', 'sku', 'linked_sku'])
@@ -58,6 +66,18 @@ class LmpSkuGroupService
                     }
                 });
         }
+    }
+
+    private function loadAllLinks(): void
+    {
+        LmpSkuLink::query()
+            ->select(['id', 'sku', 'linked_sku'])
+            ->orderBy('id')
+            ->chunkById(5000, function ($pairs) {
+                foreach ($pairs as $pair) {
+                    $this->unionGroup([$pair->sku, $pair->linked_sku]);
+                }
+            });
     }
 
     /**

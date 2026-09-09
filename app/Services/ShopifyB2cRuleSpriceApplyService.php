@@ -140,6 +140,10 @@ class ShopifyB2cRuleSpriceApplyService
             $stats['skipped']
         ));
 
+        if (! $dryRun && (int) ($stats['applied'] ?? 0) > 0) {
+            Cache::forget(\App\Http\Controllers\MarketPlace\Shopifyb2cController::TABULAR_CACHE_KEY);
+        }
+
         return ['dry_run' => $dryRun, 'stats' => $stats];
     }
 

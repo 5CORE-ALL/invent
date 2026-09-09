@@ -733,6 +733,7 @@ class PriceGtLmpChannelCounts
             'shopifyb2b' => ['table' => 'store_listing_prices', 'sku' => 'sku', 'price' => 'selling_price'],
             'macys' => ['table' => 'macys_price_data', 'sku' => 'sku', 'price' => 'price'],
             'reverb' => ['table' => 'reverb_products', 'sku' => 'sku', 'price' => 'price'],
+            'bestbuy' => ['table' => 'bestbuy_price_data', 'sku' => 'sku', 'price' => 'price'],
             'temu' => ['table' => 'temu_metrics', 'sku' => 'sku', 'price' => 'base_price', 'adjust' => 'temu'],
             'temu2' => ['table' => 'temu2_pricing', 'sku' => 'sku', 'price' => 'base_price', 'adjust' => 'temu'],
             'temu3' => ['table' => 'temu3_pricing', 'sku' => 'sku', 'price' => 'base_price', 'adjust' => 'temu'],

@@ -67,6 +67,90 @@ class BestBuyPricingController extends Controller
         }
     }
 
+    /**
+     * Same Price > landed LMP count as the /bestbuy-pricing badge.
+     * Lean: Product Master children + sheet/product BB Price + Shopify INV + Sku Link LMP.
+     */
+    public function countPriceGtLmp(): int
+    {
+        $productMasters = ProductMaster::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku']);
+
+        $productMasters = $productMasters->filter(function ($item) {
+            return stripos((string) $item->sku, 'PARENT') === false;
+        })->values();
+
+        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        $this->lmpSkuGroupService->prepareForSkus($skus);
+
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
+        $bestbuyMetrics = BestbuyUsaProduct::whereIn('sku', $skus)->get()->keyBy('sku');
+        $priceDataCollection = BestbuyPriceData::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'price'])
+            ->keyBy(fn ($item) => strtoupper((string) $item->sku));
+
+        $lmpDetailsLookup = collect();
+        try {
+            $lmpDetailsLookup = BestbuySkuCompetitor::buildGroupedLookup('bestbuy')['details'] ?? collect();
+        } catch (\Throwable $e) {
+            Log::warning('Best Buy price>LMP count: competitor lookup failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $n = 0;
+        foreach ($productMasters as $pm) {
+            $sku = (string) $pm->sku;
+            if ($sku === '' || str_contains(strtoupper($sku), 'PARENT')) {
+                continue;
+            }
+
+            $shopify = $shopifyData->get($pm->sku);
+            $inv = (float) ($shopify->inv ?? 0);
+            if (! ($inv > 0)) {
+                continue;
+            }
+
+            $priceData = $priceDataCollection[strtoupper($sku)] ?? null;
+            $bestbuyMetric = $bestbuyMetrics[$pm->sku] ?? $bestbuyMetrics->get($sku);
+            $price = $priceData
+                ? (float) ($priceData->price ?? 0)
+                : (float) ($bestbuyMetric->price ?? 0);
+            if (! ($price > 0)) {
+                continue;
+            }
+
+            $linkedLmpSkus = $this->linkedLmpSkusForProduct($sku);
+            $allLmpEntries = collect();
+            foreach ($linkedLmpSkus as $linkedSku) {
+                foreach (BestbuySkuCompetitor::resolveLookupKeys((string) $linkedSku) as $lookupKey) {
+                    $entries = $lmpDetailsLookup->get($lookupKey);
+                    if ($entries instanceof \Illuminate\Support\Collection && $entries->isNotEmpty()) {
+                        $allLmpEntries = $allLmpEntries->merge($entries);
+                    }
+                }
+            }
+            $allLmpEntries = BestbuySkuCompetitor::dedupeByItemId($allLmpEntries)
+                ->filter(fn ($entry) => (float) ($entry->total_price ?? 0) > 0)
+                ->sortBy(fn ($entry) => (float) ($entry->total_price ?? 0))
+                ->values();
+            $lowestLmp = $allLmpEntries->first(fn ($c) => empty($c->ignored));
+            $lmp = ($lowestLmp && is_numeric($lowestLmp->total_price ?? null))
+                ? (float) $lowestLmp->total_price
+                : 0.0;
+
+            if ($lmp > 0 && $price > $lmp) {
+                $n++;
+            }
+        }
+
+        return $n;
+    }
+
     public function getViewBestBuyData(Request $request)
     {
         // 1. Base ProductMaster fetch
