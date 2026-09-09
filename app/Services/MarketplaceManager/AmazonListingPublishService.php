@@ -187,8 +187,8 @@ class AmazonListingPublishService
         }
 
         $mp = 'ATVPDKIKX0DER';
-        $brand = trim((string) ($details['brand'] ?? '5 Core Inc.')) ?: '5 Core Inc.';
-        $manufacturer = trim((string) ($details['manufacturer'] ?? $brand)) ?: $brand;
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
+        $manufacturer = trim((string) config('listing_manager.default_manufacturer', $brand)) ?: $brand;
         $upc = trim((string) ($details['upc'] ?? ''));
         $price = (float) ($details['price'] ?? 0);
         $listPrice = (float) ($details['list_price'] ?? 0);

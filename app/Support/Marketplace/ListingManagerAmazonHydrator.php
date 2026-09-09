@@ -175,8 +175,8 @@ class ListingManagerAmazonHydrator
         $images = ListingManagerImageStore::applyToList($images);
         $dims = self::dimensions($listing?->item_dimensions, $pm, $sku);
 
-        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
-        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
+        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
+        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core')) ?: '5 Core';
         $brand = $defaultBrand;
         $manufacturer = $defaultManufacturer;
 
@@ -253,8 +253,8 @@ class ListingManagerAmazonHydrator
             $defaults = EbaySellAccountPolicies::defaultsForChannel($key);
         }
 
-        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
-        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
+        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
+        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core')) ?: '5 Core';
         $defaultCondition = trim((string) config('listing_manager.default_condition', 'New')) ?: 'New';
         $sku = trim((string) ($hydrated['sku'] ?? $hydrated['mpn'] ?? ''));
         $brand = $defaultBrand;
@@ -340,8 +340,8 @@ class ListingManagerAmazonHydrator
     public static function applyMarketplaceConstants(array $details, string $sku): array
     {
         $sku = trim($sku);
-        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
-        $manufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
+        $manufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core')) ?: '5 Core';
         $condition = trim((string) config('listing_manager.default_condition', 'New')) ?: 'New';
         $reverbCondition = trim((string) config('listing_manager.default_reverb_condition', 'Brand New')) ?: 'Brand New';
 
@@ -476,7 +476,7 @@ class ListingManagerAmazonHydrator
      */
     private static function applyReverbListingFields(array $merged, array $pm, array $hydrated): array
     {
-        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
         $sku = trim((string) ($hydrated['sku'] ?? $merged['mpn'] ?? ''));
         $reverbCondition = trim((string) config('listing_manager.default_reverb_condition', 'Brand New')) ?: 'Brand New';
         $merged['make'] = $brand;

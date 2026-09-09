@@ -190,8 +190,8 @@ class ListingManagerEbayTradingPublisher
                 self::appendEbay3FallbackShippingAndReturns($item);
             }
 
-            $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
-            $manufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
+            $brand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
+            $manufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core')) ?: '5 Core';
             $mpn = $sku;
             $specifics = is_array($payload['item_specifics'] ?? null) ? $payload['item_specifics'] : [];
             $specifics['Brand'] = $brand;

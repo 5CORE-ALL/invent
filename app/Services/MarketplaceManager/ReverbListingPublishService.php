@@ -660,9 +660,9 @@ class ReverbListingPublishService
 
     private function defaultListingBrand(): string
     {
-        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.'));
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core'));
 
-        return $brand !== '' ? $brand : '5 Core Inc.';
+        return $brand !== '' ? $brand : '5 Core';
     }
 
     private function findProduct(string $sku): ?ProductMaster

@@ -577,7 +577,7 @@ class AliexpressListingPublishService
 
     private function resolveBrand(): string
     {
-        return '5 Core Inc.';
+        return trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
     }
 
     private function resolveDescription(ProductMaster $product, string $title): string

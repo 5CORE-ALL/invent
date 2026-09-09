@@ -573,7 +573,7 @@ class WayfairListingPublishService
             return $this->choiceOrValue($question, ['China', 'CHN', 'CN', 'People\'s Republic of China']);
         }
         if (preg_match('/\bbrand\b/', $hay)) {
-            return $this->choiceOrValue($question, ['5 Core Inc.', '5 Core', $ctx['manufacturer']['name'] ?? '']);
+            return $this->choiceOrValue($question, ['5 Core', $ctx['manufacturer']['name'] ?? '']);
         }
         if (preg_match('/\bcolor\b/', $hay)) {
             return $this->choiceOrValue($question, $this->colorGuess((string) $ctx['sku'], $product));
