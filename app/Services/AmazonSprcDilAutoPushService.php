@@ -316,7 +316,7 @@ class AmazonSprcDilAutoPushService
         $mastersBySku = [];
         $masterLookup = array_values(array_unique(array_merge($skuKeys, $sellerSkus)));
         foreach (array_chunk($masterLookup, 400) as $chunk) {
-            foreach (ProductMaster::query()->whereIn('sku', $chunk)->get(['sku', 'Values', 'lp', 'ship']) as $pm) {
+            foreach (ProductMaster::query()->whereIn('sku', $chunk)->get(['sku', 'Values']) as $pm) {
                 $mastersBySku[strtoupper(trim((string) $pm->sku))] = $pm;
             }
         }
