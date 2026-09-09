@@ -51,7 +51,6 @@ use App\Support\Marketplace\ChartDatePad;
 use App\Support\Marketplace\EbayTwoListingCounts;
 use App\Services\Support\ChannelTodaySalesService;
 use App\Services\Support\YesterdayMarketplaceMetricsService;
-use App\Models\AliExpressSheetData;
 use App\Models\AliexpressDailyData;
 use App\Models\AliexpressListingStatus;
 use App\Models\AmazonDatasheet;
@@ -67,11 +66,9 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\ApiCentralWalmartApiData;
 use App\Models\ApiCentralWalmartMetric;
 use App\Models\BestbuyUsaProduct;
-use App\Models\BusinessFiveCoreSheetdata;
 use App\Models\ChannelMaster;
 use App\Models\DobaListingStatus;
 use App\Models\DobaMetric;
-use App\Models\DobaSheetdata;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay2Order;
 use App\Models\EbayTwoListingStatus;
@@ -85,17 +82,13 @@ use App\Models\EbayPriorityReport;
 use App\Models\FaireListingStatus;
 use App\Models\FacebookMarketplaceSale;
 use App\Models\FBMarketplaceListingStatus;
-use App\Models\FbShopSheetdata;
 use App\Models\FBShopListingStatus;
 use App\Models\Business5CoreListingStatus;
-use App\Models\InstagramShopSheetdata;
 use App\Models\InstagramShopListingStatus;
 use App\Models\MacyProduct;
 use App\Models\MacysListingStatus;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\MarketplacePercentage;
-use App\Models\MercariWoShipSheetdata;
-use App\Models\MercariWShipSheetdata;
 use App\Models\MercariWShipListingStatus;
 use App\Models\MercariWoShipListingStatus;
 use App\Http\Controllers\MarketPlace\AliexpressController;
@@ -106,7 +99,6 @@ use App\Http\Controllers\MarketPlace\WayfairController;
 use App\Models\PlsListingStatus;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
-use App\Models\ReverbProduct;
 use App\Models\ReverbListingStatus;
 use App\Models\SheinDailyData;
 use App\Models\SheinListingStatus;
@@ -131,10 +123,8 @@ use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
 use App\Models\TiktokSalesTwo;
 use App\Models\TiktokShopListingStatus;
-use App\Models\DepopSheetData;
 use App\Models\DepopSalesData;
 use App\Models\VintedSalesData;
-use App\Models\TopDawgSheetdata;
 use App\Models\WayfairDailyData;
 use App\Models\WayfairListingStatus;
 use App\Models\WalmartListingStatus;
@@ -2109,8 +2099,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Page load is table-only. Live Shopify / Shein / Today Sales overlays
-     * belong in channel:calculate-data, not /channels-master-data.
+     * Fast path starts from channel_master_calculated_data, then overlays
+     * table-backed live values only (orders / ads / uploads). No *Sheetdata.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
@@ -6671,13 +6661,6 @@ class ChannelMasterController extends Controller
             ? json_decode($response->getContent(), true)
             : (is_array($response) ? $response : []);
 
-        if (($payload['status'] ?? null) !== 200 || empty($payload['data'])) {
-            $fallback = $this->getViewChannelData($request);
-            $payload = $fallback instanceof \Illuminate\Http\JsonResponse
-                ? json_decode($fallback->getContent(), true)
-                : (is_array($fallback) ? $fallback : []);
-        }
-
         return is_array($payload) ? $payload : [];
     }
 
@@ -7151,8 +7134,10 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Original method: Calculate channel data on-the-fly (SLOW)
-     * Used as fallback when pre-calculated data is not available
+     * Original method: Calculate channel data on-the-fly (SLOW).
+     * Used only by channel:calculate-data to refresh channel_master_calculated_data.
+     * Not used as a page/badge fallback. Channel totals come from order / daily
+     * / marketplace_daily_metrics tables — no *Sheetdata fallback.
      */
     public function getViewChannelData(Request $request)
     {
@@ -8320,6 +8305,121 @@ class ChannelMasterController extends Controller
             ->value('revenue');
 
         return round($sum, 2);
+    }
+
+    /**
+     * Mercari L60 (Pacific days 31–60) from mercari_daily_data. No sheet fallback.
+     *
+     * @return array{sales: float, orders: int}
+     */
+    private function computeMercariL60FromDailyData(bool $withShip): array
+    {
+        if (! Schema::hasTable('mercari_daily_data')) {
+            return ['sales' => 0.0, 'orders' => 0];
+        }
+
+        $today = Carbon::now('America/Los_Angeles')->startOfDay();
+        $start = $today->copy()->subDays(59)->startOfDay();
+        $end = $today->copy()->subDays(30)->endOfDay();
+
+        $q = DB::table('mercari_daily_data')
+            ->whereNotNull('sold_date')
+            ->whereNotNull('item_id')
+            ->where('item_id', '!=', '')
+            ->whereNull('canceled_date')
+            ->where(function ($q2) {
+                $q2->whereNull('order_status')
+                    ->orWhereRaw('LOWER(order_status) NOT LIKE ?', ['%cancel%']);
+            })
+            ->where('sold_date', '>=', $start)
+            ->where('sold_date', '<=', $end);
+
+        if ($withShip) {
+            $q->where(function ($q3) {
+                $q3->whereNull('buyer_shipping_fee')
+                    ->orWhere('buyer_shipping_fee', '=', 0)
+                    ->orWhere('buyer_shipping_fee', '=', '');
+            });
+        } else {
+            $q->where('buyer_shipping_fee', '>', 0);
+        }
+
+        return [
+            'orders' => (int) (clone $q)->count(),
+            'sales' => (float) (clone $q)->selectRaw('COALESCE(SUM(item_price), 0) as revenue')->value('revenue'),
+        ];
+    }
+
+    /**
+     * TopDawg L60 (Pacific days 31–60) from topdawg_order_metrics. No sheet fallback.
+     *
+     * @return array{sales: float, orders: int}
+     */
+    private function computeTopDawgL60FromOrderMetrics(): array
+    {
+        if (! Schema::hasTable('topdawg_order_metrics')) {
+            return ['sales' => 0.0, 'orders' => 0];
+        }
+
+        $today = Carbon::now('America/Los_Angeles')->startOfDay();
+        $start = $today->copy()->subDays(59)->toDateString();
+        $end = $today->copy()->subDays(30)->toDateString();
+
+        $q = DB::table('topdawg_order_metrics')
+            ->whereDate('order_date', '>=', $start)
+            ->whereDate('order_date', '<=', $end);
+
+        return [
+            'sales' => (float) (clone $q)->selectRaw('COALESCE(SUM(amount), 0) as revenue')->value('revenue'),
+            'orders' => (int) (clone $q)->count(),
+        ];
+    }
+
+    /**
+     * L30 from marketplace_daily_metrics only. No *Sheetdata / Google Sheet fallback.
+     *
+     * @param  list<string>  $channelNames
+     * @return array{
+     *   l30_sales: float,
+     *   l30_orders: int,
+     *   qty: int,
+     *   total_pft: float,
+     *   cogs: float,
+     *   gpft: float,
+     *   groi: float,
+     *   n_pft_pct: float,
+     *   n_roi: float,
+     *   l60_sales: float,
+     *   l60_orders: int,
+     *   gpft_l60: float,
+     *   groi_l60: float
+     * }
+     */
+    private function channelTotalsFromMarketplaceDailyMetrics(array $channelNames): array
+    {
+        $m = MarketplaceDailyMetric::whereIn('channel', $channelNames)->latest('date')->first();
+        $extra = is_array($m?->extra_data) ? $m->extra_data : [];
+
+        $l30Sales = (float) ($m->total_sales ?? 0);
+        $totalProfit = (float) ($m->total_pft ?? 0);
+        $gProfitPct = (float) ($m->pft_percentage ?? 0);
+        $gRoi = (float) ($m->roi_percentage ?? 0);
+
+        return [
+            'l30_sales' => $l30Sales,
+            'l30_orders' => (int) ($m->total_orders ?? 0),
+            'qty' => (int) ($m->total_quantity ?? 0),
+            'total_pft' => $totalProfit,
+            'cogs' => (float) ($m->total_cogs ?? 0),
+            'gpft' => $gProfitPct,
+            'groi' => $gRoi,
+            'n_pft_pct' => $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : $gProfitPct,
+            'n_roi' => (float) ($m->n_roi ?? $gRoi),
+            'l60_sales' => (float) ($extra['l60_sales'] ?? 0),
+            'l60_orders' => (int) ($extra['l60_orders'] ?? 0),
+            'gpft_l60' => (float) ($extra['gprofit_l60'] ?? 0),
+            'groi_l60' => (float) ($extra['g_roi_l60'] ?? 0),
+        ];
     }
 
     /**
@@ -10780,58 +10880,12 @@ class ChannelMasterController extends Controller
 
             $reverbPaceL30Sales = (int) round($l30['sales']);
         } else {
-            // Fallback: reverb_products r_l30 × price (legacy) when daily table missing or empty
-            $query = ReverbProduct::where('sku', 'not like', '%Parent%');
-
-            $l30Orders = (int) $query->sum('r_l30');
-            $l60Orders = (int) (clone $query)->sum('r_l60');
-            $totalQuantity = $l30Orders;
-
-            $l30Sales = (float) ((clone $query)->selectRaw('SUM(r_l30 * price) as total')->value('total') ?? 0);
-            $l60Sales = (float) ((clone $query)->selectRaw('SUM(r_l60 * price) as total')->value('total') ?? 0);
-
-            $percentage = ChannelMaster::where('channel', 'Reverb')->value('channel_percentage') ?? 100;
-            $percentage = $percentage / 100;
-
-            $ebayRows = $query->get(['sku', 'price', 'r_l30', 'r_l60']);
-
-            foreach ($ebayRows as $row) {
-                $sku = strtoupper($row->sku);
-                $price = (float) $row->price;
-                $unitsL30 = (int) $row->r_l30;
-                $unitsL60 = (int) $row->r_l60;
-
-                $soldAmount = $unitsL30 * $price;
-                if ($soldAmount <= 0) {
-                    continue;
-                }
-
-                $lp = 0.0;
-                $ship = 0.0;
-                if (isset($productMasters[$sku])) {
-                    $pm = $productMasters[$sku];
-                    $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                    $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-                }
-
-                $profitPerUnit = ($price * $percentage) - $lp - $ship;
-                $totalProfit += $profitPerUnit * $unitsL30;
-                $totalProfitL60 += $profitPerUnit * $unitsL60;
-                $totalCogs += ($unitsL30 * ($lp + $ship));
-                $totalCogsL60 += ($unitsL60 * ($lp + $ship));
-            }
-
-            $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-            
-            // Initialize $l30 array for fallback path (for consistency with daily data path)
             $l30 = [
-                'sales' => $l30Sales,
-                'qty' => $l30Orders,
-                'profit' => $totalProfit,
-                'cogs' => $totalCogs,
-                'bump_fees' => 0, // Fallback path doesn't have bump_fee data
+                'sales' => 0.0,
+                'qty' => 0,
+                'profit' => 0.0,
+                'cogs' => 0.0,
+                'bump_fees' => 0.0,
             ];
         }
 
@@ -13947,98 +14001,21 @@ class ChannelMasterController extends Controller
     public function getInstagramChannelData(Request $request)
     {
         $result = [];
-
-        $query = InstagramShopSheetdata::where('sku', 'not like', '%Parent%');
-
-        $l30Orders = $query->sum('i_l30');
-        $l60Orders = $query->sum('i_l60');
-        $totalQuantity = $l30Orders; // i_l30 is already units sold (quantity)
-
-        $l30Sales  = (clone $query)->selectRaw('SUM(i_l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(i_l60 * price) as total')->value('total') ?? 0;
-
+        $t = $this->channelTotalsFromMarketplaceDailyMetrics(['Instagram Shop', 'Instagram']);
+        $l30Sales = $t['l30_sales'];
+        $l30Orders = $t['l30_orders'];
+        $totalQuantity = $t['qty'];
+        $l60Sales = $t['l60_sales'];
+        $l60Orders = $t['l60_orders'];
+        $totalProfit = $t['total_pft'];
+        $totalCogs = $t['cogs'];
+        $gProfitPct = $t['gpft'];
+        $gRoi = $t['groi'];
+        $gprofitL60 = $t['gpft_l60'];
+        $gRoiL60 = $t['groi_l60'];
+        $nPft = $t['n_pft_pct'];
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'Instagram Shop')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
-
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'i_l30','i_l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
-
-
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->i_l30;
-            $unitsL60  = (int) $row->i_l60;
-
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
-                continue;
-            }
-
-            $lp   = 0;
-            $ship = 0;
-
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-            }
-
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
-
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
-        }
-
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
-        }
-
-        // Use L30 Sales for denominator
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-
-        // Channel data
         $channelData = ChannelMaster::where('channel', 'Instagram Shop')->first();
 
         // Get Map and Miss counts from amazon_channel_summary_data table
@@ -14157,11 +14134,10 @@ class ChannelMasterController extends Controller
             $gprofitL60 = (float) ($l60Agg['pft_percentage'] ?? 0);
             $gRoiL60 = (float) ($l60Agg['roi_percentage'] ?? 0);
         } else {
-            $query = AliExpressSheetData::where('sku', 'not like', '%Parent%');
-            $l60Orders = (int) $query->sum('aliexpress_l60');
-            $l60Sales = (float) ((clone $query)->selectRaw('SUM(aliexpress_l60 * price) as total')->value('total') ?? 0);
-            $gprofitL60 = 0;
-            $gRoiL60 = 0;
+            $l60Orders = 0;
+            $l60Sales = 0.0;
+            $gprofitL60 = 0.0;
+            $gRoiL60 = 0.0;
         }
 
         if ($agg !== null) {
@@ -14286,10 +14262,9 @@ class ChannelMasterController extends Controller
         // Get metrics from marketplace_daily_metrics table (pre-calculated)
         $metrics = MarketplaceDailyMetric::where('channel', 'Mercari With Ship')->latest('date')->first();
 
-        // Get L60 data from sheet data for comparison
-        $query = MercariWShipSheetdata::where('sku', 'not like', '%Parent%');
-        $l60Orders = $query->sum('l60');
-        $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
+        $l60 = $this->computeMercariL60FromDailyData(true);
+        $l60Orders = $l60['orders'];
+        $l60Sales = $l60['sales'];
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
@@ -14403,10 +14378,9 @@ class ChannelMasterController extends Controller
         // Get metrics from marketplace_daily_metrics table (pre-calculated)
         $metrics = MarketplaceDailyMetric::where('channel', 'Mercari Without Ship')->latest('date')->first();
 
-        // Get L60 data from sheet data for comparison
-        $query = MercariWoShipSheetdata::where('sku', 'not like', '%Parent%');
-        $l60Orders = $query->sum('l60');
-        $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
+        $l60 = $this->computeMercariL60FromDailyData(false);
+        $l60Orders = $l60['orders'];
+        $l60Sales = $l60['sales'];
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
@@ -14644,98 +14618,20 @@ class ChannelMasterController extends Controller
     public function getFbShopChannelData(Request $request)
     {
         $result = [];
-
-        $query = FbShopSheetdata::where('sku', 'not like', '%Parent%');
-
-        $l30Orders = $query->sum('l30');
-        $l60Orders = $query->sum('l60');
-        $totalQuantity = $l30Orders; // l30 is already units sold (quantity)
-
-        $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
-
+        $t = $this->channelTotalsFromMarketplaceDailyMetrics(['FB Shop', 'Facebook Shop']);
+        $l30Sales = $t['l30_sales'];
+        $l30Orders = $t['l30_orders'];
+        $totalQuantity = $t['qty'];
+        $l60Sales = $t['l60_sales'];
+        $l60Orders = $t['l60_orders'];
+        $totalCogs = $t['cogs'];
+        $gProfitPct = $t['gpft'];
+        $gRoi = $t['groi'];
+        $gprofitL60 = $t['gpft_l60'];
+        $gRoiL60 = $t['groi_l60'];
+        $nPft = $t['n_pft_pct'];
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'FB Shop')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
-
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'l30','l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
-
-
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->l30;
-            $unitsL60  = (int) $row->l60;
-
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
-                continue;
-            }
-
-            $lp   = 0;
-            $ship = 0;
-
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-            }
-
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
-
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
-        }
-
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
-        }
-
-        // Use L30 Sales for denominator
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-
-        // Channel data
         $channelData = ChannelMaster::where('channel', 'FB Shop')->first();
 
         // Get Map and Miss counts from amazon_channel_summary_data table
@@ -14783,98 +14679,21 @@ class ChannelMasterController extends Controller
     public function getBusiness5CoreChannelData(Request $request)
     {
         $result = [];
-
-        $query = BusinessFiveCoreSheetdata::where('sku', 'not like', '%Parent%');
-
-        $l30Orders = $query->sum('l30');
-        $l60Orders = $query->sum('l60');
-        $totalQuantity = $l30Orders; // l30 is already units sold (quantity)
-
-        $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
-
+        $t = $this->channelTotalsFromMarketplaceDailyMetrics(['Business 5Core', 'Business5Core']);
+        $l30Sales = $t['l30_sales'];
+        $l30Orders = $t['l30_orders'];
+        $totalQuantity = $t['qty'];
+        $l60Sales = $t['l60_sales'];
+        $l60Orders = $t['l60_orders'];
+        $totalProfit = $t['total_pft'];
+        $totalCogs = $t['cogs'];
+        $gProfitPct = $t['gpft'];
+        $gRoi = $t['groi'];
+        $gprofitL60 = $t['gpft_l60'];
+        $gRoiL60 = $t['groi_l60'];
+        $nPft = $t['n_pft_pct'];
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'Business 5Core')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
-
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'l30','l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
-
-
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->l30;
-            $unitsL60  = (int) $row->l60;
-
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
-                continue;
-            }
-
-            $lp   = 0;
-            $ship = 0;
-
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-            }
-
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
-
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
-        }
-
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
-        }
-
-        // Use L30 Sales for denominator
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-
-        // Channel data
         $channelData = ChannelMaster::where('channel', 'Business 5Core')->first();
 
         // Get Missing Listing count
@@ -14925,17 +14744,17 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * TopDawg channel data. Prefer marketplace_daily_metrics (from app:update-marketplace-daily-metrics / topdawg_order_metrics), else fall back to TopDawgSheetdata.
-     * Sheet link default: /topdawg/sales-dashboard — see migration ensure_topdawg_sales_dashboard_sheet_link.
+     * TopDawg from marketplace_daily_metrics + topdawg_order_metrics L60. No sheet fallback.
      */
     public function getTopDawgChannelData(Request $request)
     {
         $result = [];
         $metrics = MarketplaceDailyMetric::where('channel', 'TopDawg')->latest('date')->first();
 
+        $l60 = $this->computeTopDawgL60FromOrderMetrics();
         if ($metrics) {
-            $l60Orders = 0;
-            $l60Sales = 0;
+            $l60Orders = $l60['orders'];
+            $l60Sales = $l60['sales'];
             $l30Sales = $metrics->total_sales ?? 0;
             $l30Orders = $metrics->total_orders ?? 0;
             $totalQuantity = $metrics->total_quantity ?? 0;
@@ -14999,101 +14818,41 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        // Fallback: TopDawgSheetdata (legacy)
-        $query = TopDawgSheetdata::where('sku', 'not like', '%Parent%');
-
-        $l30Orders = $query->sum('l30');
-        $l60Orders = $query->sum('l60');
-        $totalQuantity = $l30Orders;
-
-        $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
-
-        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-
-        $percentage = ChannelMaster::where('channel', 'TopDawg')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100;
-
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        $ebayRows     = $query->get(['sku', 'price', 'l30','l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
-
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->l30;
-            $unitsL60  = (int) $row->l60;
-
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
-                continue;
-            }
-
-            $lp   = 0;
-            $ship = 0;
-
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-            }
-
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
-
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
-        }
-
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-
         $channelData = ChannelMaster::where('channel', 'TopDawg')->first();
         $mapMissCounts = $this->getMapAndMissCounts('topdawg');
+        $totalAdSpend = $this->fetchTotalAdSpendFromTables('topdawg');
+        $l60Sales = $l60['sales'];
+        $l60Orders = $l60['orders'];
 
         $result[] = [
             'Channel '   => 'TopDawg',
             'L-60 Sales' => intval($l60Sales),
-            'L30 Sales'  => intval($l30Sales),
-            'Growth'     => round($growth, 2) . '%',
+            'L30 Sales'  => 0,
+            'Growth'     => '0%',
             'L60 Orders' => $l60Orders,
-            'L30 Orders' => $l30Orders,
-            'Qty'        => intval($totalQuantity),
-            'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60' => round($gprofitL60, 2) . '%',
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'   => round($gRoiL60, 2),
-            'Total PFT'  => round($totalProfit, 2),
-            'N PFT'      => round($nPft, 2) . '%',
-            'N ROI'      => round($nPft, 2),
-            'KW Spent'   => 0,
+            'L30 Orders' => 0,
+            'Qty'        => 0,
+            'Gprofit%'   => '0%',
+            'gprofitL60' => '0%',
+            'G Roi'      => 0,
+            'G RoiL60'   => 0,
+            'Total PFT'  => 0,
+            'N PFT'      => '0%',
+            'N ROI'      => 0,
+            'KW Spent'   => $totalAdSpend,
             'PT Spent'   => 0,
             'HL Spent'   => 0,
             'PMT Spent'  => 0,
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
-            'Total Ad Spend' => 0,
+            'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => '0%',
             'TACOS %'    => '0%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
-            'cogs'       => round($totalCogs, 2),
+            'cogs'       => 0,
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
@@ -15104,7 +14863,7 @@ class ChannelMasterController extends Controller
 
         return response()->json([
             'status' => 200,
-            'message' => 'TopDawg channel data (legacy sheet data)',
+            'message' => 'TopDawg channel data (from marketplace daily metrics)',
             'data' => $result,
         ]);
     }
@@ -16639,45 +16398,6 @@ class ChannelMasterController extends Controller
             ],
             'message' => 'Using sample data',
         ], 200);
-    }
-
-    /**
-     * Get list of campaign names currently in Google Sheet (L30 data only)
-     * This ensures we only sum data that exists in the current Google Sheet
-     */
-    private function getCurrentGoogleSheetCampaigns()
-    {
-        try {
-            $url = "https://script.google.com/macros/s/AKfycbxWwC98yCcPDcXjXfKpbE0dMC74L0YfF0fx2HdG_i3G7BzSjuhD8H9X98byGQymFNbx/exec";
-            
-            $response = \Illuminate\Support\Facades\Http::timeout(10)->get($url);
-            
-            if (!$response->ok()) {
-                Log::warning('Failed to fetch current Google Sheet data for totals calculation');
-                return [];
-            }
-            
-            $json = $response->json();
-            
-            // Get L30 data only
-            if (!isset($json['L30']['data'])) {
-                return [];
-            }
-            
-            // Extract unique campaign names from current Google Sheet
-            $campaignNames = [];
-            foreach ($json['L30']['data'] as $row) {
-                $campaignName = $row['campaign_name'] ?? null;
-                if ($campaignName && !empty(trim($campaignName))) {
-                    $campaignNames[] = trim($campaignName);
-                }
-            }
-            
-            return array_unique($campaignNames);
-        } catch (\Exception $e) {
-            Log::error('Error fetching current Google Sheet campaigns: ' . $e->getMessage());
-            return [];
-        }
     }
 
     /**

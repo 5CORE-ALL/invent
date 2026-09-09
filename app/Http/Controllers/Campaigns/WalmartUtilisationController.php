@@ -259,22 +259,17 @@ class WalmartUtilisationController extends Controller
             ')
             ->groupBy('campaignName')
             ->get();
-        
-        // If no recent records found, try fetching current Google Sheet data directly
+
         if ($totals->isEmpty()) {
-            $currentSheetCampaigns = $this->getCurrentGoogleSheetCampaigns();
-            if (!empty($currentSheetCampaigns)) {
-                $totals = DB::table('walmart_campaign_reports')
-                    ->where('report_range', 'L30')
-                    ->whereIn('campaignName', $currentSheetCampaigns)
-                    ->selectRaw('
-                        campaignName,
-                        MAX(COALESCE(spend, 0)) as max_spend,
-                        MAX(COALESCE(CAST(sales AS DECIMAL(10,2)), 0)) as max_sales
-                    ')
-                    ->groupBy('campaignName')
-                    ->get();
-            }
+            $totals = DB::table('walmart_campaign_reports')
+                ->where('report_range', 'L30')
+                ->selectRaw('
+                    campaignName,
+                    MAX(COALESCE(spend, 0)) as max_spend,
+                    MAX(COALESCE(CAST(sales AS DECIMAL(10,2)), 0)) as max_sales
+                ')
+                ->groupBy('campaignName')
+                ->get();
         }
         
         // Sum the MAX values to get accurate totals (avoiding duplicates)
@@ -418,45 +413,6 @@ class WalmartUtilisationController extends Controller
                 'combined_green_count' => $combinedGreenCount,
             ]
         );
-    }
-
-    /**
-     * Get list of campaign names currently in Google Sheet (L30 data only)
-     * This ensures we only sum data that exists in the current Google Sheet
-     */
-    private function getCurrentGoogleSheetCampaigns()
-    {
-        try {
-            $url = "https://script.google.com/macros/s/AKfycbxWwC98yCcPDcXjXfKpbE0dMC74L0YfF0fx2HdG_i3G7BzSjuhD8H9X98byGQymFNbx/exec";
-            
-            $response = \Illuminate\Support\Facades\Http::timeout(10)->get($url);
-            
-            if (!$response->ok()) {
-                Log::warning('Failed to fetch current Google Sheet data for totals calculation');
-                return [];
-            }
-            
-            $json = $response->json();
-            
-            // Get L30 data only
-            if (!isset($json['L30']['data'])) {
-                return [];
-            }
-            
-            // Extract unique campaign names from current Google Sheet
-            $campaignNames = [];
-            foreach ($json['L30']['data'] as $row) {
-                $campaignName = $row['campaign_name'] ?? null;
-                if ($campaignName && !empty(trim($campaignName))) {
-                    $campaignNames[] = trim($campaignName);
-                }
-            }
-            
-            return array_unique($campaignNames);
-        } catch (\Exception $e) {
-            Log::error('Error fetching current Google Sheet campaigns: ' . $e->getMessage());
-            return [];
-        }
     }
 
 }
