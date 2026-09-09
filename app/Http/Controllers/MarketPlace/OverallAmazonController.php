@@ -1742,13 +1742,24 @@ class OverallAmazonController extends Controller
                 $responseData['SPRICE_STATUS'] = 'pushed';
             }
 
+            $listingPrice = (float) ($pushedOffer['sale_price'] ?? $saleBaseForDefaults);
+            if ($listingPrice < 0.01) {
+                $listingPrice = $priceFloat;
+            }
+            $responseData['price'] = $listingPrice;
+            $responseData['price_pulled'] = false;
             try {
-                app(AmazonPushedPricePullService::class)->scheduleAfterPush(
+                $pulled = app(AmazonPushedPricePullService::class)->confirmAfterPush(
                     $statusSku !== '' ? $statusSku : strtoupper(trim($skuForAmazon)),
-                    $skuForAmazon
+                    $skuForAmazon,
+                    $listingPrice
                 );
+                if (($pulled['price'] ?? 0) > 0) {
+                    $responseData['price'] = $pulled['price'];
+                }
+                $responseData['price_pulled'] = ! empty($pulled['from_live']);
             } catch (\Throwable $e) {
-                Log::warning('Failed to schedule Amazon Price-column pull after push', [
+                Log::warning('Failed to pull Amazon Price column after push', [
                     'sku' => $statusSku,
                     'error' => $e->getMessage(),
                 ]);

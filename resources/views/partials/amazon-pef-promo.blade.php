@@ -3100,11 +3100,14 @@
                 if (!t) return;
                 const st = String(t.status || '');
                 if (st === 'ok') {
+                    const livePrice = Number(t.effective != null ? t.effective : d.SPRICE) || 0;
                     row.update({
                         PUSH_PRC_STATUS: 'pushed',
                         PUSH_PRC_VALUE: t.effective != null ? t.effective : d.PUSH_PRC_VALUE,
                         SPRICE: t.effective != null ? t.effective : d.SPRICE,
                         has_custom_sprice: true,
+                        price: livePrice > 0 ? livePrice : d.price,
+                        Price: livePrice > 0 ? livePrice : d.price,
                     });
                 } else if (st === 'failed') {
                     row.update({ PUSH_PRC_STATUS: 'error' });
@@ -3163,6 +3166,9 @@
                     return true;
                 });
             });
+            applyAmzPulledPrices(Object.keys(expected).map(function(sku) {
+                return { success: true, sku: sku, price: expected[sku] };
+            }));
             const retryMs = [0, 2000, 4000];
             function runPull(attempt, pending) {
                 if (!pending || !pending.length) return;

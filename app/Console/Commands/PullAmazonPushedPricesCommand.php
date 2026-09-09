@@ -11,7 +11,7 @@ class PullAmazonPushedPricesCommand extends Command
         {--limit=30 : Max due SKUs per run}
         {--delay-ms=500 : Pause between SP-API listing reads}';
 
-    protected $description = '15 min after S PRC / Push Prc: pull live Amazon listing price into the Price column';
+    protected $description = 'Confirm live Amazon listing price into the Price column after S PRC / Push Prc';
 
     public function handle(AmazonPushedPricePullService $service): int
     {

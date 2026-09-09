@@ -378,6 +378,14 @@ class AmazonDilPrmtAutoPushService
         }
 
         $this->savePushMeta($statusSku, 'pushed', $price);
+        try {
+            app(AmazonPushedPricePullService::class)->confirmAfterPush($statusSku, $apiSku, $price);
+        } catch (Throwable $e) {
+            Log::warning('Amazon Dil/PRMT: immediate Price pull after push failed', [
+                'sku' => $statusSku,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return true;
     }

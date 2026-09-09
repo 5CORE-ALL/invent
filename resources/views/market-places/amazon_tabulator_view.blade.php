@@ -3459,9 +3459,12 @@
                                 return (r.getData()['(Child) sku'] || '') === sku;
                             });
                             if (tabRow) {
-                                const rowData = tabRow.getData();
-                                rowData.SPRICE_STATUS = 'pushed';
-                                tabRow.update(rowData);
+                                const livePrice = Number(response.price || response.sale_price || price) || 0;
+                                tabRow.update({
+                                    SPRICE_STATUS: 'pushed',
+                                    price: livePrice > 0 ? livePrice : tabRow.getData().price,
+                                    Price: livePrice > 0 ? livePrice : tabRow.getData().price,
+                                });
                             }
                         }
                         const minPush = response.min_price_push;
@@ -6196,6 +6199,7 @@
                                 skusToUpdate[r.sku] = {};
                             }
                             skusToUpdate[r.sku][r.marketplace] = 'pushed';
+                            skusToUpdate[r.sku].price = Number((r.data && (r.data.price || r.data.sale_price)) || 0);
                         } else {
                             failed.push(r.sku + (r.error ? ': ' + r.error : ''));
                         }
@@ -6207,7 +6211,13 @@
                         });
                         rows.forEach(function(row) {
                             if (skusToUpdate[sku]['amazon']) {
-                                row.update({ STATUS: 'pushed', SPRICE_STATUS: 'pushed' });
+                                const livePrice = Number(skusToUpdate[sku].price || row.getData().SPRICE) || 0;
+                                row.update({
+                                    STATUS: 'pushed',
+                                    SPRICE_STATUS: 'pushed',
+                                    price: livePrice > 0 ? livePrice : row.getData().price,
+                                    Price: livePrice > 0 ? livePrice : row.getData().price,
+                                });
                                 row.reformat();
                             }
                         });

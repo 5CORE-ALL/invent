@@ -4213,7 +4213,7 @@
     function queuePefAmazonPostPushPull(skus) {
         if (!skus || !skus.length) return;
         clearTimeout(queuePefAmazonPostPushPull._t);
-        toast('Amazon Price pull in ~90s for ' + skus.length + ' pushed SKU(s)', 'success');
+        toast('Pulling live Amazon Price for ' + skus.length + ' pushed SKU(s)…', 'success');
         queuePefAmazonPostPushPull._t = setTimeout(function() {
             $.ajax({
                 url: '/amazon-pull-pushed-prices',
@@ -4230,7 +4230,7 @@
             }).fail(function(xhr) {
                 toast(ajaxErrorMessage(xhr, 'Amazon price pull failed'), 'error');
             });
-        }, 90000);
+        }, 0);
     }
     function queuePefChannelPostPushPull(channel, skus) {
         if (!channel || !skus || !skus.length) return;

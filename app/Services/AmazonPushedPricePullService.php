@@ -7,12 +7,13 @@ use App\Models\AmazonDataView;
 use Illuminate\Support\Facades\Log;
 
 /**
- * After a successful S PRC / Push Prc write to Amazon, wait 15 minutes then
- * pull the live listing price (SP-API) into amazon_datsheets.price (Price column).
+ * After a successful S PRC / Push Prc write to Amazon, update Price immediately
+ * (the pushed listing/sale price), then confirm with a live SP-API pull.
+ * Cron retries leftovers every minute if Amazon's GET is still stale.
  */
 class AmazonPushedPricePullService
 {
-    public const DELAY_MINUTES = 15;
+    public const DELAY_MINUTES = 2;
 
     public const MAX_ATTEMPTS = 6;
 
@@ -39,6 +40,49 @@ class AmazonPushedPricePullService
 
         $row->value = $value;
         $row->save();
+    }
+
+    /**
+     * Write the just-pushed listing price into Price now, then try a live GET.
+     *
+     * @return array{price: float, from_live: bool, wrote: bool}
+     */
+    public function confirmAfterPush(string $gridSku, ?string $sellerSku, float $listingPrice): array
+    {
+        $listingPrice = round($listingPrice, 2);
+        $out = ['price' => $listingPrice, 'from_live' => false, 'wrote' => false];
+        if ($listingPrice < 0.01) {
+            return $out;
+        }
+
+        $seller = trim((string) $sellerSku);
+        $writeSku = $seller !== '' ? $seller : $gridSku;
+        $out['wrote'] = $this->writeDatasheetPrice($gridSku, $writeSku, $listingPrice);
+
+        try {
+            $apiSku = $seller !== ''
+                ? $seller
+                : (string) (AmazonDatasheet::resolveSellerMskuByProductKey($gridSku) ?: $gridSku);
+            $live = $this->currentListingPrice(app(AmazonSpApiService::class)->getListingsItemFullDetails($apiSku));
+            if ($live !== null && abs($live - $listingPrice) <= 0.05) {
+                $this->writeDatasheetPrice($gridSku, $apiSku, $live);
+                $this->markPulled($gridSku, $apiSku, $live);
+                $out['price'] = $live;
+                $out['from_live'] = true;
+
+                return $out;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon immediate price pull after push failed', [
+                'sku' => $gridSku,
+                'seller_sku' => $seller,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $this->scheduleAfterPush($gridSku, $seller !== '' ? $seller : null);
+
+        return $out;
     }
 
     /**
@@ -101,11 +145,7 @@ class AmazonPushedPricePullService
                 continue;
             }
 
-            $value['PRICE_PULL_STATUS'] = 'pulled';
-            $value['PRICE_PULLED_AT'] = now()->toDateTimeString();
-            $value['PRICE_PULLED_VALUE'] = $price;
-            $row->value = $value;
-            $row->save();
+            $this->markPulled($gridSku, $sellerSku, $price, $row, $value);
             $stats['pulled']++;
 
             Log::info('Amazon pushed-price pull: Price column updated', [
@@ -172,11 +212,7 @@ class AmazonPushedPricePullService
                 }
 
                 if ($row) {
-                    $value['PRICE_PULL_STATUS'] = 'pulled';
-                    $value['PRICE_PULLED_AT'] = now()->toDateTimeString();
-                    $value['PRICE_PULLED_VALUE'] = $price;
-                    $row->value = $value;
-                    $row->save();
+                    $this->markPulled($gridSku, $sellerSku, $price, $row, $value);
                 }
 
                 $out[] = [
@@ -222,6 +258,35 @@ class AmazonPushedPricePullService
     /**
      * @param  array<string, mixed>  $details
      */
+    /**
+     * @param  array<string, mixed>  $value
+     */
+    private function markPulled(string $gridSku, string $sellerSku, float $price, ?AmazonDataView $row = null, array $value = []): void
+    {
+        if ($row === null) {
+            $sku = strtoupper(trim(str_replace("\xc2\xa0", ' ', $gridSku)));
+            $row = AmazonDataView::firstOrNew(['sku' => $sku]);
+            $value = is_array($row->value)
+                ? $row->value
+                : (json_decode($row->value ?? '{}', true) ?? []);
+        }
+        if (! is_array($value)) {
+            $value = [];
+        }
+
+        $value['PRICE_PULL_STATUS'] = 'pulled';
+        $value['PRICE_PULLED_AT'] = now()->toDateTimeString();
+        $value['PRICE_PULLED_VALUE'] = $price;
+        if ($sellerSku !== '') {
+            $value['PRICE_PULL_SELLER_SKU'] = $sellerSku;
+        }
+        $row->value = $value;
+        if (! $row->exists && $row->sku === null) {
+            $row->sku = strtoupper(trim(str_replace("\xc2\xa0", ' ', $gridSku)));
+        }
+        $row->save();
+    }
+
     private function currentListingPrice(array $details): ?float
     {
         $sale = isset($details['sale_price']) ? (float) $details['sale_price'] : 0;

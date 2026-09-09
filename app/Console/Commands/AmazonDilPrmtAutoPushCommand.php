@@ -8,8 +8,8 @@ use App\Services\CronMonitor\CronExecutionContext;
 use Illuminate\Console\Command;
 
 /**
- * Daily 4 AM America/New_York: Dil vs PRMT rules → SPRICE → Amazon Listings API.
- * Only pushes SKUs whose target price changed.
+ * Twice daily 4:00 AM and 8:00 PM IST: Dil vs PRMT rules → SPRICE → Amazon Listings API.
+ * Only pushes SKUs whose target price changed. Price column updates on each successful push.
  */
 class AmazonDilPrmtAutoPushCommand extends Command
 {
@@ -22,7 +22,7 @@ class AmazonDilPrmtAutoPushCommand extends Command
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between Amazon Listings API calls (ms)}';
 
-    protected $description = 'Dil vs PRMT: refresh SPRICE from shared rules and push changed prices to Amazon (daily 4 AM EST/EDT).';
+    protected $description = 'Dil vs PRMT: refresh SPRICE from shared rules and push changed prices to Amazon (4 AM + 8 PM IST).';
 
     protected string $monitorJobName = 'Amazon Dil vs PRMT Auto Push';
 
@@ -48,7 +48,7 @@ class AmazonDilPrmtAutoPushCommand extends Command
 
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('Amazon Dil vs PRMT Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
-        $this->info('Schedule: daily 04:00 America/New_York (EST/EDT)');
+        $this->info('Schedule: 04:00 and 20:00 Asia/Kolkata (IST)');
         $this->info('Rules: dil_vs_prmt_shared (all marketplaces)');
         $this->info('Push: Amazon Listings — only when Sale/Business/Min differ from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

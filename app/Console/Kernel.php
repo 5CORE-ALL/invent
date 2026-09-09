@@ -878,15 +878,8 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Amazon Dil vs PRMT → Listings our_price (4:00 AM America/New_York = EST/EDT).
-        // Uses shared pef_dil_vs_prmt rules; pushes only SKUs whose target price changed.
-        $schedule->command('amazon:dil-prmt-auto-push')
-            ->dailyAt('04:00')
-            ->timezone('America/New_York')
-            ->name('amazon-dil-prmt-auto-push-4am-et')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // amazon:dil-prmt-auto-push is not scheduled. Amazon Analytics uses Sprc Dil
+        // (amazon_dil_vs_groi), not Dil vs PRMT. Do not re-enable that cron.
 
         // Amazon CVR vs CPN → 5%/10% coupons (1/day) → Listings our_price (4:05 AM ET).
         // Uses shared pef_cvr_vs_cpn rules; pushes only SKUs whose target price/tier changed.
@@ -1019,7 +1012,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // After S PRC / Push Prc succeeds: wait 15 min, then write live listing price to Price.
+        // Confirm leftover Price pulls after S PRC / Push Prc (immediate write happens in applyAmazonPrice).
         // Runs 24/7 (not IST-windowed) so late-evening pushes still refresh.
         $schedule->command('amazon:pull-pushed-prices')
             ->everyMinute()
