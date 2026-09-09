@@ -3,6 +3,8 @@
 namespace App\Services\Support;
 
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
+use App\Models\AmazonDatasheet;
+use App\Services\AmazonSpApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -121,63 +123,82 @@ class AmazonPushPrcRunner
 
             $ok = false;
             $error = null;
+            $skipMsg = null;
+            $target = $task['effective'] ?? $task['sale'] ?? $task['std'] ?? 0;
             try {
-                // 1) Persist S PRC + margins (+ Push Prc history) before Amazon call
-                $saveReq = Request::create('/save-amazon-sprice', 'POST', [
-                    'sku' => $sku,
-                    'sprice' => $task['effective'] ?? $task['std'],
-                    'prmt_pct' => $task['prmt'] ?? 0,
-                    'record_push_prc' => 1,
-                ]);
-                $saveRes = $controller->saveSpriceToDatabase($saveReq);
-                if (method_exists($saveRes, 'getStatusCode') && $saveRes->getStatusCode() >= 400) {
-                    $payload = method_exists($saveRes, 'getData') ? $saveRes->getData(true) : [];
-                    $logger->warning('Amazon Push Prc: local S PRC save failed (continuing to Amazon)', [
+                $livePrice = (float) (AmazonDatasheet::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                    ->value('price') ?? 0);
+                if (AmazonSpApiService::listingPriceMatchesSprice($livePrice, $target)) {
+                    $ok = true;
+                    $skipMsg = 'skipped — Price already = S PRC';
+                    $logger->info('Amazon Push Prc: skipped — Price already = S PRC', [
                         'sku' => $sku,
-                        'response' => $payload,
+                        'price' => $livePrice,
+                        'sprice' => $target,
                     ]);
                 }
-
-                // 2) Push Your / Sale / Min / Max / Business to Amazon
-                $applyData = [
-                    'sku' => $sku,
-                    'price' => $task['std'],
-                    'asin' => $task['asin'] ?? null,
-                    'push_shopify' => false,
-                    'update_amazon_min_price' => true,
-                    'min_price' => $task['min'] ?? null,
-                    'max_price' => $task['max'] ?? null,
-                    'business_price' => $task['business'] ?? null,
-                ];
-                if (isset($task['sale']) && $task['sale'] !== null) {
-                    $applyData['sale_price'] = $task['sale'];
-                }
-                $applyReq = Request::create('/apply-amazon-price', 'POST', $applyData);
-                $applyRes = $controller->applyAmazonPrice($applyReq);
-                $applyPayload = method_exists($applyRes, 'getData') ? $applyRes->getData(true) : [];
-                if (is_array($applyPayload) && ! empty($applyPayload['errors'])) {
-                    $error = (string) (($applyPayload['errors'][0]['message'] ?? null) ?: 'Amazon push failed');
-                    $ok = false;
-                } else {
-                    $ok = true;
-                }
             } catch (\Throwable $e) {
-                $ok = false;
-                $error = $e->getMessage();
-                $logger->error('Amazon Push Prc exception', [
-                    'sku' => $sku,
-                    'error' => $error,
-                ]);
+                $skipMsg = null;
             }
 
-            $this->store->update(function (array $state) use ($index, $sku, $ok, $error) {
+            if ($skipMsg === null) {
+                try {
+                    $saveReq = Request::create('/save-amazon-sprice', 'POST', [
+                        'sku' => $sku,
+                        'sprice' => $task['effective'] ?? $task['std'],
+                        'prmt_pct' => $task['prmt'] ?? 0,
+                        'record_push_prc' => 1,
+                    ]);
+                    $saveRes = $controller->saveSpriceToDatabase($saveReq);
+                    if (method_exists($saveRes, 'getStatusCode') && $saveRes->getStatusCode() >= 400) {
+                        $payload = method_exists($saveRes, 'getData') ? $saveRes->getData(true) : [];
+                        $logger->warning('Amazon Push Prc: local S PRC save failed (continuing to Amazon)', [
+                            'sku' => $sku,
+                            'response' => $payload,
+                        ]);
+                    }
+
+                    $applyData = [
+                        'sku' => $sku,
+                        'price' => $task['std'],
+                        'asin' => $task['asin'] ?? null,
+                        'push_shopify' => false,
+                        'update_amazon_min_price' => true,
+                        'min_price' => $task['min'] ?? null,
+                        'max_price' => $task['max'] ?? null,
+                        'business_price' => $task['business'] ?? null,
+                    ];
+                    if (isset($task['sale']) && $task['sale'] !== null) {
+                        $applyData['sale_price'] = $task['sale'];
+                    }
+                    $applyReq = Request::create('/apply-amazon-price', 'POST', $applyData);
+                    $applyRes = $controller->applyAmazonPrice($applyReq);
+                    $applyPayload = method_exists($applyRes, 'getData') ? $applyRes->getData(true) : [];
+                    if (is_array($applyPayload) && ! empty($applyPayload['errors'])) {
+                        $error = (string) (($applyPayload['errors'][0]['message'] ?? null) ?: 'Amazon push failed');
+                        $ok = false;
+                    } else {
+                        $ok = true;
+                    }
+                } catch (\Throwable $e) {
+                    $ok = false;
+                    $error = $e->getMessage();
+                    $logger->error('Amazon Push Prc exception', [
+                        'sku' => $sku,
+                        'error' => $error,
+                    ]);
+                }
+            }
+
+            $this->store->update(function (array $state) use ($index, $sku, $ok, $error, $skipMsg) {
                 if (! isset($state['tasks'][$index]) || ! is_array($state['tasks'][$index])) {
                     return $state;
                 }
                 if ($ok) {
                     $state['tasks'][$index]['status'] = 'ok';
                     $state['tasks'][$index]['error'] = null;
-                    $state['tasks'][$index]['message'] = 'pushed';
+                    $state['tasks'][$index]['message'] = $skipMsg ?: 'pushed';
                     $state['ok_count'] = ((int) ($state['ok_count'] ?? 0)) + 1;
                 } else {
                     $state['tasks'][$index]['status'] = 'failed';

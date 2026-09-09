@@ -1815,6 +1815,20 @@ class OverallAmazonController extends Controller
             ];
         }
 
+        $tasks = $this->dropPushPrcTasksAlreadyAtListingPrice($tasks);
+        $store->compactDuplicateSkus();
+        $store->markPendingAlreadyAtListingPrice();
+        if ($tasks === []) {
+            $api = $store->toApiResponse($store->load());
+
+            return response()->json(array_merge($api, [
+                'success' => true,
+                'mode' => 'noop',
+                'worker_spawned' => false,
+                'message' => 'Nothing new to queue — Price already equals S PRC (blue triangle only).',
+            ]));
+        }
+
         $result = $store->createOrAppend($tasks);
         $state = $result['state'];
         $mode = $result['mode'];
@@ -1911,6 +1925,50 @@ class OverallAmazonController extends Controller
             'fail_count' => count($results) - $ok,
             'results' => $results,
         ]);
+    }
+
+    /**
+     * Blue triangle only: drop SKUs whose live listing Price already equals target S PRC.
+     *
+     * @param  list<array<string, mixed>>  $tasks
+     * @return list<array<string, mixed>>
+     */
+    private function dropPushPrcTasksAlreadyAtListingPrice(array $tasks): array
+    {
+        $skus = [];
+        foreach ($tasks as $task) {
+            $sku = strtoupper(trim((string) ($task['sku'] ?? '')));
+            if ($sku !== '') {
+                $skus[] = $sku;
+            }
+        }
+        $skus = array_values(array_unique($skus));
+        if ($skus === []) {
+            return [];
+        }
+
+        $priceBySku = [];
+        foreach (array_chunk($skus, 400) as $chunk) {
+            foreach (AmazonDatasheet::query()->whereIn('sku', $chunk)->get(['sku', 'price']) as $row) {
+                $key = strtoupper(trim((string) $row->sku));
+                if ($key !== '') {
+                    $priceBySku[$key] = (float) ($row->price ?? 0);
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($tasks as $task) {
+            $sku = strtoupper(trim((string) ($task['sku'] ?? '')));
+            $target = $task['effective'] ?? $task['sale'] ?? $task['std'] ?? 0;
+            $live = $priceBySku[$sku] ?? 0.0;
+            if (AmazonSpApiService::listingPriceMatchesSprice($live, $target)) {
+                continue;
+            }
+            $out[] = $task;
+        }
+
+        return $out;
     }
 
     private function spawnAmazonPushPrcWorker(): bool
