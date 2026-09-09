@@ -807,6 +807,20 @@
             else if (typeof toast === 'function') toast(msg, type);
             else console.log(type, msg);
         }
+        function amzTableHolder() {
+            return document.querySelector('#amazon-table .tabulator-tableholder');
+        }
+        function amzTableRedrawPreserveScroll(force) {
+            if (typeof table === 'undefined' || !table) return;
+            const holder = amzTableHolder();
+            const sl = holder ? holder.scrollLeft : 0;
+            const st = holder ? holder.scrollTop : 0;
+            try { table.redraw(force !== false); } catch (e) { /* ignore */ }
+            if (holder) {
+                holder.scrollLeft = sl;
+                holder.scrollTop = st;
+            }
+        }
         function amzPefSku(d) {
             return String((d && (d['(Child) sku'] || d.sku)) || '').trim();
         }
@@ -1522,7 +1536,7 @@
             if (typeof table === 'undefined' || !table) return;
             try {
                 const col = table.getColumn('SPRC_DIL');
-                if (col) table.redraw(true);
+                if (col) amzTableRedrawPreserveScroll(true);
             } catch (e) { /* ignore */ }
         }
         function amzAfterDilGroiRulesChanged() {
@@ -1994,7 +2008,7 @@
                 } else {
                     $('#amz-cvr-disc-status').text('Saved. CVR Disc. column updated.');
                     if (table) {
-                        try { table.getColumn('cvr_discount') && table.redraw(true); } catch (e) { /* ignore */ }
+                        try { table.getColumn('cvr_discount') && amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
                     }
                     amzScheduleRuleSpriceSync({ force: true, delay: 200 });
                 }
@@ -2157,7 +2171,7 @@
                 } else {
                     $('#amz-review-disc-status').text('Saved. Rev Disc. column updated.');
                     if (table) {
-                        try { table.getColumn('review_discount') && table.redraw(true); } catch (e) { /* ignore */ }
+                        try { table.getColumn('review_discount') && amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
                     }
                     amzScheduleRuleSpriceSync({ force: true, delay: 200 });
                 }
@@ -2195,7 +2209,7 @@
             if (opts.save && patch.SPRICE != null && Number(patch.SPRICE) > 0) {
                 amzPersistClearThenSprice(row, patch.SPRICE, true);
             }
-            if (opts.redraw && table) table.redraw(true);
+            if (opts.redraw && table) amzTableRedrawPreserveScroll(true);
         }
         function applyAmzApprDiscount(row) {
             const d = row.getData();
@@ -2204,28 +2218,28 @@
             if (!(amt > 0) || !(lmp > 0)) {
                 row.update({ appr: false, _appr_lmp: null });
                 amzPefToast('error', 'Appr needs Price > LMP');
-                if (table) table.redraw(true);
+                if (table) amzTableRedrawPreserveScroll(true);
                 return false;
             }
             const base = getAmzDiscountBase(d, '_dsc_applied');
             if (!(base > 0)) {
                 row.update({ appr: false, _appr_lmp: null });
                 amzPefToast('error', 'No S PRC/Price to discount');
-                if (table) table.redraw(true);
+                if (table) amzTableRedrawPreserveScroll(true);
                 return false;
             }
             let pct = amzPefRound2((amt / base) * 100);
             if (!(pct > 0) || pct >= 100) {
                 row.update({ appr: false, _appr_lmp: null });
                 amzPefToast('error', 'Appr DSC % out of range');
-                if (table) table.redraw(true);
+                if (table) amzTableRedrawPreserveScroll(true);
                 return false;
             }
             const newPrice = applyAmzPromoToSpriceBase(base, { type: 'percent', value: pct });
             if (!(newPrice > 0)) {
                 row.update({ appr: false, _appr_lmp: null });
                 amzPefToast('error', 'No S PRC/Price to discount');
-                if (table) table.redraw(true);
+                if (table) amzTableRedrawPreserveScroll(true);
                 return false;
             }
             row.update({
@@ -2236,7 +2250,7 @@
                 SPRICE: newPrice,
             });
             amzPersistClearThenSprice(row, newPrice, true);
-            if (table) table.redraw(true);
+            if (table) amzTableRedrawPreserveScroll(true);
             return true;
         }
         async function applyAmzPefPromoFromCell(cell, kind) {
@@ -2299,7 +2313,7 @@
                 ok ? 'success' : 'error',
                 fieldMeta.label + ' → ' + ok + ' row(s)' + (skipped ? ('; skipped ' + skipped) : '')
             );
-            if (table) table.redraw(true);
+            if (table) amzTableRedrawPreserveScroll(true);
             amzScheduleRuleSpriceSync({ force: true, delay: 250 });
         }
 
@@ -2718,7 +2732,7 @@
                 ok++;
             }
             if (table) {
-                try { table.redraw(true); } catch (e) { /* ignore */ }
+                try { amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
             }
             amzPefToast(
                 ok ? 'success' : 'error',
@@ -2878,7 +2892,7 @@
             });
             if (clearOnce) amzMarkStoredClearedOnce();
             if (changed && table) {
-                try { table.redraw(true); } catch (e) { /* ignore */ }
+                try { amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
             }
             if (opts.toast) {
                 amzPefToast(
@@ -2981,7 +2995,7 @@
                     SPRICE_STATUS: null,
                 });
             });
-            if (table) table.redraw(true);
+            if (table) amzTableRedrawPreserveScroll(true);
 
             let ok = 0;
             let fail = 0;
@@ -2989,7 +3003,7 @@
             function next() {
                 if (i >= ready.length) {
                     $btn.prop('disabled', false).html(html);
-                    if (table) table.redraw(true);
+                    if (table) amzTableRedrawPreserveScroll(true);
                     amzPefToast(
                         fail && !ok ? 'error' : 'success',
                         'sprice ?: ' + ok + ' filled'
@@ -3099,25 +3113,35 @@
                 const t = bySku[sku];
                 if (!t) return;
                 const st = String(t.status || '');
+                let patch = null;
                 if (st === 'ok') {
                     const livePrice = Number(t.effective != null ? t.effective : d.SPRICE) || 0;
-                    row.update({
+                    const nextVal = t.effective != null ? t.effective : d.PUSH_PRC_VALUE;
+                    const nextSprice = t.effective != null ? t.effective : d.SPRICE;
+                    const nextPrice = livePrice > 0 ? livePrice : d.price;
+                    if (d.PUSH_PRC_STATUS === 'pushed'
+                        && Number(d.PUSH_PRC_VALUE) === Number(nextVal)
+                        && Number(d.SPRICE) === Number(nextSprice)
+                        && Number(d.price) === Number(nextPrice)) {
+                        return;
+                    }
+                    patch = {
                         PUSH_PRC_STATUS: 'pushed',
-                        PUSH_PRC_VALUE: t.effective != null ? t.effective : d.PUSH_PRC_VALUE,
-                        SPRICE: t.effective != null ? t.effective : d.SPRICE,
+                        PUSH_PRC_VALUE: nextVal,
+                        SPRICE: nextSprice,
                         has_custom_sprice: true,
-                        price: livePrice > 0 ? livePrice : d.price,
-                        Price: livePrice > 0 ? livePrice : d.price,
-                    });
+                        price: nextPrice,
+                        Price: nextPrice,
+                    };
                 } else if (st === 'failed') {
-                    row.update({ PUSH_PRC_STATUS: 'error' });
-                } else if (st === 'pushing') {
-                    row.update({ PUSH_PRC_STATUS: 'processing' });
-                } else if (st === 'pending' || st === 'queued') {
-                    row.update({ PUSH_PRC_STATUS: 'processing' });
+                    if (d.PUSH_PRC_STATUS === 'error') return;
+                    patch = { PUSH_PRC_STATUS: 'error' };
+                } else if (st === 'pushing' || st === 'pending' || st === 'queued') {
+                    if (d.PUSH_PRC_STATUS === 'processing') return;
+                    patch = { PUSH_PRC_STATUS: 'processing' };
                 }
+                if (patch) row.update(patch);
             });
-            try { table.redraw(true); } catch (e) { /* ignore */ }
         }
 
         function amzOkSkusFromPushTasks(tasks) {
@@ -3147,9 +3171,9 @@
                 if (!amzPefIsChildRow(d)) return;
                 const live = bySku[amzPefSku(d).toUpperCase()];
                 if (!(live > 0)) return;
+                if (Number(d.price) === live && Number(d.Price) === live) return;
                 row.update({ price: live, Price: live });
             });
-            try { table.redraw(true); } catch (e) { /* ignore */ }
         }
         function queueAmzPostPushPull(skus) {
             if (!skus || !skus.length) return;
@@ -3431,7 +3455,7 @@
                 applyAmzPushPrcToSpriceRow(r.row, r.plan, null);
                 return planToAmzPushPrcQueueItem(r.d, r.plan);
             });
-            if (table) table.redraw(true);
+            if (table) amzTableRedrawPreserveScroll(true);
             queueAmzPushPrcItems(items);
         }
 
@@ -3565,7 +3589,7 @@
             if (typeof loadAmzCvrDiscRules === 'function') {
                 Promise.resolve(loadAmzCvrDiscRules()).then(function() {
                     if (table) {
-                        try { table.getColumn('cvr_discount') && table.redraw(true); } catch (e) { /* ignore */ }
+                        try { table.getColumn('cvr_discount') && amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
                     }
                     amzNoteRuleReady('cvr');
                 }).catch(function() { amzNoteRuleReady('cvr'); });
@@ -3575,7 +3599,7 @@
             if (typeof loadAmzReviewDiscRules === 'function') {
                 Promise.resolve(loadAmzReviewDiscRules()).then(function() {
                     if (table) {
-                        try { table.getColumn('review_discount') && table.redraw(true); } catch (e) { /* ignore */ }
+                        try { table.getColumn('review_discount') && amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
                     }
                     amzNoteRuleReady('rev');
                 }).catch(function() { amzNoteRuleReady('rev'); });

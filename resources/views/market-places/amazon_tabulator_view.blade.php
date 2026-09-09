@@ -77,6 +77,33 @@
             overflow: hidden;
         }
 
+        /* Only the table body should scroll. Global sticky-header CSS + fitDataStretch
+           + Mac scrollbar gutter + virtual rows fight each other and snap scroll back. */
+        #amazon-table-wrapper {
+            min-height: 0;
+            min-width: 0;
+            overflow: hidden;
+        }
+        #amazon-table {
+            height: 100% !important;
+            min-height: 0 !important;
+            overflow: hidden;
+        }
+        #amazon-table.tabulator .tabulator-header {
+            position: relative !important;
+            top: auto !important;
+        }
+        #amazon-table .tabulator-tableholder {
+            overflow: auto !important;
+            overflow-anchor: none;
+            scrollbar-gutter: stable;
+        }
+        #amazon-table .tabulator-row .tabulator-cell.tabulator-frozen {
+            height: 36px !important;
+            max-height: 36px !important;
+            min-height: 36px !important;
+        }
+
         /* Give room between items without inflating control height */
         #amazon-filter-bar { gap: 4px 6px !important; }
         #summary-stats {
@@ -3733,6 +3760,27 @@
                 amzClampPreviewPosition(wrap, clientX, clientY);
             }
 
+            function syncAmazonTableHeight() {
+                var wrap = document.getElementById('amazon-table-wrapper');
+                if (!wrap || !table || typeof table.setHeight !== 'function') return;
+                var h = wrap.clientHeight;
+                if (h <= 160) return;
+                var holder = wrap.querySelector('.tabulator-tableholder');
+                var sl = holder ? holder.scrollLeft : 0;
+                var st = holder ? holder.scrollTop : 0;
+                try { table.setHeight(h); } catch (e) { /* ignore */ }
+                holder = wrap.querySelector('.tabulator-tableholder');
+                if (holder) {
+                    holder.scrollLeft = sl;
+                    holder.scrollTop = st;
+                }
+            }
+            var amzTableResizeTimer = null;
+            window.addEventListener('resize', function() {
+                if (amzTableResizeTimer) clearTimeout(amzTableResizeTimer);
+                amzTableResizeTimer = setTimeout(syncAmazonTableHeight, 150);
+            });
+
             table = new Tabulator("#amazon-table", {
                 ajaxURL: "/amazon-data-json",
                 // POST so FastPanel/nginx GET disk-cache cannot serve a stale LMP
@@ -3750,7 +3798,10 @@
                 ajaxSorting: false,
                 headerSort: true,
                 headerSortElement: false,
-                layout: "fitDataStretch",
+                layout: "fitData",
+                height: "100%",
+                autoResize: false,
+                layoutColumnsOnNewData: false,
                 movableColumns: true,
                 rowHeight: 36,
                 pagination: true,
@@ -3776,12 +3827,10 @@
                     if (data.is_parent_summary === true) {
                         el.style.backgroundColor = "#fffef2";
                         el.style.fontWeight = "bold";
-                        el.style.minHeight = "48px";
                         el.classList.add("parent-row");
                     } else {
                         el.style.backgroundColor = "";
                         el.style.fontWeight = "";
-                        el.style.minHeight = "";
                         el.classList.remove("parent-row");
                     }
                 },
@@ -3983,7 +4032,6 @@
                     {
                         title: "Buyer Link",
                         field: "asin",
-                        frozen: true,
                         width: 50,
                         hozAlign: "center",
                         visible: false,
@@ -4008,7 +4056,6 @@
                     {
                         title: "Seller Link",
                         field: "seller_asin_link",
-                        frozen: true,
                         width: 90,
                         hozAlign: "center",
                         visible: false,
@@ -5878,6 +5925,7 @@
 
             // Wait for table to be built - applyFilters first for fast visible result, then defer heavy work
             table.on('tableBuilt', function() {
+                syncAmazonTableHeight();
                 applyFilters();
                 requestAnimationFrame(function() {
                     Promise.resolve(applyColumnVisibilityFromServer())
@@ -5922,16 +5970,17 @@
 
             });
 
+            var amzRenderUiTimer = null;
             table.on('renderComplete', function() {
-                setTimeout(function() {
-                    $('[data-bs-toggle="tooltip"]').tooltip();
-                    $('.row-select-checkbox').each(function() {
+                if (amzRenderUiTimer) clearTimeout(amzRenderUiTimer);
+                amzRenderUiTimer = setTimeout(function() {
+                    $('#amazon-table .row-select-checkbox').each(function() {
                         var sku = $(this).data('sku');
                         $(this).prop('checked', selectedRows.has(sku));
                     });
                     updateRowSelectAllCheckbox();
                     updateSelectedCount();
-                }, 100);
+                }, 200);
             });
 
             /**
