@@ -157,11 +157,25 @@
     const TEMU_MARGIN = {{ (float) $temuMargin }};
     // Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99 — same as /temu1-data
     const TEMU_PRICE_MULT = 1.1364;
+    const TEMU_FREIGHT = 2.99;
+    const TEMU_FREIGHT_CAP = 26.99;
+    /** Strip freight from API/stored unit: Base = unit − $2.99 when unit < $26.99. */
+    function temuGoodsBase(rawUnit) {
+        const b = parseFloat(rawUnit) || 0;
+        if (b <= 0) return 0;
+        if (b < TEMU_FREIGHT_CAP) {
+            return Math.max(0, +(b - TEMU_FREIGHT).toFixed(2));
+        }
+        return +b.toFixed(2);
+    }
+    function temuRowBase(row) {
+        return temuGoodsBase(row && row.base_price_total);
+    }
     function temuPriceFromBase(basePrice) {
         const b = parseFloat(basePrice) || 0;
         if (b <= 0) return 0;
         let price = b * TEMU_PRICE_MULT;
-        if (price <= 26.99) price += 2.99;
+        if (price <= TEMU_FREIGHT_CAP) price += TEMU_FREIGHT;
         return price;
     }
     function temuFbPrice(basePrice, quantity) {
@@ -170,7 +184,7 @@
         if (qty <= 0 || base <= 0) {
             return 0;
         }
-        return base <= 26.99 ? base + 2.99 : base;
+        return base <= TEMU_FREIGHT_CAP ? base + TEMU_FREIGHT : base;
     }
     let table = null;
     
@@ -339,14 +353,23 @@
                     title: "Base Price",
                     field: "base_price_total",
                     hozAlign: "right",
-                    sorter: "number",
+                    sorter: function(a, b) {
+                        return temuGoodsBase(a) - temuGoodsBase(b);
+                    },
                     width: 120,
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
+                    headerTooltip: "Base = stored/API unit − $2.99 when that unit is < $26.99. Otherwise stored/API unit.",
+                    accessorDownload: function(value) {
+                        const n = temuGoodsBase(value);
+                        return n > 0 ? n.toFixed(2) : '';
+                    },
+                    formatter: function(cell) {
+                        const raw = parseFloat(cell.getValue()) || 0;
+                        const base = temuGoodsBase(raw);
+                        if (!(base > 0)) return '';
+                        const tip = raw < TEMU_FREIGHT_CAP
+                            ? ('$' + raw.toFixed(2) + ' − $2.99 (unit < $26.99)')
+                            : ('$' + raw.toFixed(2) + ' (unit ≥ $26.99, no −$2.99)');
+                        return `<span title="${tip}">$${base.toFixed(2)}</span>`;
                     }
                 },
                 {
@@ -363,7 +386,7 @@
                         precision: 2
                     },
                     mutator: function(value, data, type, params, component) {
-                        const basePrice = parseFloat(data.base_price_total) || 0;
+                        const basePrice = temuRowBase(data);
                         const quantity = parseInt(data.quantity_purchased) || 0;
                         return temuFbPrice(basePrice, quantity).toFixed(2);
                     }
@@ -376,14 +399,14 @@
                     width: 120,
                     headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     mutator: function(value, data) {
-                        return temuPriceFromBase(parseFloat(data.base_price_total) || 0);
+                        return temuPriceFromBase(temuRowBase(data));
                     },
                     formatter: function(cell) {
-                        const basePrice = parseFloat(cell.getRow().getData().base_price_total) || 0;
+                        const basePrice = temuRowBase(cell.getRow().getData());
                         const temuPrice = parseFloat(cell.getValue()) || temuPriceFromBase(basePrice);
                         if (!(temuPrice > 0)) return '';
                         const afterMult = basePrice * TEMU_PRICE_MULT;
-                        const tip = '(Base × 1.1364)' + (afterMult <= 26.99 ? ' + $2.99' : '');
+                        const tip = '(Base × 1.1364)' + (afterMult <= TEMU_FREIGHT_CAP ? ' + $2.99' : '');
                         return `<span title="${tip}">$${temuPrice.toFixed(2)}</span>`;
                     }
                 },
@@ -463,9 +486,8 @@
                     },
                     headerTooltip: "PFT $ = (Temu Price × margin − LP − Temu Ship) × Qty. Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     mutator: function(value, data, type, params, component) {
-                        const basePrice = parseFloat(data.base_price_total) || 0;
                         const quantity = parseInt(data.quantity_purchased) || 0;
-                        const temuPrice = temuPriceFromBase(basePrice);
+                        const temuPrice = temuPriceFromBase(temuRowBase(data));
                         const lp = parseFloat(data.lp) || 0;
                         const temuShip = parseFloat(data.temu_ship) || 0;
                         return ((temuPrice * TEMU_MARGIN - lp - temuShip) * quantity).toFixed(2);
@@ -486,9 +508,8 @@
                         precision: 2
                     },
                     mutator: function(value, data, type, params, component) {
-                        const basePrice = parseFloat(data.base_price_total) || 0;
                         const quantity = parseInt(data.quantity_purchased) || 0;
-                        return (quantity * temuPriceFromBase(basePrice)).toFixed(2);
+                        return (quantity * temuPriceFromBase(temuRowBase(data))).toFixed(2);
                     }
                 },
                 {
@@ -545,9 +566,8 @@
         });
 
         function temuLinePrice(row) {
-            const basePrice = parseFloat(row.base_price_total) || 0;
             const quantity = parseInt(row.quantity_purchased) || 0;
-            return temuFbPrice(basePrice, quantity);
+            return temuFbPrice(temuRowBase(row), quantity);
         }
 
         // Update summary stats
@@ -576,7 +596,7 @@
                 
                 totalOrders++;
                 const quantity = parseInt(row.quantity_purchased) || 0;
-                const basePrice = parseFloat(row.base_price_total) || 0;
+                const basePrice = temuRowBase(row);
                 const fbPrice = temuFbPrice(basePrice, quantity);
                 const temuPrice = temuPriceFromBase(basePrice);
                 const lp = parseFloat(row.lp) || 0;
@@ -753,7 +773,7 @@
                             }
 
                             const quantity = parseInt(row.quantity_purchased) || 0;
-                            const basePrice = parseFloat(row.base_price_total) || 0;
+                            const basePrice = temuRowBase(row);
                             const hasSales = quantity > 0 && basePrice > 0;
                             
                             if (hasSales) {
