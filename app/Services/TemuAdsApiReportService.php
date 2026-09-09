@@ -404,7 +404,7 @@ class TemuAdsApiReportService
      */
     public function rollingL30SpendByAsOfDate(): array
     {
-        return Cache::remember('temu_ads_rolling_l30_spend_v1', 600, function () {
+        return Cache::remember('temu_ads_rolling_l30_spend_v2', 600, function () {
             return $this->computeRollingL30SpendByAsOfDate();
         });
     }
@@ -464,7 +464,9 @@ class TemuAdsApiReportService
                 $sum += $v;
                 $days++;
             }
-            if ($days < 20) {
+            // Need a full 30-day window. Partial coverage looks like a ramp
+            // from $0 and is not a real historical Last-30 total.
+            if ($days < 30 || $sum <= 0) {
                 continue;
             }
             $rolling[$ymd] = round($sum, 2);
