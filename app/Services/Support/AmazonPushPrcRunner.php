@@ -205,6 +205,12 @@ class AmazonPushPrcRunner
                     $state['tasks'][$index]['error'] = $error ?: 'Push failed';
                     $state['tasks'][$index]['message'] = $error ?: 'Push failed';
                     $state['fail_count'] = ((int) ($state['fail_count'] ?? 0)) + 1;
+                    $block = is_array($state['failed_block'] ?? null) ? $state['failed_block'] : [];
+                    $block[strtoupper(trim($sku))] = [
+                        'effective' => $state['tasks'][$index]['effective'] ?? null,
+                        'error' => $error ?: 'Push failed',
+                    ];
+                    $state['failed_block'] = $block;
                 }
                 $state['results'][$sku] = [
                     'success' => $ok,

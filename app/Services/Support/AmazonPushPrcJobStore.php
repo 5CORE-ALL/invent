@@ -32,12 +32,17 @@ class AmazonPushPrcJobStore
      */
     public function create(array $tasks): array
     {
-        $normalized = $this->uniqueTasksBySku($this->normalizeTasks($tasks));
+        $previous = $this->load();
+        $failedBlock = $this->mergeFailedBlock($previous);
+        $normalized = $this->uniqueTasksBySku(
+            $this->dropBlockedTasks($this->normalizeTasks($tasks), $failedBlock)
+        );
         $queueMsg = 'Push Prc queued ('.count($normalized).' SKU(s)).';
 
         $state = array_merge($this->defaultState(), [
             'id' => date('YmdHis').'_'.bin2hex(random_bytes(4)),
             'status' => 'running',
+            'failed_block' => $failedBlock,
             'tasks' => $normalized,
             'total' => count($normalized),
             'current_index' => 0,
@@ -97,6 +102,15 @@ class AmazonPushPrcJobStore
                 }
                 $sameTarget = $this->sameMoney($existing['effective'] ?? null, $task['effective'] ?? null);
                 if ($st === 'ok' && $sameTarget) {
+                    $skipped++;
+                    continue;
+                }
+                if ($st === 'failed' && $sameTarget) {
+                    $skipped++;
+                    continue;
+                }
+                $block = $state['failed_block'][$skuKey] ?? null;
+                if (is_array($block) && $this->sameMoney($block['effective'] ?? null, $task['effective'] ?? null)) {
                     $skipped++;
                     continue;
                 }
@@ -406,6 +420,7 @@ class AmazonPushPrcJobStore
             'pushing_count' => $pushing,
             'pct' => $pct,
             'tasks' => $taskSummaries,
+            'failed_block' => is_array($state['failed_block'] ?? null) ? $state['failed_block'] : [],
             'message' => $done
                 ? "Push Prc done: {$ok} ok, {$fail} failed."
                 : ($state['last_message'] ?? 'Push Prc in progress…'),
@@ -597,7 +612,85 @@ class AmazonPushPrcJobStore
             'worker_spawned_at' => null,
             'last_message' => 'Ready',
             'messages' => [],
+            'failed_block' => [],
         ];
+    }
+
+    /**
+     * Keep Amazon-rejected SKUs out of the next refresh job (same S PRC).
+     *
+     * @param  array<string, mixed>  $state
+     * @return array<string, array{effective: mixed, error: ?string}>
+     */
+    public function mergeFailedBlock(array $state): array
+    {
+        $block = is_array($state['failed_block'] ?? null) ? $state['failed_block'] : [];
+        foreach ($state['tasks'] ?? [] as $task) {
+            if (! is_array($task) || (string) ($task['status'] ?? '') !== 'failed') {
+                continue;
+            }
+            $key = strtoupper(trim((string) ($task['sku'] ?? '')));
+            if ($key === '') {
+                continue;
+            }
+            $block[$key] = [
+                'effective' => $task['effective'] ?? null,
+                'error' => $task['error'] ?? $task['message'] ?? 'Push failed',
+            ];
+        }
+
+        return $block;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $tasks
+     * @param  array<string, array<string, mixed>>  $block
+     * @return list<array<string, mixed>>
+     */
+    public function dropBlockedTasks(array $tasks, array $block): array
+    {
+        if ($block === []) {
+            return $tasks;
+        }
+        $out = [];
+        foreach ($tasks as $task) {
+            $key = strtoupper(trim((string) ($task['sku'] ?? '')));
+            $hit = $block[$key] ?? null;
+            if (is_array($hit) && $this->sameMoney($hit['effective'] ?? null, $task['effective'] ?? null)) {
+                continue;
+            }
+            $out[] = $task;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Manual retry — allow these SKUs back into the queue.
+     *
+     * @param  list<string>  $skus
+     */
+    public function forgetBlocked(array $skus): void
+    {
+        $keys = [];
+        foreach ($skus as $sku) {
+            $key = strtoupper(trim((string) $sku));
+            if ($key !== '') {
+                $keys[$key] = true;
+            }
+        }
+        if ($keys === []) {
+            return;
+        }
+        $this->update(function (array $state) use ($keys) {
+            $block = is_array($state['failed_block'] ?? null) ? $state['failed_block'] : [];
+            foreach (array_keys($keys) as $key) {
+                unset($block[$key]);
+            }
+            $state['failed_block'] = $block;
+
+            return $state;
+        });
     }
 
     private function path(): string

@@ -2435,7 +2435,9 @@
                         } else if (status === 'error') {
                             icon = '<i class="fa-solid fa-xmark"></i>';
                             color = '#dc3545';
-                            tip = 'Last push failed — click to retry';
+                            tip = d.PUSH_PRC_ERROR
+                                ? String(d.PUSH_PRC_ERROR)
+                                : 'Last push failed — click to retry';
                         } else if (status === 'processing') {
                             icon = '<i class="fas fa-spinner fa-spin"></i>';
                             color = '#ffc107';
@@ -3177,8 +3179,9 @@
                         Price: nextPrice,
                     };
                 } else if (st === 'failed') {
-                    if (d.PUSH_PRC_STATUS === 'error') return;
-                    patch = { PUSH_PRC_STATUS: 'error' };
+                    const err = t.error || t.message || 'Push failed';
+                    if (d.PUSH_PRC_STATUS === 'error' && d.PUSH_PRC_ERROR === err) return;
+                    patch = { PUSH_PRC_STATUS: 'error', PUSH_PRC_ERROR: err };
                 } else if (st === 'pushing' || st === 'pending' || st === 'queued') {
                     if (d.PUSH_PRC_STATUS === 'processing') return;
                     patch = { PUSH_PRC_STATUS: 'processing' };
@@ -3376,6 +3379,7 @@
                 data: {
                     _token: amzPefCsrf(),
                     items: items,
+                    retry_failed: opts.retryFailed ? 1 : 0,
                 },
                 timeout: 60000,
             }).done(function(resp) {
@@ -3448,7 +3452,7 @@
 
             row.update({ PUSH_PRC_STATUS: 'processing' });
             applyAmzPushPrcToSpriceRow(row, plan, null);
-            queueAmzPushPrcItems([planToAmzPushPrcQueueItem(d, plan)]);
+            queueAmzPushPrcItems([planToAmzPushPrcQueueItem(d, plan)], { retryFailed: true });
         }
 
         function bulkPushAmzPrcSelected() {
@@ -3499,7 +3503,7 @@
                 return planToAmzPushPrcQueueItem(r.d, r.plan);
             });
             if (table) amzTableRedrawPreserveScroll(true);
-            queueAmzPushPrcItems(items);
+            queueAmzPushPrcItems(items, { retryFailed: true });
         }
 
         function cancelAmzPushPrcJob() {
@@ -3551,6 +3555,9 @@
                 const key = sku.toUpperCase();
                 if (!sku || seen[key]) return;
                 // Same set as the blue triangle badge: INV > 0 and Price ≠ live S PRC.
+                if (d.is_missing_amazon) return;
+                const pushSt = String(d.PUSH_PRC_STATUS || d.SPRICE_STATUS || '').toLowerCase();
+                if (pushSt === 'error' || pushSt === 'failed') return;
                 if (typeof amazonHasBlueTriangle === 'function' && !amazonHasBlueTriangle(d)) return;
                 const plan = amzPushPrcPlanForQueue(d);
                 if (!plan || !(plan.effective > 0)) return;
