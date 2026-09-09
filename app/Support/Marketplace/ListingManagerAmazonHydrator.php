@@ -822,21 +822,19 @@ class ListingManagerAmazonHydrator
             }
         }
 
-        // Image Master table thumb uses Values.image_path, then Shopify — same fallback here.
-        if ($images === []) {
-            foreach (self::shopifyCatalogImageUrls($sku) as $url) {
+        // Always merge Shopify gallery. A single Image Master hero used to hide the rest.
+        foreach (self::shopifyCatalogImageUrls($sku) as $url) {
+            $push($url);
+        }
+        foreach (self::shopifySkuImageUrls($sku) as $url) {
+            $push($url);
+        }
+        if ($parentSku !== '' && strcasecmp($parentSku, $sku) !== 0) {
+            foreach (self::shopifyCatalogImageUrls($parentSku) as $url) {
                 $push($url);
             }
-            foreach (self::shopifySkuImageUrls($sku) as $url) {
+            foreach (self::shopifySkuImageUrls($parentSku) as $url) {
                 $push($url);
-            }
-            if ($parentSku !== '' && strcasecmp($parentSku, $sku) !== 0) {
-                foreach (self::shopifyCatalogImageUrls($parentSku) as $url) {
-                    $push($url);
-                }
-                foreach (self::shopifySkuImageUrls($parentSku) as $url) {
-                    $push($url);
-                }
             }
         }
 

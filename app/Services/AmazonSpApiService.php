@@ -6288,6 +6288,64 @@ class AmazonSpApiService
     }
 
     /**
+     * Keep the US offer only. Unified accounts otherwise open EU/JP Offer tabs as ON with empty prices.
+     */
+    public function disableNonUsMarketplaceOffers(string $sku, string $productType = ''): void
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! $this->isConfigured()) {
+            return;
+        }
+        $token = $this->getAccessToken();
+        $sellerId = (string) config('services.amazon_sp.seller_id');
+        if (! $token || $sellerId === '') {
+            return;
+        }
+        $productType = trim($productType);
+        if ($productType === '' || preg_match('/^\d+$/', $productType)) {
+            $productType = 'PRODUCT';
+        }
+        $foreign = [
+            'A1F83G8C2ARO7P', // UK
+            'A1PA6795UKMFR9', // DE
+            'A13V1IB3VIYZZH', // FR
+            'APJ6JRA9NG5V4', // IT
+            'A1RKKUPIHCS9HS', // ES
+            'A1805IZSGTT6HS', // NL
+            'A1VC38T7YXB528', // JP
+            'A2EUQ1WTGCTBG2', // CA
+            'A1AM78C64UM0Y8', // MX
+        ];
+        foreach ($foreign as $marketplaceId) {
+            try {
+                Http::withHeaders([
+                    'x-amz-access-token' => $token,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])->timeout(20)->patch(
+                    $this->endpoint.'/listings/2021-08-01/items/'
+                    .rawurlencode($sellerId).'/'.rawurlencode($sku)
+                    .'?marketplaceIds='.rawurlencode($marketplaceId),
+                    [
+                        'productType' => $productType,
+                        'patches' => [
+                            ['op' => 'delete', 'path' => '/attributes/purchasable_offer'],
+                            ['op' => 'delete', 'path' => '/attributes/list_price'],
+                            ['op' => 'delete', 'path' => '/attributes/fulfillment_availability'],
+                        ],
+                    ]
+                );
+            } catch (\Throwable $e) {
+                Log::debug('AmazonSpApiService: skip non-US offer disable', [
+                    'sku' => $sku,
+                    'marketplace' => $marketplaceId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
      * Create a new listings item (PUT). Used when the SKU is not yet in Seller Central.
      *
      * @param  array<string, mixed>  $attributes

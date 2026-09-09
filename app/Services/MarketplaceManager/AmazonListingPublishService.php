@@ -34,21 +34,20 @@ class AmazonListingPublishService
         if ($qty === null && array_key_exists('quantity', $details) && $details['quantity'] !== null && $details['quantity'] !== '') {
             $qty = (int) $details['quantity'];
         }
-        $images = [];
-        foreach (ListingManagerAmazonHydrator::publishImageUrls($sku, null, 9) as $url) {
+        $images = $this->httpsImages(is_array($details['images'] ?? null) ? $details['images'] : []);
+        foreach (is_array($details['image_source_urls'] ?? null) ? $details['image_source_urls'] : [] as $url) {
             $url = trim((string) $url);
-            if ($url !== '' && preg_match('#^https://#i', $url)) {
+            if ($url !== '' && preg_match('#^https://#i', $url) && ! in_array($url, $images, true)) {
                 $images[] = $url;
             }
         }
-        if ($images === [] && is_array($details['images'] ?? null)) {
-            foreach ($details['images'] as $url) {
-                $url = trim((string) $url);
-                if ($url !== '' && preg_match('#^https://#i', $url) && ! in_array($url, $images, true)) {
-                    $images[] = $url;
-                }
+        foreach (ListingManagerAmazonHydrator::publishImageUrls($sku, null, 9) as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && preg_match('#^https://#i', $url) && ! in_array($url, $images, true)) {
+                $images[] = $url;
             }
         }
+        $images = array_slice($images, 0, 9);
 
         ListingManagerPublishStatus::forgetAmazonLiveCache($sku);
         $inspect = $this->api->inspectSellerCentralListing($sku);
@@ -98,6 +97,8 @@ class AmazonListingPublishService
                 $fail[] = 'images: '.($res['message'] ?? 'update failed');
             }
         }
+
+        $this->api->disableNonUsMarketplaceOffers($existingSku, $details['product_type'] ?? $details['category'] ?? '');
 
         $confirmed = $this->api->inspectSellerCentralListing($sku);
         ListingManagerPublishStatus::forgetAmazonLiveCache($sku);
@@ -280,9 +281,27 @@ class AmazonListingPublishService
         }
 
         $result = $this->api->putListingsItem($sku, $productType, $attributes);
+        $this->api->disableNonUsMarketplaceOffers($sku, $productType);
         $result['skus'] = [$sku];
 
         return $result;
+    }
+
+    /**
+     * @param  list<mixed>  $urls
+     * @return list<string>
+     */
+    private function httpsImages(array $urls): array
+    {
+        $out = [];
+        foreach ($urls as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && preg_match('#^https://#i', $url) && ! in_array($url, $out, true)) {
+                $out[] = $url;
+            }
+        }
+
+        return $out;
     }
 
     /**

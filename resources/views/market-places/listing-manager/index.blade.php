@@ -2182,6 +2182,17 @@
     }
 
     function sanitizeEditorImages(list) {
+        if (typeof list === 'string') {
+            const text = list.trim();
+            if (!text) return [];
+            try {
+                const parsed = JSON.parse(text);
+                if (Array.isArray(parsed)) list = parsed;
+                else list = text.split(/\r?\n/);
+            } catch (e) {
+                list = text.split(/\r?\n/);
+            }
+        }
         return (list || []).map(u => String(u || '').trim()).filter(u => u && !isPlaceholderAmazonUrl(u));
     }
 
@@ -3124,7 +3135,8 @@
         return $.ajax({
             url: "{{ url('/listing-manager/drafts') }}/" + id,
             method: 'PUT',
-            data: payload,
+            contentType: 'application/json',
+            data: JSON.stringify(payload),
         }).then(function (res) {
             if (res.draft) {
                 currentDraft = res.draft;
@@ -4119,6 +4131,10 @@
                     if (res.draft) {
                         fillEditor(res.draft);
                         setDescMode('preview');
+                        if (Array.isArray(res.images) && res.images.length > editorImages.length) {
+                            editorImages = sanitizeEditorImages(res.images);
+                            refreshEditorUi(currentDraft);
+                        }
                     } else {
                         applyMasterPayload(res);
                     }
