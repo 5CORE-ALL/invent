@@ -1609,8 +1609,13 @@
             $('#ae-total-profit-badge').text(`PFT: $${Math.round(totalProfit).toLocaleString()}`);
             $('#ae-avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
             const badgeRows = aeBadgeCountRows();
+            const pglAllRows = (typeof aeFullTableData !== 'undefined' && aeFullTableData.length)
+                ? aeFullTableData
+                : ((typeof allTableData !== 'undefined' && allTableData.length)
+                    ? allTableData
+                    : badgeRows);
             if (window.PriceGtLmpBadge) {
-                PriceGtLmpBadge.update('#aliexpress-price-gt-lmp-badge', badgeRows, 'aliexpress', 'price');
+                PriceGtLmpBadge.update('#aliexpress-price-gt-lmp-badge', pglAllRows, 'aliexpress', 'price');
                 if (window.PriceLt80LmpBadge) {
                     PriceLt80LmpBadge.update('#aliexpress-price-lt80-lmp-badge', badgeRows, 'aliexpress', 'price');
                 }

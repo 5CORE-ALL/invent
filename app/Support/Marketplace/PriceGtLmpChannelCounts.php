@@ -2,6 +2,7 @@
 
 namespace App\Support\Marketplace;
 
+use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\ChannelMaster;
 use App\Models\ShopifySku;
@@ -181,33 +182,47 @@ class PriceGtLmpChannelCounts
     }
 
     /**
-     * Same universe as /aliexpress-pricing: onSelling list price, Shopify INV > 0,
-     * LMP from the AE sheet (no Sku Link spread, offline listings excluded).
+     * Same rows and red-triangle rule as /aliexpress-pricing (default SKUs + INV > 0).
      */
     private static function computeAliexpressPriceGtLmp(): int
     {
-        $prices = self::loadAliexpressLivePrices();
-        $lmps = self::loadAliexpressLmpMap();
-        $inv = self::loadAliexpressInvMap();
-        if ($prices === [] || $lmps === []) {
+        try {
+            $rows = app(AliexpressController::class)->buildPricingRows(false);
+        } catch (\Throwable $e) {
+            Log::warning('PriceGtLmpChannelCounts AE rows failed: '.$e->getMessage());
+
             return 0;
         }
 
         $n = 0;
-        foreach ($prices as $sku => $price) {
-            if (! ($price > 0) || str_contains($sku, 'PARENT')) {
-                continue;
-            }
-            if (! (($inv[$sku] ?? 0) > 0)) {
-                continue;
-            }
-            $lmp = $lmps[self::normAeLmpSku($sku)] ?? ($lmps[$sku] ?? 0.0);
-            if ($lmp > 0 && $price > $lmp) {
+        foreach ($rows as $row) {
+            if (is_array($row) && self::rowHasRedTriangle($row, 'price')) {
                 $n++;
             }
         }
 
         return $n;
+    }
+
+    /**
+     * Same rule as public/js/price-gt-lmp-badge.js hasRedTriangle().
+     *
+     * @param  array<string, mixed>  $row
+     */
+    public static function rowHasRedTriangle(array $row, string $priceField = 'price'): bool
+    {
+        if (self::isParentRow($row)) {
+            return false;
+        }
+        if (! (self::rowInv($row) > 0)) {
+            return false;
+        }
+        $price = self::rowFirstPositive($row, array_merge([$priceField], [
+            'eBay Price', 'Price', 'price', 'MC Price', 'api_price', 'doba Price', 'self_pick_price',
+        ]));
+        $lmp = self::rowLmp($row);
+
+        return $price > 0 && $lmp > 0 && $price > $lmp;
     }
 
     /**
@@ -269,9 +284,6 @@ class PriceGtLmpChannelCounts
         if (in_array($key, ['temu', 'temu2', 'temu3'], true)) {
             return self::loadSheetLmpMap('temu_lmp', true);
         }
-        if ($key === 'aliexpress') {
-            return self::loadAliexpressLmpMap();
-        }
         if (in_array($key, ['tiktok', 'tiktok2'], true)) {
             return self::loadTiktokLmpMap();
         }
@@ -285,160 +297,64 @@ class PriceGtLmpChannelCounts
     }
 
     /**
-     * @return array<string, float>
+     * @param  array<string, mixed>  $row
      */
-    private static function loadAliexpressLivePrices(): array
+    private static function isParentRow(array $row): bool
     {
-        if (! Schema::hasTable('aliexpress_pricing_prices')
-            || ! Schema::hasColumn('aliexpress_pricing_prices', 'sku')
-            || ! Schema::hasColumn('aliexpress_pricing_prices', 'price')) {
-            return [];
+        if (! empty($row['is_parent_summary']) || ! empty($row['is_parent']) || ! empty($row['is_parent_row'])) {
+            return true;
         }
-
-        try {
-            $rows = DB::table('aliexpress_pricing_prices')
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->where('price', '>', 0)
-                ->get(['sku', 'price']);
-        } catch (\Throwable $e) {
-            Log::warning('PriceGtLmpChannelCounts AE price load failed: '.$e->getMessage());
-
-            return [];
+        if (! empty($row['_children']) && is_array($row['_children'])) {
+            return true;
         }
+        $sku = strtoupper(trim((string) ($row['(Child) sku'] ?? ($row['sku'] ?? ($row['Sku'] ?? ($row['SKU'] ?? ''))))));
 
-        $offline = self::aliexpressOfflineSkuSet();
-        $map = [];
-        foreach ($rows as $row) {
-            $sku = self::normAeSkuExact((string) $row->sku);
-            if ($sku === '' || str_contains($sku, 'PARENT') || isset($offline[$sku])) {
-                continue;
-            }
-            $price = (float) $row->price;
-            if ($price > 0 && (! isset($map[$sku]) || $price > $map[$sku])) {
-                $map[$sku] = $price;
-            }
-        }
-
-        return $map;
+        return str_contains($sku, 'PARENT');
     }
 
     /**
-     * @return array<string, true>
+     * @param  array<string, mixed>  $row
      */
-    private static function aliexpressOfflineSkuSet(): array
+    private static function rowInv(array $row): float
     {
-        if (! Schema::hasTable('aliexpress_metric') || ! Schema::hasColumn('aliexpress_metric', 'listing_status')) {
-            return [];
-        }
-
-        try {
-            $rows = DB::table('aliexpress_metric')->get(['sku', 'listing_status']);
-        } catch (\Throwable $e) {
-            return [];
-        }
-
-        $statusBySku = [];
-        foreach ($rows as $row) {
-            $sku = self::normAeSkuExact((string) ($row->sku ?? ''));
-            $status = strtolower(trim((string) ($row->listing_status ?? '')));
-            if ($sku === '' || $status === '') {
+        foreach (['inventory', 'INV', 'inv', 'Inv', 'QTY AVAIL', 'qty_avail'] as $field) {
+            if (! array_key_exists($field, $row) || $row[$field] === null || $row[$field] === '') {
                 continue;
             }
-            if (! isset($statusBySku[$sku]) || $status === 'onselling') {
-                $statusBySku[$sku] = $status;
+            $n = (float) $row[$field];
+            if (is_finite($n)) {
+                return $n;
             }
         }
 
-        $offline = [];
-        foreach ($statusBySku as $sku => $status) {
-            if (in_array($status, ['offline', 'service_delete'], true)) {
-                $offline[$sku] = true;
-            }
-        }
-
-        return $offline;
+        return 0.0;
     }
 
     /**
-     * @return array<string, float>
+     * @param  array<string, mixed>  $row
+     * @param  list<string>  $fields
      */
-    private static function loadAliexpressInvMap(): array
+    private static function rowFirstPositive(array $row, array $fields): float
     {
-        if (! Schema::hasTable('shopify_skus') || ! Schema::hasColumn('shopify_skus', 'inv')) {
-            return [];
-        }
-
-        try {
-            $rows = DB::table('shopify_skus')->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'inv']);
-        } catch (\Throwable $e) {
-            return [];
-        }
-
-        $map = [];
-        foreach ($rows as $row) {
-            $n = (int) $row->inv;
-            if ($n <= 0) {
+        foreach ($fields as $field) {
+            if (! array_key_exists($field, $row) || $row[$field] === null || $row[$field] === '') {
                 continue;
             }
-            $sku = self::normAeSkuExact((string) $row->sku);
-            if ($sku !== '' && ! str_contains($sku, 'PARENT')) {
-                $map[$sku] = (float) $n;
+            $n = (float) $row[$field];
+            if (is_finite($n) && $n > 0) {
+                return $n;
             }
         }
 
-        return $map;
+        return 0.0;
     }
 
     /**
-     * Match /aliexpress-pricing badge: entry price only (no ship add);
-     * if entries exist, do not fall back to the legacy lmp column.
-     *
-     * @return array<string, float>
+     * @param  array<string, mixed>  $row
      */
-    private static function loadAliexpressLmpMap(): array
+    private static function rowLmp(array $row): float
     {
-        $table = 'aliexpress_lmp_data_sheet';
-        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
-            return [];
-        }
-        $cols = ['sku'];
-        foreach (['lmp', 'lmp_entries'] as $col) {
-            if (Schema::hasColumn($table, $col)) {
-                $cols[] = $col;
-            }
-        }
-
-        try {
-            $rows = DB::table($table)->whereNotNull('sku')->where('sku', '!=', '')->get($cols);
-        } catch (\Throwable $e) {
-            Log::warning('PriceGtLmpChannelCounts AE LMP load failed: '.$e->getMessage());
-
-            return [];
-        }
-
-        $map = [];
-        foreach ($rows as $row) {
-            $sku = self::normAeLmpSku((string) $row->sku);
-            if ($sku === '') {
-                continue;
-            }
-            $lmp = self::aliexpressRowLmp($row);
-            if ($lmp > 0 && (! isset($map[$sku]) || $lmp < $map[$sku])) {
-                $map[$sku] = $lmp;
-            }
-        }
-
-        return $map;
-    }
-
-    private static function aliexpressRowLmp(object $row): float
-    {
-        $entries = $row->lmp_entries ?? null;
-        if (is_string($entries)) {
-            $decoded = json_decode($entries, true);
-            $entries = is_array($decoded) ? $decoded : null;
-        }
+        $entries = $row['lmp_entries'] ?? null;
         if (is_array($entries) && $entries !== []) {
             $lowest = 0.0;
             foreach ($entries as $entry) {
@@ -455,26 +371,7 @@ class PriceGtLmpChannelCounts
             return $lowest;
         }
 
-        $fallback = (float) ($row->lmp ?? 0);
-
-        return $fallback > 0 ? $fallback : 0.0;
-    }
-
-    private static function normAeSkuExact(string $sku): string
-    {
-        $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim($sku));
-        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
-
-        return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku) ?? '');
-    }
-
-    private static function normAeLmpSku(string $sku): string
-    {
-        $s = strtoupper(trim($sku));
-        $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s) ?? $s;
-        $s = preg_replace('/\s+/', ' ', $s) ?? $s;
-
-        return $s;
+        return self::rowFirstPositive($row, ['lmp_price', 'lmp', 'LMP', 'LMP 1', 'lmp_1']);
     }
 
     /**

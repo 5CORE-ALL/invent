@@ -38,4 +38,33 @@ class PriceGtLmpChannelCountsTest extends TestCase
         $this->assertSame(24.24, PriceGtLmpChannelCounts::temuRecoveryLmp(25));
         $this->assertSame(25.5, PriceGtLmpChannelCounts::temuRecoveryLmp(30));
     }
+
+    public function test_red_triangle_matches_aliexpress_badge_rule(): void
+    {
+        $hit = [
+            'sku' => 'AE-1',
+            'inv' => 4,
+            'price' => 20,
+            'lmp' => 15,
+            'lmp_entries' => [],
+        ];
+        $this->assertTrue(PriceGtLmpChannelCounts::rowHasRedTriangle($hit, 'price'));
+
+        $zeroInv = $hit;
+        $zeroInv['inv'] = 0;
+        $this->assertFalse(PriceGtLmpChannelCounts::rowHasRedTriangle($zeroInv, 'price'));
+
+        $offline = $hit;
+        $offline['price'] = 0;
+        $this->assertFalse(PriceGtLmpChannelCounts::rowHasRedTriangle($offline, 'price'));
+
+        $ignoredOnly = [
+            'sku' => 'AE-2',
+            'inv' => 3,
+            'price' => 20,
+            'lmp' => 10,
+            'lmp_entries' => [['price' => 10, 'ignored' => true]],
+        ];
+        $this->assertFalse(PriceGtLmpChannelCounts::rowHasRedTriangle($ignoredOnly, 'price'));
+    }
 }
