@@ -907,7 +907,7 @@ class VeeqoShopifyFulfillmentService
                 }
                 $skuPasses = $skus !== [] ? $skus : [''];
                 $checked++;
-                $cacheKey = 'mm_fetch_tracking_shopify_v2:'.$shopifyId;
+                $cacheKey = 'mm_fetch_tracking_shopify_v3:'.$shopifyId;
                 $orderLabel = trim((string) ($order['name'] ?? '')).' '.($marketplace !== '' ? $marketplace : 'marketplace');
                 if (! $fresh && Cache::has($cacheKey)) {
                     $skipped++;
@@ -961,7 +961,7 @@ class VeeqoShopifyFulfillmentService
                     ]);
                 } elseif ($allMatched && $action === 'already_on_shopify') {
                     $skipped++;
-                    Cache::put($cacheKey, 1, now()->addDays(7));
+                    Cache::put($cacheKey, 1, now()->addMinutes(25));
                     $this->bumpProgress('skipped', [
                         'label' => trim($orderLabel),
                         'marketplace' => $marketplace,
@@ -2719,10 +2719,14 @@ class VeeqoShopifyFulfillmentService
                         continue;
                     }
                     $numbers = [];
+                    $info = is_array($fulfillment['tracking_info'] ?? null) ? $fulfillment['tracking_info'] : [];
+                    if (trim((string) ($info['number'] ?? '')) !== '') {
+                        $numbers[] = $info['number'];
+                    }
                     if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
-                        $numbers = $fulfillment['tracking_numbers'];
+                        $numbers = array_merge($numbers, $fulfillment['tracking_numbers']);
                     } elseif (! empty($fulfillment['tracking_number'])) {
-                        $numbers = [$fulfillment['tracking_number']];
+                        $numbers[] = $fulfillment['tracking_number'];
                     }
                     foreach ($numbers as $n) {
                         $n = strtoupper(preg_replace('/\s+/', '', (string) $n) ?? '');
@@ -3610,8 +3614,9 @@ class VeeqoShopifyFulfillmentService
                 if (in_array($status, ['cancelled', 'error', 'failure'], true)) {
                     continue;
                 }
-                $number = '';
-                if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
+                $info = is_array($fulfillment['tracking_info'] ?? null) ? $fulfillment['tracking_info'] : [];
+                $number = trim((string) ($info['number'] ?? ''));
+                if ($number === '' && ! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
                     $number = trim((string) ($fulfillment['tracking_numbers'][0] ?? ''));
                 }
                 if ($number === '' && ! empty($fulfillment['tracking_number'])) {
@@ -3620,10 +3625,14 @@ class VeeqoShopifyFulfillmentService
                 if ($number === '') {
                     continue;
                 }
+                $carrier = trim((string) ($fulfillment['tracking_company'] ?? ''));
+                if ($carrier === '') {
+                    $carrier = trim((string) ($info['company'] ?? ''));
+                }
 
                 return [
                     'tracking' => strtoupper(preg_replace('/\s+/', '', $number) ?? $number),
-                    'carrier' => trim((string) ($fulfillment['tracking_company'] ?? '')) ?: 'Other',
+                    'carrier' => $carrier !== '' ? $carrier : 'Other',
                 ];
             }
         } catch (\Throwable $e) {
@@ -3857,8 +3866,14 @@ class VeeqoShopifyFulfillmentService
     protected function rememberAutoFetchResult(string $marketplace, int $orderId, array $result): void
     {
         $action = (string) ($result['action'] ?? '');
-        if (in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
-            Cache::put($this->autoFetchCacheKey($marketplace, $orderId, 'done'), 1, now()->addDays(7));
+        if ($action === 'shopify_fulfilled') {
+            Cache::put($this->autoFetchCacheKey($marketplace, $orderId, 'done'), 1, now()->addHours(6));
+
+            return;
+        }
+        if ($action === 'already_on_shopify') {
+            // Shopify has a label — keep retrying the marketplace declare.
+            Cache::put($this->autoFetchCacheKey($marketplace, $orderId, 'done'), 1, now()->addMinutes(20));
 
             return;
         }
@@ -3870,7 +3885,7 @@ class VeeqoShopifyFulfillmentService
 
     protected function autoFetchCacheKey(string $marketplace, int $orderId, string $kind): string
     {
-        return 'mm_fetch_tracking_'.$kind.':'.$marketplace.':'.$orderId;
+        return 'mm_fetch_tracking_v2_'.$kind.':'.$marketplace.':'.$orderId;
     }
 
     /**

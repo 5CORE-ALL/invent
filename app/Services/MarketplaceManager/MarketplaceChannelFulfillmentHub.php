@@ -113,6 +113,8 @@ class MarketplaceChannelFulfillmentHub
             return;
         }
 
+        $sku = trim((string) ($result['sku'] ?? ''));
+        $pushed = [];
         $hay = strtolower(trim((string) ($shopifyOrder['tags'] ?? '')).' '.trim((string) ($shopifyOrder['note'] ?? '')));
         $slugs = array_keys($this->channelMap());
         usort($slugs, static fn ($a, $b) => strlen((string) $b) <=> strlen((string) $a));
@@ -125,23 +127,31 @@ class MarketplaceChannelFulfillmentHub
             if ($channelRef === '') {
                 continue;
             }
-            $line = $this->findLineByChannelRef(
-                $slug,
-                $channelRef,
-                trim((string) ($result['sku'] ?? ''))
-            );
+            $line = $this->findLineByChannelRef($slug, $channelRef, $sku);
             if ($line === null) {
                 continue;
             }
-            if (trim((string) ($line->shopify_order_id ?? '')) === '') {
-                try {
-                    $line->shopify_order_id = $shopifyOrderId;
-                    $line->save();
-                } catch (\Throwable) {
-                    // Link is best-effort.
-                }
-            }
+            $this->linkShopifyId($line, $shopifyOrderId);
             $this->pushLine($slug, $line);
+            $pushed[$slug.':'.(int) ($line->id ?? 0)] = true;
+        }
+
+        foreach ($this->findLinesByShopifyOrderId($shopifyOrderId, $sku) as $hit) {
+            $key = $hit['slug'].':'.(int) ($hit['line']->id ?? 0);
+            if (isset($pushed[$key])) {
+                continue;
+            }
+            $this->pushLine($hit['slug'], $hit['line']);
+        }
+    }
+
+    /**
+     * Queue Shopify → marketplace tracking for every channel.
+     */
+    public static function dispatchAllTrackingJobs(int $limit = 40): void
+    {
+        foreach (array_keys((new self)->channelMap()) as $slug) {
+            self::dispatchTrackingJob((string) $slug, $limit);
         }
     }
 
@@ -275,6 +285,60 @@ class MarketplaceChannelFulfillmentHub
             return $query->orderBy('id')->first();
         } catch (\Throwable) {
             return null;
+        }
+    }
+
+    /**
+     * @return list<array{slug: string, line: object}>
+     */
+    protected function findLinesByShopifyOrderId(string $shopifyOrderId, string $sku = ''): array
+    {
+        $shopifyOrderId = trim($shopifyOrderId);
+        if ($shopifyOrderId === '') {
+            return [];
+        }
+
+        $out = [];
+        $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
+        foreach ($this->channelMap() as $slug => $map) {
+            [$class] = $map;
+            try {
+                $model = new $class;
+                $table = $model->getTable();
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'shopify_order_id')) {
+                    continue;
+                }
+                $skuCol = in_array($slug, ['tiktok', 'tiktok2'], true) ? 'seller_sku' : 'sku';
+                $rows = $class::query()
+                    ->where('shopify_order_id', $shopifyOrderId)
+                    ->orderBy('id')
+                    ->limit(20)
+                    ->get();
+                foreach ($rows as $row) {
+                    if ($sku !== '' && Schema::hasColumn($table, $skuCol)
+                        && ! $matcher->skusEqual((string) ($row->{$skuCol} ?? ''), $sku)) {
+                        continue;
+                    }
+                    $out[] = ['slug' => $slug, 'line' => $row];
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return $out;
+    }
+
+    protected function linkShopifyId(object $line, string $shopifyOrderId): void
+    {
+        if (trim((string) ($line->shopify_order_id ?? '')) !== '') {
+            return;
+        }
+        try {
+            $line->shopify_order_id = $shopifyOrderId;
+            $line->save();
+        } catch (\Throwable) {
+            // Link is best-effort.
         }
     }
 }
