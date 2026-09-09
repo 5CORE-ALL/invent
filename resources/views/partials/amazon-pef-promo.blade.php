@@ -2649,6 +2649,35 @@
             if (!plan || !(plan.effective > 0)) return 0;
             return amzCapRuleSprice(d, plan.effective);
         }
+        function amzClearStoredSpriceOnRow(d) {
+            if (!d) return;
+            d.SPRICE = 0;
+            d.has_custom_sprice = false;
+            d._amz_persisted_sprice = 0;
+            if (typeof allTableData === 'undefined' || !Array.isArray(allTableData)) return;
+            const sku = amzPefSku(d);
+            if (!sku) return;
+            for (let i = 0; i < allTableData.length; i++) {
+                if (amzPefSku(allTableData[i]) === sku) {
+                    allTableData[i].SPRICE = 0;
+                    allTableData[i].has_custom_sprice = false;
+                    allTableData[i]._amz_persisted_sprice = 0;
+                    break;
+                }
+            }
+        }
+        function amzBulkClearStoredSprice(skus) {
+            if (!skus || !skus.length) return $.Deferred().resolve().promise();
+            return $.ajax({
+                url: '/amazon-clear-sprice',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                data: {
+                    _token: amzPefCsrf(),
+                    updates: skus.map(function(sku) { return { sku: sku, sprice: 0 }; }),
+                },
+            });
+        }
         /** Keep the in-memory row (and allTableData copy) equal to the visible rule price. */
         function amzWriteStoredSpriceOnRow(d, live) {
             if (!d || !(live > 0)) return;
@@ -2782,10 +2811,9 @@
         }
 
         /**
-         * Always show/store the live rule S PRC. First pass overwrites stale stored
-         * values; later Dil / CVR / 0 Sold / Std / LP changes overwrite again.
+         * Always delete stored S PRC first, then save the live column S PRC in the
+         * background. Column keeps painting the live formula while DB catches up.
          */
-        const AMZ_RULE_SPRICE_CLEAR_KEY = 'amzRuleSpriceClearedOnce:v3';
         let amzRuleSpriceSlabsReady = false;
         const amzRuleReadyBits = { cvr: false, rev: false, dilgroi: false };
         let amzRuleSpriceSyncTimer = null;
@@ -2796,14 +2824,6 @@
         const amzRuleSpricePersistInflight = {};
         const amzRuleSpricePersistLatest = {};
 
-        function amzShouldClearStoredOnce() {
-            try { return !localStorage.getItem(AMZ_RULE_SPRICE_CLEAR_KEY); }
-            catch (e) { return true; }
-        }
-        function amzMarkStoredClearedOnce() {
-            try { localStorage.setItem(AMZ_RULE_SPRICE_CLEAR_KEY, '1'); }
-            catch (e) { /* ignore */ }
-        }
         function amzRuleSpriceNeedsOverwrite(stored, live) {
             if (!(live > 0)) return false;
             return Math.abs((Number(stored) || 0) - live) > 0.009;
@@ -2819,7 +2839,7 @@
                 const latest = amzRuleSpricePersistLatest[job.sku];
                 if (latest && latest.plan) job.plan = latest.plan;
                 amzRuleSpricePersistActive++;
-                amzPersistClearThenSprice(job.row, job.plan.effective, true)
+                saveAmzSpriceFromPromo(job.row, job.plan.effective, true)
                     .done(function(saveRes) {
                         applyAmzPushPrcToSpriceRow(job.row, job.plan, saveRes);
                     })
@@ -2858,63 +2878,86 @@
         }
         function amzApplyRuleSpriceToAllRows(opts) {
             opts = opts || {};
-            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return 0;
+            const done = $.Deferred();
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') {
+                done.resolve(0);
+                return done.promise();
+            }
             if (!amzRuleSpriceSlabsReady && !opts.force) {
                 amzScheduleRuleSpriceSync({ delay: 400 });
-                return 0;
+                done.resolve(0);
+                return done.promise();
             }
-            const clearOnce = !!opts.clearOnce || amzShouldClearStoredOnce();
-            const force = !!opts.force || clearOnce;
-            let changed = 0;
             const rows = table.getRows('all') || [];
+            const clearSkus = [];
+            const saveJobs = [];
             rows.forEach(function(row) {
                 const d = row.getData();
-                if (!amzPefIsChildRow(d) || amzPefInv(d) === 0) return;
+                if (!amzPefIsChildRow(d)) return;
+                const sku = amzPefSku(d);
+                if (!sku) return;
+                clearSkus.push(sku);
+                amzClearStoredSpriceOnRow(d);
+                row.update({
+                    SPRICE: 0,
+                    SGPFT: 0,
+                    'Spft%': 0,
+                    SROI: 0,
+                    SGROI: 0,
+                    has_custom_sprice: false,
+                    _amz_persisted_sprice: 0,
+                });
+                if (amzPefInv(d) === 0) return;
                 const plan = amzRuleSpricePlanForRow(d);
                 if (!plan) return;
                 plan.effective = amzFinalSpriceToSave(d, plan.effective);
                 if (!(plan.effective > 0)) return;
-                const stored = amzLastPersistedSprice(d);
-                if (!force && !amzRuleSpriceNeedsOverwrite(stored, plan.effective)) return;
-                amzWriteStoredSpriceOnRow(d, plan.effective);
-                row.update({
-                    SPRICE: plan.effective,
-                    has_custom_sprice: true,
-                });
-                if (plan.zeroSold && plan.zeroSoldGroi != null) {
-                    row.update({ ZERO_SOLD_PRC_GROI: plan.zeroSoldGroi });
-                }
-                if (plan.dilGroi && plan.dilGroiGroi != null) {
-                    row.update({ DIL_GROI_PRC: plan.dilGroiGroi });
-                }
-                amzEnqueueRuleSpricePersist(row, plan);
-                changed++;
+                saveJobs.push({ row: row, plan: plan, sku: sku });
             });
-            if (clearOnce) amzMarkStoredClearedOnce();
-            if (changed && table) {
-                try { amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
+            if (!clearSkus.length) {
+                if (typeof window.updateAmazonSummary === 'function') {
+                    try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }
+                }
+                done.resolve(0);
+                return done.promise();
             }
-            if (opts.toast) {
-                amzPefToast(
-                    changed ? 'success' : 'info',
-                    changed
-                        ? ('S PRC autofilled from rules on ' + changed + ' SKU(s).')
-                        : 'S PRC already matches the live rules.'
-                );
-            }
-            return changed;
+            amzBulkClearStoredSprice(clearSkus).always(function() {
+                saveJobs.forEach(function(job) {
+                    amzEnqueueRuleSpricePersist(job.row, job.plan);
+                });
+                if (table) {
+                    try { amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
+                }
+                if (typeof window.updateAmazonSummary === 'function') {
+                    try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }
+                }
+                if (opts.toast) {
+                    amzPefToast(
+                        saveJobs.length ? 'success' : 'info',
+                        saveJobs.length
+                            ? ('S PRC cleared, then ' + saveJobs.length + ' new S PRC queued in background.')
+                            : 'S PRC cleared. No new live S PRC to save.'
+                    );
+                }
+                done.resolve(saveJobs.length);
+            });
+            return done.promise();
         }
         function amzScheduleRuleSpriceSync(opts) {
             opts = opts || {};
             clearTimeout(amzRuleSpriceSyncTimer);
             amzRuleSpriceSyncTimer = setTimeout(function() {
-                if (amzRuleSpriceSyncBusy) {
+                if (amzRuleSpriceSyncBusy || amzRuleSpricePersistActive > 0 || amzRuleSpricePersistQueue.length) {
                     amzScheduleRuleSpriceSync(opts);
                     return;
                 }
                 amzRuleSpriceSyncBusy = true;
-                try { amzApplyRuleSpriceToAllRows(opts); }
-                finally { amzRuleSpriceSyncBusy = false; }
+                const req = amzApplyRuleSpriceToAllRows(opts);
+                if (req && typeof req.always === 'function') {
+                    req.always(function() { amzRuleSpriceSyncBusy = false; });
+                } else {
+                    amzRuleSpriceSyncBusy = false;
+                }
             }, opts.delay != null ? opts.delay : 400);
         }
         function bindAmzRuleSpriceAutofill() {
@@ -2925,11 +2968,11 @@
             if (table._amzRuleSpriceAutofillBound) return;
             table._amzRuleSpriceAutofillBound = true;
             table.on('dataLoaded', function() {
-                amzScheduleRuleSpriceSync({ force: amzShouldClearStoredOnce(), delay: 500 });
+                amzScheduleRuleSpriceSync({ delay: 500 });
             });
             try {
                 if ((typeof table.getDataCount === 'function' ? table.getDataCount() : 0) > 0) {
-                    amzScheduleRuleSpriceSync({ force: amzShouldClearStoredOnce(), delay: 500 });
+                    amzScheduleRuleSpriceSync({ delay: 500 });
                 }
             } catch (e) { /* wait for dataLoaded */ }
         }

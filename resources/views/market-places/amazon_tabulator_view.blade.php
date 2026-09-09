@@ -1362,6 +1362,20 @@
             return (isFinite(stored) && stored > 0) ? stored : 0;
         }
 
+        /** Same S PRC the column paints (live plan + LMP cap). No stored-SPRICE fallback. */
+        function amazonVisibleSprice(rowData) {
+            if (!rowData) return 0;
+            let raw = 0;
+            if (typeof computeAmzPushPrcPlan === 'function') {
+                const plan = computeAmzPushPrcPlan(rowData);
+                if (plan && plan.effective > 0) raw = Number(plan.effective);
+            }
+            if (!(raw > 0)) return 0;
+            return (typeof amazonCapSpriceToLmp === 'function')
+                ? amazonCapSpriceToLmp(rowData, raw)
+                : +Number(raw).toFixed(2);
+        }
+
         function amazonComputeNetSroi(rowData) {
             if (!rowData) return null;
             const sprice = amazonRowSprice(rowData);
@@ -1500,8 +1514,10 @@
             if (!sku || sku.indexOf('PARENT') === 0) return false;
             // Same as S PRC column + cron: INV=0 is not a live rule price / not pushable.
             if (!(parseFloat(data.INV) > 0)) return false;
+            // Dil / CVR / Rev slabs load after first paint — don't count stale stored SPRICE.
+            if (typeof amzRuleSpriceSlabsReady !== 'undefined' && !amzRuleSpriceSlabsReady) return false;
             const price = parseFloat(data.price) || 0;
-            const sprice = amazonRowSprice(data);
+            const sprice = amazonVisibleSprice(data);
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
         function amazonListingPriceEqualsSprice(data, spriceOverride) {
@@ -5431,9 +5447,15 @@
                 if (window.PriceLt80LmpBadge) {
                     PriceLt80LmpBadge.update('#amazon-price-lt80-lmp-badge', allData, 'amazon', 'price');
                 }
-                $('#amazon-blue-triangle-badge').html(
-                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
-                );
+                if (typeof amzRuleSpriceSlabsReady !== 'undefined' && !amzRuleSpriceSlabsReady) {
+                    $('#amazon-blue-triangle-badge').html(
+                        '<i class="fas fa-exclamation-triangle"></i> …'
+                    );
+                } else {
+                    $('#amazon-blue-triangle-badge').html(
+                        '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+                    );
+                }
                 syncAmazonBlueTriangleBadgeState();
 
                 // Filtered (active) row count — exclude parent summary rows
@@ -5497,6 +5519,7 @@
                     });
                 }
             }
+            window.updateAmazonSummary = updateSummary;
 
             /*
              * Column visibility — 4 groups (Basic / Price / Ads / Other).
