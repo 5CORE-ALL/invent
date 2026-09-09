@@ -4410,19 +4410,21 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "Suggested price from Dil → Target GROI% slabs. Temu L30 = 0 uses the minimum Target GROI. S PRC is back-solved so SGROI matches the target.",
+                    headerTooltip: "Suggested price from Dil → Target GROI% slabs. Temu L30 = 0 uses the minimum Target GROI. CVR Down < 7% subtracts 10 from Target GROI%; CVR Up > 10% adds 10. S PRC is back-solved so SGROI matches the target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
                         if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                         const meta = ebayDilGroiMetaForRow(rowData);
                         if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = (meta.zeroSoldMin
+                        const tip = (typeof ebayDilGroiTipText === 'function')
+                            ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold Temu L30 → min Target GROI' })
+                            : ((meta.zeroSoldMin
                                 ? '0 Sold Temu L30 → min Target GROI'
                                 : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
                             + ' → ' + meta.label
                             + ' → GROI ' + meta.groi + '%'
-                            + ' → $' + meta.sprc.toFixed(2);
+                            + ' → $' + meta.sprc.toFixed(2));
                         return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                             + meta.sprc.toFixed(2) + '</span>';
                     },

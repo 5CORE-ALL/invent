@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\AmazonOrder;
+use Carbon\Carbon;
 use PHPUnit\Framework\TestCase;
 
 class AmazonOrderProductSalesTest extends TestCase
@@ -75,5 +76,35 @@ class AmazonOrderProductSalesTest extends TestCase
             $shifted = \Carbon\Carbon::parse($utc, 'UTC')->addHours($inPdt ? -7 : -8)->toDateString();
             $this->assertSame($pacificDay, $shifted, "SQL offset for {$utc}");
         }
+    }
+
+    public function test_daily_sales_l30_window_is_30_pacific_days_through_yesterday(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-10 12:00:00', 'America/Los_Angeles'));
+        try {
+            [$start, $end] = AmazonOrder::dailySalesL30Window(30);
+            $this->assertSame(
+                '2026-08-11 00:00:00',
+                $start->timezone('America/Los_Angeles')->format('Y-m-d H:i:s')
+            );
+            $this->assertSame(
+                '2026-09-09 23:59:59',
+                $end->timezone('America/Los_Angeles')->format('Y-m-d H:i:s')
+            );
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_units_sold_lookup_matches_product_sku_variants(): void
+    {
+        $map = AmazonOrder::indexUnitsSoldBySkuKeys([
+            (object) ['sku' => 'SPKN GRN 4PCS', 'qty' => 2],
+        ]);
+
+        $this->assertSame(2, AmazonOrder::unitsSoldForProductSku('SPKN GRN 4PCS', $map));
+        $this->assertSame(2, AmazonOrder::unitsSoldForProductSku('spkn grn 4pcs', $map));
+        $this->assertSame(2, AmazonOrder::unitsSoldForProductSku('SPKNGRN4PCS', $map));
+        $this->assertSame(0, AmazonOrder::unitsSoldForProductSku('OTHER SKU', $map));
     }
 }

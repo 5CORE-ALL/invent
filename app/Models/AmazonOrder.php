@@ -452,4 +452,102 @@ class AmazonOrder extends Model
 
         return "(SELECT COALESCE(SUM({$inner}), 0) FROM amazon_order_items li WHERE li.amazon_order_id = {$orderAlias}.id)";
     }
+
+    /**
+     * Rolling window used by /amazon/daily-sales: inclusive Pacific days ending yesterday.
+     *
+     * @return array{0: Carbon, 1: Carbon} [start, end]
+     */
+    public static function dailySalesL30Window(int $days = 30): array
+    {
+        $days = max(1, $days);
+        $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
+        $end = $yesterdayPacific->copy()->endOfDay();
+        $start = $yesterdayPacific->copy()->subDays($days - 1)->startOfDay();
+
+        return [$start, $end];
+    }
+
+    /**
+     * SKU keys for matching Product Master / tabulator rows to amazon_order_items.sku.
+     *
+     * @return list<string>
+     */
+    public static function skuLookupKeys(?string $sku): array
+    {
+        $raw = trim(str_replace("\xC2\xA0", ' ', (string) $sku));
+        if ($raw === '') {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter([
+            (string) $sku,
+            $raw,
+            strtoupper($raw),
+            AmazonDatasheet::normalizeSkuSpaces($raw),
+            AmazonDatasheet::normalizeSkuForLookup($raw),
+        ], fn ($key) => $key !== null && $key !== '')));
+    }
+
+    /**
+     * @param  iterable<int, object|array<string, mixed>>  $rows  each with sku + qty
+     * @return array<string, int>
+     */
+    public static function indexUnitsSoldBySkuKeys(iterable $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $sku = is_array($row) ? (string) ($row['sku'] ?? '') : (string) ($row->sku ?? '');
+            $qty = (int) (is_array($row) ? ($row['qty'] ?? 0) : ($row->qty ?? 0));
+            if ($qty === 0) {
+                continue;
+            }
+            foreach (self::skuLookupKeys($sku) as $key) {
+                $out[$key] = ($out[$key] ?? 0) + $qty;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Per-SKU units sold in a window — same query as /amazon/daily-sales (Σ i.quantity, not canceled).
+     *
+     * @return array<string, int>
+     */
+    public static function unitsSoldBySkuForWindow(DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        $rows = self::constrainOrderDate(
+            DB::table('amazon_orders as o')
+                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->where(function ($q) {
+                    $q->whereNull('o.status')
+                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                })
+                ->whereNotNull('i.sku')
+                ->where('i.sku', '!=', ''),
+            $start,
+            $end
+        )
+            ->selectRaw('i.sku as sku, SUM(COALESCE(i.quantity, 0)) as qty')
+            ->groupBy('i.sku')
+            ->get();
+
+        return self::indexUnitsSoldBySkuKeys($rows);
+    }
+
+    public static function unitsSoldForProductSku(string $productSku, array $unitsBySku, ?string $sellerSku = null): int
+    {
+        $candidates = self::skuLookupKeys($productSku);
+        if ($sellerSku !== null && $sellerSku !== '') {
+            $candidates = array_values(array_unique(array_merge($candidates, self::skuLookupKeys($sellerSku))));
+        }
+        foreach ($candidates as $key) {
+            if (isset($unitsBySku[$key])) {
+                return (int) $unitsBySku[$key];
+            }
+        }
+
+        return 0;
+    }
 }

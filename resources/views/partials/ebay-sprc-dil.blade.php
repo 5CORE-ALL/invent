@@ -3,7 +3,7 @@
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
   Amazon / eBay 1–3 / Doba Pickup: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
-  eBay 1–3 CVR overlay on Target GROI: Down and < 7% = -10; Up and > 10% = +10.
+  eBay 1–3 / Temu 1–2 CVR overlay on Target GROI: Down and < 7% = -10; Up and > 10% = +10.
   Macys: Dil-matching when Dil is in a slab. If Dil is out of box and 0 Sold, use min Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price (do not keep Std Prc).
   Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
@@ -17,7 +17,7 @@
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'doba_withoutship', 'macys', 'macy'], true);
-    $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true);
+    $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg'], true);
     $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace'], true);
@@ -181,7 +181,7 @@
                         title="{{ !empty($ebaySprcDilIsMacys)
                             ? 'Dil-matching slab, or min GROI when Dil is out of box and 0 Sold. If that S PRC < A Price, use A Price.'
                             : ($ebaySprcDilZeroSoldUsesMinGroi
-                            ? 'Dil slabs → Target GROI%. '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.'
+                            ? 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR Down < 7% subtracts 10 from Target GROI%; CVR Up > 10% adds 10.' : '').' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.'
                             : 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR Down < 7% subtracts 10 from Target GROI%; CVR Up > 10% adds 10.' : '').' Every INV > 0 SKU uses the Dil-matching slab.') }}">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
@@ -235,6 +235,16 @@
                             <strong>When</strong> {{ $ebaySprcDilSoldLabel }} &gt; 0 and Dil sits in a From–To range:
                             use that slab’s Target GROI (first match; last slab includes the To value).
                         </li>
+                        @if(!empty($ebaySprcDilCvrGroiAdj))
+                        <li>
+                            <strong>When</strong> CVR is Down and CVR L30 is below 7%:
+                            subtract 10 from that Target GROI% (not below 0).
+                        </li>
+                        <li>
+                            <strong>When</strong> CVR is Up and CVR L30 is above 10%:
+                            add 10 to that Target GROI%.
+                        </li>
+                        @endif
                         <li>
                             <strong>When</strong> a price is calculated (slab match or 0 Sold min GROI):
                             it auto-applies to <strong>S PRC</strong> and is <strong>queued for Push Prc</strong>
@@ -473,8 +483,12 @@
             return (ov / inv) * 100;
         }
         function ebayDgCvr30(d) {
+            if (d && d.cvr_30 != null && d.cvr_30 !== '') {
+                const n = Number(d.cvr_30);
+                if (isFinite(n) && n >= 0) return n;
+            }
             if (typeof chPromoCvr === 'function') return Number(chPromoCvr(d)) || 0;
-            return Number(d && (d.SCVR != null ? d.SCVR : d.cvr_30)) || 0;
+            return Number(d && (d.SCVR != null ? d.SCVR : d.cvr_percent)) || 0;
         }
         function ebayDgCvr60(d) {
             return Number(d && (d.CVR_60 != null ? d.CVR_60 : d.cvr_60)) || 0;
@@ -493,7 +507,7 @@
             const bucket = cvr < 7 ? 'lt7' : (cvr > 10 ? 'gt10' : '7-10');
             return trend + '-' + bucket;
         }
-        /** -10 when CVR is Down and < 7%; +10 when CVR is Up and > 10%. eBay 1–3 only. */
+        /** -10 when CVR is Down and < 7%; +10 when CVR is Up and > 10%. eBay 1–3 / Temu 1–2. */
         function ebayDilGroiCvrAdj(d) {
             if (!EBAY_DIL_GROI_CVR_ADJ) return 0;
             const cvr = ebayDgCvr30(d);
@@ -691,12 +705,14 @@
                 zeroSoldMin: zeroSoldMin,
             };
         }
-        function ebayDilGroiTipText(meta) {
+        function ebayDilGroiTipText(meta, opts) {
+            opts = opts || {};
             if (!meta || !(meta.sprc > 0)) return '';
             const slabGroi = (meta.slabGroi != null) ? meta.slabGroi : meta.groi;
-            let tip = 'Dil ' + (isFinite(meta.dil) ? Number(meta.dil).toFixed(1) : '0') + '%'
-                + ' → ' + meta.label
-                + ' → GROI ' + slabGroi + '%';
+            const head = meta.zeroSoldMin
+                ? (opts.zeroSoldLabel || '0 Sold → min Target GROI')
+                : ('Dil ' + (isFinite(meta.dil) ? Number(meta.dil).toFixed(1) : '0') + '%');
+            let tip = head + ' → ' + meta.label + ' → GROI ' + slabGroi + '%';
             if (meta.cvrAdj) {
                 const sign = meta.cvrAdj > 0 ? '+' : '';
                 const why = meta.cvrAdj > 0 ? 'CVR Up > 10%' : 'CVR Down < 7%';

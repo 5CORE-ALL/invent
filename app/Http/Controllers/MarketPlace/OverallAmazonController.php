@@ -18,8 +18,10 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
+use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Jobs\UpdateAmazonSPriceJob;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonOrder;
 use App\Models\AmazonProductReview;
 use App\Models\AmazonSkuDailyData;
 use App\Models\ChannelMaster;
@@ -175,6 +177,17 @@ class OverallAmazonController extends Controller
         $amazonDatasheetsBySku = AmazonDatasheet::groupedByNormalizedSku();
 
         $shopifyData = ShopifySku::mapByProductSkus($skus);
+
+        // A L30 = real Amazon order units in the same Pacific L30 window as /amazon/daily-sales.
+        $amazonL30UnitsBySku = [];
+        try {
+            [$dailySalesStart, $dailySalesEnd] = AmazonOrder::dailySalesL30Window(AmazonSalesController::DAILY_SALES_WINDOW_DAYS);
+            $amazonL30UnitsBySku = AmazonOrder::unitsSoldBySkuForWindow($dailySalesStart, $dailySalesEnd);
+        } catch (\Throwable $e) {
+            Log::warning('Amazon tabulator: failed loading daily-sales L30 units', [
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         // Amazon Ads/SP cron ratings → amazon_product_reviews (Reviews column on tabulator)
         $amzReviewsBySku = [];
@@ -349,7 +362,6 @@ class OverallAmazonController extends Controller
 
             if ($amazonSheet) {
                 $row['asin'] = $amazonSheet->asin ?? null;
-                $row['A_L30'] = $amazonSheet->units_ordered_l30 ?? 0;
                 $row['A_L15'] = $amazonSheet->units_ordered_l15 ?? 0;
                 $row['A_L7'] = $amazonSheet->units_ordered_l7 ?? 0;
                 $row['Sess30'] = $amazonSheet->sessions_l30 ?? 0;
@@ -360,7 +372,6 @@ class OverallAmazonController extends Controller
                 $row['units_ordered_l60'] = $amazonSheet->units_ordered_l60 ?? 0;
             } else {
                 $row['asin'] = null;
-                $row['A_L30'] = 0;
                 $row['A_L15'] = 0;
                 $row['A_L7'] = 0;
                 $row['Sess30'] = 0;
@@ -370,6 +381,13 @@ class OverallAmazonController extends Controller
                 $row['sessions_l60'] = 0;
                 $row['units_ordered_l60'] = 0;
             }
+
+            // A L30 from real Amazon orders — same source / window as /amazon/daily-sales.
+            $row['A_L30'] = AmazonOrder::unitsSoldForProductSku(
+                (string) $pm->sku,
+                $amazonL30UnitsBySku,
+                $amazonSheet->sku ?? null
+            );
 
             // Previous recorded-day CVR for arrow trend (vs last amazon_sku_daily_data snapshot).
             $prevHit = $cvrPrevBySku[$sku]
@@ -3119,15 +3137,9 @@ class OverallAmazonController extends Controller
                 ->value('ads_percentage');
         }
 
-        // Authoritative 30-day units sold from real Amazon orders — SAME window + query the
-        // /amazon/daily-sales page uses (Σ i.quantity, Pacific through yesterday, exclude
-        // Canceled/Cancelled). The per-SKU A_L30 column comes from a different (datasheet)
-        // source, so this badge is driven from orders to match daily-sales exactly.
-        $yesterdayPacific = \Carbon\Carbon::yesterday('America/Los_Angeles');
-        $unitsEnd = $yesterdayPacific->copy()->endOfDay();
-        $unitsStart = $yesterdayPacific->copy()
-            ->subDays(\App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS - 1)
-            ->startOfDay();
+        // Authoritative 30-day units / sales from real Amazon orders — SAME window + query
+        // /amazon/daily-sales uses. Per-SKU A_L30 in getViewAmazonData uses this same window.
+        [$unitsStart, $unitsEnd] = AmazonOrder::dailySalesL30Window(AmazonSalesController::DAILY_SALES_WINDOW_DAYS);
         $amazonUnitsSoldL30 = (int) (\App\Models\AmazonOrder::constrainOrderDate(
             DB::table('amazon_orders as o')
                 ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
