@@ -2051,10 +2051,10 @@ class NeweggApiService
     {
         $manufacturer = trim((string) ($fields['manufacturer'] ?? ''));
         if ($manufacturer === '') {
-            $manufacturer = trim((string) config('services.newegg.default_manufacturer', '5 Core Inc.'));
+            $manufacturer = trim((string) config('services.newegg.default_manufacturer', '5 Core'));
         }
 
-        return $manufacturer !== '' ? $manufacturer : '5 Core Inc.';
+        return $manufacturer !== '' ? $manufacturer : '5 Core';
     }
 
     protected function normalizeUpc(string $raw): string

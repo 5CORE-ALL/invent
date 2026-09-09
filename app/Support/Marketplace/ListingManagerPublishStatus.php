@@ -444,8 +444,8 @@ class ListingManagerPublishStatus
         if (! is_array($specifics)) {
             $specifics = [];
         }
-        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
-        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
+        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
+        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core')) ?: '5 Core';
         $defaultCondition = trim((string) config('listing_manager.default_condition', 'New')) ?: 'New';
         $brand = $defaultBrand;
         $manufacturer = $defaultManufacturer;

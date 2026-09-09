@@ -151,7 +151,7 @@ class AliExpressApiService
      */
     public function postProduct(array $request): array
     {
-        $brand = trim((string) ($request['brand_name'] ?? '')) ?: '5 Core Inc.';
+        $brand = trim((string) ($request['brand_name'] ?? '')) ?: '5 Core';
         $request = $this->ensureAliExpressBrandAttribute($request, $brand);
         $weight = $this->aliexpressWeightNumber($request);
         $lb = $this->aliexpressWeightPounds($request, $weight);
@@ -795,7 +795,7 @@ class AliExpressApiService
      */
     private function ensureAliExpressBrandAttribute(array $request, string $brand): array
     {
-        $brand = trim($brand) !== '' ? trim($brand) : '5 Core Inc.';
+        $brand = trim($brand) !== '' ? trim($brand) : '5 Core';
         $request['brand_name'] = $brand;
         $attrs = is_array($request['attribute_list'] ?? null) ? $request['attribute_list'] : [];
         $hasBrandId = false;
@@ -3069,11 +3069,11 @@ class AliExpressApiService
             'shipping_preparation_time' => max(1, (int) ($request['shipping_lead_time'] ?? 7)),
             'shipping_template_id' => (string) ($request['freight_template_id'] ?? ''),
             'service_template_id' => (string) ($request['service_policy_id'] ?? '0'),
-            'brand_name' => (string) ($request['brand_name'] ?? '5 Core Inc.'),
+            'brand_name' => (string) ($request['brand_name'] ?? '5 Core'),
             'usLogisticsWeight' => $usWeight,
             'aeLogisticsWeight' => $usWeight,
             'category_attributes' => [
-                'Brand Name' => ['value' => (string) ($request['brand_name'] ?? '5 Core Inc.')],
+                'Brand Name' => ['value' => (string) ($request['brand_name'] ?? '5 Core')],
             ],
         ];
     }

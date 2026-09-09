@@ -409,9 +409,9 @@ class NeweggListingPublishService
             return $brand;
         }
 
-        $configured = trim((string) config('services.newegg.default_manufacturer', '5 Core Inc.'));
+        $configured = trim((string) config('services.newegg.default_manufacturer', '5 Core'));
 
-        return $configured !== '' ? $configured : '5 Core Inc.';
+        return $configured !== '' ? $configured : '5 Core';
     }
 
     private function resolveUpc(ProductMaster $product): string

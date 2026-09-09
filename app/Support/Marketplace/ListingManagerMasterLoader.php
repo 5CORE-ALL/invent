@@ -375,12 +375,12 @@ class ListingManagerMasterLoader
         if ($upc === '') {
             $upc = trim((string) ($pm['upc'] ?? $pm['barcode'] ?? $values['upc'] ?? $values['gtin'] ?? ''));
         }
-        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
-        $manufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
+        $manufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core')) ?: '5 Core';
 
         return [
             'success' => true,
-            'message' => 'Identifiers loaded. Brand is 5 Core Inc. and model/MPN is the SKU.',
+            'message' => 'Identifiers loaded. Brand is 5 Core and model/MPN is the SKU.',
             'source' => 'identifiers',
             'upc' => $upc,
             'brand' => $brand,
@@ -529,10 +529,10 @@ class ListingManagerMasterLoader
     private static function reverb(string $sku): array
     {
         $pm = self::productMaster($sku);
-        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
         $payload = [
             'success' => true,
-            'message' => 'Reverb details loaded. Make is 5 Core Inc., model is the SKU, condition is Brand New.',
+            'message' => 'Reverb details loaded. Make is 5 Core, model is the SKU, condition is Brand New.',
             'source' => 'reverb',
             'make' => $brand,
             'model' => $sku,

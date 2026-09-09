@@ -467,8 +467,8 @@ class ListingManagerController extends Controller
                     : (($shopify['success'] ?? false) ? 'Main Store' : 'Amazon'),
                 'upc' => (string) ($hydrated['upc'] ?? ListingManagerAmazonHydrator::upcFromCpMaster($sku, $pm, $listing, $raw)),
                 'mpn' => $sku,
-                'vendor' => (string) ($hydrated['brand'] ?: config('listing_manager.default_brand', '5 Core Inc.')),
-            'manufacturer' => (string) ($hydrated['manufacturer'] ?: config('listing_manager.default_manufacturer', '5 Core Inc.')),
+                'vendor' => (string) ($hydrated['brand'] ?: config('listing_manager.default_brand', '5 Core')),
+            'manufacturer' => (string) ($hydrated['manufacturer'] ?: config('listing_manager.default_manufacturer', '5 Core')),
             'parent' => ListingManagerFamily::parentKey($sku),
                 'product_type' => (string) ($hydrated['product_type'] ?: ($pm['product_type'] ?? $listing?->product_type ?? '')),
                 'tags' => (string) ($pm['tags'] ?? $pm['generic_keyword'] ?? ''),
@@ -2739,7 +2739,7 @@ class ListingManagerController extends Controller
      * @return array<string, mixed>
      */
     /**
-     * Brand / Manufacturer = 5 Core Inc., model/MPN = SKU, condition = New / Brand New,
+     * Brand / Manufacturer = 5 Core, model/MPN = SKU, condition = New / Brand New,
      * package from Dim/Wt Master, UPC from CP Master.
      *
      * @param  array<string, mixed>  $details

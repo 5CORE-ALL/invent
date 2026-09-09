@@ -168,7 +168,7 @@ class TikTokListingPublishService
 
         $weight = $this->resolveWeightLb($details, $hydrated, $weightLb);
         $dims = $this->resolveDimensions($details, $hydrated);
-        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
         $brandId = $api->searchBrandId($category['id'], $brand);
         $attributes = $api->requiredAttributesForCategory($category['id']);
 
