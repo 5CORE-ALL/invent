@@ -131,13 +131,13 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
                             style="color: white; font-weight: bold;"
-                            title="GPFT % = Σ (Temu Price × margin − LP − Ship) × Qty ÷ Σ (Temu Price × Qty) × 100">GPFT: 0%</span>
+                            title="GPFT % = Σ GPFT$ ÷ Σ (Temu Price × Qty) × 100">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"
                             style="background-color: purple; color: white; font-weight: bold;"
-                            title="GROI % = Σ (Temu Price × margin − LP − Ship) × Qty ÷ Σ (LP × Qty) × 100">GROI: 0%</span>
+                            title="GROI % = Σ GPFT$ ÷ Σ (LP × Qty) × 100">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;"
-                            title="PFT Total = Σ (R Price × margin − LP − Temu Ship) × Qty">PFT Total: $0</span>
+                            title="GPFT$ = Σ (R Price × margin − LP − Temu Ship) × Qty">GPFT$: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
                             style="color: white; font-weight: bold;"
                             title="L30 Sales = Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">L30 Sales: $0</span>
@@ -217,15 +217,7 @@
         const qty = parseInt(row && row.quantity_purchased) || 0;
         return temuFbPrice(temuRowBase(row), qty);
     }
-    /** Per-unit profit on Temu Price — GPFT / GROI only. */
-    function temuRowTemuProfit(row) {
-        const temuPrice = temuRowTemuPrice(row);
-        if (!(temuPrice > 0)) return 0;
-        const lp = parseFloat(row && row.lp) || 0;
-        const ship = parseFloat(row && row.temu_ship) || 0;
-        return temuPrice * TEMU_MARGIN - lp - ship;
-    }
-    /** Per-unit profit on R Price — PFT $ column only. */
+    /** Per-unit profit on R Price — GPFT$ / GPFT % / GROI %. */
     function temuRowRPriceProfit(row) {
         const rPrice = temuRowRPrice(row);
         if (!(rPrice > 0)) return 0;
@@ -236,12 +228,12 @@
     function temuRowGpftPercent(row) {
         const temuPrice = temuRowTemuPrice(row);
         if (!(temuPrice > 0)) return 0;
-        return (temuRowTemuProfit(row) / temuPrice) * 100;
+        return (temuRowRPriceProfit(row) / temuPrice) * 100;
     }
     function temuRowGroiPercent(row) {
         const lp = parseFloat(row && row.lp) || 0;
         if (!(lp > 0)) return 0;
-        return (temuRowTemuProfit(row) / lp) * 100;
+        return (temuRowRPriceProfit(row) / lp) * 100;
     }
     const COLUMN_VIS_KEY = "temu2_tabulator_column_visibility";
     let table = null;
@@ -587,7 +579,7 @@
                     formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
                 },
                 {
-                    title: "PFT Total",
+                    title: "GPFT$",
                     field: "pft",
                     hozAlign: "right",
                     sorter: "number",
@@ -609,7 +601,7 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
-                    headerTooltip: "GPFT % = (Temu Price × margin − LP − Temu Ship) ÷ Temu Price × 100",
+                    headerTooltip: "GPFT % = GPFT$ ÷ Temu Price × 100",
                     mutator: function(value, data) {
                         return temuRowGpftPercent(data);
                     },
@@ -626,7 +618,7 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
-                    headerTooltip: "GROI % = (Temu Price × margin − LP − Temu Ship) ÷ LP × 100",
+                    headerTooltip: "GROI % = GPFT$ ÷ LP × 100",
                     mutator: function(value, data) {
                         return temuRowGroiPercent(data);
                     },
@@ -664,7 +656,7 @@
         function updateSummary() {
             const data = table.getData("active");
             let totalOrders = 0, totalQuantity = 0, totalPft = 0, totalL30Sales = 0;
-            let totalTemuFullPriceSales = 0, totalTemuPricePft = 0;
+            let totalTemuFullPriceSales = 0;
             let totalWeightedPrice = 0, totalQuantityForPrice = 0, totalCogs = 0;
 
             data.forEach(row => {
@@ -680,7 +672,6 @@
                     totalWeightedPrice += basePrice * quantity;
                     totalQuantityForPrice += quantity;
                     totalPft += temuRowRPriceProfit(row) * quantity;
-                    totalTemuPricePft += temuRowTemuProfit(row) * quantity;
                     totalL30Sales += quantity * temuPrice;
                     totalTemuFullPriceSales += quantity * temuPrice;
                     totalCogs += lp * quantity;
@@ -689,16 +680,16 @@
 
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
             const pftPercentage = totalTemuFullPriceSales > 0
-                ? (totalTemuPricePft / totalTemuFullPriceSales) * 100
+                ? (totalPft / totalTemuFullPriceSales) * 100
                 : 0;
-            const roiPercentage = totalCogs > 0 ? (totalTemuPricePft / totalCogs) * 100 : 0;
+            const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
             $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());
-            $('#pft-total-badge').text('PFT Total: $' + Math.round(totalPft).toLocaleString());
+            $('#pft-total-badge').text('GPFT$: $' + Math.round(totalPft).toLocaleString());
             $('#pft-total-badge').toggleClass('bg-danger', totalPft < 0).toggleClass('bg-dark', totalPft >= 0);
             $('#l30-sales-badge').text('L30 Sales: $' + Math.round(totalL30Sales).toLocaleString());
             $('#temu-full-price-sales-badge').text('Temu Full Price Sales: $' + Math.round(totalTemuFullPriceSales).toLocaleString());
