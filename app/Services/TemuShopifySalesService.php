@@ -432,7 +432,7 @@ class TemuShopifySalesService
     }
 
     /**
-     * Per Pacific-day FB sales / base sales / qty / orders from temu2_orders.
+     * Per Pacific-day Temu Price sales from temu2_orders (no −$2.99 on Base).
      *
      * @return array<string, array{sales: float, base_sales: float, qty: int, orders: int}>
      */
@@ -453,13 +453,10 @@ class TemuShopifySalesService
                 $out[$d] = ['sales' => 0.0, 'base_sales' => 0.0, 'qty' => 0, 'oids' => []];
             }
             $lineSales = (float) ($r['line_sales'] ?? 0);
-            if ($lineSales > 0) {
-                $out[$d]['sales'] += $lineSales;
-                $out[$d]['base_sales'] += $lineSales;
-            } else {
-                $out[$d]['sales'] += self::lineSales($base, $qty);
-                $out[$d]['base_sales'] += $base * $qty;
-            }
+            $rawUnit = ($lineSales > 0 && $qty > 0) ? ($lineSales / $qty) : $base;
+            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, self::temuMarginDecimal(), 0.0, 0.0, false);
+            $out[$d]['sales'] += $calc['sales'];
+            $out[$d]['base_sales'] += $calc['base'] * $qty;
             $out[$d]['qty'] += $qty;
             $oid = trim((string) ($r['order_id'] ?? ''));
             if ($oid !== '') {
@@ -514,7 +511,7 @@ class TemuShopifySalesService
             $yesterday->copy()->startOfDay(),
             $yesterday->copy()->endOfDay(),
             true
-        )['base_sales'];
+        )['sales'];
     }
 
     /** L7 Sales from temu2_orders: seven wall-clock Pacific days ending yesterday. */
@@ -526,7 +523,7 @@ class TemuShopifySalesService
 
         [$start, $end] = self::channelMasterL7Window();
 
-        return (float) self::computeMetricsFromOrders($start, $end, true)['base_sales'];
+        return (float) self::computeMetricsFromOrders($start, $end, true)['sales'];
     }
 
     /**

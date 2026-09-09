@@ -126,7 +126,7 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge fs-6 p-2" id="y-sales-badge"
                             style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="Yesterday's Temu 2 sales from bg.order.amount.query (base + freight) — matches Seller Central's daily sales bar and the Temu 2 row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($temu2YSales ?? 0), 0) }}</span>
+                            title="Yesterday's Temu 2 Temu Price sales — (Base × 1.1364); +$2.99 if that result ≤ $26.99. Same as Active Channel Temu 2 Y Sales.">Y Sales: ${{ number_format((float) ($temu2YSales ?? 0), 0) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"

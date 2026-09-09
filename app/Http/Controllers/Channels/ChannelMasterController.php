@@ -1054,105 +1054,22 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 2 L30: live temu2_orders in the Pacific L30 window (same clock as Temu 1).
+     * Temu 2 L30 for Active Channel: temu2_orders + Temu Price
+     * (Base × 1.1364; +$2.99 if that result ≤ $26.99). No sheet, no −$2.99 on Base.
      *
-     * @return array{total_orders: int, total_quantity: int, total_revenue: float}|null
+     * @return array{total_orders: int, total_quantity: int, total_revenue: float, total_pft: float, total_cogs: float, gpft_percent: float, groi_percent: float}|null
      */
     private function getTemu2TabulatorSalesSummary(): ?array
     {
         try {
-            if (Schema::hasTable('temu2_orders')) {
-                [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
-                $live = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
-                if ((float) ($live['sales'] ?? 0) > 0) {
-                    return $this->temuMetricsToLiveSummary($live);
-                }
-            }
-
-            if (! Schema::hasTable('temu2_daily_data')) {
+            if (! Schema::hasTable('temu2_orders')) {
                 return null;
             }
 
-            $normalizeSku = function ($sku) {
-                $sku = strtoupper(trim((string) $sku));
-                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-                $sku = preg_replace('/\s+/', ' ', $sku);
+            [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
+            $live = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
 
-                return $sku;
-            };
-
-            $productMasters = ProductMaster::query()
-                ->orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                ->orderBy('sku', 'asc')
-                ->get(['sku', 'parent']);
-
-            $normalizedPmSet = [];
-            $pmByNormalized = [];
-            foreach ($productMasters as $pm) {
-                $sku = (string) ($pm->sku ?? '');
-                if ($sku === '' || stripos($sku, 'PARENT') !== false) {
-                    continue;
-                }
-                $key = $normalizeSku($sku);
-                $normalizedPmSet[$key] = true;
-                $pmByNormalized[$key] = $pm;
-            }
-
-            $allowedRawSkus = Temu2DailyData::select('contribution_sku')->distinct()
-                ->get()
-                ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
-                    return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
-                })
-                ->pluck('contribution_sku')
-                ->unique()
-                ->values()
-                ->all();
-
-            if ($allowedRawSkus === []) {
-                return null;
-            }
-
-            $totalOrders = 0;
-            $totalQuantity = 0;
-            $totalRevenue = 0.0;
-            foreach (Temu2DailyData::whereIn('contribution_sku', $allowedRawSkus)->get() as $item) {
-                $sku = trim((string) ($item->contribution_sku ?? ''));
-                $orderId = trim((string) ($item->order_id ?? ''));
-                if ($sku === '' || $orderId === '') {
-                    continue;
-                }
-                $pm = $pmByNormalized[$normalizeSku($sku)] ?? null;
-                $parent = $pm ? (string) ($pm->parent ?? '') : '';
-                if ($parent !== '' && str_starts_with($parent, 'PARENT')) {
-                    continue;
-                }
-                $qty = (int) ($item->quantity_purchased ?? 0);
-                $base = $item->base_price_total !== null ? (float) $item->base_price_total : 0.0;
-                $totalOrders++;
-                $totalQuantity += $qty;
-                if ($qty > 0 && $base > 0) {
-                    $calc = TemuShopifySalesService::temuPriceSalesAndProfit(
-                        $base,
-                        $qty,
-                        TemuShopifySalesService::temuMarginDecimal(),
-                        0.0,
-                        0.0,
-                        false
-                    );
-                    $totalRevenue += $calc['sales'];
-                }
-            }
-
-            if ($totalRevenue <= 0) {
-                return null;
-            }
-
-            return [
-                'total_orders' => $totalOrders,
-                'total_quantity' => $totalQuantity,
-                'total_revenue' => round($totalRevenue, 2),
-            ];
+            return $this->temuMetricsToLiveSummary($live);
         } catch (\Throwable $e) {
             Log::warning('Temu 2 tabulator sales summary failed: '.$e->getMessage());
 
@@ -1312,7 +1229,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Resolve L60 sales/orders for Temu channels: uploaded L60 table first, then historical snapshot.
+     * Resolve L60 sales/orders for Temu channels from temu_orders / temu2_orders (Temu Price).
      *
      * @return array{sales: float, orders: int}
      */
@@ -1337,72 +1254,16 @@ class ChannelMasterController extends Controller
         try {
             [$start, $end] = TemuShopifySalesService::channelMasterL60Window();
             $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
-            if ((float) ($m['sales'] ?? 0) > 0) {
-                return [
-                    'sales' => (float) $m['sales'],
-                    'orders' => (int) $m['orders'],
-                ];
-            }
+
+            return [
+                'sales' => (float) ($m['sales'] ?? 0),
+                'orders' => (int) ($m['orders'] ?? 0),
+            ];
         } catch (\Throwable $e) {
             Log::warning('Temu 2 orders L60 failed: '.$e->getMessage());
+
+            return ['sales' => 0.0, 'orders' => 0];
         }
-
-        $channelKey = 'temu2';
-        $l60Sales = 0.0;
-        $l60Orders = 0;
-
-        $liveL60 = $this->getTemuLiveL60SalesSummary($isTemu2);
-        if ($liveL60) {
-            return [
-                'sales' => (float) ($liveL60['total_revenue'] ?? 0),
-                'orders' => (int) ($liveL60['total_orders'] ?? 0),
-            ];
-        }
-
-        $derivedL60 = $this->deriveTemuL60FromHistoricalL30($channelKey);
-        if ($derivedL60) {
-            $l60Sales = (float) $derivedL60['sales'];
-            $l60Orders = (int) $derivedL60['orders'];
-        }
-
-        $legacyTable = $isTemu2 ? 'temu2_daily_data_l60' : 'temu_daily_data_l60';
-        if ($l60Sales <= 0 && Schema::hasTable($legacyTable)) {
-            $l60Data = DB::table($legacyTable)
-                ->select('order_id', 'base_price_total', 'quantity_purchased', 'contribution_sku')
-                ->get();
-
-            $uniqueOrders = [];
-            foreach ($l60Data as $row) {
-                $sku = trim((string) ($row->contribution_sku ?? ''));
-                $orderId = trim((string) ($row->order_id ?? ''));
-                if ($sku === '' || $orderId === '') {
-                    continue;
-                }
-                if (! in_array($orderId, $uniqueOrders, true)) {
-                    $uniqueOrders[] = $orderId;
-                    $l60Orders++;
-                }
-
-                $basePrice = (float) ($row->base_price_total ?? 0);
-                $quantity = (int) ($row->quantity_purchased ?? 0);
-                if ($quantity <= 0 || $basePrice <= 0) {
-                    continue;
-                }
-                $l60Sales += TemuShopifySalesService::temuPriceSalesAndProfit(
-                    $basePrice,
-                    $quantity,
-                    TemuShopifySalesService::temuMarginDecimal(),
-                    0.0,
-                    0.0,
-                    false
-                )['sales'];
-            }
-        }
-
-        return [
-            'sales' => $l60Sales,
-            'orders' => $l60Orders,
-        ];
     }
 
     /**
@@ -11504,7 +11365,7 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        // L60: uploaded temu2_daily_data_l60 first, else historical snapshot.
+        // L60: temu2_orders Temu Price (same as /temu2-tabulator).
         $l60Resolved = $this->resolveTemuL60SalesAndOrders(true);
         $l60Sales = $l60Resolved['sales'];
         $l60Orders = $l60Resolved['orders'];
@@ -18380,11 +18241,16 @@ class ChannelMasterController extends Controller
 
             if ($channel === 'temu' || $channel === 'temu2') {
                 $day = Carbon::parse($ymd, TemuShopifySalesService::PST);
-                self::$pacificDayYSalesCache[$key] = (float) TemuShopifySalesService::computeMetricsFromOrders(
+                $dayMetrics = TemuShopifySalesService::computeMetricsFromOrders(
                     $day->copy()->startOfDay(),
                     $day->copy()->endOfDay(),
                     $channel === 'temu2'
-                )['base_sales'];
+                );
+                self::$pacificDayYSalesCache[$key] = (float) (
+                    $channel === 'temu2'
+                        ? ($dayMetrics['sales'] ?? 0)
+                        : ($dayMetrics['base_sales'] ?? 0)
+                );
 
                 return self::$pacificDayYSalesCache[$key];
             }
