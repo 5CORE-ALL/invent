@@ -3,6 +3,7 @@
 namespace App\Support\Marketplace;
 
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
+use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
 use App\Services\MarketplaceManager\MarketplacePortalInactiveCount;
 use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
@@ -11,11 +12,12 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Inactive parent vs child counts for /missing-listing.
+ * Inactive parent vs child counts.
  *
- * Source of truth is the same seller-platform inactive SKU list as /inactive-listings.
- * Zero-inventory SKUs (shopify_skus.inv null / empty / 0) are excluded from both columns.
- * If a channel has no parent / variation listings, the full inactive count goes in Child.
+ * /missing-listing uses forChannel() and drops zero-inventory SKUs.
+ * /inactive-listings uses listingRowsForChannel() / listingCountsForChannel()
+ * and shows every portal inactive SKU (including 0 inv).
+ * Parent = PARENT-placeholder SKUs, not product_master parent names.
  */
 class ListingInactiveParentChildCounts
 {
@@ -24,6 +26,9 @@ class ListingInactiveParentChildCounts
 
     /** @var array<string, list<string>>|null uppercase parent sku => child sku keys */
     private static ?array $childrenByParent = null;
+
+    /** @var array<string, string>|null uppercase child sku => parent sku */
+    private static ?array $parentByChild = null;
 
     /**
      * @return array{parent: int, child: int, url: ?string}
@@ -113,6 +118,187 @@ class ListingInactiveParentChildCounts
             'child' => count($child),
             'url' => $url,
         ];
+    }
+
+    /**
+     * Every inactive SKU for a marketplace listing-style page (Parent / child / status).
+     *
+     * @return list<array{sku: string, parent: string, kind: string, inv: int, channel_sku: string, channel_inv: int, diff: int, status: string, state: string}>
+     */
+    public static function rowsForChannel(string $channel): array
+    {
+        $norm = ListingChannelCounts::normalize($channel);
+        $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($norm);
+
+        $skus = [];
+        try {
+            if ($mm !== null) {
+                $skus = MarketplacePortalInactiveCount::skus($mm);
+            }
+            if ($skus === []) {
+                $skus = self::fallbackInactiveSkus($norm);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ListingInactiveParentChildCounts rowsForChannel failed for '.$channel.': '.$e->getMessage());
+            $skus = [];
+        }
+
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => trim((string) $sku),
+            $skus
+        ), static fn ($sku) => $sku !== '')));
+
+        $invMap = [];
+        try {
+            $invMap = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        } catch (\Throwable $e) {
+            $invMap = [];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($skus as $sku) {
+            $key = strtoupper($sku);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $kind = MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku) ? 'parent' : 'child';
+            $parent = $kind === 'parent' ? $sku : self::parentSkuFor($sku);
+            $inv = (int) (MarketplaceListingStockResolver::qtyFromMap($invMap, $sku) ?? 0);
+            $out[] = [
+                'sku' => $sku,
+                'parent' => $parent,
+                'kind' => $kind,
+                'inv' => $inv,
+                'channel_sku' => $sku,
+                'channel_inv' => 0,
+                'diff' => $inv,
+                'status' => 'Inactive',
+                'state' => 'inactive',
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Same SKU set for /inactive-listings master counts and the channel page.
+     * Portal inactive SKUs only — do not add extra live-cache rows.
+     *
+     * @return list<array{sku: string, parent: string, kind: string, inv: int, channel_sku: string, channel_inv: int, diff: int, status: string, state: string}>
+     */
+    public static function listingRowsForChannel(string $channel): array
+    {
+        $rows = self::rowsForChannel($channel);
+        $norm = ListingChannelCounts::normalize($channel);
+        $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($norm);
+        if ($mm === null || $rows === []) {
+            return $rows;
+        }
+
+        $bySku = [];
+        try {
+            foreach (app(MarketplaceListingQtyMatchService::class)->inactiveListingRows($mm, false) as $row) {
+                $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
+                if ($sku !== '') {
+                    $bySku[$sku] = $row;
+                }
+            }
+        } catch (\Throwable $e) {
+            $bySku = [];
+        }
+
+        foreach ($rows as $i => $row) {
+            $hit = $bySku[strtoupper((string) $row['sku'])] ?? null;
+            if ($hit === null) {
+                continue;
+            }
+            $inv = (int) ($hit['inv'] ?? $row['inv']);
+            $channelInv = (int) ($hit['channel_inv'] ?? $row['channel_inv']);
+            $rows[$i]['inv'] = $inv;
+            $rows[$i]['channel_inv'] = $channelInv;
+            $rows[$i]['diff'] = abs($inv - $channelInv);
+            $rows[$i]['channel_sku'] = (string) ($hit['channel_sku'] ?? $row['channel_sku']);
+            $rows[$i]['status'] = trim((string) ($hit['status'] ?? '')) !== ''
+                ? (string) $hit['status']
+                : $row['status'];
+            $rows[$i]['state'] = trim((string) ($hit['state'] ?? '')) !== ''
+                ? (string) $hit['state']
+                : $row['state'];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array{parent: int, child: int, url: ?string}
+     */
+    public static function listingCountsForChannel(string $channel): array
+    {
+        $parent = 0;
+        $child = 0;
+        foreach (self::rowsForChannel($channel) as $row) {
+            if (($row['kind'] ?? 'child') === 'parent') {
+                $parent++;
+            } else {
+                $child++;
+            }
+        }
+
+        $url = null;
+        try {
+            $norm = ListingChannelCounts::normalize($channel);
+            $url = MappingChannelCounts::listingsInactiveUrlForSlug($norm !== '' ? $norm : $channel);
+        } catch (\Throwable $e) {
+            $url = null;
+        }
+
+        return [
+            'parent' => $parent,
+            'child' => $child,
+            'url' => $url,
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    public static function attachParents(array $rows): array
+    {
+        foreach ($rows as $i => $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $kind = MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku) ? 'parent' : 'child';
+            $parent = trim((string) ($row['parent'] ?? ''));
+            if ($parent === '') {
+                $parent = $kind === 'parent' ? $sku : self::parentSkuFor($sku);
+            }
+            $rows[$i]['parent'] = $parent;
+            $rows[$i]['kind'] = $kind;
+            $rows[$i]['status'] = trim((string) ($row['status'] ?? '')) !== ''
+                ? (string) $row['status']
+                : 'Inactive';
+            $rows[$i]['state'] = trim((string) ($row['state'] ?? '')) !== ''
+                ? (string) $row['state']
+                : 'inactive';
+        }
+
+        return $rows;
+    }
+
+    public static function parentSkuFor(string $sku): string
+    {
+        $sku = strtoupper(trim($sku));
+        if ($sku === '') {
+            return '';
+        }
+        if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
+            return $sku;
+        }
+        $map = self::parentByChild();
+
+        return $map[$sku] ?? '';
     }
 
     /**
@@ -263,6 +449,7 @@ class ListingInactiveParentChildCounts
         }
 
         self::$childrenByParent = [];
+        self::$parentByChild = [];
         try {
             if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'sku')) {
                 return self::$childrenByParent;
@@ -282,12 +469,26 @@ class ListingInactiveParentChildCounts
                     continue;
                 }
                 self::$childrenByParent[$parent][] = $child;
+                self::$parentByChild[$child] = $parent;
             }
         } catch (\Throwable $e) {
             Log::warning('ListingInactiveParentChildCounts: load parent map failed: '.$e->getMessage());
         }
 
         return self::$childrenByParent;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected static function parentByChild(): array
+    {
+        if (self::$parentByChild !== null) {
+            return self::$parentByChild;
+        }
+        self::childrenByParent();
+
+        return self::$parentByChild ?? [];
     }
 
     /**

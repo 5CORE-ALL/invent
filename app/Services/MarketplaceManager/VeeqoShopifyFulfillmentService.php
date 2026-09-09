@@ -54,6 +54,9 @@ class VeeqoShopifyFulfillmentService
         'failed' => 0,
     ];
 
+    /** @var array<string, int> */
+    protected array $skipReasons = [];
+
     public function __construct(
         protected VeeqoApiService $veeqo,
         protected GofoExpressService $gofo,
@@ -94,10 +97,16 @@ class VeeqoShopifyFulfillmentService
             $this->progressTotals['failed']++;
         } else {
             $this->progressTotals['skipped']++;
+            $reason = trim((string) ($extra['reason'] ?? 'other'));
+            if ($reason === '') {
+                $reason = 'other';
+            }
+            $this->skipReasons[$reason] = (int) ($this->skipReasons[$reason] ?? 0) + 1;
         }
         $this->reportProgress(array_merge($this->progressTotals, $extra, [
             'type' => 'tick',
             'success' => $outcome === 'fulfilled',
+            'skip_reasons' => $this->skipReasons,
         ]));
     }
 
@@ -619,6 +628,7 @@ class VeeqoShopifyFulfillmentService
         $failed = 0;
 
         $this->progressTotals = ['checked' => 0, 'fulfilled' => 0, 'skipped' => 0, 'failed' => 0];
+        $this->skipReasons = [];
         $this->reportProgress([
             'type' => 'start',
             'max' => $limit,
@@ -691,6 +701,7 @@ class VeeqoShopifyFulfillmentService
                     $this->bumpProgress('skipped', [
                         'label' => $slug.' #'.$orderId,
                         'marketplace' => $slug,
+                        'reason' => (string) ($result['action'] ?? 'skipped'),
                     ]);
                 } else {
                     $failed++;
@@ -709,6 +720,7 @@ class VeeqoShopifyFulfillmentService
             'fulfilled' => $fulfilled,
             'skipped' => $skipped,
             'failed' => $failed,
+            'skip_reasons' => $this->skipReasons,
         ]);
 
         return [
@@ -716,6 +728,7 @@ class VeeqoShopifyFulfillmentService
             'fulfilled' => $fulfilled,
             'skipped' => $skipped,
             'failed' => $failed,
+            'skip_reasons' => $this->skipReasons,
             'message' => 'Fetch tracking: checked '.$checked.', fulfilled '.$fulfilled.', skipped '.$skipped.', failed '.$failed
                 .' (Shopify copies: checked '.((int) ($shopifyScan['checked'] ?? 0))
                 .', fulfilled '.((int) ($shopifyScan['fulfilled'] ?? 0))
@@ -819,7 +832,11 @@ class VeeqoShopifyFulfillmentService
                     ]);
                 } elseif (! empty($result['skipped']) || (($result['action'] ?? '') === 'already_on_shopify')) {
                     $skipped++;
-                    $this->bumpProgress('skipped', ['label' => $slug.' Shopify '.$shopifyId, 'marketplace' => $slug]);
+                    $this->bumpProgress('skipped', [
+                        'label' => $slug.' Shopify '.$shopifyId,
+                        'marketplace' => $slug,
+                        'reason' => (string) ($result['action'] ?? 'skipped'),
+                    ]);
                 } else {
                     $failed++;
                     $this->bumpProgress('failed', ['label' => $slug.' Shopify '.$shopifyId, 'marketplace' => $slug]);
@@ -897,6 +914,7 @@ class VeeqoShopifyFulfillmentService
                     $this->bumpProgress('skipped', [
                         'label' => trim($orderLabel),
                         'marketplace' => $marketplace,
+                        'reason' => 'recently_checked',
                     ]);
                     continue;
                 }
@@ -944,15 +962,27 @@ class VeeqoShopifyFulfillmentService
                 } elseif ($allMatched && $action === 'already_on_shopify') {
                     $skipped++;
                     Cache::put($cacheKey, 1, now()->addDays(7));
-                    $this->bumpProgress('skipped', ['label' => trim($orderLabel), 'marketplace' => $marketplace]);
+                    $this->bumpProgress('skipped', [
+                        'label' => trim($orderLabel),
+                        'marketplace' => $marketplace,
+                        'reason' => 'already_on_shopify',
+                    ]);
                 } elseif (in_array($action, ['tracking_not_found', 'not_linked'], true)) {
                     $skipped++;
                     Cache::put($cacheKey, 1, now()->addMinutes(25));
-                    $this->bumpProgress('skipped', ['label' => trim($orderLabel), 'marketplace' => $marketplace]);
+                    $this->bumpProgress('skipped', [
+                        'label' => trim($orderLabel),
+                        'marketplace' => $marketplace,
+                        'reason' => $action,
+                    ]);
                 } elseif (! empty($lastResult['skipped'])) {
                     $skipped++;
                     Cache::put($cacheKey, 1, now()->addMinutes(40));
-                    $this->bumpProgress('skipped', ['label' => trim($orderLabel), 'marketplace' => $marketplace]);
+                    $this->bumpProgress('skipped', [
+                        'label' => trim($orderLabel),
+                        'marketplace' => $marketplace,
+                        'reason' => $action !== '' ? $action : 'skipped',
+                    ]);
                 } else {
                     $failed++;
                     Cache::put($cacheKey, 1, now()->addMinutes(2));

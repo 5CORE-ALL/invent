@@ -13,6 +13,19 @@
             border-radius: 0.35rem !important;
             font-weight: 700;
         }
+        .sku-cell {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .copy-sku-btn {
+            border: 0;
+            background: transparent;
+            color: #6c757d;
+            padding: 0;
+            cursor: pointer;
+        }
+        .copy-sku-btn:hover { color: #0d6efd; }
     </style>
 @endsection
 
@@ -35,9 +48,12 @@
                     <span class="badge bg-secondary badge-mmc-stat" title="Inactive parent listings">
                         Parent: <span id="ilc-parent-count">0</span>
                     </span>
-                    <span class="text-muted small">{{ $channelName }} — all inactive SKUs (parent and child).</span>
+                    <span class="badge bg-dark badge-mmc-stat" title="All inactive rows on this page">
+                        Rows: <span id="ilc-row-count">0</span>
+                    </span>
+                    <span class="text-muted small">{{ $channelName }} — all inactive listings and status.</span>
                     @if (!empty($listingsUrl))
-                        <a href="{{ $listingsUrl }}" class="btn btn-sm btn-outline-primary">Open listings</a>
+                        <a href="{{ $listingsUrl }}" class="btn btn-sm btn-outline-primary">Open marketplace listings</a>
                     @endif
                     @if (!empty($plsApi))
                         @if (!empty($plsApi['connected']))
@@ -46,16 +62,14 @@
                             <span class="badge bg-danger" title="{{ $plsApi['message'] ?? '' }}">API off</span>
                         @endif
                     @endif
-                    @if (!empty($hasSkuDetail))
-                        <button type="button" id="ilc-export-btn" class="btn btn-sm btn-success ms-auto" title="Export CSV">
-                            <i class="fas fa-file-excel me-1"></i> Export
-                        </button>
-                    @endif
+                    <button type="button" id="ilc-export-btn" class="btn btn-sm btn-success ms-auto" title="Export CSV">
+                        <i class="fas fa-file-excel me-1"></i> Export
+                    </button>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <div class="p-2 bg-light border-bottom">
-                    <input type="text" id="ilc-search" class="form-control form-control-sm" placeholder="Search by SKU or status...">
+                    <input type="text" id="ilc-search" class="form-control form-control-sm" placeholder="Search parent, SKU, or status...">
                 </div>
                 <div id="ilc-table" style="height: calc(100vh - 300px);"></div>
             </div>
@@ -68,16 +82,26 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     let ilcTable = null;
-    const hasSkuDetail = @json((bool) $hasSkuDetail);
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function copySku(btn) {
+        const sku = btn.getAttribute('data-sku') || '';
+        if (!sku || !navigator.clipboard) return;
+        navigator.clipboard.writeText(sku).then(function () {
+            btn.classList.add('is-copied');
+            setTimeout(function () { btn.classList.remove('is-copied'); }, 800);
+        });
+    }
 
     $(document).ready(function() {
-        if (!hasSkuDetail) {
-            $('#ilc-table').html(
-                '<div class="p-4 text-center text-muted">SKU-level Inactive Listings is not available for this channel yet.</div>'
-            );
-            return;
-        }
-
         ilcTable = new Tabulator("#ilc-table", {
             ajaxURL: "{{ url('/inactive-listings/channel/' . $channelSlug . '/data') }}",
             ajaxResponse: function(_url, _params, response) {
@@ -86,20 +110,75 @@
                 const parent = Number(response && response.parent_count != null ? response.parent_count : data.filter(function (r) { return String(r.kind || '') === 'parent'; }).length);
                 $('#ilc-child-count').text(child.toLocaleString('en-US'));
                 $('#ilc-parent-count').text(parent.toLocaleString('en-US'));
+                $('#ilc-row-count').text(data.length.toLocaleString('en-US'));
                 return data;
             },
             layout: "fitDataStretch",
             pagination: true,
-            paginationSize: 50,
+            paginationSize: 100,
             paginationSizeSelector: [25, 50, 100, 200, 500],
-            initialSort: [{ column: "status", dir: "asc" }],
-            placeholder: "No inactive or pending listings.",
+            initialSort: [{ column: "parent", dir: "asc" }, { column: "sku", dir: "asc" }],
+            placeholder: "No inactive listings for this marketplace.",
             columns: [
                 {
-                    title: "SKU",
-                    field: "sku",
+                    title: "Parent",
+                    field: "parent",
                     minWidth: 180,
                     headerFilter: "input",
+                    headerTooltip: "Parent SKU from Product Master",
+                },
+                {
+                    title: "Sku",
+                    field: "sku",
+                    minWidth: 200,
+                    headerFilter: "input",
+                    headerTooltip: "Child / variation SKU (or parent placeholder)",
+                    formatter: function(cell) {
+                        const sku = String(cell.getValue() || '').trim();
+                        if (!sku) return '';
+                        const safe = escapeHtml(sku);
+                        return `<span class="sku-cell"><span>${safe}</span><button type="button" class="copy-sku-btn" data-sku="${safe}" title="Copy SKU" onclick="copySku(this)"><i class="fas fa-copy"></i></button></span>`;
+                    },
+                },
+                {
+                    title: "INV",
+                    field: "inv",
+                    width: 110,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Shopify inventory",
+                    formatter: function(cell) {
+                        return Number(cell.getValue() || 0).toLocaleString('en-US');
+                    },
+                },
+                {
+                    title: "Inactive",
+                    field: "status",
+                    width: 160,
+                    hozAlign: "center",
+                    headerFilter: "list",
+                    headerFilterParams: { values: true, clearable: true },
+                    headerTooltip: "Seller-platform listing status (inactive)",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const v = String(cell.getValue() || row.state || 'Inactive');
+                        const lower = v.toLowerCase();
+                        let cls = 'bg-dark';
+                        if (lower === 'pending') cls = 'bg-warning text-dark';
+                        else if (lower.indexOf('mismatch') !== -1) cls = 'bg-danger';
+                        else if (lower === 'inactive' || lower === '') cls = 'bg-dark';
+                        return `<span class="badge ${cls}">${escapeHtml(v || 'Inactive')}</span>`;
+                    },
+                },
+                {
+                    title: @json($channelInvLabel ?? 'Channel Inv'),
+                    field: "channel_inv",
+                    width: 130,
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        return Number(cell.getValue() || 0).toLocaleString('en-US');
+                    },
                 },
                 {
                     title: "Type",
@@ -116,59 +195,6 @@
                         return '<span class="badge bg-primary">Child</span>';
                     },
                 },
-                {
-                    title: "Channel SKU",
-                    field: "channel_sku",
-                    minWidth: 160,
-                },
-                {
-                    title: "Status",
-                    field: "status",
-                    width: 160,
-                    headerFilter: "list",
-                    headerFilterParams: { values: true, clearable: true },
-                    formatter: function(cell) {
-                        const v = String(cell.getValue() || '');
-                        const lower = v.toLowerCase();
-                        let cls = 'bg-secondary';
-                        if (lower === 'pending') cls = 'bg-warning text-dark';
-                        else if (lower.indexOf('mismatch') !== -1) cls = 'bg-danger';
-                        else if (lower === 'inactive') cls = 'bg-dark';
-                        return `<span class="badge ${cls}">${v}</span>`;
-                    },
-                },
-                {
-                    title: "INV",
-                    field: "inv",
-                    width: 110,
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        return Number(cell.getValue() || 0).toLocaleString('en-US');
-                    },
-                },
-                {
-                    title: @json($channelInvLabel ?? 'Channel Inv'),
-                    field: "channel_inv",
-                    width: 130,
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        return Number(cell.getValue() || 0).toLocaleString('en-US');
-                    },
-                },
-                {
-                    title: "Diff",
-                    field: "diff",
-                    width: 110,
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const v = Number(cell.getValue() || 0);
-                        const color = v === 0 ? '#198754' : '#dc3545';
-                        return `<span style="color:${color};font-weight:700;">${v.toLocaleString('en-US')}</span>`;
-                    },
-                },
             ],
         });
 
@@ -179,9 +205,11 @@
                 return;
             }
             ilcTable.setFilter(function(row) {
-                return String(row.sku || '').toLowerCase().includes(q)
+                return String(row.parent || '').toLowerCase().includes(q)
+                    || String(row.sku || '').toLowerCase().includes(q)
                     || String(row.channel_sku || '').toLowerCase().includes(q)
                     || String(row.status || '').toLowerCase().includes(q)
+                    || String(row.state || '').toLowerCase().includes(q)
                     || String(row.kind || '').toLowerCase().includes(q);
             });
         });

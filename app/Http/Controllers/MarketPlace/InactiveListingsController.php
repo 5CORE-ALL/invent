@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
+use App\Support\Marketplace\ListingInactiveParentChildCounts;
 use App\Support\Marketplace\MappingChannelCounts;
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
@@ -54,7 +55,7 @@ class InactiveListingsController extends Controller
         }
 
         $slug = $resolved['slug'];
-        $hasSkuDetail = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null;
+        $hasSkuDetail = true;
         $channelInvLabel = match (true) {
             in_array($slug, ['tiktok', 'tiktokshop'], true) => 'TikTok 1 inv',
             in_array($slug, ['tiktok2', 'tiktokshop2'], true) => 'TikTok 2 inv',
@@ -93,25 +94,17 @@ class InactiveListingsController extends Controller
             }
 
             $slug = $resolved['slug'];
-            $mmChannel = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
-            if ($mmChannel === null) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [],
-                    'count' => 0,
-                    'channel' => $resolved['name'],
-                    'message' => 'SKU-level Inactive Listings is not available for this channel yet.',
-                ]);
-            }
+            $rows = ListingInactiveParentChildCounts::listingRowsForChannel($slug);
 
-            $data = collect(app(MarketplaceListingQtyMatchService::class)->inactiveListingRows($mmChannel, true))
+            $data = collect($rows)
                 ->map(function (array $row) use ($resolved) {
                     $sku = (string) ($row['sku'] ?? '');
-                    $kind = MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku) ? 'parent' : 'child';
+                    $kind = (string) ($row['kind'] ?? (MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku) ? 'parent' : 'child'));
 
                     return $row + [
                         'channel' => $resolved['name'],
                         'kind' => $kind,
+                        'parent' => (string) ($row['parent'] ?? ''),
                     ];
                 })
                 ->values();

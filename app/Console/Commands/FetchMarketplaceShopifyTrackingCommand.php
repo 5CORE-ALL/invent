@@ -124,6 +124,28 @@ class FetchMarketplaceShopifyTrackingCommand extends Command
         $this->newLine(2);
         $this->info($result['message'] ?? 'Done.');
         $this->info('Successful fulfillments: '.(int) ($result['fulfilled'] ?? 0));
+        $reasons = is_array($result['skip_reasons'] ?? null) ? $result['skip_reasons'] : [];
+        if ($reasons !== []) {
+            arsort($reasons);
+            $this->newLine();
+            $this->warn('Why orders were skipped (tracking is never invented):');
+            $labels = [
+                'tracking_not_found' => 'No Veeqo / GOFO / marketplace tracking yet',
+                'already_on_shopify' => 'Shopify already has tracking',
+                'recently_checked' => 'Checked recently (use --fresh to recheck)',
+                'sku_mismatch' => 'SKU on Shopify does not match',
+                'sku_required' => 'SKU missing on the order',
+                'order_id_mismatch' => 'Full marketplace order id not on Shopify',
+                'order_id_required' => 'Marketplace order id missing',
+                'not_linked' => 'Not linked to a Shopify order',
+                'shopify_order_missing' => 'Could not load the Shopify order',
+            ];
+            $rows = [];
+            foreach ($reasons as $reason => $count) {
+                $rows[] = [$reason, $labels[$reason] ?? $reason, $count];
+            }
+            $this->table(['Reason', 'Meaning', 'Count'], $rows);
+        }
 
         return self::SUCCESS;
     }
