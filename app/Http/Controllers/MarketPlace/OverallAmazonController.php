@@ -3207,6 +3207,98 @@ class OverallAmazonController extends Controller
         }
     }
 
+    /**
+     * Same Price > landed LMP count as the /amazon-tabulator-view badge.
+     * Lean: Product Master children + datasheet price + Shopify INV + Sku Link LMP.
+     * Does not load the full tabulator payload (reviews, ads, parent summaries).
+     */
+    public function countPriceGtLmp(): int
+    {
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(180);
+
+        $productMasters = ProductMaster::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku']);
+
+        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        $this->lmpSkuGroupService->prepareForSkus($skus);
+
+        $amazonDatasheetsBySku = AmazonDatasheet::groupedByNormalizedSku();
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
+
+        $lmpDetailsLookup = collect();
+        try {
+            $lmpDetailsLookup = AmazonSkuCompetitor::buildGroupedLookup('amazon')['details'] ?? collect();
+        } catch (\Throwable $e) {
+            Log::warning('Amazon price>LMP count: competitor lookup failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $n = 0;
+        foreach ($productMasters as $pm) {
+            $sku = strtoupper(trim((string) $pm->sku));
+            if ($sku === '' || str_contains($sku, 'PARENT')) {
+                continue;
+            }
+
+            $shopify = $shopifyData[$pm->sku] ?? null;
+            $inv = (float) ($shopify->inv ?? 0);
+            if (! ($inv > 0)) {
+                continue;
+            }
+
+            $skuClean = strtoupper(str_replace("\xC2\xA0", ' ', trim((string) $pm->sku)));
+            $skuLookupKey = str_replace(' ', '', $skuClean);
+            $amazonSheetKey = AmazonDatasheet::normalizeSkuForLookup((string) $pm->sku);
+            $amazonSheet = AmazonDatasheet::pickBestForProductSku(
+                (string) $pm->sku,
+                $amazonDatasheetsBySku->get($amazonSheetKey)
+                    ?? $amazonDatasheetsBySku->get($skuLookupKey)
+                    ?? $amazonDatasheetsBySku->get($skuClean)
+                    ?? $amazonDatasheetsBySku->get($sku)
+            );
+            $price = $amazonSheet ? (float) ($amazonSheet->price ?? 0) : 0.0;
+            if (! ($price > 0)) {
+                continue;
+            }
+
+            $linkedLmpSkus = $this->linkedLmpSkusForProduct((string) $pm->sku);
+            $allLmpEntries = collect();
+            foreach ($linkedLmpSkus as $linkedSku) {
+                $lookupKey = AmazonSkuCompetitor::normalizeSkuKey($linkedSku);
+                $entries = $lmpDetailsLookup->get($lookupKey);
+                if ($entries instanceof \Illuminate\Support\Collection) {
+                    $allLmpEntries = $allLmpEntries->merge($entries);
+                }
+            }
+            $allLmpEntries = AmazonSkuCompetitor::applyIgnoreToSameAsins($allLmpEntries);
+            $allLmpEntries = AmazonSkuCompetitor::dedupeByAsin($allLmpEntries);
+
+            $lmp = 0.0;
+            foreach ($allLmpEntries as $entry) {
+                $mapped = $this->mapAmazonLmpEntry($entry, [], false);
+                if (! empty($mapped['ignored'])) {
+                    continue;
+                }
+                $landed = isset($mapped['landed_price'])
+                    ? (float) $mapped['landed_price']
+                    : (float) ($mapped['price'] ?? 0);
+                if ($landed > 0 && ($lmp <= 0 || $landed < $lmp)) {
+                    $lmp = $landed;
+                }
+            }
+
+            if ($lmp > 0 && $price > $lmp) {
+                $n++;
+            }
+        }
+
+        return $n;
+    }
+
     public function getAmazonColumnVisibility(Request $request)
     {
         $userId = auth()->id() ?? 'guest';

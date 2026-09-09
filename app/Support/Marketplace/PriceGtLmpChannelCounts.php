@@ -3,6 +3,7 @@
 namespace App\Support\Marketplace;
 
 use App\Http\Controllers\MarketPlace\AliexpressController;
+use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\ChannelMaster;
 use App\Models\ShopifySku;
@@ -122,13 +123,11 @@ class PriceGtLmpChannelCounts
     private static function computeMasterRows(): array
     {
         $masters = self::channelMasterByAlias();
-        $inv = self::loadInventoryMap();
-        $linkRoots = self::skuLinkRoots();
+        $counts = PriceGtLmpPageCounts::all();
         $rows = [];
 
         foreach (LmpMissingChannelCounts::analytics() as $key => $meta) {
             $master = self::matchMaster($masters, $meta['aliases'] ?? [], $meta['label'] ?? $key);
-            $count = self::computePriceGtLmp($key, $meta, $inv, $linkRoots);
 
             $rows[] = [
                 'id' => $master['id'] ?? $key,
@@ -136,7 +135,7 @@ class PriceGtLmpChannelCounts
                 'image' => $master['logo'] ?? null,
                 'channel' => $meta['label'],
                 'analytics_url' => url($meta['url']),
-                'price_gt_lmp' => $count,
+                'price_gt_lmp' => (int) ($counts[$key] ?? 0),
                 'count_source' => 'live',
             ];
         }
@@ -151,6 +150,9 @@ class PriceGtLmpChannelCounts
      */
     private static function computePriceGtLmp(string $key, array $meta, array $inv, array $linkRoots): int
     {
+        if ($key === 'amazon') {
+            return self::computeAmazonPriceGtLmp();
+        }
         if ($key === 'aliexpress') {
             return self::computeAliexpressPriceGtLmp();
         }
@@ -179,6 +181,20 @@ class PriceGtLmpChannelCounts
         }
 
         return $n;
+    }
+
+    /**
+     * Same Product Master + datasheet + landed LMP rule as /amazon-tabulator-view.
+     */
+    private static function computeAmazonPriceGtLmp(): int
+    {
+        try {
+            return app(OverallAmazonController::class)->countPriceGtLmp();
+        } catch (\Throwable $e) {
+            Log::warning('PriceGtLmpChannelCounts Amazon count failed: '.$e->getMessage());
+
+            return 0;
+        }
     }
 
     /**

@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Support\Marketplace\LmpMissingChannelCounts;
 use App\Support\Marketplace\PriceGtLmpChannelCounts;
+use App\Support\Marketplace\PriceGtLmpPageCounts;
 use PHPUnit\Framework\TestCase;
 
 class PriceGtLmpChannelCountsTest extends TestCase
@@ -23,6 +24,12 @@ class PriceGtLmpChannelCountsTest extends TestCase
         $this->assertArrayHasKey('temu3', $analytics);
         $this->assertSame('Temu 3', $analytics['temu3']['label']);
         $this->assertSame('/temu3-decrease', $analytics['temu3']['url']);
+    }
+
+    public function test_temu_norm_folds_piece_count(): void
+    {
+        $this->assertSame('MS 080 WH 2PC', PriceGtLmpPageCounts::temuNorm('MS 080 WH 2 PCS'));
+        $this->assertSame('MS 080 WH 2PC', PriceGtLmpPageCounts::temuNorm('ms 080  wh  2pcs'));
     }
 
     public function test_temu_listing_price_adds_shipping_at_or_below_26_99(): void
@@ -66,5 +73,24 @@ class PriceGtLmpChannelCountsTest extends TestCase
             'lmp_entries' => [['price' => 10, 'ignored' => true]],
         ];
         $this->assertFalse(PriceGtLmpChannelCounts::rowHasRedTriangle($ignoredOnly, 'price'));
+    }
+
+    public function test_red_triangle_uses_amazon_landed_lmp_from_entries(): void
+    {
+        $hit = [
+            '(Child) sku' => 'AMZ-1',
+            'INV' => 2,
+            'price' => 29.99,
+            'lmp_price' => 25.00,
+            'lmp_entries' => [
+                ['price' => 24.00, 'landed_price' => 28.00, 'ignored' => 0],
+                ['price' => 20.00, 'landed_price' => 22.00, 'ignored' => 1],
+            ],
+        ];
+        $this->assertTrue(PriceGtLmpChannelCounts::rowHasRedTriangle($hit, 'price'));
+
+        $notOver = $hit;
+        $notOver['price'] = 27.50;
+        $this->assertFalse(PriceGtLmpChannelCounts::rowHasRedTriangle($notOver, 'price'));
     }
 }
