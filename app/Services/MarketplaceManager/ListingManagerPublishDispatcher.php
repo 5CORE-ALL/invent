@@ -108,6 +108,12 @@ class ListingManagerPublishDispatcher
     private function publishAmazon(ListingManagerChannelDraft $draft, array $details): array
     {
         $sku = trim((string) $draft->seller_sku);
+        if (! isset($details['price']) || (float) $details['price'] <= 0) {
+            $details['price'] = $draft->price;
+        }
+        if (! isset($details['list_price']) || (float) $details['list_price'] <= 0) {
+            $details['list_price'] = $details['price'] ?? $draft->price;
+        }
         $skus = $this->publishSkusForMode($draft, $details);
         if ($skus === []) {
             $skus = $sku !== '' ? [$sku] : [];

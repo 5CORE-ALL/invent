@@ -190,11 +190,22 @@ class AmazonListingPublishService
         $manufacturer = trim((string) ($details['manufacturer'] ?? $brand)) ?: $brand;
         $upc = trim((string) ($details['upc'] ?? ''));
         $price = (float) ($details['price'] ?? 0);
+        $listPrice = (float) ($details['list_price'] ?? 0);
+        if ($listPrice <= 0) {
+            $listPrice = $price;
+        }
         $quantity = max(0, (int) ($qty ?? $details['quantity'] ?? 0));
         $description = trim((string) ($details['description'] ?? $title));
+        $color = ListingManagerAmazonHydrator::colorFromSku($sku, (string) ($details['color'] ?? ''));
+        $origin = ListingManagerAmazonHydrator::amazonCountryOfOrigin((string) ($details['country_of_origin'] ?? ''));
+        $dgr = ListingManagerAmazonHydrator::amazonDangerousGoods((string) ($details['dangerous_goods_regulations'] ?? ''));
+        $bullets = $this->bulletPointsFromDetails($details, $title);
 
         $attr = function (mixed $value) use ($mp): array {
             return [['value' => $value, 'marketplace_id' => $mp]];
+        };
+        $text = function (string $value) use ($mp): array {
+            return [['value' => $value, 'language_tag' => 'en_US', 'marketplace_id' => $mp]];
         };
 
         $attributes = [
@@ -204,6 +215,14 @@ class AmazonListingPublishService
             'part_number' => $attr($sku),
             'product_description' => $attr($description),
             'condition_type' => $attr('new_new'),
+            'color' => $text($color),
+            'country_of_origin' => $attr($origin),
+            'dangerous_goods_regulations' => $attr($dgr),
+            'bullet_point' => array_map(static fn (string $line) => [
+                'value' => $line,
+                'language_tag' => 'en_US',
+                'marketplace_id' => $mp,
+            ], $bullets),
             'fulfillment_availability' => [[
                 'fulfillment_channel_code' => 'DEFAULT',
                 'quantity' => $quantity,
@@ -231,10 +250,21 @@ class AmazonListingPublishService
                 ]],
             ]];
         }
+        if ($listPrice > 0) {
+            $attributes['list_price'] = [[
+                'currency' => 'USD',
+                'value' => round($listPrice, 2),
+                'value_with_tax' => round($listPrice, 2),
+                'marketplace_id' => $mp,
+            ]];
+        }
 
         foreach (array_values($images) as $i => $url) {
             $key = $i === 0 ? 'main_product_image_locator' : 'other_product_image_locator_'.$i;
-            $attributes[$key] = $attr($url);
+            $attributes[$key] = [[
+                'media_location' => $url,
+                'marketplace_id' => $mp,
+            ]];
         }
 
         if ($upc !== '' && ! preg_match('/^B0/i', $upc)) {
@@ -251,5 +281,34 @@ class AmazonListingPublishService
         $result['skus'] = [$sku];
 
         return $result;
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     * @return list<string>
+     */
+    private function bulletPointsFromDetails(array $details, string $title): array
+    {
+        $lines = [];
+        foreach (['bullet_1', 'bullet_2', 'bullet_3', 'bullet_4', 'bullet_5'] as $key) {
+            $line = trim((string) ($details[$key] ?? ''));
+            if ($line !== '' && ! in_array($line, $lines, true)) {
+                $lines[] = mb_substr($line, 0, 500);
+            }
+        }
+        if ($lines === []) {
+            $blob = trim((string) ($details['bullets'] ?? ''));
+            foreach (preg_split('/\r\n|\r|\n/', $blob) ?: [] as $line) {
+                $line = trim((string) $line);
+                if ($line !== '' && ! in_array($line, $lines, true)) {
+                    $lines[] = mb_substr($line, 0, 500);
+                }
+            }
+        }
+        if ($lines === [] && $title !== '') {
+            $lines[] = mb_substr($title, 0, 500);
+        }
+
+        return array_slice($lines, 0, 5);
     }
 }

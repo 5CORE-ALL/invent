@@ -321,6 +321,29 @@ class ListingManagerPublishStatus
             if ($productType === '' || preg_match('/^\d+$/', $productType)) {
                 $tabErrors['category'][] = 'Amazon product type is required.';
             }
+            $hasBullet = false;
+            foreach (['bullet_1', 'bullet_2', 'bullet_3', 'bullet_4', 'bullet_5'] as $bulletKey) {
+                if (trim((string) ($details[$bulletKey] ?? '')) !== '') {
+                    $hasBullet = true;
+                    break;
+                }
+            }
+            if (! $hasBullet) {
+                $tabErrors['title_description'][] = 'At least one bullet point is required.';
+            }
+            if (trim((string) ($details['color'] ?? '')) === '') {
+                $tabErrors['identifiers'][] = 'Color is required.';
+            }
+            if (trim((string) ($details['country_of_origin'] ?? '')) === '') {
+                $tabErrors['identifiers'][] = 'Country of origin is required.';
+            }
+            if (trim((string) ($details['dangerous_goods_regulations'] ?? '')) === '') {
+                $tabErrors['identifiers'][] = 'Dangerous goods regulations is required.';
+            }
+            $listPrice = $details['list_price'] ?? '';
+            if (($listPrice === '' || (float) $listPrice <= 0) && ((float) $price <= 0)) {
+                $tabErrors['pricing'][] = 'List price is required.';
+            }
             $length = (float) ($details['package_length'] ?? 0);
             $width = (float) ($details['package_width'] ?? 0);
             $height = (float) ($details['package_height'] ?? 0);
@@ -367,6 +390,7 @@ class ListingManagerPublishStatus
             }
             $missing = array_merge($missing, $errors);
             $label = match ($tab) {
+                'identifiers' => 'Product Identifiers',
                 'title_description' => 'Title & Description',
                 'pricing' => ($isEbay ? 'Pricing' : 'Price & Stock'),
                 'category' => $isAmazon ? 'Product Type' : ($isTiktok ? 'TikTok Category' : ($isTemu ? 'Temu Category' : ($isReverb ? 'Reverb Details' : 'Category'))),
@@ -505,6 +529,10 @@ class ListingManagerPublishStatus
             'variation_skus' => [],
             'parent_group' => '',
             'product_type' => '',
+            'color' => '',
+            'country_of_origin' => 'CN',
+            'dangerous_goods_regulations' => 'not_applicable',
+            'list_price' => '',
         ], $details, [
             'brand' => $brand,
             'manufacturer' => $manufacturer,
