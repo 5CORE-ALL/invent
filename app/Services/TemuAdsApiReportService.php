@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\TemuAdsApiReport;
 use App\Models\TemuMetric;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Fetch temu.searchrec.ad.reports.goods.query and store full raw + Overall summary fields.
@@ -392,6 +394,140 @@ class TemuAdsApiReportService
             'roas' => $roas,
             'acos' => $acos,
         ];
+    }
+
+    /**
+     * Rolling Last-30 spend by Pacific as-of date, from daily report rows.
+     * Same matrix as /temu/ads (all statuses in the stored windows).
+     *
+     * @return array<string, float>  Y-m-d => spend
+     */
+    public function rollingL30SpendByAsOfDate(): array
+    {
+        return Cache::remember('temu_ads_rolling_l30_spend_v1', 600, function () {
+            return $this->computeRollingL30SpendByAsOfDate();
+        });
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function computeRollingL30SpendByAsOfDate(): array
+    {
+        if (! Schema::hasTable('temu_ads_api_reports')) {
+            return [];
+        }
+
+        $goodsDaily = [];
+        foreach (['L60', 'L30'] as $period) {
+            TemuAdsApiReport::query()
+                ->inLatestWindow($period)
+                ->whereNotNull('goods_id')
+                ->whereNotNull('raw_response')
+                ->select(['id', 'goods_id', 'ad_spend', 'raw_response'])
+                ->orderBy('id')
+                ->chunkById(40, function ($chunk) use (&$goodsDaily) {
+                    foreach ($chunk as $rep) {
+                        $gid = (string) $rep->goods_id;
+                        $daily = $this->dailySpendByDateFromResult($rep->rawPayload);
+                        $rep->raw_response = null;
+                        if ($daily === []) {
+                            continue;
+                        }
+                        $goodsDaily[$gid] = array_merge($goodsDaily[$gid] ?? [], $daily);
+                    }
+                });
+        }
+
+        if ($goodsDaily === []) {
+            return [];
+        }
+
+        $scale = $this->dailySpendScale($goodsDaily);
+        $byDate = [];
+        foreach ($goodsDaily as $daily) {
+            foreach ($daily as $ymd => $val) {
+                $byDate[$ymd] = ($byDate[$ymd] ?? 0.0) + ((float) $val * $scale);
+            }
+        }
+        ksort($byDate);
+
+        $rolling = [];
+        foreach (array_keys($byDate) as $ymd) {
+            $start = Carbon::parse($ymd, 'America/Los_Angeles')->subDays(29)->toDateString();
+            $sum = 0.0;
+            $days = 0;
+            foreach ($byDate as $d => $v) {
+                if ($d < $start || $d > $ymd) {
+                    continue;
+                }
+                $sum += $v;
+                $days++;
+            }
+            if ($days < 20) {
+                continue;
+            }
+            $rolling[$ymd] = round($sum, 2);
+        }
+
+        return $rolling;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    public function dailySpendByDateFromResult(?array $result): array
+    {
+        $items = is_array($result['reportInfo']['reportsItemList'] ?? null)
+            ? $result['reportInfo']['reportsItemList']
+            : [];
+        $out = [];
+        foreach ($items as $item) {
+            if (! is_array($item) || ! isset($item['ts'])) {
+                continue;
+            }
+            $val = $this->nestedVal($item, ['adSpend'])
+                ?? $this->nestedVal($item, ['netAdSpend'])
+                ?? $this->nestedVal($item, ['spend']);
+            if ($val === null || ! is_numeric($val)) {
+                continue;
+            }
+            $ymd = Carbon::createFromTimestampMs((int) $item['ts'], 'America/Los_Angeles')->toDateString();
+            $out[$ymd] = ($out[$ymd] ?? 0.0) + (float) $val;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Daily list vals are dollars when they already match stored ad_spend; otherwise cents.
+     *
+     * @param  array<string, array<string, float>>  $goodsDaily
+     */
+    private function dailySpendScale(array $goodsDaily): float
+    {
+        $ratios = [];
+        $checked = 0;
+        foreach (TemuAdsApiReport::query()->inLatestWindow('L30')->where('ad_spend', '>', 1)->limit(40)->get(['goods_id', 'ad_spend']) as $row) {
+            $daily = $goodsDaily[(string) $row->goods_id] ?? [];
+            $sum = array_sum($daily);
+            $stored = (float) $row->ad_spend;
+            if ($sum <= 0 || $stored <= 0) {
+                continue;
+            }
+            $ratios[] = $sum / $stored;
+            $checked++;
+            if ($checked >= 20) {
+                break;
+            }
+        }
+        if ($ratios === []) {
+            return 1.0;
+        }
+        sort($ratios);
+        $median = $ratios[(int) floor(count($ratios) / 2)];
+
+        return ($median > 50 && $median < 150) ? 0.01 : 1.0;
     }
 
     /**

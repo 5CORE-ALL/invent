@@ -51,6 +51,7 @@ use App\Support\Marketplace\ChartDatePad;
 use App\Support\Marketplace\EbayTwoListingCounts;
 use App\Services\Support\ChannelTodaySalesService;
 use App\Services\Support\YesterdayMarketplaceMetricsService;
+use App\Services\TemuAdsApiReportService;
 use App\Models\AliExpressSheetData;
 use App\Models\AliexpressDailyData;
 use App\Models\AliexpressListingStatus;
@@ -16964,6 +16965,11 @@ class ChannelMasterController extends Controller
                 } catch (\Throwable $e) {
                     \Log::warning('All Marketplace Amazon spend overlay failed: '.$e->getMessage());
                 }
+                try {
+                    $this->overlayTemuRollingL30SpendOnChannelSummaries($history);
+                } catch (\Throwable $e) {
+                    \Log::warning('All Marketplace Temu spend overlay failed: '.$e->getMessage());
+                }
             }
 
             // Group by marketplace as-of date (snapshot_date − 1 Pacific day).
@@ -17411,6 +17417,48 @@ class ChannelMasterController extends Controller
      *
      * @param  \Illuminate\Support\Collection<int, \App\Models\ChannelMasterSummary>  $history
      */
+    /**
+     * Rewrite Temu snapshot spend from /temu/ads daily reports (rolling L30).
+     * Older Active-only / stale-window totals stay on the row until we have
+     * enough daily coverage for that as-of date.
+     */
+    private function overlayTemuRollingL30SpendOnChannelSummaries($history): void
+    {
+        $temuRows = [];
+        foreach ($history as $row) {
+            if ($this->allMarketplaceSnapshotKey((string) $row->channel) === 'temu') {
+                $temuRows[] = $row;
+            }
+        }
+        if ($temuRows === []) {
+            return;
+        }
+
+        $rolling = app(TemuAdsApiReportService::class)->rollingL30SpendByAsOfDate();
+        if ($rolling === []) {
+            return;
+        }
+
+        foreach ($temuRows as $row) {
+            $snap = $row->snapshot_date instanceof Carbon
+                ? $row->snapshot_date->toDateString()
+                : (string) $row->snapshot_date;
+            $asOf = Carbon::parse($snap, 'America/Los_Angeles')->subDay()->toDateString();
+            if (! isset($rolling[$asOf])) {
+                continue;
+            }
+            $spend = (float) $rolling[$asOf];
+            $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+            $sales = (float) ($sd['l30_sales'] ?? 0);
+            $gprofit = (float) ($sd['gprofit_percent'] ?? 0);
+            $adsPct = $sales > 0 ? ($spend / $sales) * 100 : 0.0;
+            $sd['total_ad_spend'] = round($spend, 2);
+            $sd['tcos_percent'] = round($adsPct, 2);
+            $sd['npft_percent'] = round($gprofit - $adsPct, 2);
+            $row->summary_data = $sd;
+        }
+    }
+
     private function overlayAmazonRollingL30SpendOnChannelSummaries($history): void
     {
         $amazonRows = [];
@@ -17560,7 +17608,7 @@ class ChannelMasterController extends Controller
         // v9: last graph point + table dot v2 = saved table row.
         // v11: All badges keep the blended pair; eBay 3 included from calculated_data.
         // v14: Amazon / Temu 2 last point follows the table cell, not live orders.
-        return 'amm_dot_trends_v14_w'.$window;
+        return 'amm_dot_trends_v15_w'.$window;
     }
 
     /**
@@ -17768,6 +17816,13 @@ class ChannelMasterController extends Controller
                 ->groupBy(function ($row) {
                     return $this->allMarketplaceSnapshotKey((string) $row->channel);
                 });
+            if (! $useL7Window && ! $useDailyWindow) {
+                try {
+                    $this->overlayTemuRollingL30SpendOnChannelSummaries($cmsByChannel->get('temu') ?? []);
+                } catch (\Throwable $e) {
+                    \Log::warning('Dot-trend Temu spend overlay failed: '.$e->getMessage());
+                }
+            }
 
             foreach ($channelKeys as $channel) {
                 foreach ($metrics as $metric) {
