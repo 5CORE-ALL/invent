@@ -51,20 +51,28 @@ class Temu2AdsController extends Controller
     private function getTemu2AdsDataFromCampaignReports(?string $period)
     {
         $query = Temu2CampaignReport::query()->orderByDesc('id');
-        if (in_array($period, ['L7', 'L30', 'L60'], true)) {
-            $query->where('report_range', $period);
+        $periodKey = is_string($period) ? strtoupper($period) : '';
+        if (in_array($periodKey, ['L7', 'L30', 'L60'], true)) {
+            $query->where('report_range', $periodKey);
         }
         $records = $query->get();
+        if (in_array($periodKey, ['L7', 'L30', 'L60'], true)) {
+            $records = $records->unique(fn (Temu2CampaignReport $r) => (string) $r->goods_id)->values();
+        }
 
         $l7ClicksByGoods = Temu2CampaignReport::query()
             ->where('report_range', 'L7')
             ->whereNotNull('goods_id')
+            ->orderByDesc('id')
             ->get(['goods_id', 'clicks'])
+            ->unique(fn (Temu2CampaignReport $r) => (string) $r->goods_id)
             ->keyBy(fn (Temu2CampaignReport $r) => (string) $r->goods_id);
         $l30ClicksByGoods = Temu2CampaignReport::query()
             ->where('report_range', 'L30')
             ->whereNotNull('goods_id')
+            ->orderByDesc('id')
             ->get(['goods_id', 'clicks'])
+            ->unique(fn (Temu2CampaignReport $r) => (string) $r->goods_id)
             ->keyBy(fn (Temu2CampaignReport $r) => (string) $r->goods_id);
 
         $skus = $records->pluck('sku')
@@ -132,12 +140,14 @@ class Temu2AdsController extends Controller
             ];
         })->values();
 
-        $spendSum = round((float) $rows->sum(fn ($row) => (float) ($row['ad_spend'] ?? 0)), 2);
-        $imprSum = (int) $rows->sum(fn ($row) => (int) ($row['impressions'] ?? 0));
-        $clickSum = (int) $rows->sum(fn ($row) => (int) ($row['clicks'] ?? 0));
+        $badgePeriod = in_array($periodKey, ['L7', 'L30', 'L60'], true) ? $periodKey : 'L30';
+        $badge = Temu2CampaignReport::badgeTotals($badgePeriod);
+        $spendSum = $badge['spend'];
+        $imprSum = $badge['impressions'];
+        $clickSum = $badge['clicks'];
 
         try {
-            $this->snapshotBadgeMetricsFromRows($rows, $period ?: 'ALL');
+            $this->snapshotBadgeMetricsFromRows($rows, $periodKey !== '' ? $periodKey : 'ALL');
         } catch (\Throwable $e) {
             Log::warning('Temu2AdsController campaign-report snapshot failed', ['error' => $e->getMessage()]);
         }
@@ -148,6 +158,8 @@ class Temu2AdsController extends Controller
             'spend_sum' => $spendSum,
             'impressions_sum' => $imprSum,
             'clicks_sum' => $clickSum,
+            'sales_sum' => $badge['sales'],
+            'sold_sum' => $badge['sold'],
         ]);
     }
 
@@ -1317,7 +1329,8 @@ class Temu2AdsController extends Controller
                             'goods_id' => $goodsIdNormalized,
                             'sku' => $skuValue !== '' ? $skuValue : null,
                             'report_range' => $reportRange,
-                            'spend' => $parseCurrency($col($rowData, ['Spend'])),
+                            'status' => 'No ad',
+                            'spend' => $parseCurrency($col($rowData, ['Spend', 'Net spend', 'Net Spend', 'Ad Spend'])),
                             'base_price_sales' => $parseCurrency($col($rowData, ['Base Price Sales (Ad)', 'Base Price Sales (Overall)', 'Base price sales'])),
                             'roas' => $parseNumber($col($rowData, ['ROAS (Ad)', 'ROAS (Overall)', 'ROAS']) ?? 0),
                             'acos_ad' => $parsePercent($col($rowData, ['ACOS (Ad)', 'ACOS (Overall)', 'ACOS(AD)'])),
@@ -1512,14 +1525,24 @@ class Temu2AdsController extends Controller
         }
 
         try {
-            $q = Temu2CampaignReport::query()->where('report_range', 'L30');
+            $tot = Temu2CampaignReport::badgeTotals('L30');
+            $activeIds = Temu2CampaignReport::query()
+                ->where('report_range', 'L30')
+                ->whereNotNull('goods_id')
+                ->where('goods_id', '!=', '')
+                ->selectRaw('MAX(id) as id')
+                ->groupBy('goods_id')
+                ->pluck('id');
 
             return [
-                'spend' => round((float) $q->clone()->sum('spend'), 2),
-                'clicks' => (int) $q->clone()->sum('clicks'),
-                'sold' => (int) $q->clone()->sum('sub_orders'),
-                'sales' => round((float) $q->clone()->sum('base_price_sales'), 2),
-                'active' => (int) $q->clone()->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = 'active'")->count(),
+                'spend' => $tot['spend'],
+                'clicks' => $tot['clicks'],
+                'sold' => $tot['sold'],
+                'sales' => $tot['sales'],
+                'active' => (int) Temu2CampaignReport::query()
+                    ->whereIn('id', $activeIds)
+                    ->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = 'active'")
+                    ->count(),
             ];
         } catch (\Throwable $e) {
             Log::warning('Advertisement Master Temu 2 L30 metrics failed: '.$e->getMessage());

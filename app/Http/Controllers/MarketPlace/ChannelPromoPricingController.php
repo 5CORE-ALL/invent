@@ -277,7 +277,7 @@ class ChannelPromoPricingController extends Controller
 
     /**
      * Per-channel switch: auto-push only the SKUs just edited (not the whole catalog).
-     * Daily cron (channel:push-sprice-daily, amazon:dil-prmt-auto-push,
+     * Daily cron (channel:push-sprice-daily, amazon:sprc-dil-auto-push,
      * amazon:cvr-cpn-auto-push) is not gated by this.
      */
     public static function isPageReloadPushEnabled(string $channel): bool

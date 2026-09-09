@@ -807,6 +807,20 @@
             else if (typeof toast === 'function') toast(msg, type);
             else console.log(type, msg);
         }
+        function amzTableHolder() {
+            return document.querySelector('#amazon-table .tabulator-tableholder');
+        }
+        function amzTableRedrawPreserveScroll(force) {
+            if (typeof table === 'undefined' || !table) return;
+            const holder = amzTableHolder();
+            const sl = holder ? holder.scrollLeft : 0;
+            const st = holder ? holder.scrollTop : 0;
+            try { table.redraw(force !== false); } catch (e) { /* ignore */ }
+            if (holder) {
+                holder.scrollLeft = sl;
+                holder.scrollTop = st;
+            }
+        }
         function amzPefSku(d) {
             return String((d && (d['(Child) sku'] || d.sku)) || '').trim();
         }
@@ -1522,7 +1536,7 @@
             if (typeof table === 'undefined' || !table) return;
             try {
                 const col = table.getColumn('SPRC_DIL');
-                if (col) table.redraw(true);
+                if (col) amzTableRedrawPreserveScroll(true);
             } catch (e) { /* ignore */ }
         }
         function amzAfterDilGroiRulesChanged() {
@@ -1994,7 +2008,7 @@
                 } else {
                     $('#amz-cvr-disc-status').text('Saved. CVR Disc. column updated.');
                     if (table) {
-                        try { table.getColumn('cvr_discount') && table.redraw(true); } catch (e) { /* ignore */ }
+                        try { table.getColumn('cvr_discount') && amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
                     }
                     amzScheduleRuleSpriceSync({ force: true, delay: 200 });
                 }
@@ -2157,7 +2171,7 @@
                 } else {
                     $('#amz-review-disc-status').text('Saved. Rev Disc. column updated.');
                     if (table) {
-                        try { table.getColumn('review_discount') && table.redraw(true); } catch (e) { /* ignore */ }
+                        try { table.getColumn('review_discount') && amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
                     }
                     amzScheduleRuleSpriceSync({ force: true, delay: 200 });
                 }
@@ -2195,7 +2209,7 @@
             if (opts.save && patch.SPRICE != null && Number(patch.SPRICE) > 0) {
                 amzPersistClearThenSprice(row, patch.SPRICE, true);
             }
-            if (opts.redraw && table) table.redraw(true);
+            if (opts.redraw && table) amzTableRedrawPreserveScroll(true);
         }
         function applyAmzApprDiscount(row) {
             const d = row.getData();
@@ -2204,28 +2218,28 @@
             if (!(amt > 0) || !(lmp > 0)) {
                 row.update({ appr: false, _appr_lmp: null });
                 amzPefToast('error', 'Appr needs Price > LMP');
-                if (table) table.redraw(true);
+                if (table) amzTableRedrawPreserveScroll(true);
                 return false;
             }
             const base = getAmzDiscountBase(d, '_dsc_applied');
             if (!(base > 0)) {
                 row.update({ appr: false, _appr_lmp: null });
                 amzPefToast('error', 'No S PRC/Price to discount');
-                if (table) table.redraw(true);
+                if (table) amzTableRedrawPreserveScroll(true);
                 return false;
             }
             let pct = amzPefRound2((amt / base) * 100);
             if (!(pct > 0) || pct >= 100) {
                 row.update({ appr: false, _appr_lmp: null });
                 amzPefToast('error', 'Appr DSC % out of range');
-                if (table) table.redraw(true);
+                if (table) amzTableRedrawPreserveScroll(true);
                 return false;
             }
             const newPrice = applyAmzPromoToSpriceBase(base, { type: 'percent', value: pct });
             if (!(newPrice > 0)) {
                 row.update({ appr: false, _appr_lmp: null });
                 amzPefToast('error', 'No S PRC/Price to discount');
-                if (table) table.redraw(true);
+                if (table) amzTableRedrawPreserveScroll(true);
                 return false;
             }
             row.update({
@@ -2236,7 +2250,7 @@
                 SPRICE: newPrice,
             });
             amzPersistClearThenSprice(row, newPrice, true);
-            if (table) table.redraw(true);
+            if (table) amzTableRedrawPreserveScroll(true);
             return true;
         }
         async function applyAmzPefPromoFromCell(cell, kind) {
@@ -2299,7 +2313,7 @@
                 ok ? 'success' : 'error',
                 fieldMeta.label + ' → ' + ok + ' row(s)' + (skipped ? ('; skipped ' + skipped) : '')
             );
-            if (table) table.redraw(true);
+            if (table) amzTableRedrawPreserveScroll(true);
             amzScheduleRuleSpriceSync({ force: true, delay: 250 });
         }
 
@@ -2635,6 +2649,35 @@
             if (!plan || !(plan.effective > 0)) return 0;
             return amzCapRuleSprice(d, plan.effective);
         }
+        function amzClearStoredSpriceOnRow(d) {
+            if (!d) return;
+            d.SPRICE = 0;
+            d.has_custom_sprice = false;
+            d._amz_persisted_sprice = 0;
+            if (typeof allTableData === 'undefined' || !Array.isArray(allTableData)) return;
+            const sku = amzPefSku(d);
+            if (!sku) return;
+            for (let i = 0; i < allTableData.length; i++) {
+                if (amzPefSku(allTableData[i]) === sku) {
+                    allTableData[i].SPRICE = 0;
+                    allTableData[i].has_custom_sprice = false;
+                    allTableData[i]._amz_persisted_sprice = 0;
+                    break;
+                }
+            }
+        }
+        function amzBulkClearStoredSprice(skus) {
+            if (!skus || !skus.length) return $.Deferred().resolve().promise();
+            return $.ajax({
+                url: '/amazon-clear-sprice',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                data: {
+                    _token: amzPefCsrf(),
+                    updates: skus.map(function(sku) { return { sku: sku, sprice: 0 }; }),
+                },
+            });
+        }
         /** Keep the in-memory row (and allTableData copy) equal to the visible rule price. */
         function amzWriteStoredSpriceOnRow(d, live) {
             if (!d || !(live > 0)) return;
@@ -2718,7 +2761,7 @@
                 ok++;
             }
             if (table) {
-                try { table.redraw(true); } catch (e) { /* ignore */ }
+                try { amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
             }
             amzPefToast(
                 ok ? 'success' : 'error',
@@ -2768,10 +2811,9 @@
         }
 
         /**
-         * Always show/store the live rule S PRC. First pass overwrites stale stored
-         * values; later Dil / CVR / 0 Sold / Std / LP changes overwrite again.
+         * Always delete stored S PRC first, then save the live column S PRC in the
+         * background. Column keeps painting the live formula while DB catches up.
          */
-        const AMZ_RULE_SPRICE_CLEAR_KEY = 'amzRuleSpriceClearedOnce:v3';
         let amzRuleSpriceSlabsReady = false;
         const amzRuleReadyBits = { cvr: false, rev: false, dilgroi: false };
         let amzRuleSpriceSyncTimer = null;
@@ -2782,14 +2824,6 @@
         const amzRuleSpricePersistInflight = {};
         const amzRuleSpricePersistLatest = {};
 
-        function amzShouldClearStoredOnce() {
-            try { return !localStorage.getItem(AMZ_RULE_SPRICE_CLEAR_KEY); }
-            catch (e) { return true; }
-        }
-        function amzMarkStoredClearedOnce() {
-            try { localStorage.setItem(AMZ_RULE_SPRICE_CLEAR_KEY, '1'); }
-            catch (e) { /* ignore */ }
-        }
         function amzRuleSpriceNeedsOverwrite(stored, live) {
             if (!(live > 0)) return false;
             return Math.abs((Number(stored) || 0) - live) > 0.009;
@@ -2805,7 +2839,7 @@
                 const latest = amzRuleSpricePersistLatest[job.sku];
                 if (latest && latest.plan) job.plan = latest.plan;
                 amzRuleSpricePersistActive++;
-                amzPersistClearThenSprice(job.row, job.plan.effective, true)
+                saveAmzSpriceFromPromo(job.row, job.plan.effective, true)
                     .done(function(saveRes) {
                         applyAmzPushPrcToSpriceRow(job.row, job.plan, saveRes);
                     })
@@ -2844,63 +2878,86 @@
         }
         function amzApplyRuleSpriceToAllRows(opts) {
             opts = opts || {};
-            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return 0;
+            const done = $.Deferred();
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') {
+                done.resolve(0);
+                return done.promise();
+            }
             if (!amzRuleSpriceSlabsReady && !opts.force) {
                 amzScheduleRuleSpriceSync({ delay: 400 });
-                return 0;
+                done.resolve(0);
+                return done.promise();
             }
-            const clearOnce = !!opts.clearOnce || amzShouldClearStoredOnce();
-            const force = !!opts.force || clearOnce;
-            let changed = 0;
             const rows = table.getRows('all') || [];
+            const clearSkus = [];
+            const saveJobs = [];
             rows.forEach(function(row) {
                 const d = row.getData();
-                if (!amzPefIsChildRow(d) || amzPefInv(d) === 0) return;
+                if (!amzPefIsChildRow(d)) return;
+                const sku = amzPefSku(d);
+                if (!sku) return;
+                clearSkus.push(sku);
+                amzClearStoredSpriceOnRow(d);
+                row.update({
+                    SPRICE: 0,
+                    SGPFT: 0,
+                    'Spft%': 0,
+                    SROI: 0,
+                    SGROI: 0,
+                    has_custom_sprice: false,
+                    _amz_persisted_sprice: 0,
+                });
+                if (amzPefInv(d) === 0) return;
                 const plan = amzRuleSpricePlanForRow(d);
                 if (!plan) return;
                 plan.effective = amzFinalSpriceToSave(d, plan.effective);
                 if (!(plan.effective > 0)) return;
-                const stored = amzLastPersistedSprice(d);
-                if (!force && !amzRuleSpriceNeedsOverwrite(stored, plan.effective)) return;
-                amzWriteStoredSpriceOnRow(d, plan.effective);
-                row.update({
-                    SPRICE: plan.effective,
-                    has_custom_sprice: true,
-                });
-                if (plan.zeroSold && plan.zeroSoldGroi != null) {
-                    row.update({ ZERO_SOLD_PRC_GROI: plan.zeroSoldGroi });
-                }
-                if (plan.dilGroi && plan.dilGroiGroi != null) {
-                    row.update({ DIL_GROI_PRC: plan.dilGroiGroi });
-                }
-                amzEnqueueRuleSpricePersist(row, plan);
-                changed++;
+                saveJobs.push({ row: row, plan: plan, sku: sku });
             });
-            if (clearOnce) amzMarkStoredClearedOnce();
-            if (changed && table) {
-                try { table.redraw(true); } catch (e) { /* ignore */ }
+            if (!clearSkus.length) {
+                if (typeof window.updateAmazonSummary === 'function') {
+                    try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }
+                }
+                done.resolve(0);
+                return done.promise();
             }
-            if (opts.toast) {
-                amzPefToast(
-                    changed ? 'success' : 'info',
-                    changed
-                        ? ('S PRC autofilled from rules on ' + changed + ' SKU(s).')
-                        : 'S PRC already matches the live rules.'
-                );
-            }
-            return changed;
+            amzBulkClearStoredSprice(clearSkus).always(function() {
+                saveJobs.forEach(function(job) {
+                    amzEnqueueRuleSpricePersist(job.row, job.plan);
+                });
+                if (table) {
+                    try { amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
+                }
+                if (typeof window.updateAmazonSummary === 'function') {
+                    try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }
+                }
+                if (opts.toast) {
+                    amzPefToast(
+                        saveJobs.length ? 'success' : 'info',
+                        saveJobs.length
+                            ? ('S PRC cleared, then ' + saveJobs.length + ' new S PRC queued in background.')
+                            : 'S PRC cleared. No new live S PRC to save.'
+                    );
+                }
+                done.resolve(saveJobs.length);
+            });
+            return done.promise();
         }
         function amzScheduleRuleSpriceSync(opts) {
             opts = opts || {};
             clearTimeout(amzRuleSpriceSyncTimer);
             amzRuleSpriceSyncTimer = setTimeout(function() {
-                if (amzRuleSpriceSyncBusy) {
+                if (amzRuleSpriceSyncBusy || amzRuleSpricePersistActive > 0 || amzRuleSpricePersistQueue.length) {
                     amzScheduleRuleSpriceSync(opts);
                     return;
                 }
                 amzRuleSpriceSyncBusy = true;
-                try { amzApplyRuleSpriceToAllRows(opts); }
-                finally { amzRuleSpriceSyncBusy = false; }
+                const req = amzApplyRuleSpriceToAllRows(opts);
+                if (req && typeof req.always === 'function') {
+                    req.always(function() { amzRuleSpriceSyncBusy = false; });
+                } else {
+                    amzRuleSpriceSyncBusy = false;
+                }
             }, opts.delay != null ? opts.delay : 400);
         }
         function bindAmzRuleSpriceAutofill() {
@@ -2911,11 +2968,11 @@
             if (table._amzRuleSpriceAutofillBound) return;
             table._amzRuleSpriceAutofillBound = true;
             table.on('dataLoaded', function() {
-                amzScheduleRuleSpriceSync({ force: amzShouldClearStoredOnce(), delay: 500 });
+                amzScheduleRuleSpriceSync({ delay: 500 });
             });
             try {
                 if ((typeof table.getDataCount === 'function' ? table.getDataCount() : 0) > 0) {
-                    amzScheduleRuleSpriceSync({ force: amzShouldClearStoredOnce(), delay: 500 });
+                    amzScheduleRuleSpriceSync({ delay: 500 });
                 }
             } catch (e) { /* wait for dataLoaded */ }
         }
@@ -2981,7 +3038,7 @@
                     SPRICE_STATUS: null,
                 });
             });
-            if (table) table.redraw(true);
+            if (table) amzTableRedrawPreserveScroll(true);
 
             let ok = 0;
             let fail = 0;
@@ -2989,7 +3046,7 @@
             function next() {
                 if (i >= ready.length) {
                     $btn.prop('disabled', false).html(html);
-                    if (table) table.redraw(true);
+                    if (table) amzTableRedrawPreserveScroll(true);
                     amzPefToast(
                         fail && !ok ? 'error' : 'success',
                         'sprice ?: ' + ok + ' filled'
@@ -3099,22 +3156,35 @@
                 const t = bySku[sku];
                 if (!t) return;
                 const st = String(t.status || '');
+                let patch = null;
                 if (st === 'ok') {
-                    row.update({
+                    const livePrice = Number(t.effective != null ? t.effective : d.SPRICE) || 0;
+                    const nextVal = t.effective != null ? t.effective : d.PUSH_PRC_VALUE;
+                    const nextSprice = t.effective != null ? t.effective : d.SPRICE;
+                    const nextPrice = livePrice > 0 ? livePrice : d.price;
+                    if (d.PUSH_PRC_STATUS === 'pushed'
+                        && Number(d.PUSH_PRC_VALUE) === Number(nextVal)
+                        && Number(d.SPRICE) === Number(nextSprice)
+                        && Number(d.price) === Number(nextPrice)) {
+                        return;
+                    }
+                    patch = {
                         PUSH_PRC_STATUS: 'pushed',
-                        PUSH_PRC_VALUE: t.effective != null ? t.effective : d.PUSH_PRC_VALUE,
-                        SPRICE: t.effective != null ? t.effective : d.SPRICE,
+                        PUSH_PRC_VALUE: nextVal,
+                        SPRICE: nextSprice,
                         has_custom_sprice: true,
-                    });
+                        price: nextPrice,
+                        Price: nextPrice,
+                    };
                 } else if (st === 'failed') {
-                    row.update({ PUSH_PRC_STATUS: 'error' });
-                } else if (st === 'pushing') {
-                    row.update({ PUSH_PRC_STATUS: 'processing' });
-                } else if (st === 'pending' || st === 'queued') {
-                    row.update({ PUSH_PRC_STATUS: 'processing' });
+                    if (d.PUSH_PRC_STATUS === 'error') return;
+                    patch = { PUSH_PRC_STATUS: 'error' };
+                } else if (st === 'pushing' || st === 'pending' || st === 'queued') {
+                    if (d.PUSH_PRC_STATUS === 'processing') return;
+                    patch = { PUSH_PRC_STATUS: 'processing' };
                 }
+                if (patch) row.update(patch);
             });
-            try { table.redraw(true); } catch (e) { /* ignore */ }
         }
 
         function amzOkSkusFromPushTasks(tasks) {
@@ -3144,9 +3214,9 @@
                 if (!amzPefIsChildRow(d)) return;
                 const live = bySku[amzPefSku(d).toUpperCase()];
                 if (!(live > 0)) return;
+                if (Number(d.price) === live && Number(d.Price) === live) return;
                 row.update({ price: live, Price: live });
             });
-            try { table.redraw(true); } catch (e) { /* ignore */ }
         }
         function queueAmzPostPushPull(skus) {
             if (!skus || !skus.length) return;
@@ -3163,6 +3233,9 @@
                     return true;
                 });
             });
+            applyAmzPulledPrices(Object.keys(expected).map(function(sku) {
+                return { success: true, sku: sku, price: expected[sku] };
+            }));
             const retryMs = [0, 2000, 4000];
             function runPull(attempt, pending) {
                 if (!pending || !pending.length) return;
@@ -3425,7 +3498,7 @@
                 applyAmzPushPrcToSpriceRow(r.row, r.plan, null);
                 return planToAmzPushPrcQueueItem(r.d, r.plan);
             });
-            if (table) table.redraw(true);
+            if (table) amzTableRedrawPreserveScroll(true);
             queueAmzPushPrcItems(items);
         }
 
@@ -3477,6 +3550,8 @@
                 const sku = amzPefSku(d);
                 const key = sku.toUpperCase();
                 if (!sku || seen[key]) return;
+                // Same set as the blue triangle badge: INV > 0 and Price ≠ live S PRC.
+                if (typeof amazonHasBlueTriangle === 'function' && !amazonHasBlueTriangle(d)) return;
                 const plan = amzPushPrcPlanForQueue(d);
                 if (!plan || !(plan.effective > 0)) return;
                 const live = amzPefRound2(Number(d.price) || 0);
@@ -3557,7 +3632,7 @@
             if (typeof loadAmzCvrDiscRules === 'function') {
                 Promise.resolve(loadAmzCvrDiscRules()).then(function() {
                     if (table) {
-                        try { table.getColumn('cvr_discount') && table.redraw(true); } catch (e) { /* ignore */ }
+                        try { table.getColumn('cvr_discount') && amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
                     }
                     amzNoteRuleReady('cvr');
                 }).catch(function() { amzNoteRuleReady('cvr'); });
@@ -3567,7 +3642,7 @@
             if (typeof loadAmzReviewDiscRules === 'function') {
                 Promise.resolve(loadAmzReviewDiscRules()).then(function() {
                     if (table) {
-                        try { table.getColumn('review_discount') && table.redraw(true); } catch (e) { /* ignore */ }
+                        try { table.getColumn('review_discount') && amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
                     }
                     amzNoteRuleReady('rev');
                 }).catch(function() { amzNoteRuleReady('rev'); });

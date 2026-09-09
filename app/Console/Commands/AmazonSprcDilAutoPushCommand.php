@@ -3,30 +3,31 @@
 namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\MonitorsCronExecution;
-use App\Services\AmazonDilPrmtAutoPushService;
+use App\Services\AmazonSprcDilAutoPushService;
 use App\Services\CronMonitor\CronExecutionContext;
 use Illuminate\Console\Command;
 
 /**
- * Twice daily 4:00 AM and 8:00 PM IST: Dil vs PRMT rules → SPRICE → Amazon Listings API.
+ * Twice daily 4:00 AM and 8:00 PM IST: Sprc Dil (Dil→GROI) + CVR/Rev fallback
+ * → SPRICE → Amazon Listings API. Page not required.
  * Only pushes SKUs whose target price changed. Price column updates on each successful push.
  */
-class AmazonDilPrmtAutoPushCommand extends Command
+class AmazonSprcDilAutoPushCommand extends Command
 {
     use MonitorsCronExecution;
 
-    protected $signature = 'amazon:dil-prmt-auto-push
+    protected $signature = 'amazon:sprc-dil-auto-push
         {--dry-run : Compute + save SPRICE, but do NOT push to Amazon}
         {--skip-push : Skip Amazon push (same as dry-run for the push step)}
         {--push-all : Push every eligible SKU (ignore Sale/Business/Min match)}
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between Amazon Listings API calls (ms)}';
 
-    protected $description = 'Dil vs PRMT: refresh SPRICE from shared rules and push changed prices to Amazon (4 AM + 8 PM IST).';
+    protected $description = 'Sprc Dil: Dil→GROI (CVR/Rev fallback, LMP cap) → SPRICE → Amazon (4 AM + 8 PM IST).';
 
-    protected string $monitorJobName = 'Amazon Dil vs PRMT Auto Push';
+    protected string $monitorJobName = 'Amazon Sprc Dil Auto Push';
 
-    public function handle(AmazonDilPrmtAutoPushService $service): int
+    public function handle(AmazonSprcDilAutoPushService $service): int
     {
         return $this->runMonitored(
             fn (CronExecutionContext $m) => $this->executeRun($service, $m),
@@ -34,7 +35,7 @@ class AmazonDilPrmtAutoPushCommand extends Command
         );
     }
 
-    protected function executeRun(AmazonDilPrmtAutoPushService $service, CronExecutionContext $monitor): int
+    protected function executeRun(AmazonSprcDilAutoPushService $service, CronExecutionContext $monitor): int
     {
         @ini_set('max_execution_time', '0');
         @set_time_limit(0);
@@ -47,9 +48,9 @@ class AmazonDilPrmtAutoPushCommand extends Command
         $sleepMs = max(0, (int) $this->option('sleep-ms'));
 
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        $this->info('Amazon Dil vs PRMT Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
+        $this->info('Amazon Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: 04:00 and 20:00 Asia/Kolkata (IST)');
-        $this->info('Rules: dil_vs_prmt_shared (all marketplaces)');
+        $this->info('Rules: amazon_dil_vs_groi (page Sprc Dil) + CVR/Rev Disc + LMP cap');
         $this->info('Push: Amazon Listings — only when Sale/Business/Min differ from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
@@ -79,7 +80,6 @@ class AmazonDilPrmtAutoPushCommand extends Command
         $monitor->setExpected($totalExpected);
         $monitor->setFetched($totalExpected);
         $monitor->setProcessed($totalApplied + $unchanged);
-        // Unchanged SKUs are intentional skips (only push changed numbers) — count as OK.
         $monitor->setUpdated($changedOk + $unchanged);
         $monitor->setSkipped($unchanged);
         $monitor->setFailed($totalFailed);

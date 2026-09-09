@@ -77,6 +77,33 @@
             overflow: hidden;
         }
 
+        /* Only the table body should scroll. Global sticky-header CSS + fitDataStretch
+           + Mac scrollbar gutter + virtual rows fight each other and snap scroll back. */
+        #amazon-table-wrapper {
+            min-height: 0;
+            min-width: 0;
+            overflow: hidden;
+        }
+        #amazon-table {
+            height: 100% !important;
+            min-height: 0 !important;
+            overflow: hidden;
+        }
+        #amazon-table.tabulator .tabulator-header {
+            position: relative !important;
+            top: auto !important;
+        }
+        #amazon-table .tabulator-tableholder {
+            overflow: auto !important;
+            overflow-anchor: none;
+            scrollbar-gutter: stable;
+        }
+        #amazon-table .tabulator-row .tabulator-cell.tabulator-frozen {
+            height: 36px !important;
+            max-height: 36px !important;
+            min-height: 36px !important;
+        }
+
         /* Give room between items without inflating control height */
         #amazon-filter-bar { gap: 4px 6px !important; }
         #summary-stats {
@@ -820,7 +847,7 @@
                         </span>
                         <span class="badge fs-6 p-2" id="amazon-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue alert: Price ≠ S PRC. Click to show only those SKUs. Auto-push skips SKUs where Price already equals S PRC.">
+                            title="Blue alert: INV > 0 and Price ≠ S PRC (needs push). Click to show only those SKUs. Cron and Push on reload skip Price = S PRC.">
                             <i class="fas fa-exclamation-triangle"></i> 0
                         </span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'amazon-lmp-missing-badge', 'lmpChannelKey' => 'amazon'])
@@ -1335,6 +1362,20 @@
             return (isFinite(stored) && stored > 0) ? stored : 0;
         }
 
+        /** Same S PRC the column paints (live plan + LMP cap). No stored-SPRICE fallback. */
+        function amazonVisibleSprice(rowData) {
+            if (!rowData) return 0;
+            let raw = 0;
+            if (typeof computeAmzPushPrcPlan === 'function') {
+                const plan = computeAmzPushPrcPlan(rowData);
+                if (plan && plan.effective > 0) raw = Number(plan.effective);
+            }
+            if (!(raw > 0)) return 0;
+            return (typeof amazonCapSpriceToLmp === 'function')
+                ? amazonCapSpriceToLmp(rowData, raw)
+                : +Number(raw).toFixed(2);
+        }
+
         function amazonComputeNetSroi(rowData) {
             if (!rowData) return null;
             const sprice = amazonRowSprice(rowData);
@@ -1471,8 +1512,12 @@
             if (!data || data.is_parent_summary) return false;
             const sku = String(data['(Child) sku'] || data.sku || '').trim().toUpperCase();
             if (!sku || sku.indexOf('PARENT') === 0) return false;
+            // Same as S PRC column + cron: INV=0 is not a live rule price / not pushable.
+            if (!(parseFloat(data.INV) > 0)) return false;
+            // Dil / CVR / Rev slabs load after first paint — don't count stale stored SPRICE.
+            if (typeof amzRuleSpriceSlabsReady !== 'undefined' && !amzRuleSpriceSlabsReady) return false;
             const price = parseFloat(data.price) || 0;
-            const sprice = amazonRowSprice(data);
+            const sprice = amazonVisibleSprice(data);
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
         function amazonListingPriceEqualsSprice(data, spriceOverride) {
@@ -3459,9 +3504,12 @@
                                 return (r.getData()['(Child) sku'] || '') === sku;
                             });
                             if (tabRow) {
-                                const rowData = tabRow.getData();
-                                rowData.SPRICE_STATUS = 'pushed';
-                                tabRow.update(rowData);
+                                const livePrice = Number(response.price || response.sale_price || price) || 0;
+                                tabRow.update({
+                                    SPRICE_STATUS: 'pushed',
+                                    price: livePrice > 0 ? livePrice : tabRow.getData().price,
+                                    Price: livePrice > 0 ? livePrice : tabRow.getData().price,
+                                });
                             }
                         }
                         const minPush = response.min_price_push;
@@ -3728,6 +3776,27 @@
                 amzClampPreviewPosition(wrap, clientX, clientY);
             }
 
+            function syncAmazonTableHeight() {
+                var wrap = document.getElementById('amazon-table-wrapper');
+                if (!wrap || !table || typeof table.setHeight !== 'function') return;
+                var h = wrap.clientHeight;
+                if (h <= 160) return;
+                var holder = wrap.querySelector('.tabulator-tableholder');
+                var sl = holder ? holder.scrollLeft : 0;
+                var st = holder ? holder.scrollTop : 0;
+                try { table.setHeight(h); } catch (e) { /* ignore */ }
+                holder = wrap.querySelector('.tabulator-tableholder');
+                if (holder) {
+                    holder.scrollLeft = sl;
+                    holder.scrollTop = st;
+                }
+            }
+            var amzTableResizeTimer = null;
+            window.addEventListener('resize', function() {
+                if (amzTableResizeTimer) clearTimeout(amzTableResizeTimer);
+                amzTableResizeTimer = setTimeout(syncAmazonTableHeight, 150);
+            });
+
             table = new Tabulator("#amazon-table", {
                 ajaxURL: "/amazon-data-json",
                 // POST so FastPanel/nginx GET disk-cache cannot serve a stale LMP
@@ -3745,7 +3814,10 @@
                 ajaxSorting: false,
                 headerSort: true,
                 headerSortElement: false,
-                layout: "fitDataStretch",
+                layout: "fitData",
+                height: "100%",
+                autoResize: false,
+                layoutColumnsOnNewData: false,
                 movableColumns: true,
                 rowHeight: 36,
                 pagination: true,
@@ -3771,12 +3843,10 @@
                     if (data.is_parent_summary === true) {
                         el.style.backgroundColor = "#fffef2";
                         el.style.fontWeight = "bold";
-                        el.style.minHeight = "48px";
                         el.classList.add("parent-row");
                     } else {
                         el.style.backgroundColor = "";
                         el.style.fontWeight = "";
-                        el.style.minHeight = "";
                         el.classList.remove("parent-row");
                     }
                 },
@@ -3978,7 +4048,6 @@
                     {
                         title: "Buyer Link",
                         field: "asin",
-                        frozen: true,
                         width: 50,
                         hozAlign: "center",
                         visible: false,
@@ -4003,7 +4072,6 @@
                     {
                         title: "Seller Link",
                         field: "seller_asin_link",
-                        frozen: true,
                         width: 90,
                         hozAlign: "center",
                         visible: false,
@@ -5011,6 +5079,20 @@
 
                 table.clearFilter(true);
 
+                // Blue triangle click = only Price ≠ S PRC children (INV > 0).
+                // Do not stack INV/Sold/GPFT — that made Row: 430 vs badge 597.
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return amazonHasBlueTriangle(data);
+                    });
+                    updateSummary();
+                    amazonTabulatorFinalizeFilterApply(sortSnapshot);
+                    setTimeout(function() {
+                        updateRowSelectAllCheckbox();
+                    }, 100);
+                    return;
+                }
+
                 // When Play is active: apply ONLY playback filter so parent summary row always shows (no other filter can hide it)
                 if (isProductNavigationActive && productUniqueParents.length > 0 && currentProductParentIndex >= 0) {
                     var currentKey = productUniqueParents[currentProductParentIndex];
@@ -5264,12 +5346,6 @@
                         return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
                     });
                 }
-                if (blueTriangleFilterActive) {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        return amazonHasBlueTriangle(data);
-                    });
-                }
                 updateSummary();
                 amazonTabulatorFinalizeFilterApply(sortSnapshot);
                 setTimeout(function() {
@@ -5371,9 +5447,15 @@
                 if (window.PriceLt80LmpBadge) {
                     PriceLt80LmpBadge.update('#amazon-price-lt80-lmp-badge', allData, 'amazon', 'price');
                 }
-                $('#amazon-blue-triangle-badge').html(
-                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
-                );
+                if (typeof amzRuleSpriceSlabsReady !== 'undefined' && !amzRuleSpriceSlabsReady) {
+                    $('#amazon-blue-triangle-badge').html(
+                        '<i class="fas fa-exclamation-triangle"></i> …'
+                    );
+                } else {
+                    $('#amazon-blue-triangle-badge').html(
+                        '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+                    );
+                }
                 syncAmazonBlueTriangleBadgeState();
 
                 // Filtered (active) row count — exclude parent summary rows
@@ -5437,6 +5519,7 @@
                     });
                 }
             }
+            window.updateAmazonSummary = updateSummary;
 
             /*
              * Column visibility — 4 groups (Basic / Price / Ads / Other).
@@ -5865,6 +5948,7 @@
 
             // Wait for table to be built - applyFilters first for fast visible result, then defer heavy work
             table.on('tableBuilt', function() {
+                syncAmazonTableHeight();
                 applyFilters();
                 requestAnimationFrame(function() {
                     Promise.resolve(applyColumnVisibilityFromServer())
@@ -5909,16 +5993,17 @@
 
             });
 
+            var amzRenderUiTimer = null;
             table.on('renderComplete', function() {
-                setTimeout(function() {
-                    $('[data-bs-toggle="tooltip"]').tooltip();
-                    $('.row-select-checkbox').each(function() {
+                if (amzRenderUiTimer) clearTimeout(amzRenderUiTimer);
+                amzRenderUiTimer = setTimeout(function() {
+                    $('#amazon-table .row-select-checkbox').each(function() {
                         var sku = $(this).data('sku');
                         $(this).prop('checked', selectedRows.has(sku));
                     });
                     updateRowSelectAllCheckbox();
                     updateSelectedCount();
-                }, 100);
+                }, 200);
             });
 
             /**
@@ -6196,6 +6281,7 @@
                                 skusToUpdate[r.sku] = {};
                             }
                             skusToUpdate[r.sku][r.marketplace] = 'pushed';
+                            skusToUpdate[r.sku].price = Number((r.data && (r.data.price || r.data.sale_price)) || 0);
                         } else {
                             failed.push(r.sku + (r.error ? ': ' + r.error : ''));
                         }
@@ -6207,7 +6293,13 @@
                         });
                         rows.forEach(function(row) {
                             if (skusToUpdate[sku]['amazon']) {
-                                row.update({ STATUS: 'pushed', SPRICE_STATUS: 'pushed' });
+                                const livePrice = Number(skusToUpdate[sku].price || row.getData().SPRICE) || 0;
+                                row.update({
+                                    STATUS: 'pushed',
+                                    SPRICE_STATUS: 'pushed',
+                                    price: livePrice > 0 ? livePrice : row.getData().price,
+                                    Price: livePrice > 0 ? livePrice : row.getData().price,
+                                });
                                 row.reformat();
                             }
                         });

@@ -2,9 +2,13 @@
 
 namespace App\Services\Support;
 
+use App\Models\AmazonDatasheet;
+use App\Services\AmazonSpApiService;
+
 /**
  * File-backed Amazon Push Prc job state (survives page refresh).
  * Supports appending new SKUs while a job is already running.
+ * One task per SKU — refresh must not grow the bar with already-pushed rows.
  */
 class AmazonPushPrcJobStore
 {
@@ -28,7 +32,7 @@ class AmazonPushPrcJobStore
      */
     public function create(array $tasks): array
     {
-        $normalized = $this->normalizeTasks($tasks);
+        $normalized = $this->uniqueTasksBySku($this->normalizeTasks($tasks));
         $queueMsg = 'Push Prc queued ('.count($normalized).' SKU(s)).';
 
         $state = array_merge($this->defaultState(), [
@@ -75,42 +79,49 @@ class AmazonPushPrcJobStore
 
             $added = 0;
             $updated = 0;
+            $skipped = 0;
             foreach ($normalized as $task) {
                 $skuKey = strtoupper((string) ($task['sku'] ?? ''));
-                $pendingIdx = null;
-                foreach ($state['tasks'] as $i => $existing) {
-                    if (! is_array($existing)) {
-                        continue;
-                    }
-                    $st = (string) ($existing['status'] ?? '');
-                    if (
-                        strtoupper((string) ($existing['sku'] ?? '')) === $skuKey
-                        && in_array($st, ['pending', 'queued'], true)
-                    ) {
-                        $pendingIdx = $i;
-                        break;
-                    }
-                }
-
-                if ($pendingIdx !== null) {
-                    $state['tasks'][$pendingIdx] = array_merge($state['tasks'][$pendingIdx], $task, [
-                        'status' => 'pending',
-                        'error' => null,
-                        'message' => 're-queued',
-                    ]);
-                    $updated++;
-                } else {
+                $idx = $this->indexOfSku($state['tasks'], $skuKey);
+                if ($idx === null) {
                     $state['tasks'][] = $task;
                     $added++;
+                    continue;
                 }
+
+                $existing = $state['tasks'][$idx];
+                $st = (string) ($existing['status'] ?? '');
+                if ($st === 'pushing') {
+                    $skipped++;
+                    continue;
+                }
+                $sameTarget = $this->sameMoney($existing['effective'] ?? null, $task['effective'] ?? null);
+                if ($st === 'ok' && $sameTarget) {
+                    $skipped++;
+                    continue;
+                }
+                if (in_array($st, ['ok', 'failed'], true)) {
+                    if ($st === 'ok') {
+                        $state['ok_count'] = max(0, ((int) ($state['ok_count'] ?? 0)) - 1);
+                    } else {
+                        $state['fail_count'] = max(0, ((int) ($state['fail_count'] ?? 0)) - 1);
+                    }
+                }
+                $state['tasks'][$idx] = array_merge($existing, $task, [
+                    'status' => 'pending',
+                    'error' => null,
+                    'message' => 're-queued',
+                ]);
+                $updated++;
             }
 
-            $state['total'] = count($state['tasks']);
+            $state = $this->recount($state);
             $state['status'] = 'running';
             $state['finished_at'] = null;
-            $msg = 'Added '.$added.' SKU(s)'
-                .($updated ? (', updated '.$updated.' pending') : '')
-                .' — queue now '.$state['total'].'.';
+            $msg = 'Queue +'.$added
+                .($updated ? (', updated '.$updated) : '')
+                .($skipped ? (', skipped '.$skipped.' already queued/pushed') : '')
+                .' — '.$state['total'].' unique SKU(s).';
             $messages = $state['messages'] ?? [];
             $messages[] = [
                 'time' => now()->format('H:i:s'),
@@ -141,13 +152,95 @@ class AmazonPushPrcJobStore
                 return ['state' => $state, 'mode' => 'create'];
             }
             $state = $this->append($tasks);
+            $this->compactDuplicateSkus();
+            $state = $this->markPendingAlreadyAtListingPrice();
 
             return ['state' => $state, 'mode' => 'append'];
         }
 
         $state = $this->create($tasks);
+        $this->compactDuplicateSkus();
+        $state = $this->markPendingAlreadyAtListingPrice();
 
         return ['state' => $state, 'mode' => 'create'];
+    }
+
+    /**
+     * One row per SKU. Refresh used to append a second copy of every already-pushed SKU.
+     */
+    public function compactDuplicateSkus(): array
+    {
+        return $this->update(function (array $state) {
+            $best = [];
+            foreach ($state['tasks'] ?? [] as $task) {
+                if (! is_array($task)) {
+                    continue;
+                }
+                $key = strtoupper(trim((string) ($task['sku'] ?? '')));
+                if ($key === '') {
+                    continue;
+                }
+                $rank = $this->statusRank((string) ($task['status'] ?? 'pending'));
+                if (! isset($best[$key]) || $rank > $this->statusRank((string) ($best[$key]['status'] ?? ''))) {
+                    $best[$key] = $task;
+                }
+            }
+            $state['tasks'] = array_values($best);
+
+            return $this->recount($state);
+        });
+    }
+
+    /**
+     * Pending SKUs whose live listing Price already equals S PRC — mark skipped (blue triangle gone).
+     */
+    public function markPendingAlreadyAtListingPrice(): array
+    {
+        return $this->update(function (array $state) {
+            $pendingSkus = [];
+            foreach ($state['tasks'] ?? [] as $task) {
+                if (! is_array($task)) {
+                    continue;
+                }
+                if (! in_array((string) ($task['status'] ?? ''), ['pending', 'queued'], true)) {
+                    continue;
+                }
+                $sku = strtoupper(trim((string) ($task['sku'] ?? '')));
+                if ($sku !== '') {
+                    $pendingSkus[] = $sku;
+                }
+            }
+            if ($pendingSkus === []) {
+                return $state;
+            }
+
+            $priceBySku = $this->listingPricesForSkus($pendingSkus);
+            $skipped = 0;
+            foreach ($state['tasks'] as $i => $task) {
+                if (! is_array($task)) {
+                    continue;
+                }
+                if (! in_array((string) ($task['status'] ?? ''), ['pending', 'queued'], true)) {
+                    continue;
+                }
+                $sku = strtoupper(trim((string) ($task['sku'] ?? '')));
+                $live = $priceBySku[$sku] ?? 0.0;
+                $target = $task['effective'] ?? $task['sale'] ?? $task['std'] ?? 0;
+                if (! AmazonSpApiService::listingPriceMatchesSprice($live, $target)) {
+                    continue;
+                }
+                $state['tasks'][$i]['status'] = 'ok';
+                $state['tasks'][$i]['error'] = null;
+                $state['tasks'][$i]['message'] = 'skipped — Price already = S PRC';
+                $state['ok_count'] = ((int) ($state['ok_count'] ?? 0)) + 1;
+                $skipped++;
+            }
+            if ($skipped > 0) {
+                $state['last_message'] = 'Skipped '.$skipped.' SKU(s) already at S PRC.';
+            }
+
+            return $this->recount($state);
+        });
     }
 
     public function update(callable $callback): array
@@ -375,7 +468,115 @@ class AmazonPushPrcJobStore
             ];
         }
 
-        return $normalized;
+        return $this->uniqueTasksBySku($normalized);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $tasks
+     * @return list<array<string, mixed>>
+     */
+    private function uniqueTasksBySku(array $tasks): array
+    {
+        $bySku = [];
+        foreach ($tasks as $task) {
+            $key = strtoupper(trim((string) ($task['sku'] ?? '')));
+            if ($key === '') {
+                continue;
+            }
+            $bySku[$key] = $task;
+        }
+
+        return array_values($bySku);
+    }
+
+    /**
+     * @param  list<mixed>  $tasks
+     */
+    private function indexOfSku(array $tasks, string $skuKey): ?int
+    {
+        $skuKey = strtoupper(trim($skuKey));
+        foreach ($tasks as $i => $existing) {
+            if (! is_array($existing)) {
+                continue;
+            }
+            if (strtoupper(trim((string) ($existing['sku'] ?? ''))) === $skuKey) {
+                return (int) $i;
+            }
+        }
+
+        return null;
+    }
+
+    private function sameMoney(mixed $a, mixed $b): bool
+    {
+        return AmazonSpApiService::moneyEquals(
+            is_numeric($a) ? (float) $a : null,
+            is_numeric($b) ? (float) $b : null
+        );
+    }
+
+    private function statusRank(string $status): int
+    {
+        return match ($status) {
+            'pushing' => 4,
+            'pending', 'queued' => 3,
+            'ok' => 2,
+            'failed' => 1,
+            default => 0,
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     * @return array<string, mixed>
+     */
+    private function recount(array $state): array
+    {
+        $ok = 0;
+        $fail = 0;
+        $tasks = [];
+        foreach ($state['tasks'] ?? [] as $task) {
+            if (! is_array($task)) {
+                continue;
+            }
+            $tasks[] = $task;
+            $st = (string) ($task['status'] ?? '');
+            if ($st === 'ok') {
+                $ok++;
+            } elseif ($st === 'failed') {
+                $fail++;
+            }
+        }
+        $state['tasks'] = $tasks;
+        $state['total'] = count($tasks);
+        $state['ok_count'] = $ok;
+        $state['fail_count'] = $fail;
+
+        return $state;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, float>
+     */
+    private function listingPricesForSkus(array $skus): array
+    {
+        $out = [];
+        $skus = array_values(array_unique(array_filter($skus)));
+        if ($skus === []) {
+            return $out;
+        }
+        foreach (array_chunk($skus, 400) as $chunk) {
+            foreach (AmazonDatasheet::query()->whereIn('sku', $chunk)->get(['sku', 'price']) as $row) {
+                $key = strtoupper(trim((string) $row->sku));
+                $price = (float) ($row->price ?? 0);
+                if ($key !== '' && $price > 0) {
+                    $out[$key] = $price;
+                }
+            }
+        }
+
+        return $out;
     }
 
     private function defaultState(): array

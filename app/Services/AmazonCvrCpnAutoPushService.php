@@ -431,6 +431,14 @@ class AmazonCvrCpnAutoPushService
         }
 
         $this->savePushMeta($statusSku, 'pushed', $price, $cpn);
+        try {
+            app(AmazonPushedPricePullService::class)->confirmAfterPush($statusSku, $apiSku, $price);
+        } catch (Throwable $e) {
+            Log::warning('[AmazonCvrCpnAutoPush] immediate Price pull after push failed', [
+                'sku' => $statusSku,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return true;
     }
