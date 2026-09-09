@@ -15,6 +15,8 @@ class PriceGtLmpChannelCountsTest extends TestCase
         $this->assertSame('temu2', PriceGtLmpChannelCounts::resolveKey('temu2'));
         $this->assertSame('temu3', PriceGtLmpChannelCounts::resolveKey('temu3'));
         $this->assertSame('amazon', PriceGtLmpChannelCounts::resolveKey('amazon'));
+        $this->assertSame('bestbuy', PriceGtLmpChannelCounts::resolveKey('bestbuy'));
+        $this->assertSame('bestbuy', PriceGtLmpChannelCounts::resolveKey('bestbuyusa'));
         $this->assertNull(PriceGtLmpChannelCounts::resolveKey('unknown-channel'));
     }
 

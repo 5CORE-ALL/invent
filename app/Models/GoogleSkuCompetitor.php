@@ -106,6 +106,39 @@ class GoogleSkuCompetitor extends Model
         ];
     }
 
+    /**
+     * Grid-only LMP: sku → list of {d,p} (dedupe key + price). No images/titles.
+     *
+     * @return array<string, list<array{d:string,p:float}>>
+     */
+    public static function buildLeanOfferLookup(string $marketplace = 'google'): array
+    {
+        $details = [];
+        self::query()
+            ->where('marketplace', $marketplace)
+            ->wherePositivePrice()
+            ->select(['id', 'sku', 'price', 'product_id', 'source', 'product_link'])
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$details) {
+                foreach ($rows as $row) {
+                    $key = self::normalizeSkuKey($row->sku);
+                    if ($key === '') {
+                        continue;
+                    }
+                    $price = (float) ($row->price ?? 0);
+                    if ($price <= 0) {
+                        continue;
+                    }
+                    $details[$key][] = [
+                        'd' => self::offerDedupeKey($row),
+                        'p' => $price,
+                    ];
+                }
+            });
+
+        return $details;
+    }
+
     public static function getCompetitorsForSku($sku, $marketplace = 'google')
     {
         $normalizedSku = self::normalizeSkuKey($sku);

@@ -2772,9 +2772,10 @@
             rowHeight: 36,
             pagination: true,
             paginationSize: 100,
-            paginationSizeSelector: [10, 25, 50, 100, 200, true],
+            paginationSizeSelector: [25, 50, 100, 200],
             paginationCounter: "rows",
             renderVertical: "virtual",
+            ajaxRequestTimeout: 180000,
             langs: {
                 "default": {
                     "pagination": {
@@ -3933,7 +3934,12 @@
         });
 
         // Update summary badges
+        let shopifyB2cSummaryTimer = null;
         function updateSummary() {
+            if (shopifyB2cSummaryTimer) clearTimeout(shopifyB2cSummaryTimer);
+            shopifyB2cSummaryTimer = setTimeout(runShopifyB2cSummaryNow, 80);
+        }
+        function runShopifyB2cSummaryNow() {
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             
@@ -3955,8 +3961,6 @@
                 return true;
             });
             
-            console.log('UpdateSummary - Total rows (ignoring search):', data.length);
-
             let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
             let totalInv = 0, totalL30 = 0, totalViews = 0, totalB2BL30 = 0, zeroSoldCount = 0, moreSoldCount = 0;
             let totalCogs = 0, totalRoi = 0, roiCount = 0, lessAmzCount = 0, moreAmzCount = 0;
@@ -4207,19 +4211,11 @@
         table.on('dataLoaded', function() {
             setTimeout(function() {
                 applyFilters();
-                updateSummary();
                 if (typeof window.chPromoAutofitColumns === 'function') {
                     window.chPromoAutofitColumns(table);
                 }
                 if (typeof loadShopifyB2cBadgePrevDay === 'function') loadShopifyB2cBadgePrevDay();
                 if (typeof loadChartJs === 'function') loadChartJs();
-                shopifyB2cApplyRuleSpriceToAllRows({ persist: true });
-            }, 100);
-        });
-
-        table.on('renderComplete', function() {
-            setTimeout(function() {
-                updateSummary();
             }, 100);
         });
 
