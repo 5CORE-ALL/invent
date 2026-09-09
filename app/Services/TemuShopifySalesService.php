@@ -403,7 +403,8 @@ class TemuShopifySalesService
 
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
-            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, $margin, $lp, $ship);
+            // Temu 2 Base stays the API/stored unit (no −$2.99). Temu 1 still strips freight.
+            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, $margin, $lp, $ship, ! $isTemu2);
 
             // L30 Sales / GPFT / GROI on Temu Price (same as /temu-tabulator).
             $totalSales += $calc['sales'];
@@ -454,7 +455,7 @@ class TemuShopifySalesService
             }
             $lineSales = (float) ($r['line_sales'] ?? 0);
             $rawUnit = ($lineSales > 0 && $qty > 0) ? ($lineSales / $qty) : $base;
-            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, self::temuMarginDecimal(), 0.0, 0.0);
+            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, self::temuMarginDecimal(), 0.0, 0.0, false);
             $out[$d]['sales'] += $calc['sales'];
             $out[$d]['base_sales'] += $calc['base'] * $qty;
             $out[$d]['qty'] += $qty;

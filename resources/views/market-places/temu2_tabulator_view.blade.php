@@ -171,13 +171,10 @@
     const TEMU_PRICE_MULT = 1.1364;
     const TEMU_FREIGHT = 2.99;
     const TEMU_FREIGHT_CAP = 26.99;
-    /** Same as /temu-tabulator: Base = unit − $2.99 when unit < $26.99. */
+    /** Temu 2 Base = stored/API unit as-is (do not subtract $2.99). */
     function temuGoodsBase(rawUnit) {
         const b = parseFloat(rawUnit) || 0;
         if (b <= 0) return 0;
-        if (b < TEMU_FREIGHT_CAP) {
-            return Math.max(0, +(b - TEMU_FREIGHT).toFixed(2));
-        }
         return +b.toFixed(2);
     }
     function temuRowBase(row) {
@@ -463,7 +460,7 @@
                         return temuGoodsBase(a) - temuGoodsBase(b);
                     },
                     width: 120,
-                    headerTooltip: "Base = stored/API unit − $2.99 when that unit is < $26.99. Otherwise stored/API unit. Same as /temu-tabulator.",
+                    headerTooltip: "Base = stored/API unit. No −$2.99 (Temu 2 keeps the unit as-is).",
                     accessorDownload: function(value) {
                         const n = temuGoodsBase(value);
                         return n > 0 ? n.toFixed(2) : '';
@@ -472,10 +469,7 @@
                         const raw = parseFloat(cell.getValue()) || 0;
                         const base = temuGoodsBase(raw);
                         if (!(base > 0)) return '';
-                        const tip = raw < TEMU_FREIGHT_CAP
-                            ? ('$' + raw.toFixed(2) + ' − $2.99 (unit < $26.99)')
-                            : ('$' + raw.toFixed(2) + ' (unit ≥ $26.99, no −$2.99)');
-                        return `<span title="${tip}">$${base.toFixed(2)}</span>`;
+                        return `<span title="Base = stored/API unit (no −$2.99)">$${base.toFixed(2)}</span>`;
                     }
                 },
                 {
