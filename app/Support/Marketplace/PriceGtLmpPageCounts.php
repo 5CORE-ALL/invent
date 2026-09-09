@@ -5,6 +5,9 @@ namespace App\Support\Marketplace;
 use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Http\Controllers\MarketPlace\MacyController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
+use App\Models\BestbuyPriceData;
+use App\Models\BestbuySkuCompetitor;
+use App\Models\BestbuyUsaProduct;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
@@ -63,6 +66,7 @@ class PriceGtLmpPageCounts
         $out['shopifyb2b'] = self::safe('shopifyb2b', fn () => self::countShopifyB2b($ctx));
         $out['macys'] = self::safe('macys', fn () => self::countMacys($ctx));
         $out['reverb'] = self::safe('reverb', fn () => self::countReverb($ctx));
+        $out['bestbuy'] = self::safe('bestbuy', fn () => self::countBestbuy($ctx));
         $out['temu'] = self::safe('temu', fn () => self::countTemu($ctx, 'temu'));
         $out['temu2'] = self::safe('temu2', fn () => self::countTemu($ctx, 'temu2'));
         $out['temu3'] = self::safe('temu3', fn () => self::countTemu($ctx, 'temu3'));
@@ -501,6 +505,50 @@ class PriceGtLmpPageCounts
             $resolved = MacyController::resolveListedPrice(null, $sheet[strtoupper((string) $sku)] ?? null);
             $price = (float) ($resolved['price'] ?? 0);
             $lmp = self::macyOrReverbLmp((string) $sku, $details, $ctx['groups'], MacySkuCompetitor::class);
+            if ($price > 0 && $lmp > 0 && $price > $lmp) {
+                $n++;
+            }
+        }
+
+        return $n;
+    }
+
+    /**
+     * /bestbuy-pricing: BB Price (sheet, else product) > landed LMP. INV > 0.
+     *
+     * @param  array{skus: list<string>, shopify: Collection, groups: LmpSkuGroupService}  $ctx
+     */
+    private static function countBestbuy(array $ctx): int
+    {
+        $sheet = [];
+        if (class_exists(BestbuyPriceData::class)) {
+            foreach (BestbuyPriceData::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'price']) as $row) {
+                $sheet[strtoupper((string) $row->sku)] = (float) ($row->price ?? 0);
+            }
+        }
+        $products = [];
+        if (class_exists(BestbuyUsaProduct::class)) {
+            foreach (BestbuyUsaProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'price']) as $row) {
+                $products[(string) $row->sku] = (float) ($row->price ?? 0);
+            }
+        }
+        $details = collect();
+        try {
+            $details = BestbuySkuCompetitor::buildGroupedLookup('bestbuy')['details'] ?? collect();
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        $n = 0;
+        foreach ($ctx['skus'] as $sku) {
+            if (self::isParentSku((string) $sku)) {
+                continue;
+            }
+            if (! (self::invFor($ctx, (string) $sku) > 0)) {
+                continue;
+            }
+            $price = $sheet[strtoupper((string) $sku)] ?? ($products[(string) $sku] ?? 0.0);
+            $lmp = self::macyOrReverbLmp((string) $sku, $details, $ctx['groups'], BestbuySkuCompetitor::class);
             if ($price > 0 && $lmp > 0 && $price > $lmp) {
                 $n++;
             }

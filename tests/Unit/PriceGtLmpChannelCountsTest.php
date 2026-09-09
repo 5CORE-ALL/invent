@@ -24,6 +24,10 @@ class PriceGtLmpChannelCountsTest extends TestCase
         $this->assertArrayHasKey('temu3', $analytics);
         $this->assertSame('Temu 3', $analytics['temu3']['label']);
         $this->assertSame('/temu3-decrease', $analytics['temu3']['url']);
+        $this->assertArrayHasKey('bestbuy', $analytics);
+        $this->assertSame('BestBuy USA', $analytics['bestbuy']['label']);
+        $this->assertSame('/bestbuy-pricing', $analytics['bestbuy']['url']);
+        $this->assertSame('bestbuy', PriceGtLmpChannelCounts::resolveKey('bestbuyusa'));
     }
 
     public function test_temu_norm_folds_piece_count(): void
@@ -92,5 +96,21 @@ class PriceGtLmpChannelCountsTest extends TestCase
         $notOver = $hit;
         $notOver['price'] = 27.50;
         $this->assertFalse(PriceGtLmpChannelCounts::rowHasRedTriangle($notOver, 'price'));
+    }
+
+    public function test_red_triangle_uses_bestbuy_price_field(): void
+    {
+        $hit = [
+            '(Child) sku' => 'BB-1',
+            'INV' => 5,
+            'BB Price' => 49.99,
+            'lmp_price' => 44.00,
+            'lmp_entries' => [],
+        ];
+        $this->assertTrue(PriceGtLmpChannelCounts::rowHasRedTriangle($hit, 'BB Price'));
+
+        $notOver = $hit;
+        $notOver['BB Price'] = 40.00;
+        $this->assertFalse(PriceGtLmpChannelCounts::rowHasRedTriangle($notOver, 'BB Price'));
     }
 }

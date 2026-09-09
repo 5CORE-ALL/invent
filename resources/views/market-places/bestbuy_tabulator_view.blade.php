@@ -105,6 +105,7 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold; display: none;">Price: $0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">BB L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
+                        @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'bestbuy-price-gt-lmp-badge', 'pglChannelKey' => 'bestbuy', 'pglPriceField' => 'BB Price'])
                         <span class="badge fs-6 p-2" id="bestbuy-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ BB Price. Click to show only those rows. Click again to clear.">
@@ -459,6 +460,7 @@
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let selectedSkus = new Set();
+    let priceGtLmpFilterActive = false;
     let blueTriangleFilterActive = false;
 
     function isBestbuyParentRow(row) {
@@ -1842,6 +1844,7 @@
                     field: "BB Price",
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "Red triangle = Price > LMP (INV > 0). Click the red triangle badge to filter.",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
@@ -1850,18 +1853,19 @@
                         if (value === 0) {
                             return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                         }
+                        const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(value, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
                         
                         // Show red if BB Price is less than Amazon Price
                         if (amazonPrice > 0 && value < amazonPrice) {
-                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}`;
                         }
                         
                         // Show green if BB Price is greater than Amazon Price
                         if (amazonPrice > 0 && value > amazonPrice) {
-                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>${lmpTri}`;
                         }
                         
-                        return `$${value.toFixed(2)}`;
+                        return `$${value.toFixed(2)}${lmpTri}`;
                     },
                     width: 70
                 },
@@ -2513,6 +2517,11 @@
                     return nrReq === 'REQ' && ourInv > 0 && !isMissing && isBestbuyInvMappingMismatch(ourInv, bbInv);
                 });
             }
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'BB Price');
+                });
+            }
             if (blueTriangleFilterActive) {
                 table.addFilter(function(data) {
                     return bestbuyHasBlueTriangle(data);
@@ -2522,12 +2531,30 @@
             updateSummary();
         }
 
+        if (window.PriceGtLmpBadge) {
+            PriceGtLmpBadge.bind({
+                badge: '#bestbuy-price-gt-lmp-badge',
+                getActive: function() { return priceGtLmpFilterActive; },
+                onToggle: function(on) {
+                    priceGtLmpFilterActive = on;
+                    if (on) blueTriangleFilterActive = false;
+                    applyFilters();
+                }
+            });
+        }
+
         $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #roi-filter, #dil-filter, #sold-filter').on('change', function() {
             applyFilters();
         });
 
         $('#bestbuy-blue-triangle-badge').on('click', function() {
             blueTriangleFilterActive = !blueTriangleFilterActive;
+            if (blueTriangleFilterActive) {
+                priceGtLmpFilterActive = false;
+                if (window.PriceGtLmpBadge) {
+                    PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), false);
+                }
+            }
             applyFilters();
         });
 
@@ -2609,6 +2636,10 @@
             $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
             $('#total-l30-badge').text(`BB L30: ${totalL30.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
+            if (window.PriceGtLmpBadge && table) {
+                PriceGtLmpBadge.update('#bestbuy-price-gt-lmp-badge', table.getData(), 'bestbuy', 'BB Price');
+                PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), priceGtLmpFilterActive);
+            }
             let blueTriangleCount = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (bestbuyHasBlueTriangle(row)) blueTriangleCount++;

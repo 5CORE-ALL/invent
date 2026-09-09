@@ -26,7 +26,7 @@
 
     function priceOf(row, priceField) {
         var fields = priceField ? [priceField] : [];
-        fields = fields.concat(['eBay Price', 'Price', 'price', 'MC Price', 'api_price', 'doba Price', 'self_pick_price']);
+        fields = fields.concat(['eBay Price', 'Price', 'price', 'MC Price', 'BB Price', 'api_price', 'doba Price', 'self_pick_price']);
         return firstNum(row, fields);
     }
 

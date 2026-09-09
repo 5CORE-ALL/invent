@@ -234,7 +234,7 @@ class PriceGtLmpChannelCounts
             return false;
         }
         $price = self::rowFirstPositive($row, array_merge([$priceField], [
-            'eBay Price', 'Price', 'price', 'MC Price', 'api_price', 'doba Price', 'self_pick_price',
+            'eBay Price', 'Price', 'price', 'MC Price', 'BB Price', 'api_price', 'doba Price', 'self_pick_price',
         ]));
         $lmp = self::rowLmp($row);
 

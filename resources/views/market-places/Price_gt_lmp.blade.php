@@ -153,7 +153,7 @@
                         if (!name) return '';
                         const safeName = escapeHtml(name);
                         if (!url) return safeName;
-                        return `<a href="${escapeHtml(url)}" class="lmp-channel-link" title="Open analytics page">${safeName}</a>`;
+                        return `<a href="${escapeHtml(url)}" class="lmp-channel-link" target="_blank" rel="noopener noreferrer" title="Open analytics page">${safeName}</a>`;
                     }
                 },
                 {

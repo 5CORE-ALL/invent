@@ -121,6 +121,14 @@ class LmpMissingChannelCounts
             'sku_col' => 'sku',
             'competitor' => ['table' => 'reverb_sku_competitors', 'sku' => 'sku', 'price' => 'total_price', 'marketplace' => 'reverb'],
         ],
+        'bestbuy' => [
+            'label' => 'BestBuy USA',
+            'url' => '/bestbuy-pricing',
+            'aliases' => ['bestbuy', 'bestbuyusa'],
+            'sku_table' => 'product_master',
+            'sku_col' => 'sku',
+            'competitor' => ['table' => 'bestbuy_sku_competitors', 'sku' => 'sku', 'price' => 'total_price', 'marketplace' => 'bestbuy'],
+        ],
         'topdawg' => [
             'label' => 'TopDawg',
             'url' => '/topdawg-pricing',
