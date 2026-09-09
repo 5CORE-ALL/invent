@@ -94,16 +94,7 @@ class InactiveListingsController extends Controller
             }
 
             $slug = $resolved['slug'];
-            $mmChannel = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
-            $rows = [];
-            if ($mmChannel !== null) {
-                $rows = app(MarketplaceListingQtyMatchService::class)->inactiveListingRows($mmChannel, true);
-            }
-            if ($rows === []) {
-                $rows = ListingInactiveParentChildCounts::rowsForChannel($slug);
-            } else {
-                $rows = ListingInactiveParentChildCounts::attachParents($rows);
-            }
+            $rows = ListingInactiveParentChildCounts::listingRowsForChannel($slug);
 
             $data = collect($rows)
                 ->map(function (array $row) use ($resolved) {

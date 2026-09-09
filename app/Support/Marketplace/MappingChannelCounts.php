@@ -27,9 +27,9 @@ class MappingChannelCounts
 
     public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v1';
 
-    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v8';
+    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v9';
 
-    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v8';
+    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v9';
 
     public const LINKED_MISMATCH_TOTAL_CACHE_KEY = 'linked_mismatch_sku_total_v2';
 
@@ -216,6 +216,8 @@ class MappingChannelCounts
             Cache::forget('inactive_listings_master_rows_v6');
             Cache::forget('inactive_listings_total_v7');
             Cache::forget('inactive_listings_master_rows_v7');
+            Cache::forget('inactive_listings_total_v8');
+            Cache::forget('inactive_listings_master_rows_v8');
         } catch (\Throwable $e) {
             // ignore
         }
@@ -376,7 +378,7 @@ class MappingChannelCounts
                 'api_label' => 'API not linked',
             ];
 
-            $inactive = ListingInactiveParentChildCounts::forChannel($slug);
+            $inactive = ListingInactiveParentChildCounts::listingCountsForChannel($slug);
             $child = (int) ($inactive['child'] ?? 0);
             $parent = (int) ($inactive['parent'] ?? 0);
 

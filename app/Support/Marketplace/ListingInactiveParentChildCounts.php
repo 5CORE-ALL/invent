@@ -12,11 +12,12 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Inactive parent vs child counts for /missing-listing.
+ * Inactive parent vs child counts.
  *
- * Source of truth is the same seller-platform inactive SKU list as /inactive-listings.
- * Zero-inventory SKUs (shopify_skus.inv null / empty / 0) are excluded from both columns.
- * If a channel has no parent / variation listings, the full inactive count goes in Child.
+ * /missing-listing uses forChannel() and drops zero-inventory SKUs.
+ * /inactive-listings uses listingRowsForChannel() / listingCountsForChannel()
+ * and shows every portal inactive SKU (including 0 inv).
+ * Parent = PARENT-placeholder SKUs, not product_master parent names.
  */
 class ListingInactiveParentChildCounts
 {
@@ -179,6 +180,85 @@ class ListingInactiveParentChildCounts
         }
 
         return $out;
+    }
+
+    /**
+     * Same SKU set for /inactive-listings master counts and the channel page.
+     * Portal inactive SKUs only — do not add extra live-cache rows.
+     *
+     * @return list<array{sku: string, parent: string, kind: string, inv: int, channel_sku: string, channel_inv: int, diff: int, status: string, state: string}>
+     */
+    public static function listingRowsForChannel(string $channel): array
+    {
+        $rows = self::rowsForChannel($channel);
+        $norm = ListingChannelCounts::normalize($channel);
+        $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($norm);
+        if ($mm === null || $rows === []) {
+            return $rows;
+        }
+
+        $bySku = [];
+        try {
+            foreach (app(MarketplaceListingQtyMatchService::class)->inactiveListingRows($mm, false) as $row) {
+                $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
+                if ($sku !== '') {
+                    $bySku[$sku] = $row;
+                }
+            }
+        } catch (\Throwable $e) {
+            $bySku = [];
+        }
+
+        foreach ($rows as $i => $row) {
+            $hit = $bySku[strtoupper((string) $row['sku'])] ?? null;
+            if ($hit === null) {
+                continue;
+            }
+            $inv = (int) ($hit['inv'] ?? $row['inv']);
+            $channelInv = (int) ($hit['channel_inv'] ?? $row['channel_inv']);
+            $rows[$i]['inv'] = $inv;
+            $rows[$i]['channel_inv'] = $channelInv;
+            $rows[$i]['diff'] = abs($inv - $channelInv);
+            $rows[$i]['channel_sku'] = (string) ($hit['channel_sku'] ?? $row['channel_sku']);
+            $rows[$i]['status'] = trim((string) ($hit['status'] ?? '')) !== ''
+                ? (string) $hit['status']
+                : $row['status'];
+            $rows[$i]['state'] = trim((string) ($hit['state'] ?? '')) !== ''
+                ? (string) $hit['state']
+                : $row['state'];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array{parent: int, child: int, url: ?string}
+     */
+    public static function listingCountsForChannel(string $channel): array
+    {
+        $parent = 0;
+        $child = 0;
+        foreach (self::rowsForChannel($channel) as $row) {
+            if (($row['kind'] ?? 'child') === 'parent') {
+                $parent++;
+            } else {
+                $child++;
+            }
+        }
+
+        $url = null;
+        try {
+            $norm = ListingChannelCounts::normalize($channel);
+            $url = MappingChannelCounts::listingsInactiveUrlForSlug($norm !== '' ? $norm : $channel);
+        } catch (\Throwable $e) {
+            $url = null;
+        }
+
+        return [
+            'parent' => $parent,
+            'child' => $child,
+            'url' => $url,
+        ];
     }
 
     /**
