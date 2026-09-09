@@ -1526,6 +1526,11 @@ class ListingManagerController extends Controller
 
             return $row;
         })->values();
+        if ($tab === 'active') {
+            $data = $data->filter(fn (array $row) => ($row['status'] ?? '') === 'listed')->values();
+        } elseif ($tab === 'drafts') {
+            $data = $data->filter(fn (array $row) => in_array((string) ($row['status'] ?? ''), ['draft', 'ready', 'queued', 'failed'], true))->values();
+        }
 
         $baseMeta = ListingManagerChannelDraft::query();
         if ($channelId > 0) {
@@ -2329,9 +2334,10 @@ class ListingManagerController extends Controller
         $familyChildCount = count($family['skus'] ?? []);
         $alreadyVariation = strtolower(trim((string) ($details['publish_mode'] ?? ''))) === 'variation'
             && count(array_filter((array) ($details['variation_skus'] ?? []))) > 1;
+        $isAmazonDraft = ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName)) === 'amazon';
         if ($draft->status === 'listed' && trim((string) $draft->external_listing_id) !== '') {
             $canRelistAsVariation = $familyChildCount > 1 && ! $alreadyVariation;
-            if (! $canRelistAsVariation) {
+            if (! $canRelistAsVariation && ! $isAmazonDraft) {
                 return response()->json([
                     'success' => true,
                     'message' => 'Already published (ItemID ' . $draft->external_listing_id . ').',
@@ -2541,7 +2547,7 @@ class ListingManagerController extends Controller
         if (is_array($ids) && $ids !== []) {
             $query->whereIn('id', array_map('intval', $ids));
         } else {
-            $query->whereIn('status', ['draft', 'ready', 'queued', 'failed']);
+            $query->whereIn('status', ['draft', 'ready', 'queued', 'failed', 'listed']);
         }
 
         $listed = 0;
@@ -2551,17 +2557,30 @@ class ListingManagerController extends Controller
         foreach ($query->get() as $draft) {
             $checked++;
             $channelName = (string) ($draft->channel->channel ?? '');
+            $isAmazon = ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName)) === 'amazon';
+            if ($isAmazon) {
+                ListingManagerPublishStatus::forgetAmazonLiveCache((string) $draft->seller_sku);
+            }
             $result = ListingManagerPublishStatus::check($channelName, (string) $draft->seller_sku);
             $draft->publish_checked_at = now();
 
             if ($result['listed']) {
                 $draft->status = 'listed';
                 $draft->external_listing_id = $result['listing_id'];
+                if ($isAmazon && trim((string) $result['listing_id']) !== '') {
+                    $draft->asin = $result['listing_id'];
+                }
                 $draft->listed_at = $draft->listed_at ?: now();
                 $draft->notes = trim((string) $draft->notes . "\nLive on {$channelName} via {$result['source']}.");
                 $listed++;
             } else {
-                if ($draft->status === 'listed') {
+                if ($draft->status === 'listed' && $isAmazon && ($result['source'] ?? '') === 'amazon_listings_api') {
+                    $draft->status = 'ready';
+                    $draft->listed_at = null;
+                    $draft->external_listing_id = null;
+                    $draft->asin = null;
+                    $draft->notes = trim((string) $draft->notes."\nMoved back to Drafts: Amazon Seller Central does not have this SKU.");
+                } elseif ($draft->status === 'listed') {
                     // keep listed if we had an id before unless explicitly cleared
                 } else {
                     $ready = ListingManagerPublishStatus::readiness(
@@ -2859,15 +2878,26 @@ class ListingManagerController extends Controller
         if ($d->status !== 'listed') {
             return;
         }
-        if (ListingManagerPublishStatus::amazonAsinForSku((string) $d->seller_sku)) {
+        $live = ListingManagerPublishStatus::amazonLiveOnSellerCentral((string) $d->seller_sku);
+        if ($live['found'] ?? false) {
+            $asin = trim((string) ($live['asin'] ?? ''));
+            if ($asin !== '' && trim((string) $d->external_listing_id) !== $asin) {
+                $d->external_listing_id = $asin;
+                $d->asin = $asin;
+                $d->save();
+            }
+
             return;
         }
-        if (trim((string) $d->external_listing_id) !== '') {
+        if (! ($live['checked'] ?? false)) {
             return;
         }
         $d->status = 'ready';
         $d->listed_at = null;
-        $d->notes = trim((string) $d->notes."\nMoved back to Drafts: Amazon Seller Central does not have this SKU.");
+        $d->external_listing_id = null;
+        $d->asin = null;
+        $reason = trim((string) ($live['message'] ?? 'Amazon Seller Central does not have this SKU.'));
+        $d->notes = trim((string) $d->notes."\nMoved back to Drafts: ".$reason);
         $d->save();
     }
 
