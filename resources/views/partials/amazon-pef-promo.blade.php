@@ -1,6 +1,7 @@
 {{--
   CVR Disc. / Rev Disc. / Push Prc / Sprc Dil for Amazon tabulator.
   Sprc Dil: Amazon-only Dil 0.1–25% (5 slabs) → Target GROI% (amazon_dil_vs_groi).
+  CVR overlay on Target GROI: Down and < 7% = -10; Up and > 10% = +10.
   Amazon path: discount SPRICE via /save-amazon-sprice (no eBay Marketing APIs).
 --}}
 @php
@@ -521,7 +522,7 @@
                         </ul>
                     </div>
                     <button type="button" class="btn btn-sm" id="amz-dil-groi-btn"
-                        title="Dil slabs → Target GROI%. Every INV &gt; 0 SKU uses the Dil-matching slab.">
+                        title="Dil slabs → Target GROI%. CVR Down &lt; 7% subtracts 10 from Target GROI%; CVR Up &gt; 10% adds 10. Every INV &gt; 0 SKU uses the Dil-matching slab.">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
 @endif
@@ -676,6 +677,14 @@
                             use that slab’s Target GROI (first match; last slab includes the To value).
                         </li>
                         <li>
+                            <strong>When</strong> CVR is Down and CVR L30 is below 7%:
+                            subtract 10 from that slab’s Target GROI% (not below 0).
+                        </li>
+                        <li>
+                            <strong>When</strong> CVR is Up and CVR L30 is above 10%:
+                            add 10 to that slab’s Target GROI%.
+                        </li>
+                        <li>
                             <strong>When</strong> a price is calculated from a Dil slab match:
                             it auto-applies to <strong>S PRC</strong> and Push Prc Sale.
                         </li>
@@ -784,7 +793,7 @@
             '#7c3aed', '#0ea5e9',
         ];
         const AMZ_DG_CVR_BANDS = [
-            { key: 'down-lt7', label: 'Down · < 7%', color: '#dc3545' },
+            { key: 'down-lt7', label: 'Down · < 7% (−10 GROI)', color: '#dc3545' },
             { key: 'down-7-10', label: 'Down · 7–10%', color: '#fd7e14' },
             { key: 'down-gt10', label: 'Down · > 10%', color: '#f59e0b' },
             { key: 'flat-lt7', label: 'Flat · < 7%', color: '#94a3b8' },
@@ -792,7 +801,7 @@
             { key: 'flat-gt10', label: 'Flat · > 10%', color: '#475569' },
             { key: 'up-lt7', label: 'UP · < 7%', color: '#86efac' },
             { key: 'up-7-10', label: 'UP · 7–10%', color: '#20c997' },
-            { key: 'up-gt10', label: 'UP · > 10%', color: '#198754' },
+            { key: 'up-gt10', label: 'UP · > 10% (+10 GROI)', color: '#198754' },
         ];
         let amzPageReloadPushEnabled = @json($amazonPageReloadPushEnabled ?? false);
 
@@ -1250,6 +1259,18 @@
             const bucket = cvr < 7 ? 'lt7' : (cvr > 10 ? 'gt10' : '7-10');
             return trend + '-' + bucket;
         }
+        /** -10 when CVR is Down and < 7%; +10 when CVR is Up and > 10%. */
+        function amzDilGroiCvrAdj(d) {
+            const cvr = amzPefCvrL30Live(d);
+            const trend = amzPefCvrTrend(d);
+            if (trend === 'down' && cvr < 7) return -10;
+            if (trend === 'up' && cvr > 10) return 10;
+            return 0;
+        }
+        function amzDilGroiApplyCvrAdj(slabGroi, d) {
+            const groi = amzPefRound2((Number(slabGroi) || 0) + amzDilGroiCvrAdj(d));
+            return groi < 0 ? 0 : groi;
+        }
         function amzDilGroiCollectCounts(list) {
             const rules = list || amzDilGroiDisplayRules();
             const counts = { _outside: 0 };
@@ -1496,14 +1517,18 @@
             const dil = amzPefDil(d);
             const rule = amzDilGroiMatch(dil);
             if (!rule) return null;
-            const groi = rule.groi;
+            const slabGroi = rule.groi;
+            const cvrAdj = amzDilGroiCvrAdj(d);
+            const groi = amzDilGroiApplyCvrAdj(slabGroi, d);
             const sprc = amzSpriceFromTargetGroi(d, groi);
             if (!(sprc > 0)) return null;
             return {
                 dil: dil,
                 key: rule.key,
                 label: rule.label,
+                slabGroi: slabGroi,
                 groi: groi,
+                cvrAdj: cvrAdj,
                 sprc: sprc,
                 zeroSoldMin: false,
             };
@@ -2488,7 +2513,7 @@
          * Live rule stack for this SKU.
          * CVR Disc = CVR slab (INV=0 or CVR≤0 → 0)
          * Rev Disc = review-count slab (INV=0 or count 0 or count > max → 0)
-         * Sprc Dil = Dil slab → Target GROI (every INV > 0 SKU, including 0 Sold)
+         * Sprc Dil = Dil slab → Target GROI, then CVR Down < 7% -10 / Up > 10% +10 (every INV > 0 SKU, including 0 Sold)
          */
         function computeAmzRuleStack(d) {
             const cvrDisc = Math.max(0, Number(typeof computeAmzCvrDiscountPct === 'function' ? computeAmzCvrDiscountPct(d) : 0) || 0);
@@ -2509,6 +2534,8 @@
                 zeroSoldPrice: null,
                 dilGroi: dilGroi,
                 dilGroiGroi: dilGroi ? dilGroiMeta.groi : null,
+                dilGroiSlabGroi: dilGroi ? dilGroiMeta.slabGroi : null,
+                dilGroiCvrAdj: dilGroi ? (dilGroiMeta.cvrAdj || 0) : 0,
                 dilGroiLabel: dilGroi ? dilGroiMeta.label : null,
                 dilGroiPrice: dilGroi ? dilGroiMeta.sprc : null,
                 totalDisc: totalDisc,
@@ -2517,8 +2544,15 @@
         function formatAmzPushPrcDiscNote(plan) {
             const parts = [];
             if (plan.dilGroi) {
-                parts.push('Sprc Dil GROI ' + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%'
-                    + (plan.dilGroiLabel ? (' · ' + plan.dilGroiLabel) : ''));
+                let groiNote = 'Sprc Dil GROI ' + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%';
+                if (plan.dilGroiCvrAdj) {
+                    const sign = plan.dilGroiCvrAdj > 0 ? '+' : '';
+                    const why = plan.dilGroiCvrAdj > 0 ? 'CVR Up > 10%' : 'CVR Down < 7%';
+                    groiNote = 'Sprc Dil GROI ' + (plan.dilGroiSlabGroi != null ? plan.dilGroiSlabGroi : '') + '%'
+                        + ' ' + sign + plan.dilGroiCvrAdj + ' (' + why + ') → '
+                        + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%';
+                }
+                parts.push(groiNote + (plan.dilGroiLabel ? (' · ' + plan.dilGroiLabel) : ''));
                 return parts.length ? ' (' + parts.join(' + ') + ')' : '';
             }
             if (plan.cvrDisc) parts.push('CVR Disc ' + plan.cvrDisc + '%');
@@ -2528,7 +2562,7 @@
         }
         /**
          * Push Prc plan per SKU:
-         *  Sprc Dil (Dil in slab, including 0 Sold) → Sale = Dil→GROI target (does not stack discounts)
+         *  Sprc Dil (Dil in slab, including 0 Sold) → Sale = Dil→GROI target, then CVR Down < 7% -10 / Up > 10% +10 (does not stack discounts)
          *  Other  → Sale = Std × (1 − (CVR Disc + Rev Disc)/100)
          *  Your = Std; Sale = Business = Min
          */
@@ -2569,6 +2603,8 @@
                 zeroSoldGroi: stack.zeroSoldGroi,
                 dilGroi: stack.dilGroi,
                 dilGroiGroi: stack.dilGroiGroi,
+                dilGroiSlabGroi: stack.dilGroiSlabGroi,
+                dilGroiCvrAdj: stack.dilGroiCvrAdj,
                 dilGroiLabel: stack.dilGroiLabel,
                 totalDisc: stack.totalDisc,
                 effective: effective,

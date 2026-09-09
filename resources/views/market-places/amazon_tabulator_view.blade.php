@@ -4346,17 +4346,23 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "Suggested price from Dil → Target GROI% slabs (including 0 Sold). Formula: (LP × (1 + GROI%/100) + Ship) / 0.80.",
+                        headerTooltip: "Suggested price from Dil → Target GROI% slabs (including 0 Sold). CVR Down < 7% subtracts 10 from Target GROI%; CVR Up > 10% adds 10. Formula: (LP × (1 + GROI%/100) + Ship) / 0.80.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
                             if (typeof amzDilGroiMetaForRow !== 'function') return '';
                             const meta = amzDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                            const slabGroi = (meta.slabGroi != null) ? meta.slabGroi : meta.groi;
+                            let tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                                 + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2);
+                                + ' → GROI ' + slabGroi + '%';
+                            if (meta.cvrAdj) {
+                                const sign = meta.cvrAdj > 0 ? '+' : '';
+                                const why = meta.cvrAdj > 0 ? 'CVR Up > 10%' : 'CVR Down < 7%';
+                                tip += ' ' + sign + meta.cvrAdj + ' (' + why + ') → ' + meta.groi + '%';
+                            }
+                            tip += ' → $' + meta.sprc.toFixed(2);
                             return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                                 + meta.sprc.toFixed(2) + '</span>';
                         },
