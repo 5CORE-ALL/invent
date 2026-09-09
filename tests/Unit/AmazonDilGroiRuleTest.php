@@ -101,4 +101,43 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 6, 'up'));
         $this->assertSame(0.0, AmazonDilGroiRule::adjustGroiForCvr(5, 1, 'down'));
     }
+
+    public function test_adjust_groi_uses_saved_cvr_overlay_thresholds(): void
+    {
+        $cfg = ['down_lt' => 5, 'down_adj' => -8, 'up_gt' => 12, 'up_adj' => 6];
+        $this->assertSame(42.0, AmazonDilGroiRule::adjustGroiForCvr(50, 4.9, 'down', $cfg));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 5, 'down', $cfg));
+        $this->assertSame(56.0, AmazonDilGroiRule::adjustGroiForCvr(50, 12.1, 'up', $cfg));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 12, 'up', $cfg));
+    }
+
+    public function test_unpack_stored_keeps_legacy_slab_list_and_cvr_adj_wrapper(): void
+    {
+        $legacy = AmazonDilGroiRule::unpackStored([
+            ['min' => 0.1, 'max' => 5, 'groi' => 50],
+        ]);
+        $this->assertCount(1, $legacy['rules']);
+        $this->assertSame(7.0, $legacy['cvr_adj']['down_lt']);
+        $this->assertSame(-10.0, $legacy['cvr_adj']['down_adj']);
+
+        $wrapped = AmazonDilGroiRule::unpackStored([
+            'rules' => [['min' => 0.1, 'max' => 5, 'groi' => 50]],
+            'cvr_adj' => ['down_lt' => 6, 'down_adj' => -12, 'up_gt' => 11, 'up_adj' => 9],
+        ]);
+        $this->assertSame(50.0, $wrapped['rules'][0]['groi']);
+        $this->assertSame(6.0, $wrapped['cvr_adj']['down_lt']);
+        $this->assertSame(-12.0, $wrapped['cvr_adj']['down_adj']);
+        $this->assertSame(11.0, $wrapped['cvr_adj']['up_gt']);
+        $this->assertSame(9.0, $wrapped['cvr_adj']['up_adj']);
+    }
+
+    public function test_adjust_groi_level_only_ignores_trend(): void
+    {
+        $this->assertSame(40.0, AmazonDilGroiRule::adjustGroiForCvrLevel(50, 6.9));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvrLevel(50, 7));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvrLevel(50, 8.5));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvrLevel(50, 10));
+        $this->assertSame(60.0, AmazonDilGroiRule::adjustGroiForCvrLevel(50, 10.1));
+        $this->assertSame(0.0, AmazonDilGroiRule::adjustGroiForCvrLevel(5, 1));
+    }
 }

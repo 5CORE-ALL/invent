@@ -3,7 +3,7 @@
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
   Amazon / eBay 1–3 / Doba Pickup: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
-  eBay 1–3 / Temu 1–2 CVR overlay on Target GROI: Down and < 7% = -10; Up and > 10% = +10.
+  eBay 1–3 / Temu 1–2 / Reverb / Faire / TikTok / Shopify B2C CVR overlay on Target GROI (editable table + live Count).
   Macys: Dil-matching when Dil is in a slab. If Dil is out of box and 0 Sold, use min Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price (do not keep Std Prc).
   Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
@@ -17,7 +17,7 @@
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'doba_withoutship', 'macys', 'macy'], true);
-    $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2'], true);
+    $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg'], true);
     $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace'], true);
@@ -83,6 +83,16 @@
             cursor: pointer;
         }
         #ebayDilGroiModal .ebay-dg-add-btn { font-size: 12px; }
+        #ebay-cvr-groi-table .ebay-cvr-groi-input {
+            max-width: 72px;
+            display: inline-block;
+            text-align: right;
+            font-weight: 600;
+        }
+        #ebay-cvr-groi-table .ebay-dg-count {
+            font-weight: 700;
+            text-align: center;
+        }
         #ebay-dil-groi-table .ebay-dg-count {
             font-weight: 700;
             text-align: center;
@@ -181,8 +191,8 @@
                         title="{{ !empty($ebaySprcDilIsMacys)
                             ? 'Dil-matching slab, or min GROI when Dil is out of box and 0 Sold. If that S PRC < A Price, use A Price.'
                             : ($ebaySprcDilZeroSoldUsesMinGroi
-                            ? 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR Down < 7% subtracts 10 from Target GROI%; CVR Up > 10% adds 10.' : '').' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.'
-                            : 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR Down < 7% subtracts 10 from Target GROI%; CVR Up > 10% adds 10.' : '').' Every INV > 0 SKU uses the Dil-matching slab.') }}">
+                            ? 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR overlay (editable, with Count) adjusts Target GROI.' : '').' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.'
+                            : 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR overlay (editable, with Count) adjusts Target GROI.' : '').' Every INV > 0 SKU uses the Dil-matching slab.') }}">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
 @endif
@@ -237,12 +247,8 @@
                         </li>
                         @if(!empty($ebaySprcDilCvrGroiAdj))
                         <li>
-                            <strong>When</strong> CVR is Down and CVR L30 is below 7%:
-                            subtract 10 from that Target GROI% (not below 0).
-                        </li>
-                        <li>
-                            <strong>When</strong> CVR is Up and CVR L30 is above 10%:
-                            add 10 to that Target GROI%.
+                            <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table:
+                            apply that Adj GROI to the Target GROI (Count updates as you edit).
                         </li>
                         @endif
                         <li>
@@ -257,12 +263,8 @@
                         </li>
                         @if(!empty($ebaySprcDilCvrGroiAdj))
                         <li>
-                            <strong>When</strong> CVR is Down and CVR L30 is below 7%:
-                            subtract 10 from that slab’s Target GROI% (not below 0).
-                        </li>
-                        <li>
-                            <strong>When</strong> CVR is Up and CVR L30 is above 10%:
-                            add 10 to that slab’s Target GROI%.
+                            <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table:
+                            apply that Adj GROI to the Dil slab Target GROI (Count updates as you edit).
                         </li>
                         @endif
                         @if(!empty($ebaySprcDilIsMacys))
@@ -328,6 +330,45 @@
                     <button type="button" class="btn btn-sm btn-outline-primary ebay-dg-add-btn mt-2" id="ebay-dil-groi-add-btn">
                         <i class="fas fa-plus me-1"></i> Add slab
                     </button>
+                    @if(!empty($ebaySprcDilCvrGroiAdj))
+                    <div class="ebay-dg-rules-title mt-3">CVR overlay — Target GROI</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="ebay-cvr-groi-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>When</th>
+                                    <th class="text-center">CVR%</th>
+                                    <th class="text-end">Adj GROI</th>
+                                    <th class="text-center" style="width:80px;">Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr data-row="down">
+                                    <td>Down</td>
+                                    <td class="text-center">
+                                        &lt;
+                                        <input type="number" min="0" step="0.1" class="form-control form-control-sm ebay-cvr-groi-input ebay-cvr-groi-down-lt" value="7">
+                                    </td>
+                                    <td class="text-end">
+                                        <input type="number" step="1" class="form-control form-control-sm ebay-cvr-groi-input ebay-cvr-groi-down-adj" value="-10">
+                                    </td>
+                                    <td class="ebay-dg-count"><span class="ebay-cvr-groi-down-count">0</span></td>
+                                </tr>
+                                <tr data-row="up">
+                                    <td>Up</td>
+                                    <td class="text-center">
+                                        &gt;
+                                        <input type="number" min="0" step="0.1" class="form-control form-control-sm ebay-cvr-groi-input ebay-cvr-groi-up-gt" value="10">
+                                    </td>
+                                    <td class="text-end">
+                                        <input type="number" step="1" class="form-control form-control-sm ebay-cvr-groi-input ebay-cvr-groi-up-adj" value="10">
+                                    </td>
+                                    <td class="ebay-dg-count"><span class="ebay-cvr-groi-up-count">0</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    @endif
                     <div class="small text-muted mt-2" id="ebay-dil-groi-status"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
@@ -436,17 +477,65 @@
             '#eab308', '#f59e0b', '#ea580c', '#dc3545', '#e83e8c',
             '#7c3aed', '#0ea5e9',
         ];
-        const EBAY_DG_CVR_BANDS = [
-            { key: 'down-lt7', label: EBAY_DIL_GROI_CVR_ADJ ? 'Down · < 7% (−10 GROI)' : 'Down · < 7%', color: '#dc3545' },
-            { key: 'down-7-10', label: 'Down · 7–10%', color: '#fd7e14' },
-            { key: 'down-gt10', label: 'Down · > 10%', color: '#f59e0b' },
-            { key: 'flat-lt7', label: 'Flat · < 7%', color: '#94a3b8' },
-            { key: 'flat-7-10', label: 'Flat · 7–10%', color: '#64748b' },
-            { key: 'flat-gt10', label: 'Flat · > 10%', color: '#475569' },
-            { key: 'up-lt7', label: 'UP · < 7%', color: '#86efac' },
-            { key: 'up-7-10', label: 'UP · 7–10%', color: '#20c997' },
-            { key: 'up-gt10', label: EBAY_DIL_GROI_CVR_ADJ ? 'UP · > 10% (+10 GROI)' : 'UP · > 10%', color: '#198754' },
-        ];
+        let ebayCvrGroiAdj = { down_lt: 7, down_adj: -10, up_gt: 10, up_adj: 10 };
+        function ebayNormalizeCvrGroiAdj(raw) {
+            const out = { down_lt: 7, down_adj: -10, up_gt: 10, up_adj: 10 };
+            if (!raw) return out;
+            const downLt = Number(raw.down_lt);
+            const downAdj = Number(raw.down_adj);
+            const upGt = Number(raw.up_gt);
+            const upAdj = Number(raw.up_adj);
+            if (isFinite(downLt) && downLt >= 0) out.down_lt = ebayDgRound2(downLt);
+            if (isFinite(downAdj)) out.down_adj = ebayDgRound2(downAdj);
+            if (isFinite(upGt) && upGt >= 0) out.up_gt = ebayDgRound2(upGt);
+            if (isFinite(upAdj)) out.up_adj = ebayDgRound2(upAdj);
+            return out;
+        }
+        function ebayCvrGroiAdjNow() {
+            const $tbl = $('#ebay-cvr-groi-table');
+            if ($tbl.length) {
+                return ebayNormalizeCvrGroiAdj({
+                    down_lt: parseFloat($tbl.find('.ebay-cvr-groi-down-lt').val()),
+                    down_adj: parseFloat($tbl.find('.ebay-cvr-groi-down-adj').val()),
+                    up_gt: parseFloat($tbl.find('.ebay-cvr-groi-up-gt').val()),
+                    up_adj: parseFloat($tbl.find('.ebay-cvr-groi-up-adj').val()),
+                });
+            }
+            return ebayNormalizeCvrGroiAdj(ebayCvrGroiAdj);
+        }
+        function ebayPaintCvrGroiAdjTable(cfg) {
+            cfg = ebayNormalizeCvrGroiAdj(cfg);
+            ebayCvrGroiAdj = cfg;
+            const $tbl = $('#ebay-cvr-groi-table');
+            if (!$tbl.length) return;
+            $tbl.find('.ebay-cvr-groi-down-lt').val(cfg.down_lt);
+            $tbl.find('.ebay-cvr-groi-down-adj').val(cfg.down_adj);
+            $tbl.find('.ebay-cvr-groi-up-gt').val(cfg.up_gt);
+            $tbl.find('.ebay-cvr-groi-up-adj').val(cfg.up_adj);
+        }
+        function ebayDgCvrBands() {
+            const cfg = ebayCvrGroiAdjNow();
+            const lo = cfg.down_lt;
+            const hi = cfg.up_gt;
+            const mid = lo + '–' + hi;
+            const downLabel = EBAY_DIL_GROI_CVR_ADJ
+                ? ('Down · < ' + lo + '% (' + cfg.down_adj + ' GROI)')
+                : ('Down · < ' + lo + '%');
+            const upLabel = EBAY_DIL_GROI_CVR_ADJ
+                ? ('UP · > ' + hi + '% (' + (cfg.up_adj > 0 ? '+' : '') + cfg.up_adj + ' GROI)')
+                : ('UP · > ' + hi + '%');
+            return [
+                { key: 'down-lt', label: downLabel, color: '#dc3545' },
+                { key: 'down-mid', label: 'Down · ' + mid + '%', color: '#fd7e14' },
+                { key: 'down-gt', label: 'Down · > ' + hi + '%', color: '#f59e0b' },
+                { key: 'flat-lt', label: 'Flat · < ' + lo + '%', color: '#94a3b8' },
+                { key: 'flat-mid', label: 'Flat · ' + mid + '%', color: '#64748b' },
+                { key: 'flat-gt', label: 'Flat · > ' + hi + '%', color: '#475569' },
+                { key: 'up-lt', label: 'UP · < ' + lo + '%', color: '#86efac' },
+                { key: 'up-mid', label: 'UP · ' + mid + '%', color: '#20c997' },
+                { key: 'up-gt', label: upLabel, color: '#198754' },
+            ];
+        }
 
         function ebayDgRound2(n) {
             return Math.round((Number(n) || 0) * 100) / 100;
@@ -483,12 +572,52 @@
             return (ov / inv) * 100;
         }
         function ebayDgCvr30(d) {
+            if (EBAY_DIL_GROI_CHANNEL === 'reverb') {
+                if (d && d.CVR != null && d.CVR !== '') {
+                    const n = Number(d.CVR);
+                    if (isFinite(n) && n >= 0) return n;
+                }
+                const l30 = Number(d && d['RV L30']) || 0;
+                const views = Number(d && d.Views) || 0;
+                return views > 0 ? (l30 / views) * 100 : 0;
+            }
+            if (EBAY_DIL_GROI_CHANNEL === 'faire') {
+                if (d && d.cvr != null && d.cvr !== '') {
+                    const n = Number(d.cvr);
+                    if (isFinite(n) && n >= 0) return n;
+                }
+                const views = Number(d && d.views) || 0;
+                const units = Number(d && (d.units_sold != null ? d.units_sold : d.al30)) || 0;
+                return views > 0 ? (units / views) * 100 : 0;
+            }
+            if (EBAY_DIL_GROI_CHANNEL === 'tiktok' || EBAY_DIL_GROI_CHANNEL === 'tiktok2') {
+                if (typeof ttListingCvr === 'function') return Number(ttListingCvr(d)) || 0;
+                const raw = (d && d.cvr != null && d.cvr !== '' && d.cvr !== '-') ? d.cvr : (d && d['CVR%']);
+                const stored = Number(raw);
+                if (isFinite(stored) && raw !== '' && raw !== '-' && stored >= 0) return stored;
+                const views = Number(d && (d.t_views != null ? d.t_views : d.views)) || 0;
+                const sold = Number(d && d['TT L30']) || 0;
+                return views > 0 ? (sold / views) * 100 : 0;
+            }
+            if (EBAY_DIL_GROI_CHANNEL === 'shopify_b2c') {
+                const l30 = Number(d && (d['B2B L30'] != null ? d['B2B L30'] : d['B2C L30'])) || 0;
+                const views = Number(d && (d.Views != null ? d.Views : d.views)) || 0;
+                return views > 0 ? (l30 / views) * 100 : 0;
+            }
             if (d && d.cvr_30 != null && d.cvr_30 !== '') {
                 const n = Number(d.cvr_30);
                 if (isFinite(n) && n >= 0) return n;
             }
             if (typeof chPromoCvr === 'function') return Number(chPromoCvr(d)) || 0;
             return Number(d && (d.SCVR != null ? d.SCVR : d.cvr_percent)) || 0;
+        }
+        function ebayDgHasCvrPrior(d) {
+            if (!d) return false;
+            const raw = (d.CVR_60 != null && d.CVR_60 !== '') ? d.CVR_60
+                : ((d.cvr_60 != null && d.cvr_60 !== '') ? d.cvr_60
+                    : ((d.CVR_45 != null && d.CVR_45 !== '') ? d.CVR_45
+                        : d.cvr_45));
+            return raw != null && raw !== '';
         }
         function ebayDgCvr60(d) {
             return Number(d && (d.CVR_60 != null ? d.CVR_60 : d.cvr_60)) || 0;
@@ -504,16 +633,29 @@
         function ebayDgCvrBandKey(d) {
             const cvr = ebayDgCvr30(d);
             const trend = ebayDgCvrTrend(d);
-            const bucket = cvr < 7 ? 'lt7' : (cvr > 10 ? 'gt10' : '7-10');
+            const cfg = ebayCvrGroiAdjNow();
+            const bucket = cvr < cfg.down_lt ? 'lt' : (cvr > cfg.up_gt ? 'gt' : 'mid');
             return trend + '-' + bucket;
         }
-        /** -10 when CVR is Down and < 7%; +10 when CVR is Up and > 10%. eBay 1–3 / Temu 1–2. */
+        function ebayDgUsesCvrLevelOnly() {
+            return EBAY_DIL_GROI_CHANNEL === 'reverb'
+                || EBAY_DIL_GROI_CHANNEL === 'faire'
+                || EBAY_DIL_GROI_CHANNEL === 'tiktok'
+                || EBAY_DIL_GROI_CHANNEL === 'tiktok2'
+                || EBAY_DIL_GROI_CHANNEL === 'shopify_b2c';
+        }
         function ebayDilGroiCvrAdj(d) {
             if (!EBAY_DIL_GROI_CVR_ADJ) return 0;
             const cvr = ebayDgCvr30(d);
+            const cfg = ebayCvrGroiAdjNow();
+            if (ebayDgUsesCvrLevelOnly() || !ebayDgHasCvrPrior(d)) {
+                if (cvr < cfg.down_lt) return cfg.down_adj;
+                if (cvr > cfg.up_gt) return cfg.up_adj;
+                return 0;
+            }
             const trend = ebayDgCvrTrend(d);
-            if (trend === 'down' && cvr < 7) return -10;
-            if (trend === 'up' && cvr > 10) return 10;
+            if (trend === 'down' && cvr < cfg.down_lt) return cfg.down_adj;
+            if (trend === 'up' && cvr > cfg.up_gt) return cfg.up_adj;
             return 0;
         }
         function ebayDilGroiApplyCvrAdj(slabGroi, d) {
@@ -715,7 +857,10 @@
             let tip = head + ' → ' + meta.label + ' → GROI ' + slabGroi + '%';
             if (meta.cvrAdj) {
                 const sign = meta.cvrAdj > 0 ? '+' : '';
-                const why = meta.cvrAdj > 0 ? 'CVR Up > 10%' : 'CVR Down < 7%';
+                const cfg = ebayCvrGroiAdjNow();
+                const why = meta.cvrAdj > 0
+                    ? ('CVR Up > ' + cfg.up_gt + '%')
+                    : ('CVR Down < ' + cfg.down_lt + '%');
                 tip += ' ' + sign + meta.cvrAdj + ' (' + why + ') → ' + meta.groi + '%';
             }
             return tip + ' → $' + Number(meta.sprc).toFixed(2);
@@ -732,6 +877,7 @@
         window.ebaySprcDilForRow = ebaySprcDilForRow;
         window.ebayDilGroiOwnsRow = ebayDilGroiOwnsRow;
         window.ebayDilGroiTipText = ebayDilGroiTipText;
+        window.ebayCvrGroiAdjNow = ebayCvrGroiAdjNow;
 
         function ebayDgEachInvChild(fn) {
             const walk = function(row, d) {
@@ -760,12 +906,28 @@
         }
         function ebayDilGroiCollectCvrCounts() {
             const counts = {};
-            EBAY_DG_CVR_BANDS.forEach(function(b) { counts[b.key] = 0; });
+            ebayDgCvrBands().forEach(function(b) { counts[b.key] = 0; });
             ebayDgEachInvChild(function(d) {
                 const key = ebayDgCvrBandKey(d);
                 counts[key] = (counts[key] || 0) + 1;
             });
             return counts;
+        }
+        function ebayDilGroiCollectCvrAdjCounts() {
+            const counts = { down: 0, up: 0 };
+            if (!EBAY_DIL_GROI_CVR_ADJ) return counts;
+            ebayDgEachInvChild(function(d) {
+                const adj = ebayDilGroiCvrAdj(d);
+                if (adj < 0) counts.down++;
+                else if (adj > 0) counts.up++;
+            });
+            return counts;
+        }
+        function ebayPaintCvrGroiAdjCounts() {
+            if (!EBAY_DIL_GROI_CVR_ADJ) return;
+            const counts = ebayDilGroiCollectCvrAdjCounts();
+            $('#ebay-cvr-groi-table .ebay-cvr-groi-down-count').text(counts.down);
+            $('#ebay-cvr-groi-table .ebay-cvr-groi-up-count').text(counts.up);
         }
         function ebayDgSlabColor(idx) {
             return EBAY_DG_SLAB_COLORS[idx % EBAY_DG_SLAB_COLORS.length];
@@ -847,7 +1009,7 @@
                 }).join('');
         }
         function ebayDgDrawHist(chart, band, rows) {
-            const slices = chart === 'cvr' ? EBAY_DG_CVR_BANDS : ebayDgDilSlices;
+            const slices = chart === 'cvr' ? ebayDgCvrBands() : ebayDgDilSlices;
             const spec = slices.find(function(s) { return s.key === band; })
                 || { key: band, label: band, color: '#6f42c1' };
             $('#ebay-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : 'Dil ') + spec.label + ' count');
@@ -980,12 +1142,14 @@
                     return;
                 }
 
+                const cvrBands = ebayDgCvrBands();
                 const cvrCounts = ebayDilGroiCollectCvrCounts();
                 ebayDgCvrLiveCounts = cvrCounts;
                 ebayDgSnapLocal(ebayDgHistKey('cvr'), cvrCounts);
                 const cvrLegend = document.getElementById('ebay-dg-cvr-legend');
-                if (cvrLegend) cvrLegend.innerHTML = ebayDgPieLegendHtml('CVR Up / Down · CVR%', EBAY_DG_CVR_BANDS, cvrCounts, 'cvr');
-                ebayDgDrawPie('ebay-dg-cvr-pie', 'cvr', EBAY_DG_CVR_BANDS, cvrCounts);
+                if (cvrLegend) cvrLegend.innerHTML = ebayDgPieLegendHtml('CVR Up / Down · CVR%', cvrBands, cvrCounts, 'cvr');
+                ebayDgDrawPie('ebay-dg-cvr-pie', 'cvr', cvrBands, cvrCounts);
+                ebayPaintCvrGroiAdjCounts();
 
                 $('#ebay-dil-groi-tbody tr').each(function(i) {
                     const r = rules[i];
@@ -1017,6 +1181,7 @@
                 const r = rules[i];
                 $(this).find('.ebay-dg-count-n').text(r ? (counts[r.key] || 0) : 0);
             });
+            ebayPaintCvrGroiAdjCounts();
         }
         function renderEbayDilGroiModalTable() {
             const $tb = $('#ebay-dil-groi-tbody');
@@ -1607,6 +1772,7 @@
                         : (res && res.rules && Array.isArray(res.rules.rules) ? res.rules.rules : [])
                 );
                 if (fromServer.length) ebayDilGroiRules = fromServer;
+                if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
                 renderEbayDilGroiModalTable();
                 redrawEbaySprcDilColumn();
                 ebayScheduleSprcDilAutoApply();
@@ -1625,6 +1791,8 @@
         }
         function saveEbayDilGroiRules() {
             const rules = readEbayDilGroiRulesFromModal();
+            const cvrAdj = ebayCvrGroiAdjNow();
+            ebayCvrGroiAdj = cvrAdj;
             return $.ajax({
                 url: ebayDgRulesUrl(),
                 method: 'POST',
@@ -1633,13 +1801,14 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, _token: ebayDgCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, _token: ebayDgCsrf() }),
             }).then(async function(res) {
                 if (res && Array.isArray(res.rules)) {
                     const saved = ebayNormalizeDilGroiList(res.rules);
                     if (saved.length) ebayDilGroiRules = saved;
                     renderEbayDilGroiModalTable();
                 }
+                if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
                 const n = ebayDgUsesBackgroundRuleApply()
                     ? await ebayDgFlashThenPaintMacysRuleSprice({ toast: true })
                     : await ebayApplySprcDilToTable({ persist: true, push: true });
@@ -1691,6 +1860,12 @@
                     const first = $('#ebay-dil-groi-tbody .ebay-dg-groi').get(0);
                     if (this === first) cascadeEbayDilGroiFromFirst();
                     else readEbayDilGroiRulesFromModal();
+                    renderEbayDilGroiCounts();
+                    ebayAfterDilGroiRulesChanged();
+                });
+            $(document).off('input.ebayCvrGroi change.ebayCvrGroi', '#ebay-cvr-groi-table .ebay-cvr-groi-input')
+                .on('input.ebayCvrGroi change.ebayCvrGroi', '#ebay-cvr-groi-table .ebay-cvr-groi-input', function() {
+                    ebayCvrGroiAdj = ebayCvrGroiAdjNow();
                     renderEbayDilGroiCounts();
                     ebayAfterDilGroiRulesChanged();
                 });

@@ -96,7 +96,20 @@ class PriceLt80LmpChannelCounts
             // ignore
         }
 
-        return 0;
+        $total = 0;
+        foreach (LmpMissingChannelCounts::analytics() as $key => $_) {
+            $reported = self::reportedCount($key);
+            if ($reported !== null) {
+                $total += $reported;
+            }
+        }
+        try {
+            Cache::put(self::TOTAL_CACHE_KEY, $total, now()->addMinutes(10));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return $total;
     }
 
     /**

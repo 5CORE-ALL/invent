@@ -3504,10 +3504,12 @@
             }));
             $('#missing-l-count-badge').text('M L: ' + missingCount.toLocaleString());
             if (window.PriceGtLmpBadge && table) {
-                PriceGtLmpBadge.update('#temu2-price-gt-lmp-badge', table.getData(), 'temu2', 'temu_price');
+                PriceGtLmpBadge.update('#temu2-price-gt-lmp-badge', table.getData(), 'temu', 'temu_price', function (row) {
+                    return parseFloat(row && (row.lmp_price || row.lmp || row.LMP)) || 0;
+                });
                 PriceGtLmpBadge.setOutline(document.getElementById('temu2-price-gt-lmp-badge'), priceGtLmpFilterActive);
                 if (window.PriceLt80LmpBadge) {
-                    PriceLt80LmpBadge.update('#temu2-price-lt80-lmp-badge', table.getData(), 'temu2', 'temu_price');
+                    PriceLt80LmpBadge.update('#temu2-price-lt80-lmp-badge', table.getData(), 'temu', 'temu_price');
                 }
             }
             let blueTriangleCount = 0;
@@ -5120,7 +5122,9 @@
             }
             if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                 table.addFilter(function(data) {
-                    return PriceGtLmpBadge.hasRedTriangle(data, 'temu_price');
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'temu_price', function (row) {
+                        return parseFloat(row && (row.lmp_price || row.lmp || row.LMP)) || 0;
+                    });
                 });
             }
             if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {

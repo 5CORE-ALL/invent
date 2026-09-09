@@ -3986,17 +3986,19 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (TT L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin. CVR% still fills S PRC when Dil does not match a slab.",
+                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (TT L30 = 0, INV > 0) uses the lowest Target GROI. CVR overlay (editable) adjusts Target GROI; Count updates live. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof ttIsParentRow === 'function' && ttIsParentRow(rowData)) return '';
                             if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                             const meta = ebayDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2);
+                            const tip = (typeof ebayDilGroiTipText === 'function')
+                                ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold TT L30 → min Target GROI' })
+                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                    + ' → ' + meta.label
+                                    + ' → GROI ' + meta.groi + '%'
+                                    + ' → $' + meta.sprc.toFixed(2));
                             return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                                 + meta.sprc.toFixed(2) + '</span>';
                         },
@@ -4010,7 +4012,7 @@
                         editable: false,
                         sorter: "number",
                         headerTooltip: @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
-                            "S PRC from Sprc Dil when Dil matches and TT L30 > 0; 0 Sold uses the lowest Target GROI. Otherwise Std × (1 − CVR%/100). S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP."
+                            "S PRC from Sprc Dil when Dil matches and TT L30 > 0; 0 Sold uses the lowest Target GROI. CVR overlay (editable) adjusts Target GROI. Otherwise Std × (1 − CVR%/100). S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP."
                         @else
                             "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price."
                         @endif,

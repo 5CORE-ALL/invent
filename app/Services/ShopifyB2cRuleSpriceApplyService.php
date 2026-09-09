@@ -35,7 +35,9 @@ class ShopifyB2cRuleSpriceApplyService
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
         $cvrRules = $this->loadCvrRules();
-        $dilRules = $this->loadDilGroiRules();
+        $dilStore = $this->loadDilGroiStore();
+        $dilRules = $dilStore['rules'];
+        $cvrAdj = $dilStore['cvr_adj'];
         $zeroRules = [];
         $zeroMinRoi = 0.0;
         $margin = MarketplacePercentage::takeHomeForPromoChannel('shopify_b2c');
@@ -81,6 +83,7 @@ class ShopifyB2cRuleSpriceApplyService
                 ->chunkById(150, function ($rows) use (
                     $cvrRules,
                     $dilRules,
+                    $cvrAdj,
                     $zeroRules,
                     $zeroMinRoi,
                     $margin,
@@ -102,7 +105,7 @@ class ShopifyB2cRuleSpriceApplyService
                             return false;
                         }
                         try {
-                            $computed = $this->computeTarget($row, $cvrRules, $zeroRules, $zeroMinRoi, $margin, $dilRules);
+                            $computed = $this->computeTarget($row, $cvrRules, $zeroRules, $zeroMinRoi, $margin, $dilRules, $cvrAdj);
                             if ($computed === null) {
                                 $stats['skipped']++;
                                 continue;
@@ -248,9 +251,10 @@ class ShopifyB2cRuleSpriceApplyService
      * @param  list<array{key:string,label:string,cpn:float}>  $cvrRules
      * @param  array{red:float,green:float,pink:float}  $zeroRules
      * @param  list<array{key:string,label:string,min:float,max:float,groi:float}>  $dilRules
+     * @param  array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}|null  $cvrAdj
      * @return array{sprice:float,prmt:float,cpn:float,amz_sugg:bool}|null
      */
-    protected function computeTarget(array $row, array $cvrRules, array $zeroRules, float $zeroMinRoi, float $margin, array $dilRules = []): ?array
+    protected function computeTarget(array $row, array $cvrRules, array $zeroRules, float $zeroMinRoi, float $margin, array $dilRules = [], ?array $cvrAdj = null): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         $dil = (float) ($row['dil'] ?? 0);
@@ -272,6 +276,7 @@ class ShopifyB2cRuleSpriceApplyService
                 ? AmazonDilGroiRule::minTarget($dilRules)
                 : AmazonDilGroiRule::groiForDil($dil, $dilRules);
             if ($groi !== null && $lp > 0 && $margin > 0) {
+                $groi = AmazonDilGroiRule::adjustGroiForCvrLevel($groi, $cvr, $cvrAdj);
                 $sprice = round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
             } elseif (! $zeroSold) {
                 $std = (float) ($row['std'] ?? 0);
@@ -363,17 +368,25 @@ class ShopifyB2cRuleSpriceApplyService
         return $this->loadStoredRules('shopify_b2c_cvr_vs_cpn', $defaults, 'cpn');
     }
 
-    /** @return list<array{key:string,label:string,min:float,max:float,groi:float}> */
-    protected function loadDilGroiRules(): array
+    /**
+     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}}
+     */
+    protected function loadDilGroiStore(): array
     {
         $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'shopify_b2c_dil_vs_groi')->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
-        if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
-            $saved = $saved['rules'];
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
+        if ($unpacked['rules'] === []) {
+            $unpacked['rules'] = AmazonDilGroiRule::defaults();
         }
-        $rules = AmazonDilGroiRule::normalizeList(is_array($saved) ? $saved : []);
 
-        return $rules !== [] ? $rules : AmazonDilGroiRule::defaults();
+        return $unpacked;
+    }
+
+    /** @return list<array{key:string,label:string,min:float,max:float,groi:float}> */
+    protected function loadDilGroiRules(): array
+    {
+        return $this->loadDilGroiStore()['rules'];
     }
 
     /** @return array{red:float,green:float,pink:float} */

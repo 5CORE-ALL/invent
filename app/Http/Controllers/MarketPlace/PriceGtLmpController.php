@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
- * price >lmp — Tabulator of analytics channels and their red-triangle counts.
+ * LMP Issues — live Price > LMP counts per analytics channel.
  */
 class PriceGtLmpController extends Controller
 {
@@ -30,7 +30,7 @@ class PriceGtLmpController extends Controller
                 'total_price_gt_lmp' => $total,
             ]);
         } catch (\Throwable $e) {
-            Log::error('price >lmp getData failed: '.$e->getMessage());
+            Log::error('LMP Issues getData failed: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }

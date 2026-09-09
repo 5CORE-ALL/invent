@@ -3636,10 +3636,12 @@
             }));
             $('#missing-l-count-badge').text('M L: ' + missingCount.toLocaleString());
             if (window.PriceGtLmpBadge && table) {
-                PriceGtLmpBadge.update('#temu2-price-gt-lmp-badge', table.getData(), 'temu2', 'temu_price');
-                PriceGtLmpBadge.setOutline(document.getElementById('temu2-price-gt-lmp-badge'), priceGtLmpFilterActive);
+                PriceGtLmpBadge.update('#temu3-price-gt-lmp-badge', table.getData(), 'temu3', 'temu_price', function (row) {
+                    return parseFloat(row && (row.lmp_price || row.lmp || row.LMP)) || 0;
+                });
+                PriceGtLmpBadge.setOutline(document.getElementById('temu3-price-gt-lmp-badge'), priceGtLmpFilterActive);
                 if (window.PriceLt80LmpBadge) {
-                    PriceLt80LmpBadge.update('#temu2-price-lt80-lmp-badge', table.getData(), 'temu2', 'temu_price');
+                    PriceLt80LmpBadge.update('#temu3-price-lt80-lmp-badge', table.getData(), 'temu3', 'temu_price');
                 }
             }
             let blueTriangleCount = 0;
@@ -5287,7 +5289,9 @@
             }
             if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                 table.addFilter(function(data) {
-                    return PriceGtLmpBadge.hasRedTriangle(data, 'temu_price');
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'temu_price', function (row) {
+                        return parseFloat(row && (row.lmp_price || row.lmp || row.LMP)) || 0;
+                    });
                 });
             }
             if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
@@ -5354,14 +5358,14 @@
             $('#sku-search').val('');
             $('#parent-search').val('');
             if (window.PriceLt80LmpBadge) {
-                PriceLt80LmpBadge.setOutline(document.getElementById('temu2-price-lt80-lmp-badge'), false);
+                PriceLt80LmpBadge.setOutline(document.getElementById('temu3-price-lt80-lmp-badge'), false);
             }
             if (typeof syncTemu2TriangleBadgeState === 'function') syncTemu3TriangleBadgeState();
             if (typeof syncTemuCapBadgeState === 'function') syncTemuCapBadgeState();
         }
         if (window.PriceGtLmpBadge) {
             PriceGtLmpBadge.bind({
-                badge: '#temu2-price-gt-lmp-badge',
+                badge: '#temu3-price-gt-lmp-badge',
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
@@ -5374,7 +5378,7 @@
                 }
             });
         }
-        $('#temu2-price-gt-lmp-badge').on('click', function(e) {
+        $('#temu3-price-gt-lmp-badge').on('click', function(e) {
             if ($(e.target).closest('.summary-trend-dot, .kpi-status-dot').length) return;
             if (this.dataset.pglBound === '1') return;
             priceGtLmpFilterActive = !priceGtLmpFilterActive;
@@ -5390,7 +5394,7 @@
         });
         if (window.PriceLt80LmpBadge) {
             PriceLt80LmpBadge.bind({
-                badge: '#temu2-price-lt80-lmp-badge',
+                badge: '#temu3-price-lt80-lmp-badge',
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;

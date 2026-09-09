@@ -1485,24 +1485,12 @@ class AliexpressController extends Controller
     }
 
     /**
-     * Get aggregated SKU pricing data (uploaded sheet + daily order data).
+     * Same SKU rows as /aliexpress/pricing-data (no parent summaries by default).
+     *
+     * @return list<array<string, mixed>>
      */
-    public function getPricingData(Request $request)
+    public function buildPricingRows(bool $includeParents = false): array
     {
-        try {
-            // #region agent log
-            $__dbgEntry = json_encode([
-                'sessionId' => '1b30dc',
-                'runId' => 'post-fix',
-                'hypothesisId' => 'E',
-                'location' => 'AliexpressController.php:getPricingData:entry',
-                'message' => 'getPricingData called',
-                'data' => ['include_parents' => $request->boolean('include_parents')],
-                'timestamp' => (int) round(microtime(true) * 1000),
-            ])."\n";
-            @file_put_contents(base_path('.cursor/debug-1b30dc.log'), $__dbgEntry, FILE_APPEND);
-            @file_put_contents(storage_path('logs/debug-1b30dc.log'), $__dbgEntry, FILE_APPEND);
-            // #endregion
             $normalizeSku = fn ($value) => $this->normalizeAeSkuExact((string) $value);
 
             $normalizeLmpSku = static function ($value) {
@@ -1906,42 +1894,20 @@ class AliexpressController extends Controller
                 return $cmp !== 0 ? $cmp : strnatcasecmp($a['sku'], $b['sku']);
             });
 
-            // SKUs is the default view — do not inject "PARENT …" summary rows unless asked.
-            $includeParents = $request->boolean('include_parents');
             if ($includeParents) {
                 $rows = $this->insertAeParentRows($rows);
             }
-            // #region agent log
-            $__dbgParent = 0;
-            $__dbgSample = [];
-            foreach ($rows as $__r) {
-                $__sku = strtoupper(trim((string) ($__r['sku'] ?? '')));
-                if (! empty($__r['is_parent']) || str_starts_with($__sku, 'PARENT')) {
-                    $__dbgParent++;
-                    if (count($__dbgSample) < 5) {
-                        $__dbgSample[] = $__sku;
-                    }
-                }
-            }
-            $__dbgLine = json_encode([
-                'sessionId' => '1b30dc',
-                'runId' => 'post-fix',
-                'hypothesisId' => 'E',
-                'location' => 'AliexpressController.php:pricing-data',
-                'message' => 'pricing-data parent injection gate',
-                'data' => [
-                    'include_parents' => $includeParents,
-                    'total' => count($rows),
-                    'parentCount' => $__dbgParent,
-                    'sample' => $__dbgSample,
-                ],
-                'timestamp' => (int) round(microtime(true) * 1000),
-            ])."\n";
-            @file_put_contents(base_path('.cursor/debug-1b30dc.log'), $__dbgLine, FILE_APPEND);
-            @file_put_contents(storage_path('logs/debug-1b30dc.log'), $__dbgLine, FILE_APPEND);
-            // #endregion
 
-            // Auto-save daily snapshot (non-blocking, same as TikTok)
+            return $rows;
+    }
+
+    /**
+     * Get aggregated SKU pricing data (uploaded sheet + daily order data).
+     */
+    public function getPricingData(Request $request)
+    {
+        try {
+            $rows = $this->buildPricingRows($request->boolean('include_parents'));
             $this->saveDailySnapshot($rows);
 
             return response()->json($rows, 200, [], JSON_INVALID_UTF8_SUBSTITUTE);

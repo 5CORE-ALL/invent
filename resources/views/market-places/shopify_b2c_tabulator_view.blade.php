@@ -3315,7 +3315,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target GROI% slabs (same as /tiktok-2-pricing). Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target GROI. Below A Price is raised to Amz. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                    headerTooltip: "S PRC from Dil → Target GROI% slabs (same as /tiktok-2-pricing). Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target GROI. CVR overlay (editable) adjusts Target GROI; Count updates live. Below A Price is raised to Amz. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
@@ -3325,10 +3325,13 @@
                         const raw = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || meta.sprc;
                         const amz = shopifyB2cAmzPrice(rowData);
                         const raised = amz > 0 && raw > 0 && raw + 0.001 < amz;
-                        let tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                            + ' → ' + meta.label
-                            + ' → GROI ' + meta.groi + '%'
-                            + ' → $' + Number(raw).toFixed(2);
+                        const tipMeta = raised ? Object.assign({}, meta, { sprc: raw }) : meta;
+                        let tip = (typeof ebayDilGroiTipText === 'function')
+                            ? ebayDilGroiTipText(tipMeta, { zeroSoldLabel: '0 Sold B2C L30 → min Target GROI' })
+                            : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                + ' → ' + meta.label
+                                + ' → GROI ' + meta.groi + '%'
+                                + ' → $' + Number(raw).toFixed(2));
                         if (raised) tip += ' → Amz $' + amz.toFixed(2);
                         const amzLbl = raised
                             ? ' <span class="shopifyb2c-sprice-amz-lbl" title="Dil $' + Number(raw).toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — raised to Amz">Amz</span>'
@@ -3344,7 +3347,7 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab or 0 Sold min GROI), then raised to Amz when below A Price. Blue triangle = S PRC ≠ Price. Red triangle = S PRC at/above LMP.",
+                    headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab or 0 Sold min GROI, then CVR overlay), then raised to Amz when below A Price. Blue triangle = S PRC ≠ Price. Red triangle = S PRC at/above LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {

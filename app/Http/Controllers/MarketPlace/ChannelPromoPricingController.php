@@ -1407,30 +1407,21 @@ class ChannelPromoPricingController extends Controller
             ->where('channel_name', $channel.'_dil_vs_groi')
             ->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
-        if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
-            $saved = $saved['rules'];
-        }
-        if (! is_array($saved) || $saved === []) {
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
+        if ($unpacked['rules'] === []) {
             return response()->json([
                 'success' => true,
                 'is_default' => true,
                 'rules' => AmazonDilGroiRule::defaults(),
-            ]);
-        }
-
-        $rules = AmazonDilGroiRule::normalizeList($saved);
-        if ($rules === []) {
-            return response()->json([
-                'success' => true,
-                'is_default' => true,
-                'rules' => AmazonDilGroiRule::defaults(),
+                'cvr_adj' => $unpacked['cvr_adj'],
             ]);
         }
 
         return response()->json([
             'success' => true,
             'is_default' => false,
-            'rules' => $rules,
+            'rules' => $unpacked['rules'],
+            'cvr_adj' => $unpacked['cvr_adj'],
         ]);
     }
 
@@ -1455,9 +1446,25 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'At least one Dil slab is required'], 422);
         }
 
+        $existingRow = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', $channel.'_dil_vs_groi')
+            ->first();
+        $existing = AmazonDilGroiRule::unpackStored(is_array($existingRow?->visibility) ? $existingRow->visibility : null);
+        $cvrIncoming = $request->input('cvr_adj');
+        if (is_string($cvrIncoming)) {
+            $decodedCvr = json_decode($cvrIncoming, true);
+            $cvrIncoming = is_array($decodedCvr) ? $decodedCvr : null;
+        }
+        $cvrAdj = is_array($cvrIncoming)
+            ? AmazonDilGroiRule::normalizeCvrAdj($cvrIncoming)
+            : $existing['cvr_adj'];
+
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => $channel.'_dil_vs_groi'],
-            ['visibility' => $rules, 'column_order' => array_column($rules, 'key')]
+            [
+                'visibility' => ['rules' => $rules, 'cvr_adj' => $cvrAdj],
+                'column_order' => array_column($rules, 'key'),
+            ]
         );
 
         if ($channel === 'shopify_b2c') {
@@ -1470,7 +1477,12 @@ class ChannelPromoPricingController extends Controller
             \App\Support\PurchasingPowerRuleSpriceApply::dispatch();
         }
 
-        return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
+        return response()->json([
+            'success' => true,
+            'channel' => $channel,
+            'rules' => $rules,
+            'cvr_adj' => $cvrAdj,
+        ]);
     }
 
     public function gtSoldPrcRules(Request $request, string $channel): JsonResponse

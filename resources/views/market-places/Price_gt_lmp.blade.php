@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'price >lmp', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'LMP Issues', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -60,7 +60,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'price >lmp',
+        'page_title' => 'LMP Issues',
         'sub_title'  => '',
     ])
 
@@ -69,9 +69,9 @@
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <span class="badge badge-pgl-stat" id="stat-price-gt-lmp"
-                        title="Sum of red-triangle (Price &gt; LMP) counts from each analytics page. Green = 0."
+                        title="Live sum of SKUs where Price &gt; LMP and INV &gt; 0. Recalculated from the database each time this page loads."
                         style="background-color:#28a745;color:#fff;">
-                        price &gt;lmp <span id="total-price-gt-lmp">{{ number_format(\App\Support\Marketplace\PriceGtLmpChannelCounts::cachedTotalOrZero()) }}</span>
+                        LMP Issues <span id="total-price-gt-lmp">{{ number_format(\App\Support\Marketplace\PriceGtLmpChannelCounts::cachedTotalOrZero()) }}</span>
                     </span>
                 </div>
             </div>
@@ -153,7 +153,7 @@
                         if (!name) return '';
                         const safeName = escapeHtml(name);
                         if (!url) return safeName;
-                        return `<a href="${escapeHtml(url)}" class="lmp-channel-link" title="Open analytics page">${safeName}</a>`;
+                        return `<a href="${escapeHtml(url)}" class="lmp-channel-link" target="_blank" rel="noopener noreferrer" title="Open analytics page">${safeName}</a>`;
                     }
                 },
                 {
@@ -163,7 +163,7 @@
                     hozAlign: 'center',
                     headerSort: true,
                     sorter: 'number',
-                    headerTooltip: 'SKUs where Price > LMP (red triangle). Green = 0, red otherwise.',
+                    headerTooltip: 'Live SKUs where Price > LMP (red triangle) and INV > 0. Green = 0, red otherwise.',
                     formatter: function(cell) {
                         const v = Number(cell.getValue() || 0);
                         const bg = v === 0 ? '#28a745' : '#dc3545';

@@ -2406,17 +2406,19 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: 'S PRC from Dil → Target GROI% slabs (same as Amazon). 0 Sold (AL30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100)) / margin (Ship not used). CVR% still fills S PRC when Dil does not match a slab.',
+                        headerTooltip: 'S PRC from Dil → Target GROI% slabs (same as Amazon). 0 Sold (AL30 = 0, INV > 0) uses the lowest Target GROI. CVR overlay (editable) adjusts Target GROI; Count updates live. Formula: (LP × (1 + GROI%/100)) / margin (Ship not used).',
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof frIsParentRow === 'function' && frIsParentRow(rowData)) return '';
                             if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                             const meta = ebayDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2);
+                            const tip = (typeof ebayDilGroiTipText === 'function')
+                                ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold AL30 → min Target GROI' })
+                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                    + ' → ' + meta.label
+                                    + ' → GROI ' + meta.groi + '%'
+                                    + ' → $' + meta.sprc.toFixed(2));
                             return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                                 + meta.sprc.toFixed(2) + '</span>';
                         },
