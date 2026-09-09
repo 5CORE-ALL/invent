@@ -282,7 +282,7 @@
             <div class="card-body py-1">
 
                 {{-- Compact summary strip — moved to the TOP of the toolbar so
-                     the headline numbers (Sales, Rows, 0 Sold, Missing, N Map,
+                     the headline numbers (Sales, Rows, 0 Sold, Missing,
                      VS AMZ, GPFT, ROI) are the first thing users see, matching
                      /doba-tabulator-withoutship and /topdawg-pricing.
                        • Each visible badge: flex:1 1 0 + text-center → spreads
@@ -319,10 +319,6 @@
                               style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
                               title="Blue alert: Price ≠ S PRC. Click to show only those SKUs. Auto-push skips SKUs where Price already equals S PRC.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
-                        <span id="nmap-count"
-                              class="badge text-center"
-                              style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
-                              title="Click to filter inventory mismatch (Shop INV vs D INV)">N Map: 0</span>
                         <span id="disc-vs-amz-count"
                               class="badge text-center"
                               style="background-color: #dc3545; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
@@ -572,26 +568,6 @@
                 .replace(/'/g, '&#39;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
-        }
-        /** Shop INV vs D INV counts as Map if diff <= 3 units OR <= 3% of Shopify INV (same rule as Amazon). */
-        function dobaInvWithinMapTolerance(shopInv, dInv) {
-            const shopNum = parseFloat(shopInv) || 0;
-            const dNum = parseFloat(dInv) || 0;
-            if (shopNum <= 0) return true;
-            const diff = Math.abs(shopNum - dNum);
-            if (diff <= 3 + 1e-9) return true;
-            return diff <= (shopNum * 0.03) + 1e-9;
-        }
-        /** N Map (Missing M): listed row with Shop INV > 0 and Doba price > 0 whose D INV is out of tolerance. */
-        function dobaInvMismatch(rowData) {
-            if (!rowData || rowData.is_parent) return false;
-            if (rowData.is_missing_doba) return false;
-            const shopInv = parseFloat(rowData.shopify_inv) || 0;
-            if (shopInv <= 0) return false;
-            const dobaPrice = parseFloat(rowData['doba Price']) || 0;
-            if (dobaPrice <= 0) return false;
-            const dInv = parseFloat(rowData.INV) || 0;
-            return !dobaInvWithinMapTolerance(shopInv, dInv);
         }
         let table = null; // Global table reference
         let allTableData = [];
@@ -2174,34 +2150,6 @@
                         }
                     },
                     {
-                        title: "Map",
-                        field: "map_sync",
-                        width: 60,
-                        hozAlign: "center",
-                        headerSort: false,
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent) return '';
-                            // Not listed on Doba -> blank (same as Amazon)
-                            if (rowData.is_missing_doba) return '';
-                            // Inventory check uses Shopify INV (Shop INV)
-                            const shopInv = parseFloat(rowData.shopify_inv) || 0;
-                            if (shopInv <= 0) return '';
-                            // Blank when price is missing/zero (same as Amazon: can't evaluate)
-                            const dobaPrice = parseFloat(rowData['doba Price']) || 0;
-                            if (dobaPrice <= 0) return '';
-                            const dInv = parseFloat(rowData.INV) || 0;
-                            const difference = Math.abs(shopInv - dInv);
-                            if (dobaInvWithinMapTolerance(shopInv, dInv)) {
-                                return `<span style="font-size: 20px; color: #28a745;">🟢</span>`;
-                            }
-                            return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
-                                    <span style="font-size: 16px; color: #dc3545;">🔴</span>
-                                    <span style="font-size: 11px; color: #dc3545; font-weight: 600;">${Math.round(difference)}</span>
-                                </div>`;
-                        }
-                    },
-                    {
                         title: "OV L30",
                         field: "L30",
                         width: 70,
@@ -3020,7 +2968,6 @@
                 let l30ZeroSold = 0;
                 let sold = 0;
                 let missing = 0;
-                let nmap = 0;
                 let discVsAmzCount = 0;
                 let totalL30Sales = 0;
                 let totalL30COGS = 0;
@@ -3053,9 +3000,6 @@
                     // Missing: has inventory but not listed on Doba, excluding NR rows
                     if (row.is_missing_doba && (row.NR || '') !== 'NR' && (parseFloat(row.shopify_inv) || 0) > 0) missing++;
 
-                    // N Map: listed item with Shop INV > 0 and price > 0 whose D INV is out of tolerance
-                    if (dobaInvMismatch(row)) nmap++;
-                    
                     // DISC VS AMZ: Count items with discount > -30% (red color items)
                     if (amazonPrice > 0 && dobaPrice > 0) {
                         const discountPercent = (dobaPrice / amazonPrice * 100) - 100;
@@ -3091,7 +3035,6 @@
                     '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
                 );
                 if (typeof syncDobaTriangleBadgeState === 'function') syncDobaTriangleBadgeState();
-                $('#nmap-count').text('N Map: ' + nmap);
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
 
                 $('#pft-percentage-badge').text('GPFT: ' + l30GpftPercent.toFixed(1) + '%');
@@ -3458,25 +3401,6 @@
                 }
                 missingFilterActive = !missingFilterActive;
             });
-
-            // N Map (Missing M) filter toggle on badge click — show only inventory mismatches
-            let nmapFilterActive = false;
-            $('#nmap-count').on('click', function() {
-                if (nmapFilterActive) {
-                    table.removeFilter(dobaNmapFilterFn);
-                    $(this).css({ 'background-color': '#dc3545', 'color': '#ffffff' });
-                    showToast('info', 'Showing all items');
-                } else {
-                    table.addFilter(dobaNmapFilterFn);
-                    $(this).css({ 'background-color': '#ffc107', 'color': '#000' });
-                    const filteredCount = table.getData("active").filter(r => !r.is_parent).length;
-                    showToast('warning', `Filtered to ${filteredCount} inventory mismatches`);
-                }
-                nmapFilterActive = !nmapFilterActive;
-            });
-            function dobaNmapFilterFn(data) {
-                return dobaInvMismatch(data);
-            }
 
             // DISC VS AMZ filter toggle on badge click
             $('#disc-vs-amz-count').on('click', function() {

@@ -614,7 +614,6 @@
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'reverb-price-gt-lmp-badge', 'pglChannelKey' => 'reverb', 'pglPriceField' => 'RV Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'reverb-price-lt80-lmp-badge', 'pltChannelKey' => 'reverb', 'pltPriceField' => 'RV Price'])
-                        <span class="badge bg-danger flex-shrink-0" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter stock mismatch (REQ + INV&gt;0 + |INV − R Stock| &gt; 3)">N Map: 0</span>
                     </div>
                 </div>
                 <div class="d-flex align-items-center flex-wrap gap-1">
@@ -2077,15 +2076,13 @@
             applyFilters();
         });
 
-        // Missing / Map / N Map badge filters (also opened from all-marketplace-master ?badge=)
+        // Missing L badge filter (also opened from all-marketplace-master ?badge=)
         let missingFilterActive = false;
-        let mapFilterActive = false;
-        let invRStockFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
 
         function clearReverbBadgeFilters() {
-            missingFilterActive = mapFilterActive = invRStockFilterActive = false;
+            missingFilterActive = false;
             blueTriangleFilterActive = false;
             // Sold filter lives on the #sold-filter dropdown now — reset it here too so
             // this helper still fully clears any active Sold-style filter.
@@ -2094,8 +2091,6 @@
 
         function syncReverbBadgeFilterStyles() {
             $('#missing-count-badge').toggleClass('active-filter', missingFilterActive);
-            $('#map-count-badge').toggleClass('active-filter', mapFilterActive);
-            $('#inv-r-stock-badge').toggleClass('active-filter', invRStockFilterActive);
         }
 
         // Columns hidden while the "Missing L" badge filter is active
@@ -2142,8 +2137,6 @@
             if (badge && table) {
                 clearReverbBadgeFilters();
                 if (badge === 'missing') missingFilterActive = true;
-                else if (badge === 'map') mapFilterActive = true;
-                else if (badge === 'nmap') invRStockFilterActive = true;
                 else if (badge === 'zero_sold') $('#sold-filter').val('zero');
                 else if (badge === 'more_sold') $('#sold-filter').val('sold');
                 syncReverbBadgeFilterStyles();
@@ -2154,23 +2147,8 @@
 
         $('#missing-count-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
-            mapFilterActive = invRStockFilterActive = false;
             syncReverbBadgeFilterStyles();
             applyMissingColumnVisibility();
-            applyFilters();
-        });
-
-        $('#map-count-badge').on('click', function() {
-            mapFilterActive = !mapFilterActive;
-            missingFilterActive = invRStockFilterActive = false;
-            syncReverbBadgeFilterStyles();
-            applyFilters();
-        });
-
-        $('#inv-r-stock-badge').on('click', function() {
-            invRStockFilterActive = !invRStockFilterActive;
-            missingFilterActive = mapFilterActive = false;
-            syncReverbBadgeFilterStyles();
             applyFilters();
         });
 
@@ -5039,27 +5017,6 @@
                 });
             }
 
-            // Map filter — listed SKUs with INV matched to R Stock (|INV − R Stock| ≤ 3)
-            if (mapFilterActive) {
-                table.addFilter(function(data) {
-                    const mapValue = data['MAP'] || '';
-                    const inv = parseFloat(data['INV']) || 0;
-                    const nrReq = data['nr_req'] || 'REQ';
-                    const isMissing = (data['Missing'] || '') === 'M';
-                    return mapValue === 'Map' && nrReq === 'REQ' && inv > 0 && !isMissing;
-                });
-            }
-
-            // N Map filter - show SKUs where stocks don't match (REQ items with INV > 0 and NOT Missing)
-            if (invRStockFilterActive) {
-                table.addFilter(function(data) {
-                    const mapValue = data['MAP'] || '';
-                    const inv = parseFloat(data['INV']) || 0;
-                    const nrReq = data['nr_req'] || 'REQ';
-                    const isMissing = (data['Missing'] || '') === 'M';
-                    return mapValue.includes('N Map|') && nrReq === 'REQ' && inv > 0 && !isMissing;
-                });
-            }
             if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                 table.addFilter(function(data) {
                     return PriceGtLmpBadge.hasRedTriangle(data, 'RV Price');
@@ -5157,12 +5114,9 @@
             return data.filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
         }
 
-        // Server counts for Missing L / Map / N Map (matches all-marketplace-master)
         function applyMapMissSummary(summary) {
             if (!summary) return;
             $('#missing-count-badge').text('M L: ' + (parseInt(summary.miss, 10) || 0).toLocaleString());
-            $('#map-count-badge').text('Map: ' + (parseInt(summary.map, 10) || 0).toLocaleString());
-            $('#inv-r-stock-badge').text('N Map: ' + (parseInt(summary.nmap, 10) || 0).toLocaleString());
         }
 
         // Update summary badges

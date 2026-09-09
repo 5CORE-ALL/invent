@@ -651,9 +651,6 @@
                             style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
                             title="S PRC capped to eBay. Click to show only EB rows."
                             aria-label="S PRC capped to eBay">EB 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter Missing M (listed, INV&gt;0, REQ, INV vs Temu Stock mismatch)">M M: 0</span>
                     </div>
                 </div>
             </div>
@@ -2631,32 +2628,12 @@
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
         let missingLFilterActive = false;
-        let missingMFilterActive = false;
         let lessAmzFilterActive = false;
         let moreAmzFilterActive = false;
-        let mapBadgeFilterActive = false;
         // aliases kept for any leftover refs
         let missingBadgeFilterActive = false;
-        let notMapBadgeFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
-
-        // Map tolerance — same formula as /map-issues, /temu-decrease, and the
-        // /all-marketplace-master Temu 2 row helper (getTemuLiveMapMissNMapFromDecreaseData):
-        //   if inv * 3% < 3   →  mapped iff diff <= 3
-        //   else              →  mapped iff round((diff / inv) * 100) <= 3
-        // This produces identical results to those endpoints (down to the round-to-3 edge
-        // case at inv ≈ 350+ and diff/inv between 3.0% and 3.5%) so the badge count exactly
-        // matches the Map / N Map column on /all-marketplace-master's Temu 2 row.
-        // INV <= 0 always counts as mapped.
-        function temuInvWithinMapTolerance(inv, stock) {
-            const invNum = parseFloat(inv) || 0;
-            const stockNum = parseFloat(stock) || 0;
-            if (invNum <= 0) return true;
-            const diff = Math.abs(invNum - stockNum);
-            if (invNum * 0.03 < 3) return diff <= 3;
-            return Math.round((diff / invNum) * 100) <= 3;
-        }
 
         function temu2DisplayedSprice(row) {
             if (typeof temuDisplayedSprice === 'function') {
@@ -2775,21 +2752,6 @@
             applyFilters();
             if (table && missingLFilterActive) {
                 try { table.getColumn('lmp').show(); } catch (e) {}
-            }
-        });
-
-        $('#missing-m-count-badge').on('click', function() {
-            missingMFilterActive = !missingMFilterActive;
-            notMapBadgeFilterActive = missingMFilterActive;
-            mapBadgeFilterActive = false;
-            $(this).toggleClass('bg-secondary', !missingMFilterActive)
-                   .toggleClass('bg-danger', missingMFilterActive);
-            applyFilters();
-            if (table) {
-                try {
-                    if (missingMFilterActive) table.getColumn('MAP').show();
-                    else table.getColumn('MAP').hide();
-                } catch (e) {}
             }
         });
 
@@ -3414,7 +3376,6 @@
             let zeroSoldCount = 0;
             let moreSoldCount = 0;
             let missingCount = 0;
-            let notMappedCount = 0;
             let rowsCount = 0;
 
             // Filtered counts: Rows / 0 Sold / >0 Sold (exclude parent rows from sold badges)
@@ -3440,7 +3401,7 @@
                     : ((parseInt(row.product_clicks, 10) || 0) + (parseInt(row.ad_clicks, 10) || 0));
             });
 
-            // Financials + M L / M M from full dataset (ebay pattern for missing) — SKUs only
+            // Financials + M L from full dataset (ebay pattern for missing) — SKUs only
             // Same calc as /temu-decrease: Sales/GPFT on Full Price; GROI on R Price
             const viewsByGoodsId = {};
             const tClicksByGoodsId = {};
@@ -3488,16 +3449,10 @@
                 totalTemuL30 += temuL30;
 
                 const missing = row.missing;
-                const temuStock = parseFloat(row.temu_stock) || 0;
                 const nrReq = String(row.nr_req || 'REQ').toUpperCase();
 
                 if (missing === 'M' && inventory > 0 && nrReq !== 'NR' && nrReq !== 'NRL') {
                     missingCount++;
-                }
-                if (inventory > 0 && nrReq === 'REQ' && missing !== 'M' && temuPrice > 0 && temuStock > 0) {
-                    if (!temuInvWithinMapTolerance(inventory, temuStock)) {
-                        notMappedCount++;
-                    }
                 }
             });
             Object.keys(viewsByGoodsId).forEach(function(gid) {
@@ -3602,7 +3557,6 @@
             $('#temu-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
             $('#temu-eb-cap-badge').text('EB ' + ebCapCount.toLocaleString());
             if (typeof syncTemuCapBadgeState === 'function') syncTemuCapBadgeState();
-            $('#missing-m-count-badge').text('M M: ' + notMappedCount.toLocaleString());
 
             // Legacy hidden IDs (if present) — avoid JS errors
             $('#total-products-badge').text('SKU: ' + totalProducts.toLocaleString());
@@ -3912,46 +3866,6 @@
                         if (value === 'M') {
                             return '<span style="color: #dc3545; font-weight: bold;" title="Not found in temu2_metrics (API)">M</span>';
                         }
-                        return '';
-                    }
-                },
-                {
-                    title: "MAP",
-                    field: "MAP",
-                    hozAlign: "center",
-                    width: 90,
-                    sorter: temuSortBy(function(d) {
-                        if (d.missing === 'M' || !d.goods_id) return '';
-                        const inv = parseFloat(d.inventory) || 0;
-                        const stock = parseFloat(d.temu_stock) || 0;
-                        if (!(inv > 0)) return '';
-                        if (typeof temuInvWithinMapTolerance === 'function' && temuInvWithinMapTolerance(inv, stock)) return 1;
-                        return 0;
-                    }),
-                    visible: false,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const missing = rowData['missing'];
-                        
-                        // IMPORTANT: Only show MAP if SKU exists in Temu (not missing)
-                        // Same logic as eBay - check if item exists before showing MAP
-                        if (missing === 'M' || !rowData['goods_id'] || rowData['goods_id'] === '') {
-                            return ''; // Don't show MAP for missing items
-                        }
-                        
-                        const temuStock = parseFloat(rowData['temu_stock']) || 0;
-                        const inv = parseFloat(rowData['inventory']) || 0;
-
-                        if (inv > 0) {
-                            // Tolerance: |INV − stock| <= 3 units OR <= 3% of INV (matches amazon-tabulator-view)
-                            if (temuInvWithinMapTolerance(inv, temuStock)) {
-                                return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance (3 units or 3%)">MP</span>';
-                            }
-                            const diff = inv - temuStock;
-                            const sign = diff > 0 ? '+' : '';
-                            return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
-                        }
-
                         return '';
                     }
                 },
@@ -5205,29 +5119,6 @@
                 });
             }
 
-            if (mapBadgeFilterActive) {
-                table.addFilter(function(data) {
-                    const inv = parseFloat(data.inventory) || 0;
-                    const missing = data.missing;
-                    const nrReq = String(data.nr_req || 'REQ').toUpperCase();
-                    const price = parseFloat(data.temu_price) || 0;
-                    const temuStock = parseFloat(data.temu_stock) || 0;
-                    if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0 || temuStock <= 0) return false;
-                    return temuInvWithinMapTolerance(inv, temuStock);
-                });
-            }
-
-            if (missingMFilterActive || notMapBadgeFilterActive) {
-                table.addFilter(function(data) {
-                    const inv = parseFloat(data.inventory) || 0;
-                    const missing = data.missing;
-                    const nrReq = String(data.nr_req || 'REQ').toUpperCase();
-                    const price = parseFloat(data.temu_price) || 0;
-                    const temuStock = parseFloat(data.temu_stock) || 0;
-                    if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0 || temuStock <= 0) return false;
-                    return !temuInvWithinMapTolerance(inv, temuStock);
-                });
-            }
             if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                 table.addFilter(function(data) {
                     return PriceGtLmpBadge.hasRedTriangle(data, 'temu_price', function (row) {
@@ -5274,10 +5165,6 @@
             try {
                 table.getColumn('lmp').show();
             } catch (e) {}
-            try {
-                if (missingMFilterActive || notMapBadgeFilterActive) table.getColumn('MAP').show();
-                else table.getColumn('MAP').hide();
-            } catch (e) {}
         }
 
         function temu2ClearPriceGtLmpCompetingFilters() {
@@ -5285,9 +5172,6 @@
             amzCapFilterActive = false;
             ebCapFilterActive = false;
             priceLt80LmpFilterActive = false;
-            missingMFilterActive = false;
-            mapBadgeFilterActive = false;
-            notMapBadgeFilterActive = false;
             $('#parent-filter').val('skus');
             $('#nrl-filter').val('all');
             $('#inventory-filter').val('more');
@@ -5987,8 +5871,8 @@
 
             // Basics — identity / inventory / listing status (incl. Dil%)
             if (
-                /^(image_path|parent|sku|links_column|goods_id|inventory|temu_stock|ovl30|dil_percent|temu_l30|missing|MAP|nr_req|nrp|o_clicks|product_clicks)$/i.test(f) ||
-                /\b(image|parent|sku|links|goods|inv|stock|ovl|dil|temu\s*l\d+|t\s*l\d+|missing|map|nrl|req|views|o\s*clicks)\b/i.test(tl)
+                /^(image_path|parent|sku|links_column|goods_id|inventory|temu_stock|ovl30|dil_percent|temu_l30|missing|nr_req|nrp|o_clicks|product_clicks)$/i.test(f) ||
+                /\b(image|parent|sku|links|goods|inv|stock|ovl|dil|temu\s*l\d+|t\s*l\d+|missing|nrl|req|views|o\s*clicks)\b/i.test(tl)
             ) {
                 return 'basics';
             }

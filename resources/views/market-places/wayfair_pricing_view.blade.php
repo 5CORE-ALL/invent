@@ -88,7 +88,6 @@
                         <span class="badge bg-info fs-6 p-2" id="wf-total-views-badge" style="color:black;font-weight:700;" title="Σ OV L30 (views) across filtered SKUs.">Views: 0</span>
                         <span class="badge fs-6 p-2" id="wf-total-fqty-badge" style="background-color:#20c997;color:black;font-weight:700;" title="Total units sold (Σ al30).">Qty: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="wf-avg-cvr-badge" style="color:black;font-weight:700;" title="CVR = (Σ sold ÷ Σ OV L30) × 100.">CVR: 0%</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="wf-nmap-count-badge" style="color:white;font-weight:700;cursor:pointer;" title="Click to filter N Map (listed, INV &gt; 0, price &gt; 0, |INV − Wayfair stock| &gt; 3)">N Map: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="wf-missing-badge" style="color:white;font-weight:700;cursor:pointer;" title="Click to filter ML — Missing Listing (not NR, INV &gt; 0, no uploaded Wayfair price)">ML: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'wayfair-price-gt-lmp-badge', 'pglChannelKey' => 'wayfair', 'pglPriceField' => 'price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'wayfair-price-lt80-lmp-badge', 'pltChannelKey' => 'wayfair', 'pltPriceField' => 'price'])
@@ -306,8 +305,6 @@
         let allTableData = [];
         // summaryDataCache removed — badges always read from getData('active') / getRows('active').
         let wfMissingActive = false;
-        let wfMapActive = false;
-        let wfNMapActive = false;
         // Sold filter via badges: 'all' | '0' | 'more' (al30)
         let wfSoldFilter = 'all';
         let priceGtLmpFilterActive = false;
@@ -805,14 +802,6 @@
             $('#wf-discount-input').val('');
         }
 
-        /** Wayfair map "N Map|{abs diff}" — N Map count/filter only when |diff| &gt; 3 (≤3 is Map). */
-        function wfWfStrictNMapFromMap(mapVal) {
-            if (!mapVal || typeof mapVal !== 'string' || !mapVal.startsWith('N Map|')) return false;
-            const part = mapVal.split('|')[1];
-            const d = parseFloat(String(part == null ? '' : part).trim(), 10);
-            return Number.isFinite(d) && Math.abs(d) > 3;
-        }
-
         /** Missing L — not NR, INV &gt; 0, no uploaded Wayfair price (Macys / channel-master pattern). */
         function wfRowIsMissing(d) {
             if (d.is_parent) return false;
@@ -820,17 +809,6 @@
             const inv = parseInt(d.inv, 10) || 0;
             const price = parseFloat(d.price) || 0;
             return inv > 0 && price <= 0;
-        }
-
-        /** Map status from raw inv vs ae_stock — listed rows with INV &gt; 0 and price &gt; 0 only. */
-        function wfRowMapStatus(d) {
-            if (d.is_parent || wfRowIsMissing(d)) return null;
-            const inv = parseInt(d.inv, 10) || 0;
-            const price = parseFloat(d.price) || 0;
-            if (inv <= 0 || price <= 0) return null;
-            const wfStock = parseInt(d.ae_stock, 10) || 0;
-            const diff = Math.abs(inv - wfStock);
-            return diff <= 3 ? 'map' : 'nmap';
         }
 
         function wfClearSpriceForSelected() {
@@ -875,7 +853,7 @@
             if (!rows) return;
 
             let totalSales = 0, totalFqty = 0, totalProfit = 0, totalCogs = 0, totalViews = 0;
-            let missingCount = 0, mapCount = 0, nmapCount = 0;
+            let missingCount = 0;
             let zeroSold = 0, moreSold = 0;
             let visibleRowCount = 0;
 
@@ -906,10 +884,6 @@
                 if (fqty === 0) zeroSold++; else moreSold++;
                 if (isMissing) {
                     missingCount++;
-                } else {
-                    const mapStatus = wfRowMapStatus(row);
-                    if (mapStatus === 'map') mapCount++;
-                    else if (mapStatus === 'nmap') nmapCount++;
                 }
             });
 
@@ -929,7 +903,6 @@
             $('#wf-total-views-badge').text('Views: ' + Math.round(totalViews).toLocaleString());
             $('#wf-avg-cvr-badge').text('CVR: ' + avgCvr.toFixed(1) + '%');
             $('#wf-missing-badge').text('ML: ' + missingCount.toLocaleString());
-            $('#wf-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
             $('#wf-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
             $('#wf-more-sold-badge').text('Sold >0: ' + moreSold.toLocaleString());
             if (window.PriceGtLmpBadge && table) {
@@ -947,8 +920,6 @@
             );
             if (typeof syncWayfairTriangleBadgeState === 'function') syncWayfairTriangleBadgeState();
 
-            // Active filter colors — same pattern as Amazon N Map / ML badges.
-            $('#wf-nmap-count-badge').toggleClass('bg-secondary', !wfNMapActive).toggleClass('bg-danger', wfNMapActive);
             $('#wf-missing-badge').toggleClass('bg-secondary', !wfMissingActive).toggleClass('bg-danger', wfMissingActive);
         }
 
@@ -1137,8 +1108,6 @@
             if (wfMissingActive) {
                 table.addFilter(function(d) { return wfRowIsMissing(d); });
             }
-            if (wfMapActive) table.addFilter(d => wfRowMapStatus(d) === 'map');
-            if (wfNMapActive) table.addFilter(d => wfRowMapStatus(d) === 'nmap');
             if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                 table.addFilter(function(data) {
                     return PriceGtLmpBadge.hasRedTriangle(data, 'price');
@@ -1517,27 +1486,6 @@
                             if (d.is_parent) return '';
                             if (!wfRowIsMissing(d)) return '';
                             return '<span class="badge bg-danger">L</span>';
-                        }
-                    },
-                    {
-                        // Miss M — mapping match/mismatch (Amazon Miss M / N Map).
-                        title: 'Miss M',
-                        field: 'map',
-                        hozAlign: 'center',
-                        width: 90,
-                        headerTooltip: 'Map when listed, INV > 0, price > 0, and |INV − Wayfair stock| ≤ 3; N Map when |diff| > 3.',
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (d.is_parent) return '';
-                            const mapStatus = wfRowMapStatus(d);
-                            if (mapStatus === 'map') {
-                                return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                            }
-                            if (mapStatus === 'nmap') {
-                                const diff = Math.abs((parseInt(d.inv, 10) || 0) - (parseInt(d.ae_stock, 10) || 0));
-                                return '<span style="color:#dc3545;font-weight:bold;">N Map (' + diff + ')</span>';
-                            }
-                            return '';
                         }
                     },
                     {
@@ -2185,34 +2133,24 @@
 
             $('#wf-missing-badge').on('click', function() {
                 wfMissingActive = !wfMissingActive;
-                wfMapActive = wfNMapActive = false;
-                wfSoldFilter = 'all';
-                wfClearSkuSelections();
-                applyFilters();
-            });
-            $('#wf-nmap-count-badge').on('click', function() {
-                wfNMapActive = !wfNMapActive;
-                wfMissingActive = wfMapActive = false;
                 wfSoldFilter = 'all';
                 wfClearSkuSelections();
                 applyFilters();
             });
             $('#wf-zero-sold-badge').on('click', function() {
                 wfSoldFilter = wfSoldFilter === '0' ? 'all' : '0';
-                wfMissingActive = wfMapActive = wfNMapActive = false;
+                wfMissingActive = false;
                 wfClearSkuSelections();
                 applyFilters();
             });
             $('#wf-more-sold-badge').on('click', function() {
                 wfSoldFilter = wfSoldFilter === 'more' ? 'all' : 'more';
-                wfMissingActive = wfMapActive = wfNMapActive = false;
+                wfMissingActive = false;
                 wfClearSkuSelections();
                 applyFilters();
             });
 
             function wfPatchRowForNrpChange(d, newValue) {
-                // Only update nr — Missing L and Map columns are computed from d.nr + d.price
-                // in their formatters (Macy's pattern), so no patch to missing/map fields needed.
                 return { nr: newValue };
             }
 
@@ -2229,10 +2167,9 @@
                 const row = rows.length ? rows[0] : null;
                 const prevNr = row ? String(row.getData().nr ?? '').trim().toUpperCase() : '';
                 const prevSelect = prevNr === 'NR' ? 'NR' : 'REQ';
-                // Update nr field → Missing L / Map formatters recompute from d.nr + d.price (Macy's pattern).
                 if (row) {
                     row.update({ nr: newValue }, true);
-                    ['nr', 'missing', 'map'].forEach(function(field) {
+                    ['nr', 'missing'].forEach(function(field) {
                         const c = row.getCells().find(function(cell) { return cell.getField() === field; });
                         if (c) c.reformat();
                     });
@@ -2245,7 +2182,7 @@
                         $el.val(prevSelect);
                         if (row) {
                             row.update({ nr: prevNr }, true);
-                            ['nr', 'missing', 'map'].forEach(function(field) {
+                            ['nr', 'missing'].forEach(function(field) {
                                 const c = row.getCells().find(function(cell) { return cell.getField() === field; });
                                 if (c) c.reformat();
                             });

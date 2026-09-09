@@ -456,8 +456,6 @@
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'walmart-price-gt-lmp-badge', 'pglChannelKey' => 'walmart', 'pglPriceField' => 'api_price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'walmart-price-lt80-lmp-badge', 'pltChannelKey' => 'walmart', 'pltPriceField' => 'api_price'])
                         <span class="badge bg-danger fs-6 p-2" id="missing-ads-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing Ads (INV>0, no campaign spend)">Missing Ads: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Mapped items (INV>0)">Map: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="nmap-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter: Not mapped items (INV>0)">Nmap: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="lt-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: API Price < Amz (INV>0)">&lt; AMZ: 0</span>
                         <span class="badge fs-6 p-2" id="gt-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter: API Price > Amz (INV>0)">&gt; AMZ: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="bb-issue-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: BB Issue items (API<A)">BB Issue: 0</span>
@@ -630,8 +628,6 @@
     let moreThanZeroSoldFilterActive = false;
     let missingFilterActive = false;
     let missingAdsFilterActive = false;
-    let mapFilterActive = false;
-    let nmapFilterActive = false;
     let gtAmzFilterActive = false;
     let ltAmzFilterActive = false;
     let bbIssueFilterActive = false;
@@ -1670,8 +1666,6 @@
             let bbIssueCount = 0; // Count of items where API Price < A Price
             let missingCount = 0; // Count of items missing in Walmart
             let missingAdsCount = 0; // Count of items with missing ads (INV>0, no campaign spend)
-            let mapCount = 0; // Count of items with inventory mapped
-            let nmapCount = 0; // Count of items with inventory not mapped
             let moreThanZeroSoldCount = 0; // Count of items with sales > 0
             let gtAmzCount = 0; // Count of items where API Price > Amz Price
             let ltAmzCount = 0; // Count of items where API Price < Amz Price
@@ -1750,13 +1744,6 @@
                     if (spend === 0) {
                         missingAdsCount++;
                     }
-                }
-                
-                // Count Map/Nmap items
-                if (row['map_status'] === 'Map') {
-                    mapCount++;
-                } else if (row['map_status'] === 'Nmap') {
-                    nmapCount++;
                 }
                 
                 // Count SKUs with 0 sold and more than 0 sold (Walmart L30 only, INV > 0)
@@ -1849,19 +1836,6 @@
                 missingAdsBadge.removeClass('bg-danger').addClass('bg-success');
             } else {
                 missingAdsBadge.removeClass('bg-success').addClass('bg-danger');
-            }
-            
-            // Update Map badge
-            const mapBadge = $('#map-count-badge');
-            mapBadge.text('Map: ' + mapCount.toLocaleString());
-            
-            // Update Nmap badge with green color when count is 0
-            const nmapBadge = $('#nmap-count-badge');
-            nmapBadge.text('Nmap: ' + nmapCount.toLocaleString());
-            if (nmapCount === 0) {
-                nmapBadge.removeClass('bg-danger').addClass('bg-success');
-            } else {
-                nmapBadge.removeClass('bg-success').addClass('bg-danger');
             }
             
             // Update Amazon price comparison badges
@@ -2116,31 +2090,6 @@
                         return `<div style="display: flex; align-items: center; justify-content: center;">
                             <span class="status-dot ${dotColor}" title="${title}"></span>
                         </div>`;
-                    }
-                },
-                {
-                    title: "Map",
-                    field: "map_status",
-                    hozAlign: "center",
-                    width: 80,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (!value) return '';
-                        
-                        if (value === 'Map') {
-                            return '<span style="color: #28a745; font-weight: bold; background-color: #d4edda; padding: 4px 8px; border-radius: 4px;" title="Inventory is mapped correctly">Map</span>';
-                        } else if (value === 'Nmap') {
-                            return '<span style="color: #dc3545; font-weight: bold; background-color: #f8d7da; padding: 4px 8px; border-radius: 4px;" title="Inventory mismatch - needs update">Nmap</span>';
-                        }
-                        return '';
-                    },
-                    sorter: function(a, b) {
-                        // Map comes first, then Nmap, then empty
-                        if (a === 'Map' && b !== 'Map') return -1;
-                        if (a !== 'Map' && b === 'Map') return 1;
-                        if (a === 'Nmap' && b !== 'Nmap') return -1;
-                        if (a !== 'Nmap' && b === 'Nmap') return 1;
-                        return 0;
                     }
                 },
                 {
@@ -3008,20 +2957,6 @@
                 });
             }
             
-            // Map Filter (mutually exclusive with Nmap, works with Missing)
-            if (mapFilterActive) {
-                table.addFilter(function(data) {
-                    return data.map_status === 'Map';
-                });
-            }
-            
-            // Nmap Filter (mutually exclusive with Map, works with Missing)
-            if (nmapFilterActive) {
-                table.addFilter(function(data) {
-                    return data.map_status === 'Nmap';
-                });
-            }
-            
             // > AMZ Filter (mutually exclusive with < AMZ)
             if (gtAmzFilterActive) {
                 table.addFilter(function(data) {
@@ -3104,11 +3039,8 @@
             applyFilters();
         });
         
-        // Missing/Map/Nmap (mutually exclusive with each other, like eBay)
         $('#missing-count-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
-            mapFilterActive = false;
-            nmapFilterActive = false;
             missingAdsFilterActive = false;
             applyFilters();
         });
@@ -3116,20 +3048,6 @@
         // Missing Ads filter (independent filter)
         $('#missing-ads-count-badge').on('click', function() {
             missingAdsFilterActive = !missingAdsFilterActive;
-            applyFilters();
-        });
-        
-        $('#map-count-badge').on('click', function() {
-            mapFilterActive = !mapFilterActive;
-            missingFilterActive = false;
-            nmapFilterActive = false;
-            applyFilters();
-        });
-        
-        $('#nmap-count-badge').on('click', function() {
-            nmapFilterActive = !nmapFilterActive;
-            mapFilterActive = false;
-            missingFilterActive = false;
             applyFilters();
         });
         
