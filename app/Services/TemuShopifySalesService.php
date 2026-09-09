@@ -339,19 +339,29 @@ class TemuShopifySalesService
     }
 
     /**
-     * Temu Price sales + profit for one line — same as /temu-tabulator GPFT / GROI.
-     * Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99.
+     * Temu Price sales + profit for one line.
+     * Sales = Temu Price × Qty. Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99.
+     * When $profitFromRPrice (Temu 2): GPFT$ = (R Price × margin − LP − Ship) × Qty.
+     * R Price = Base; +$2.99 if Base ≤ $26.99.
      *
      * @return array{base: float, temu_price: float, sales: float, profit: float}
      */
-    public static function temuPriceSalesAndProfit(float $rawUnit, int $qty, float $margin, float $lp, float $ship, bool $stripFreightFromUnit = true): array
-    {
+    public static function temuPriceSalesAndProfit(
+        float $rawUnit,
+        int $qty,
+        float $margin,
+        float $lp,
+        float $ship,
+        bool $stripFreightFromUnit = true,
+        bool $profitFromRPrice = false
+    ): array {
         $base = $stripFreightFromUnit
             ? self::goodsBaseFromUnit($rawUnit)
             : ($rawUnit > 0 ? round($rawUnit, 2) : 0.0);
         $temuPrice = self::computeFullTemuPrice($base);
         $sales = $temuPrice * $qty;
-        $profit = $temuPrice > 0 ? ($temuPrice * $margin - $lp - $ship) * $qty : 0.0;
+        $profitUnit = $profitFromRPrice ? self::computeFbPrice($base, $qty) : $temuPrice;
+        $profit = $profitUnit > 0 ? ($profitUnit * $margin - $lp - $ship) * $qty : 0.0;
 
         return [
             'base' => $base,
@@ -403,10 +413,10 @@ class TemuShopifySalesService
 
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
-            // Temu 2 Base stays the API/stored unit (no −$2.99). Temu 1 still strips freight.
-            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, $margin, $lp, $ship, ! $isTemu2);
+            // Temu 2: Base as-is, GPFT$ from R Price. Temu 1: strip freight, profit from Temu Price.
+            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, $margin, $lp, $ship, ! $isTemu2, $isTemu2);
 
-            // L30 Sales / GPFT / GROI on Temu Price (same as /temu-tabulator).
+            // L30 Sales = Temu Price × Qty. Temu 2 PFT = GPFT$ (R Price).
             $totalSales += $calc['sales'];
             $totalPft += $calc['profit'];
             $totalCogs += $lp * $qty;

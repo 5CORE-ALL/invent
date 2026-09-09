@@ -1054,7 +1054,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 2 L30 for Active Channel: same Temu Price math as /temu-tabulator.
+     * Temu 2 L30 for Active Channel: same as /temu2-tabulator
+     * (L30 = Temu Price × Qty, GPFT$ from R Price, GPFT% = GPFT$ / Temu Price, GROI% = GPFT$ / LP).
      *
      * @return array{total_orders: int, total_quantity: int, total_revenue: float, total_pft: float, total_cogs: float, gpft_percent: float, groi_percent: float}|null
      */
@@ -11369,7 +11370,7 @@ class ChannelMasterController extends Controller
         $l60Sales = $l60Resolved['sales'];
         $l60Orders = $l60Resolved['orders'];
 
-        // L30 sales / GPFT / GROI: live Temu Price math (same as /temu2-tabulator).
+        // L30 sales / GPFT / GROI: same as /temu2-tabulator (GPFT$ from R Price).
         $useLiveSales = $liveSales && $liveRevenue > 0;
         $l30Sales = $useLiveSales ? $liveRevenue : ($metrics?->total_sales ?? 0);
         $l30Orders = $useLiveSales ? ($liveSales['total_orders'] ?? 0) : ($metrics?->total_orders ?? 0);
