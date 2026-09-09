@@ -1816,6 +1816,15 @@ class OverallAmazonController extends Controller
         }
 
         $tasks = $this->dropPushPrcTasksAlreadyAtListingPrice($tasks);
+        if ($request->boolean('retry_failed')) {
+            $retrySkus = [];
+            foreach ($tasks as $task) {
+                $retrySkus[] = (string) ($task['sku'] ?? '');
+            }
+            $store->forgetBlocked($retrySkus);
+        } else {
+            $tasks = $store->dropBlockedTasks($tasks, $store->mergeFailedBlock($store->load()));
+        }
         $store->compactDuplicateSkus();
         $store->markPendingAlreadyAtListingPrice();
         if ($tasks === []) {
