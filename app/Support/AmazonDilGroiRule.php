@@ -176,6 +176,65 @@ class AmazonDilGroiRule
         return round($price, 2);
     }
 
+    /** Same as the Amazon tabulator CVR L30 column (A L30 ÷ Sess30). */
+    public static function cvrL30(float $aL30, float $sess30): float
+    {
+        if (! is_finite($sess30) || $sess30 <= 0) {
+            return 0.0;
+        }
+
+        return ($aL30 / $sess30) * 100;
+    }
+
+    /** Same as the Amazon tabulator CVR L45 baseline used for the Up/Down arrow. */
+    public static function cvrL45(float $aL30, float $sess30, float $aL60, float $sess60): float
+    {
+        $sess45 = ($sess30 + $sess60) / 2;
+        if (! is_finite($sess45) || $sess45 <= 0) {
+            return 0.0;
+        }
+
+        return ((($aL30 + $aL60) / 2) / $sess45) * 100;
+    }
+
+    /**
+     * Same as amzPefCvrTrend: CVR L30 vs CVR L45, ±0.1% tolerance.
+     * CVR L30 of 0 is always Down.
+     *
+     * @return 'down'|'up'|'flat'
+     */
+    public static function cvrTrend(float $cvrL30, float $cvrL45, float $tol = 0.1): string
+    {
+        if (! is_finite($cvrL30) || $cvrL30 <= 0 || $cvrL30 < $cvrL45 - $tol) {
+            return 'down';
+        }
+        if ($cvrL30 > $cvrL45 + $tol) {
+            return 'up';
+        }
+
+        return 'flat';
+    }
+
+    /**
+     * Target GROI% after the Amazon CVR overlay:
+     * Down and CVR L30 < 7% → −10 points; Up and CVR L30 > 10% → +10 points.
+     */
+    public static function adjustGroiForCvr(float $groi, float $cvrL30, string $trend): float
+    {
+        $adj = 0.0;
+        if ($trend === 'down' && $cvrL30 < 7) {
+            $adj = -10.0;
+        } elseif ($trend === 'up' && $cvrL30 > 10) {
+            $adj = 10.0;
+        }
+        $out = $groi + $adj;
+        if (! is_finite($out) || $out < 0) {
+            return 0.0;
+        }
+
+        return round($out, 2);
+    }
+
     public static function keyFor(float $min, float $max): string
     {
         return self::fmtNum($min).'-'.self::fmtNum($max);

@@ -21,6 +21,7 @@ use Throwable;
  *
  * Same as Push Prc on /amazon-tabulator-view:
  *  Dil in slab (INV > 0, including 0 Sold) → Sale = Dil→GROI (LP/Ship / 0.80)
+ *    then CVR Down & < 7% → Target GROI −10; CVR Up & > 10% → Target GROI +10
  *  Else → Sale = Std × (1 − (CVR Disc + Rev Disc)/100)
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%.
  *  Skip when live Price already equals the target. Price column updates on each push.
@@ -209,6 +210,17 @@ class AmazonSprcDilAutoPushService
         $groi = null;
         if ($dilRule !== null && $lp > 0) {
             $groi = (float) $dilRule['groi'];
+            $aL30 = (float) ($row['a_l30'] ?? 0);
+            $sess30 = (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0);
+            $aL60 = (float) ($row['a_l60'] ?? $row['units_ordered_l60'] ?? 0);
+            $sess60 = (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0);
+            $cvrL30 = AmazonDilGroiRule::cvrL30($aL30, $sess30);
+            $cvrL45 = AmazonDilGroiRule::cvrL45($aL30, $sess30, $aL60, $sess60);
+            $groi = AmazonDilGroiRule::adjustGroiForCvr(
+                $groi,
+                $cvrL30,
+                AmazonDilGroiRule::cvrTrend($cvrL30, $cvrL45)
+            );
             $dilPrice = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi);
             if ($dilPrice !== null && ! ($dilPrice >= 0.01)) {
                 $dilPrice = null;
@@ -291,6 +303,8 @@ class AmazonSprcDilAutoPushService
             'price',
             'units_ordered_l30',
             'sessions_l30',
+            'units_ordered_l60',
+            'sessions_l60',
         ]);
 
         $skuKeys = [];
@@ -351,6 +365,8 @@ class AmazonSprcDilAutoPushService
             $dil = ($l30 / $inv) * 100;
             $sess30 = (float) ($m->sessions_l30 ?? 0);
             $aL30 = (float) ($m->units_ordered_l30 ?? 0);
+            $sess60 = (float) ($m->sessions_l60 ?? 0);
+            $aL60 = (float) ($m->units_ordered_l60 ?? 0);
             $cvr = $sess30 > 0 ? round(($aL30 / $sess30) * 100, 2) : 0.0;
 
             $master = $mastersBySku[$sku] ?? null;
@@ -370,6 +386,9 @@ class AmazonSprcDilAutoPushService
                 'dil' => $dil,
                 'cvr' => $cvr,
                 'a_l30' => $aL30,
+                'sess30' => $sess30,
+                'a_l60' => $aL60,
+                'sess60' => $sess60,
                 'lp' => $lp,
                 'ship' => $ship,
                 'lmp' => (float) ($lmpBySku[$sku] ?? 0),

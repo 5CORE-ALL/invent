@@ -80,4 +80,25 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame($expected, AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi));
         $this->assertNull(AmazonDilGroiRule::suggestedPrice(0, $ship, $groi));
     }
+
+    public function test_cvr_trend_matches_tabulator_l30_vs_l45(): void
+    {
+        $this->assertSame('down', AmazonDilGroiRule::cvrTrend(0, 8));
+        $this->assertSame('down', AmazonDilGroiRule::cvrTrend(5, 6));
+        $this->assertSame('up', AmazonDilGroiRule::cvrTrend(12, 9));
+        $this->assertSame('flat', AmazonDilGroiRule::cvrTrend(8, 8));
+        $this->assertSame('flat', AmazonDilGroiRule::cvrTrend(8.05, 8));
+    }
+
+    public function test_adjust_groi_for_cvr_down_below_7_and_up_above_10(): void
+    {
+        $this->assertSame(40.0, AmazonDilGroiRule::adjustGroiForCvr(50, 6.9, 'down'));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 7, 'down'));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 5, 'flat'));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 12, 'down'));
+        $this->assertSame(60.0, AmazonDilGroiRule::adjustGroiForCvr(50, 10.1, 'up'));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 10, 'up'));
+        $this->assertSame(50.0, AmazonDilGroiRule::adjustGroiForCvr(50, 6, 'up'));
+        $this->assertSame(0.0, AmazonDilGroiRule::adjustGroiForCvr(5, 1, 'down'));
+    }
 }

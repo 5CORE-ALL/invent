@@ -119,12 +119,66 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($out);
     }
 
+    public function test_cvr_down_below_7_subtracts_10_from_target_groi(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 2.5,
+            'lp' => 40,
+            'ship' => 8,
+            'standard_price' => 100,
+            'cvr' => 4,
+            'review_count' => 0,
+            'lmp' => 0,
+            'a_l30' => 4,
+            'sess30' => 100,
+            'a_l60' => 10,
+            'sess60' => 100,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertTrue($out['dil_groi']);
+        $this->assertEqualsWithDelta(40.0, $out['groi'], 0.001);
+        $expected = AmazonDilGroiRule::suggestedPrice(40, 8, 40);
+        $this->assertEqualsWithDelta($expected, $out['sprice'], 0.001);
+    }
+
+    public function test_cvr_up_above_10_adds_10_to_target_groi(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 2.5,
+            'lp' => 40,
+            'ship' => 8,
+            'standard_price' => 100,
+            'cvr' => 12,
+            'review_count' => 0,
+            'lmp' => 0,
+            'a_l30' => 12,
+            'sess30' => 100,
+            'a_l60' => 8,
+            'sess60' => 100,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertTrue($out['dil_groi']);
+        $this->assertEqualsWithDelta(60.0, $out['groi'], 0.001);
+        $expected = AmazonDilGroiRule::suggestedPrice(40, 8, 60);
+        $this->assertEqualsWithDelta($expected, $out['sprice'], 0.001);
+    }
+
     /**
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>|null
      */
     private function compute(array $row): ?array
     {
+        $row = array_merge([
+            'a_l30' => 8,
+            'sess30' => 100,
+            'a_l60' => 8,
+            'sess60' => 100,
+        ], $row);
         $service = new AmazonSprcDilAutoPushService;
         $cvrRules = [
             ['key' => '0.01-1', 'label' => '0.01–1%', 'disc' => 9],
