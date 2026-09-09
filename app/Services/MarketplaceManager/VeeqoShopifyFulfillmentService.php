@@ -2719,10 +2719,14 @@ class VeeqoShopifyFulfillmentService
                         continue;
                     }
                     $numbers = [];
+                    $info = is_array($fulfillment['tracking_info'] ?? null) ? $fulfillment['tracking_info'] : [];
+                    if (trim((string) ($info['number'] ?? '')) !== '') {
+                        $numbers[] = $info['number'];
+                    }
                     if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
-                        $numbers = $fulfillment['tracking_numbers'];
+                        $numbers = array_merge($numbers, $fulfillment['tracking_numbers']);
                     } elseif (! empty($fulfillment['tracking_number'])) {
-                        $numbers = [$fulfillment['tracking_number']];
+                        $numbers[] = $fulfillment['tracking_number'];
                     }
                     foreach ($numbers as $n) {
                         $n = strtoupper(preg_replace('/\s+/', '', (string) $n) ?? '');
@@ -3610,8 +3614,9 @@ class VeeqoShopifyFulfillmentService
                 if (in_array($status, ['cancelled', 'error', 'failure'], true)) {
                     continue;
                 }
-                $number = '';
-                if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
+                $info = is_array($fulfillment['tracking_info'] ?? null) ? $fulfillment['tracking_info'] : [];
+                $number = trim((string) ($info['number'] ?? ''));
+                if ($number === '' && ! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
                     $number = trim((string) ($fulfillment['tracking_numbers'][0] ?? ''));
                 }
                 if ($number === '' && ! empty($fulfillment['tracking_number'])) {
@@ -3620,10 +3625,14 @@ class VeeqoShopifyFulfillmentService
                 if ($number === '') {
                     continue;
                 }
+                $carrier = trim((string) ($fulfillment['tracking_company'] ?? ''));
+                if ($carrier === '') {
+                    $carrier = trim((string) ($info['company'] ?? ''));
+                }
 
                 return [
                     'tracking' => strtoupper(preg_replace('/\s+/', '', $number) ?? $number),
-                    'carrier' => trim((string) ($fulfillment['tracking_company'] ?? '')) ?: 'Other',
+                    'carrier' => $carrier !== '' ? $carrier : 'Other',
                 ];
             }
         } catch (\Throwable $e) {
