@@ -71,7 +71,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Temu 2 Daily Data',
-        'sub_title' => 'Temu 2 Daily Data Analysis',
+        'sub_title' => 'Temu 2 orders from Open API',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -115,9 +115,6 @@
                         <span class="spinner-border spinner-border-sm text-success" role="status"></span>
                         <span class="ms-1">Loading L7 data...</span>
                     </span>
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
-                        <i class="fa fa-upload"></i> Upload Daily Data
-                    </button>
                     <a href="{{ route('temu2.decrease') }}" class="btn btn-sm btn-outline-primary" title="View Temu 2 pricing (DIL%, CVR, orders from temu2_orders)">
                         <i class="fa fa-chart-line"></i> Temu Analytics
                     </a>
@@ -129,7 +126,7 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge fs-6 p-2" id="y-sales-badge"
                             style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="Temu 2 base-price sales for the last complete uploaded day ({{ $temu2YDate ?? 'n/a' }}). Temu 2 is upload-only — upload a report covering the latest day to move this forward.">Y Sales{{ !empty($temu2YDate) ? ' (' . \Carbon\Carbon::parse($temu2YDate)->format('M j') . ')' : '' }}: ${{ number_format((float) ($temu2YSales ?? 0), 0) }}</span>
+                            title="Yesterday's Temu 2 sales from bg.order.amount.query (base + freight) — matches Seller Central's daily sales bar and the Temu 2 row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($temu2YSales ?? 0), 0) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
@@ -159,58 +156,6 @@
                     </div>
                     <!-- Table body (scrollable section) -->
                     <div id="temu2-table" style="flex: 1;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- Upload Daily Data Modal -->
-    <div class="modal fade" id="uploadDailyDataModal" tabindex="-1" aria-labelledby="uploadDailyDataModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="uploadDailyDataModalLabel">
-                        <i class="fa fa-upload me-2"></i>Upload Temu 2 Daily Data
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="dailyDataUploadPeriod" class="form-label">Upload for</label>
-                        <select id="dailyDataUploadPeriod" class="form-select form-select-sm" style="width: auto;">
-                            <option value="L30">L30 Sales (temu2_daily_data)</option>
-                            <option value="L60">L60 Sales (temu2_daily_data_l60)</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="dailyDataFile" class="form-label">Select Excel File</label>
-                        <input type="file" class="form-control" id="dailyDataFile" accept=".xlsx,.xls,.csv">
-                        <div class="form-text">
-                            Supported formats: Excel (.xlsx, .xls) or CSV. Same format for L30 and L60.
-                            <br>
-                            <a href="{{ route('temu.daily.sample') }}" class="text-primary">
-                                <i class="fa fa-download me-1"></i>Download Sample Excel Template
-                            </a>
-                        </div>
-                    </div>
-                    
-                    <div id="uploadProgressContainer" style="display: none;">
-                        <div class="mb-2">
-                            <strong>Upload Progress:</strong>
-                        </div>
-                        <div class="progress mb-2" style="height: 25px;">
-                            <div id="uploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
-                                 role="progressbar" style="width: 0%">0%</div>
-                        </div>
-                        <div id="uploadStatus" class="text-muted small"></div>
-                    </div>
-
-                    <div id="uploadResult" class="alert" style="display: none;"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="startUploadBtn">
-                        <i class="fa fa-upload me-1"></i>Start Upload
-                    </button>
                 </div>
             </div>
         </div>
@@ -303,7 +248,7 @@
             }
         });
         
-        // Initialize Tabulator (Temu 2 data: temu2_daily_data table)
+        // Initialize Tabulator (Temu 2 data: temu2_orders API)
         console.log("Initializing Tabulator for Temu 2 Daily Data...");
         table = new Tabulator("#temu2-table", {
             ajaxURL: "/temu2/daily-data",
@@ -820,90 +765,6 @@
                 }
             });
         });
-
-        // Upload Daily Data (same endpoints and DB tables as Temu)
-        $('#startUploadBtn').on('click', function() {
-            const fileInput = document.getElementById('dailyDataFile');
-            const file = fileInput.files[0];
-            if (!file) {
-                showToast('Please select a file to upload', 'error');
-                return;
-            }
-            const validTypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv'];
-            if (!validTypes.includes(file.type)) {
-                showToast('Please select a valid Excel or CSV file', 'error');
-                return;
-            }
-            $('#uploadProgressContainer').show();
-            $('#uploadResult').hide();
-            $('#startUploadBtn').prop('disabled', true);
-            const totalChunks = 5;
-            const period = $('#dailyDataUploadPeriod').val() || 'L30';
-            const uploadUrl = period === 'L60' ? '/temu2/upload-daily-data-l60-chunk' : '/temu2/upload-daily-data-chunk';
-            const uploadId = (period === 'L60' ? 'temu2_l60_' : 'temu2_') + Date.now();
-            let currentChunk = 0;
-            let totalImported = 0;
-
-            function uploadChunk() {
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('chunk', currentChunk);
-                formData.append('totalChunks', totalChunks);
-                formData.append('uploadId', uploadId);
-                formData.append('_token', '{{ csrf_token() }}');
-                $.ajax({
-                    url: uploadUrl,
-                    type: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    success: function(response) {
-                        if (response.success) {
-                            totalImported += response.imported || 0;
-                            const progress = response.progress || 0;
-                            $('#uploadProgressBar').css('width', progress + '%').text(Math.round(progress) + '%');
-                            $('#uploadStatus').text(`Processing chunk ${currentChunk + 1} of ${totalChunks}... (${totalImported} records imported so far)`);
-                            if (currentChunk < totalChunks - 1) {
-                                currentChunk++;
-                                setTimeout(uploadChunk, 500);
-                            } else {
-                                $('#uploadProgressBar').removeClass('progress-bar-animated').addClass('bg-success');
-                                $('#uploadResult').removeClass('alert-danger').addClass('alert-success')
-                                    .html(`<i class="fa fa-check-circle me-2"></i>Upload completed successfully! ${totalImported} records imported to ${period} Sales.`).show();
-                                $('#startUploadBtn').prop('disabled', false);
-                                showToast(`${period} Sales upload completed! ${totalImported} records imported.`, 'success');
-                                setTimeout(function() {
-                                    $('#uploadDailyDataModal').modal('hide');
-                                    resetUploadForm();
-                                    if (period === 'L30') table.setData('/temu2/daily-data');
-                                }, 2000);
-                            }
-                        } else {
-                            throw new Error(response.message || 'Upload failed');
-                        }
-                    },
-                    error: function(xhr) {
-                        let errorMessage = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Upload failed. Please try again.';
-                        $('#uploadProgressBar').removeClass('progress-bar-animated').addClass('bg-danger');
-                        $('#uploadResult').removeClass('alert-success').addClass('alert-danger').html(`<i class="fa fa-exclamation-circle me-2"></i>${errorMessage}`).show();
-                        $('#startUploadBtn').prop('disabled', false);
-                        showToast(errorMessage, 'error');
-                    }
-                });
-            }
-            uploadChunk();
-        });
-
-        $('#uploadDailyDataModal').on('hidden.bs.modal', resetUploadForm);
-
-        function resetUploadForm() {
-            $('#dailyDataFile').val('');
-            $('#uploadProgressContainer').hide();
-            $('#uploadResult').hide();
-            $('#uploadProgressBar').removeClass('bg-success bg-danger').addClass('progress-bar-animated').css('width', '0%').text('0%');
-            $('#uploadStatus').text('');
-            $('#startUploadBtn').prop('disabled', false);
-        }
     });
 </script>
 @endsection

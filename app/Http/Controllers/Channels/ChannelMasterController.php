@@ -1008,9 +1008,32 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Map TemuShopifySalesService order metrics onto the Active Channel live overlay.
+     *
+     * @param  array{sales?: float, orders?: int, qty?: int, pft?: float, cogs?: float}  $m
+     * @return array{total_orders: int, total_quantity: int, total_revenue: float, total_pft: float, total_cogs: float, gpft_percent: float, groi_percent: float}
+     */
+    private function temuMetricsToLiveSummary(array $m): array
+    {
+        $sales = (float) ($m['sales'] ?? 0);
+        $pft = (float) ($m['pft'] ?? 0);
+        $cogs = (float) ($m['cogs'] ?? 0);
+
+        return [
+            'total_orders' => (int) ($m['orders'] ?? 0),
+            'total_quantity' => (int) ($m['qty'] ?? 0),
+            'total_revenue' => round($sales, 2),
+            'total_pft' => round($pft, 2),
+            'total_cogs' => round($cogs, 2),
+            'gpft_percent' => $sales > 0 ? round(($pft / $sales) * 100, 2) : 0.0,
+            'groi_percent' => $cogs > 0 ? round(($pft / $cogs) * 100, 2) : 0.0,
+        ];
+    }
+
+    /**
      * L30 sales summary — Temu from shopify_order_items (/shopify-orders); Temu 2 from tabulator.
      *
-     * @return array{total_orders: int, total_quantity: int, total_revenue: float}|null
+     * @return array{total_orders: int, total_quantity: int, total_revenue: float, total_pft?: float, total_cogs?: float, gpft_percent?: float, groi_percent?: float}|null
      */
     private function getTemuLiveSalesSummaryFromTabulator(bool $isTemu2 = false): ?array
     {
@@ -1019,13 +1042,7 @@ class ChannelMasterController extends Controller
                 [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
                 $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
 
-                return [
-                    'total_orders' => $m['orders'],
-                    'total_quantity' => $m['qty'],
-                    // Reported sales = bg.order.amount.query line sales (base + freight),
-                    // matching Temu Seller Central's daily sales / estimated-revenue bar.
-                    'total_revenue' => $m['base_sales'],
-                ];
+                return $this->temuMetricsToLiveSummary($m);
             } catch (\Throwable $e) {
                 Log::warning('Temu orders live sales summary failed: '.$e->getMessage());
 
@@ -1038,8 +1055,6 @@ class ChannelMasterController extends Controller
 
     /**
      * Temu 2 L30: live temu2_orders in the Pacific L30 window (same clock as Temu 1).
-     * Sheet unit prices from the last temu2_daily_data upload fill rows that still
-     * have no order_base_amount — so Sales keep moving after the sheet goes stale.
      *
      * @return array{total_orders: int, total_quantity: int, total_revenue: float}|null
      */
@@ -1050,11 +1065,7 @@ class ChannelMasterController extends Controller
                 [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
                 $live = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
                 if ((float) ($live['sales'] ?? 0) > 0) {
-                    return [
-                        'total_orders' => (int) ($live['orders'] ?? 0),
-                        'total_quantity' => (int) ($live['qty'] ?? 0),
-                        'total_revenue' => round((float) $live['sales'], 2),
-                    ];
+                    return $this->temuMetricsToLiveSummary($live);
                 }
             }
 
@@ -1121,8 +1132,14 @@ class ChannelMasterController extends Controller
                 $totalOrders++;
                 $totalQuantity += $qty;
                 if ($qty > 0 && $base > 0) {
-                    $fbPrice = $base <= 26.99 ? ($base + 2.99) : $base;
-                    $totalRevenue += $qty * $fbPrice;
+                    $calc = TemuShopifySalesService::temuPriceSalesAndProfit(
+                        $base,
+                        $qty,
+                        TemuShopifySalesService::temuMarginDecimal(),
+                        0.0,
+                        0.0
+                    );
+                    $totalRevenue += $calc['sales'];
                 }
             }
 
@@ -1155,20 +1172,7 @@ class ChannelMasterController extends Controller
                 return null;
             }
 
-            $sales = (float) $m['sales'];
-            $gpft = (float) $m['gpft'];
-            $cogs = (float) $m['cogs'];
-            $pft = (float) $m['pft'];
-
-            return [
-                'total_orders' => (int) ($m['orders'] ?? 0),
-                'total_quantity' => (int) ($m['qty'] ?? 0),
-                'total_revenue' => round($sales, 2),
-                'total_pft' => round($pft, 2),
-                'total_cogs' => round($cogs, 2),
-                'gpft_percent' => $sales > 0 ? round(($gpft / $sales) * 100, 2) : 0.0,
-                'groi_percent' => $cogs > 0 ? round(($pft / $cogs) * 100, 2) : 0.0,
-            ];
+            return $this->temuMetricsToLiveSummary($m);
         } catch (\Throwable $e) {
             Log::warning('Temu 3 tabulator sales summary failed: '.$e->getMessage());
 
@@ -1178,7 +1182,7 @@ class ChannelMasterController extends Controller
 
     /**
      * Sum L60 rows the same way /temu-tabulator's L60 Sales badge does
-     * (getDailyDataL60 rows + hasSales gate + fbPrice).
+     * (Temu Price × Qty).
      *
      * @return array{total_orders: int, total_revenue: float}
      */
@@ -1202,12 +1206,19 @@ class ChannelMasterController extends Controller
             }
             $qty = (int) ($row['quantity_purchased'] ?? 0);
             $base = (float) ($row['base_price_total'] ?? 0);
-            if ($qty <= 0 || $base <= 0) {
+            $lineSales = (float) ($row['line_sales'] ?? 0);
+            $rawUnit = ($lineSales > 0 && $qty > 0) ? ($lineSales / $qty) : $base;
+            if ($qty <= 0 || $rawUnit <= 0) {
                 continue;
             }
-            $lineTotal = $base * $qty;
-            $fbPrice = $lineTotal < 27 ? $base + 2.99 : $base;
-            $totalRevenue += $fbPrice * $qty;
+            $calc = TemuShopifySalesService::temuPriceSalesAndProfit(
+                $rawUnit,
+                $qty,
+                TemuShopifySalesService::temuMarginDecimal(),
+                0.0,
+                0.0
+            );
+            $totalRevenue += $calc['sales'];
             $orderIds[$orderId] = true;
         }
 
@@ -1311,8 +1322,7 @@ class ChannelMasterController extends Controller
                 $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
 
                 return [
-                    // Base-price sales for the displayed L-60 figure (matches L30 reporting).
-                    'sales' => (float) $m['base_sales'],
+                    'sales' => (float) $m['sales'],
                     'orders' => (int) $m['orders'],
                 ];
             } catch (\Throwable $e) {
@@ -1320,6 +1330,19 @@ class ChannelMasterController extends Controller
 
                 return ['sales' => 0.0, 'orders' => 0];
             }
+        }
+
+        try {
+            [$start, $end] = TemuShopifySalesService::channelMasterL60Window();
+            $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
+            if ((float) ($m['sales'] ?? 0) > 0) {
+                return [
+                    'sales' => (float) $m['sales'],
+                    'orders' => (int) $m['orders'],
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Temu 2 orders L60 failed: '.$e->getMessage());
         }
 
         $channelKey = 'temu2';
@@ -1363,9 +1386,13 @@ class ChannelMasterController extends Controller
                 if ($quantity <= 0 || $basePrice <= 0) {
                     continue;
                 }
-                // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease and /temu-tabulator).
-                $fbPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
-                $l60Sales += $fbPrice * $quantity;
+                $l60Sales += TemuShopifySalesService::temuPriceSalesAndProfit(
+                    $basePrice,
+                    $quantity,
+                    TemuShopifySalesService::temuMarginDecimal(),
+                    0.0,
+                    0.0
+                )['sales'];
             }
         }
 
@@ -1469,20 +1496,29 @@ class ChannelMasterController extends Controller
 
             // Temu 2 spend is applied in overlayLiveTemu2AdsOnChannelRows.
 
-            if ($isTemu3 && $liveSales) {
+            if ($liveSales && isset($liveSales['gpft_percent'])) {
                 $gProfitPct = (float) ($liveSales['gpft_percent'] ?? 0);
                 $gRoi = (float) ($liveSales['groi_percent'] ?? 0);
                 $row['Gprofit%'] = round($gProfitPct, 2).'%';
                 $row['G Roi'] = round($gRoi, 2);
                 $row['Total PFT'] = round((float) ($liveSales['total_pft'] ?? 0), 2);
                 $row['cogs'] = round((float) ($liveSales['total_cogs'] ?? 0), 2);
-                $row['Total Ad Spend'] = 0;
-                $row['Ads%'] = '0%';
-                $row['TACOS %'] = '0%';
-                $row['N PFT'] = round($gProfitPct, 2).'%';
-                $row['sales_page_link'] = '/temu3-tabulator';
-                if (empty($row['missing_link'])) {
-                    $row['missing_link'] = '/temu3-decrease';
+                if ($isTemu3) {
+                    $row['Total Ad Spend'] = 0;
+                    $row['Ads%'] = '0%';
+                    $row['TACOS %'] = '0%';
+                    $row['N PFT'] = round($gProfitPct, 2).'%';
+                    $row['sales_page_link'] = '/temu3-tabulator';
+                    if (empty($row['missing_link'])) {
+                        $row['missing_link'] = '/temu3-decrease';
+                    }
+                } else {
+                    $l30ForAds = (float) ($liveSales['total_revenue'] ?? 0);
+                    $spend = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Ad Spend'] ?? $row['KW Spent'] ?? 0));
+                    $tacos = $l30ForAds > 0 ? ($spend / $l30ForAds) * 100 : 0.0;
+                    $row['TACOS %'] = round($tacos, 2).'%';
+                    $row['Ads%'] = round($tacos, 2).'%';
+                    $row['N PFT'] = round($gProfitPct - $tacos, 2).'%';
                 }
             }
 
@@ -1527,20 +1563,42 @@ class ChannelMasterController extends Controller
                 $row['L30 Sales'] = (int) round($l30Sales);
                 $row['L30 Orders'] = (int) $liveSales['total_orders'];
                 $row['Qty'] = (int) $liveSales['total_quantity'];
-                if ($isTemu3) {
+                if (isset($liveSales['gpft_percent'])) {
                     $gProfitPct = (float) ($liveSales['gpft_percent'] ?? 0);
                     $gRoi = (float) ($liveSales['groi_percent'] ?? 0);
                     $row['Gprofit%'] = round($gProfitPct, 2).'%';
                     $row['G Roi'] = round($gRoi, 2);
                     $row['Total PFT'] = round((float) ($liveSales['total_pft'] ?? 0), 2);
                     $row['cogs'] = round((float) ($liveSales['total_cogs'] ?? 0), 2);
-                    $row['N PFT'] = round($gProfitPct, 2).'%';
-                    $row['N ROI'] = round($gRoi, 2);
-                    $row['sales_page_link'] = '/temu3-tabulator';
-                    if (empty($row['missing_link'])) {
-                        $row['missing_link'] = '/temu3-decrease';
+                    if ($isTemu3) {
+                        $row['N PFT'] = round($gProfitPct, 2).'%';
+                        $row['N ROI'] = round($gRoi, 2);
+                        $row['sales_page_link'] = '/temu3-tabulator';
+                        if (empty($row['missing_link'])) {
+                            $row['missing_link'] = '/temu3-decrease';
+                        }
+                    } else {
+                        $spend = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Ad Spend'] ?? $row['KW Spent'] ?? 0));
+                        $tacos = $l30Sales > 0 ? ($spend / $l30Sales) * 100 : 0.0;
+                        $row['TACOS %'] = round($tacos, 2).'%';
+                        $row['Ads%'] = round($tacos, 2).'%';
+                        $row['N PFT'] = round($gProfitPct - $tacos, 2).'%';
+                        $row['N ROI'] = round($gRoi - $tacos, 2);
                     }
                 }
+            }
+
+            try {
+                $liveL60 = $isTemu3
+                    ? $this->resolveTemu3L60SalesAndOrders()
+                    : $this->resolveTemuL60SalesAndOrders($isTemu2);
+                $l60Sales = (float) ($liveL60['sales'] ?? 0);
+                if ($l60Sales > 0 || (int) ($liveL60['orders'] ?? 0) > 0) {
+                    $row['L-60 Sales'] = (int) round($l60Sales);
+                    $row['L60 Orders'] = (int) ($liveL60['orders'] ?? 0);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Fast-path Temu L60 overlay failed: '.$e->getMessage(), ['temu' => $temuKey]);
             }
 
             try {
@@ -2115,11 +2173,11 @@ class ChannelMasterController extends Controller
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
-            // /temu/ads Spend badge → Temu row + toolbar Spend / Ads% / NPFT.
-            $rows = $this->overlayLiveTemu1AdsOnChannelRows($rows);
+            // L30 Sales / GPFT / GROI from Temu Price (same as /temu-tabulator).
+            $rows = $this->overlayLiveTemuSalesOnChannelRows($rows);
             $rows = $this->overlayLiveTemu2AdsOnChannelRows($rows);
         } catch (\Throwable $e) {
-            Log::warning('Fast-path Temu ads overlay failed: '.$e->getMessage());
+            Log::warning('Fast-path Temu overlay failed: '.$e->getMessage());
         }
 
         return $rows;
@@ -7833,7 +7891,7 @@ class ChannelMasterController extends Controller
         $finalData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($finalData);
         // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
         $finalData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($finalData);
-        $finalData = $this->overlayLiveTemu1AdsOnChannelRows($finalData);
+        $finalData = $this->overlayLiveTemuSalesOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemu2AdsOnChannelRows($finalData);
 
         // Sum of (inventory * Amazon price) for INV Val badge and TAT (save in first row for daily history)
@@ -11290,9 +11348,6 @@ class ChannelMasterController extends Controller
         $l30 = TemuShopifySalesService::computeMetricsFromOrders($l30Start, $l30End);
         $l60 = TemuShopifySalesService::computeMetricsFromOrders($l60Start, $l60End);
 
-        // Displayed L30/L60 Sales use amount-API line sales (base + freight), the same
-        // total Temu Seller Central shows on the daily sales bar. Margin math stays on
-        // `sales` (same official total when the amount API is present).
         $l30Sales = $l30['sales'];
         $l30Orders = $l30['orders'];
         $totalQuantity = $l30['qty'];
@@ -11301,9 +11356,10 @@ class ChannelMasterController extends Controller
         $l60Sales = $l60['sales'];
         $l60Orders = $l60['orders'];
 
-        // Reported sales for display + growth: amount-API base + freight.
-        $l30SalesReported = $l30['base_sales'];
-        $l60SalesReported = $l60['base_sales'];
+        // L30 / L60 Sales = Temu Price × Qty (same as /temu-tabulator).
+        // Y Sales / L7 stay Seller Central amount-API (base + freight).
+        $l30SalesReported = $l30['sales'];
+        $l60SalesReported = $l60['sales'];
 
         $gProfitPct = $l30Sales > 0 ? round(($totalProfit / $l30Sales) * 100, 2) : 0.0;
         $gRoi = $totalCogs > 0 ? round(($totalProfit / $totalCogs) * 100, 2) : 0.0;
@@ -11392,8 +11448,10 @@ class ChannelMasterController extends Controller
     {
         $result = [];
         $metrics = MarketplaceDailyMetric::where('channel', 'Temu 2')->latest('date')->first();
+        $liveSales = $this->getTemuLiveSalesSummaryFromTabulator(true);
+        $liveRevenue = (float) ($liveSales['total_revenue'] ?? 0);
 
-        if (!$metrics) {
+        if (!$metrics && $liveRevenue <= 0) {
             $channelData = ChannelMaster::where('channel', 'Temu 2')->first();
             $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(true);
             $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
@@ -11401,6 +11459,8 @@ class ChannelMasterController extends Controller
                 'Channel '   => 'Temu 2',
                 'L-60 Sales' => 0,
                 'L30 Sales'  => 0,
+                'Y Sales'    => $this->computeTemuYSalesLikeAmazon(true) ?? 0.0,
+                'L7 Sales'   => $this->computeTemuL7SalesLikeAmazon(true) ?? 0.0,
                 'Growth'     => '0%',
                 'L60 Orders' => 0,
                 'L30 Orders' => 0,
@@ -11446,18 +11506,15 @@ class ChannelMasterController extends Controller
         $l60Sales = $l60Resolved['sales'];
         $l60Orders = $l60Resolved['orders'];
 
-        // L30 sales/orders/qty: live from /temu2-tabulator (temu2_daily_data × FB price).
-        // Ignore a $0 live summary so it cannot wipe a real cached L30.
-        $liveSales = $this->getTemuLiveSalesSummaryFromTabulator(true);
-        $liveRevenue = (float) ($liveSales['total_revenue'] ?? 0);
+        // L30 sales / GPFT / GROI: live Temu Price math (same as /temu2-tabulator).
         $useLiveSales = $liveSales && $liveRevenue > 0;
-        $l30Sales = $useLiveSales ? $liveRevenue : ($metrics->total_sales ?? 0);
-        $l30Orders = $useLiveSales ? ($liveSales['total_orders'] ?? 0) : ($metrics->total_orders ?? 0);
-        $totalQuantity = $useLiveSales ? ($liveSales['total_quantity'] ?? 0) : ($metrics->total_quantity ?? 0);
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
+        $l30Sales = $useLiveSales ? $liveRevenue : ($metrics?->total_sales ?? 0);
+        $l30Orders = $useLiveSales ? ($liveSales['total_orders'] ?? 0) : ($metrics?->total_orders ?? 0);
+        $totalQuantity = $useLiveSales ? ($liveSales['total_quantity'] ?? 0) : ($metrics?->total_quantity ?? 0);
+        $totalProfit = $useLiveSales ? (float) ($liveSales['total_pft'] ?? $metrics?->total_pft ?? 0) : ($metrics?->total_pft ?? 0);
+        $totalCogs = $useLiveSales ? (float) ($liveSales['total_cogs'] ?? $metrics?->total_cogs ?? 0) : ($metrics?->total_cogs ?? 0);
+        $gProfitPct = $useLiveSales ? (float) ($liveSales['gpft_percent'] ?? $metrics?->pft_percentage ?? 0) : ($metrics?->pft_percentage ?? 0);
+        $gRoi = $useLiveSales ? (float) ($liveSales['groi_percent'] ?? $metrics?->roi_percentage ?? 0) : ($metrics?->roi_percentage ?? 0);
         // Live Spend from temu2_campaign_reports (/temu2/ads) — same as Temu 1 path
         $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
         $tacosPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
@@ -11483,6 +11540,8 @@ class ChannelMasterController extends Controller
             'Channel '   => 'Temu 2',
             'L-60 Sales' => intval($l60Sales),
             'L30 Sales'  => intval($l30Sales),
+            'Y Sales'    => $this->computeTemuYSalesLikeAmazon(true) ?? 0.0,
+            'L7 Sales'   => $this->computeTemuL7SalesLikeAmazon(true) ?? 0.0,
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
