@@ -3,6 +3,7 @@
 namespace App\Support\Marketplace;
 
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
+use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
 use App\Services\MarketplaceManager\MarketplacePortalInactiveCount;
 use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
@@ -24,6 +25,9 @@ class ListingInactiveParentChildCounts
 
     /** @var array<string, list<string>>|null uppercase parent sku => child sku keys */
     private static ?array $childrenByParent = null;
+
+    /** @var array<string, string>|null uppercase child sku => parent sku */
+    private static ?array $parentByChild = null;
 
     /**
      * @return array{parent: int, child: int, url: ?string}
@@ -113,6 +117,108 @@ class ListingInactiveParentChildCounts
             'child' => count($child),
             'url' => $url,
         ];
+    }
+
+    /**
+     * Every inactive SKU for a marketplace listing-style page (Parent / child / status).
+     *
+     * @return list<array{sku: string, parent: string, kind: string, inv: int, channel_sku: string, channel_inv: int, diff: int, status: string, state: string}>
+     */
+    public static function rowsForChannel(string $channel): array
+    {
+        $norm = ListingChannelCounts::normalize($channel);
+        $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($norm);
+
+        $skus = [];
+        try {
+            if ($mm !== null) {
+                $skus = MarketplacePortalInactiveCount::skus($mm);
+            }
+            if ($skus === []) {
+                $skus = self::fallbackInactiveSkus($norm);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ListingInactiveParentChildCounts rowsForChannel failed for '.$channel.': '.$e->getMessage());
+            $skus = [];
+        }
+
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => trim((string) $sku),
+            $skus
+        ), static fn ($sku) => $sku !== '')));
+
+        $invMap = [];
+        try {
+            $invMap = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        } catch (\Throwable $e) {
+            $invMap = [];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($skus as $sku) {
+            $key = strtoupper($sku);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $kind = MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku) ? 'parent' : 'child';
+            $parent = $kind === 'parent' ? $sku : self::parentSkuFor($sku);
+            $inv = (int) (MarketplaceListingStockResolver::qtyFromMap($invMap, $sku) ?? 0);
+            $out[] = [
+                'sku' => $sku,
+                'parent' => $parent,
+                'kind' => $kind,
+                'inv' => $inv,
+                'channel_sku' => $sku,
+                'channel_inv' => 0,
+                'diff' => $inv,
+                'status' => 'Inactive',
+                'state' => 'inactive',
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    public static function attachParents(array $rows): array
+    {
+        foreach ($rows as $i => $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $kind = MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku) ? 'parent' : 'child';
+            $parent = trim((string) ($row['parent'] ?? ''));
+            if ($parent === '') {
+                $parent = $kind === 'parent' ? $sku : self::parentSkuFor($sku);
+            }
+            $rows[$i]['parent'] = $parent;
+            $rows[$i]['kind'] = $kind;
+            $rows[$i]['status'] = trim((string) ($row['status'] ?? '')) !== ''
+                ? (string) $row['status']
+                : 'Inactive';
+            $rows[$i]['state'] = trim((string) ($row['state'] ?? '')) !== ''
+                ? (string) $row['state']
+                : 'inactive';
+        }
+
+        return $rows;
+    }
+
+    public static function parentSkuFor(string $sku): string
+    {
+        $sku = strtoupper(trim($sku));
+        if ($sku === '') {
+            return '';
+        }
+        if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
+            return $sku;
+        }
+        $map = self::parentByChild();
+
+        return $map[$sku] ?? '';
     }
 
     /**
@@ -263,6 +369,7 @@ class ListingInactiveParentChildCounts
         }
 
         self::$childrenByParent = [];
+        self::$parentByChild = [];
         try {
             if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'sku')) {
                 return self::$childrenByParent;
@@ -282,12 +389,26 @@ class ListingInactiveParentChildCounts
                     continue;
                 }
                 self::$childrenByParent[$parent][] = $child;
+                self::$parentByChild[$child] = $parent;
             }
         } catch (\Throwable $e) {
             Log::warning('ListingInactiveParentChildCounts: load parent map failed: '.$e->getMessage());
         }
 
         return self::$childrenByParent;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected static function parentByChild(): array
+    {
+        if (self::$parentByChild !== null) {
+            return self::$parentByChild;
+        }
+        self::childrenByParent();
+
+        return self::$parentByChild ?? [];
     }
 
     /**

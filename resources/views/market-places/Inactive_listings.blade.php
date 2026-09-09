@@ -277,19 +277,20 @@
                 },
                 {
                     title: "Listings",
-                    field: "listings_url",
+                    field: "detail_url",
                     headerSort: false,
                     width: 90,
                     hozAlign: "center",
                     headerHozAlign: "center",
-                    headerTooltip: "Open Marketplace Manager Inactive SKU tab",
+                    headerTooltip: "Open all inactive SKUs for this marketplace",
                     formatter: function(cell) {
-                        const url = (cell.getValue() || '').trim();
-                        const name = (cell.getRow().getData().channel || 'channel').trim();
+                        const row = cell.getRow().getData() || {};
+                        const url = String(row.detail_url || row.listings_url || '').trim();
+                        const name = (row.channel || 'channel').trim();
                         if (!url) {
                             return '<span class="il-listings-arrow il-listings-arrow-off" title="Listings link not available"><i class="fas fa-arrow-up-right-from-square"></i></span>';
                         }
-                        return `<a href="${escapeHtml(url)}" class="il-listings-arrow il-listings-arrow-on" title="Open ${escapeHtml(name)} Inactive SKU listings" target="_self"><i class="fas fa-arrow-up-right-from-square"></i></a>`;
+                        return `<a href="${escapeHtml(url)}" class="il-listings-arrow il-listings-arrow-on" title="Open ${escapeHtml(name)} inactive listings" target="_self"><i class="fas fa-arrow-up-right-from-square"></i></a>`;
                     },
                 },
             ],
