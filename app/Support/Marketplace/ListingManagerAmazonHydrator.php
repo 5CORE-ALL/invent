@@ -206,6 +206,18 @@ class ListingManagerAmazonHydrator
             ]),
             'images' => $images,
             'bullets' => $bullets,
+            'color' => self::firstNonEmpty([
+                is_array($listing?->color)
+                    ? (string) (($listing->color[0]['value'] ?? $listing->color[0] ?? ''))
+                    : $listing?->color,
+                self::rawGet($raw, 'color', 'color_name'),
+                self::colorFromSku($sku),
+            ]),
+            'country_of_origin' => self::amazonCountryOfOrigin(self::firstNonEmpty([
+                $listing?->country_of_origin,
+                self::rawGet($raw, 'country_of_origin', 'country-of-origin'),
+            ])),
+            'list_price' => $listing?->list_price,
             'package_length' => $dims['length'],
             'package_width' => $dims['width'],
             'package_height' => $dims['height'],
@@ -282,6 +294,16 @@ class ListingManagerAmazonHydrator
             'bullet_3' => $bullets[2] ?? ($existingDetails['bullet_3'] ?? ''),
             'bullet_4' => $bullets[3] ?? ($existingDetails['bullet_4'] ?? ''),
             'bullet_5' => $bullets[4] ?? ($existingDetails['bullet_5'] ?? ''),
+            'color' => trim((string) ($existingDetails['color'] ?? ''))
+                ?: trim((string) ($hydrated['color'] ?? ''))
+                ?: self::colorFromSku($sku),
+            'country_of_origin' => self::amazonCountryOfOrigin(
+                (string) ($existingDetails['country_of_origin'] ?? $hydrated['country_of_origin'] ?? '')
+            ),
+            'dangerous_goods_regulations' => self::amazonDangerousGoods(
+                (string) ($existingDetails['dangerous_goods_regulations'] ?? '')
+            ),
+            'list_price' => $existingDetails['list_price'] ?? $hydrated['list_price'] ?? '',
             'item_specifics' => $specifics,
             'package_length' => $hydrated['package_length'] !== '' ? $hydrated['package_length'] : ($existingDetails['package_length'] ?? ''),
             'package_width' => $hydrated['package_width'] !== '' ? $hydrated['package_width'] : ($existingDetails['package_width'] ?? ''),
@@ -358,7 +380,70 @@ class ListingManagerAmazonHydrator
             }
         }
 
+        if (trim((string) ($details['color'] ?? '')) === '') {
+            $details['color'] = self::colorFromSku($sku);
+        }
+        if (trim((string) ($details['country_of_origin'] ?? '')) === '') {
+            $details['country_of_origin'] = self::amazonCountryOfOrigin('');
+        }
+        if (trim((string) ($details['dangerous_goods_regulations'] ?? '')) === '') {
+            $details['dangerous_goods_regulations'] = self::amazonDangerousGoods('');
+        }
+
         return ListingManagerPublishStatus::normalizeDetails($details);
+    }
+
+    public static function colorFromSku(string $sku, string $explicit = ''): string
+    {
+        $explicit = trim($explicit);
+        if ($explicit !== '') {
+            return $explicit;
+        }
+        $map = [
+            'RED' => 'Red', 'BLK' => 'Black', 'BLACK' => 'Black', 'WHT' => 'White', 'WHITE' => 'White',
+            'BLU' => 'Blue', 'BLUE' => 'Blue', 'GRN' => 'Green', 'GREEN' => 'Green',
+            'YEL' => 'Yellow', 'YELLOW' => 'Yellow', 'SLV' => 'Silver', 'SILVER' => 'Silver',
+            'GLD' => 'Gold', 'GOLD' => 'Gold', 'PNK' => 'Pink', 'PINK' => 'Pink',
+            'ORG' => 'Orange', 'ORANGE' => 'Orange', 'GRY' => 'Gray', 'GRAY' => 'Gray',
+            'GREY' => 'Gray', 'CLR' => 'Clear', 'CLEAR' => 'Clear', 'BRN' => 'Brown',
+            'BROWN' => 'Brown', 'PUR' => 'Purple', 'PURPLE' => 'Purple', 'CRM' => 'Chrome',
+            'CHROME' => 'Chrome', 'NAT' => 'Natural', 'NATURAL' => 'Natural',
+        ];
+        $parts = preg_split('/[\s\-_]+/', strtoupper(trim($sku)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        foreach (array_reverse($parts) as $part) {
+            if (isset($map[$part])) {
+                return $map[$part];
+            }
+        }
+
+        return 'Black';
+    }
+
+    public static function amazonCountryOfOrigin(string $value): string
+    {
+        $value = strtoupper(trim($value));
+        $aliases = [
+            'CHINA' => 'CN', 'CN' => 'CN', 'PRC' => 'CN',
+            'UNITED STATES' => 'US', 'USA' => 'US', 'US' => 'US', 'AMERICA' => 'US',
+            'INDIA' => 'IN', 'IN' => 'IN',
+            'VIETNAM' => 'VN', 'VN' => 'VN',
+            'TAIWAN' => 'TW', 'TW' => 'TW',
+            'MEXICO' => 'MX', 'MX' => 'MX',
+            'CANADA' => 'CA', 'CA' => 'CA',
+        ];
+
+        return $aliases[$value] ?? ($value !== '' ? $value : 'CN');
+    }
+
+    public static function amazonDangerousGoods(string $value): string
+    {
+        $value = strtolower(trim($value));
+        $allowed = ['not_applicable', 'ghs', 'storage', 'transport', 'waste', 'other'];
+        if (in_array($value, $allowed, true)) {
+            return $value;
+        }
+
+        return 'not_applicable';
     }
 
     /**

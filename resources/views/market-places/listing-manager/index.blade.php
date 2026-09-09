@@ -645,6 +645,39 @@
                         <div class="col-md-6" data-id-field="isbn"><label class="form-label">ISBN</label><input id="lc-isbn" class="form-control" placeholder="Optional"></div>
                         <div class="col-md-6" data-id-field="epid"><label class="form-label">ePID</label><input id="lc-epid" class="form-control" placeholder="Optional"></div>
                     </div>
+                    <div class="lc-amazon-only d-none mt-4">
+                        <div class="lc-section-title">Amazon required attributes</div>
+                        <p class="lc-help">Amazon will reject the listing without these. Color is taken from the SKU when possible.</p>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Color <span class="lc-req">*</span></label>
+                                <input id="lc-amazon-color" class="form-control" placeholder="e.g. Red">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Country of origin <span class="lc-req">*</span></label>
+                                <select id="lc-amazon-origin" class="form-select">
+                                    <option value="CN">China (CN)</option>
+                                    <option value="US">United States (US)</option>
+                                    <option value="IN">India (IN)</option>
+                                    <option value="VN">Vietnam (VN)</option>
+                                    <option value="TW">Taiwan (TW)</option>
+                                    <option value="MX">Mexico (MX)</option>
+                                    <option value="CA">Canada (CA)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Dangerous goods <span class="lc-req">*</span></label>
+                                <select id="lc-amazon-dgr" class="form-select">
+                                    <option value="not_applicable">Not applicable</option>
+                                    <option value="ghs">GHS</option>
+                                    <option value="storage">Storage</option>
+                                    <option value="transport">Transport</option>
+                                    <option value="waste">Waste</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="lc-pane" data-pane="variations">
@@ -751,7 +784,7 @@
                     </div>
                     <div class="mt-3">
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
-                            <label class="form-label mb-0">Highlighted features / bullets</label>
+                            <label class="form-label mb-0">Highlighted features / bullets <span class="lc-req lc-amazon-only d-none">*</span></label>
                             <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="bullets">
                                 <i class="fas fa-list me-1"></i>Load from Bullet Points
                             </button>
@@ -805,6 +838,10 @@
                         <div class="col-md-4">
                             <label class="form-label">Price <span class="lc-req">*</span></label>
                             <input type="number" step="0.01" min="0" id="lc-price" class="form-control">
+                        </div>
+                        <div class="col-md-4 lc-amazon-only d-none">
+                            <label class="form-label">List price <span class="lc-req">*</span></label>
+                            <input type="number" step="0.01" min="0" id="lc-list-price" class="form-control" placeholder="MSRP shown on Amazon">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Quantity <span class="lc-req">*</span> <span class="text-muted fw-normal">(Shopify)</span></label>
@@ -2180,6 +2217,24 @@
         }
     }
 
+    function colorFromSku(sku) {
+        const map = {
+            RED: 'Red', BLK: 'Black', BLACK: 'Black', WHT: 'White', WHITE: 'White',
+            BLU: 'Blue', BLUE: 'Blue', GRN: 'Green', GREEN: 'Green',
+            YEL: 'Yellow', YELLOW: 'Yellow', SLV: 'Silver', SILVER: 'Silver',
+            GLD: 'Gold', GOLD: 'Gold', PNK: 'Pink', PINK: 'Pink',
+            ORG: 'Orange', ORANGE: 'Orange', GRY: 'Gray', GRAY: 'Gray',
+            GREY: 'Gray', CLR: 'Clear', CLEAR: 'Clear', BRN: 'Brown',
+            BROWN: 'Brown', PUR: 'Purple', PURPLE: 'Purple', CRM: 'Chrome',
+            CHROME: 'Chrome', NAT: 'Natural', NATURAL: 'Natural'
+        };
+        const parts = String(sku || '').toUpperCase().split(/[\s\-_]+/).filter(Boolean);
+        for (let i = parts.length - 1; i >= 0; i--) {
+            if (map[parts[i]]) return map[parts[i]];
+        }
+        return 'Black';
+    }
+
     function collectDetails() {
         if ($('.lc-mp-category-manual').is(':visible')) {
             $('#lc-category-id').val($('#lc-category-id-visible').val() || '');
@@ -2261,6 +2316,10 @@
             bullet_3: ($('#lc-bullets').val() || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)[2] || '',
             bullet_4: ($('#lc-bullets').val() || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)[3] || '',
             bullet_5: ($('#lc-bullets').val() || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)[4] || '',
+            color: ($('#lc-amazon-color').val() || '').trim() || colorFromSku(mpn),
+            country_of_origin: ($('#lc-amazon-origin').val() || 'CN').trim(),
+            dangerous_goods_regulations: ($('#lc-amazon-dgr').val() || 'not_applicable').trim(),
+            list_price: $('#lc-list-price').val() || $('#lc-price').val() || '',
             publish_mode: selectedPublishMode(),
             variation_skus: selectedVariationSkus(),
             parent_group: String($('#lc-parent-group').val() || (currentDraft && currentDraft.family && currentDraft.family.parent) || '').trim(),
@@ -2389,7 +2448,7 @@
         const desc = String(getDescriptionValue() || d.description || '').trim();
         const price = parseFloat($('#lc-price').val());
         const qty = $('#lc-qty').val();
-        const errors = { title: [], images: [], pricing: [], category: [], policies: [] };
+        const errors = { identifiers: [], title: [], images: [], pricing: [], category: [], policies: [] };
         if (!title) errors.title.push('Title');
         else if (title.length > titleLimit) errors.title.push('Title length');
         if (!desc) errors.title.push('Description');
@@ -2431,6 +2490,12 @@
             if (!((parseFloat(d.package_weight_lb) || 0) + ((parseFloat(d.package_weight_oz) || 0) / 16) > 0)) {
                 errors.policies.push('Weight');
             }
+            const bullets = [d.bullet_1, d.bullet_2, d.bullet_3, d.bullet_4, d.bullet_5].filter(b => String(b || '').trim());
+            if (!bullets.length) errors.title.push('Bullet Point');
+            if (!String(d.color || '').trim()) errors.identifiers.push('Color');
+            if (!String(d.country_of_origin || '').trim()) errors.identifiers.push('Country of Origin');
+            if (!String(d.dangerous_goods_regulations || '').trim()) errors.identifiers.push('Dangerous Goods');
+            if (!(parseFloat(d.list_price) > 0) && !(price > 0)) errors.pricing.push('List Price');
         }
         if (isTiktok || isTemu) {
             if (!d.primary_category_id) errors.category.push('Category');
@@ -2466,7 +2531,7 @@
         $('#lc-category-suggested').toggle(!!path);
 
         const err = clientReady();
-        const tabMap = { title: 'title', images: 'images', pricing: 'pricing', category: 'category', policies: 'policies' };
+        const tabMap = { identifiers: 'identifiers', title: 'title', images: 'images', pricing: 'pricing', category: 'category', policies: 'policies' };
         $('#lc-tabs .lc-tab').each(function () {
             const pane = $(this).data('pane');
             $(this).find('.lc-err').remove();
@@ -2476,6 +2541,7 @@
 
         const family = (serverDraft && serverDraft.editor && serverDraft.editor.family) || '';
         const banners = [];
+        if (err.identifiers && err.identifiers.length) banners.push(['danger', 'Product Identifiers tab is missing required information. Please fill in those required fields.']);
         if (err.category.length) banners.push(['danger', (family === 'amazon' ? 'Product Type' : (family === 'tiktok' ? 'TikTok Category' : (family === 'temu' ? 'Temu Category' : (family === 'reverb' ? 'Reverb Details' : 'Category')))) + ' tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'ebay') banners.push(['danger', 'Business Policies tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'tiktok') banners.push(['danger', 'Warehouse & Package tab is missing required information. Please fill in those required fields.']);
@@ -2758,6 +2824,10 @@
         const loadedBullets = [d.bullet_1, d.bullet_2, d.bullet_3, d.bullet_4, d.bullet_5]
             .map(b => String(b || '').trim()).filter(Boolean);
         $('#lc-bullets').val(loadedBullets.join('\n'));
+        $('#lc-amazon-color').val(d.color || colorFromSku(sku));
+        $('#lc-amazon-origin').val(d.country_of_origin || 'CN');
+        $('#lc-amazon-dgr').val(d.dangerous_goods_regulations || 'not_applicable');
+        $('#lc-list-price').val(d.list_price || (draft.price != null ? draft.price : ''));
         setDescMode('code');
         const snapImages = Array.isArray(snap.images) ? snap.images : [];
         editorImages = sanitizeEditorImages(
