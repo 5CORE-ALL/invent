@@ -50,21 +50,24 @@ class AmazonListingPublishService
             }
         }
 
-        $existingSku = $this->api->resolveExistingSellerSku($sku);
-        if ($existingSku === null) {
+        ListingManagerPublishStatus::forgetAmazonLiveCache($sku);
+        $inspect = $this->api->inspectSellerCentralListing($sku);
+        if (! ($inspect['found'] ?? false)) {
             $created = $this->createListing($sku, $details, $title, $qty, $images);
             if (! ($created['success'] ?? false)) {
                 return $created;
             }
-            $existingSku = $this->api->resolveExistingSellerSku($sku);
-            if ($existingSku === null) {
+            $inspect = $this->waitForSellerCentralListing($sku);
+            if (! ($inspect['found'] ?? false)) {
                 return [
                     'success' => false,
-                    'message' => 'Amazon accepted the submit, but Seller Central still has no SKU '.$sku.'. Open the Product Type and Packaging tabs, fix any Amazon errors, then publish again. A new SKU often stays hidden until product type, package weight, images, and UPC are valid.',
+                    'message' => trim((string) ($inspect['message'] ?? ''))
+                        ?: ('Amazon accepted the submit, but Seller Central still has no ASIN for '.$sku.'. Search Activate listings and Complete drafts, fix Amazon errors, then publish again.'),
                     'skus' => [$sku],
                 ];
             }
         }
+        $existingSku = trim((string) ($inspect['seller_sku'] ?? $sku));
 
         $ok = [];
         $fail = [];
@@ -96,12 +99,14 @@ class AmazonListingPublishService
             }
         }
 
-        $confirmed = $this->api->resolveExistingSellerSku($sku);
-        $asin = ListingManagerPublishStatus::amazonAsinForSku($sku);
-        if ($confirmed === null) {
+        $confirmed = $this->api->inspectSellerCentralListing($sku);
+        ListingManagerPublishStatus::forgetAmazonLiveCache($sku);
+        $asin = trim((string) ($confirmed['asin'] ?? ''));
+        if (! ($confirmed['found'] ?? false) || $asin === '') {
             return [
                 'success' => false,
-                'message' => 'Amazon has no listing for '.$sku.'. Fill Product Type and Packaging, add a UPC, then Save & Publish. The app will not mark this Active until the SKU appears in Seller Central.',
+                'message' => trim((string) ($confirmed['message'] ?? ''))
+                    ?: ('Amazon has no listing for '.$sku.'. Fill Product Type and Packaging, add a UPC, then Save & Publish. The app will not mark this Active until the SKU appears in Seller Central.'),
                 'skus' => [$sku],
             ];
         }
@@ -120,9 +125,28 @@ class AmazonListingPublishService
                 .($ok !== [] ? ' ('.implode(', ', $ok).')' : '')
                 .'. Confirm it under Manage All Inventory.'
                 .($fail !== [] ? ' '.implode(' ', $fail) : ''),
-            'goods_id' => $asin ?: $confirmed,
+            'goods_id' => $asin,
             'skus' => [$sku],
         ];
+    }
+
+    /**
+     * @return array{checked: bool, found: bool, seller_sku?: string, asin?: string, message?: string}
+     */
+    private function waitForSellerCentralListing(string $sku): array
+    {
+        $last = ['checked' => true, 'found' => false];
+        for ($i = 0; $i < 4; $i++) {
+            if ($i > 0) {
+                sleep(2);
+            }
+            $last = $this->api->inspectSellerCentralListing($sku);
+            if ($last['found'] ?? false) {
+                return $last;
+            }
+        }
+
+        return $last;
     }
 
     /**

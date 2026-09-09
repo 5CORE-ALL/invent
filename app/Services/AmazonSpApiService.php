@@ -6048,6 +6048,54 @@ class AmazonSpApiService
     }
 
     /**
+     * Live Seller Central check: listed only when Listings Items returns a real ASIN.
+     * Incomplete / Activate-listings drafts have a SKU but no ASIN and do not show in Manage Inventory.
+     *
+     * @return array{checked: bool, found: bool, seller_sku?: string, asin?: string, status?: string|null, title?: string|null, quantity?: int|null, message?: string}
+     */
+    public function inspectSellerCentralListing(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! $this->isConfigured()) {
+            return ['checked' => false, 'found' => false, 'message' => 'Amazon SP-API is not connected.'];
+        }
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['checked' => false, 'found' => false, 'message' => 'Could not obtain Amazon access token.'];
+        }
+
+        $matched = $this->findAmazonSkuFormat($sku, $token, 'ATVPDKIKX0DER');
+        if ($matched === null || trim((string) $matched) === '') {
+            return [
+                'checked' => true,
+                'found' => false,
+                'message' => 'Seller Central has no SKU '.$sku.'.',
+            ];
+        }
+
+        $hit = $this->fetchListingsItemSummaries((string) $matched, $token);
+        $asin = trim((string) ($hit['asin'] ?? ''));
+        if ($hit === null || $asin === '') {
+            return [
+                'checked' => true,
+                'found' => false,
+                'seller_sku' => (string) $matched,
+                'message' => 'Amazon has SKU '.$matched.' but it is incomplete (no ASIN). Search Activate listings / Complete drafts in Seller Central, fix Amazon errors, then Save & Publish again.',
+            ];
+        }
+
+        return [
+            'checked' => true,
+            'found' => true,
+            'seller_sku' => (string) ($hit['seller_sku'] ?? $matched),
+            'asin' => $asin,
+            'status' => $hit['status'] ?? null,
+            'title' => $hit['title'] ?? null,
+            'quantity' => $hit['quantity'] ?? null,
+        ];
+    }
+
+    /**
      * Seller SKU as it exists on the US listings API, or null when Amazon has no offer.
      */
     public function resolveExistingSellerSku(string $sku): ?string

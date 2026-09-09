@@ -8,6 +8,8 @@ use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
 use App\Models\Temu2Metric;
 use App\Models\TemuMetric;
+use App\Services\AmazonSpApiService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -29,7 +31,19 @@ class ListingManagerPublishStatus
         }
 
         if (in_array($key, ['amazon', 'amazonfba', 'amz', 'amzfbm'], true)) {
+            $live = self::amazonLiveOnSellerCentral($sku);
+            if ($live['found'] ?? false) {
+                return [
+                    'listed' => true,
+                    'listing_id' => (string) ($live['asin'] ?? ''),
+                    'source' => 'amazon_listings_api',
+                ];
+            }
+            if ($live['checked'] ?? false) {
+                return ['listed' => false, 'listing_id' => null, 'source' => 'amazon_listings_api'];
+            }
             $asin = self::amazonAsinForSku($sku);
+
             return ['listed' => $asin !== null, 'listing_id' => $asin, 'source' => 'amazon_listings'];
         }
 
@@ -83,6 +97,52 @@ class ListingManagerPublishStatus
         }
 
         return ['listed' => false, 'listing_id' => null, 'source' => 'none'];
+    }
+
+    /**
+     * Live Seller Central listing check (cached). listed only when Amazon returns an ASIN.
+     *
+     * @return array{checked: bool, found: bool, seller_sku?: string, asin?: string, status?: string|null, title?: string|null, quantity?: int|null, message?: string}
+     */
+    public static function amazonLiveOnSellerCentral(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['checked' => true, 'found' => false, 'message' => 'SKU is required.'];
+        }
+        $key = self::amazonLiveCacheKey($sku);
+        $cached = Cache::get($key);
+        if (is_array($cached) && array_key_exists('checked', $cached)) {
+            return $cached;
+        }
+        try {
+            $inspect = app(AmazonSpApiService::class)->inspectSellerCentralListing($sku);
+        } catch (\Throwable $e) {
+            return ['checked' => false, 'found' => false, 'message' => $e->getMessage()];
+        }
+        if ($inspect['checked'] ?? false) {
+            Cache::put(
+                $key,
+                $inspect,
+                ($inspect['found'] ?? false) ? now()->addMinutes(20) : now()->addMinutes(2)
+            );
+        }
+
+        return $inspect;
+    }
+
+    public static function forgetAmazonLiveCache(string $sku): void
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return;
+        }
+        Cache::forget(self::amazonLiveCacheKey($sku));
+    }
+
+    private static function amazonLiveCacheKey(string $sku): string
+    {
+        return 'lm_amazon_sc:'.mb_strtolower(trim($sku));
     }
 
     public static function amazonAsinForSku(string $sku): ?string
