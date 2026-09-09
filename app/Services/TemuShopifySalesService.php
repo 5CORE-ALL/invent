@@ -1106,7 +1106,7 @@ class TemuShopifySalesService
             $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;
             $pft = $pftDecimal * $fbPrice * $quantity;
 
-            $result[] = [
+            $mapped = [
                 'Parent' => $parent,
                 'contribution_sku' => $sku,
                 'order_id' => $o->parent_order_sn ?: ($o->order_sn ?? ''),
@@ -1116,6 +1116,7 @@ class TemuShopifySalesService
                 'quantity_shipped' => 0,
                 'quantity_to_ship' => 0,
                 'base_price_total' => round($officialUnit > 0 ? $officialUnit : $price, 2),
+                'listing_base_price' => round((float) ($priceBySku[$sku] ?? 0), 2),
                 'line_sales' => $hasApiSales ? round($lineSales, 2) : round(self::lineSales($price, $quantity), 2),
                 'fb_price' => round($fbPrice, 2),
                 'lp' => $lp,
@@ -1131,9 +1132,44 @@ class TemuShopifySalesService
                     ? $o->parent_order_time->format('Y-m-d H:i:s')
                     : null,
             ];
+
+            $result[] = $isTemu2
+                ? array_merge(self::temu2RawOrderColumns($o), $mapped)
+                : $mapped;
         }
 
         return $result;
+    }
+
+    /**
+     * Scalar temu2_orders columns for the tabulator (JSON blobs omitted).
+     * order_status is renamed so the mapped text status can keep that key.
+     *
+     * @return array<string, mixed>
+     */
+    private static function temu2RawOrderColumns(object $o): array
+    {
+        $skip = ['id', 'raw_json', 'amount_raw_json'];
+        $out = [];
+        foreach ($o->getAttributes() as $key => $unused) {
+            if (in_array($key, $skip, true)) {
+                continue;
+            }
+            $value = $o->{$key};
+            if ($value instanceof \DateTimeInterface) {
+                $out[$key] = $value->format('Y-m-d H:i:s');
+            } elseif (is_array($value) || is_object($value)) {
+                continue;
+            } else {
+                $out[$key] = $value;
+            }
+        }
+        if (array_key_exists('order_status', $out)) {
+            $out['order_status_code'] = $out['order_status'];
+            unset($out['order_status']);
+        }
+
+        return $out;
     }
 
     private static function productMastersForSkus(Collection $skus): Collection

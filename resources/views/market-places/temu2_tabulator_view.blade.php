@@ -308,14 +308,18 @@
                     cssClass: "text-primary",
                     tooltip: true,
                     frozen: true,
-                    width: 150,
-                    visible: false
+                    width: 150
                 },
                 {
-                    title: "Order ID",
-                    field: "order_id",
+                    title: "Parent Order SN",
+                    field: "parent_order_sn",
                     width: 180,
                     frozen: true
+                },
+                {
+                    title: "Order SN",
+                    field: "order_sn",
+                    width: 170
                 },
                 {
                     title: "SKU",
@@ -333,37 +337,105 @@
                         return sku || '';
                     }
                 },
+                { title: "Ext Code", field: "ext_code", width: 140 },
+                { title: "Display SKU", field: "display_sku", width: 140 },
+                { title: "SKU ID", field: "sku_id", width: 140 },
+                { title: "Goods ID", field: "goods_id", width: 150 },
+                { title: "Product SKU ID", field: "product_sku_id", width: 140 },
+                { title: "Goods Name", field: "goods_name", width: 280, tooltip: true },
+                { title: "Spec", field: "spec", width: 140, tooltip: true },
+                { title: "Qty", field: "quantity", hozAlign: "center", sorter: "number", width: 80 },
+                { title: "Original Qty", field: "original_order_quantity", hozAlign: "center", sorter: "number", width: 110 },
+                { title: "Canceled Qty", field: "canceled_quantity_before_shipment", hozAlign: "center", sorter: "number", width: 110 },
                 {
-                    title: "Product Name",
-                    field: "product_name_by_customer_order",
-                    width: 300,
-                    tooltip: true
-                },
-                {
-                    title: "Variation",
-                    field: "variation",
-                    width: 120
-                },
-                {
-                    title: "Qty Purchased",
-                    field: "quantity_purchased",
-                    hozAlign: "center",
+                    title: "Order Base Amt",
+                    field: "order_base_amount",
+                    hozAlign: "right",
                     sorter: "number",
-                    width: 120
+                    width: 130,
+                    headerTooltip: "Raw bg.order.amount.query basePrice stored on temu2_orders",
+                    formatter: "money",
+                    formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
                 },
                 {
-                    title: "Qty Shipped",
-                    field: "quantity_shipped",
-                    hozAlign: "center",
+                    title: "Order Total Amt",
+                    field: "order_total_amount",
+                    hozAlign: "right",
                     sorter: "number",
-                    width: 120
+                    width: 130,
+                    headerTooltip: "Raw bg.order.amount.query total stored on temu2_orders",
+                    formatter: "money",
+                    formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
                 },
                 {
-                    title: "Qty To Ship",
-                    field: "quantity_to_ship",
-                    hozAlign: "center",
+                    title: "Listing Base",
+                    field: "listing_base_price",
+                    hozAlign: "right",
                     sorter: "number",
-                    width: 120
+                    width: 120,
+                    headerTooltip: "Catalog base from bg.local.goods.sku.list.price.query (temu2_metrics)",
+                    formatter: "money",
+                    formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
+                },
+                {
+                    title: "Line Sales",
+                    field: "line_sales",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 110,
+                    headerTooltip: "API line sales = basePrice + shipAmountTotal",
+                    formatter: "money",
+                    formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
+                },
+                { title: "Status Code", field: "order_status_code", hozAlign: "center", width: 100 },
+                {
+                    title: "Status Text",
+                    field: "order_status_text",
+                    width: 130,
+                    formatter: function(cell) {
+                        const value = cell.getValue() || cell.getRow().getData().order_status;
+                        if (!value) return '';
+                        let color = 'secondary';
+                        const lower = String(value).toLowerCase();
+                        if (lower.includes('delivered')) color = 'success';
+                        else if (lower.includes('shipped')) color = 'info';
+                        else if (lower.includes('cancel')) color = 'danger';
+                        else if (lower.includes('pending')) color = 'warning';
+                        return `<span class="badge bg-${color}">${value}</span>`;
+                    }
+                },
+                { title: "Parent Status", field: "parent_order_status", hozAlign: "center", width: 110 },
+                { title: "Parent Status Text", field: "parent_order_status_text", width: 150 },
+                { title: "Fulfillment Type", field: "fulfillment_type", width: 140 },
+                { title: "Payment Type", field: "order_payment_type", width: 130 },
+                { title: "Region ID", field: "region_id", hozAlign: "center", width: 90 },
+                { title: "Site ID", field: "site_id", hozAlign: "center", width: 80 },
+                { title: "Parent Order Time", field: "parent_order_time", width: 160 },
+                { title: "Expect Ship Latest", field: "expect_ship_latest_time", width: 160 },
+                { title: "Parent Shipping Time", field: "parent_shipping_time", width: 160 },
+                { title: "Latest Delivery", field: "latest_delivery_time", width: 160 },
+                { title: "Order Update Time", field: "order_update_time", width: 160 },
+                { title: "Order Shipping Time", field: "order_shipping_time", width: 160 },
+                { title: "Tracking", field: "tracking_number", width: 150 },
+                { title: "Carrier", field: "carrier", width: 120 },
+                { title: "Package SN", field: "package_sn", width: 140 },
+                { title: "Tracking Fetched", field: "tracking_fetched_at", width: 160 },
+                { title: "Amount Fetched", field: "amount_fetched_at", width: 160 },
+                { title: "Fetch Window", field: "fetch_window", width: 110 },
+                { title: "Fetched At", field: "fetched_at", width: 160 },
+                { title: "Import Status", field: "import_status", width: 120 },
+                { title: "Shopify Order ID", field: "shopify_order_id", width: 150 },
+                { title: "Pushed Shopify", field: "pushed_to_shopify_at", width: 160 },
+                {
+                    title: "Thumb",
+                    field: "thumb_url",
+                    width: 70,
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const url = cell.getValue();
+                        if (!url) return '';
+                        return `<img src="${url}" alt="" style="height:36px;width:36px;object-fit:cover;border-radius:4px;">`;
+                    }
                 },
                 {
                     title: "Base Price",
@@ -373,7 +445,7 @@
                         return temuGoodsBase(a) - temuGoodsBase(b);
                     },
                     width: 120,
-                    headerTooltip: "Base = stored/API unit − $2.99 when that unit is < $26.99. Otherwise stored/API unit.",
+                    headerTooltip: "Derived unit from API line sales (or listing base). Display = unit − $2.99 when unit < $26.99.",
                     accessorDownload: function(value) {
                         const n = temuGoodsBase(value);
                         return n > 0 ? n.toFixed(2) : '';
@@ -531,48 +603,6 @@
                         const quantity = parseInt(data.quantity_purchased) || 0;
                         return (quantity * temuRowTemuPrice(data)).toFixed(2);
                     }
-                },
-                {
-                    title: "Order Status",
-                    field: "order_status",
-                    width: 120,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (!value) return '';
-                        let color = 'secondary';
-                        if (value.toLowerCase().includes('delivered')) color = 'success';
-                        else if (value.toLowerCase().includes('shipped')) color = 'info';
-                        else if (value.toLowerCase().includes('cancelled') || value.toLowerCase().includes('cancel')) color = 'danger';
-                        else if (value.toLowerCase().includes('pending')) color = 'warning';
-                        return `<span class="badge bg-${color}">${value}</span>`;
-                    }
-                },
-                {
-                    title: "Fulfillment",
-                    field: "fulfillment_mode",
-                    width: 150
-                },
-                {
-                    title: "Tracking",
-                    field: "tracking_number",
-                    width: 150
-                },
-                {
-                    title: "Carrier",
-                    field: "carrier",
-                    width: 120
-                },
-                {
-                    title: "Created At",
-                    field: "created_at",
-                    sorter: "datetime",
-                    width: 160,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (!value) return '';
-                        const date = new Date(value);
-                        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-                    }
                 }
             ]
         });
@@ -718,9 +748,9 @@
                         showToast('Invalid response from L7 endpoint', 'error');
                         return;
                     }
-                    const columns = ['Parent', 'order_id', 'contribution_sku', 'product_name_by_customer_order', 'variation',
-                        'quantity_purchased', 'quantity_shipped', 'quantity_to_ship', 'base_price_total', 'fb_price', 'temu_price',
-                        'lp', 'temu_ship', 'pft', 'gpft_percent', 'groi_percent', 'l30_sales', 'order_status', 'fulfillment_mode', 'tracking_number', 'carrier', 'created_at'];
+                    const columns = table.getColumns().map(function(col) {
+                        return col.getField();
+                    }).filter(Boolean);
                     const headers = columns.join(',');
                     const escapeCsv = function(val) {
                         if (val === null || val === undefined) return '""';
