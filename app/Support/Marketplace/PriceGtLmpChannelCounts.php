@@ -150,6 +150,10 @@ class PriceGtLmpChannelCounts
      */
     private static function computePriceGtLmp(string $key, array $meta, array $inv, array $linkRoots): int
     {
+        if ($key === 'aliexpress') {
+            return self::computeAliexpressPriceGtLmp();
+        }
+
         $prices = self::loadPriceMap($key);
         if ($prices === []) {
             return 0;
@@ -168,6 +172,36 @@ class PriceGtLmpChannelCounts
                 continue;
             }
             $lmp = $lmps[$sku] ?? 0.0;
+            if ($lmp > 0 && $price > $lmp) {
+                $n++;
+            }
+        }
+
+        return $n;
+    }
+
+    /**
+     * Same universe as /aliexpress-pricing: onSelling list price, Shopify INV > 0,
+     * LMP from the AE sheet (no Sku Link spread, offline listings excluded).
+     */
+    private static function computeAliexpressPriceGtLmp(): int
+    {
+        $prices = self::loadAliexpressLivePrices();
+        $lmps = self::loadAliexpressLmpMap();
+        $inv = self::loadAliexpressInvMap();
+        if ($prices === [] || $lmps === []) {
+            return 0;
+        }
+
+        $n = 0;
+        foreach ($prices as $sku => $price) {
+            if (! ($price > 0) || str_contains($sku, 'PARENT')) {
+                continue;
+            }
+            if (! (($inv[$sku] ?? 0) > 0)) {
+                continue;
+            }
+            $lmp = $lmps[self::normAeLmpSku($sku)] ?? ($lmps[$sku] ?? 0.0);
             if ($lmp > 0 && $price > $lmp) {
                 $n++;
             }
@@ -236,7 +270,7 @@ class PriceGtLmpChannelCounts
             return self::loadSheetLmpMap('temu_lmp', true);
         }
         if ($key === 'aliexpress') {
-            return self::loadSheetLmpMap('aliexpress_lmp_data_sheet', false);
+            return self::loadAliexpressLmpMap();
         }
         if (in_array($key, ['tiktok', 'tiktok2'], true)) {
             return self::loadTiktokLmpMap();
@@ -248,6 +282,199 @@ class PriceGtLmpChannelCounts
         }
 
         return self::loadCompetitorLmpMap($comp);
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private static function loadAliexpressLivePrices(): array
+    {
+        if (! Schema::hasTable('aliexpress_pricing_prices')
+            || ! Schema::hasColumn('aliexpress_pricing_prices', 'sku')
+            || ! Schema::hasColumn('aliexpress_pricing_prices', 'price')) {
+            return [];
+        }
+
+        try {
+            $rows = DB::table('aliexpress_pricing_prices')
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->where('price', '>', 0)
+                ->get(['sku', 'price']);
+        } catch (\Throwable $e) {
+            Log::warning('PriceGtLmpChannelCounts AE price load failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        $offline = self::aliexpressOfflineSkuSet();
+        $map = [];
+        foreach ($rows as $row) {
+            $sku = self::normAeSkuExact((string) $row->sku);
+            if ($sku === '' || str_contains($sku, 'PARENT') || isset($offline[$sku])) {
+                continue;
+            }
+            $price = (float) $row->price;
+            if ($price > 0 && (! isset($map[$sku]) || $price > $map[$sku])) {
+                $map[$sku] = $price;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private static function aliexpressOfflineSkuSet(): array
+    {
+        if (! Schema::hasTable('aliexpress_metric') || ! Schema::hasColumn('aliexpress_metric', 'listing_status')) {
+            return [];
+        }
+
+        try {
+            $rows = DB::table('aliexpress_metric')->get(['sku', 'listing_status']);
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        $statusBySku = [];
+        foreach ($rows as $row) {
+            $sku = self::normAeSkuExact((string) ($row->sku ?? ''));
+            $status = strtolower(trim((string) ($row->listing_status ?? '')));
+            if ($sku === '' || $status === '') {
+                continue;
+            }
+            if (! isset($statusBySku[$sku]) || $status === 'onselling') {
+                $statusBySku[$sku] = $status;
+            }
+        }
+
+        $offline = [];
+        foreach ($statusBySku as $sku => $status) {
+            if (in_array($status, ['offline', 'service_delete'], true)) {
+                $offline[$sku] = true;
+            }
+        }
+
+        return $offline;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private static function loadAliexpressInvMap(): array
+    {
+        if (! Schema::hasTable('shopify_skus') || ! Schema::hasColumn('shopify_skus', 'inv')) {
+            return [];
+        }
+
+        try {
+            $rows = DB::table('shopify_skus')->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'inv']);
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        $map = [];
+        foreach ($rows as $row) {
+            $n = (int) $row->inv;
+            if ($n <= 0) {
+                continue;
+            }
+            $sku = self::normAeSkuExact((string) $row->sku);
+            if ($sku !== '' && ! str_contains($sku, 'PARENT')) {
+                $map[$sku] = (float) $n;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Match /aliexpress-pricing badge: entry price only (no ship add);
+     * if entries exist, do not fall back to the legacy lmp column.
+     *
+     * @return array<string, float>
+     */
+    private static function loadAliexpressLmpMap(): array
+    {
+        $table = 'aliexpress_lmp_data_sheet';
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
+            return [];
+        }
+        $cols = ['sku'];
+        foreach (['lmp', 'lmp_entries'] as $col) {
+            if (Schema::hasColumn($table, $col)) {
+                $cols[] = $col;
+            }
+        }
+
+        try {
+            $rows = DB::table($table)->whereNotNull('sku')->where('sku', '!=', '')->get($cols);
+        } catch (\Throwable $e) {
+            Log::warning('PriceGtLmpChannelCounts AE LMP load failed: '.$e->getMessage());
+
+            return [];
+        }
+
+        $map = [];
+        foreach ($rows as $row) {
+            $sku = self::normAeLmpSku((string) $row->sku);
+            if ($sku === '') {
+                continue;
+            }
+            $lmp = self::aliexpressRowLmp($row);
+            if ($lmp > 0 && (! isset($map[$sku]) || $lmp < $map[$sku])) {
+                $map[$sku] = $lmp;
+            }
+        }
+
+        return $map;
+    }
+
+    private static function aliexpressRowLmp(object $row): float
+    {
+        $entries = $row->lmp_entries ?? null;
+        if (is_string($entries)) {
+            $decoded = json_decode($entries, true);
+            $entries = is_array($decoded) ? $decoded : null;
+        }
+        if (is_array($entries) && $entries !== []) {
+            $lowest = 0.0;
+            foreach ($entries as $entry) {
+                if (! is_array($entry) || self::entryIgnored($entry['ignored'] ?? null)) {
+                    continue;
+                }
+                $p = $entry['landed_price'] ?? ($entry['total_price'] ?? ($entry['price'] ?? ($entry['lmp'] ?? 0)));
+                $n = is_numeric($p) ? (float) $p : 0.0;
+                if ($n > 0 && ($lowest <= 0 || $n < $lowest)) {
+                    $lowest = $n;
+                }
+            }
+
+            return $lowest;
+        }
+
+        $fallback = (float) ($row->lmp ?? 0);
+
+        return $fallback > 0 ? $fallback : 0.0;
+    }
+
+    private static function normAeSkuExact(string $sku): string
+    {
+        $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim($sku));
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
+
+        return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku) ?? '');
+    }
+
+    private static function normAeLmpSku(string $sku): string
+    {
+        $s = strtoupper(trim($sku));
+        $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s) ?? $s;
+        $s = preg_replace('/\s+/', ' ', $s) ?? $s;
+
+        return $s;
     }
 
     /**
