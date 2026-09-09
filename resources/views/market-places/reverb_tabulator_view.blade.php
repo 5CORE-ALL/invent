@@ -599,9 +599,9 @@
                         <span class="badge bg-info flex-shrink-0" id="npft-badge" style="color: black; font-weight: bold;" title="PFT% = GPFT% − Ads% (same as /amazon-tabulator-view)">PFT: 0%</span>
                         <span class="badge flex-shrink-0" id="groi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Weighted GROI% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×LP) — same method as /temu-decrease, using normal ship">GROI: 0%</span>
                         <span class="badge flex-shrink-0" id="nroi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = (Total PFT − Ad Spend) ÷ COGS × 100; Ad Spend = Ads% × Sales (same as /amazon-tabulator-view)">NROI: 0%</span>
-                        <span class="badge flex-shrink-0" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of bump impressions ÷ 1000 for currently filtered rows (Reverb GET /listings/{id}/bump → bump_v2_stats.impressions)">Views: 0</span>
-                        <span class="badge flex-shrink-0" id="avg-views-badge" style="background-color: #0dcaf0; color: #111; font-weight: bold;" title="Average (bump impressions ÷ 1000) per SKU for currently filtered rows">Avg Views: 0</span>
-                        <span class="badge flex-shrink-0" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Σ(RV L30) ÷ Σ(Views÷1000) × 100">CVR: 0%</span>
+                        <span class="badge flex-shrink-0" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of bump impressions ÷ 100 for currently filtered rows (Reverb GET /listings/{id}/bump → bump_v2_stats.impressions)">Views: 0</span>
+                        <span class="badge flex-shrink-0" id="avg-views-badge" style="background-color: #0dcaf0; color: #111; font-weight: bold;" title="Average (bump impressions ÷ 100) per SKU for currently filtered rows">Avg Views: 0</span>
+                        <span class="badge flex-shrink-0" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Σ(RV L30) ÷ Σ(Views÷100) × 100">CVR: 0%</span>
                         <span class="badge flex-shrink-0" id="rd-qty-sum-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Sum of RD Qty column (reverb_daily_qty) for currently filtered rows">RD Qty: 0</span>
                         <span class="badge bg-danger flex-shrink-0" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with RV L30 = 0 (same as Amz 0 Sold on A_L30)">0 Sold: 0</span>
                         <span class="badge flex-shrink-0" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with RV L30 &gt; 0 (same as Amz Sold &gt;0 on A_L30)">&gt; 0 Sold: 0</span>
@@ -3918,7 +3918,7 @@
                 {
                     title: "Views",
                     field: "Views",
-                    headerTooltip: "Bump impressions ÷ 1000 from Reverb GET /listings/{id}/bump (bump_v2_stats.impressions). CVR uses this scaled Views number. Never-bumped listings = 0.",
+                    headerTooltip: "Bump impressions ÷ 100 from Reverb GET /listings/{id}/bump (bump_v2_stats.impressions). CVR uses this scaled Views number. Never-bumped listings = 0.",
                     hozAlign: "center",
                     width: 62,
                     sorter: "number",
@@ -3939,7 +3939,7 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        // RV L30 ÷ (Views already ÷ 1000) × 100
+                        // RV L30 ÷ (Views already ÷ 100) × 100
                         const rowData = cell.getRow().getData();
                         const l30 = parseFloat(rowData['RV L30']) || 0;
                         const views = parseFloat(rowData['Views']) || 0;
@@ -4957,7 +4957,7 @@
                 });
             }
 
-            // CVR filter — RV L30 ÷ (Views already ÷ 1000) × 100
+            // CVR filter — RV L30 ÷ (Views already ÷ 100) × 100
             const cvrFilter = $('#cvr-filter').val();
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
@@ -5246,7 +5246,7 @@
             $('#rd-ads-percent-badge').text('Ads: ' + adsPct.toFixed(1) + '%');
             $('#npft-badge').text(`PFT: ${Math.round(pftPct)}%`);
             $('#nroi-badge').text(`NROI: ${Math.round(nroiPct)}%`);
-            // Σ(RV L30) ÷ Σ(Views already ÷ 1000) × 100
+            // Σ(RV L30) ÷ Σ(Views already ÷ 100) × 100
             const overallCvr = totalViewsRaw > 0 ? (totalRvL30 / totalViewsRaw) * 100 : 0;
             const avgViews = data.length > 0 ? totalViewsRaw / data.length : 0;
             $('#total-views-badge').text(`Views: ${Math.round(totalViewsRaw).toLocaleString()}`);

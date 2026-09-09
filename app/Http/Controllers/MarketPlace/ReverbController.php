@@ -970,7 +970,7 @@ class ReverbController extends Controller
     }
 
     /**
-     * Graph payload: Views already ÷ 1000, CVR from that scaled number.
+     * Graph payload: Views already ÷ 100, CVR from that scaled number.
      *
      * @return array{views: float, cvr_percent: float, rv_l30: int}
      */
@@ -1192,7 +1192,7 @@ class ReverbController extends Controller
                 $processedItem["Missing"] = ''; // Will be set later based on INV and nr_req
             }
 
-            // CVR = RV L30 ÷ (Views ÷ 1000) × 100 — Views on this page is already scaled.
+            // CVR = RV L30 ÷ (Views ÷ 100) × 100 — Views on this page is already scaled.
             $views = (float) $processedItem["Views"];
             $rvL30 = $processedItem["RV L30"];
             $processedItem["CVR"] = $views > 0 ? round(($rvL30 / $views) * 100, 0) : 0;
@@ -2001,7 +2001,7 @@ class ReverbController extends Controller
     /**
      * Missing L / Map / NMap totals — same rules as reverb-pricing badges and all-marketplace-master.
      * Map / Miss / NMap + raw impression totals for all-marketplace-master.
-     * /reverb-pricing CVR uses Views ÷ 1000 on the page; this total_views stays raw impressions.
+     * /reverb-pricing CVR uses Views ÷ 100 on the page; this total_views stays raw impressions.
      */
     public function computeReverbMapMissCounts(array $rows): array
     {

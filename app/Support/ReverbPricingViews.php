@@ -3,11 +3,11 @@
 namespace App\Support;
 
 /**
- * /reverb-pricing Views + CVR: bump impressions ÷ 1000, then CVR from that scaled number.
+ * /reverb-pricing Views + CVR: bump impressions ÷ 100, then CVR from that scaled number.
  */
 final class ReverbPricingViews
 {
-    public const DIVISOR = 1000;
+    public const DIVISOR = 100;
 
     public static function scale(float|int $rawViews): float
     {
