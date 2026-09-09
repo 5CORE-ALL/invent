@@ -1137,7 +1137,8 @@ class ChannelMasterController extends Controller
                         $qty,
                         TemuShopifySalesService::temuMarginDecimal(),
                         0.0,
-                        0.0
+                        0.0,
+                        false
                     );
                     $totalRevenue += $calc['sales'];
                 }
@@ -1186,7 +1187,7 @@ class ChannelMasterController extends Controller
      *
      * @return array{total_orders: int, total_revenue: float}
      */
-    private function summarizeTemuTabulatorL60Rows(array $rows): array
+    private function summarizeTemuTabulatorL60Rows(array $rows, bool $stripFreightFromUnit = true): array
     {
         $totalRevenue = 0.0;
         $orderIds = [];
@@ -1216,7 +1217,8 @@ class ChannelMasterController extends Controller
                 $qty,
                 TemuShopifySalesService::temuMarginDecimal(),
                 0.0,
-                0.0
+                0.0,
+                $stripFreightFromUnit
             );
             $totalRevenue += $calc['sales'];
             $orderIds[$orderId] = true;
@@ -1301,7 +1303,7 @@ class ChannelMasterController extends Controller
                 ];
             }
 
-            return $this->summarizeTemuTabulatorL60Rows($rows);
+            return $this->summarizeTemuTabulatorL60Rows($rows, false);
         } catch (\Throwable $e) {
             Log::warning('Temu live L60 sales summary fallback: '.$e->getMessage(), ['temu2' => $isTemu2]);
 
@@ -1391,7 +1393,8 @@ class ChannelMasterController extends Controller
                     $quantity,
                     TemuShopifySalesService::temuMarginDecimal(),
                     0.0,
-                    0.0
+                    0.0,
+                    false
                 )['sales'];
             }
         }

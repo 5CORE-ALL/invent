@@ -174,9 +174,6 @@
     function temuGoodsBase(rawUnit) {
         const b = parseFloat(rawUnit) || 0;
         if (b <= 0) return 0;
-        if (b < TEMU_FREIGHT_CAP) {
-            return Math.max(0, +(b - TEMU_FREIGHT).toFixed(2));
-        }
         return +b.toFixed(2);
     }
     function temuRowBase(row) {
@@ -187,7 +184,23 @@
         if (b <= 0) return 0;
         let price = b * TEMU_PRICE_MULT;
         if (price <= TEMU_FREIGHT_CAP) price += TEMU_FREIGHT;
-        return price;
+        return +price.toFixed(2);
+    }
+    function temuPriceHoverText(row) {
+        const base = temuRowBase(row);
+        if (!(base > 0)) {
+            return 'Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99';
+        }
+        const afterMult = +(base * TEMU_PRICE_MULT).toFixed(4);
+        const temuPrice = temuPriceFromBase(base);
+        if (afterMult <= TEMU_FREIGHT_CAP) {
+            return 'Temu Price = (Base × 1.1364) + $2.99\n$'
+                + base.toFixed(2) + ' × 1.1364 = $' + afterMult.toFixed(2)
+                + ' + $2.99 = $' + temuPrice.toFixed(2);
+        }
+        return 'Temu Price = (Base × 1.1364)\n$'
+            + base.toFixed(2) + ' × 1.1364 = $' + temuPrice.toFixed(2)
+            + ' (no +$2.99, result > $26.99)';
     }
     function temuFbPrice(basePrice, quantity) {
         const base = parseFloat(basePrice) || 0;
@@ -254,6 +267,7 @@
             ajaxURL: "/temu2/daily-data",
             ajaxSorting: false,
             layout: "fitDataStretch",
+            tooltip: true,
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -445,7 +459,7 @@
                         return temuGoodsBase(a) - temuGoodsBase(b);
                     },
                     width: 120,
-                    headerTooltip: "Derived unit from API line sales (or listing base). Display = unit − $2.99 when unit < $26.99.",
+                    headerTooltip: "Temu 2 Base Price = API unit as stored (no −$2.99).",
                     accessorDownload: function(value) {
                         const n = temuGoodsBase(value);
                         return n > 0 ? n.toFixed(2) : '';
@@ -454,23 +468,39 @@
                         const raw = parseFloat(cell.getValue()) || 0;
                         const base = temuGoodsBase(raw);
                         if (!(base > 0)) return '';
-                        const tip = raw < TEMU_FREIGHT_CAP
-                            ? ('$' + raw.toFixed(2) + ' − $2.99 (unit < $26.99)')
-                            : ('$' + raw.toFixed(2) + ' (unit ≥ $26.99, no −$2.99)');
-                        return `<span title="${tip}">$${base.toFixed(2)}</span>`;
+                        return `<span title="API unit $${raw.toFixed(2)} (no −$2.99)">$${base.toFixed(2)}</span>`;
                     }
                 },
                 {
-                    title: "FB Prc",
+                    title: "R Price",
                     field: "fb_price",
                     hozAlign: "right",
                     sorter: "number",
                     width: 120,
-                    formatter: "money",
-                    formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 },
+                    headerTooltip: "R Price = Base; +$2.99 if Base ≤ $26.99",
                     mutator: function(value, data) {
                         const quantity = parseInt(data.quantity_purchased) || 0;
                         return temuFbPrice(temuRowBase(data), quantity).toFixed(2);
+                    },
+                    tooltip: function(e, cell) {
+                        const data = cell.getRow().getData();
+                        const base = temuRowBase(data);
+                        const rPrice = parseFloat(cell.getValue()) || 0;
+                        if (!(rPrice > 0) || !(base > 0)) return '';
+                        if (base <= TEMU_FREIGHT_CAP) {
+                            return 'R Price = Base + $2.99\n$' + base.toFixed(2) + ' + $2.99 = $' + rPrice.toFixed(2);
+                        }
+                        return 'R Price = Base (no +$2.99, base > $26.99)\n$' + base.toFixed(2);
+                    },
+                    formatter: function(cell) {
+                        const data = cell.getRow().getData();
+                        const base = temuRowBase(data);
+                        const rPrice = parseFloat(cell.getValue()) || 0;
+                        if (!(rPrice > 0)) return '';
+                        const tip = base <= TEMU_FREIGHT_CAP
+                            ? ('R Price = Base + $2.99 → $' + base.toFixed(2) + ' + $2.99 = $' + rPrice.toFixed(2))
+                            : ('R Price = Base (no +$2.99, base > $26.99) → $' + base.toFixed(2));
+                        return `<span title="${tip}">$${rPrice.toFixed(2)}</span>`;
                     }
                 },
                 {
@@ -478,18 +508,20 @@
                     field: "temu_price",
                     hozAlign: "right",
                     sorter: "number",
-                    width: 120,
+                    width: 130,
+                    visible: true,
                     headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     mutator: function(value, data) {
                         return temuRowTemuPrice(data);
                     },
+                    tooltip: function(e, cell) {
+                        return temuPriceHoverText(cell.getRow().getData());
+                    },
                     formatter: function(cell) {
-                        const basePrice = temuRowBase(cell.getRow().getData());
-                        const temuPrice = parseFloat(cell.getValue()) || temuPriceFromBase(basePrice);
+                        const data = cell.getRow().getData();
+                        const temuPrice = temuRowTemuPrice(data);
                         if (!(temuPrice > 0)) return '';
-                        const afterMult = basePrice * TEMU_PRICE_MULT;
-                        const tip = '(Base × 1.1364)' + (afterMult <= TEMU_FREIGHT_CAP ? ' + $2.99' : '');
-                        return `<span title="${tip}">$${temuPrice.toFixed(2)}</span>`;
+                        return `<span title="${temuPriceHoverText(data).replace(/\n/g, ' — ')}">$${temuPrice.toFixed(2)}</span>`;
                     }
                 },
                 {
@@ -701,6 +733,10 @@
                 .then(savedVisibility => {
                     table.getColumns().forEach(col => {
                         const def = col.getDefinition();
+                        if (def.field === 'temu_price') {
+                            col.show();
+                            return;
+                        }
                         if (def.field && savedVisibility[def.field] === false) col.hide();
                     });
                 });

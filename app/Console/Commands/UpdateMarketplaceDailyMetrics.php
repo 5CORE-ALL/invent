@@ -920,7 +920,8 @@ class UpdateMarketplaceDailyMetrics extends Command
                     $quantity,
                     $percentage,
                     $lp,
-                    $temuShip
+                    $temuShip,
+                    false
                 );
                 $totalRevenue += $calc['sales'];
                 $totalL30Sales += $calc['sales'];

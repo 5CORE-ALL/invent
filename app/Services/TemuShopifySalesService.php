@@ -344,9 +344,11 @@ class TemuShopifySalesService
      *
      * @return array{base: float, temu_price: float, sales: float, profit: float}
      */
-    public static function temuPriceSalesAndProfit(float $rawUnit, int $qty, float $margin, float $lp, float $ship): array
+    public static function temuPriceSalesAndProfit(float $rawUnit, int $qty, float $margin, float $lp, float $ship, bool $stripFreightFromUnit = true): array
     {
-        $base = self::goodsBaseFromUnit($rawUnit);
+        $base = $stripFreightFromUnit
+            ? self::goodsBaseFromUnit($rawUnit)
+            : ($rawUnit > 0 ? round($rawUnit, 2) : 0.0);
         $temuPrice = self::computeFullTemuPrice($base);
         $sales = $temuPrice * $qty;
         $profit = $temuPrice > 0 ? ($temuPrice * $margin - $lp - $ship) * $qty : 0.0;
@@ -401,7 +403,7 @@ class TemuShopifySalesService
 
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
-            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, $margin, $lp, $ship);
+            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, $margin, $lp, $ship, ! $isTemu2);
 
             // L30 Sales / GPFT / GROI on Temu Price (same as /temu-tabulator).
             $totalSales += $calc['sales'];
