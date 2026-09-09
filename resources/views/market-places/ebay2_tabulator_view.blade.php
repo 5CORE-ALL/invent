@@ -4011,7 +4011,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "Suggested price from Dil → Target GROI% slabs (including 0 Sold). Formula: (LP × (1 + GROI%/100) + Ship) / take-home.",
+                        headerTooltip: "Suggested price from Dil → Target GROI% slabs (including 0 Sold). CVR Down < 7% subtracts 10 from Target GROI%; CVR Up > 10% adds 10. Formula: (LP × (1 + GROI%/100) + Ship) / take-home.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -4019,10 +4019,12 @@
                             if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                             const meta = ebayDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2);
+                            const tip = (typeof ebayDilGroiTipText === 'function')
+                                ? ebayDilGroiTipText(meta)
+                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                    + ' → ' + meta.label
+                                    + ' → GROI ' + meta.groi + '%'
+                                    + ' → $' + meta.sprc.toFixed(2));
                             return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                                 + meta.sprc.toFixed(2) + '</span>';
                         },

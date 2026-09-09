@@ -17,6 +17,7 @@ use App\Services\LmpSkuGroupService;
 use App\Services\Support\ReverbPushBumpJobStore;
 use App\Services\Support\ReverbPushPrmtJobStore;
 use App\Services\Support\ReverbPushStdJobStore;
+use App\Support\ReverbPricingViews;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use App\Http\Controllers\ApiController;
@@ -890,17 +891,11 @@ class ReverbController extends Controller
                     $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
                     $views = (int) ($data['views'] ?? 0);
                     $rvL30 = (int) ($data['rv_l30'] ?? 0);
-                    $cvr = $views > 0
-                        ? round(($rvL30 / $views) * 100, 2)
-                        : round((float) ($data['cvr_percent'] ?? 0), 2);
-                    $dataByDate[$dateKey] = [
+                    $dataByDate[$dateKey] = array_merge([
                         'date' => $dateKey,
                         'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
                         'price' => round((float) ($data['price'] ?? 0), 2),
-                        'views' => $views,
-                        'cvr_percent' => $cvr,
-                        'rv_l30' => $rvL30,
-                    ];
+                    ], $this->pricingHistoryViewsFields($views, $rvL30, $data['cvr_percent'] ?? null));
                 }
             }
         } catch (\Throwable $e) {
@@ -920,14 +915,11 @@ class ReverbController extends Controller
             $todayKey = $endDate->toDateString();
             $views = (int) ($live->views ?? 0);
             $rvL30 = (int) ($live->r_l30 ?? 0);
-            $dataByDate[$todayKey] = [
+            $dataByDate[$todayKey] = array_merge([
                 'date' => $todayKey,
                 'date_formatted' => $endDate->format('M d'),
                 'price' => round((float) ($live->price ?? 0), 2),
-                'views' => $views,
-                'cvr_percent' => $views > 0 ? round(($rvL30 / $views) * 100, 2) : 0,
-                'rv_l30' => $rvL30,
-            ];
+            ], $this->pricingHistoryViewsFields($views, $rvL30));
         }
 
         $carry = null;
@@ -943,14 +935,9 @@ class ReverbController extends Controller
                     : (json_decode($prior->daily_data ?? '{}', true) ?: []);
                 $pViews = (int) ($priorData['views'] ?? 0);
                 $pL30 = (int) ($priorData['rv_l30'] ?? 0);
-                $carry = [
+                $carry = array_merge([
                     'price' => round((float) ($priorData['price'] ?? 0), 2),
-                    'views' => $pViews,
-                    'cvr_percent' => $pViews > 0
-                        ? round(($pL30 / $pViews) * 100, 2)
-                        : round((float) ($priorData['cvr_percent'] ?? 0), 2),
-                    'rv_l30' => $pL30,
-                ];
+                ], $this->pricingHistoryViewsFields($pViews, $pL30, $priorData['cvr_percent'] ?? null));
             }
         }
 
@@ -967,7 +954,7 @@ class ReverbController extends Controller
                         'date' => $dateKey,
                         'date_formatted' => $currentDate->format('M d'),
                         'price' => (float) ($carry['price'] ?? 0),
-                        'views' => (int) ($carry['views'] ?? 0),
+                        'views' => (float) ($carry['views'] ?? 0),
                         'cvr_percent' => (float) ($carry['cvr_percent'] ?? 0),
                         'rv_l30' => (int) ($carry['rv_l30'] ?? 0),
                     ];
@@ -980,6 +967,24 @@ class ReverbController extends Controller
         ksort($dataByDate);
 
         return response()->json(array_values($dataByDate));
+    }
+
+    /**
+     * Graph payload: Views already ÷ 100, CVR from that scaled number.
+     *
+     * @return array{views: float, cvr_percent: float, rv_l30: int}
+     */
+    private function pricingHistoryViewsFields(int $rawViews, int $rvL30, mixed $storedCvr = null): array
+    {
+        $scaled = ReverbPricingViews::scale($rawViews);
+
+        return [
+            'views' => $scaled,
+            'cvr_percent' => $scaled > 0
+                ? ReverbPricingViews::cvrPercent($rvL30, $rawViews, 2)
+                : round((float) ($storedCvr ?? 0), 2),
+            'rv_l30' => $rvL30,
+        ];
     }
 
     /**
@@ -1163,7 +1168,7 @@ class ReverbController extends Controller
                 $reverbPrice = $reverbItem->price ?? 0;
 
                 $processedItem["RV Price"] = $reverbPrice;
-                $processedItem["Views"] = $reverbItem->views ?? 0;
+                $processedItem["Views"] = ReverbPricingViews::scale((int) ($reverbItem->views ?? 0));
                 $processedItem["RV L30"] = $reverbItem->r_l30 ?? 0;
                 $processedItem["RV L60"] = $reverbItem->r_l60 ?? 0;
                 $processedItem["R Stock"] = $reverbItem->remaining_inventory ?? 0;
@@ -1187,8 +1192,8 @@ class ReverbController extends Controller
                 $processedItem["Missing"] = ''; // Will be set later based on INV and nr_req
             }
 
-            // Calculate CVR percentage (L30 / Views * 100)
-            $views = $processedItem["Views"];
+            // CVR = RV L30 ÷ (Views ÷ 100) × 100 — Views on this page is already scaled.
+            $views = (float) $processedItem["Views"];
             $rvL30 = $processedItem["RV L30"];
             $processedItem["CVR"] = $views > 0 ? round(($rvL30 / $views) * 100, 0) : 0;
 
@@ -1995,8 +2000,8 @@ class ReverbController extends Controller
 
     /**
      * Missing L / Map / NMap totals — same rules as reverb-pricing badges and all-marketplace-master.
-     * CVR matches /reverb-pricing + Amazon: Σ(RV L30) ÷ Σ(Views) × 100 on INV > 0 rows
-     * (default inventory filter on reverb-pricing; no Views÷10).
+     * Map / Miss / NMap + raw impression totals for all-marketplace-master.
+     * /reverb-pricing CVR uses Views ÷ 100 on the page; this total_views stays raw impressions.
      */
     public function computeReverbMapMissCounts(array $rows): array
     {
@@ -2024,7 +2029,7 @@ class ReverbController extends Controller
             $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
             $isReq = ($nrReq === 'REQ');
             $isMissing = (($row['Missing'] ?? '') === 'M');
-            $rowViews = (int) ($row['Views'] ?? 0);
+            $rowViews = ReverbPricingViews::toRawImpressions((float) ($row['Views'] ?? 0));
             $rowRvL30 = (int) ($row['RV L30'] ?? 0);
 
             // Pricing-page CVR / Views badges (INV > 0 filter)
@@ -2049,7 +2054,7 @@ class ReverbController extends Controller
             }
         }
 
-        // Prefer INV>0 views (matches /reverb-pricing Views badge); fall back to Map/NMap sum.
+        // Prefer INV>0 views; fall back to Map/NMap sum. Raw impressions for channel master.
         $totalViews = $cvrViews > 0 ? $cvrViews : $views;
         $cvrPct = $totalViews > 0 ? round(($cvrRvL30 / $totalViews) * 100, 2) : 0.0;
 

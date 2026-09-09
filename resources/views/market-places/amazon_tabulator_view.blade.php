@@ -4189,6 +4189,7 @@
                         hozAlign: "center",
                         width: 50,
                         sorter: "number",
+                        headerTooltip: "Amazon units sold L30 from real orders — same source and window as /amazon/daily-sales (Pacific, through yesterday, exclude canceled).",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const sku = row['(Child) sku'] || '';
