@@ -14,7 +14,7 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.4.4';
+const AGENT_VERSION = '1.4.5';
 const UPDATE_SNOOZE_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer = null;
 let lastUpdatePayload = null;
@@ -877,6 +877,7 @@ async function fetchSessionState() {
         } else {
             checkForUpdate({ forceShow: true }).catch(() => {});
         }
+        updateTray();
         return {
             loggedIn: true,
             user: store.get('user'),
@@ -909,16 +910,85 @@ async function fetchSessionState() {
     }
 }
 
-function updateTrayTooltip(text) {
+function isLoggedIn() {
+    return !!store.get('token');
+}
+
+function makeStatusCircleIcon(rgb, size) {
+    const buf = Buffer.alloc(size * size * 4, 0);
+    const cx = (size - 1) / 2;
+    const cy = (size - 1) / 2;
+    const radius = size * 0.42;
+    const inner = Math.max(1, radius - Math.max(1, size * 0.08));
+    const [r, g, b] = rgb;
+    for (let y = 0; y < size; y += 1) {
+        for (let x = 0; x < size; x += 1) {
+            const dx = x - cx;
+            const dy = y - cy;
+            const dist = Math.sqrt((dx * dx) + (dy * dy));
+            let alpha = 0;
+            if (dist <= inner) {
+                alpha = 255;
+            } else if (dist <= radius) {
+                alpha = Math.round(255 * (1 - ((dist - inner) / (radius - inner))));
+            }
+            if (!alpha) {
+                continue;
+            }
+            const i = ((y * size) + x) * 4;
+            buf[i] = b;
+            buf[i + 1] = g;
+            buf[i + 2] = r;
+            buf[i + 3] = alpha;
+        }
+    }
+
+    return nativeImage.createFromBitmap(buf, { width: size, height: size });
+}
+
+function statusIconColor() {
+    return isLoggedIn() ? [34, 197, 94] : [239, 68, 68];
+}
+
+function applyLoginStatusVisuals() {
+    const loggedIn = isLoggedIn();
+    const label = loggedIn ? 'Logged in' : 'Logged off';
+    const color = statusIconColor();
+    const trayIcon = makeStatusCircleIcon(color, 16);
+    const overlayIcon = makeStatusCircleIcon(color, 32);
+
     if (tray) {
-        const user = store.get('user');
-        const name = user?.name || '5Core Attendance';
-        tray.setToolTip(`${name} — ${text}`);
+        tray.setImage(trayIcon);
+    }
+    if (win && !win.isDestroyed()) {
+        win.setTitle(`5Core Attendance — ${label}`);
+        try {
+            win.setOverlayIcon(overlayIcon, label);
+        } catch (_) { /* overlay is Windows-only */ }
+        win.webContents.send('login-status', {
+            loggedIn,
+            label,
+            user: store.get('user') || null,
+        });
     }
 }
 
+function updateTrayTooltip(text) {
+    if (!tray) {
+        return;
+    }
+    const user = store.get('user');
+    const name = user?.name || '5Core Attendance';
+    const login = isLoggedIn() ? 'Logged in' : 'Logged off';
+    const extra = text && text !== login ? ` · ${text}` : '';
+    tray.setToolTip(`${name} — ${login}${extra}`);
+}
+
 function buildTrayMenu() {
+    const loggedIn = isLoggedIn();
     return Menu.buildFromTemplate([
+        { label: loggedIn ? 'Logged in' : 'Logged off', enabled: false },
+        { type: 'separator' },
         { label: 'Open Dashboard', click: () => showWindow() },
         { type: 'separator' },
         {
@@ -974,7 +1044,20 @@ function buildTrayMenu() {
 }
 
 function updateTray() {
-    if (tray) tray.setContextMenu(buildTrayMenu());
+    applyLoginStatusVisuals();
+    if (!tray) {
+        return;
+    }
+    tray.setContextMenu(buildTrayMenu());
+    if (!isLoggedIn()) {
+        updateTrayTooltip('Sign in to start');
+    } else if (lastSessionMeta?.status === 'active') {
+        updateTrayTooltip(activityState === 'idle' ? 'IDLE' : 'Tracking');
+    } else if (lastSessionMeta?.status === 'paused' || activityState === 'break') {
+        updateTrayTooltip('On break');
+    } else {
+        updateTrayTooltip('Clock in to start');
+    }
 }
 
 function showWindow() {
@@ -1074,6 +1157,9 @@ function createWindow() {
         },
     });
     win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+    win.webContents.on('did-finish-load', () => {
+        applyLoginStatusVisuals();
+    });
     let lastCloseAttempt = 0;
     win.on('close', (e) => {
         if (app.isQuitting) {
@@ -1093,12 +1179,8 @@ function createWindow() {
 }
 
 function createTray() {
-    const icon = getTrayIcon();
+    const icon = makeStatusCircleIcon(statusIconColor(), 16);
     tray = new Tray(icon);
-    if (process.platform === 'win32') {
-        tray.setImage(icon);
-    }
-    tray.setToolTip('5Core Attendance');
     tray.on('double-click', showWindow);
     tray.on('click', () => showWindow());
     updateTray();
