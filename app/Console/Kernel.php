@@ -808,6 +808,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Item Basic Info report — refreshes newegg_items so Missing L can see new/removed SKUs.
+        $ist($schedule->command('newegg:items --save')
+            ->twiceDaily(10, 18)
+            ->name('fetch-newegg-item-catalog')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('sync:walmart-metrics-data')
             ->everyMinute()
             ->name('sync-walmart-metrics')
@@ -1664,7 +1672,7 @@ class Kernel extends ConsoleKernel
         |--------------------------------------------------------------------------
         */
         $ist($schedule->command('topdawg:fetch')
-            ->dailyAt('10:05')
+            ->twiceDaily(10, 18)
             ->timezone('Asia/Kolkata')
             ->name('topdawg-fetch')
             ->withoutOverlapping()
@@ -1839,7 +1847,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
-        $schedule->command('newegg:sync-link-map')
+        $schedule->command('newegg:sync-link-map --force')
             ->hourly()
             ->timezone('Asia/Kolkata')
             ->name('newegg-sync-link-map')
@@ -1971,7 +1979,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
-        $schedule->command('topdawg:sync-link-map')
+        $schedule->command('topdawg:sync-link-map --force')
             ->hourly()
             ->timezone('Asia/Kolkata')
             ->name('topdawg-sync-link-map')
