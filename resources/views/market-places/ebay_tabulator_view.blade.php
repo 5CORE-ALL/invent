@@ -4054,7 +4054,6 @@
                             return value;
                         }
                     },
-                    ParentExpand.columnDef(),
                     {
                         title: "SKU",
                         field: "(Child) sku",
@@ -4382,6 +4381,29 @@
                         }
                     },
                     {
+                        title: "L30 View",
+                        field: "views",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 72,
+                        headerTooltip: "L30 views. Click value for Rolling L30 history (same as Price). Arrow: L7 pace vs L30 pace.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const value = parseFloat(cell.getValue() || 0);
+                            const color = value >= 30 ? '#28a745' : '#a00211';
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const sku = rowData['(Child) sku'] || '';
+                            const variation = viewsPaceVariation(rowData);
+                            const arrowBtn = viewsHistoryArrowBtn(sku, isParent, variation, 'views');
+                            const num = Math.round(value);
+                            // Same history entry as Price column → Rolling L30 skuMetricsModal
+                            if (sku && !isParent) {
+                                return `<span class="view-sku-chart" data-sku="${sku}" data-metric="views" title="View L30 View chart" style="color: ${color}; font-weight: 600; cursor: pointer; white-space: nowrap;">${num}</span> ${arrowBtn}`.trim();
+                            }
+                            return `<span style="color: ${color}; font-weight: 600;">${num}</span> ${arrowBtn}`.trim();
+                        }
+                    },
+                    {
                         title: "Growth",
                         field: "growth_percent",
                         hozAlign: "center",
@@ -4421,6 +4443,7 @@
                         hozAlign: "center",
                         width: 60,
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             if (value === 0) {
@@ -5095,29 +5118,6 @@
                         }
                     },
                     {
-                        title: "L30 View",
-                        field: "views",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 72,
-                        headerTooltip: "L30 views. Click value for Rolling L30 history (same as Price). Arrow: L7 pace vs L30 pace.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const value = parseFloat(cell.getValue() || 0);
-                            const color = value >= 30 ? '#28a745' : '#a00211';
-                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
-                            const sku = rowData['(Child) sku'] || '';
-                            const variation = viewsPaceVariation(rowData);
-                            const arrowBtn = viewsHistoryArrowBtn(sku, isParent, variation, 'views');
-                            const num = Math.round(value);
-                            // Same history entry as Price column → Rolling L30 skuMetricsModal
-                            if (sku && !isParent) {
-                                return `<span class="view-sku-chart" data-sku="${sku}" data-metric="views" title="View L30 View chart" style="color: ${color}; font-weight: 600; cursor: pointer; white-space: nowrap;">${num}</span> ${arrowBtn}`.trim();
-                            }
-                            return `<span style="color: ${color}; font-weight: 600;">${num}</span> ${arrowBtn}`.trim();
-                        }
-                    },
-                    {
                         title: "L7 View",
                         field: "l7_views",
                         hozAlign: "center",
@@ -5229,24 +5229,6 @@
                 ]
             });
             window.table = table;
-
-            if (window.ParentExpand) {
-                ParentExpand.configure({
-                    parentField: 'Parent',
-                    skuField: '(Child) sku',
-                    isParentRow: ebayIsParentRowData,
-                    getTable: () => table,
-                    getDataset: () => allTableData,
-                    onAfterExpand: () => {
-                        if (typeof updateSummary === 'function') updateSummary();
-                        if (typeof updateCalcValues === 'function') updateCalcValues();
-                    },
-                    onCollapse: () => {
-                        if (typeof applyFilters === 'function') applyFilters();
-                    },
-                });
-                ParentExpand.bind();
-            }
 
             $(document).on('change', '#ebay-table .nrp-nr-select', function() {
                 const $el = $(this);
@@ -5870,13 +5852,15 @@
             var alwaysHiddenColumns = [
                 'CVR_60', 'CVR_45', 'eBay L60', 'eBay L45', '_ads_pct',
                 'prmt_pct', 'cvr_up_dn', 't_discounts',
-                'zero_sold_prmt', 'gt_sold_pct', 'push_prmt'
+                'zero_sold_prmt', 'gt_sold_pct', 'push_prmt',
+                '_parent_expand'
             ];
             function isEbay1RemovedRuleColumn(field, title) {
                 const f = String(field || '');
                 if (alwaysHiddenColumns.indexOf(f) !== -1) return true;
                 const t = String(title || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-                return /^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt)$/i.test(f)
+                return /^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|_parent_expand)$/i.test(f)
+                    || /^p$/i.test(t)
                     || /^prmt\s*%?$/i.test(t)
                     || /^cvr\s*up\/?dn$/i.test(t)
                     || /^t\s*discounts?$/i.test(t)
@@ -6360,6 +6344,10 @@
                             table.getColumns().forEach(col => {
                                 const def = col.getDefinition();
                                 if (!def.field || isEbay1RemovedRuleColumn(def.field, def.title)) return;
+                                if (def.field === 'eBay Stock') {
+                                    col.hide();
+                                    return;
+                                }
                                 if (savedVisibility.hasOwnProperty(def.field)) {
                                     if (savedVisibility[def.field]) {
                                         col.show();
