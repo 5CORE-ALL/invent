@@ -263,8 +263,162 @@ class ListingCountsEngine
         if ($norm !== '') {
             $keys[] = strtoupper($norm);
         }
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        if ($compact !== '') {
+            $keys[] = $compact;
+            $keys[] = 'c:'.$compact;
+        }
 
         return array_values(array_unique(array_filter($keys)));
+    }
+
+    /**
+     * Keys used to match Product Master SKUs to marketplace catalog SKUs.
+     * "LS 100-6 RED" and "LS100-6RED" share c:LS1006RED.
+     *
+     * @return list<string>
+     */
+    public static function skuIndexKeys(string $sku): array
+    {
+        $sku = trim(str_replace(["\xC2\xA0", "\xE2\x80\xAF"], ' ', $sku));
+        if ($sku === '') {
+            return [];
+        }
+
+        $keys = [];
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '') {
+            $keys[] = $norm;
+            $lower = strtolower($norm);
+            if ($lower !== $norm) {
+                $keys[] = $lower;
+            }
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        if ($compact !== '') {
+            $keys[] = 'c:'.$compact;
+        }
+
+        return array_values(array_unique(array_filter($keys)));
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, true>
+     */
+    public static function wantedSkuKeySet(array $skus): array
+    {
+        $wanted = [];
+        foreach ($skus as $raw) {
+            foreach (self::skuIndexKeys((string) $raw) as $key) {
+                $wanted[$key] = true;
+            }
+        }
+
+        return $wanted;
+    }
+
+    /**
+     * @param  array<string, string>  $byKey
+     * @param  array<string, true>  $wanted
+     */
+    public static function putListedForSku(array &$byKey, array $wanted, string $sku, string $id): void
+    {
+        $sku = trim($sku);
+        $id = trim($id);
+        if ($sku === '' || $id === '') {
+            return;
+        }
+
+        $keys = self::skuIndexKeys($sku);
+        $hit = false;
+        foreach ($keys as $key) {
+            if (isset($wanted[$key])) {
+                $hit = true;
+                break;
+            }
+        }
+        if (! $hit) {
+            return;
+        }
+
+        foreach ($keys as $key) {
+            $existing = $byKey[$key] ?? '';
+            $preferNew = $existing === '' || (
+                strcasecmp($existing, $sku) === 0 && strcasecmp($id, $sku) !== 0
+            );
+            if ($preferNew) {
+                $byKey[$key] = $id;
+            }
+        }
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @param  array<string, string>  $byKey
+     * @return array<string, string>
+     */
+    public static function listedMapForProductSkus(array $skus, array $byKey): array
+    {
+        $map = [];
+        foreach ($skus as $raw) {
+            $sku = trim((string) $raw);
+            if ($sku === '') {
+                continue;
+            }
+            $id = '';
+            foreach (self::skuIndexKeys($sku) as $key) {
+                $cand = trim((string) ($byKey[$key] ?? ''));
+                if ($cand !== '') {
+                    $id = $cand;
+                    break;
+                }
+            }
+            if ($id === '') {
+                continue;
+            }
+            $map[strtolower($sku)] = $id;
+            foreach (self::skuIndexKeys($sku) as $key) {
+                $map[$key] = $id;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Uploaded / in-review / unable-to-list is NOT live on the marketplace.
+     * Those SKUs may stay in Missing L. "Yes" / live / active must not.
+     */
+    public static function isPendingOrReviewListingState(?string $state): bool
+    {
+        $s = strtolower(trim((string) $state));
+        $s = preg_replace('/[\s\-_]+/', '', $s) ?? $s;
+        if ($s === '') {
+            return false;
+        }
+
+        return in_array($s, [
+            'uploaded',
+            'pending',
+            'review',
+            'reviewing',
+            'underreview',
+            'inreview',
+            'submitted',
+            'awaiting',
+            'awaitingapproval',
+            'approvalpending',
+            'unable',
+            'unabletolist',
+            'rejected',
+            'declined',
+            'failed',
+            'draft',
+            'unpublished',
+            'unlisted',
+            'archived',
+        ], true);
     }
 
     public static function lookupNrValue(Collection $nrValuesBySkuUpper, string $sku): mixed
@@ -291,12 +445,8 @@ class ListingCountsEngine
             return '';
         }
 
-        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-        foreach (array_unique(array_filter([
-            strtolower($sku),
-            $norm,
-            strtolower($norm),
-        ], fn ($key) => $key !== '')) as $key) {
+        $try = array_merge([strtolower($sku)], self::skuIndexKeys($sku));
+        foreach (array_unique(array_filter($try, fn ($key) => $key !== '')) as $key) {
             $id = trim((string) ($listedIdBySkuLower[$key] ?? ''));
             if ($id !== '') {
                 return $id;
@@ -319,25 +469,19 @@ class ListingCountsEngine
             return [];
         }
 
-        $wantedNorm = [];
-        foreach ($skus as $rawSku) {
-            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $rawSku);
-            if ($norm !== '') {
-                $wantedNorm[$norm] = true;
-            }
-        }
-        if ($wantedNorm === []) {
+        $wanted = self::wantedSkuKeySet($skus);
+        if ($wanted === []) {
             return [];
         }
 
-        $byNorm = [];
+        $byKey = [];
         $modelClass::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->whereNotNull($column)
             ->where($column, '!=', '')
             ->get(['sku', $column])
-            ->each(function ($row) use (&$byNorm, $column, $rejectSkuAsId, $wantedNorm) {
+            ->each(function ($row) use (&$byKey, $column, $rejectSkuAsId, $wanted) {
                 $sku = trim((string) $row->sku);
                 $id = trim((string) ($row->{$column} ?? ''));
                 if ($sku === '' || $id === '') {
@@ -346,30 +490,10 @@ class ListingCountsEngine
                 if ($rejectSkuAsId && strcasecmp($id, $sku) === 0) {
                     return;
                 }
-                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                if ($norm === '' || ! isset($wantedNorm[$norm]) || isset($byNorm[$norm])) {
-                    return;
-                }
-                $byNorm[$norm] = $id;
+                self::putListedForSku($byKey, $wanted, $sku, $id);
             });
 
-        $map = [];
-        foreach ($skus as $rawSku) {
-            $sku = trim((string) $rawSku);
-            if ($sku === '') {
-                continue;
-            }
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm === '' || ! isset($byNorm[$norm])) {
-                continue;
-            }
-            $id = $byNorm[$norm];
-            $map[strtolower($sku)] = $id;
-            $map[$norm] = $id;
-            $map[strtolower($norm)] = $id;
-        }
-
-        return $map;
+        return self::listedMapForProductSkus($skus, $byKey);
     }
 
     /**
@@ -385,51 +509,25 @@ class ListingCountsEngine
             return [];
         }
 
-        $wantedNorm = [];
-        foreach ($skus as $rawSku) {
-            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $rawSku);
-            if ($norm !== '') {
-                $wantedNorm[$norm] = true;
-            }
-        }
-        if ($wantedNorm === []) {
+        $wanted = self::wantedSkuKeySet($skus);
+        if ($wanted === []) {
             return [];
         }
 
-        $byNorm = [];
+        $byKey = [];
         $modelClass::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->get(['sku', $priceColumn])
-            ->each(function ($row) use (&$byNorm, $priceColumn, $wantedNorm) {
+            ->each(function ($row) use (&$byKey, $priceColumn, $wanted) {
                 $sku = trim((string) $row->sku);
                 if ($sku === '' || (float) ($row->{$priceColumn} ?? 0) <= 0) {
                     return;
                 }
-                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                if ($norm === '' || ! isset($wantedNorm[$norm]) || isset($byNorm[$norm])) {
-                    return;
-                }
-                $byNorm[$norm] = $sku;
+                self::putListedForSku($byKey, $wanted, $sku, $sku);
             });
 
-        $map = [];
-        foreach ($skus as $rawSku) {
-            $sku = trim((string) $rawSku);
-            if ($sku === '') {
-                continue;
-            }
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm === '' || ! isset($byNorm[$norm])) {
-                continue;
-            }
-            $id = $byNorm[$norm];
-            $map[strtolower($sku)] = $id;
-            $map[$norm] = $id;
-            $map[strtolower($norm)] = $id;
-        }
-
-        return $map;
+        return self::listedMapForProductSkus($skus, $byKey);
     }
 
     /**
@@ -445,23 +543,17 @@ class ListingCountsEngine
             return [];
         }
 
-        $wantedNorm = [];
-        foreach ($skus as $rawSku) {
-            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $rawSku);
-            if ($norm !== '') {
-                $wantedNorm[$norm] = true;
-            }
-        }
-        if ($wantedNorm === []) {
+        $wanted = self::wantedSkuKeySet($skus);
+        if ($wanted === []) {
             return [];
         }
 
-        $byNorm = [];
+        $byKey = [];
         $statusClass::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->get(['sku', 'value'])
-            ->each(function ($row) use (&$byNorm, $wantedNorm) {
+            ->each(function ($row) use (&$byKey, $wanted) {
                 $sku = trim((string) $row->sku);
                 if ($sku === '') {
                     return;
@@ -475,34 +567,23 @@ class ListingCountsEngine
                 if (is_bool($listed)) {
                     $isListed = $listed;
                 } elseif (is_string($listed)) {
-                    $isListed = strcasecmp(trim($listed), 'Listed') === 0 || strtolower(trim($listed)) === 'true';
+                    $flag = strtolower(trim($listed));
+                    $isListed = $flag === 'listed' || $flag === 'true' || $flag === 'yes';
+                    if (self::isPendingOrReviewListingState($listed)) {
+                        $isListed = false;
+                    }
+                }
+                $state = (string) ($value['state'] ?? $value['listing_state'] ?? '');
+                if (self::isPendingOrReviewListingState($state)) {
+                    $isListed = false;
                 }
                 if (! $isListed) {
                     return;
                 }
-                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                if ($norm === '' || ! isset($wantedNorm[$norm]) || isset($byNorm[$norm])) {
-                    return;
-                }
-                $byNorm[$norm] = $sku;
+                $id = trim((string) ($value['listing_id'] ?? $value['item_id'] ?? $sku));
+                self::putListedForSku($byKey, $wanted, $sku, $id !== '' ? $id : $sku);
             });
 
-        $map = [];
-        foreach ($skus as $rawSku) {
-            $sku = trim((string) $rawSku);
-            if ($sku === '') {
-                continue;
-            }
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm === '' || ! isset($byNorm[$norm])) {
-                continue;
-            }
-            $id = $byNorm[$norm];
-            $map[strtolower($sku)] = $id;
-            $map[$norm] = $id;
-            $map[strtolower($norm)] = $id;
-        }
-
-        return $map;
+        return self::listedMapForProductSkus($skus, $byKey);
     }
 }

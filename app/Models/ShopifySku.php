@@ -82,18 +82,34 @@ class ShopifySku extends Model
     public static function buildShopifySkuLookupByNormalizedSku(array $productSkus): array
     {
         $shopifyByNorm = [];
-        foreach (self::whereIn('sku', $productSkus)->get() as $row) {
+        $indexRow = static function ($row) use (&$shopifyByNorm): void {
             $k = self::normalizeSkuForShopifyLookup($row->sku);
             if ($k !== '' && ! isset($shopifyByNorm[$k])) {
                 $shopifyByNorm[$k] = $row;
             }
+            $c = self::compactSkuForLookup($row->sku);
+            if ($c !== '' && ! isset($shopifyByNorm['c:'.$c])) {
+                $shopifyByNorm['c:'.$c] = $row;
+            }
+        };
+
+        foreach (self::whereIn('sku', $productSkus)->get() as $row) {
+            $indexRow($row);
         }
 
         $missingFlip = [];
         foreach ($productSkus as $pmSku) {
             $k = self::normalizeSkuForShopifyLookup((string) $pmSku);
-            if ($k !== '' && ! isset($shopifyByNorm[$k])) {
-                $missingFlip[$k] = true;
+            $c = self::compactSkuForLookup((string) $pmSku);
+            $found = ($k !== '' && isset($shopifyByNorm[$k]))
+                || ($c !== '' && isset($shopifyByNorm['c:'.$c]));
+            if (! $found) {
+                if ($k !== '') {
+                    $missingFlip[$k] = true;
+                }
+                if ($c !== '') {
+                    $missingFlip['c:'.$c] = true;
+                }
             }
         }
 
@@ -105,12 +121,21 @@ class ShopifySku extends Model
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->orderBy('id')
-            ->chunkById(3000, function ($rows) use (&$shopifyByNorm, &$missingFlip) {
+            ->chunkById(3000, function ($rows) use ($indexRow, &$shopifyByNorm, &$missingFlip) {
                 foreach ($rows as $row) {
                     $k = self::normalizeSkuForShopifyLookup($row->sku);
-                    if ($k !== '' && isset($missingFlip[$k]) && ! isset($shopifyByNorm[$k])) {
-                        $shopifyByNorm[$k] = $row;
+                    $c = self::compactSkuForLookup($row->sku);
+                    $hit = ($k !== '' && isset($missingFlip[$k]))
+                        || ($c !== '' && isset($missingFlip['c:'.$c]));
+                    if (! $hit) {
+                        continue;
+                    }
+                    $indexRow($row);
+                    if ($k !== '') {
                         unset($missingFlip[$k]);
+                    }
+                    if ($c !== '') {
+                        unset($missingFlip['c:'.$c]);
                     }
                 }
 
@@ -135,8 +160,13 @@ class ShopifySku extends Model
             }
             $pmSku = (string) $pmSku;
             $k = self::normalizeSkuForShopifyLookup($pmSku);
-            if ($k !== '' && isset($byNorm[$k])) {
-                $out[$pmSku] = $byNorm[$k];
+            $row = ($k !== '' && isset($byNorm[$k])) ? $byNorm[$k] : null;
+            if ($row === null) {
+                $c = self::compactSkuForLookup($pmSku);
+                $row = ($c !== '' && isset($byNorm['c:'.$c])) ? $byNorm['c:'.$c] : null;
+            }
+            if ($row !== null) {
+                $out[$pmSku] = $row;
             }
         }
 
@@ -150,7 +180,11 @@ class ShopifySku extends Model
         }
         $map = self::buildShopifySkuLookupByNormalizedSku([(string) $sku]);
         $k = self::normalizeSkuForShopifyLookup((string) $sku);
+        if ($k !== '' && isset($map[$k])) {
+            return $map[$k];
+        }
+        $c = self::compactSkuForLookup((string) $sku);
 
-        return $k === '' ? null : ($map[$k] ?? null);
+        return ($c !== '' && isset($map['c:'.$c])) ? $map['c:'.$c] : null;
     }
 }

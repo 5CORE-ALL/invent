@@ -245,15 +245,19 @@ class AmazonListingCounts
                 }
 
                 $base = trim((string) preg_replace('/\s+(FBA|FBM)$/i', '', $sellerSku));
+                $payload = [
+                    'asin' => $asin,
+                    'seller_sku' => $sellerSku,
+                ];
                 foreach (array_unique([$sellerSku, $base]) as $cand) {
                     $norm = AmazonDatasheet::normalizeSkuForLookup($cand);
-                    if ($norm === '' || isset($map[$norm])) {
-                        continue;
+                    if ($norm !== '' && ! isset($map[$norm])) {
+                        $map[$norm] = $payload;
                     }
-                    $map[$norm] = [
-                        'asin' => $asin,
-                        'seller_sku' => $sellerSku,
-                    ];
+                    $compact = ShopifySku::compactSkuForLookup($cand);
+                    if ($compact !== '' && ! isset($map['c:'.$compact])) {
+                        $map['c:'.$compact] = $payload;
+                    }
                 }
             });
 
@@ -268,11 +272,15 @@ class AmazonListingCounts
     {
         $listingsByNorm ??= self::listingsByNormalizedSku();
         $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
-        if ($norm === '') {
-            return null;
+        if ($norm !== '' && isset($listingsByNorm[$norm])) {
+            return $listingsByNorm[$norm];
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        if ($compact !== '' && isset($listingsByNorm['c:'.$compact])) {
+            return $listingsByNorm['c:'.$compact];
         }
 
-        return $listingsByNorm[$norm] ?? null;
+        return null;
     }
 
     /**

@@ -564,13 +564,7 @@ class ChannelListingRegistry
             return [];
         }
 
-        $wantedNorm = [];
-        foreach ($skus as $raw) {
-            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $raw);
-            if ($norm !== '') {
-                $wantedNorm[$norm] = true;
-            }
-        }
+        $wantedNorm = self::wantedNormalizedSkus($skus);
         if ($wantedNorm === []) {
             return [];
         }
@@ -582,37 +576,14 @@ class ChannelListingRegistry
             ->get(['sku', 'product_id'])
             ->each(function ($row) use (&$byNorm, $wantedNorm) {
                 $sku = trim((string) $row->sku);
-                if ($sku === '') {
-                    return;
-                }
-                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                if ($norm === '' || ! isset($wantedNorm[$norm]) || isset($byNorm[$norm])) {
-                    return;
-                }
                 $id = trim((string) ($row->product_id ?? ''));
-                if ($id === '' || strcasecmp($id, $sku) === 0) {
+                if ($sku === '' || $id === '' || strcasecmp($id, $sku) === 0) {
                     return;
                 }
-                $byNorm[$norm] = $id;
+                self::putListedId($byNorm, $wantedNorm, $sku, $id);
             });
 
-        $map = [];
-        foreach ($skus as $raw) {
-            $sku = trim((string) $raw);
-            if ($sku === '') {
-                continue;
-            }
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm === '' || ! isset($byNorm[$norm])) {
-                continue;
-            }
-            $id = $byNorm[$norm];
-            $map[strtolower($sku)] = $id;
-            $map[$norm] = $id;
-            $map[strtolower($norm)] = $id;
-        }
-
-        return $map;
+        return self::listedMapFromByNorm($skus, $byNorm);
     }
 
     /**
@@ -626,7 +597,8 @@ class ChannelListingRegistry
     {
         $metrics = AliexpressListingCounts::metricsByNormalizedSku();
         $pricing = AliexpressListingCounts::pricingSkusByNormalizedSku();
-        $map = [];
+        $wanted = self::wantedNormalizedSkus($skus);
+        $byKey = [];
         foreach ($skus as $raw) {
             $sku = trim((string) $raw);
             if ($sku === '') {
@@ -637,18 +609,10 @@ class ChannelListingRegistry
                 continue;
             }
             $id = trim((string) ($resolved['product_id'] ?? ''));
-            if ($id === '') {
-                $id = $sku;
-            }
-            $map[strtolower($sku)] = $id;
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm !== '') {
-                $map[$norm] = $id;
-                $map[strtolower($norm)] = $id;
-            }
+            self::putListedId($byKey, $wanted, $sku, $id !== '' ? $id : $sku);
         }
 
-        return $map;
+        return self::listedMapFromByNorm($skus, $byKey);
     }
 
     /**
@@ -666,6 +630,7 @@ class ChannelListingRegistry
             return [];
         }
 
+        $wantedNorm = self::wantedNormalizedSkus($skus);
         $byNorm = [];
 
         if (class_exists(WayfairPricingPrice::class)) {
@@ -673,11 +638,11 @@ class ChannelListingRegistry
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
                 ->orderBy('id')
-                ->chunkById(500, function ($rows) use (&$byNorm) {
+                ->chunkById(500, function ($rows) use (&$byNorm, $wantedNorm) {
                     foreach ($rows as $row) {
-                        $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
-                        if ($norm !== '' && ! isset($byNorm[$norm])) {
-                            $byNorm[$norm] = trim((string) $row->sku);
+                        $sku = trim((string) $row->sku);
+                        if ($sku !== '') {
+                            self::putListedId($byNorm, $wantedNorm, $sku, $sku);
                         }
                     }
                 });
@@ -688,7 +653,7 @@ class ChannelListingRegistry
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
                 ->orderBy('id')
-                ->chunkById(500, function ($rows) use (&$byNorm) {
+                ->chunkById(500, function ($rows) use (&$byNorm, $wantedNorm) {
                     foreach ($rows as $row) {
                         $val = is_array($row->value)
                             ? $row->value
@@ -696,38 +661,21 @@ class ChannelListingRegistry
                         $listedFlag = strtolower(trim((string) ($val['listed'] ?? '')));
                         $buyer = trim((string) ($val['buyer_link'] ?? ''));
                         $listingId = trim((string) ($val['listing_id'] ?? $val['item_id'] ?? ''));
-                        if ($listedFlag !== 'listed' && $buyer === '' && $listingId === '') {
+                        if ($listedFlag !== 'listed' && $listedFlag !== 'yes' && $buyer === '' && $listingId === '') {
                             continue;
                         }
-                        $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
-                        if ($norm === '') {
+                        if (ListingCountsEngine::isPendingOrReviewListingState($listedFlag)
+                            || ListingCountsEngine::isPendingOrReviewListingState($val['state'] ?? null)) {
                             continue;
                         }
-                        $id = $listingId !== '' ? $listingId : ($buyer !== '' ? $buyer : trim((string) $row->sku));
-                        $existing = $byNorm[$norm] ?? '';
-                        $preferNew = $existing === '' || (
-                            str_starts_with($id, 'http') && ! str_starts_with($existing, 'http')
-                        );
-                        if ($preferNew) {
-                            $byNorm[$norm] = $id;
-                        }
+                        $sku = trim((string) $row->sku);
+                        $id = $listingId !== '' ? $listingId : ($buyer !== '' ? $buyer : $sku);
+                        self::putListedId($byNorm, $wantedNorm, $sku, $id);
                     }
                 });
         }
 
-        $map = [];
-        foreach ($skus as $rawSku) {
-            $sku = trim((string) $rawSku);
-            if ($sku === '') {
-                continue;
-            }
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm !== '' && isset($byNorm[$norm])) {
-                $map[strtolower($sku)] = $byNorm[$norm];
-            }
-        }
-
-        return $map;
+        return self::listedMapFromByNorm($skus, $byNorm);
     }
 
     /**
@@ -756,6 +704,13 @@ class ChannelListingRegistry
             $norm = ReverbProduct::normalizeSkuForLookup($sku);
             $row = $norm !== '' ? ($lookup[$norm] ?? null) : null;
             if (! $row) {
+                $compact = ShopifySku::compactSkuForLookup($sku);
+                $row = $compact !== '' ? ($lookup['c:'.$compact] ?? null) : null;
+            }
+            if (! $row) {
+                continue;
+            }
+            if (ListingCountsEngine::isPendingOrReviewListingState($row->listing_state ?? $row->state ?? null)) {
                 continue;
             }
 
@@ -781,6 +736,10 @@ class ChannelListingRegistry
             if ($norm !== '') {
                 $wanted[$norm] = strtolower($sku);
             }
+            $compact = ShopifySku::compactSkuForLookup($sku);
+            if ($compact !== '') {
+                $wanted['c:'.$compact] = strtolower($sku);
+            }
         }
 
         if ($wanted === []) {
@@ -794,7 +753,11 @@ class ChannelListingRegistry
 
         foreach ($statusRows as $row) {
             $norm = ReverbProduct::normalizeSkuForLookup((string) $row->sku);
-            if ($norm === '' || ! isset($wanted[$norm])) {
+            $compact = ShopifySku::compactSkuForLookup((string) $row->sku);
+            $pmKey = ($norm !== '' && isset($wanted[$norm]))
+                ? $wanted[$norm]
+                : (($compact !== '' && isset($wanted['c:'.$compact])) ? $wanted['c:'.$compact] : null);
+            if ($pmKey === null) {
                 continue;
             }
 
@@ -806,8 +769,10 @@ class ChannelListingRegistry
                 continue;
             }
 
-            $pmKey = $wanted[$norm];
             $state = strtolower(trim((string) ($value['state'] ?? '')));
+            if (ListingCountsEngine::isPendingOrReviewListingState($state)) {
+                continue;
+            }
             // Prefer live/published when duplicate status rows exist for one SKU.
             if (! isset($map[$pmKey]) || in_array($state, ['live', 'published'], true)) {
                 $map[$pmKey] = $id;
@@ -829,7 +794,8 @@ class ChannelListingRegistry
             return [];
         }
 
-        $map = [];
+        $wanted = self::wantedNormalizedSkus($skus);
+        $byKey = [];
         $shopifyData = ShopifySku::mapByProductSkus($skus);
         foreach ($skus as $sku) {
             $sku = trim((string) $sku);
@@ -841,10 +807,10 @@ class ChannelListingRegistry
             if ($variantId === '' || $variantId === '0') {
                 continue;
             }
-            $map[strtolower($sku)] = $variantId;
+            self::putListedId($byKey, $wanted, $sku, $variantId);
         }
 
-        return $map;
+        return self::listedMapFromByNorm($skus, $byKey);
     }
 
     /**
@@ -978,10 +944,7 @@ class ChannelListingRegistry
         if (class_exists(PLSProduct::class) && \Illuminate\Support\Facades\Schema::hasTable('pls_products')) {
             $fromPrice = ListingCountsEngine::listedIdsFromPrice(PLSProduct::class, $skus, 'price');
             foreach ($fromPrice as $key => $id) {
-                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $key);
-                if ($norm !== '' && isset($wantedNorm[$norm]) && ! isset($byNorm[$norm])) {
-                    $byNorm[$norm] = (string) $id;
-                }
+                self::putListedId($byNorm, $wantedNorm, (string) $key, (string) $id);
             }
         }
 
@@ -993,6 +956,9 @@ class ChannelListingRegistry
                         continue;
                     }
                     $sku = trim((string) ($row['sku'] ?? ''));
+                    if (ListingCountsEngine::isPendingOrReviewListingState($row['state'] ?? null)) {
+                        continue;
+                    }
                     $id = trim((string) ($row['sku_id'] ?? $row['product_id'] ?? ''));
                     self::putListedId($byNorm, $wantedNorm, $sku, $id !== '' ? $id : $sku);
                 }
@@ -1005,8 +971,8 @@ class ChannelListingRegistry
     }
 
     /**
-     * TopDawg Listed = present in topdawg_products (API catalog).
-     * reject_sku was hiding live rows whose listing id equals product_code.
+     * TopDawg Listed = live/Yes catalog row in topdawg_products.
+     * Uploaded / review / unable-to-list stay in Missing L.
      *
      * @param  list<string>  $skus
      * @return array<string, string>
@@ -1027,6 +993,10 @@ class ChannelListingRegistry
                 ->orderBy('id')
                 ->chunkById(500, function ($rows) use (&$byNorm, $wantedNorm) {
                     foreach ($rows as $row) {
+                        // Uploaded / review / unable-to-list stay in Missing L.
+                        if (ListingCountsEngine::isPendingOrReviewListingState($row->listing_state ?? null)) {
+                            continue;
+                        }
                         $sku = trim((string) $row->sku);
                         $listingId = trim((string) ($row->topdawg_listing_id ?? ''));
                         $tdid = trim((string) ($row->tdid ?? ''));
@@ -1047,6 +1017,9 @@ class ChannelListingRegistry
                         continue;
                     }
                     $sku = trim((string) ($row['sku'] ?? ''));
+                    if (ListingCountsEngine::isPendingOrReviewListingState($row['state'] ?? null)) {
+                        continue;
+                    }
                     $id = trim((string) ($row['product_id'] ?? ''));
                     self::putListedId($byNorm, $wantedNorm, $sku, $id !== '' ? $id : $sku);
                 }
@@ -1064,15 +1037,7 @@ class ChannelListingRegistry
      */
     private static function wantedNormalizedSkus(array $skus): array
     {
-        $wanted = [];
-        foreach ($skus as $raw) {
-            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $raw);
-            if ($norm !== '') {
-                $wanted[$norm] = true;
-            }
-        }
-
-        return $wanted;
+        return ListingCountsEngine::wantedSkuKeySet($skus);
     }
 
     /**
@@ -1081,22 +1046,7 @@ class ChannelListingRegistry
      */
     private static function putListedId(array &$byNorm, array $wantedNorm, string $sku, string $id): void
     {
-        $sku = trim($sku);
-        $id = trim($id);
-        if ($sku === '' || $id === '') {
-            return;
-        }
-        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-        if ($norm === '' || ! isset($wantedNorm[$norm])) {
-            return;
-        }
-        $existing = $byNorm[$norm] ?? '';
-        $preferNew = $existing === '' || (
-            strcasecmp($existing, $sku) === 0 && strcasecmp($id, $sku) !== 0
-        );
-        if ($preferNew) {
-            $byNorm[$norm] = $id;
-        }
+        ListingCountsEngine::putListedForSku($byNorm, $wantedNorm, $sku, $id);
     }
 
     /**
@@ -1106,22 +1056,6 @@ class ChannelListingRegistry
      */
     private static function listedMapFromByNorm(array $skus, array $byNorm): array
     {
-        $map = [];
-        foreach ($skus as $raw) {
-            $sku = trim((string) $raw);
-            if ($sku === '') {
-                continue;
-            }
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm === '' || ! isset($byNorm[$norm])) {
-                continue;
-            }
-            $id = $byNorm[$norm];
-            $map[strtolower($sku)] = $id;
-            $map[$norm] = $id;
-            $map[strtolower($norm)] = $id;
-        }
-
-        return $map;
+        return ListingCountsEngine::listedMapForProductSkus($skus, $byNorm);
     }
 }
