@@ -1610,8 +1610,8 @@
                     },
                     {
                         title: 'S PRC', field: 'sprice', sorter: 'number', hozAlign: 'right',
-                        editor: 'number', editorParams: { min: 0, step: 0.01 },
-                        headerTooltip: 'S PRC from Sprc Dil. Dil-matching Target GROI when A L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
+                        editable: false,
+                        headerTooltip: 'Not editable. S PRC from Sprc Dil. Dil-matching Target GROI when A L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';

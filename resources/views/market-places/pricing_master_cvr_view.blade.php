@@ -3374,12 +3374,7 @@
                     hozAlign: "right",
                     minWidth: 70,
                     sorter: "number",
-                    editor: "number",
-                    editorParams: { step: 0.01, min: 0 },
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        return d.is_parent_summary !== true && d.sku && d.sku.indexOf('PARENT') === -1;
-                    },
+                    editable: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary === true) {

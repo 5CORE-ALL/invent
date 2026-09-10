@@ -4273,12 +4273,8 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC from Sprc Dil (Amazon Dil slabs). Dil-matching when RV L30 > 0; 0 Sold uses the lowest Target GROI. CVR% still applies when there is no Dil slab match. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
-                    editor: "number",
-                    editorParams: {
-                        min: 0,
-                        step: 0.01
-                    },
+                    headerTooltip: "Not editable. S PRC from Sprc Dil (Amazon Dil slabs). Dil-matching when RV L30 > 0; 0 Sold uses the lowest Target GROI. CVR% still applies when there is no Dil slab match. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    editable: false,
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();

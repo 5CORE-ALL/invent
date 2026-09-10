@@ -2430,8 +2430,8 @@
                     },
                     {
                         title: 'Sprice', field: 'sprice', sorter: 'number', headerSort: true, hozAlign: 'right',
-                        editor: 'number', editorParams: { min: 0, step: 0.01 },
-                        headerTooltip: 'S PRC from Sprc Dil when Dil matches (or 0 Sold min GROI). Otherwise Std × (1 − CVR%/100). Ship not used. No LMP cap. Blue triangle = S PRC ≠ Price.',
+                        editable: false,
+                        headerTooltip: 'Not editable. S PRC from Sprc Dil when Dil matches (or 0 Sold min GROI). Otherwise Std × (1 − CVR%/100). Ship not used. No LMP cap. Blue triangle = S PRC ≠ Price.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';

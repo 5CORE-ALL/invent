@@ -2203,12 +2203,8 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when BB L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ BB Price. Red text = S PRC ≥ LMP.",
-                    editor: "number",
-                    editorParams: {
-                        min: 0,
-                        step: 0.01
-                    },
+                    headerTooltip: "Not editable. S PRC from Sprc Dil. Dil-matching Target GROI when BB L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ BB Price. Red text = S PRC ≥ LMP.",
+                    editable: false,
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();

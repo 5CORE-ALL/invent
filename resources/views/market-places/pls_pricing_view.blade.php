@@ -967,10 +967,10 @@
                     title: "S PRC",
                     field: "sprice",
                     hozAlign: "center",
-                    editor: "input",
+                    editable: false,
                     sorter: "number",
                     visible: true,
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    headerTooltip: "Not editable. S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (plsIsParentRow(rowData)) return '';

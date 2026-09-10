@@ -2307,7 +2307,7 @@
                     title: "S PRC",
                     field: "sprice",
                     hozAlign: "center",
-                    editor: "input",
+                    editable: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const rowData = cell.getRow().getData();

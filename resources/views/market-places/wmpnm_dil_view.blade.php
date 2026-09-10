@@ -4749,12 +4749,7 @@
                     hozAlign: "right",
                     minWidth: 70,
                     sorter: "number",
-                    editor: "number",
-                    editorParams: { step: 0.01, min: 0 },
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        return d.is_parent_summary !== true && d.sku && d.sku.indexOf('PARENT') === -1;
-                    },
+                    editable: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary === true) {
@@ -4926,12 +4921,8 @@
                     field: "temu_sprice",
                     hozAlign: "center",
                     sorter: "number",
-                    editor: "input",
-                    headerTooltip: "Temu Suggested Price (base/supplier) — same as /temu-decrease S PRC. Saved to temu_data_view.",
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        return d.is_parent_summary !== true && d.sku && String(d.sku).indexOf('PARENT') === -1;
-                    },
+                    editable: false,
+                    headerTooltip: "Not editable. Temu Suggested Price (base/supplier) — same as /temu-decrease S PRC. Saved to temu_data_view.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary) {
