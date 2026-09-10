@@ -541,45 +541,41 @@ class AliexpressController extends Controller
     }
 
     /**
-     * L60 summary badges for aliexpress-tabulator (from aliexpress_daily_data_l60).
+     * L30 + L60 summary badges for /aliexpress-tabulator — API orders only.
+     */
+    public function getTabulatorBadgeStats()
+    {
+        try {
+            $l30 = $this->aggregateAliexpressOrderRows($this->aliexpressTabulatorApiRows(30));
+            $l60 = $this->aggregateAliexpressOrderRows($this->aliexpressTabulatorApiRows(60));
+
+            return response()->json([
+                'success' => true,
+                'source' => 'api',
+                'l30' => $this->aliexpressRoundBadgeAgg($l30),
+                'l60' => $this->aliexpressRoundBadgeAgg($l60),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Aliexpress tabulator badges error: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load badges: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * L60 summary badges for aliexpress-tabulator (API orders).
      */
     public function getL60Sales(Request $request)
     {
         try {
-            $window = $this->aliexpressTabulatorPacificWindow(60);
-            if ($this->aliexpressOrderMetricsHasRows($window['start'], $window['end'])) {
-                $agg = $this->aggregateAliexpressOrderRows(
-                    $this->aliexpressOrderMetricsAsDailyRows($window['start'], $window['end'])
-                );
-
-                return response()->json([
-                    'success' => true,
-                    'source' => 'api',
-                    'data' => [
-                        'total_sales' => round($agg['total_sales'], 2),
-                        'total_orders' => $agg['total_orders'],
-                        'total_quantity' => $agg['total_quantity'],
-                    ],
-                ]);
-            }
-
-            if (! Schema::hasTable('aliexpress_daily_data_l60')) {
-                return response()->json([
-                    'success' => true,
-                    'source' => 'sheet',
-                    'data' => [
-                        'total_sales' => 0,
-                        'total_orders' => 0,
-                        'total_quantity' => 0,
-                    ],
-                ]);
-            }
-
-            $agg = $this->aggregateAliexpressOrderRows(AliexpressDailyDataL60::all());
+            $agg = $this->aggregateAliexpressOrderRows($this->aliexpressTabulatorApiRows(60));
 
             return response()->json([
                 'success' => true,
-                'source' => 'sheet',
+                'source' => 'api',
                 'data' => [
                     'total_sales' => round($agg['total_sales'], 2),
                     'total_orders' => $agg['total_orders'],
@@ -1196,6 +1192,37 @@ class AliexpressController extends Controller
     /**
      * @return array{start: Carbon, end: Carbon}
      */
+    /**
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function aliexpressTabulatorApiRows(int $days)
+    {
+        $window = $this->aliexpressTabulatorPacificWindow($days);
+        if (! $this->aliexpressOrderMetricsHasRows($window['start'], $window['end'])) {
+            return collect();
+        }
+
+        return $this->aliexpressOrderMetricsAsDailyRows($window['start'], $window['end']);
+    }
+
+    /**
+     * @param  array{total_orders: int, total_quantity: int, total_sales: float, total_cogs: float, total_pft: float, pft_percentage: float, roi_percentage: float, avg_price: float}  $agg
+     * @return array{total_orders: int, total_quantity: int, total_sales: float, total_cogs: float, total_pft: float, pft_percentage: float, roi_percentage: float, avg_price: float}
+     */
+    private function aliexpressRoundBadgeAgg(array $agg): array
+    {
+        return [
+            'total_orders' => (int) ($agg['total_orders'] ?? 0),
+            'total_quantity' => (int) ($agg['total_quantity'] ?? 0),
+            'total_sales' => round((float) ($agg['total_sales'] ?? 0), 2),
+            'total_cogs' => round((float) ($agg['total_cogs'] ?? 0), 2),
+            'total_pft' => round((float) ($agg['total_pft'] ?? 0), 2),
+            'pft_percentage' => round((float) ($agg['pft_percentage'] ?? 0), 1),
+            'roi_percentage' => round((float) ($agg['roi_percentage'] ?? 0), 1),
+            'avg_price' => round((float) ($agg['avg_price'] ?? 0), 2),
+        ];
+    }
+
     private function aliexpressTabulatorPacificWindow(int $days): array
     {
         $end = Carbon::now('America/Los_Angeles');

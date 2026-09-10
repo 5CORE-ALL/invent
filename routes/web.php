@@ -5652,6 +5652,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/aliexpress/upload-daily-data-l60', [AliexpressController::class, 'uploadDailyDataL60Chunk'])->name('aliexpress.upload.daily.data.l60');
     Route::get('/aliexpress/daily-data', [AliexpressController::class, 'getDailyData'])->name('aliexpress.get.daily.data');
     Route::get('/aliexpress/l60-sales', [AliexpressController::class, 'getL60Sales'])->name('aliexpress.get.l60.sales');
+    Route::get('/aliexpress/tabulator-badges', [AliexpressController::class, 'getTabulatorBadgeStats'])->name('aliexpress.tabulator.badges');
     Route::post('/aliexpress/sync-daily-orders', [AliexpressController::class, 'syncTabulatorOrdersFromApi'])->name('aliexpress.sync.daily.orders');
     Route::get('/aliexpress-tabulator', [AliexpressController::class, 'aliexpressTabulatorView'])->name('aliexpress.tabulator.view');
     Route::get('/aliexpress-lmp', [AliexpressController::class, 'aliexpressLmpPage'])->name('aliexpress.lmp');
