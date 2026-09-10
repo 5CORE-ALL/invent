@@ -11,6 +11,9 @@ class AmazonDilGroiRule
 {
     public const TAKE_HOME = 0.80;
 
+    /** Same gate as /amazon-tabulator-view: cap only when SGROI at LMP ≥ 20%. */
+    public const LMP_SGROI_MIN = 20.0;
+
     /**
      * @return list<array{key:string,label:string,min:float,max:float,groi:float|int}>
      */
@@ -198,6 +201,54 @@ class AmazonDilGroiRule
         }
 
         return round($price, 2);
+    }
+
+    /**
+     * SGROI at a candidate price — same shape as Amazon / eBay S GROI:
+     * ((price × margin − LP − Ship) / LP) × 100.
+     */
+    public static function sgroiAtPrice(float $price, float $lp, float $ship = 0.0, float $margin = self::TAKE_HOME): ?float
+    {
+        if (! is_finite($price) || $price <= 0 || ! is_finite($lp) || $lp <= 0) {
+            return null;
+        }
+        if (! is_finite($ship)) {
+            $ship = 0.0;
+        }
+        if (! is_finite($margin) || $margin <= 0) {
+            return null;
+        }
+        if ($margin > 1) {
+            $margin = $margin / 100;
+        }
+
+        return (($price * $margin - $lp - $ship) / $lp) * 100;
+    }
+
+    /**
+     * Amazon LMP cap (eBay 1–3 cron + tabulator use the same rule):
+     *  Dil below LMP → keep Dil (no cap).
+     *  Dil at/above LMP and SGROI at LMP ≥ 20% → S PRC = LMP.
+     *  Dil at/above LMP and SGROI at LMP < 20% → keep Dil (no cap).
+     * Never raises Dil up to LMP.
+     */
+    public static function capSpriceToLmp(
+        float $sprice,
+        float $lmp,
+        float $lp,
+        float $ship = 0.0,
+        float $margin = self::TAKE_HOME
+    ): float {
+        $s = round($sprice, 2);
+        if (! ($lmp > 0) || ! ($s > 0) || ($s + 0.0001) < $lmp) {
+            return $s;
+        }
+        $sgroiAtLmp = self::sgroiAtPrice($lmp, $lp, $ship, $margin);
+        if ($sgroiAtLmp !== null && $sgroiAtLmp < self::LMP_SGROI_MIN) {
+            return $s;
+        }
+
+        return round($lmp, 2);
     }
 
     /** Same as the Amazon tabulator CVR L30 column (A L30 ÷ Sess30). */

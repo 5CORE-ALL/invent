@@ -71,6 +71,29 @@ class Ebay3RuleSpriceApplyServiceTest extends TestCase
         ]));
     }
 
+    public function test_dil_below_lmp_keeps_dil_price_after_cvr_overlay(): void
+    {
+        $rules = [AmazonDilGroiRule::make(50, 60, 100)];
+        $out = EbayRuleSpriceApplyService::for('ebay1')->computeTarget(
+            [
+                'inv' => 10,
+                'dil' => 51,
+                'cvr' => 3.77,
+                'lp' => 7,
+                'ship' => 1.748,
+                'lmp' => 24.95,
+            ],
+            $rules,
+            AmazonDilGroiRule::defaultCvrAdj(),
+            0.80
+        );
+
+        $this->assertNotNull($out);
+        // Dil 51 → GROI 100, CVR 3.77 < 7 → 90. Dil $18.81 < LMP $24.95 → no cap.
+        $this->assertEqualsWithDelta(90.0, $out['groi'], 0.01);
+        $this->assertEqualsWithDelta(18.81, $out['sprice'], 0.01);
+    }
+
     public function test_lmp_caps_when_sgroi_at_lmp_is_at_least_20(): void
     {
         $svc = EbayRuleSpriceApplyService::for('ebay1');

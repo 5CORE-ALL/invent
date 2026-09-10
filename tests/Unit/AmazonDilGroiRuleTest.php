@@ -141,6 +141,30 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame(9.0, $wrapped['cvr_adj']['up_adj']);
     }
 
+    public function test_lmp_cap_matches_amazon_three_cases(): void
+    {
+        // Dil $18.81 < LMP $24.95 → keep Dil (never raise to LMP).
+        $this->assertEqualsWithDelta(
+            18.81,
+            AmazonDilGroiRule::capSpriceToLmp(18.81, 24.95, 7.0, 1.748, 0.80),
+            0.001
+        );
+
+        // Dil $50 > LMP $30 and SGROI at $30 = 140% ≥ 20 → cap to LMP.
+        $this->assertEqualsWithDelta(
+            30.0,
+            AmazonDilGroiRule::capSpriceToLmp(50, 30, 10, 0, 0.80),
+            0.001
+        );
+
+        // Dil $50 > LMP $12 and SGROI at $12 = −4% < 20 → keep Dil.
+        $this->assertEqualsWithDelta(
+            50.0,
+            AmazonDilGroiRule::capSpriceToLmp(50, 12, 10, 0, 0.80),
+            0.001
+        );
+    }
+
     public function test_adjust_groi_level_only_ignores_trend(): void
     {
         $this->assertSame(40.0, AmazonDilGroiRule::adjustGroiForCvrLevel(50, 6.9));

@@ -1100,6 +1100,7 @@
         if (!(margin > 0)) return null;
         return ((sprice * margin - lp - ship) / lp) * 100;
     }
+    /** Same as Amazon: Dil below LMP stays Dil; cap only when Dil ≥ LMP and SGROI at LMP ≥ 20%. */
     function ebay3ShouldCapSpriceToLmp(rowData, sprice) {
         const lmp = ebayEffectiveLmp(rowData);
         const s = parseFloat(sprice);
@@ -3161,7 +3162,7 @@
                         return av - bv;
                     },
                     editable: false,
-                    headerTooltip: "Read-only. Sprc Dil / saved S PRC. If LMP is lower than S PRC, S PRC becomes LMP — unless SGROI at that LMP would be < 20%, then LMP is not applied. Red triangle stays when S PRC ≥ LMP.",
+                    headerTooltip: "Read-only. Same as Amazon: Dil below LMP stays Dil. Dil at/above LMP becomes LMP only when SGROI at that LMP is ≥ 20%; if SGROI at LMP is < 20%, Dil is kept. Red triangle stays when S PRC ≥ LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary || rowData.is_parent_row) return '';

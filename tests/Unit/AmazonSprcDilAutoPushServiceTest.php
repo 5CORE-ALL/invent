@@ -67,6 +67,13 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(99.5, $out['sprice'], 0.001);
     }
 
+    public function test_dil_below_lmp_keeps_dil_price(): void
+    {
+        $svc = new AmazonSprcDilAutoPushService;
+        // Dil $18.81 < LMP $24.95 → keep Dil (same as eBay).
+        $this->assertEqualsWithDelta(18.81, $svc->capSpriceToLmp(18.81, 24.95, 7, 1.748), 0.01);
+    }
+
     public function test_lmp_caps_when_sgroi_at_lmp_is_at_least_20(): void
     {
         $out = $this->compute([

@@ -1106,8 +1106,9 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // eBay 1/2/3 Sprc Dil → save SPRICE. Primary fire is /etc/cron.d/ebay3-sprice-daily
-        // (bypasses overloaded schedule:run). These slots are backup + late catch-up.
+        // eBay 1/2/3 Sprc Dil → save SPRICE (Amazon LMP cap: Dil below LMP stays Dil).
+        // Primary fire is /etc/cron.d/ebay3-sprice-daily (bypasses overloaded schedule:run).
+        // These slots are backup + late catch-up.
         $schedule->command('ebay:rule-sprice-apply')
             ->dailyAt('16:45')
             ->timezone('Asia/Kolkata')

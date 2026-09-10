@@ -20,12 +20,13 @@ use Throwable;
 
 /**
  * Page-less Sprc Dil → S PRC for eBay 1 / 2 / 3 tabulator pages.
- * Listing Dil (Σ OV L30 ÷ Σ INV), nearest slab, CVR overlay, LMP cap
- * when SGROI at LMP ≥ 20%. INV > 0 only — same as ebayDilGroiMetaForRow.
+ * Listing Dil (Σ OV L30 ÷ Σ INV), nearest slab, CVR overlay, then Amazon LMP cap:
+ * Dil below LMP stays Dil; Dil at/above LMP caps only when SGROI at LMP ≥ 20%.
+ * INV > 0 only — same as ebayDilGroiMetaForRow.
  */
 class EbayRuleSpriceApplyService
 {
-    public const LMP_SGROI_MIN = 20.0;
+    public const LMP_SGROI_MIN = AmazonDilGroiRule::LMP_SGROI_MIN;
 
     public const CHANNELS = ['ebay1', 'ebay2', 'ebay3'];
 
@@ -231,7 +232,7 @@ class EbayRuleSpriceApplyService
             return null;
         }
 
-        $sprice = $this->capToLmp($raw, (float) ($row['lmp'] ?? 0), $lp, $ship, $margin);
+        $sprice = AmazonDilGroiRule::capSpriceToLmp($raw, (float) ($row['lmp'] ?? 0), $lp, $ship, $margin);
 
         return [
             'sprice' => $sprice,
@@ -241,18 +242,7 @@ class EbayRuleSpriceApplyService
 
     public function capToLmp(float $sprice, float $lmp, float $lp, float $ship, float $margin): float
     {
-        if (! ($lmp > 0) || ! ($sprice > 0) || $sprice + 0.0001 < $lmp) {
-            return round($sprice, 2);
-        }
-        if (! ($lp > 0) || ! ($margin > 0)) {
-            return round($sprice, 2);
-        }
-        $sgroiAtLmp = (($lmp * $margin - $lp - $ship) / $lp) * 100;
-        if ($sgroiAtLmp < self::LMP_SGROI_MIN) {
-            return round($sprice, 2);
-        }
-
-        return round($lmp, 2);
+        return AmazonDilGroiRule::capSpriceToLmp($sprice, $lmp, $lp, $ship, $margin);
     }
 
     /**

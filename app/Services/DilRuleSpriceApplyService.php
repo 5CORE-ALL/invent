@@ -58,7 +58,7 @@ use Throwable;
  */
 class DilRuleSpriceApplyService
 {
-    public const LMP_SGROI_MIN = 20.0;
+    public const LMP_SGROI_MIN = AmazonDilGroiRule::LMP_SGROI_MIN;
 
     public const CHANNELS = [
         'bestbuy',
@@ -324,7 +324,7 @@ class DilRuleSpriceApplyService
             return null;
         }
 
-        $sprice = $this->capToLmp($raw, (float) ($row['lmp'] ?? 0), $lp, $ship, $margin);
+        $sprice = AmazonDilGroiRule::capSpriceToLmp($raw, (float) ($row['lmp'] ?? 0), $lp, $ship, $margin);
 
         if (! empty($cfg['amz_floor'])) {
             $amz = (float) ($row['amz_price'] ?? 0);
@@ -341,18 +341,7 @@ class DilRuleSpriceApplyService
 
     public function capToLmp(float $sprice, float $lmp, float $lp, float $ship, float $margin): float
     {
-        if (! ($lmp > 0) || ! ($sprice > 0) || $sprice + 0.0001 < $lmp) {
-            return round($sprice, 2);
-        }
-        if (! ($lp > 0) || ! ($margin > 0)) {
-            return round($sprice, 2);
-        }
-        $sgroiAtLmp = (($lmp * $margin - $lp - $ship) / $lp) * 100;
-        if ($sgroiAtLmp < self::LMP_SGROI_MIN) {
-            return round($sprice, 2);
-        }
-
-        return round($lmp, 2);
+        return AmazonDilGroiRule::capSpriceToLmp($sprice, $lmp, $lp, $ship, $margin);
     }
 
     /**

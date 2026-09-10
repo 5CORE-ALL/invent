@@ -42,14 +42,10 @@ class SalesCancelledOrderController extends SalesOrderFulfillmentController
         try {
             @set_time_limit(120);
 
-            $rows = $this->collectOrderRows(
+            $rows = $this->presentCancelledRows($this->collectOrderRows(
                 fn (string $slug) => $this->scopedToLast30Days($this->cancelledOrdersQuery($slug), $slug),
                 true,
                 true
-            );
-            $rows = array_values(array_filter(
-                $rows,
-                fn (array $row) => $this->orderRowIsCancelledForPage($row)
             ));
 
             $amountTotal = 0.0;
@@ -134,20 +130,51 @@ class SalesCancelledOrderController extends SalesOrderFulfillmentController
     }
 
     /**
-     * Keep a row only when the visible marketplace status is cancelled.
-     * Delivered / refunded / voided rows stay out even if a refund flag exists.
+     * Drop non-cancel rows and put the marketplace cancel status back on the label.
+     * collectOrderRows overwrites status_label with carrier text (Delivered, In Transit).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function presentCancelledRows(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            if (! $this->orderRowIsCancelledForPage($row)) {
+                continue;
+            }
+            $raw = trim((string) ($row['status'] ?? ''));
+            $row['status_label'] = $raw !== '' ? $raw : 'Cancelled';
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Keep a row only when the marketplace order status is cancelled.
+     * Ignore shipment overlays and refund/void flags.
      *
      * @param  array<string, mixed>  $row
      */
     protected function orderRowIsCancelledForPage(array $row): bool
     {
-        foreach (['status', 'status_label'] as $key) {
-            $u = strtoupper(str_replace(['-', ' '], '_', trim((string) ($row[$key] ?? ''))));
-            if ($u !== '' && str_contains($u, 'CANCEL')) {
-                return true;
-            }
+        $status = $this->normalizedCancelNeedle((string) ($row['status'] ?? ''));
+        if ($status !== '' && str_contains($status, 'CANCEL')) {
+            return true;
         }
 
-        return false;
+        if ($status !== '') {
+            return false;
+        }
+
+        $label = $this->normalizedCancelNeedle((string) ($row['status_label'] ?? ''));
+
+        return $label !== '' && str_contains($label, 'CANCEL');
+    }
+
+    protected function normalizedCancelNeedle(string $raw): string
+    {
+        return strtoupper(str_replace(['-', ' '], '_', trim($raw)));
     }
 }

@@ -571,6 +571,21 @@
         return el ? String(el.value || '').trim() : '';
     }
 
+    function scoIsCancelledStatus(row) {
+        const status = String(row && row.status || '').toUpperCase().replace(/[-\s]/g, '_');
+        if (status && status.indexOf('CANCEL') !== -1) return true;
+        if (status) return false;
+        const label = String(row && row.status_label || '').toUpperCase().replace(/[-\s]/g, '_');
+        return !!label && label.indexOf('CANCEL') !== -1;
+    }
+
+    function scoOnlyCancelledRows(rows) {
+        return (rows || []).filter(scoIsCancelledStatus).map(function (row) {
+            const raw = String(row.status || '').trim();
+            return Object.assign({}, row, { status_label: raw || 'Cancelled' });
+        });
+    }
+
     function scoRebuildStatusOptions(rows) {
         const sel = document.getElementById('sco-status-filter');
         if (!sel) return;
@@ -579,6 +594,7 @@
         (rows || []).forEach(function (row) {
             const label = String(row.status_label || row.status || '').trim();
             if (!label || label === '—') return;
+            if (String(label).toUpperCase().indexOf('CANCEL') === -1) return;
             counts[label] = (counts[label] || 0) + 1;
         });
         const labels = Object.keys(counts).sort(function (a, b) {
@@ -665,17 +681,22 @@
             });
         },
         ajaxResponse: function (url, params, response) {
-            const rows = (response && response.success && Array.isArray(response.data))
+            const rows = scoOnlyCancelledRows((response && response.success && Array.isArray(response.data))
                 ? response.data
-                : [];
-            const count = (response && response.count != null) ? Number(response.count) : rows.length;
-            const channels = (response && response.channel_count != null) ? Number(response.channel_count) : 0;
-            const amount = (response && response.amount_total != null) ? Number(response.amount_total) : 0;
+                : []);
+            let amount = 0;
+            const channelSet = {};
+            rows.forEach(function (row) {
+                const n = Number(row.amount);
+                if (Number.isFinite(n)) amount += n;
+                const slug = String(row.mm_slug || '').trim();
+                if (slug) channelSet[slug] = true;
+            });
             const countEl = document.getElementById('sco-order-count');
             const chEl = document.getElementById('sco-channel-count');
             const amtEl = document.getElementById('sco-amount-total');
-            if (countEl) countEl.textContent = count.toLocaleString();
-            if (chEl) chEl.textContent = channels.toLocaleString();
+            if (countEl) countEl.textContent = rows.length.toLocaleString();
+            if (chEl) chEl.textContent = Object.keys(channelSet).length.toLocaleString();
             if (amtEl) amtEl.textContent = amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             if (response && response.success === false) {
                 this.options.placeholder = response.message || 'Failed to load cancelled orders.';

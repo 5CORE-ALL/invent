@@ -255,7 +255,7 @@ class AmazonSprcDilAutoPushService
             return null;
         }
 
-        $capped = $this->capSpriceToLmp($effective, $lmp, $lp, $ship);
+        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship);
         $lmpCapped = ($effective - $capped) > 0.009;
         $sprice = $capped;
 
@@ -559,19 +559,7 @@ class AmazonSprcDilAutoPushService
 
     public function capSpriceToLmp(float $sprice, float $lmp, float $lp, float $ship): float
     {
-        $s = round($sprice, 2);
-        if (! ($lmp > 0) || ! ($s > 0) || ($s + 0.0001) < $lmp) {
-            return $s;
-        }
-        $sgroiAtLmp = null;
-        if ($lp > 0) {
-            $sgroiAtLmp = (($lmp * AmazonDilGroiRule::TAKE_HOME - $ship - $lp) / $lp) * 100;
-        }
-        if ($sgroiAtLmp !== null && $sgroiAtLmp < 20) {
-            return $s;
-        }
-
-        return round($lmp, 2);
+        return AmazonDilGroiRule::capSpriceToLmp($sprice, $lmp, $lp, $ship);
     }
 
     protected function cvrSlabKey(float $cvr): string
