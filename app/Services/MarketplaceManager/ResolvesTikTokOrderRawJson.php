@@ -2,6 +2,10 @@
 
 namespace App\Services\MarketplaceManager;
 
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+
 /**
  * Shared TikTok order payload helpers for TikTok1 / TikTok2 push + fetch.
  *
@@ -426,6 +430,50 @@ trait ResolvesTikTokOrderRawJson
             $prefix.'-'.$orderId,
             '#'.$prefix.'-'.$orderId,
         ])));
+    }
+
+    /**
+     * Local Shopify catalog copy — never POST again if this TikTok id is already there.
+     */
+    protected function findLocalShopifyTikTokCopy(string $orderId, string $namePrefix, string $tagPrefix): ?string
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '' || ! Schema::hasTable('shopify_raw_orders')) {
+            return null;
+        }
+
+        $namePrefix = rtrim($namePrefix, '-');
+        $tagPrefix = rtrim($tagPrefix, '-');
+        $names = [$namePrefix.'-'.$orderId, '#'.$namePrefix.'-'.$orderId];
+        $tag = $tagPrefix.'-'.$orderId;
+
+        try {
+            $q = DB::table('shopify_raw_orders')->where(function ($q) use ($orderId, $names, $tag, $tagPrefix) {
+                $q->where('tags', 'like', '%'.$tag.'%');
+                if (Schema::hasColumn('shopify_raw_orders', 'order_number')) {
+                    foreach ($names as $name) {
+                        $q->orWhere('order_number', $name)->orWhere('order_number', ltrim($name, '#'));
+                    }
+                }
+                if (Schema::hasColumn('shopify_raw_orders', 'source_identifier')) {
+                    $q->orWhere('source_identifier', $orderId);
+                }
+                if (Schema::hasColumn('shopify_raw_orders', 'note')) {
+                    $q->orWhere('note', 'like', '%'.$tagPrefix.' Shop order '.$orderId.'%')
+                        ->orWhere('note', 'like', '%'.$tagPrefix.' order '.$orderId.'%');
+                }
+            });
+            $id = $q->orderByDesc('order_id')->value('order_id');
+
+            return $id ? (string) $id : null;
+        } catch (\Throwable $e) {
+            Log::warning('ResolvesTikTokOrderRawJson: local Shopify TikTok catalog lookup failed', [
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     protected function sellerSkuFromTikTokLine(object $line): string

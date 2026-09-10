@@ -55,6 +55,18 @@ class TikTok2OrderPushService
             }
         }
 
+        $localCatalog = $this->findLocalShopifyTikTokCopy($orderId, 'TT2-', 'tiktok2');
+        if ($localCatalog) {
+            $this->linkTikTok2OrderToShopify($orderId, $localCatalog);
+            $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localCatalog.' (local catalog).';
+            $fresh = $order->fresh() ?? $order;
+            $fresh->shopify_order_id = $localCatalog;
+            $this->syncShippingAddressToShopify($fresh);
+            $this->fulfillShopifyForImportedMarketplaceOrder('tiktok2', (int) $fresh->id, ['order_id' => $orderId]);
+
+            return $localCatalog;
+        }
+
         // Strict Shopify search — refuse to create if check cannot complete.
         $config = $this->shopifyConfig();
         $existing = $this->findExistingShopifyOrderByRefs(

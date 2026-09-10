@@ -92,12 +92,31 @@ trait FindsExistingShopifyOrderByChannelRef
             return ['id' => null, 'matched_by' => null, 'error' => null];
         }
 
-        // GraphQL is down — REST tags can still prove an existing copy (link, never create).
-        $tagSearchCompleted = $tagPrefixes === [];
+        // GraphQL is down — REST name + tags must both finish before create is allowed.
+        $nameSearchCompleted = false;
         foreach ($candidates as $ref) {
+            if (! $this->looksLikeShopifyOrderName($ref)) {
+                continue;
+            }
+            $byName = $this->shopifyRestFindOrderByName($storeUrl, $token, $ref, $logContext);
+            if (($byName['error'] ?? null) !== null) {
+                return $byName;
+            }
+            $nameSearchCompleted = true;
+            if (! empty($byName['id'])) {
+                return $byName;
+            }
+        }
+
+        $tagSearchCompleted = false;
+        foreach ($candidates as $ref) {
+            $raw = ltrim(trim($ref), '#');
+            if ($raw === '' || preg_match('/^TT2?-\d+$/i', $raw) === 1) {
+                continue;
+            }
             foreach ($tagPrefixes as $prefix) {
-                $tag = trim((string) $prefix).$ref;
-                if ($tag === $ref) {
+                $tag = trim((string) $prefix).$raw;
+                if ($tag === $raw) {
                     continue;
                 }
                 $byTag = $this->shopifyRestFindOrderByTag($storeUrl, $token, $tag, $logContext);
@@ -111,10 +130,9 @@ trait FindsExistingShopifyOrderByChannelRef
             }
         }
 
-        // REST tag search finished with no match — safe to create. Long TikTok
-        // ids skip the REST name shortcut, so GraphQL 429s were blocking every shop.
-        if ($tagSearchCompleted) {
-            Log::info($logContext.': GraphQL duplicate check failed; REST tags found no copy — create allowed', [
+        // Both REST fallbacks finished with no match — this channel order is not in Shopify.
+        if ($tagSearchCompleted && ($nameSearchCompleted || ! $this->candidatesIncludeShopifyName($candidates))) {
+            Log::info($logContext.': GraphQL duplicate check failed; REST name/tags found no copy — create allowed', [
                 'error' => $gql['error'],
                 'refs' => $candidates,
             ]);
@@ -651,6 +669,20 @@ GQL,
 
         // TikTok Shopify names are #TT-{id} / #TT2-{id}, not the raw 18-digit id.
         return preg_match('/^TT2?-\d+$/i', $ref) === 1;
+    }
+
+    /**
+     * @param  list<string>  $candidates
+     */
+    protected function candidatesIncludeShopifyName(array $candidates): bool
+    {
+        foreach ($candidates as $ref) {
+            if ($this->looksLikeShopifyOrderName((string) $ref)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
