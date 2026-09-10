@@ -1031,7 +1031,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * L30 sales summary — Temu from shopify_order_items (/shopify-orders); Temu 2 from tabulator.
+     * L30 sales summary — Temu from temu_orders; Temu 2 from /temu2-tabulator (base_price_total).
      *
      * @return array{total_orders: int, total_quantity: int, total_revenue: float, total_pft?: float, total_cogs?: float, gpft_percent?: float, groi_percent?: float}|null
      */
@@ -1054,8 +1054,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 2 L30 for Active Channel: same as /temu2-tabulator
-     * (L30 = Temu Price × Qty, GPFT$ from R Price, GPFT% = GPFT$ / Temu Price, GROI% = GPFT$ / LP).
+     * Temu 2 L30 for Active / all-marketplace-master — same source as /temu2-tabulator.
+     * Base = base_price_total. GPFT$ from R Price. GPFT% = GPFT$ / Temu Price. GROI% = GPFT$ / LP.
      *
      * @return array{total_orders: int, total_quantity: int, total_revenue: float, total_pft: float, total_cogs: float, gpft_percent: float, groi_percent: float}|null
      */
@@ -1067,7 +1067,7 @@ class ChannelMasterController extends Controller
             }
 
             [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
-            $live = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
+            $live = TemuShopifySalesService::computeTemu2TabulatorMetrics($start, $end);
 
             return $this->temuMetricsToLiveSummary($live);
         } catch (\Throwable $e) {
@@ -1253,7 +1253,7 @@ class ChannelMasterController extends Controller
 
         try {
             [$start, $end] = TemuShopifySalesService::channelMasterL60Window();
-            $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
+            $m = TemuShopifySalesService::computeTemu2TabulatorMetrics($start, $end);
 
             return [
                 'sales' => (float) ($m['sales'] ?? 0),
@@ -2037,7 +2037,7 @@ class ChannelMasterController extends Controller
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
-            // L30 Sales / GPFT / GROI from Temu Price (same as /temu-tabulator).
+            // Temu 2 GPFT / GROI from /temu2-tabulator (base_price_total + R Price GPFT$).
             $rows = $this->overlayLiveTemuSalesOnChannelRows($rows);
             $rows = $this->overlayLiveTemu2AdsOnChannelRows($rows);
         } catch (\Throwable $e) {
@@ -11370,7 +11370,7 @@ class ChannelMasterController extends Controller
         $l60Sales = $l60Resolved['sales'];
         $l60Orders = $l60Resolved['orders'];
 
-        // L30 sales / GPFT / GROI: same as /temu2-tabulator (GPFT$ from R Price).
+        // L30 sales / GPFT / GROI: same source as /temu2-tabulator (base_price_total, GPFT$ from R Price).
         $useLiveSales = $liveSales && $liveRevenue > 0;
         $l30Sales = $useLiveSales ? $liveRevenue : ($metrics?->total_sales ?? 0);
         $l30Orders = $useLiveSales ? ($liveSales['total_orders'] ?? 0) : ($metrics?->total_orders ?? 0);

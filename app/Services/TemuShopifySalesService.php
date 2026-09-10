@@ -380,15 +380,84 @@ class TemuShopifySalesService
     }
 
     /**
+     * Same L30/L60 totals as /temu2-tabulator summary badges.
+     * Base = base_price_total (no −$2.99, not line_sales/qty).
+     * GPFT$ = (R Price × margin − LP − Temu Ship) × Qty
+     * GPFT% = GPFT$ ÷ Σ (Temu Price × Qty)
+     * GROI% = GPFT$ ÷ Σ (LP × Qty)
+     *
+     * @return array{sales: float, base_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
+     */
+    public static function computeTemu2TabulatorMetrics(Carbon $startDate, Carbon $endDate): array
+    {
+        $empty = ['sales' => 0.0, 'base_sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'gpft' => 0.0, 'cogs' => 0.0];
+        $rows = self::getTemu2OrdersTableRows($startDate, $endDate);
+        if (empty($rows)) {
+            return $empty;
+        }
+
+        $margin = self::temuMarginDecimal();
+        $totalSales = 0.0;
+        $totalBaseSales = 0.0;
+        $totalQty = 0;
+        $totalPft = 0.0;
+        $totalCogs = 0.0;
+        $orderSet = [];
+
+        foreach ($rows as $r) {
+            $parent = (string) ($r['Parent'] ?? '');
+            if ($parent !== '' && str_starts_with($parent, 'PARENT')) {
+                continue;
+            }
+            $sku = trim((string) ($r['contribution_sku'] ?? ''));
+            $orderId = trim((string) ($r['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+
+            $qty = (int) ($r['quantity_purchased'] ?? 0);
+            $base = (float) ($r['base_price_total'] ?? 0);
+            if ($qty <= 0 || $base <= 0) {
+                continue;
+            }
+
+            $lp = (float) ($r['lp'] ?? 0);
+            $ship = (float) ($r['temu_ship'] ?? 0);
+            $lineSales = (float) ($r['line_sales'] ?? 0);
+            $calc = self::temuPriceSalesAndProfit($base, $qty, $margin, $lp, $ship, false, true);
+
+            $totalSales += $calc['sales'];
+            $totalPft += $calc['profit'];
+            $totalCogs += $lp * $qty;
+            $totalQty += $qty;
+            $totalBaseSales += $lineSales > 0 ? $lineSales : ($base * $qty);
+            $orderSet[$orderId] = true;
+        }
+
+        return [
+            'sales' => round($totalSales, 2),
+            'base_sales' => round($totalBaseSales, 2),
+            'orders' => count($orderSet),
+            'qty' => $totalQty,
+            'pft' => round($totalPft, 2),
+            'gpft' => round($totalPft, 2),
+            'cogs' => round($totalCogs, 2),
+        ];
+    }
+
+    /**
      * Sales/orders/qty/pft/cogs from the temu_orders table (Temu API order-wise data).
+     * Temu 2 uses /temu2-tabulator math (computeTemu2TabulatorMetrics).
      *
      * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
      */
     public static function computeMetricsFromOrders(Carbon $startDate, Carbon $endDate, bool $isTemu2 = false): array
     {
-        $rows = $isTemu2
-            ? self::getTemu2OrdersTableRows($startDate, $endDate)
-            : self::getOrdersTableRows($startDate, $endDate);
+        if ($isTemu2) {
+            return self::computeTemu2TabulatorMetrics($startDate, $endDate);
+        }
+
+        $rows = self::getOrdersTableRows($startDate, $endDate);
 
         if (empty($rows)) {
             return ['sales' => 0.0, 'base_sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'gpft' => 0.0, 'cogs' => 0.0];
@@ -413,10 +482,8 @@ class TemuShopifySalesService
 
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
-            // Temu 2: Base as-is, GPFT$ from R Price. Temu 1: strip freight, profit from Temu Price.
-            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, $margin, $lp, $ship, ! $isTemu2, $isTemu2);
+            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, $margin, $lp, $ship, true, false);
 
-            // L30 Sales = Temu Price × Qty. Temu 2 PFT = GPFT$ (R Price).
             $totalSales += $calc['sales'];
             $totalPft += $calc['profit'];
             $totalCogs += $lp * $qty;
