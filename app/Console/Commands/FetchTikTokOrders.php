@@ -105,6 +105,16 @@ class FetchTikTokOrders extends Command
             foreach ($orders as $order) {
                 $lines = $this->mapOrderToRows($order, $shopRegion);
                 foreach ($lines as $row) {
+                    $existing = $orderModel::query()
+                        ->where('order_id', $row['order_id'])
+                        ->where('line_item_id', $row['line_item_id'])
+                        ->first();
+                    if (trim((string) ($row['seller_sku'] ?? '')) === '') {
+                        unset($row['seller_sku']);
+                    }
+                    if ($existing && trim((string) ($existing->shopify_order_id ?? '')) !== '') {
+                        unset($row['shopify_order_id'], $row['import_status'], $row['pushed_to_shopify_at']);
+                    }
                     $orderModel::updateOrCreate(
                         [
                             'order_id' => $row['order_id'],
@@ -180,7 +190,7 @@ class FetchTikTokOrders extends Command
                 'line_item_id' => $lineId,
                 'order_status' => $order['status'] ?? null,
                 'line_status' => $item['display_status'] ?? ($item['package_status'] ?? null),
-                'seller_sku' => $this->normalizeSku($item['seller_sku'] ?? null),
+                'seller_sku' => $this->normalizeSku($item['seller_sku'] ?? $item['sku'] ?? null),
                 'product_id' => isset($item['product_id']) ? (string) $item['product_id'] : null,
                 'sku_id' => isset($item['sku_id']) ? (string) $item['sku_id'] : null,
                 'product_name' => $item['product_name'] ?? null,

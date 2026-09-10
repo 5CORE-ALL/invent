@@ -55,11 +55,23 @@ class TikTok2OrderPushService
             }
         }
 
+        $localCatalog = $this->findLocalShopifyTikTokCopy($orderId, 'TT2-', 'tiktok2');
+        if ($localCatalog) {
+            $this->linkTikTok2OrderToShopify($orderId, $localCatalog);
+            $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localCatalog.' (local catalog).';
+            $fresh = $order->fresh() ?? $order;
+            $fresh->shopify_order_id = $localCatalog;
+            $this->syncShippingAddressToShopify($fresh);
+            $this->fulfillShopifyForImportedMarketplaceOrder('tiktok2', (int) $fresh->id, ['order_id' => $orderId]);
+
+            return $localCatalog;
+        }
+
         // Strict Shopify search — refuse to create if check cannot complete.
         $config = $this->shopifyConfig();
         $existing = $this->findExistingShopifyOrderByRefs(
             $config,
-            array_values(array_filter([$orderId])),
+            $this->tikTokShopifyDuplicateRefs($orderId, 'TT2-'),
             ['tiktok2-', 'tiktok-'],
             ['tiktok2_order_id', 'tiktok_order_id'],
             'TikTok2OrderPushService'
@@ -105,7 +117,7 @@ class TikTok2OrderPushService
         $shopifyOrderId = $this->postOrderGuarded(
             $config,
             ['order' => $plan['payload']],
-            array_values(array_filter([$orderId])),
+            $this->tikTokShopifyDuplicateRefs($orderId, 'TT2-'),
             ['tiktok2-', 'tiktok-'],
             ['tiktok2_order_id', 'tiktok_order_id'],
             'TikTok2OrderPushService',
@@ -336,9 +348,17 @@ class TikTok2OrderPushService
 
         $lineItems = [];
         foreach ($lines as $line) {
-            $sku = trim((string) ($line->seller_sku ?? ''));
-            if ($sku === '' || $sku === '__order__') {
+            $sku = $this->sellerSkuFromTikTokLine($line);
+            if ($sku === '') {
                 continue;
+            }
+            if (trim((string) ($line->seller_sku ?? '')) === '') {
+                $line->seller_sku = $sku;
+                try {
+                    $line->save();
+                } catch (\Throwable) {
+                    // best-effort persist
+                }
             }
 
             $variantId = $this->findShopifyVariantIdBySku($sku);
