@@ -4517,10 +4517,15 @@ class TikTokShopService
      * @param  string  $orderId           TikTok order ID
      * @param  string  $trackingNumber    Carrier tracking number
      * @param  string  $shippingProvider  Shipping provider ID (required by TikTok)
+     * @param  list<string>  $lineIds     TikTok order line item IDs (required by markPackageAsShipped)
      * @return array{success: bool, message: string}
      */
-    public function markOrderShipped(string $orderId, string $trackingNumber, string $shippingProvider = ''): array
-    {
+    public function markOrderShipped(
+        string $orderId,
+        string $trackingNumber,
+        string $shippingProvider = '',
+        array $lineIds = []
+    ): array {
         if (! $this->accessToken) {
             return ['success' => false, 'message' => 'TikTok access token not available.'];
         }
@@ -4528,6 +4533,11 @@ class TikTokShopService
         if ($shippingProvider === '') {
             return ['success' => false, 'message' => 'TikTok shipping_provider_id is required to mark shipped.'];
         }
+
+        $lineIds = array_values(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $lineIds
+        ), static fn ($id) => $id !== '' && $id !== '__order__' && $id !== '__unknown__'));
 
         try {
             $this->client->setAccessToken($this->accessToken);
@@ -4538,42 +4548,80 @@ class TikTokShopService
                 $orderId,
                 $trackingNumber,
                 $shippingProvider,
-                []
+                $lineIds
             );
             $this->lastResponse = $response;
 
-            if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
-                return ['success' => false, 'message' => (string) ($response['message'] ?? 'TikTok ship order failed.')];
+            if (! $this->tikTokFulfillmentFailed($response)) {
+                return ['success' => true, 'message' => "Order {$orderId} marked shipped."];
             }
 
-            return ['success' => true, 'message' => "Order {$orderId} marked shipped."];
+            $shipMessage = $this->tikTokFulfillmentMessage($response, 'TikTok ship order failed.');
+            $updated = $this->updateTikTokShippingInfo($orderId, $trackingNumber, $shippingProvider);
+            if (! empty($updated['success'])) {
+                return $updated;
+            }
+
+            return ['success' => false, 'message' => $shipMessage];
         } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
             if ($this->refreshAccessToken()) {
-                return $this->markOrderShipped($orderId, $trackingNumber, $shippingProvider);
+                return $this->markOrderShipped($orderId, $trackingNumber, $shippingProvider, $lineIds);
             }
 
             return ['success' => false, 'message' => 'Token expired and refresh failed: '.$e->getMessage()];
         } catch (\Throwable $e) {
-            // Fallback: update shipping info if package already exists
-            try {
-                $response = $this->client->Fulfillment->updateShippingInfo($orderId, $trackingNumber, $shippingProvider);
-                $this->lastResponse = $response;
-                if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
-                    return ['success' => false, 'message' => (string) ($response['message'] ?? $e->getMessage())];
-                }
-
-                return ['success' => true, 'message' => "Order {$orderId} shipping info updated."];
-            } catch (\Throwable $e2) {
-                Log::error('TikTok markOrderShipped failed', [
-                    'order_id' => $orderId,
-                    'tracking' => $trackingNumber,
-                    'error' => $e->getMessage(),
-                    'fallback_error' => $e2->getMessage(),
-                ]);
-
-                return ['success' => false, 'message' => $e->getMessage()];
+            $updated = $this->updateTikTokShippingInfo($orderId, $trackingNumber, $shippingProvider);
+            if (! empty($updated['success'])) {
+                return $updated;
             }
+
+            Log::error('TikTok markOrderShipped failed', [
+                'order_id' => $orderId,
+                'tracking' => $trackingNumber,
+                'error' => $e->getMessage(),
+                'fallback_error' => $updated['message'] ?? null,
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
+    protected function updateTikTokShippingInfo(string $orderId, string $trackingNumber, string $shippingProvider): array
+    {
+        try {
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+            $response = $this->client->Fulfillment->updateShippingInfo($orderId, $trackingNumber, $shippingProvider);
+            $this->lastResponse = $response;
+            if ($this->tikTokFulfillmentFailed($response)) {
+                return [
+                    'success' => false,
+                    'message' => $this->tikTokFulfillmentMessage($response, 'TikTok update shipping info failed.'),
+                ];
+            }
+
+            return ['success' => true, 'message' => "Order {$orderId} shipping info updated."];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    protected function tikTokFulfillmentFailed(mixed $response): bool
+    {
+        return is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0;
+    }
+
+    protected function tikTokFulfillmentMessage(mixed $response, string $fallback): string
+    {
+        if (! is_array($response)) {
+            return $fallback;
+        }
+        $message = trim((string) ($response['message'] ?? ''));
+
+        return $message !== '' ? $message : $fallback;
     }
 
     /**
