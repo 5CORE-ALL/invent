@@ -832,17 +832,6 @@
                             data-metric="total_ebay_l30" data-live-value="{{ (int) ($ordersL30TotalQty ?? 0) }}"
                             style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
                             title="L30 units sold. Click dot for rolling history.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}<span class="summary-trend-dot none" data-metric="total_ebay_l30" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="dil-ov-badge"
-                            data-metric="dil_ov_percent" data-live-value="0" data-format="pct"
-                            style="background-color: #198754; color: white; font-weight: bold; cursor: pointer;"
-                            title="Dil Ov = Total Sold ÷ Total Inv Available × 100. Click for rolling history.">Dil Ov: 0%<span class="summary-trend-dot none" data-metric="dil_ov_percent" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="dil-eb1-badge"
-                            data-metric="dil_eb1_percent" data-live-value="0" data-format="pct"
-                            style="background-color: #198754; color: white; font-weight: bold; cursor: pointer;"
-                            title="Dil EB1 = Total Sold In eBay ÷ Total Inv × 100. Click for rolling history.">Dil EB1: 0%<span class="summary-trend-dot none" data-metric="dil_eb1_percent" title="Rolling history"></span></span>
-                        <span class="badge fs-6 p-2" id="ebay1-shopify-sales-badge"
-                            style="background-color: #0f766e; color: white; font-weight: bold; display: none;"
-                            title="eBay1 sales from Shopify raw data (L30, excludes cancelled)">EShp: $0</span>
 
                         <!-- Percentage Metrics -->
                         <span class="badge fs-6 p-2 bg-info ebay1-badge-chart" id="avg-gpft-badge"
@@ -1637,8 +1626,6 @@
             nroi_percent: 'NROI%',
             cvr_percent: 'CVR%',
             total_views: 'Views',
-            dil_ov_percent: 'Dil Ov',
-            dil_eb1_percent: 'Dil EB1',
         };
         /** Metrics where lower is better → invert 3-color (up=red, down=green) */
         const ebay1BadgeInvertMetrics = { tcos_percent: true };
@@ -1803,16 +1790,6 @@
             $dot.attr('class', 'summary-trend-dot ' + cls).attr('title', tip);
         }
 
-        function applyEbay1DilBadgeTone($el, metricKey, currentVal) {
-            if (!$el || !$el.length) return;
-            const prev = ebay1BadgePrevDay && ebay1BadgePrevDay[metricKey];
-            const down = isFinite(currentVal) && prev != null && isFinite(prev) && (currentVal - prev) < -0.05;
-            $el.css({
-                backgroundColor: down ? '#dc3545' : '#198754',
-                color: '#fff'
-            });
-        }
-
         function syncEbay1SummaryTrendDots() {
             $('#summary-stats .ebay1-badge-chart[data-metric]').each(function() {
                 const metric = $(this).data('metric');
@@ -1820,9 +1797,6 @@
                 let live = parseFloat($(this).attr('data-live-value'));
                 if (!isFinite(live)) live = parseFloat($(this).data('live-value'));
                 applyEbay1SummaryTrendDot(metric, live);
-                if (metric === 'dil_ov_percent' || metric === 'dil_eb1_percent') {
-                    applyEbay1DilBadgeTone($(this), metric, live);
-                }
             });
         }
 
@@ -1862,10 +1836,8 @@
             ebay1ChartMode = 'badge';
             ebay1ChartSku = '';
             ebay1ChartMetricKey = metricKey;
-            // Dil Ov / Dil EB1: show from the first saved snapshot, not a padded 30-day flat line.
-            const fromStart = (metricKey === 'dil_ov_percent' || metricKey === 'dil_eb1_percent');
-            ebay1ChartDays = fromStart ? 0 : 30;
-            $('#ebay1ChartRangeSelect').val(fromStart ? '0' : '30');
+            ebay1ChartDays = 30;
+            $('#ebay1ChartRangeSelect').val('30');
             const label = ebay1BadgeMetricLabels[metricKey] || metricKey;
             $('#ebay1ChartModalTitle').text('eBay 1 — ' + label + ' Rolling History');
             openEbay1ChartModal();
@@ -6041,35 +6013,6 @@
                 setSummaryBadge($('#total-sales-amt-badge'), 'Sales: $' + Math.round(ORDERS_L30_TOTAL_SALES).toLocaleString(), Math.round(ORDERS_L30_TOTAL_SALES));
                 setSummaryBadge($('#qty-sold-badge'), 'Qty: ' + Math.round(ORDERS_L30_TOTAL_QTY).toLocaleString(), Math.round(ORDERS_L30_TOTAL_QTY));
 
-                let totalInvAvailable = 0;
-                let totalEbaySold = 0;
-                allData.forEach(function(row) {
-                    const isParent = row.is_parent_summary === true ||
-                        (row['Parent'] && String(row['Parent']).toUpperCase().startsWith('PARENT'));
-                    if (isParent) return;
-                    const inv = parseFloat(row['INV'] || 0);
-                    if (inv > 0) totalInvAvailable += inv;
-                    totalEbaySold += parseFloat(row['eBay L30'] || 0);
-                });
-                const dilOv = totalInvAvailable > 0
-                    ? (ORDERS_L30_TOTAL_QTY / totalInvAvailable) * 100
-                    : 0;
-                const dilEb1 = totalInvAvailable > 0
-                    ? (totalEbaySold / totalInvAvailable) * 100
-                    : 0;
-                const $dilOv = $('#dil-ov-badge');
-                setSummaryBadge($dilOv, 'Dil Ov: ' + Math.round(dilOv) + '%', Math.round(dilOv));
-                $dilOv.attr('title', 'Dil Ov = Total Sold (' + Math.round(ORDERS_L30_TOTAL_QTY).toLocaleString()
-                    + ') ÷ Total Inv Available (' + Math.round(totalInvAvailable).toLocaleString()
-                    + ') × 100. Click for rolling history.');
-                const $dilEb1 = $('#dil-eb1-badge');
-                setSummaryBadge($dilEb1, 'Dil EB1: ' + Math.round(dilEb1) + '%', Math.round(dilEb1));
-                $dilEb1.attr('title', 'Dil EB1 = Total Sold In eBay (' + Math.round(totalEbaySold).toLocaleString()
-                    + ') ÷ Total Inv (' + Math.round(totalInvAvailable).toLocaleString()
-                    + ') × 100. Click for rolling history.');
-                applyEbay1DilBadgeTone($dilOv, 'dil_ov_percent', Math.round(dilOv));
-                applyEbay1DilBadgeTone($dilEb1, 'dil_eb1_percent', Math.round(dilEb1));
-
                 setSummaryBadge($('#avg-cvr-badge'), 'CVR: ' + avgCVR.toFixed(1) + '%', parseFloat(avgCVR.toFixed(1)));
                 setSummaryBadge($('#total-views-badge'), 'Views: ' + totalViews.toLocaleString(), totalViews);
                 // Always reformat L7 cells so below-avg values show RED (not stale green HTML).
@@ -6432,24 +6375,6 @@
             }
 
             // Wait for table to be built
-            // eBay1 sales (from shopify_raw_orders, L30, excludes cancelled / other eBay stores)
-            function loadEbay1ShopifySales() {
-                fetch('{{ route('shopify-raw-data.ebay1-sales') }}', {
-                        method: 'GET',
-                        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
-                    })
-                    .then(r => r.json())
-                    .then(d => {
-                        const sales = parseFloat(d.sales || 0);
-                        $('#ebay1-shopify-sales-badge')
-                            .text('EShp: $' + Math.round(sales).toLocaleString())
-                            .attr('title', 'eBay1 sales from Shopify raw data ' +
-                                (d.date_from || '') + ' to ' + (d.date_to || '') +
-                                ' (excludes cancelled). Orders: ' + (d.orders || 0) + ', Qty: ' + (d.qty || 0));
-                    })
-                    .catch(() => {});
-            }
-
             // Re-apply filters after any sort so hidden parent (summary) rows never
             // reappear when sorting by a column (View = SKU keeps them hidden).
             let ebaySortReapplyGuard = false;
@@ -6465,7 +6390,6 @@
                 applyColumnVisibilityFromServer();
                 buildColumnDropdown();
                 applyFilters();
-                loadEbay1ShopifySales();
             });
 
             table.on('dataLoaded', function() {
