@@ -244,6 +244,17 @@
             background-color: #fefce8 !important;
         }
 
+        /* P (parent-expand) column — removed from this page */
+        #ebay3-table .tabulator-col[tabulator-field="_parent_expand"],
+        #ebay3-table .tabulator-cell[tabulator-field="_parent_expand"] {
+            display: none !important;
+            width: 0 !important;
+            min-width: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            overflow: hidden !important;
+        }
+
         /* Hide tree + / − glyphs and box styling; keep control clickable to expand/collapse */
         #ebay3-table .tabulator-data-tree-control {
             background: transparent !important;
@@ -456,7 +467,6 @@
                         <span class="badge bg-secondary ebay3-badge-chart ebay3-hover-chart" id="groi-percent-badge" data-metric="groi_percent" style="color: white; font-weight: bold; cursor: pointer;" title="View trend">GROI: 0%</span>
                         <span class="badge bg-warning ebay3-badge-chart ebay3-hover-chart" id="avg-price-badge" data-metric="avg_price" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Prc: $0.00</span>
                         <span class="badge bg-danger ebay3-badge-chart ebay3-hover-chart" id="avg-cvr-badge" data-metric="cvr_percent" style="color: white; font-weight: bold; cursor: pointer;" title="CVR = (real-orders L30 units sold / Σ Views) × 100. Numerator is the orders-API L30 units (same source /ebay3/daily-sales uses), denominator is Σ views across rows with E Stock > 0. Click for trend.">CVR: 0%</span>
-                        <span class="badge bg-info ebay3-badge-chart ebay3-hover-chart" id="total-views-badge" data-metric="total_views" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Views: 0</span>
                         <span class="badge fs-6 p-2" id="ebay3-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
@@ -464,10 +474,6 @@
                         <span class="badge fs-6 p-2" id="ebay3-ended-listing-badge"
                             style="background-color:#ffc107;color:#212529;font-weight:700;cursor:pointer;"
                             title="Ended listing">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
-                        <span class="badge fs-6 p-2" id="ebay3-red-triangle-badge"
-                            style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Red triangle: Price &gt; LMP. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay3-lmp-missing-badge"
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
@@ -873,7 +879,6 @@
     let zeroSoldFilterActive = false;
     let moreSoldFilterActive = false;
     let blueTriangleFilterActive = false;
-    let redTriangleFilterActive = false;
     let lmpMissingFilterActive = false;
     let priceLt80LmpFilterActive = false;
     let endedListingFilterActive = false;
@@ -888,7 +893,6 @@
         groi_percent: 'GROI %',
         avg_price: 'Avg price',
         cvr_percent: 'CVR %',
-        total_views: 'Views',
     };
     // L30 units sold from real ebay3 orders (same source /ebay3/daily-sales uses) — CVR numerator.
     const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
@@ -1904,22 +1908,10 @@
             const price = parseFloat(data['eBay Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
-        function ebay3HasRedTriangle(data) {
-            if (ebay3IsAlertParentRow(data)) return false;
-            const price = parseFloat(data['eBay Price']) || 0;
-            const lmp = (window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function')
-                ? LmpIgnore.effectiveLmp(data)
-                : (parseFloat(data.lmp_price) || 0);
-            return price > 0 && lmp > 0 && price > lmp;
-        }
         function syncEbay3TriangleBadgeState() {
             $('#ebay3-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: blueTriangleFilterActive ? '2px' : ''
-            });
-            $('#ebay3-red-triangle-badge').css({
-                outline: redTriangleFilterActive ? '3px solid #ffc107' : '',
-                outlineOffset: redTriangleFilterActive ? '2px' : ''
             });
             $('#ebay3-lmp-missing-badge').css({
                 outline: lmpMissingFilterActive ? '3px solid #ffc107' : '',
@@ -2096,18 +2088,6 @@
         $('#ebay3-blue-triangle-badge').on('click', function() {
             blueTriangleFilterActive = !blueTriangleFilterActive;
             if (blueTriangleFilterActive) {
-                redTriangleFilterActive = false;
-                lmpMissingFilterActive = false;
-                priceLt80LmpFilterActive = false;
-                endedListingFilterActive = false;
-            }
-            applyFilters();
-            syncEbay3TriangleBadgeState();
-        });
-        $('#ebay3-red-triangle-badge').on('click', function() {
-            redTriangleFilterActive = !redTriangleFilterActive;
-            if (redTriangleFilterActive) {
-                blueTriangleFilterActive = false;
                 lmpMissingFilterActive = false;
                 priceLt80LmpFilterActive = false;
                 endedListingFilterActive = false;
@@ -2119,7 +2099,6 @@
             lmpMissingFilterActive = !lmpMissingFilterActive;
             if (lmpMissingFilterActive) {
                 blueTriangleFilterActive = false;
-                redTriangleFilterActive = false;
                 priceLt80LmpFilterActive = false;
                 endedListingFilterActive = false;
             }
@@ -2130,7 +2109,6 @@
             priceLt80LmpFilterActive = !priceLt80LmpFilterActive;
             if (priceLt80LmpFilterActive) {
                 blueTriangleFilterActive = false;
-                redTriangleFilterActive = false;
                 lmpMissingFilterActive = false;
                 endedListingFilterActive = false;
             }
@@ -2141,7 +2119,6 @@
             endedListingFilterActive = !endedListingFilterActive;
             if (endedListingFilterActive) {
                 blueTriangleFilterActive = false;
-                redTriangleFilterActive = false;
                 lmpMissingFilterActive = false;
                 priceLt80LmpFilterActive = false;
             }
@@ -3520,12 +3497,6 @@
                     return ebay3TriangleFilterMatch(data, ebay3IsEndedListing, endedParents);
                 });
             }
-            if (redTriangleFilterActive) {
-                const redParents = ebay3TriangleParentKeys(ebay3HasRedTriangle);
-                table.addFilter(function(data) {
-                    return ebay3TriangleFilterMatch(data, ebay3HasRedTriangle, redParents);
-                });
-            }
             if (lmpMissingFilterActive && window.LmpMissingBadge) {
                 table.addFilter(function(data) {
                     return !LmpMissingBadge.isParentRow(data) && !LmpMissingBadge.hasLmp(data);
@@ -3833,15 +3804,12 @@
             $('#groi-percent-badge').text('GROI: ' + Math.round(ORDERS_L30_GROI) + '%');
             $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
-            $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
 
             const visible = ebay3GetVisibleSkuRows();
             let blueTriangleCount = 0;
-            let redTriangleCount = 0;
             let endedListingCount = 0;
             visible.forEach(function(row) {
                 if (ebay3HasBlueTriangle(row)) blueTriangleCount++;
-                if (ebay3HasRedTriangle(row)) redTriangleCount++;
                 if (ebay3IsEndedListing(row)) endedListingCount++;
             });
             $('#ebay3-blue-triangle-badge').html(
@@ -3850,14 +3818,6 @@
             $('#ebay3-ended-listing-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + endedListingCount.toLocaleString()
             );
-            $('#ebay3-red-triangle-badge').html(
-                '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()
-            );
-            if (window.PriceGtLmpBadge) {
-                PriceGtLmpBadge.paint('#ebay3-red-triangle-badge', redTriangleCount);
-                PriceGtLmpBadge.report('ebay3', redTriangleCount);
-                PriceGtLmpBadge.setOutline(document.getElementById('ebay3-red-triangle-badge'), redTriangleFilterActive);
-            }
             if (window.LmpMissingBadge) {
                 LmpMissingBadge.update('#ebay3-lmp-missing-badge', visible, 'ebay3');
             }
@@ -4060,6 +4020,10 @@
 
         // Wait for table to be built
         table.on('tableBuilt', function() {
+            try {
+                const pe = table.getColumn('_parent_expand');
+                if (pe) pe.delete();
+            } catch (e) { /* column not present */ }
             applySectionColumnVisibility('all');
             syncEbay3PriceModeUi();
             applyColumnVisibilityFromServer();

@@ -1927,17 +1927,6 @@
                         }
                     },
                     {
-                        title: "Views",
-                        field: "views",
-                        sorter: "number",
-                        hozAlign: "center",
-                        width: 65,
-                        headerTooltip: "AliExpress L30 page views (queryproductviewedinfoeverydaybyid / viewedCount)",
-                        formatter: function(cell) {
-                            return `<span style="font-weight:700;">${parseInt(cell.getValue(), 10) || 0}</span>`;
-                        }
-                    },
-                    {
                         title: "Dil",
                         field: "dil_percent",
                         sorter: "number",
