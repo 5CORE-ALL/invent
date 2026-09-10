@@ -601,7 +601,7 @@
                             title="Recovery Price = Sales × 0.88 (Full Temu Price × 0.88 × Qty)">Recovery: $0</span>
                         <span class="badge fs-6 p-2" id="total-spend-badge"
                             style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; font-weight: bold;"
-                            title="Sum of Spend from Temu 2 Ads upload">Spend: $0</span>
+                            title="Same L30 Spend as /temu2/ads (latest row per goods_id)">Spend: $0</span>
                         <span class="badge fs-6 p-2 temu-badge-history" id="qty-sold-badge"
                             data-badge-metric="total_quantity" data-badge-label="QTY"
                             style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
@@ -614,7 +614,10 @@
                             title="GROI% = Σ R-Price PFT ÷ Σ COGS × 100 (same as /temu-decrease)">GROI: 0%</span>
                         <span class="badge fs-6 p-2" id="ads-percent-badge"
                             style="background-color: #d63384; color: white; font-weight: bold;"
-                            title="Ads% = Ad Spend / Full Temu Price Sales × 100">Ads: 0%</span>
+                            title="Same as /temu2/ads TAcos% = Spend ÷ all sales (Shopify L30 × price)">Ads: 0%</span>
+                        <span class="badge fs-6 p-2" id="tacos-percent-badge"
+                            style="background-color: #b45309; color: white; font-weight: bold;"
+                            title="Same TAcos% as /temu2/ads: Spend ÷ all sales (Shopify L30 × price)">TAcos%: 0%</span>
                         <span class="badge bg-success fs-6 p-2" id="avg-npft-badge"
                             style="color: white; font-weight: bold;"
                             title="NPFT% = GPFT% − Ads% (Full Temu Price)">NPFT: 0%</span>
@@ -3518,6 +3521,11 @@
             $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGprft) + '%');
             $('#groi-percent-badge').text('GROI: ' + Math.round(avgGroi) + '%');
             $('#ads-percent-badge').text('Ads: ' + (Number(adsPercentForNpft) || 0).toFixed(1) + '%');
+            const tacosFromAds = adTotalsFromBackend && adTotalsFromBackend.tacos != null
+                ? parseFloat(adTotalsFromBackend.tacos)
+                : NaN;
+            const tacosPct = Number.isFinite(tacosFromAds) ? tacosFromAds : (Number(adsPercentForNpft) || 0);
+            $('#tacos-percent-badge').text('TAcos%: ' + tacosPct.toFixed(1) + '%');
             $('#avg-npft-badge').text('NPFT: ' + Math.round(avgNpft) + '%');
             $('#avg-nroi-badge').text('NROI: ' + Math.round(avgNroi) + '%');
             $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
@@ -3631,9 +3639,13 @@
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
                     salesSummaryFromBackend = response.sales_summary || null;
                     adTotalsFromBackend = response.ad_totals || null;
-                    // Use exact aggregate_ads_percent from backend (matches all-marketplace-master)
-                    // This is the authoritative value - always use it for NPFT calculation
-                    if (response.aggregate_ads_percent != null && response.aggregate_ads_percent !== undefined) {
+                    // Ads% / TAcos% from /temu2/ads (Spend ÷ Shopify all sales).
+                    const tacosFromAdsPage = adTotalsFromBackend && adTotalsFromBackend.tacos != null
+                        ? parseFloat(adTotalsFromBackend.tacos)
+                        : NaN;
+                    if (Number.isFinite(tacosFromAdsPage)) {
+                        badgeAvgAds = tacosFromAdsPage;
+                    } else if (response.aggregate_ads_percent != null && response.aggregate_ads_percent !== undefined) {
                         const parsedAggregateAds = parseFloat(response.aggregate_ads_percent);
                         badgeAvgAds = Number.isFinite(parsedAggregateAds) ? parsedAggregateAds : null;
                     } else {
@@ -4157,7 +4169,7 @@
                     field: "ads_percent",
                     hozAlign: "center",
                     visible: false,
-                    headerTooltip: "ADS% = 2.2% on every row",
+                    headerTooltip: "ADS% = /temu2/ads TAcos% (Spend ÷ all sales)",
                     sorter: "number",
                     formatter: function(cell) {
                         const displayVal = typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 2.2;
