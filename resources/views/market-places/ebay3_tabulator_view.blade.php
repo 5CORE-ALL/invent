@@ -1117,6 +1117,10 @@
     }
     function ebay3RawRuleSprice(rowData) {
         if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return 0;
+        if (typeof ebaySprcDilForRow === 'function') {
+            const dil = Number(ebaySprcDilForRow(rowData)) || 0;
+            if (dil > 0) return dil;
+        }
         let saved = 0;
         if (typeof chPromoSavedOrLiveSprice === 'function') {
             saved = Number(chPromoSavedOrLiveSprice(rowData)) || 0;
@@ -1124,12 +1128,7 @@
         if (!(saved > 0)) {
             saved = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
         }
-        if (!(saved > 0)) return 0;
-        if (typeof ebaySprcDilForRow === 'function') {
-            const dil = Number(ebaySprcDilForRow(rowData)) || 0;
-            if (dil > 0) return dil;
-        }
-        return saved;
+        return saved > 0 ? saved : 0;
     }
     function ebay3DisplayedSprice(rowData) {
         const raw = ebay3RawRuleSprice(rowData);
@@ -3128,7 +3127,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "Suggested price from Dil → Target GROI% slabs (including 0 Sold). CVR Down < 7% subtracts 10 from Target GROI%; CVR Up > 10% adds 10. Formula: (LP × (1 + GROI%/100) + Ship) / take-home.",
+                    headerTooltip: "Suggested price from Dil → Target GROI% slabs. Dil outside the table uses the nearest slab (including 0 Sold). CVR < 7% subtracts 10 from Target GROI%; CVR > 10% adds 10. Formula: (LP × (1 + GROI%/100) + Ship) / take-home.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary || rowData.is_parent_row) return '';

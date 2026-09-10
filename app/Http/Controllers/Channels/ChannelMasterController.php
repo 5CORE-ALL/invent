@@ -880,45 +880,6 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            $gidByNorm = [];
-            if (Schema::hasTable('temu3_pricing')) {
-                foreach (Temu3Pricing::query()->select(['sku', 'goods_id'])->get() as $row) {
-                    $n = $normalizeSku($row->sku);
-                    $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
-                    if ($n !== '' && $gid && isset($normalizedPm[$n])) {
-                        $gidByNorm[$n] = $gid;
-                    }
-                }
-            }
-
-            $viewByGid = [];
-            if (Schema::hasTable('temu3_view_data')) {
-                foreach (Temu3ViewData::query()
-                    ->selectRaw('goods_id, SUM(product_clicks) as product_clicks')
-                    ->groupBy('goods_id')
-                    ->get() as $row) {
-                    $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
-                    if ($gid) {
-                        $viewByGid[$gid] = (int) $row->product_clicks;
-                    }
-                }
-            }
-
-            $viewsByGoodsId = [];
-            $totalViews = 0;
-            foreach ($normalizedPm as $norm => $_sku) {
-                $gid = $gidByNorm[$norm] ?? null;
-                $rowViews = $gid ? (int) ($viewByGid[$gid] ?? 0) : 0;
-                if ($gid) {
-                    $viewsByGoodsId[$gid] = $rowViews;
-                } else {
-                    $totalViews += $rowViews;
-                }
-            }
-            foreach ($viewsByGoodsId as $views) {
-                $totalViews += (int) $views;
-            }
-
             $totalSold = 0;
             [$apiStart, $apiEnd] = TemuShopifySalesService::temu3SheetL30Window();
             foreach (TemuShopifySalesService::getTemu3OrdersTableRows($apiStart, $apiEnd) as $row) {
@@ -934,13 +895,13 @@ class ChannelMasterController extends Controller
                 $totalSold += (int) ($row['quantity_purchased'] ?? 0);
             }
 
-            $cvrPct = $totalViews > 0 ? round(($totalSold / $totalViews) * 100, 2) : 0.0;
+            $summary = TemuShopifySalesService::temu3ViewsSummary($totalSold, 'L30');
 
             return [
                 'ok' => true,
-                'total_views' => $totalViews,
-                'total_sold' => $totalSold,
-                'cvr_pct' => $cvrPct,
+                'total_views' => $summary['total_views'],
+                'total_sold' => $summary['total_sold'],
+                'cvr_pct' => $summary['cvr_pct'],
             ];
         } catch (\Throwable $e) {
             Log::warning('Temu 3 views (temu3-decrease source) failed: '.$e->getMessage());

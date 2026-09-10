@@ -11,11 +11,13 @@ use App\Models\Temu3DailyData;
 use App\Models\Temu3DailyDataL60;
 use App\Models\Temu3Order;
 use App\Models\Temu3Pricing;
+use App\Models\Temu3ViewData;
 use App\Models\TemuMetric;
 use App\Models\TemuOrder;
 use App\Services\MarketplaceManager\TemuOrderAmountParser;
 use App\Support\Marketplace\Temu3OrderSheet;
 use App\Support\ProductMasterTemuShip;
+use App\Support\TemuGoodsIdHelper;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -905,6 +907,96 @@ class TemuShopifySalesService
         }
 
         return $out;
+    }
+
+    /**
+     * Temu 3 view-data date window aligned with order sold (includes today).
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    public static function temu3ViewDateWindow(string $period = 'L30'): array
+    {
+        if (strtoupper($period) === 'L7') {
+            $end = Carbon::now(self::PST)->endOfDay();
+
+            return [$end->copy()->subDays(6)->startOfDay(), $end];
+        }
+
+        return self::temu3SheetL30Window();
+    }
+
+    /**
+     * temu3_view_data keyed by normalized Goods ID.
+     * Merges scientific/punctuation variants so clicks are not dropped, and
+     * uses the same L30/L7 date window as temu3_orders when dated rows exist.
+     *
+     * @return Collection<string, object>
+     */
+    public static function temu3ViewDataByGoodsId(string $period = 'L30'): Collection
+    {
+        if (! Schema::hasTable('temu3_view_data')) {
+            return collect();
+        }
+
+        $query = Temu3ViewData::query();
+        [$start, $end] = self::temu3ViewDateWindow($period);
+        $inWindow = (clone $query)
+            ->whereNotNull('date')
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->exists();
+        if ($inWindow) {
+            $query->whereNotNull('date')
+                ->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
+        }
+
+        $byKey = [];
+        foreach ($query->get() as $row) {
+            $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+            if (! $gid) {
+                continue;
+            }
+            if (! isset($byKey[$gid])) {
+                $byKey[$gid] = (object) [
+                    'goods_id' => $gid,
+                    'product_impressions' => 0,
+                    'visitor_impressions' => 0,
+                    'product_clicks' => 0,
+                    'visitor_clicks' => 0,
+                    'ctr' => 0.0,
+                    '_n' => 0,
+                ];
+            }
+            $byKey[$gid]->product_impressions += (int) ($row->product_impressions ?? 0);
+            $byKey[$gid]->visitor_impressions += (int) ($row->visitor_impressions ?? 0);
+            $byKey[$gid]->product_clicks += (int) ($row->product_clicks ?? 0);
+            $byKey[$gid]->visitor_clicks += (int) ($row->visitor_clicks ?? 0);
+            $byKey[$gid]->ctr += (float) ($row->ctr ?? 0);
+            $byKey[$gid]->_n++;
+        }
+        foreach ($byKey as $o) {
+            $o->ctr = $o->_n > 0 ? round($o->ctr / $o->_n, 2) : 0.0;
+            unset($o->_n);
+        }
+
+        return collect($byKey);
+    }
+
+    /**
+     * /temu3-decrease Views + CVR badges: sheet clicks once per Goods ID, sold from L30/L7 orders.
+     *
+     * @return array{total_views: int, total_sold: int, cvr_pct: float}
+     */
+    public static function temu3ViewsSummary(int $totalSold, string $period = 'L30'): array
+    {
+        $totalViews = (int) self::temu3ViewDataByGoodsId($period)->sum(
+            static fn ($row) => (int) ($row->product_clicks ?? 0)
+        );
+
+        return [
+            'total_views' => $totalViews,
+            'total_sold' => $totalSold,
+            'cvr_pct' => $totalViews > 0 ? round(($totalSold / $totalViews) * 100, 2) : 0.0,
+        ];
     }
 
     /**

@@ -2776,12 +2776,7 @@ class TemuController extends Controller
             // Fallback: temu_metrics.product_clicks_l30 (Ads API) when sheet has no row for that goods_id.
             // Temu 2: temu2_view_data sheet. Temu 3: temu3_view_data sheet.
             if ($isTemu3) {
-                $viewData = Schema::hasTable('temu3_view_data')
-                    ? Temu3ViewData::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
-                        ->groupBy('goods_id')
-                        ->get()
-                        ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
-                    : collect();
+                $viewData = TemuShopifySalesService::temu3ViewDataByGoodsId($selectedPeriod);
 
                 $viewDataL7 = collect();
                 $viewDataL7ToL14 = collect();
@@ -3369,19 +3364,23 @@ class TemuController extends Controller
 
                 // Missing listing: not in Temu API metrics (Temu 1) / temu2_pricing (Temu 2),
                 // or listed with INV>0 and base price 0. Never when INV=0+base>0, or nr_req=NR.
+                // Temu 3 is sheet-only — no API listing source, so Missing is not computed.
                 $inPricing = isset($temuPricingSkusNormalized[$normalizedCurrentSku]);
                 $basePriceVal = (float) $basePrice;
                 $invVal = (float) $inventory;
 
-                $missing = $inPricing ? '' : 'M';
-                if ($inPricing && $invVal > 0 && $basePriceVal <= 0) {
-                    $missing = 'M';
-                }
-                if ($inPricing && $invVal <= 0 && $basePriceVal > 0) {
-                    $missing = '';
-                }
-                if (strtoupper(trim((string) $nr_req)) === 'NR') {
-                    $missing = '';
+                $missing = '';
+                if (! $isTemu3) {
+                    $missing = $inPricing ? '' : 'M';
+                    if ($inPricing && $invVal > 0 && $basePriceVal <= 0) {
+                        $missing = 'M';
+                    }
+                    if ($inPricing && $invVal <= 0 && $basePriceVal > 0) {
+                        $missing = '';
+                    }
+                    if (strtoupper(trim((string) $nr_req)) === 'NR') {
+                        $missing = '';
+                    }
                 }
 
                 // LMP entries merged across Sku Link LMP group — tag source_sku so edit/delete
@@ -3980,11 +3979,22 @@ class TemuController extends Controller
                 ];
             }
 
+            $viewsSummary = null;
+            if ($isTemu3) {
+                $viewTotal = (int) $viewData->sum(static fn ($row) => (int) ($row->product_clicks ?? 0));
+                $viewsSummary = [
+                    'total_views' => $viewTotal,
+                    'total_sold' => (int) $salesTotalQuantity,
+                    'cvr_pct' => $viewTotal > 0 ? round(($salesTotalQuantity / $viewTotal) * 100, 2) : 0.0,
+                ];
+            }
+
             return response()->json([
                 'data' => $processedData,
                 'period' => $selectedPeriod,
                 'total_campaign_count' => $totalCampaignCount,
                 'sales_summary' => $salesSummary,
+                'views_summary' => $viewsSummary,
                 'aggregate_ads_percent' => $aggregateAdsPercent, // Exact Ads% from marketplace_daily_metrics (matches all-marketplace-master)
                 'today_badge_snapshot' => $todayBadge,
                 'ad_totals' => $adTotals,

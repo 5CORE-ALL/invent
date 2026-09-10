@@ -412,13 +412,6 @@
                         <option value="positive">Positive Only</option>
                     </select>
 
-                    <select id="nrl-filter" class="form-select form-select-sm pricing-filter-item"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">Status</option>
-                        <option value="REQ" selected>REQ Only</option>
-                        <option value="NR">NR Only</option>
-                    </select>
-
                     <select id="gpft-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
@@ -516,22 +509,6 @@
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'temu3'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'temu3'])
 
-                    {{-- Temu-only actions (kept after ebay-aligned filters) --}}
-                    <div class="btn-group align-items-center pricing-filter-item" role="group">
-                        <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
-                            <i class="fas fa-step-backward"></i>
-                        </button>
-                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" title="Play">
-                            <i class="fas fa-play"></i>
-                        </button>
-                        <button type="button" id="play-pause" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" style="display: none;" title="Pause">
-                            <i class="fas fa-pause"></i>
-                        </button>
-                        <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
-                            <i class="fas fa-step-forward"></i>
-                        </button>
-                    </div>
-
                     <div class="dropdown pricing-filter-item">
                         <button type="button" class="btn btn-sm btn-success" id="export-btn"
                             data-bs-toggle="dropdown" aria-expanded="false" title="Export">
@@ -602,9 +579,6 @@
                         <span class="badge bg-info fs-6 p-2" id="total-recovery-badge"
                             style="color: white; font-weight: bold;"
                             title="Recovery Price = Sales × 0.88 (Full Temu Price × 0.88 × Qty)">Recovery: $0</span>
-                        <span class="badge fs-6 p-2" id="total-spend-badge"
-                            style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; font-weight: bold;"
-                            title="Sum of Spend from Temu 3 Ads upload">Spend: $0</span>
                         <span class="badge fs-6 p-2 temu-badge-history" id="qty-sold-badge"
                             data-badge-metric="total_quantity" data-badge-label="QTY"
                             style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
@@ -615,17 +589,6 @@
                         <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge"
                             style="color: white; font-weight: bold;"
                             title="GROI% = Σ R-Price PFT ÷ Σ COGS × 100 (same as /temu-decrease)">GROI: 0%</span>
-                        <span class="badge fs-6 p-2" id="ads-percent-badge"
-                            style="background-color: #d63384; color: white; font-weight: bold;"
-                            title="Ads% = Ad Spend / Full Temu Price Sales × 100">Ads: 0%</span>
-                        <span class="badge bg-success fs-6 p-2" id="avg-npft-badge"
-                            style="color: white; font-weight: bold;"
-                            title="NPFT% = GPFT% − Ads% (Full Temu Price)">NPFT: 0%</span>
-                        <span class="badge fs-6 p-2" id="avg-nroi-badge"
-                            style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="NROI% = GROI% − Ads% (R Price GROI)">NROI: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
-                            style="color: black; font-weight: bold;">Prc: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2 temu-badge-history" id="avg-cvr-badge"
                             data-badge-metric="avg_cvr_pct" data-badge-label="CVR %"
                             style="color: white; font-weight: bold; cursor: pointer;"
@@ -633,15 +596,6 @@
                         <span class="badge bg-info fs-6 p-2 temu-badge-history" id="total-views-badge"
                             data-badge-metric="total_views" data-badge-label="Views"
                             style="color: black; font-weight: bold; cursor: pointer;">Views: 0</span>
-                        <span class="badge fs-6 p-2" id="total-t-clicks-badge"
-                            style="background-color: #0d6efd; color: white; font-weight: bold;"
-                            title="Sum of T Clicks from parent rows only (goods_id totals; SKUs excluded)">T Clicks: 0</span>
-                        <span class="badge fs-6 p-2" id="total-t-clicks-7-badge"
-                            style="background-color: #0a58ca; color: white; font-weight: bold;"
-                            title="((T Clicks / 30) × 7) ÷ parent count — weekly pace per parent">T Clicks 7: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter Missing L (INV&gt;0, not listed, REQ)">M L: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'temu3-price-gt-lmp-badge', 'pglChannelKey' => 'temu3', 'pglPriceField' => 'temu_price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'temu3-price-lt80-lmp-badge', 'pltChannelKey' => 'temu3', 'pltPriceField' => 'temu_price'])
                         <span class="badge fs-6 p-2" id="temu2-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Price.">
@@ -2705,11 +2659,8 @@
         // Badge click filters — same pattern as /ebay-tabulator-view
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
-        let missingLFilterActive = false;
         let lessAmzFilterActive = false;
         let moreAmzFilterActive = false;
-        // aliases kept for any leftover refs
-        let missingBadgeFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
 
@@ -2820,17 +2771,6 @@
             moreSoldFilterActive = !moreSoldFilterActive;
             zeroSoldFilterActive = false;
             applyFilters();
-        });
-
-        $('#missing-l-count-badge').on('click', function() {
-            missingLFilterActive = !missingLFilterActive;
-            missingBadgeFilterActive = missingLFilterActive;
-            $(this).toggleClass('bg-secondary', !missingLFilterActive)
-                   .toggleClass('bg-danger', missingLFilterActive);
-            applyFilters();
-            if (table && missingLFilterActive) {
-                try { table.getColumn('lmp').show(); } catch (e) {}
-            }
         });
 
         function updateSelectedCount() {
@@ -3437,8 +3377,6 @@
 
             let totalProducts = allData.length;
             let totalQuantity = 0;
-            let totalPriceWeighted = 0;
-            let totalQty = 0;
             let totalRevenue = 0;
             let totalProfit = 0;
             let totalRevenueFull = 0;
@@ -3447,13 +3385,9 @@
             let totalSpend = 0;
             let totalSpendL30 = 0;
             let totalViews = 0;
-            let totalTClicks = 0;
-            let totalParentTClicks = 0;
-            let totalParentCount = 0;
             let totalTemuL30 = 0;
             let zeroSoldCount = 0;
             let moreSoldCount = 0;
-            let missingCount = 0;
             let rowsCount = 0;
 
             // Filtered counts: Rows / 0 Sold / >0 Sold (exclude parent rows from sold badges)
@@ -3469,20 +3403,9 @@
                 if (inventory > 0 && temuL30 > 0) moreSoldCount++;
             });
 
-            // Parent-only T Clicks badge (goods_id totals on parent rows — never sum SKUs)
-            allData.forEach(row => {
-                if (!isTemu3ParentRow(row)) return;
-                totalParentCount++;
-                const parentT = parseInt(row.t_clicks, 10);
-                totalParentTClicks += Number.isFinite(parentT)
-                    ? parentT
-                    : ((parseInt(row.product_clicks, 10) || 0) + (parseInt(row.ad_clicks, 10) || 0));
-            });
-
-            // Financials + M L from full dataset (ebay pattern for missing) — SKUs only
+            // Financials from full dataset — SKUs only
             // Same calc as /temu-decrease: Sales/GPFT on Full Price; GROI on R Price
             const viewsByGoodsId = {};
-            const tClicksByGoodsId = {};
             allData.forEach(row => {
                 if (isTemu3ParentRow(row)) return;
                 const temuL30 = parseInt(row.temu_l30, 10) || 0;
@@ -3493,8 +3416,6 @@
                 const inventory = parseFloat(row.inventory) || 0;
 
                 totalQuantity += temuL30;
-                totalPriceWeighted += price * temuL30;
-                totalQty += temuL30;
 
                 const hasSales = temuL30 > 0 && price > 0;
                 if (hasSales) {
@@ -3510,37 +3431,20 @@
 
                 totalSpend += parseFloat(row.spend) || 0;
                 totalSpendL30 += parseFloat(row.spend_l30 || 0);
-                // Views / T Clicks are goods_id-level — count each Goods ID once
+                // Views are goods_id-level — count each Goods ID once
                 const gid = String(row.goods_id || '').trim();
                 const rowViews = parseInt(row.o_clicks, 10) || parseInt(row.product_clicks, 10) || 0;
-                const rowTClicks = parseInt(row.t_clicks, 10);
-                const tVal = Number.isFinite(rowTClicks)
-                    ? rowTClicks
-                    : (rowViews + (parseInt(row.ad_clicks, 10) || 0));
                 if (gid !== '') {
                     viewsByGoodsId[gid] = rowViews;
-                    tClicksByGoodsId[gid] = tVal;
                 } else {
                     totalViews += rowViews;
-                    totalTClicks += tVal;
                 }
                 totalTemuL30 += temuL30;
-
-                const missing = row.missing;
-                const nrReq = String(row.nr_req || 'REQ').toUpperCase();
-
-                if (missing === 'M' && inventory > 0 && nrReq !== 'NR' && nrReq !== 'NRL') {
-                    missingCount++;
-                }
             });
             Object.keys(viewsByGoodsId).forEach(function(gid) {
                 totalViews += parseInt(viewsByGoodsId[gid], 10) || 0;
             });
-            Object.keys(tClicksByGoodsId).forEach(function(gid) {
-                totalTClicks += parseInt(tClicksByGoodsId[gid], 10) || 0;
-            });
 
-            const avgPrice = totalQty > 0 ? totalPriceWeighted / totalQty : 0;
             // Client-computed like /temu-decrease (do not override GPFT/GROI from sales_summary)
             let avgGprft = totalRevenueFull > 0 ? (totalProfitFull / totalRevenueFull) * 100 : 0;
             let avgGroi = totalLp > 0 ? (totalProfit / totalLp) * 100 : 0;
@@ -3573,9 +3477,6 @@
             // Prefer file total from temu2_campaign_reports — summing per-SKU spend double-counts
             // when multiple SKUs share one goods_id.
             const backendSpend = adTotalsFromBackend ? parseFloat(adTotalsFromBackend.spend) : NaN;
-            const spendSum = Number.isFinite(backendSpend)
-                ? backendSpend
-                : (totalSpendL30 > 0 ? totalSpendL30 : totalSpend);
             const spendForAdsPercent = Number.isFinite(backendSpend) && backendSpend > 0
                 ? backendSpend
                 : (totalSpendL30 > 0 ? totalSpendL30 : totalSpend);
@@ -3585,39 +3486,25 @@
             if (!hasValidBackendAdsPercent) {
                 badgeAvgAds = computedAggregateAdsPercent;
             }
-            const adsPercentForNpft = (badgeAvgAds != null && badgeAvgAds !== undefined)
-                ? badgeAvgAds
-                : computedAggregateAdsPercent;
-            const avgNpft = avgGprft - adsPercentForNpft;
-            const avgNroi = avgGroi - adsPercentForNpft;
-            const cvrTotalSold = totalTemuL30;
-            const qtyPerViews = totalViews > 0 ? (cvrTotalSold / totalViews) * 100 : 0;
+            const backendViews = viewsSummaryFromBackend ? parseInt(viewsSummaryFromBackend.total_views, 10) : NaN;
+            if (Number.isFinite(backendViews) && backendViews >= 0) {
+                totalViews = backendViews;
+            }
+            const cvrTotalSold = (qtyAmt > 0 ? qtyAmt : totalTemuL30);
+            const qtyPerViews = viewsSummaryFromBackend && viewsSummaryFromBackend.cvr_pct != null
+                ? Number(viewsSummaryFromBackend.cvr_pct)
+                : (totalViews > 0 ? (cvrTotalSold / totalViews) * 100 : 0);
 
             $('#rows-count-badge').text('Rows: ' + rowsCount.toLocaleString());
             $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
             $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
             $('#total-sales-amt-badge').text('Sales: $' + Math.round(salesAmt).toLocaleString());
             updateTemu3RecoveryBadge(salesAmt);
-            $('#total-spend-badge').text('Spend: $' + Math.round(spendSum).toLocaleString());
             $('#qty-sold-badge').text('Qty: ' + Number(qtyAmt).toLocaleString());
             $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGprft) + '%');
             $('#groi-percent-badge').text('GROI: ' + Math.round(avgGroi) + '%');
-            $('#ads-percent-badge').text('Ads: ' + (Number(adsPercentForNpft) || 0).toFixed(1) + '%');
-            $('#avg-npft-badge').text('NPFT: ' + Math.round(avgNpft) + '%');
-            $('#avg-nroi-badge').text('NROI: ' + Math.round(avgNroi) + '%');
-            $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-            $('#total-t-clicks-badge').text('T Clicks: ' + totalParentTClicks.toLocaleString());
-            // T Clicks 7 = ((T Clicks / 30) × 7) / total parents
-            const tClicks7 = totalParentCount > 0
-                ? ((totalParentTClicks / 30) * 7) / totalParentCount
-                : 0;
-            $('#total-t-clicks-7-badge').text('T Clicks 7: ' + tClicks7.toLocaleString(undefined, {
-                maximumFractionDigits: 1,
-                minimumFractionDigits: 0
-            }));
-            $('#missing-l-count-badge').text('M L: ' + missingCount.toLocaleString());
             if (window.PriceGtLmpBadge && table) {
                 PriceGtLmpBadge.update('#temu3-price-gt-lmp-badge', table.getData(), 'temu3', 'temu_price', function (row) {
                     return parseFloat(row && (row.lmp_price || row.lmp || row.LMP)) || 0;
@@ -3662,6 +3549,7 @@
 
         let totalCampaignCountFromBackend = 0;
         let salesSummaryFromBackend = null;
+        let viewsSummaryFromBackend = null;
         let adTotalsFromBackend = null; // authoritative Spend from temu2_campaign_reports
         let badgeAvgAds = null; // Ads % from badge — shown in ADS% column for all rows
         let currentCampaignPeriod = 'L30';
@@ -3672,10 +3560,7 @@
             return (n > 3.5 ? String(Math.round(n)) : n.toFixed(1)) + '%';
         }
 
-        // Play/Pause parent navigation (like pricing-master-cvr)
         let fullDataset = [];
-        let isPlayNavigationActive = false;
-        let currentPlayParentIndex = 0;
         let suppressDataLoadedHandler = false;
 
         table = new Tabulator("#temu-table", {
@@ -3719,6 +3604,7 @@
                     currentCampaignPeriod = periodFromResponse;
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
                     salesSummaryFromBackend = response.sales_summary || null;
+                    viewsSummaryFromBackend = response.views_summary || null;
                     adTotalsFromBackend = response.ad_totals || null;
                     // Use exact aggregate_ads_percent from backend (matches all-marketplace-master)
                     // This is the authoritative value - always use it for NPFT calculation
@@ -3778,7 +3664,6 @@
                         return value;
                     }
                 },
-                ParentExpand.columnDef(),
                 {
                     title: "SKU",
                     field: "sku",
@@ -3800,31 +3685,6 @@
                             return label;
                         }
                         return `${label} <button type="button" class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price trend" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
-                    }
-                },
-                {
-                    title: "Links", field: "links_column", frozen: true, width: 55, hozAlign: "center", headerSort: true, sorter: temuSortLinksRow,
-                    tooltip: "Double-click to add / edit links",
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData();
-                        const buyerLink = d.buyer_link || '';
-                        const sellerLink = d.seller_link || '';
-                        let html = '<div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
-                        if (sellerLink) {
-                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> S</a>`;
-                        }
-                        if (buyerLink) {
-                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> B</a>`;
-                        }
-                        if (!sellerLink && !buyerLink) {
-                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
-                        }
-                        html += '</div>';
-                        return html;
-                    },
-                    cellDblClick: function(e, cell) {
-                        e.stopPropagation();
-                        openTemu2EditLinksModal(cell.getRow());
                     }
                 },
                 {
@@ -3949,7 +3809,7 @@
                     hozAlign: "center",
                     sorter: "string",
                     width: 80,
-                    visible: true,
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value === 'M') {
@@ -3962,19 +3822,19 @@
                     title: "NRL/REQ",
                     field: "nr_req",
                     hozAlign: "center",
+                    visible: false,
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const nrl = row['nr_req'] || '';
                         const sku = row['sku'];
 
-                        // Determine current value (default to REQ if empty)
                         let value = '';
                         if (nrl === 'NRL' || nrl === 'NR') {
                             value = 'NRL';
                         } else if (nrl === 'REQ') {
                             value = 'REQ';
                         } else {
-                            value = 'REQ'; // Default to REQ
+                            value = 'REQ';
                         }
 
                         return `<select class="form-select form-select-sm nr-select" data-sku="${sku}"
@@ -4008,36 +3868,12 @@
                     }
                 },
                 {
-                    title: "T Clicks",
-                    field: "t_clicks",
-                    width: 90,
-                    minWidth: 85,
-                    hozAlign: "center",
-                    sorter: temuSortBy(function(d) {
-                        const v = parseInt(d.t_clicks, 10);
-                        if (Number.isFinite(v)) return v;
-                        const oClicks = parseInt(d.o_clicks, 10) || parseInt(d.product_clicks, 10) || 0;
-                        return oClicks + (parseInt(d.ad_clicks, 10) || 0);
-                    }),
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const sku = row.sku || '';
-                        const oClicks = parseInt(row.o_clicks, 10) || parseInt(row.product_clicks, 10) || 0;
-                        const adClicks = parseInt(row.ad_clicks, 10) || 0;
-                        const value = parseInt(cell.getValue(), 10);
-                        const total = Number.isFinite(value) ? value : (oClicks + adClicks);
-                        const chartBtn = sku
-                            ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="t_clicks" title="Open T Clicks chart" style="border:none;background:none;cursor:pointer;padding:0 2px;line-height:1;vertical-align:middle;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#6610f2;"></span></button>`
-                            : '';
-                        return `${total.toLocaleString()} ${chartBtn}`.trim();
-                    }
-                },
-                {
                     title: "T Click Growth",
                     field: "t_clicks_growth",
                     width: 90,
                     minWidth: 85,
                     hozAlign: "center",
+                    visible: false,
                     sorter: "number",
                     headerTooltip: "T Click Growth % = ((T7÷7) ÷ (T30÷30) − 1) × 100. 0% = same daily pace; needs L7 + L30 clicks.",
                     formatter: function(cell) {
@@ -4350,6 +4186,7 @@
                     hozAlign: "center",
                     width: 80,
                     minWidth: 76,
+                    visible: false,
                     headerSort: true,
                     sorter: temuSortBy(function(d) {
                         return typeof getTemu2LowestDelivery === 'function' ? getTemu3LowestDelivery(d) : 0;
@@ -4369,6 +4206,7 @@
                     hozAlign: "center",
                     width: 84,
                     minWidth: 84,
+                    visible: false,
                     headerSort: true,
                     sorter: temuSortBy(function(d) {
                         const diff = typeof temu2LmpDiffPct === 'function' ? temu2LmpDiffPct(d) : null;
@@ -4543,40 +4381,6 @@
                     }
                 },
                 {
-                    title: "Queue",
-                    field: "_push",
-                    width: 55,
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: temuSortPushBase,
-                    headerTooltip: "Push Temu base = inverse of Temu Price from display S PRC. If display is $34–$37, push = display × 0.88 − $2.99.",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (rowData.is_parent) return '';
-                        const sprice = typeof temuDisplayedSprice === 'function'
-                            ? temuDisplayedSprice(rowData)
-                            : (parseFloat(rowData.sprice) || 0);
-                        const pushBase = temuPushBaseFromSprice(sprice);
-                        const pushStatus = rowData.push_status || null;
-                        if (sprice <= 0 || pushBase == null || pushBase <= 0) return '';
-
-                        const sku = rowData.sku || '';
-                        const goodsId = rowData.goods_id || '';
-                        const skuId = rowData.sku_id || '';
-
-                        if (pushStatus === 'pushing') {
-                            return '<i class="fas fa-spinner fa-spin" style="color: #ffc107;" title="Pushing to Temu2..."></i>';
-                        }
-                        if (pushStatus === 'pushed') {
-                            return '<i class="fa-solid fa-check-double" style="color: #28a745;" title="Pushed to Temu2"></i>';
-                        }
-                        if (pushStatus === 'error') {
-                            return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>`;
-                        }
-                        return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #0d6efd; cursor: pointer;" title="Push base $${pushBase.toFixed(2)} to Temu2"><i class="fas fa-upload"></i></button>`;
-                    }
-                },
-                {
                     title: "SGROI%",
                     field: "sgroi_percent",
                     hozAlign: "center",
@@ -4672,11 +4476,11 @@
                     minWidth: 70,
                     hozAlign: "center",
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
                         return String(Math.round(value));
-                    },
-                    visible: true
+                    }
                 },
                 {
                     title: "ACOS%",
@@ -4832,6 +4636,7 @@
                     hozAlign: "center",
                     width: 80,
                     minWidth: 70,
+                    visible: false,
                     formatter: function(cell) {
                         const v = cell.getValue();
                         return (v === null || v === undefined || v === '') ? '' : v;
@@ -4844,6 +4649,7 @@
                     hozAlign: "center",
                     width: 90,
                     minWidth: 80,
+                    visible: false,
                     formatter: function(cell) {
                         const v = cell.getValue();
                         return (v === null || v === undefined || v === '') ? '' : v;
@@ -4855,6 +4661,7 @@
                     headerTooltip: "Saved Temu ship = slab + Handling Charge + O-Size Charge",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: false,
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -4877,13 +4684,13 @@
                     sorter: "string",
                     width: 150,
                     minWidth: 140,
+                    visible: false,
                     accessorDownload: function(value, data) {
                         if (data && data.goods_id_mismatch) {
                             const ids = Array.isArray(data.child_goods_ids) ? data.child_goods_ids.join(' | ') : '';
                             return ids ? ('\t' + ids) : 'MISMATCH';
                         }
                         const g = (data && data.goods_id != null && data.goods_id !== '') ? String(data.goods_id) : '';
-                        // Leading tab forces Excel to treat as text (avoids scientific notation)
                         return g ? ('\t' + g) : '';
                     },
                     formatter: function(cell) {
@@ -4909,11 +4716,11 @@
         });
 
         const TEMU2_AUTOFIT_SKIP = {
-            image_path: 1, links_column: 1, _select: 1, _push: 1, nr_req: 1
+            image_path: 1, links_column: 1, _select: 1, _push: 1
         };
         const TEMU2_AUTOFIT_FLOOR = {
             s_profit: 88, temu_price: 86, base_price: 92, gpft_dollar: 80,
-            roi_percent: 80, profit_percent: 80, lmp: 88, lmp_delivery: 76, lmp_diff_pct: 84,
+            roi_percent: 80, profit_percent: 80, lmp: 88,
             STANDARD_PRICE: 88, sprice: 88, temu_price_display: 90
         };
         let temu2AutofitTimer = null;
@@ -4983,15 +4790,6 @@
 
         // Apply filters — same structure as /ebay-tabulator-view, Temu field mapping
         function applyFilters() {
-            if (window.ParentExpand && ParentExpand.isExpanded()) {
-                ParentExpand.beforeFilters(function(){ applyFilters(); });
-                return;
-            }
-            if (isPlayNavigationActive) {
-                if (typeof showCurrentParentPlayView === 'function') showCurrentParentPlayView();
-                return;
-            }
-
             let parentFilter = $('#parent-filter').val() || 'skus';
             if (priceGtLmpFilterActive && parentFilter === 'parents') {
                 parentFilter = 'skus';
@@ -4999,7 +4797,6 @@
             const inventoryFilter = $('#inventory-filter').val();
             const tl30Filter = $('#tl30-filter').val();
             const growthSignFilter = $('#growth-sign-filter').val();
-            const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const groiFilter = $('#roi-filter').val();
             const cvrFilter = $('#cvr-filter').val();
@@ -5073,15 +4870,6 @@
                     if (growthSignFilter === 'zero') return growth === 0;
                     if (growthSignFilter === 'positive') return growth > 0;
                     return true;
-                });
-            }
-
-            if (nrlFilter !== 'all') {
-                table.addFilter(function(data) {
-                    if (isTemu3ParentRow(data) && parentRowsBypassDataFilters) return true;
-                    const nr = String(data.nr_req || 'REQ').toUpperCase();
-                    const normalized = (nr === 'NR' || nr === 'NRL') ? 'NR' : nr;
-                    return normalized === nrlFilter;
                 });
             }
 
@@ -5213,15 +5001,6 @@
                 });
             }
 
-            if (missingLFilterActive || missingBadgeFilterActive) {
-                table.addFilter(function(data) {
-                    if (isTemu3ParentRow(data)) return false;
-                    const inv = parseFloat(data.inventory) || 0;
-                    const nrReq = String(data.nr_req || 'REQ').toUpperCase();
-                    return data.missing === 'M' && inv > 0 && nrReq !== 'NR' && nrReq !== 'NRL';
-                });
-            }
-
             if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                 table.addFilter(function(data) {
                     return PriceGtLmpBadge.hasRedTriangle(data, 'temu_price', function (row) {
@@ -5276,7 +5055,6 @@
             ebCapFilterActive = false;
             priceLt80LmpFilterActive = false;
             $('#parent-filter').val('skus');
-            $('#nrl-filter').val('all');
             $('#inventory-filter').val('more');
             $('#tl30-filter').val('all');
             $('#growth-sign-filter').val('all');
@@ -5298,10 +5076,6 @@
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
                     if (on) temu2ClearPriceGtLmpCompetingFilters();
-                    if (on && isPlayNavigationActive && typeof stopPlayNavigation === 'function') {
-                        stopPlayNavigation();
-                        return;
-                    }
                     applyFilters();
                 }
             });
@@ -5313,10 +5087,6 @@
             if (priceGtLmpFilterActive) temu2ClearPriceGtLmpCompetingFilters();
             if (window.PriceGtLmpBadge) {
                 PriceGtLmpBadge.setOutline(this, priceGtLmpFilterActive);
-            }
-            if (priceGtLmpFilterActive && isPlayNavigationActive && typeof stopPlayNavigation === 'function') {
-                stopPlayNavigation();
-                return;
             }
             applyFilters();
         });
@@ -5353,10 +5123,6 @@
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
             }
-            if (amzCapFilterActive && isPlayNavigationActive && typeof stopPlayNavigation === 'function') {
-                stopPlayNavigation();
-                return;
-            }
             applyFilters();
         });
         $('#temu-eb-cap-badge').on('click', function() {
@@ -5367,104 +5133,8 @@
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
             }
-            if (ebCapFilterActive && isPlayNavigationActive && typeof stopPlayNavigation === 'function') {
-                stopPlayNavigation();
-                return;
-            }
             applyFilters();
         });
-
-        // ==================== Play/Pause parent navigation (same as pricing-master-cvr) ====================
-        // Group key = parent + SKU prefix (WF/FR etc) so FR and WF SKUs don't mix in same play group
-        function getRowGroupKey(row) {
-            const p = (row.parent != null && row.parent !== '') ? row.parent : (row.sku || '');
-            const prefix = (row.sku || '').trim().split(/\s+/)[0] || '';
-            return (p || '') + '|' + prefix;
-        }
-
-        function getParentRows() {
-            if (!fullDataset || fullDataset.length === 0) return [];
-            const seen = new Set();
-            const out = [];
-            fullDataset.forEach(row => {
-                if (isTemu3ParentRow(row)) return;
-                const key = getRowGroupKey(row);
-                if (key !== '|' && !seen.has(key)) {
-                    seen.add(key);
-                    out.push({ parent: key });
-                }
-            });
-            return out;
-        }
-
-        function showCurrentParentPlayView() {
-            if (!fullDataset || fullDataset.length === 0) return;
-            const parentRows = getParentRows();
-            if (parentRows.length === 0) return;
-            const currentGroupKey = parentRows[currentPlayParentIndex].parent;
-            const displayData = fullDataset.filter(row =>
-                !isTemu3ParentRow(row) && getRowGroupKey(row) === currentGroupKey
-            );
-            suppressDataLoadedHandler = true;
-            table.clearSort();
-            table.setData(displayData).then(() => {
-                updateSummary();
-                updatePlayButtonStates();
-            });
-        }
-
-        function startPlayNavigation() {
-            const parentRows = getParentRows();
-            if (parentRows.length === 0) return;
-            isPlayNavigationActive = true;
-            currentPlayParentIndex = 0;
-            showCurrentParentPlayView();
-            $('#play-auto').hide();
-            $('#play-pause').show();
-            updatePlayButtonStates();
-        }
-
-        function stopPlayNavigation() {
-            isPlayNavigationActive = false;
-            currentPlayParentIndex = 0;
-            $('#play-pause').hide();
-            $('#play-auto').show();
-            $('#play-backward, #play-forward').prop('disabled', true);
-            if (fullDataset.length > 0) {
-                suppressDataLoadedHandler = true;
-                table.setData(fullDataset).then(applyFilters);
-            } else {
-                applyFilters();
-            }
-        }
-
-        function updatePlayButtonStates() {
-            const parentRows = getParentRows();
-            $('#play-backward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex <= 0);
-            $('#play-forward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex >= parentRows.length - 1);
-            $('#play-auto').attr('title', isPlayNavigationActive ? 'Show all' : 'Start parent navigation');
-            $('#play-pause').attr('title', 'Stop navigation and show all');
-        }
-
-        function playNextParent() {
-            if (!isPlayNavigationActive) return;
-            const parentRows = getParentRows();
-            if (currentPlayParentIndex >= parentRows.length - 1) return;
-            currentPlayParentIndex++;
-            showCurrentParentPlayView();
-        }
-
-        function playPreviousParent() {
-            if (!isPlayNavigationActive) return;
-            if (currentPlayParentIndex <= 0) return;
-            currentPlayParentIndex--;
-            showCurrentParentPlayView();
-        }
-
-        $('#play-auto').on('click', startPlayNavigation);
-        $('#play-pause').on('click', stopPlayNavigation);
-        $('#play-forward').on('click', playNextParent);
-        $('#play-backward').on('click', playPreviousParent);
 
         // LMP Modal: Add New form + table list; lowest row highlighted with LOWEST badge
         let lmpModalSku = '';
@@ -5744,7 +5414,7 @@
             $('#lmpNewLink').val('');
         });
 
-        $('#parent-filter, #inventory-filter, #tl30-filter, #growth-sign-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #sprice-lmp-filter, #prc-lmp-filter, #lmp-filter, #dil-filter').on('change', function() {
+        $('#parent-filter, #inventory-filter, #tl30-filter, #growth-sign-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #sprice-lmp-filter, #prc-lmp-filter, #lmp-filter, #dil-filter').on('change', function() {
             applyFilters();
         });
 
@@ -5841,7 +5511,6 @@
 
         });
 
-        // NR/REQ dropdown change handler (Amazon style)
         $(document).on('change', '.nr-select', function() {
             const $select = $(this);
             const value = $select.val();
@@ -6354,8 +6023,19 @@
 
         // Columns that should ALWAYS stay hidden, regardless of saved state.
         var alwaysHiddenColumns = ['cvr_45', 'profit', 'SPRC_DIL', 'sroi_percent', 'spft_percent'];
+        // Hidden on first load even if older saved visibility had them on.
+        var defaultHiddenColumns = [
+            'missing', 'nr_req', 't_clicks_growth',
+            'lmp_delivery', 'lmp_diff_pct', 'spend',
+            'handling_charge', 'o_size_charge', 'temu_ship', 'goods_id'
+        ];
         function enforceAlwaysHiddenColumns() {
             alwaysHiddenColumns.forEach(function(col) {
+                try { table.hideColumn(col); } catch (e) {}
+            });
+        }
+        function enforceDefaultHiddenColumns() {
+            defaultHiddenColumns.forEach(function(col) {
                 try { table.hideColumn(col); } catch (e) {}
             });
         }
@@ -6382,9 +6062,8 @@
                             }
                         });
                     }
-                    // Keep Spend visible (display-only; not Temu ads feature set)
-                    try { table.showColumn('spend'); } catch (e) {}
                     enforceAlwaysHiddenColumns();
+                    enforceDefaultHiddenColumns();
                     temu2AutofitColumns();
                 })
                 .catch(err => console.error('Error applying column visibility:', err));
@@ -6399,8 +6078,8 @@
                     try { table.moveColumn('stemu_price', 's_profit', false); } catch (e) {}
                     temu2ApplyingColumnOrder = false;
                     buildColumnDropdown();
-                    try { table.showColumn('spend'); } catch (e) {}
                     enforceAlwaysHiddenColumns();
+                    enforceDefaultHiddenColumns();
                     if (typeof temu2AutofitColumns === 'function') temu2AutofitColumns();
                 });
         });
@@ -6416,13 +6095,7 @@
                 suppressDataLoadedHandler = false;
                 return;
             }
-            // ParentExpand.expand() replaces the table data with a single parent's
-            // children, which fires dataLoaded again. Without this guard fullDataset would
-            // be overwritten by that subset and later filters would run against only
-            // those rows, leaving the table stuck on the expanded group.
-            if (window.ParentExpand && ParentExpand.isExpanded()) return;
             fullDataset = (data && Array.isArray(data)) ? data : (table.getData ? table.getData("all") : []) || [];
-            if (window.ParentExpand) ParentExpand.captureDataset(fullDataset);
             applyFilters();
             updateCampaignPeriodUi();
             // Wait a bit to ensure badgeAvgAds is set from ajaxResponse before calculating NPFT
@@ -6448,18 +6121,6 @@
                 }
             }, 400);
         });
-
-        if (window.ParentExpand) {
-            ParentExpand.configure({
-                parentField: 'parent',
-                skuField: 'sku',
-                getTable: () => table,
-                getDataset: () => fullDataset,
-                onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
-                onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
-            });
-            ParentExpand.bind();
-        }
 
         table.on('renderComplete', function() {
             updateSummary();
