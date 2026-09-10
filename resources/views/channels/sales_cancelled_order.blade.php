@@ -356,7 +356,7 @@
                             <div id="sco-date-filter-hint">Dates shown as 1 Apr · time EDT only</div>
                         </div>
                     </div>
-                    <p class="small text-muted mb-2">Cancelled, refunded, and voided orders by marketplace. Defaults to the last 30 days.</p>
+                    <p class="small text-muted mb-2">Cancelled orders only, by marketplace. Defaults to the last 30 days.</p>
                     <div id="sales-cancelled-order-table" style="height: calc(100vh - 320px);"></div>
                 </div>
             </div>

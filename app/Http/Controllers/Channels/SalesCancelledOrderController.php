@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 /**
- * Cancelled Orders — marketplace cancelled / refunded / voided orders.
+ * Cancelled Orders — marketplace orders whose status is cancelled only.
  * Same row shape as /sales-order-fulfillment All Order.
  */
 class SalesCancelledOrderController extends SalesOrderFulfillmentController
@@ -86,7 +86,7 @@ class SalesCancelledOrderController extends SalesOrderFulfillmentController
     }
 
     /**
-     * Marketplace orders whose status or payload looks cancelled / refunded / voided.
+     * Marketplace orders whose stored status text contains cancel.
      */
     protected function cancelledOrdersQuery(string $slug): ?Builder
     {
@@ -96,23 +96,12 @@ class SalesCancelledOrderController extends SalesOrderFulfillmentController
         }
 
         return match ($slug) {
-            'ebay1', 'ebay2', 'ebay3' => $this->applyEbayCancelledFilter($base),
             'amazon' => $this->applyAmazonCancelledFilter($base),
-            'newegg' => $base->where(function (Builder $q) {
-                $q->whereIn('status', ['4', 4])
-                    ->orWhereRaw("UPPER(TRIM(COALESCE(status, ''))) LIKE ?", ['%CANCEL%'])
-                    ->orWhereRaw("UPPER(TRIM(COALESCE(status, ''))) LIKE ?", ['%VOID%'])
-                    ->orWhereRaw("UPPER(TRIM(COALESCE(status, ''))) LIKE ?", ['%REFUND%']);
-            }),
             'temu', 'temu2' => $base->where(function (Builder $q) {
-                foreach (['parent_order_status_text', 'order_status_text'] as $col) {
-                    foreach (['%CANCEL%', '%REFUND%', '%VOID%'] as $needle) {
-                        $q->orWhereRaw("UPPER(TRIM(COALESCE({$col}, ''))) LIKE ?", [$needle]);
-                    }
-                }
+                $q->whereRaw("UPPER(TRIM(COALESCE(parent_order_status_text, ''))) LIKE ?", ['%CANCEL%'])
+                    ->orWhereRaw("UPPER(TRIM(COALESCE(order_status_text, ''))) LIKE ?", ['%CANCEL%']);
             }),
-            'doba' => $this->applyCancelledLikeFilter($base, 'order_status'),
-            'tiktok', 'tiktok2' => $this->applyCancelledLikeFilter($base, 'order_status'),
+            'doba', 'tiktok', 'tiktok2' => $this->applyCancelledLikeFilter($base, 'order_status'),
             default => $this->applyCancelledLikeFilter($base, 'status'),
         };
     }
@@ -124,42 +113,7 @@ class SalesCancelledOrderController extends SalesOrderFulfillmentController
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->where(function (Builder $q) use ($column) {
-            foreach (['%CANCEL%', '%REFUND%', '%VOID%'] as $i => $needle) {
-                $sql = "UPPER(TRIM(COALESCE(`{$column}`, ''))) LIKE ?";
-                if ($i === 0) {
-                    $q->whereRaw($sql, [$needle]);
-                } else {
-                    $q->orWhereRaw($sql, [$needle]);
-                }
-            }
-        });
-    }
-
-    protected function applyEbayCancelledFilter(Builder $query): Builder
-    {
-        $table = $query->getModel()->getTable();
-
-        return $query->where(function (Builder $q) use ($table) {
-            if (Schema::hasColumn($table, 'status')) {
-                $q->whereRaw("UPPER(TRIM(COALESCE(status, ''))) LIKE ?", ['%CANCEL%'])
-                    ->orWhereRaw("UPPER(TRIM(COALESCE(status, ''))) LIKE ?", ['%REFUND%'])
-                    ->orWhereRaw("UPPER(TRIM(COALESCE(status, ''))) LIKE ?", ['%VOID%']);
-            }
-            if (Schema::hasColumn($table, 'import_status')) {
-                $q->orWhereRaw("UPPER(TRIM(COALESCE(import_status, ''))) LIKE ?", ['%CANCEL%'])
-                    ->orWhereRaw("UPPER(TRIM(COALESCE(import_status, ''))) LIKE ?", ['%REFUND%']);
-            }
-            if (Schema::hasColumn($table, 'raw_payload')) {
-                $q->orWhereRaw(
-                    "UPPER(TRIM(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.cancelStatus.cancelState')), ''))) IN (?, ?, ?, ?)",
-                    ['CANCELED', 'CANCELLED', 'CANCEL_REQUESTED', 'CANCELLATION_REQUESTED']
-                )->orWhereRaw(
-                    "UPPER(TRIM(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.orderPaymentStatus')), JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.paymentSummary.paymentStatus')), ''))) IN (?, ?)",
-                    ['FULLY_REFUNDED', 'REFUNDED']
-                );
-            }
-        });
+        return $query->whereRaw("UPPER(TRIM(COALESCE(`{$column}`, ''))) LIKE ?", ['%CANCEL%']);
     }
 
     protected function applyAmazonCancelledFilter(Builder $query): Builder
@@ -168,36 +122,28 @@ class SalesCancelledOrderController extends SalesOrderFulfillmentController
 
         return $query->where(function (Builder $q) use ($table) {
             if (Schema::hasColumn($table, 'status')) {
-                $q->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['CANCELED', 'CANCELLED'])
-                    ->orWhereRaw("UPPER(TRIM(COALESCE(status, ''))) LIKE ?", ['%CANCEL%'])
-                    ->orWhereRaw("UPPER(TRIM(COALESCE(status, ''))) LIKE ?", ['%REFUND%']);
+                $q->whereRaw("UPPER(TRIM(COALESCE(status, ''))) LIKE ?", ['%CANCEL%']);
             }
             if (Schema::hasColumn($table, 'raw_data')) {
                 $q->orWhereRaw(
-                    "UPPER(TRIM(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_data, '$.OrderStatus')), ''))) IN (?, ?)",
-                    ['CANCELED', 'CANCELLED']
+                    "UPPER(TRIM(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_data, '$.OrderStatus')), ''))) LIKE ?",
+                    ['%CANCEL%']
                 );
             }
         });
     }
 
     /**
-     * Keep cancelled / refunded / voided rows after collect (payload + status).
+     * Keep a row only when the visible marketplace status is cancelled.
+     * Delivered / refunded / voided rows stay out even if a refund flag exists.
      *
      * @param  array<string, mixed>  $row
      */
     protected function orderRowIsCancelledForPage(array $row): bool
     {
-        if ($this->orderRowIsCancelled($row)) {
-            return true;
-        }
-
-        foreach (['status', 'status_label', 'import_status'] as $key) {
+        foreach (['status', 'status_label'] as $key) {
             $u = strtoupper(str_replace(['-', ' '], '_', trim((string) ($row[$key] ?? ''))));
-            if ($u === '') {
-                continue;
-            }
-            if (str_contains($u, 'REFUND') || str_contains($u, 'VOID')) {
+            if ($u !== '' && str_contains($u, 'CANCEL')) {
                 return true;
             }
         }

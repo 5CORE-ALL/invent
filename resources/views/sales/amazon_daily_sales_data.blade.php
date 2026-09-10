@@ -144,6 +144,10 @@
                 grid-template-columns: 1fr;
             }
         }
+        #avg-price-badge,
+        #pft-total-badge {
+            display: none !important;
+        }
     </style>
 @endsection
 
@@ -202,8 +206,8 @@
                         <span class="badge fs-6 p-2" id="y-sales-badge" title="Yesterday's product sales, tax excluded ({{ $amazonYesterdayLabel ?? '' }} Pacific) — matches Amz Seller Central 'Sales'" style="background-color: #0dcaf0; color: black; font-weight: bold;">Y Sales: ${{ number_format($salesYesterday ?? 0, 2) }}</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
+                        <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;" aria-hidden="true">Avg Price: $0.00</span>
+                        <span class="badge bg-dark fs-6 p-2 d-none" id="pft-total-badge" style="color: white; font-weight: bold;" aria-hidden="true">GPFT Total: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                     </div>
                 </div>
