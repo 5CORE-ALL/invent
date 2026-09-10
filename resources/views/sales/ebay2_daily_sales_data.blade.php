@@ -35,6 +35,91 @@
         .tabulator-paginator label {
             margin-right: 5px;
         }
+
+        /* Column visibility — 3 groups (Basic / Price / Other), same as /ebay/daily-sales */
+        #column-dropdown-menu.show {
+            min-width: min(92vw, 560px);
+            max-width: min(96vw, 640px);
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.55rem;
+        }
+        #column-dropdown-menu > li.col-vis-full {
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 320px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            margin: 0;
+            font-size: 0.8rem;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        #column-dropdown-menu .col-vis-item > label:hover {
+            background: #e9ecef;
+        }
+        #column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+        }
+        @media (max-width: 576px) {
+            #column-dropdown-menu .col-vis-groups {
+                grid-template-columns: 1fr;
+            }
+        }
     
         /* sales-center-align: headers + cells */
         .tabulator .tabulator-header .tabulator-col,
@@ -76,16 +161,13 @@
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            aria-expanded="false">
                             <i class="fa fa-eye"></i> Columns
                         </button>
-                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
-                            style="max-height: 400px; overflow-y: auto;">
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fa fa-eye"></i> Show All
-                    </button>
 
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-file-excel"></i> Export
@@ -511,7 +593,42 @@
                 $('#total-cogs-badge').text('COGS: $' + totalCogs.toFixed(2));
             }
 
-            // Build Column Visibility Dropdown
+            const COL_VIS_CATEGORY_KEYS = ['basic', 'price', 'other'];
+            const COL_VIS_CATEGORY_LABELS = {
+                basic: 'Basic',
+                price: 'Price',
+                other: 'Other'
+            };
+
+            function classifyDailySalesColumn(field, title) {
+                const f = String(field || '');
+                const t = String(title || field || '').toLowerCase();
+
+                if (
+                    /^(price|sale_amount|lp|ship|ship_cost|cogs|pft_each|pft_each_pct|pft|roi)$/i.test(f) ||
+                    /\b(price|sales?\s*amt|lp|ship|cogs|pft|roi)\b/i.test(t)
+                ) {
+                    return 'price';
+                }
+                if (
+                    /^(order_id|item_id|sku|quantity|order_date)$/i.test(f) ||
+                    /\b(order id|item id|sku|quantity|order date)\b/i.test(t)
+                ) {
+                    return 'basic';
+                }
+                return 'other';
+            }
+
+            function syncDailySalesGroupHeaderCheckbox(groupEl) {
+                if (!groupEl) return;
+                const headerCb = groupEl.querySelector('.col-vis-group-toggle');
+                const itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
+                if (!headerCb || !itemCbs.length) return;
+                const checked = Array.from(itemCbs).filter(function(cb) { return cb.checked; }).length;
+                headerCb.checked = checked === itemCbs.length;
+                headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+            }
+
             function buildColumnDropdown() {
                 const menu = document.getElementById("column-dropdown-menu");
                 menu.innerHTML = '';
@@ -525,27 +642,73 @@
                     })
                     .then(response => response.json())
                     .then(savedVisibility => {
-                        table.getColumns().forEach(col => {
+                        const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+
+                        const groupsLi = document.createElement("li");
+                        groupsLi.className = "col-vis-full";
+                        const groupsWrap = document.createElement("div");
+                        groupsWrap.className = "col-vis-groups";
+
+                        const lists = {};
+                        const groupEls = {};
+                        COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                            const group = document.createElement("div");
+                            group.className = "col-vis-group";
+                            group.dataset.category = cat;
+
+                            const titleEl = document.createElement("label");
+                            titleEl.className = "col-vis-group-title";
+                            const groupCb = document.createElement("input");
+                            groupCb.type = "checkbox";
+                            groupCb.className = "col-vis-group-toggle";
+                            groupCb.dataset.group = cat;
+                            groupCb.title = "Select / deselect all in " + COL_VIS_CATEGORY_LABELS[cat];
+                            titleEl.appendChild(groupCb);
+                            titleEl.appendChild(document.createTextNode(COL_VIS_CATEGORY_LABELS[cat]));
+                            group.appendChild(titleEl);
+
+                            const list = document.createElement("ul");
+                            list.className = "col-vis-group-list";
+                            list.dataset.category = cat;
+                            group.appendChild(list);
+                            groupsWrap.appendChild(group);
+                            lists[cat] = list;
+                            groupEls[cat] = group;
+                        });
+
+                        table.getColumns().forEach(function(col) {
                             const def = col.getDefinition();
                             if (!def.field) return;
 
-                            const li = document.createElement("li");
-                            const label = document.createElement("label");
-                            label.style.display = "block";
-                            label.style.padding = "5px 10px";
-                            label.style.cursor = "pointer";
+                            const title = String(def.title || def.field);
+                            const cat = classifyDailySalesColumn(def.field, title);
+                            const isVisible = map.hasOwnProperty(def.field)
+                                ? (map[def.field] !== false)
+                                : col.isVisible();
 
+                            const li = document.createElement("li");
+                            li.className = "col-vis-item";
+                            li.dataset.field = def.field;
+
+                            const label = document.createElement("label");
                             const checkbox = document.createElement("input");
                             checkbox.type = "checkbox";
                             checkbox.value = def.field;
-                            checkbox.checked = savedVisibility[def.field] !== false;
-                            checkbox.style.marginRight = "8px";
+                            checkbox.className = "col-vis-field-toggle";
+                            checkbox.checked = isVisible;
 
                             label.appendChild(checkbox);
-                            label.appendChild(document.createTextNode(def.title));
+                            label.appendChild(document.createTextNode(' ' + title));
                             li.appendChild(label);
-                            menu.appendChild(li);
+                            lists[cat].appendChild(li);
                         });
+
+                        COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                            syncDailySalesGroupHeaderCheckbox(groupEls[cat]);
+                        });
+
+                        groupsLi.appendChild(groupsWrap);
+                        menu.appendChild(groupsLi);
                     });
             }
 
@@ -611,27 +774,40 @@
                 updateSummary();
             });
 
-            // Toggle column from dropdown
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-                if (e.target.type === 'checkbox') {
-                    const field = e.target.value;
-                    const col = table.getColumn(field);
-                    if (e.target.checked) {
-                        col.show();
-                    } else {
-                        col.hide();
-                    }
+                if (e.target.type !== 'checkbox') return;
+
+                if (e.target.classList.contains('col-vis-group-toggle')) {
+                    const groupEl = e.target.closest('.col-vis-group');
+                    const itemCbs = groupEl
+                        ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]')
+                        : [];
+                    itemCbs.forEach(function(cb) {
+                        cb.checked = e.target.checked;
+                        const col = table.getColumn(cb.value);
+                        if (!col) return;
+                        if (e.target.checked) col.show();
+                        else col.hide();
+                    });
+                    e.target.indeterminate = false;
                     saveColumnVisibilityToServer();
+                    return;
                 }
+
+                const field = e.target.value;
+                const col = table.getColumn(field);
+                if (col) {
+                    if (e.target.checked) col.show();
+                    else col.hide();
+                }
+                syncDailySalesGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
+                saveColumnVisibilityToServer();
             });
 
-            // Show All Columns button
-            document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-                table.getColumns().forEach(col => {
-                    col.show();
-                });
-                buildColumnDropdown();
-                saveColumnVisibilityToServer();
+            document.getElementById("column-dropdown-menu").addEventListener("click", function(e) {
+                if (e.target.closest('label') || e.target.type === 'checkbox') {
+                    e.stopPropagation();
+                }
             });
 
             // Export functionality
