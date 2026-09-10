@@ -3,7 +3,6 @@
 namespace App\Support\Marketplace;
 
 use App\Models\ProductMaster;
-use App\Models\ShopifySku;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 
@@ -29,21 +28,27 @@ class AutomatedListingPage
         $statusClass = $cfg['status'] ?? null;
         $statusData = collect();
         if ($statusClass && class_exists($statusClass) && Schema::hasTable((new $statusClass)->getTable())) {
-            $statusQuery = $statusClass::query()->whereNotNull('sku')->where('sku', '!=', '');
-            // Wayfair status SKUs often differ by spaces/hyphens from CP Master — load all and match normalized.
-            if ($statusClass !== \App\Models\WayfairListingStatus::class) {
-                $statusQuery->whereIn('sku', $skus);
-            }
-            foreach ($statusQuery->get() as $row) {
-                $lower = strtolower(trim((string) $row->sku));
-                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
-                if ($lower !== '' && ! $statusData->has($lower)) {
-                    $statusData[$lower] = $row;
-                }
-                if ($norm !== '' && ! $statusData->has($norm)) {
-                    $statusData[$norm] = $row;
-                }
-            }
+            // Load all status SKUs — marketplace rows often differ by spaces/hyphens from CP Master.
+            $statusClass::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get()
+                ->each(function ($row) use ($statusData) {
+                    $raw = trim((string) $row->sku);
+                    if ($raw === '') {
+                        return;
+                    }
+                    $keys = array_merge(
+                        [strtolower($raw)],
+                        ListingCountsEngine::skuIndexKeys($raw),
+                        ListingCountsEngine::skuLookupKeys($raw)
+                    );
+                    foreach (array_unique(array_filter($keys)) as $key) {
+                        if (! $statusData->has($key)) {
+                            $statusData[$key] = $row;
+                        }
+                    }
+                });
         }
 
         $dataView = $cfg['dataView'] ?? null;
@@ -65,9 +70,18 @@ class AutomatedListingPage
             $item->buyer_link = null;
             $item->seller_link = null;
             $status = [];
-            $statusRow = $statusData[$skuLower]
-                ?? $statusData[ShopifySku::normalizeSkuForShopifyLookup($childSku)]
-                ?? null;
+            $statusRow = $statusData[$skuLower] ?? null;
+            if ($statusRow === null) {
+                foreach (array_merge(
+                    ListingCountsEngine::skuIndexKeys($childSku),
+                    ListingCountsEngine::skuLookupKeys($childSku)
+                ) as $key) {
+                    if ($statusData->has($key)) {
+                        $statusRow = $statusData->get($key);
+                        break;
+                    }
+                }
+            }
             if ($statusRow) {
                 $statusValue = $statusRow->value;
                 $status = is_array($statusValue)
