@@ -1,13 +1,23 @@
-{{-- Temu / Temu 2: S PRC → listing base via /temu(2)/push-price. Does not use save-sprice. --}}
+{{-- Temu / Temu 2 / Temu 3: S PRC → listing base via /temu(2|3)/push-price. Does not use save-sprice. --}}
         (function(global) {
             const TEMU_LISTING_CHANNEL = @json($channelPromoChannel ?? '');
-            if (TEMU_LISTING_CHANNEL !== 'temu' && TEMU_LISTING_CHANNEL !== 'temu2') return;
+            if (TEMU_LISTING_CHANNEL !== 'temu' && TEMU_LISTING_CHANNEL !== 'temu2' && TEMU_LISTING_CHANNEL !== 'temu3') return;
 
-            const TEMU_LISTING_PUSH_URL = TEMU_LISTING_CHANNEL === 'temu2' ? '/temu2/push-price' : '/temu/push-price';
-            const TEMU_LISTING_PULL_URL = TEMU_LISTING_CHANNEL === 'temu2' ? '/temu2/pull-price' : '/temu/pull-price';
-            const TEMU_LISTING_PERSIST_URL = TEMU_LISTING_CHANNEL === 'temu2'
-                ? '/temu2-pricing/update-price'
-                : '/temu-pricing/update-price';
+            const TEMU_LISTING_PUSH_URL = ({
+                temu: '/temu/push-price',
+                temu2: '/temu2/push-price',
+                temu3: '/temu3/push-price',
+            })[TEMU_LISTING_CHANNEL] || '';
+            const TEMU_LISTING_PULL_URL = ({
+                temu: '/temu/pull-price',
+                temu2: '/temu2/pull-price',
+                temu3: '',
+            })[TEMU_LISTING_CHANNEL] || '';
+            const TEMU_LISTING_PERSIST_URL = ({
+                temu: '/temu-pricing/update-price',
+                temu2: '/temu2-pricing/update-price',
+                temu3: '/temu3-pricing/update-price',
+            })[TEMU_LISTING_CHANNEL] || '';
             const TEMU_LISTING_MAX = 2;
 
             let temuListingQ = [];
@@ -123,6 +133,12 @@
                 }
                 const sku = String((d && d.sku) || '').trim();
                 temuListingPatchDatasets(sku, patch);
+                if (typeof updateSummary === 'function') {
+                    clearTimeout(temuApplyPushedListingPrice._sumTimer);
+                    temuApplyPushedListingPrice._sumTimer = setTimeout(function() {
+                        try { updateSummary(); } catch (e) { /* ignore */ }
+                    }, 400);
+                }
             }
             function temuListingPersistBase(sku, base) {
                 if (!sku || !(base > 0)) return;
@@ -134,7 +150,7 @@
                 });
             }
             function temuListingPullPrice(sku, row, d) {
-                if (!sku) return;
+                if (!sku || !TEMU_LISTING_PULL_URL) return;
                 $.ajax({
                     url: TEMU_LISTING_PULL_URL,
                     method: 'POST',

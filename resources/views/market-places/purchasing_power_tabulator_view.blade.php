@@ -878,11 +878,12 @@
             return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
         }
         function ppPushPriceValue(d) {
-            let p = parseFloat(d && d.SPRICE) || 0;
+            let p = ppRowSpriceForAlert(d);
             if (typeof chPromoFinalSpriceToSave === 'function' && p > 0) {
                 p = Number(chPromoFinalSpriceToSave(d, p)) || p;
             } else if (window.SpriceLmpCap && p > 0) {
-                p = Number(SpriceLmpCap.prepare(d, p)) || p;
+                const cap = SpriceLmpCap.apply(d, p);
+                if (cap && cap.shown > 0) p = cap.shown;
             }
             return Math.round((Number(p) || 0) * 100) / 100;
         }
@@ -921,6 +922,7 @@
                 try { row.update(patch); } catch (e) { /* ignore */ }
                 try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
             });
+            if (typeof updateSummary === 'function') updateSummary();
         }
         function ppPushPriceForRow(row) {
             if (!row || typeof row.getData !== 'function') return;

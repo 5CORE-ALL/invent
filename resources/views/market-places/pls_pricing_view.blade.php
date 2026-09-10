@@ -75,6 +75,7 @@
             white-space: nowrap;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'pls'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'pls'])
     </style>
 @endsection
 
@@ -142,6 +143,7 @@
                         title="Cycle: Off → Decrease → Increase → Same Price → Amz Prc → Off">
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'pls'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'pls'])
 
                     {{-- Target ROI% / GPFT% — compact UI matches /ebay-tabulator-view (🎯 label + icon-only apply).
@@ -300,11 +302,13 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'pls'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'pls'])
 @endsection
 
 @section('script-bottom')
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'pls'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'pls'])
     const COLUMN_VIS_KEY = "pls_tabulator_column_visibility";
     const PLS_PERCENTAGE = {{ $plsPercentage ?? 100 }} / 100; // Dynamic from database
     let table = null;

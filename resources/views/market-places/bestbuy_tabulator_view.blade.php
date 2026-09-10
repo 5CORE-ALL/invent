@@ -469,7 +469,7 @@
         if (row.Parent && String(row.Parent).startsWith('PARENT')) return true;
         return false;
     }
-    function bestbuyRowSpriceForAlert(data) {
+    function bestbuyDisplayedSprice(data) {
         let sprice = parseFloat(data && data.SPRICE) || 0;
         if (typeof chPromoLiveSprice === 'function' && !isBestbuyParentRow(data)) {
             const calc = chPromoLiveSprice(data);
@@ -477,6 +477,10 @@
         }
         return sprice;
     }
+    function bestbuyRowSpriceForAlert(data) {
+        return bestbuyDisplayedSprice(data);
+    }
+    window.bestbuyDisplayedSprice = bestbuyDisplayedSprice;
     function bestbuyHasBlueTriangle(data) {
         if (isBestbuyParentRow(data)) return false;
         const sprice = bestbuyRowSpriceForAlert(data);
@@ -1036,6 +1040,19 @@
                             } else if (pushOk > 0) {
                                 showToast(`BestBuy price push successful for ${pushOk} SKU(s)`, 'success');
                             }
+                            if (pushOk > 0 && pushFail === 0 && typeof table !== 'undefined' && table) {
+                                (updates || []).forEach(function(u) {
+                                    const price = Number(u && u.sprice);
+                                    if (!u || !u.sku || !(price > 0)) return;
+                                    const rows = table.searchRows('(Child) sku', '=', u.sku);
+                                    if (rows && rows[0]) {
+                                        try { rows[0].update({ 'BB Price': price }); } catch (e) { /* ignore */ }
+                                    }
+                                });
+                            }
+                        }
+                        if (typeof updateSummary === 'function') {
+                            try { updateSummary(); } catch (e) { /* ignore */ }
                         }
                     }
                 },

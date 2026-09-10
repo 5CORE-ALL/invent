@@ -1075,12 +1075,67 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Remaining Dil pages (not eBay / Amazon / Shopify B2C / Macys / PP).
+        // Primary fire is /etc/cron.d/dil-rest-sprice-daily (bypasses schedule:run).
+        $schedule->command('dil:rule-sprice-apply')
+            ->dailyAt('15:45')
+            ->timezone('Asia/Kolkata')
+            ->name('dil-rule-sprice-apply-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+        $schedule->command('dil:rule-sprice-apply')
+            ->dailyAt('16:25')
+            ->timezone('Asia/Kolkata')
+            ->name('dil-rule-sprice-apply-ist-catchup')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+        $schedule->command('channel:push-sprice-daily dil')
+            ->dailyAt('16:05')
+            ->timezone('Asia/Kolkata')
+            ->name('channel-push-sprice-daily-dil-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+        $schedule->command('channel:push-sprice-daily dil')
+            ->dailyAt('16:35')
+            ->timezone('Asia/Kolkata')
+            ->name('channel-push-sprice-daily-dil-ist-catchup')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // eBay 1/2/3 Sprc Dil → save SPRICE. Primary fire is /etc/cron.d/ebay3-sprice-daily
+        // (bypasses overloaded schedule:run). These slots are backup + late catch-up.
+        $schedule->command('ebay:rule-sprice-apply')
+            ->dailyAt('16:45')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-rule-sprice-apply-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+        $schedule->command('ebay:rule-sprice-apply')
+            ->dailyAt('17:10')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-rule-sprice-apply-ist-catchup')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // S PRC → live eBay listing price (ebay1 / ebay2 / ebay3). Page not required.
         $schedule->command('channel:push-sprice-daily')
             ->dailyAt('17:00')
             ->timezone('Asia/Kolkata')
             ->name('channel-push-sprice-daily-ist')
-            ->withoutOverlapping(60)
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+        $schedule->command('channel:push-sprice-daily')
+            ->dailyAt('17:25')
+            ->timezone('Asia/Kolkata')
+            ->name('channel-push-sprice-daily-ist-catchup')
+            ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log);
 

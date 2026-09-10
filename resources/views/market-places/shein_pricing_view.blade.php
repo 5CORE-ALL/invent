@@ -624,6 +624,7 @@
             if (lmp > 0 && raw + 0.0001 >= lmp) return Math.round(lmp * 100) / 100;
             return raw;
         }
+        window.sheinVisibleSprice = sheinVisibleSprice;
         function sheinSpriceMetrics(data, spriceOpt) {
             const sprice = spriceOpt != null ? Number(spriceOpt) : sheinVisibleSprice(data);
             if (!(sprice > 0)) return { sgpft: 0, sroi: 0 };

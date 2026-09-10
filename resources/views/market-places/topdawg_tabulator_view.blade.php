@@ -292,17 +292,21 @@
     function tdIsParentRow(d) {
         return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
     }
-    function tdRowSpriceForAlert(data) {
+    function tdDisplayedSprice(data) {
+        if (!data || tdIsParentRow(data)) return 0;
+        if (typeof chPromoLiveSprice === 'function') {
+            const calc = Number(chPromoLiveSprice(data)) || 0;
+            if (calc > 0) return calc;
+        }
         if (typeof chPromoSavedOrLiveSprice === 'function') {
             return Number(chPromoSavedOrLiveSprice(data)) || 0;
         }
-        let sprice = parseFloat(data && data.SPRICE) || 0;
-        if (typeof chPromoLiveSprice === 'function' && !tdIsParentRow(data)) {
-            const calc = chPromoLiveSprice(data);
-            if (calc > 0) sprice = calc;
-        }
-        return sprice;
+        return parseFloat(data.SPRICE) || 0;
     }
+    function tdRowSpriceForAlert(data) {
+        return tdDisplayedSprice(data);
+    }
+    window.tdDisplayedSprice = tdDisplayedSprice;
     function tdHasBlueTriangle(data) {
         if (tdIsParentRow(data)) return false;
         const sprice = tdRowSpriceForAlert(data);
@@ -475,9 +479,7 @@
             const d = row.getData();
             const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
             if (!sku || !tdSelectedSkus.has(sku)) return;
-            const sprice = (typeof chPromoSavedOrLiveSprice === 'function')
-                ? Number(chPromoSavedOrLiveSprice(d))
-                : parseFloat(d.SPRICE);
+            const sprice = tdDisplayedSprice(d);
             if (!isFinite(sprice) || sprice <= 0) return;
             items.push({ sku: sku, price: +sprice.toFixed(2), row: row });
         });
@@ -1103,9 +1105,8 @@
                     formatter: c => {
                         const rowData = c.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
-                        let value = (typeof chPromoSavedOrLiveSprice === 'function')
-                            ? Number(chPromoSavedOrLiveSprice(rowData))
-                            : parseFloat(c.getValue() || 0);
+                        let value = tdDisplayedSprice(rowData);
+                        if (!(value > 0)) value = parseFloat(c.getValue() || 0);
                         const status = rowData.SPRICE_STATUS || '';
                         const live = parseFloat(rowData['TD Price']) || 0;
                         const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
@@ -1144,9 +1145,7 @@
                         const rowData = cell.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
                         const sku = rowData['(Child) sku'] ? String(rowData['(Child) sku']) : '';
-                        const sprice = (typeof chPromoSavedOrLiveSprice === 'function')
-                            ? Number(chPromoSavedOrLiveSprice(rowData))
-                            : parseFloat(rowData.SPRICE || 0);
+                        const sprice = tdDisplayedSprice(rowData);
                         if (!sku || !(sprice > 0)) return '';
                         const status = String(rowData.push_status || rowData.SPRICE_STATUS || '');
                         const pushedValue = rowData.SPRICE_PUSHED_VALUE;
@@ -1616,7 +1615,7 @@
                     const byFail = new Set(results.filter(function(r) { return !r.ok; }).map(function(r) { return String(r.sku); }));
                     items.forEach(function(it) {
                         if (byOk.has(it.sku)) {
-                            tdMarkPushStatus(it.row, 'pushed', { SPRICE_PUSHED_VALUE: it.price });
+                            tdMarkPushStatus(it.row, 'pushed', { SPRICE_PUSHED_VALUE: it.price, 'TD Price': it.price });
                         } else if (byFail.has(it.sku)) {
                             tdMarkPushStatus(it.row, 'failed');
                         }
@@ -1628,6 +1627,9 @@
                         ? 'TopDawg accepted ' + ok + ' SKU(s) into REVIEW QUEUE. TD said: "' + tdReply + '" — storefront price updates after TD approval (usually 1–24h).'
                         : 'Pushed ' + ok + ' / ' + (ok + fail) + ' — ' + fail + ' failed. ' + (ok > 0 ? 'Accepted SKUs are in TopDawg review queue.' : '');
                     tdShowToast(msg, kind);
+                    if (typeof updateSummary === 'function') {
+                        try { updateSummary(); } catch (e) { /* ignore */ }
+                    }
                     if (fail > 0 && window.console) {
                         console.warn('TopDawg push: failures', results.filter(function(r) { return !r.ok; }));
                     }
@@ -1659,9 +1661,7 @@
             if (!row) return;
             const d = row.getData() || {};
             const sku = d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
-            const sprice = (typeof chPromoSavedOrLiveSprice === 'function')
-                ? Number(chPromoSavedOrLiveSprice(d))
-                : parseFloat(d.SPRICE);
+            const sprice = tdDisplayedSprice(d);
             if (!sku || !(sprice > 0)) {
                 tdShowToast('Set a valid SPRICE (> 0) before pushing', 'error');
                 return;

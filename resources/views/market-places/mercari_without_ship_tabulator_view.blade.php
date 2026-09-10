@@ -52,6 +52,7 @@
             white-space: nowrap;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'mercari_woship'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'mercari_woship'])
     </style>
 @endsection
 
@@ -192,6 +193,7 @@
                         title="Export current (filtered) rows to CSV">
                         <i class="fas fa-file-export"></i> Export
                     </button>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'mercari_woship'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'mercari_woship'])
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                         data-bs-target="#priceSoldUploadModal" title="Upload Price &amp; Sold">
@@ -259,11 +261,13 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'mercari_woship'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'mercari_woship'])
 @endsection
 
 @section('script-bottom')
     <script>
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'mercari_woship'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'mercari_woship'])
         let table;
         let allTableData = [];
 

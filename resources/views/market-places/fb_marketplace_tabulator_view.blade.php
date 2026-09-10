@@ -337,6 +337,7 @@
                 : parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
             return fbMpRoundSprice(saved);
         }
+        window.fbMpDisplayedSprice = fbMpDisplayedSprice;
         function fbMpRowSpriceForAlert(data) {
             return fbMpDisplayedSprice(data);
         }

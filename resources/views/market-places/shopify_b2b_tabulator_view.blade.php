@@ -401,6 +401,7 @@
         .shopify-b2b-push-row-btn:hover { color: #dc6502; }
         .shopify-b2b-push-row-btn:disabled { opacity: 0.5; cursor: wait; }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shopify_b2b'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'shopify_b2b'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
 @endsection
@@ -658,6 +659,7 @@
                         <i class="fas fa-file-excel"></i>
                     </button>
 
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'shopify_b2b'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2b'])
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
@@ -730,6 +732,7 @@
     </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'shopify_b2b'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'shopify_b2b'])
 @endsection
 
 @section('script-bottom')
@@ -773,6 +776,7 @@
         return sku.includes('PARENT');
     }
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2b'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shopify_b2b'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
     function shopifyB2bDisplayedSprice(data) {

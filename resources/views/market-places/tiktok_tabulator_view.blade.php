@@ -1375,6 +1375,15 @@
             const stored = Number(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice);
             return (isFinite(stored) && stored > 0) ? stored : 0;
         }
+        function ttDisplayedSprice(rowData) {
+            if (!rowData || ttIsParentRow(rowData)) return 0;
+            if (typeof chPromoLiveSprice === 'function') {
+                const calc = Number(chPromoLiveSprice(rowData)) || 0;
+                if (calc > 0) return calc;
+            }
+            return ttSavedSpriceAmount(rowData);
+        }
+        window.ttDisplayedSprice = ttDisplayedSprice;
         /** SNROI = (gross PFT$ − S PRC × TACOS%/100) / LP × 100 — same shape as eBay / Amazon SNROI. */
         function ttComputeSnroi(rowData) {
             const price = ttSavedSpriceAmount(rowData);
@@ -1460,11 +1469,7 @@
             return parseFloat(data && (data['TT Price'] != null ? data['TT Price'] : data.Price)) || 0;
         }
         function ttRowSpriceForAlert(data) {
-            if (!data || ttIsParentRow(data)) return 0;
-            if (typeof chPromoSavedOrLiveSprice === 'function') {
-                return Number(chPromoSavedOrLiveSprice(data)) || 0;
-            }
-            return parseFloat(data.SPRICE) || 0;
+            return ttDisplayedSprice(data);
         }
         function ttHasBlueTriangle(data) {
             if (ttIsParentRow(data)) return false;
@@ -4019,9 +4024,8 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (ttIsParentRow(rowData)) return '';
-                            let value = (typeof chPromoSavedOrLiveSprice === 'function')
-                                ? Number(chPromoSavedOrLiveSprice(rowData))
-                                : parseFloat(cell.getValue() || 0);
+                            let value = ttDisplayedSprice(rowData);
+                            if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
                             if (!(value > 0)) return '';
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
                             const hasCustom = rowData.has_custom_sprice;
@@ -4065,8 +4069,8 @@
 
                             const sku = rowData['(Child) sku'];
                             const sprice = window.SpriceLmpCap
-                                ? SpriceLmpCap.prepare(rowData, parseFloat(rowData.SPRICE || 0))
-                                : (parseFloat(rowData.SPRICE || 0));
+                                ? SpriceLmpCap.prepare(rowData, ttDisplayedSprice(rowData))
+                                : ttDisplayedSprice(rowData);
                             const status = rowData.SPRICE_STATUS || null;
                             const pushedValue = rowData.SPRICE_PUSHED_VALUE;
                             const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT;
@@ -4676,8 +4680,12 @@
                                     SPRICE_STATUS: 'pushed',
                                     SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString(),
                                     SPRICE_PUSHED_VALUE: price,
-                                    has_custom_sprice: true
-                                }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                                    has_custom_sprice: true,
+                                    'TT Price': price
+                                }).then(function() {
+                                    row.reformat();
+                                    if (typeof updateSummary === 'function') updateSummary();
+                                }).catch(function() { row.reformat(); });
                                 resolve({ ok: true, sku: sku, message: response.message || 'Pushed' });
                             } else {
                                 row.update({
@@ -4755,7 +4763,7 @@
                     const $rowEl = $btn.closest('.tabulator-row');
                     const row = table.getRow($rowEl[0]);
                     if (!row) return;
-                    const price = parseFloat(row.getData().SPRICE || $btn.attr('data-price') || 0);
+                    const price = ttDisplayedSprice(row.getData()) || parseFloat($btn.attr('data-price') || 0);
 
                     if (!sku || !price || price <= 0) {
                         showToast('Set a valid SPRICE (> 0) before pushing', 'error');
@@ -4785,9 +4793,9 @@
                     const rows = table.searchRows('(Child) sku', '=', sku);
                     if (!rows.length) return;
                     const row = rows[0];
-                    const price = parseFloat(row.getData().SPRICE || 0);
+                    const price = ttDisplayedSprice(row.getData());
                     if (!price || price <= 0) return;
-                    jobs.push({ row: row, sku: sku, price: price });
+                    jobs.push({ row: row, sku: sku, price: +price.toFixed(2) });
                 });
 
                 if (jobs.length === 0) {

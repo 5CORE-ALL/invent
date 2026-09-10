@@ -1324,6 +1324,7 @@
         if (window.SpriceLmpCap) sprice = SpriceLmpCap.prepare(data, sprice);
         return sprice;
     }
+    window.reverbRowSpriceForAlert = reverbRowSpriceForAlert;
     function reverbHasBlueTriangle(data) {
         if (isReverbParentRow(data)) return false;
         const sprice = reverbRowSpriceForAlert(data);
@@ -1388,7 +1389,7 @@
     }
     /** True when SPRICE should be sent to Reverb (not already pushed at this price). */
     function reverbSpriceNeedsPush(d) {
-        const sprice = parseFloat(d && d.SPRICE);
+        const sprice = Number(reverbRowSpriceForAlert(d)) || parseFloat(d && d.SPRICE);
         if (!(sprice > 0)) return false;
         const status = String((d && d.SPRICE_STATUS) || '');
         if (status === 'processing') return false;
@@ -4711,8 +4712,12 @@
                             row.update({
                                 SPRICE_STATUS: 'pushed',
                                 SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString(),
-                                SPRICE_PUSHED_VALUE: price
-                            }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                                SPRICE_PUSHED_VALUE: price,
+                                'RV Price': price
+                            }).then(function() {
+                                row.reformat();
+                                if (typeof updateSummary === 'function') updateSummary();
+                            }).catch(function() { row.reformat(); });
                             resolve({ ok: true, sku: sku, message: response.message || 'Pushed' });
                         } else {
                             row.update({
@@ -4764,11 +4769,11 @@
             all.forEach(function(t) {
                 const d = (t.row && t.row.getData()) || t.d || {};
                 const sku = reverbSpricePushSku(d);
-                const price = parseFloat(d.SPRICE || 0);
+                const price = Number(reverbRowSpriceForAlert(d)) || parseFloat(d.SPRICE || 0);
                 if (!sku || !(price > 0)) return;
                 if (!forceOne && !reverbSpriceNeedsPush(d)) return;
                 if (String(d.SPRICE_STATUS || '') === 'processing') return;
-                jobs.push({ row: t.row, sku: sku, price: price });
+                jobs.push({ row: t.row, sku: sku, price: +price.toFixed(2) });
             });
             if (!jobs.length) {
                 showToast(singleRow
@@ -4817,9 +4822,9 @@
                 const rows = table.searchRows('(Child) sku', '=', sku);
                 if (!rows.length) return;
                 const row = rows[0];
-                const price = parseFloat(row.getData().SPRICE || 0);
+                const price = Number(reverbRowSpriceForAlert(row.getData())) || parseFloat(row.getData().SPRICE || 0);
                 if (!price || price <= 0) return;
-                jobs.push({ row: row, sku: sku, price: price });
+                jobs.push({ row: row, sku: sku, price: +price.toFixed(2) });
             });
 
             if (jobs.length === 0) {

@@ -3339,6 +3339,9 @@
                 }
                 if (patch) row.update(patch);
             });
+            if (typeof window.updateAmazonSummary === 'function') {
+                try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }
+            }
         }
 
         function amzOkSkusFromPushTasks(tasks) {
@@ -3371,6 +3374,9 @@
                 if (Number(d.price) === live && Number(d.Price) === live) return;
                 row.update({ price: live, Price: live });
             });
+            if (typeof window.updateAmazonSummary === 'function') {
+                try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }
+            }
         }
         function queueAmzPostPushPull(skus) {
             if (!skus || !skus.length) return;

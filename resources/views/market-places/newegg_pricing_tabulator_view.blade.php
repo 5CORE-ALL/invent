@@ -743,6 +743,7 @@
         function neShownSprice(data) {
             return neApplyAmzFloor(data, nePriceBeforeAmzFloor(data));
         }
+        window.neShownSprice = neShownSprice;
 
         function neRowFactor(data) {
             const fromRow = parseFloat(data && (data.factor != null ? data.factor : data._margin));
@@ -2502,6 +2503,9 @@
                             const more   = allFails.length > 3 ? `\n…and ${allFails.length - 3} more (see console)` : '';
                             showToast(`Failed:\n${sample}${more}`, 'error');
                         }
+                        if (typeof updateSummary === 'function') {
+                            try { updateSummary(); } catch (e) { /* ignore */ }
+                        }
                         return;
                     }
 
@@ -2525,6 +2529,9 @@
                                 const rows = table.searchRows('sku', '=', r.sku);
                                 if (rows.length) rows[0].update({ price: r.price });
                             });
+                            if (typeof updateSummary === 'function') {
+                                try { updateSummary(); } catch (e) { /* ignore */ }
+                            }
                             (res.results || []).filter(r => !r.success).forEach(r => allFails.push(r));
                         },
                         error: function(xhr) {

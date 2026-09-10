@@ -1311,6 +1311,7 @@
     function shopifyB2cShownSprice(data) {
         return shopifyB2cApplyAmzFloor(data, shopifyB2cPriceBeforeAmzFloor(data));
     }
+    window.shopifyB2cShownSprice = shopifyB2cShownSprice;
 
     function shopifyB2cHasAmzFloor(data) {
         if (!data || isShopifyB2cParentRow(data)) return false;
@@ -1475,6 +1476,8 @@
         const gpft = p > 0 ? (gross / p) * 100 : 0;
         return {
             Price: p,
+            SPRICE: p,
+            has_custom_sprice: p > 0,
             'GPFT%': gpft,
             'ROI%': lp > 0 ? (gross / lp) * 100 : 0,
             'NROI%': shopifyComputeNetRoi(p, lp, ship, ads),

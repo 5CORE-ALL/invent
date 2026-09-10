@@ -9,6 +9,7 @@
         /* Select column header checkbox */
         .depop-select-header { display: flex; align-items: center; justify-content: center; }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'depop'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'depop'])
     </style>
 @endsection
 
@@ -27,6 +28,7 @@
                     <a href="{{ route('depop.pricing.export') }}" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-file-csv"></i> Export CSV
                     </a>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'depop'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'depop'])
 
                     <form id="import-form" class="d-flex align-items-center gap-2 mb-0">
@@ -110,6 +112,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'depop'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'depop'])
 @endsection
 
 @section('script-bottom')
@@ -117,6 +120,7 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'depop'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'depop'])
     let table = null;
     let allTableData = [];
     let decreaseModeActive = false;
