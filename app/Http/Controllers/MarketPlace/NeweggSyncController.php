@@ -723,7 +723,7 @@ class NeweggSyncController extends Controller
         }
 
         $line = NeweggOrderMetric::query()->findOrFail($id);
-        $result = app(NeweggTrackingSyncService::class)->pushTrackingForOrder($line);
+        $result = app(NeweggTrackingSyncService::class)->pushTrackingForOrder($line, true);
 
         return response()->json([
             'success' => ! empty($result['success']),
