@@ -19,6 +19,16 @@ let midnightTimer = null;
 function showView(name) {
     Object.values(views).forEach((v) => v.classList.remove('active'));
     views[name]?.classList.add('active');
+    setLoginPill(name === 'dash');
+}
+
+function setLoginPill(loggedIn) {
+    const pill = $('loginPill');
+    const text = $('loginPillText');
+    if (!pill || !text) return;
+    pill.classList.toggle('logged-in', !!loggedIn);
+    pill.classList.toggle('logged-off', !loggedIn);
+    text.textContent = loggedIn ? 'Logged in' : 'Logged off';
 }
 
 function showError(el, msg) {
@@ -313,6 +323,12 @@ async function init() {
             syncFromServer({ session: null, today: null });
             showView('login');
             showError($('loginError'), payload?.message || 'You were signed out by an administrator.');
+        });
+    }
+
+    if (typeof window.agent.onLoginStatus === 'function') {
+        window.agent.onLoginStatus((payload) => {
+            setLoginPill(!!payload?.loggedIn);
         });
     }
 
