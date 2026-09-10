@@ -1149,9 +1149,10 @@
         });
         return best;
     }
-    const TEMU_FIXED_ADS_PERCENT = 2.2;
+    let temu2BadgeTacosPercent = null;
     function temuAdsPercentForNet() {
-        return TEMU_FIXED_ADS_PERCENT;
+        const n = parseFloat(temu2BadgeTacosPercent);
+        return Number.isFinite(n) ? n : 0;
     }
     function temu2PftDollars(rowData) {
         const rPrice = temu2RPriceFromRow(rowData);
@@ -1729,7 +1730,7 @@
                                 : isPct
                                     ? data.map(d => Number(d[metric]) || 0)
                                     : data.map(d => Number(d.price) || 0);
-                const temuChartMetricLabels = { price: 'Price', views: 'O Clicks', t_clicks: 'T Clicks', cvr: 'CVR%', temu_l30: 'Temu L30', profit_percent: 'GPRFT%', ads_percent: 'ADS%', roi_percent: 'GROI%', npft_percent: 'NPFT%', nroi_percent: 'NROI%' };
+                const temuChartMetricLabels = { price: 'Price', views: 'O Clicks', t_clicks: 'T Clicks', cvr: 'CVR%', temu_l30: 'Temu L30', profit_percent: 'GPRFT%', ads_percent: 'TAcos%', roi_percent: 'GROI%', npft_percent: 'NPFT%', nroi_percent: 'NROI%' };
                 const temuChartMetricColors = { price: '#adb5bd', views: '#0000FF', t_clicks: '#6610f2', cvr: '#008000', temu_l30: '#fd7e14', profit_percent: '#ff1493', ads_percent: '#ffc107', roi_percent: '#6f42c1', npft_percent: '#28a745', nroi_percent: '#17a2b8' };
                 const bgColors = { price: 'rgba(108,117,125,0.08)', views: 'rgba(0,0,255,0.1)', t_clicks: 'rgba(102,16,242,0.1)', cvr: 'rgba(0,128,0,0.1)', temu_l30: 'rgba(253,126,20,0.1)', profit_percent: 'rgba(255,20,147,0.1)', ads_percent: 'rgba(255,193,7,0.1)', roi_percent: 'rgba(111,66,193,0.1)', npft_percent: 'rgba(40,167,69,0.1)', nroi_percent: 'rgba(23,162,184,0.1)' };
                 const labelText = temuChartMetricLabels[metric] || 'Price';
@@ -2473,7 +2474,7 @@
             currentSkuChartMetric = (el.getAttribute ? el.getAttribute('data-metric') : $(el).data('metric')) || 'price';
             currentSku = sku;
             $('#modalSkuName').text(sku);
-            const metricLabels = { price: 'Price', views: 'O Clicks', t_clicks: 'T Clicks', cvr: 'CVR%', temu_l30: 'Temu L30', profit_percent: 'GPRFT%', ads_percent: 'ADS%', roi_percent: 'GROI%', npft_percent: 'NPFT%', nroi_percent: 'NROI%' };
+            const metricLabels = { price: 'Price', views: 'O Clicks', t_clicks: 'T Clicks', cvr: 'CVR%', temu_l30: 'Temu L30', profit_percent: 'GPRFT%', ads_percent: 'TAcos%', roi_percent: 'GROI%', npft_percent: 'NPFT%', nroi_percent: 'NROI%' };
             $('#temuChartRefLabel').text(metricLabels[currentSkuChartMetric] || 'Price');
             $('#temuChartModalSuffix').text('(Rolling L30)');
             $('#sku-chart-days-filter').val('30');
@@ -3525,7 +3526,11 @@
                 ? parseFloat(adTotalsFromBackend.tacos)
                 : NaN;
             const tacosPct = Number.isFinite(tacosFromAds) ? tacosFromAds : (Number(adsPercentForNpft) || 0);
+            temu2BadgeTacosPercent = tacosPct;
             $('#tacos-percent-badge').text('TAcos%: ' + tacosPct.toFixed(1) + '%');
+            if (table && typeof table.getColumn === 'function' && table.getColumn('ads_percent')) {
+                table.getRows().forEach(function(row) { row.reformat(); });
+            }
             $('#avg-npft-badge').text('NPFT: ' + Math.round(avgNpft) + '%');
             $('#avg-nroi-badge').text('NROI: ' + Math.round(avgNroi) + '%');
             $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
@@ -4165,17 +4170,17 @@
                     }
                 },
                 {
-                    title: "ADS%",
+                    title: "TAcos%",
                     field: "ads_percent",
                     hozAlign: "center",
                     visible: false,
-                    headerTooltip: "ADS% = /temu2/ads TAcos% (Spend ÷ all sales)",
+                    headerTooltip: "Same TAcos% as the /temu2/ads badge — Spend ÷ all sales, applied to every row",
                     sorter: "number",
                     formatter: function(cell) {
-                        const displayVal = typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 2.2;
+                        const displayVal = typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 0;
                         const rowData = cell.getRow().getData();
                         const sku = (rowData && rowData.sku) ? rowData.sku : '';
-                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="ads_percent" title="View ADS% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ffc107;"></span></button>` : '';
+                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="ads_percent" title="View TAcos% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ffc107;"></span></button>` : '';
                         return `<span style="color: #ff1493; font-weight: 600;">${displayVal.toFixed(1)}%</span> ${dotBtn}`.trim();
                     }
                 },
