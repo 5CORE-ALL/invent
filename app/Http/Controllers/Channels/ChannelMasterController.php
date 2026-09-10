@@ -51,7 +51,6 @@ use App\Support\Marketplace\ChartDatePad;
 use App\Support\Marketplace\EbayTwoListingCounts;
 use App\Services\Support\ChannelTodaySalesService;
 use App\Services\Support\YesterdayMarketplaceMetricsService;
-use App\Models\AliexpressDailyData;
 use App\Models\AliexpressListingStatus;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
@@ -8388,65 +8387,13 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * AliExpress: Pacific calendar yesterday. Prefers aliexpress_order_metrics (30-min sync).
+     * AliExpress: Pacific calendar yesterday — same API line totals as /aliexpress-tabulator.
      */
     private function computeAliexpressYSalesLikeAmazon(): ?float
     {
         [$yStart, $yEnd] = $this->pacificYesterdayBounds();
 
-        $isCancelled = function (string $status): bool {
-            $status = strtolower($status);
-
-            return str_contains($status, 'refund')
-                || str_contains($status, 'return')
-                || str_contains($status, 'cancel')
-                || str_contains($status, 'closed');
-        };
-
-        if (Schema::hasTable('aliexpress_order_metrics')) {
-            $sum = 0.0;
-            $rows = DB::table('aliexpress_order_metrics')
-                ->where('order_date', '>=', $yStart)
-                ->where('order_date', '<=', $yEnd)
-                ->get(['status', 'amount']);
-            foreach ($rows as $row) {
-                if ($isCancelled((string) ($row->status ?? ''))) {
-                    continue;
-                }
-                $sum += (float) ($row->amount ?? 0);
-            }
-
-            return round($sum, 2);
-        }
-
-        if (! Schema::hasTable('aliexpress_daily_data')) {
-            return null;
-        }
-
-        $sum = 0.0;
-        foreach (
-            DB::table('aliexpress_daily_data')
-                ->where('order_date', '>=', $yStart)
-                ->where('order_date', '<=', $yEnd)
-                ->cursor() as $row
-        ) {
-            if ($isCancelled((string) ($row->order_status ?? ''))) {
-                continue;
-            }
-            if (empty($row->sku_code) || empty($row->order_id)) {
-                continue;
-            }
-            $lineRevenue = (float) ($row->product_total ?? 0);
-            if ($lineRevenue <= 0) {
-                $lineRevenue = (float) ($row->supply_price ?? 0);
-            }
-            if ($lineRevenue <= 0) {
-                $lineRevenue = (float) ($row->order_amount ?? 0);
-            }
-            $sum += $lineRevenue;
-        }
-
-        return round($sum, 2);
+        return app(AliexpressController::class)->sumApiOrderSalesBetween($yStart, $yEnd);
     }
 
     /**
@@ -8926,46 +8873,11 @@ class ChannelMasterController extends Controller
 
     private function computeAliexpressL7SalesLikeAmazon(): ?float
     {
-        if (! Schema::hasTable('aliexpress_daily_data')) {
-            return null;
-        }
+        [$yStart, $yEnd] = $this->pacificYesterdayBounds();
+        $anchor = Carbon::parse($yEnd)->timezone('America/Los_Angeles')->addDay()->startOfDay();
+        [$l7Start, $l7End] = $this->pacificL7WindowEndingYesterday($anchor);
 
-        $latestRaw = DB::table('aliexpress_daily_data')->whereNotNull('order_date')->max('order_date');
-        if (! $latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        [$l7Start, $l7End] = $this->pacificL7WindowEndingYesterday($latestPacific);
-
-        $sum = 0.0;
-        foreach (
-            DB::table('aliexpress_daily_data')
-                ->where('order_date', '>=', $l7Start)
-                ->where('order_date', '<=', $l7End)
-                ->cursor() as $row
-        ) {
-            $status = strtolower((string) ($row->order_status ?? ''));
-            if (str_contains($status, 'refund')
-                || str_contains($status, 'return')
-                || str_contains($status, 'cancel')
-                || str_contains($status, 'closed')) {
-                continue;
-            }
-            if (empty($row->sku_code) || empty($row->order_id)) {
-                continue;
-            }
-            $lineRevenue = (float) ($row->product_total ?? 0);
-            if ($lineRevenue <= 0) {
-                $lineRevenue = (float) ($row->supply_price ?? 0);
-            }
-            if ($lineRevenue <= 0) {
-                $lineRevenue = (float) ($row->order_amount ?? 0);
-            }
-            $sum += $lineRevenue;
-        }
-
-        return round($sum, 2);
+        return app(AliexpressController::class)->sumApiOrderSalesBetween($l7Start, $l7End);
     }
 
     // get total inventory l30 values
@@ -13978,8 +13890,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * AliExpress sales / orders / PFT totals — same rules as AliExpress Daily Data tabulator
-     * (aliexpress_tabulator_view updateSummary + /aliexpress/daily-data line revenue).
+     * AliExpress sales / orders / PFT — same API orders as /aliexpress-tabulator badges.
      */
     private function aggregateAliexpressDailyDataLikeTabulator(): ?array
     {
@@ -13987,7 +13898,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * AliExpress L60 — same rules as L30, from aliexpress_daily_data_l60 upload.
+     * AliExpress L60 — same API 60-day window as /aliexpress-tabulator L60 badges.
      */
     private function aggregateAliexpressDailyDataL60LikeTabulator(): ?array
     {

@@ -523,21 +523,33 @@ class AliexpressController extends Controller
     }
 
     /**
-     * Channel master L30/L60 totals (same rules as tabulator summaries).
+     * Channel master L30/L60 totals — same API orders as /aliexpress-tabulator badges.
      *
-     * @return array<string, float|int>|null
+     * @return array<string, float|int>
      */
-    public function aggregateOrderRowsForChannelMaster(string $period = 'l30'): ?array
+    public function aggregateOrderRowsForChannelMaster(string $period = 'l30'): array
     {
-        $rows = $period === 'l60'
-            ? (Schema::hasTable('aliexpress_daily_data_l60') ? AliexpressDailyDataL60::all() : collect())
-            : AliexpressDailyData::all();
+        $days = $period === 'l60' ? 60 : 30;
 
-        if ($rows->isEmpty()) {
-            return null;
+        return $this->aggregateAliexpressOrderRows($this->aliexpressTabulatorApiRows($days));
+    }
+
+    /**
+     * API line sales in a Pacific window (cancel/refund/closed skipped). Same $ as tabulator.
+     */
+    public function sumApiOrderSalesBetween(Carbon $start, Carbon $end): float
+    {
+        $sum = 0.0;
+        foreach ($this->aliexpressOrderMetricsAsDailyRows($start, $end) as $row) {
+            $status = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($status, 'refund') || str_contains($status, 'return')
+                || str_contains($status, 'cancel') || str_contains($status, 'closed')) {
+                continue;
+            }
+            $sum += (float) ($row->product_total ?? 0);
         }
 
-        return $this->aggregateAliexpressOrderRows($rows);
+        return round($sum, 2);
     }
 
     /**
@@ -1253,6 +1265,10 @@ class AliexpressController extends Controller
      */
     private function aliexpressOrderMetricsAsDailyRows(Carbon $start, Carbon $end)
     {
+        if (! Schema::hasTable('aliexpress_order_metrics')) {
+            return collect();
+        }
+
         return AliexpressOrderMetric::query()
             ->whereNotNull('order_id')
             ->where('order_id', '!=', '')
