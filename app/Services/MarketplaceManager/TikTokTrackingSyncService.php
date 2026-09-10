@@ -66,6 +66,11 @@ class TikTokTrackingSyncService
         return 'TikTok Shop';
     }
 
+    protected function trackingMarketplaceSlug(): string
+    {
+        return 'tiktok';
+    }
+
     /**
      * @return array{store_url: string, token: string, store_key?: string}
      */

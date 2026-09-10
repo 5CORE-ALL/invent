@@ -13,7 +13,9 @@ use Illuminate\Support\Facades\Log;
  */
 class ShopifyFulfillmentTrackingMatcher
 {
-    private const SHOPIFY_API_VERSION = '2025-01';
+    private const SHOPIFY_API_VERSIONS = ['2025-01', '2024-10', '2024-01'];
+
+    private ?string $workingApiVersion = null;
 
     /**
      * @param  array{store_url?: string, token?: string}  $config
@@ -46,7 +48,7 @@ class ShopifyFulfillmentTrackingMatcher
 
         $storeUrl = trim((string) ($config['store_url'] ?? ''));
         $token = trim((string) ($config['token'] ?? ''));
-        $shopifyOrderId = trim($shopifyOrderId);
+        $shopifyOrderId = $this->numericShopifyId($shopifyOrderId);
         if ($storeUrl === '' || $token === '' || $shopifyOrderId === '') {
             $empty['error'] = 'Shopify store credentials or order id missing.';
 
@@ -55,13 +57,11 @@ class ShopifyFulfillmentTrackingMatcher
 
         $orderIds = $this->uniqueIds(array_merge([$marketplaceOrderId], $extraOrderIds));
         $sku = $this->normalizeSku($sku);
+        if (in_array($sku, ['__ORDER__', '__UNKNOWN__'], true)) {
+            $sku = '';
+        }
         if ($orderIds === []) {
             $empty['error'] = 'Marketplace order id missing — tracking not attached.';
-
-            return $empty;
-        }
-        if ($sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
-            $empty['error'] = 'Marketplace SKU missing — tracking not attached.';
 
             return $empty;
         }
@@ -89,6 +89,7 @@ class ShopifyFulfillmentTrackingMatcher
 
             $orderLines = is_array($order['line_items'] ?? null) ? $order['line_items'] : [];
             $fulfillments = $this->fulfillmentsForOrder($storeUrl, $token, $shopifyOrderId, $order);
+            $tracked = [];
             foreach ($fulfillments as $fulfillment) {
                 if (! is_array($fulfillment)) {
                     continue;
@@ -97,12 +98,15 @@ class ShopifyFulfillmentTrackingMatcher
                 if (in_array($status, ['cancelled', 'error', 'failure'], true)) {
                     continue;
                 }
-                if (! $this->fulfillmentMatchesSku($fulfillment, $sku, $orderLines)) {
-                    continue;
-                }
-
                 $number = $this->trackingFromFulfillment($fulfillment);
                 if ($number === null) {
+                    continue;
+                }
+                $tracked[] = $fulfillment;
+                if ($sku !== '' && ! $this->fulfillmentMatchesSku($fulfillment, $sku, $orderLines)) {
+                    continue;
+                }
+                if ($sku === '' && ! $this->isSingleLineTrackedOrder($orderLines, $tracked)) {
                     continue;
                 }
 
@@ -113,13 +117,31 @@ class ShopifyFulfillmentTrackingMatcher
                     'carrier' => $this->carrierFromFulfillment($fulfillment),
                     'tracking_url' => $url,
                     'matched_order_id' => $matchedOrderId,
-                    'matched_sku' => $sku,
+                    'matched_sku' => $sku !== '' ? $sku : $this->firstOrderLineSku($orderLines),
+                    'error' => null,
+                ];
+            }
+
+            // Linked Shopify copy already contains the marketplace order id.
+            // Variant-only imports omit SKU on lines — still take the single label.
+            if ($tracked !== [] && $this->isSingleLineTrackedOrder($orderLines, $tracked)) {
+                $fulfillment = $tracked[0];
+                $number = $this->trackingFromFulfillment($fulfillment);
+
+                return [
+                    'tracking' => $number,
+                    'carrier' => $this->carrierFromFulfillment($fulfillment),
+                    'tracking_url' => $this->trackingUrlFromFulfillment($fulfillment),
+                    'matched_order_id' => $matchedOrderId,
+                    'matched_sku' => $sku !== '' ? $sku : $this->firstOrderLineSku($orderLines),
                     'error' => null,
                 ];
             }
 
             $empty['matched_order_id'] = $matchedOrderId;
-            $empty['error'] = 'No Shopify fulfillment tracking for this full order id + SKU.';
+            $empty['error'] = $sku === ''
+                ? 'Marketplace SKU missing — tracking not attached.'
+                : 'No Shopify fulfillment tracking for this full order id + SKU.';
 
             return $empty;
         } catch (\Throwable $e) {
@@ -225,6 +247,7 @@ class ShopifyFulfillmentTrackingMatcher
             ltrim(trim((string) ($order['name'] ?? '')), '#'),
             (string) ($order['note'] ?? ''),
             (string) ($order['source_identifier'] ?? ''),
+            (string) ($order['source_name'] ?? ''),
             is_array($order['tags'] ?? null)
                 ? implode(',', $order['tags'])
                 : (string) ($order['tags'] ?? ''),
@@ -256,24 +279,77 @@ class ShopifyFulfillmentTrackingMatcher
         return (bool) preg_match('/(?<![A-Za-z0-9])'.$quoted.'(?![A-Za-z0-9])/i', $haystack);
     }
 
+    public function numericShopifyId(string $shopifyOrderId): string
+    {
+        $shopifyOrderId = trim($shopifyOrderId);
+        if (preg_match('/(\d{5,})$/', $shopifyOrderId, $m)) {
+            return $m[1];
+        }
+
+        return $shopifyOrderId;
+    }
+
     /**
      * @return array<string, mixed>|null
      */
     protected function fetchShopifyOrder(string $storeUrl, string $token, string $shopifyOrderId): ?array
     {
-        $response = Http::withoutVerifying()
-            ->withHeaders([
-                'X-Shopify-Access-Token' => $token,
-            ])
-            ->timeout(30)
-            ->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json");
+        $shopifyOrderId = $this->numericShopifyId($shopifyOrderId);
+        foreach ($this->shopifyApiVersions() as $version) {
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                ])
+                ->timeout(30)
+                ->get("https://{$storeUrl}/admin/api/{$version}/orders/{$shopifyOrderId}.json");
+            if (! $response->successful()) {
+                continue;
+            }
+            $order = $response->json('order');
+            if (is_array($order)) {
+                $this->workingApiVersion = $version;
 
-        if (! $response->successful()) {
-            return null;
+                return $order;
+            }
         }
-        $order = $response->json('order');
 
-        return is_array($order) ? $order : null;
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function shopifyApiVersions(): array
+    {
+        if ($this->workingApiVersion !== null) {
+            return array_values(array_unique(array_merge(
+                [$this->workingApiVersion],
+                self::SHOPIFY_API_VERSIONS
+            )));
+        }
+
+        return self::SHOPIFY_API_VERSIONS;
+    }
+
+    protected function shopifyGet(string $storeUrl, string $token, string $path): ?array
+    {
+        foreach ($this->shopifyApiVersions() as $version) {
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                ])
+                ->timeout(30)
+                ->get("https://{$storeUrl}/admin/api/{$version}/{$path}");
+            if (! $response->successful()) {
+                continue;
+            }
+            $this->workingApiVersion = $version;
+            $json = $response->json();
+
+            return is_array($json) ? $json : null;
+        }
+
+        return null;
     }
 
     /**
@@ -282,33 +358,58 @@ class ShopifyFulfillmentTrackingMatcher
      */
     protected function fulfillmentsForOrder(string $storeUrl, string $token, string $shopifyOrderId, array $order): array
     {
+        $shopifyOrderId = $this->numericShopifyId($shopifyOrderId);
         $fromOrder = is_array($order['fulfillments'] ?? null) ? $order['fulfillments'] : [];
-        $usable = [];
+        $out = [];
         foreach ($fromOrder as $fulfillment) {
-            if (is_array($fulfillment) && $this->trackingFromFulfillment($fulfillment) !== null) {
-                $usable[] = $fulfillment;
+            if (is_array($fulfillment)) {
+                $out[] = $fulfillment;
             }
         }
-        if ($usable !== []) {
-            return $fromOrder;
-        }
 
-        try {
-            $response = Http::withoutVerifying()
-                ->withHeaders([
-                    'X-Shopify-Access-Token' => $token,
-                ])
-                ->timeout(30)
-                ->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}/fulfillments.json");
-            if (! $response->successful()) {
-                return $fromOrder;
+        $extra = $this->shopifyGet($storeUrl, $token, "orders/{$shopifyOrderId}/fulfillments.json") ?? [];
+        foreach ($extra['fulfillments'] ?? [] as $fulfillment) {
+            if (is_array($fulfillment)) {
+                $out[] = $fulfillment;
             }
-            $rows = $response->json('fulfillments');
-
-            return is_array($rows) ? $rows : $fromOrder;
-        } catch (\Throwable) {
-            return $fromOrder;
         }
+
+        foreach ($this->fulfillmentsFromFulfillmentOrders($storeUrl, $token, $shopifyOrderId) as $fulfillment) {
+            $out[] = $fulfillment;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function fulfillmentsFromFulfillmentOrders(string $storeUrl, string $token, string $shopifyOrderId): array
+    {
+        $fos = $this->shopifyGet($storeUrl, $token, "orders/{$shopifyOrderId}/fulfillment_orders.json") ?? [];
+        $orders = is_array($fos['fulfillment_orders'] ?? null) ? $fos['fulfillment_orders'] : [];
+        $out = [];
+        foreach ($orders as $fo) {
+            if (! is_array($fo)) {
+                continue;
+            }
+            $foId = $this->numericShopifyId((string) ($fo['id'] ?? ''));
+            if ($foId === '') {
+                continue;
+            }
+            $rows = $this->shopifyGet($storeUrl, $token, "fulfillment_orders/{$foId}/fulfillments.json") ?? [];
+            foreach ($rows['fulfillments'] ?? [] as $fulfillment) {
+                if (is_array($fulfillment)) {
+                    $out[] = $fulfillment;
+                }
+            }
+            // Some Shopify payloads put tracking on the FO itself.
+            if ($this->trackingFromFulfillment($fo) !== null) {
+                $out[] = $fo;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -353,12 +454,52 @@ class ShopifyFulfillmentTrackingMatcher
         if (
             count($orderLines) === 1
             && $this->trackingFromFulfillment($fulfillment) !== null
-            && $this->orderHasSku(['line_items' => $orderLines], $sku)
+            && ($sku === '' || $this->orderHasSku(['line_items' => $orderLines], $sku) || $this->fulfillmentLinesLackSkus($lines))
         ) {
             return true;
         }
 
         return false;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $orderLines
+     * @param  list<array<string, mixed>>  $tracked
+     */
+    protected function isSingleLineTrackedOrder(array $orderLines, array $tracked): bool
+    {
+        if ($tracked === []) {
+            return false;
+        }
+        $lineCount = 0;
+        foreach ($orderLines as $line) {
+            if (is_array($line)) {
+                $lineCount++;
+            }
+        }
+        if ($lineCount > 1 && count($tracked) > 1) {
+            return false;
+        }
+
+        return $lineCount <= 1 || count($tracked) === 1;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $orderLines
+     */
+    protected function firstOrderLineSku(array $orderLines): ?string
+    {
+        foreach ($orderLines as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $sku = trim((string) ($line['sku'] ?? ''));
+            if ($sku !== '') {
+                return $sku;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -406,6 +547,17 @@ class ShopifyFulfillmentTrackingMatcher
         $candidates = [
             $line['sku'] ?? '',
         ];
+        $variantId = trim((string) ($line['variant_id'] ?? ''));
+        if ($variantId !== '') {
+            try {
+                $catalog = ShopifySku::query()->where('variant_id', $variantId)->value('sku');
+                if (is_string($catalog) && trim($catalog) !== '') {
+                    $candidates[] = $catalog;
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
         foreach ($line['properties'] ?? [] as $prop) {
             if (! is_array($prop)) {
                 continue;

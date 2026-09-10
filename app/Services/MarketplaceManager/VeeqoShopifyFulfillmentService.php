@@ -3600,9 +3600,7 @@ class VeeqoShopifyFulfillmentService
         try {
             $response = Http::withoutVerifying()->withHeaders([
                 'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json", [
-                'fields' => 'id,fulfillments,fulfillment_status',
-            ]);
+            ])->timeout(30)->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json");
             if (! $response->successful()) {
                 return null;
             }
@@ -3658,9 +3656,7 @@ class VeeqoShopifyFulfillmentService
         try {
             $response = Http::withoutVerifying()->withHeaders([
                 'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json", [
-                'fields' => 'id,name,tags,note,note_attributes,source_name,source_identifier,line_items,fulfillments',
-            ]);
+            ])->timeout(30)->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json");
             if (! $response->successful()) {
                 return null;
             }

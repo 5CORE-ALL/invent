@@ -64,6 +64,23 @@ trait PushesTikTokShopifyTracking
             }
             $shopifyFulfillment = $hit;
         }
+        if (empty($shopifyFulfillment['tracking']) && $skus === []) {
+            $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, '', $extraIds);
+        }
+        if (empty($shopifyFulfillment['tracking'])) {
+            $copied = app(VeeqoShopifyFulfillmentService::class)
+                ->fulfillMarketplaceOrder($this->trackingMarketplaceSlug(), (int) ($line->id ?? 0));
+            if (! empty($copied['success']) || trim((string) ($copied['tracking'] ?? '')) !== '') {
+                foreach (($skus !== [] ? $skus : ['']) as $sku) {
+                    $hit = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku, $extraIds);
+                    if (! empty($hit['tracking'])) {
+                        $shopifyFulfillment = $hit;
+                        break;
+                    }
+                    $shopifyFulfillment = $hit;
+                }
+            }
+        }
 
         if (empty($shopifyFulfillment['tracking'])) {
             $error = trim((string) ($shopifyFulfillment['error'] ?? ''));
