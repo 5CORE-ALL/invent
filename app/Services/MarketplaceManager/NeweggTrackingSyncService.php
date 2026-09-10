@@ -31,7 +31,7 @@ class NeweggTrackingSyncService
      *   ship_carrier?: string|null
      * }
      */
-    public function pushTrackingForOrder(NeweggOrderMetric $line): array
+    public function pushTrackingForOrder(NeweggOrderMetric $line, bool $tryVeeqoCopy = false): array
     {
         if (! $this->neweggApi->isConfigured()) {
             return ['success' => false, 'message' => 'Newegg API credentials missing.'];
@@ -40,6 +40,15 @@ class NeweggTrackingSyncService
         $orderId = trim((string) $line->order_id);
         if ($orderId === '') {
             return ['success' => false, 'message' => 'Newegg order id missing.'];
+        }
+
+        if ($this->isClosedNeweggStatus((string) ($line->status ?? ''))) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'action' => 'closed',
+                'message' => 'Newegg order is cancelled/voided — tracking not pushed.',
+            ];
         }
 
         $shopifyOrderId = trim((string) (
@@ -67,11 +76,15 @@ class NeweggTrackingSyncService
             ];
         }
 
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
-        if (empty($shopifyFulfillment['tracking'])) {
+        $extraIds = array_values(array_filter([
+            trim((string) ($line->order_number ?? '')),
+        ], static fn ($id) => $id !== '' && $id !== $orderId));
+
+        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku, $extraIds);
+        if (empty($shopifyFulfillment['tracking']) && $tryVeeqoCopy) {
             $copied = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder('newegg', (int) $line->id);
             if (! empty($copied['success'])) {
-                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
+                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku, $extraIds);
             }
         }
         if (empty($shopifyFulfillment['tracking'])) {
@@ -88,11 +101,26 @@ class NeweggTrackingSyncService
         $shopifyTracking = (string) $shopifyFulfillment['tracking'];
         $shopifyCarrier = (string) ($shopifyFulfillment['carrier'] ?? '');
 
-        $neweggShipment = $this->resolveNeweggShipment($orderId, $line);
+        if ($this->alreadyPushedLocally($line, $shopifyTracking)) {
+            return [
+                'success' => true,
+                'skipped' => true,
+                'action' => 'already_synced',
+                'message' => 'Newegg already has this Shopify tracking number.',
+                'shopify_tracking' => $shopifyTracking,
+                'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
+                'newegg_tracking' => $shopifyTracking,
+            ];
+        }
+
+        // Cached Newegg payload only — a live getOrders on every candidate starves the batch.
+        $neweggShipment = $this->resolveNeweggShipment($orderId, $line, false);
         $neweggTracking = trim((string) ($neweggShipment['tracking'] ?? ''));
         $neweggCarrier = trim((string) ($neweggShipment['service'] ?? ''));
 
         if ($neweggTracking !== '' && $this->trackingEquals($neweggTracking, $shopifyTracking)) {
+            $this->markTrackingPushed($line, $shopifyTracking);
+
             return [
                 'success' => true,
                 'skipped' => true,
@@ -130,6 +158,21 @@ class NeweggTrackingSyncService
             $message = (string) ($result['message'] ?? 'Failed to push tracking to Newegg.');
 
             // Already shipped on Newegg — treat matching post-refresh tracking as success.
+            if ($this->looksLikeShippedByNewegg($message)) {
+                $this->markTrackingPushed($line, $shopifyTracking, 'sbn');
+
+                return [
+                    'success' => false,
+                    'skipped' => true,
+                    'action' => 'sbn',
+                    'message' => 'Shipped-by-Newegg order — seller tracking cannot be pushed via API.',
+                    'shopify_tracking' => $shopifyTracking,
+                    'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
+                    'newegg_tracking' => $neweggTracking !== '' ? $neweggTracking : null,
+                    'ship_carrier' => $shipCarrier,
+                ];
+            }
+
             if ($this->looksLikeAlreadyShipped($message)) {
                 try {
                     $this->orderDetailService->fetchAndPersistOrderDetail($orderId);
@@ -137,9 +180,11 @@ class NeweggTrackingSyncService
                 } catch (\Throwable $e) {
                     // ignore
                 }
-                $after = $this->resolveNeweggShipment($orderId, $line);
+                $after = $this->resolveNeweggShipment($orderId, $line, false);
                 $afterTracking = trim((string) ($after['tracking'] ?? ''));
                 if ($afterTracking !== '' && $this->trackingEquals($afterTracking, $shopifyTracking)) {
+                    $this->markTrackingPushed($line, $shopifyTracking);
+
                     return [
                         'success' => true,
                         'skipped' => true,
@@ -151,6 +196,20 @@ class NeweggTrackingSyncService
                         'ship_carrier' => $shipCarrier,
                     ];
                 }
+
+                // Newegg Action 2 cannot add tracking after the order is already Shipped/Invoiced.
+                $this->markTrackingPushed($line, $shopifyTracking, 'already_shipped_no_update');
+
+                return [
+                    'success' => false,
+                    'skipped' => true,
+                    'action' => 'already_shipped_no_update',
+                    'message' => 'Newegg already marked this order shipped and the API cannot add tracking afterward. Update tracking in Newegg Seller Portal.',
+                    'shopify_tracking' => $shopifyTracking,
+                    'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
+                    'newegg_tracking' => $afterTracking !== '' ? $afterTracking : null,
+                    'ship_carrier' => $shipCarrier,
+                ];
             }
 
             Log::warning('NeweggTrackingSyncService: push failed', [
@@ -181,6 +240,8 @@ class NeweggTrackingSyncService
             ]);
         }
 
+        $this->markTrackingPushed($line, $shopifyTracking);
+
         Log::info('NeweggTrackingSyncService: tracking pushed', [
             'order_id' => $orderId,
             'shopify_order_id' => $shopifyOrderId,
@@ -209,16 +270,24 @@ class NeweggTrackingSyncService
         $rows = NeweggOrderMetric::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
-            ->orderByDesc('order_date')
-            ->orderByDesc('id')
-            ->limit($limit * 12)
-            ->get(['id', 'order_id', 'sku', 'shopify_order_id', 'status']);
+            ->orderByRaw('pushed_to_shopify_at IS NULL')
+            ->orderBy('pushed_to_shopify_at')
+            ->orderBy('order_date')
+            ->orderBy('id')
+            ->limit($limit * 40)
+            ->get(['id', 'order_id', 'order_number', 'sku', 'shopify_order_id', 'status', 'raw_payload']);
 
         $unique = [];
         foreach ($rows as $row) {
             $ref = trim((string) $row->order_id);
             $sku = trim((string) ($row->sku ?? ''));
             if ($ref === '' || $sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
+                continue;
+            }
+            if ($this->isClosedNeweggStatus((string) ($row->status ?? ''))) {
+                continue;
+            }
+            if ($this->alreadyPushedLocally($row)) {
                 continue;
             }
             $key = $ref.'|'.$sku;
@@ -269,14 +338,22 @@ class NeweggTrackingSyncService
     /**
      * @return array{tracking: ?string, carrier: ?string, tracking_url: ?string, error?: ?string}
      */
-    protected function fetchShopifyTracking(string $shopifyOrderId, string $marketplaceOrderId = '', string $sku = ''): array
-    {
+    /**
+     * @param  list<string>  $extraOrderIds
+     * @return array{tracking: ?string, carrier: ?string, tracking_url: ?string, error?: ?string}
+     */
+    protected function fetchShopifyTracking(
+        string $shopifyOrderId,
+        string $marketplaceOrderId = '',
+        string $sku = '',
+        array $extraOrderIds = []
+    ): array {
         return app(ShopifyFulfillmentTrackingMatcher::class)->match(
             $this->shopifyConfig(),
             $shopifyOrderId,
             $marketplaceOrderId,
             $sku,
-            [],
+            $extraOrderIds,
             'NeweggTrackingSyncService'
         );
     }
@@ -284,13 +361,15 @@ class NeweggTrackingSyncService
     /**
      * @return array{tracking: ?string, service: ?string}
      */
-    protected function resolveNeweggShipment(string $orderId, NeweggOrderMetric $line): array
+    protected function resolveNeweggShipment(string $orderId, NeweggOrderMetric $line, bool $livePull = true): array
     {
-        try {
-            $this->orderDetailService->fetchAndPersistOrderDetail($orderId);
-            $line->refresh();
-        } catch (\Throwable $e) {
-            // Use cached payload if live pull fails.
+        if ($livePull) {
+            try {
+                $this->orderDetailService->fetchAndPersistOrderDetail($orderId);
+                $line->refresh();
+            } catch (\Throwable $e) {
+                // Use cached payload if live pull fails.
+            }
         }
 
         $lines = NeweggOrderMetric::query()
@@ -423,8 +502,66 @@ class NeweggTrackingSyncService
 
         return str_contains($m, 'so027')
             || str_contains($m, 'so025')
+            || str_contains($m, 'so011')
             || str_contains($m, 'already been shipped')
-            || str_contains($m, 'already shipped');
+            || str_contains($m, 'already shipped')
+            || str_contains($m, 'only unshipped orders can be shipped');
+    }
+
+    protected function looksLikeShippedByNewegg(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return str_contains($m, 'so012')
+            || str_contains($m, 'so005')
+            || str_contains($m, 'shipped by newegg')
+            || str_contains($m, 'only shipped by seller');
+    }
+
+    protected function isClosedNeweggStatus(string $status): bool
+    {
+        $status = strtolower(trim($status));
+
+        return $status !== '' && (
+            str_contains($status, 'void')
+            || str_contains($status, 'cancel')
+        );
+    }
+
+    protected function alreadyPushedLocally(NeweggOrderMetric $line, string $shopifyTracking = ''): bool
+    {
+        $raw = is_array($line->raw_payload) ? $line->raw_payload : [];
+        $pushed = trim((string) ($raw['shopify_tracking_pushed'] ?? ''));
+        if ($pushed === '') {
+            return false;
+        }
+        if ($shopifyTracking === '') {
+            return true;
+        }
+
+        return $this->trackingEquals($pushed, $shopifyTracking);
+    }
+
+    protected function markTrackingPushed(NeweggOrderMetric $line, string $tracking, string $note = ''): void
+    {
+        $orderId = trim((string) $line->order_id);
+        if ($orderId === '') {
+            return;
+        }
+
+        $rows = NeweggOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->get();
+
+        foreach ($rows as $row) {
+            $raw = is_array($row->raw_payload) ? $row->raw_payload : [];
+            $raw['shopify_tracking_pushed'] = $tracking;
+            $raw['tracking_pushed_at'] = now()->toIso8601String();
+            if ($note !== '') {
+                $raw['tracking_push_note'] = $note;
+            }
+            $row->update(['raw_payload' => $raw]);
+        }
     }
 
     protected function trackingEquals(string $a, string $b): bool

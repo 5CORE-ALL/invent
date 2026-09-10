@@ -348,6 +348,16 @@ class ShopifyFulfillmentTrackingMatcher
             }
         }
 
+        // Single-SKU Shopify copy: accept the label even when the fulfillment
+        // line SKU is a slightly different catalog form than the marketplace SKU.
+        if (
+            count($orderLines) === 1
+            && $this->trackingFromFulfillment($fulfillment) !== null
+            && $this->orderHasSku(['line_items' => $orderLines], $sku)
+        ) {
+            return true;
+        }
+
         return false;
     }
 
@@ -418,9 +428,26 @@ class ShopifyFulfillmentTrackingMatcher
     /**
      * @param  array<string, mixed>  $fulfillment
      */
+    /**
+     * @param  array<string, mixed>  $fulfillment
+     * @return array<string, mixed>
+     */
+    protected function trackingInfo(array $fulfillment): array
+    {
+        $info = $fulfillment['tracking_info'] ?? [];
+        if (isset($info[0]) && is_array($info[0])) {
+            $info = $info[0];
+        }
+
+        return is_array($info) ? $info : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $fulfillment
+     */
     protected function trackingFromFulfillment(array $fulfillment): ?string
     {
-        $info = is_array($fulfillment['tracking_info'] ?? null) ? $fulfillment['tracking_info'] : [];
+        $info = $this->trackingInfo($fulfillment);
         $number = trim((string) ($info['number'] ?? ''));
         if ($number === '' && ! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
             $number = trim((string) ($fulfillment['tracking_numbers'][0] ?? ''));
@@ -437,7 +464,7 @@ class ShopifyFulfillmentTrackingMatcher
      */
     protected function carrierFromFulfillment(array $fulfillment): ?string
     {
-        $info = is_array($fulfillment['tracking_info'] ?? null) ? $fulfillment['tracking_info'] : [];
+        $info = $this->trackingInfo($fulfillment);
         $carrier = trim((string) ($fulfillment['tracking_company'] ?? ''));
         if ($carrier === '') {
             $carrier = trim((string) ($info['company'] ?? ''));
@@ -451,7 +478,7 @@ class ShopifyFulfillmentTrackingMatcher
      */
     protected function trackingUrlFromFulfillment(array $fulfillment): ?string
     {
-        $info = is_array($fulfillment['tracking_info'] ?? null) ? $fulfillment['tracking_info'] : [];
+        $info = $this->trackingInfo($fulfillment);
         $url = trim((string) ($info['url'] ?? ''));
         if ($url === '' && ! empty($fulfillment['tracking_urls']) && is_array($fulfillment['tracking_urls'])) {
             $url = trim((string) ($fulfillment['tracking_urls'][0] ?? ''));

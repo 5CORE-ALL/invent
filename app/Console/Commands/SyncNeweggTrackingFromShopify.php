@@ -30,7 +30,7 @@ class SyncNeweggTrackingFromShopify extends Command
                 return self::FAILURE;
             }
 
-            $result = $sync->pushTrackingForOrder($line);
+            $result = $sync->pushTrackingForOrder($line, true);
             $this->info($result['message'] ?? json_encode($result));
 
             return ! empty($result['success']) ? self::SUCCESS : self::FAILURE;
