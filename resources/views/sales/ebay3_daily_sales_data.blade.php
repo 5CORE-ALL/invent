@@ -57,6 +57,11 @@
             text-align: center !important;
             justify-content: center !important;
         }
+
+        #avg-price-badge,
+        #pft-total-badge {
+            display: none !important;
+        }
     </style>
 @endsection
 
@@ -97,58 +102,27 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary Statistics (L30)</h6>
+                    <h6 class="mb-3">Summary Statistics</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge"
-                            style="color: white; font-weight: bold;">Total Orders: 0</span>
+                            style="color: white; font-weight: bold;">Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge"
-                            style="color: white; font-weight: bold;">Total Quantity: 0</span>
+                            style="color: white; font-weight: bold;">Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge"
-                            style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
+                            style="background-color: #0d6efd; color: white; font-weight: bold;">Sales: $0.00</span>
                         <span class="badge fs-6 p-2" id="y-sales-badge"
                             style="background-color: #0dcaf0; color: black; font-weight: bold;"
                             title="Yesterday's sales ({{ $yesterdayLabel ?? '' }} Pacific) from real eBay 3 orders — tax-inclusive, excl. cancelled & fully-refunded.">Y Sales: ${{ number_format((float) ($salesYesterday ?? 0), 2) }}</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-revenue-badge"
-                            style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
                             style="color: white; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"
                             style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
-                            style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge"
-                            style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
-                            style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
+                        <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge"
+                            style="color: black; font-weight: bold;" aria-hidden="true">Avg Price: $0.00</span>
+                        <span class="badge bg-dark fs-6 p-2 d-none" id="pft-total-badge"
+                            style="color: white; font-weight: bold;" aria-hidden="true">GPFT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge"
-                            style="color: white; font-weight: bold;">Total COGS: $0.00</span>
-                        <span class="badge fs-6 p-2" id="kw-spent-badge"
-                            title="eBay 3 KW spend — same source as /all-marketplace-master (/ebay3/campaign-ads)"
-                            style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format((float) ($kwSpent ?? 0), 0) }}</span>
-                        <span class="badge fs-6 p-2" id="pmt-spent-badge"
-                            title="eBay 3 PMT spend — same source as /all-marketplace-master (/ebay3/campaign-ads)"
-                            style="background-color: #28a745; color: white; font-weight: bold;">PMT Spent: ${{ number_format((float) ($pmtSpent ?? 0), 0) }}</span>
-                        <span class="badge fs-6 p-2" id="tacos-percentage-badge"
-                            title="eBay 3 Ads%/TACOS — same as /all-marketplace-master EbayThree Ads%"
-                            style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: {{ number_format((float) ($ebay3AdsPercent ?? 0), 1) }}%</span>
-                        <span class="badge fs-6 p-2" id="m-pft-badge"
-                            title="NPFT% = GPFT% − TACOS% (Ads% from /all-marketplace-master)"
-                            style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
-                        <span class="badge fs-6 p-2" id="n-roi-badge"
-                            title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amz / ebay3-tabulator"
-                            style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
-                    </div>
-                    <h6 class="mb-2 mt-3">L60 Statistics (Last 60 Days)</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge fs-6 p-2" id="l60-sales-badge" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: bold;">
-                            <i class="fa fa-chart-line"></i> L60 Sales: $0
-                        </span>
-                        <span class="badge fs-6 p-2" id="l60-orders-badge" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; font-weight: bold;">
-                            <i class="fa fa-shopping-cart"></i> L60 Orders: 0
-                        </span>
-                        <span class="badge fs-6 p-2" id="l60-quantity-badge" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; font-weight: bold;">
-                            <i class="fa fa-box"></i> L60 Quantity: 0
-                        </span>
+                            style="color: white; font-weight: bold;">COGS: $0.00</span>
                     </div>
                 </div>
             </div>
@@ -173,9 +147,6 @@
     <script>
         const COLUMN_VIS_KEY = "ebay3_daily_sales_column_visibility";
         let table = null;
-        // Ads%/TACOS + spend — same ChannelMaster / campaign-ads source as /all-marketplace-master
-        const EBAY3_ADS_PCT = {{ (float) ($ebay3AdsPercent ?? 0) }};
-        const EBAY3_TOTAL_AD_SPEND = {{ (float) ($ebay3TotalAdSpend ?? 0) }};
 
         // Toast notification function
         function showToast(message, type = 'info') {
@@ -207,28 +178,6 @@
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 }
             });
-
-            // Load L60 sales statistics
-            function loadL60Sales() {
-                $.ajax({
-                    url: '/ebay3/l60-sales',
-                    type: 'GET',
-                    success: function(response) {
-                        if (response.success && response.data) {
-                            const data = response.data;
-                            $('#l60-sales-badge').html(`<i class="fa fa-chart-line"></i> L60 Sales: $${parseFloat(data.total_sales).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`);
-                            $('#l60-orders-badge').html(`<i class="fa fa-shopping-cart"></i> L60 Orders: ${parseInt(data.total_orders).toLocaleString()}`);
-                            $('#l60-quantity-badge').html(`<i class="fa fa-box"></i> L60 Quantity: ${parseInt(data.total_quantity).toLocaleString()}`);
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('Error loading L60 sales:', error);
-                    }
-                });
-            }
-
-            // Load L60 sales on page load
-            loadL60Sales();
 
             // Initialize Tabulator
             console.log("Initializing Tabulator for eBay 3 Daily Sales Data...");
@@ -576,29 +525,13 @@
                 const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
                 const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
-                // TACOS% = EbayThree Ads% from /all-marketplace-master (do not recompute from page sales).
-                const tacosPercentage = parseFloat(EBAY3_ADS_PCT) || 0;
-                // N PFT% = GPFT% − TACOS%
-                const nPft = pftPercentage - tacosPercentage;
-                // N ROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amazon / ebay3-tabulator.
-                // Unfiltered: master's total ad spend. Filtered: Ads% × visible sales.
-                const totalDataCount = table.getDataCount("all");
-                const isFiltered = data.length < totalDataCount || (($('#sku-search').val() || '').trim() !== '');
-                const masterAdSpend = parseFloat(EBAY3_TOTAL_AD_SPEND) || 0;
-                const salesForAds = totalOrderSales || totalL30Sales;
-                const adSpend = (!isFiltered && masterAdSpend > 0)
-                    ? masterAdSpend
-                    : (tacosPercentage / 100) * salesForAds;
-                const nRoi = totalCogs > 0 ? ((totalPft - adSpend) / totalCogs) * 100 : 0;
-
-                $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
-                $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
-                $('#total-sales-badge').text('Total Sales: $' + totalOrderSales.toFixed(2));
-                $('#total-revenue-badge').text('Total Revenue: $' + totalOrderSales.toFixed(2));
+                $('#total-orders-badge').text('Orders: ' + totalOrders.toLocaleString());
+                $('#total-quantity-badge').text('Quantity: ' + totalQuantity.toLocaleString());
+                $('#total-sales-badge').text('Sales: $' + totalOrderSales.toFixed(2));
                 $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
                 $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
                 $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
-                $('#pft-total-badge').text('GPFT Total: $' + totalPft.toFixed(2));
+                $('#pft-total-badge').text('GPFT: $' + totalPft.toFixed(2));
 
                 const pftBadge = $('#pft-total-badge');
                 if (totalPft >= 0) {
@@ -607,11 +540,7 @@
                     pftBadge.removeClass('bg-dark').addClass('bg-danger');
                 }
 
-                $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
-                $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
-                $('#tacos-percentage-badge').text('TACOS %: ' + tacosPercentage.toFixed(1) + '%');
-                $('#m-pft-badge').text('N PFT: ' + nPft.toFixed(1) + '%');
-                $('#n-roi-badge').text('N ROI: ' + nRoi.toFixed(1) + '%');
+                $('#total-cogs-badge').text('COGS: $' + totalCogs.toFixed(2));
             }
 
             // Build Column Visibility Dropdown
