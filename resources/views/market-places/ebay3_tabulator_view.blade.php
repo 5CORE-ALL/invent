@@ -944,8 +944,11 @@
     }
     function ebay3RawRuleSprice(rowData) {
         if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return 0;
-        if (typeof ebaySprcDilForRow === 'function') {
-            const dil = Number(ebaySprcDilForRow(rowData)) || 0;
+        const dilFn = (typeof window !== 'undefined' && typeof window.ebaySprcDilForRow === 'function')
+            ? window.ebaySprcDilForRow
+            : (typeof ebaySprcDilForRow === 'function' ? ebaySprcDilForRow : null);
+        if (dilFn) {
+            const dil = Number(dilFn(rowData)) || 0;
             if (dil > 0) return dil;
         }
         let saved = 0;
@@ -1880,7 +1883,6 @@
         }
         function ebay3HasBlueTriangle(data) {
             if (ebay3IsAlertParentRow(data)) return false;
-            if (ebay3IsEndedListing(data)) return false;
             const sprice = ebay3RowSpriceForAlert(data);
             const price = parseFloat(data['eBay Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
@@ -3202,6 +3204,12 @@
                     } catch (e) { /* ignore */ }
                 }
                 updateSummary();
+                setTimeout(function() {
+                    if (typeof chPromoInvalidateListingDilCache === 'function') {
+                        chPromoInvalidateListingDilCache();
+                    }
+                    updateSummary();
+                }, 400);
             }
         });
 
@@ -3839,6 +3847,7 @@
                 table.redraw(false);
             }
         }
+        window.updateEbay3Summary = updateSummary;
 
         // Build Column Visibility Dropdown
         const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'others'];

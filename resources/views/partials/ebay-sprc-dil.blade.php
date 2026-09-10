@@ -1341,6 +1341,11 @@
         function redrawEbaySprcDilColumn() {
             if (typeof table === 'undefined' || !table) return;
             try { table.redraw(true); } catch (e) { /* ignore */ }
+            if (typeof window.updateEbay3Summary === 'function') {
+                try { window.updateEbay3Summary(); } catch (e) { /* ignore */ }
+            } else if (typeof window.updateSummary === 'function') {
+                try { window.updateSummary(); } catch (e) { /* ignore */ }
+            }
         }
         let ebayDgAutoApplyTimer = null;
         let ebayDgAutoApplyWaits = 0;
