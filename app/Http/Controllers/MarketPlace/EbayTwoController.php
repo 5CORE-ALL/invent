@@ -79,10 +79,8 @@ class EbayTwoController extends Controller
 
     public function ebay2TabulatorView(Request $request)
     {
-        // Sales / Qty / PFT / COGS / GPFT% / GROI% — all derived from the SAME real-orders
-        // rows /ebay2/daily-sales builds (Ebay2SalesController::getData), so every summary
-        // badge on this page agrees with that page (the per-SKU datasheet is tax-excluded,
-        // lags the Orders API, and only reflects filtered rows, so it can't match).
+        // Sales / Qty / PFT / COGS / GPFT% / GROI% — same ebay2_order_metrics L30
+        // as /ebay2/daily-sales and /all-marketplace-master EbayTwo (via getData).
         $agg = $this->fetchEbay2L30OrdersAggregate();
 
         // Ads% = TACOS = channel Total Ad Spend ÷ the SAME real-orders L30 sales shown in
@@ -113,9 +111,8 @@ class EbayTwoController extends Controller
     }
 
     /**
-     * L30 Sales / Qty / PFT / COGS / GPFT% / GROI% computed from the exact same rows
-     * /ebay2/daily-sales renders (Ebay2SalesController::getData), aggregated the same way
-     * that page's summary does — guarantees the tabulator badges match /ebay2/daily-sales.
+     * L30 Sales / Qty / PFT / COGS from ebay2_order_metrics (Ebay2SalesController::getData).
+     * Same set as /ebay2/daily-sales and master EbayTwo liveL30Sales.
      */
     private function fetchEbay2L30OrdersAggregate(): array
     {

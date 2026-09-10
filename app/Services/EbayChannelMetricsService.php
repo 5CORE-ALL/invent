@@ -73,13 +73,69 @@ class EbayChannelMetricsService
     }
 
     /**
+     * 30 complete Pacific days ending yesterday (same clock as Y / L7).
+     *
+     * @return array{0: string, 1: string} [fromYmd, toYmd]
+     */
+    public static function l30PacificRange(): array
+    {
+        $end = Carbon::yesterday(self::TZ)->toDateString();
+        $start = Carbon::yesterday(self::TZ)->subDays(29)->toDateString();
+
+        return [$start, $end];
+    }
+
+    /**
+     * Completed L30 orders for the live overlay / sales pages.
+     * eBay 1/2: unique payloads from ebay{1,2}_order_metrics (fallback ebay{1,2}_orders).
+     *
+     * @return list<array{order_id: string, sale: float, raw: array<string, mixed>}>
+     */
+    public static function l30CompletedOrders(int $which): array
+    {
+        [$start, $end] = self::l30PacificRange();
+        $payloads = ($which === 1 || $which === 2)
+            ? self::loadEbayOrderPayloads($which, $start, $end)
+            : [];
+
+        $out = [];
+        foreach ($payloads as $oid => $raw) {
+            $sale = self::ebayPayloadSaleIfInPacificRange($raw, $start, $end);
+            if ($sale === null) {
+                continue;
+            }
+            $out[] = [
+                'order_id' => (string) $oid,
+                'sale' => $sale,
+                'raw' => $raw,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * Rolling L30 sales through Pacific yesterday (same clock as Y / L7).
      * marketplace_daily_metrics can freeze when the daily-metrics job stalls.
      */
     public static function liveL30Sales(int $which): ?float
     {
-        $end = Carbon::yesterday(self::TZ)->toDateString();
-        $start = Carbon::yesterday(self::TZ)->subDays(29)->toDateString();
+        if ($which === 1 || $which === 2) {
+            try {
+                $total = 0.0;
+                foreach (self::l30CompletedOrders($which) as $order) {
+                    $total += $order['sale'];
+                }
+
+                return round($total, 2);
+            } catch (\Throwable $e) {
+                Log::warning("EbayChannelMetricsService::liveL30Sales({$which}) failed: ".$e->getMessage());
+
+                return null;
+            }
+        }
+
+        [$start, $end] = self::l30PacificRange();
 
         return self::sumSalesForPacificDates($which, $start, $end);
     }

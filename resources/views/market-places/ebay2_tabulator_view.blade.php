@@ -108,44 +108,6 @@
             z-index: 10050;
         }
 
-        /* Parent expand icon — yellow play triangle (same as /price-increase P column) */
-        .ebay2-parent-sku-dot {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-            vertical-align: middle;
-            line-height: 0;
-            transition: transform 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
-            filter: drop-shadow(0 1px 1px rgba(180, 110, 0, 0.35));
-        }
-        .ebay2-parent-sku-dot svg {
-            width: 14px;
-            height: 14px;
-            display: block;
-        }
-        .ebay2-parent-sku-dot:hover {
-            filter: drop-shadow(0 2px 3px rgba(180, 110, 0, 0.45));
-            transform: scale(1.08);
-        }
-        .ebay2-parent-sku-dot.is-expanded {
-            transform: rotate(90deg);
-        }
-        .ebay2-parent-sku-dot.is-expanded:hover {
-            transform: rotate(90deg) scale(1.08);
-        }
-        .ebay2-parent-sku-dot.no-parent {
-            cursor: default;
-            opacity: 0.35;
-            filter: grayscale(1) drop-shadow(none);
-        }
-        .ebay2-parent-sku-dot.no-parent:hover {
-            transform: none;
-            filter: grayscale(1) drop-shadow(none);
-        }
-
         /* Sku Link LMP (mirrors /ebay-tabulator-view) */
         .linked-sku-badge-wrap { display: inline-flex; align-items: center; gap: 2px; }
         .linked-sku-badge-wrap .sku-link-lmp-remove { font-size: 0.55rem; opacity: 0.65; padding: 0; margin-left: 2px; }
@@ -427,6 +389,9 @@
             border-radius: 0.28rem !important;
             white-space: nowrap;
         }
+        #summary-stats #total-pft-amt-badge {
+            display: none !important;
+        }
         .ebay2-toolbar-row .ms-2 { margin-left: 0 !important; }
         .ebay2-toolbar-row .p-1 { padding: 0 4px !important; }
 
@@ -585,7 +550,8 @@
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block pricing-filter-item">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns">
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            aria-expanded="false" title="Columns">
                             <i class="fa fa-eye"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
@@ -629,14 +595,11 @@
                         <!-- Financial Metrics -->
                         <span class="badge bg-success d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;" aria-hidden="true">Total PFT: $0</span>
                         <span class="badge bg-primary" id="total-sales-amt-badge" style="color: black; font-weight: bold;"
-                              title="L30 sales from real eBay 2 orders (tax-inclusive, excl. cancelled & fully-refunded) — same source as /ebay2/daily-sales.">Sales: ${{ number_format((float) ($ordersL30TotalSales ?? 0)) }}</span>
-                        {{-- S Qty: L30 units from ebay2_order_items.quantity (period='l30').
-                             Same source the /all-marketplace-master Qty column for the EbayTwo row uses,
-                             so this page agrees with the master page and with the eBay 1 tabulator's S Qty
-                             badge. Static — page filters do not narrow it. --}}
+                              title="L30 sales from ebay2_order_metrics (tax-inclusive, excl. cancelled & fully-refunded) — same source as /ebay2/daily-sales and /all-marketplace-master EbayTwo.">Sales: ${{ number_format((float) ($ordersL30TotalSales ?? 0)) }}</span>
+                        {{-- Qty: L30 units from ebay2_order_metrics line items. Same getData as /ebay2/daily-sales. --}}
                         <span class="badge" id="qty-sold-badge"
                               style="background-color: #6f42c1; color: white; font-weight: bold;"
-                              title="L30 units sold (Σ ebay2_order_items.quantity for period='l30'). Same value /ebay2/daily-sales shows.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}</span>
+                              title="L30 units sold from ebay2_order_metrics. Same value /ebay2/daily-sales shows.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}</span>
                         <!-- Percentage Metrics -->
                         <span class="badge bg-info" id="avg-gpft-badge" style="color: black; font-weight: bold;"
                               title="GPFT% = Σ T PFT / Σ (qty × unit price) × 100 from real L30 orders — same source as /ebay2/daily-sales.">GPFT: {{ round((float) ($ordersL30Gpft ?? 0)) }}%</span>
@@ -1127,11 +1090,9 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay2'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
-        /** L30 units sold from ebay2_orders (period='l30'). Same value rendered into the
-         *  S Qty badge and the eBay 2 row's Qty cell on /all-marketplace-master. */
+        /** L30 units / sales from ebay2_order_metrics — same getData as /ebay2/daily-sales. */
         const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
-        /** L30 Sales / GPFT% / GROI% from the same real orders /ebay2/daily-sales uses,
-         *  so these badges agree with that page (fixed server values). */
+        /** L30 Sales / GPFT% / GROI% from ebay2_order_metrics (fixed server values). */
         const ORDERS_L30_TOTAL_SALES = {{ (float) ($ordersL30TotalSales ?? 0) }};
         const ORDERS_L30_GPFT = {{ (float) ($ordersL30Gpft ?? 0) }};
         const ORDERS_L30_GROI = {{ (float) ($ordersL30Groi ?? 0) }};
@@ -1701,26 +1662,6 @@
                 return fromParent || ebay2NormalizeParentKey(sku);
             }
             return fromParent;
-        }
-        function ebay2YellowPlayTriangleSvg() {
-            const uid = 'e2p' + Math.random().toString(36).slice(2, 9);
-            return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
-                '<defs>' +
-                `<linearGradient id="${uid}g" x1="4" y1="2" x2="20" y2="22" gradientUnits="userSpaceOnUse">` +
-                '<stop offset="0%" stop-color="#FFE566"/>' +
-                '<stop offset="45%" stop-color="#FFC107"/>' +
-                '<stop offset="100%" stop-color="#F59E0B"/>' +
-                '</linearGradient>' +
-                `<linearGradient id="${uid}s" x1="6" y1="3" x2="14" y2="14" gradientUnits="userSpaceOnUse">` +
-                '<stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.75"/>' +
-                '<stop offset="55%" stop-color="#FFFFFF" stop-opacity="0.12"/>' +
-                '<stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>' +
-                '</linearGradient>' +
-                '</defs>' +
-                `<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="url(#${uid}g)"/>` +
-                `<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="url(#${uid}s)"/>` +
-                '<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="none" stroke="#D97706" stroke-opacity="0.35" stroke-width="0.8"/>' +
-                '</svg>';
         }
         // Toast notification function
         function showToast(a, b) {
@@ -3037,53 +2978,8 @@
 
             // Event delegation for eye button clicks (add to SKU column formatter)
             let allTableData = []; // Store all unfiltered data
-            let ebay2ExpandedParent = null; // parent key when triangle expand is active
-            let ebay2BoundViewMode = null; // last dataset slice: all | parent | sku | __expanded__
+            let ebay2BoundViewMode = null; // last dataset slice: all | parent | sku
             let ebay2SkipNextDataLoadedFilter = false;
-            if (window.ParentExpand) {
-                ParentExpand.configure({
-                    parentField: 'Parent',
-                    skuField: '(Child) sku',
-                    isParentRow: isEbay2TabulatorParentRow,
-                    parentKeyFromRow: ebay2ParentKeyFromRow,
-                    getTable: function() { return table; },
-                    getDataset: function() { return allTableData; },
-                });
-            }
-
-            function ebay2ShowExpandedParent(parentKey) {
-                const key = ebay2NormalizeParentKey(parentKey);
-                if (!key || !table || !allTableData.length) return;
-                const keyU = key.toUpperCase();
-                const parentRow = allTableData.find(function(r) {
-                    return isEbay2TabulatorParentRow(r) && ebay2ParentKeyFromRow(r).toUpperCase() === keyU;
-                });
-                const childRows = allTableData.filter(function(r) {
-                    if (isEbay2TabulatorParentRow(r)) return false;
-                    return ebay2NormalizeParentKey(r.Parent).toUpperCase() === keyU;
-                });
-                const displayData = childRows.slice();
-                if (parentRow) {
-                    parentRow._expanded = true;
-                    displayData.push(parentRow);
-                }
-                ebay2BoundViewMode = '__expanded__';
-                ebay2SkipNextDataLoadedFilter = true;
-                table.clearFilter(true);
-                table.clearSort();
-                table.setData(displayData).then(function() {
-                    updateCalcValues();
-                    updateSummary();
-                });
-            }
-
-            function ebay2CollapseExpandedParent() {
-                ebay2ExpandedParent = null;
-                if (allTableData && allTableData.length) {
-                    allTableData.forEach(function(r) { if (r) r._expanded = false; });
-                }
-                applyFilters();
-            }
 
             function ebay2EscHtmlAttr(val) {
                 if (val == null || val === '') return '';
@@ -3270,35 +3166,6 @@
                         width: 150,
                         visible: false
                     },
-                    {
-                        title: "P",
-                        field: "_parent_expand",
-                        headerSort: false,
-                        hozAlign: "center",
-                        frozen: true,
-                        width: 36,
-                        minWidth: 36,
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const playIcon = ebay2YellowPlayTriangleSvg();
-                            if (!isEbay2TabulatorParentRow(rowData)) {
-                                return '<span class="ebay2-parent-sku-dot no-parent" title="">' + playIcon + '</span>';
-                            }
-                            const parentKey = ebay2ParentKeyFromRow(rowData);
-                            if (!parentKey) {
-                                return '<span class="ebay2-parent-sku-dot no-parent" title="No parent key">' + playIcon + '</span>';
-                            }
-                            const parentEsc = String(parentKey).replace(/"/g, '&quot;');
-                            const isExpanded = (ebay2ExpandedParent &&
-                                ebay2NormalizeParentKey(ebay2ExpandedParent).toUpperCase() === parentKey.toUpperCase())
-                                || rowData._expanded === true;
-                            const expandedCls = isExpanded ? ' is-expanded' : '';
-                            return `<span class="ebay2-parent-sku-dot ebay2-parent-expand-btn${expandedCls}"
-                                        data-parent="${parentEsc}"
-                                        title="Show all SKUs for parent: ${parentEsc}">${playIcon}</span>`;
-                        }
-                    },
-
                     {
                         field: "_select",
                         hozAlign: "center",
@@ -4285,7 +4152,7 @@
                     },
                     {
                         title: "S BID",
-                        field: "ca_suggested_bid",
+                        field: "s_bid",
                         hozAlign: "center",
                         width: 90,
                         headerTooltip: "S Bid from shared eBay 1 Sbid Rule slabs (For L7 Views / CVR). Parents Only — uses parent aggregated L7 Views / CVR.",
@@ -4517,14 +4384,6 @@
 
             // Apply filters
             function applyFilters() {
-                // Leaving expand mode whenever filters re-run
-                if (ebay2ExpandedParent) {
-                    ebay2ExpandedParent = null;
-                    if (allTableData && allTableData.length) {
-                        allTableData.forEach(function(r) { if (r) r._expanded = false; });
-                    }
-                }
-
                 const viewModeFilter = $('#view-mode-filter').val() || 'sku';
                 const inventoryFilter = $('#inventory-filter').val();
                 const el30Filter = $('#el30-filter').val();
@@ -4797,7 +4656,6 @@
                 const viewRows = ebay2RowsForViewMode(viewModeFilter, allTableData);
                 const needReplace = allTableData.length && (
                     ebay2BoundViewMode !== viewModeFilter
-                    || ebay2BoundViewMode === '__expanded__'
                     || table.getDataCount() !== viewRows.length
                 );
                 if (needReplace) {
@@ -4815,20 +4673,6 @@
                     runEbay2Filters();
                 }
             }
-
-            $(document).on('click', '.ebay2-parent-expand-btn', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const parentKey = String($(this).data('parent') || '').trim();
-                if (!parentKey) return;
-                if (ebay2ExpandedParent &&
-                    ebay2NormalizeParentKey(ebay2ExpandedParent).toUpperCase() === ebay2NormalizeParentKey(parentKey).toUpperCase()) {
-                    ebay2CollapseExpandedParent();
-                    return;
-                }
-                ebay2ExpandedParent = parentKey;
-                ebay2ShowExpandedParent(parentKey);
-            });
 
             $('#view-mode-filter, #inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #dil-filter').on('change', function() {
                 applyFilters();
@@ -4945,9 +4789,7 @@
                 $('#more-sold-count').text(moreSoldCount.toLocaleString());
 
                 $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt).toLocaleString());
-                // Sales / GPFT% / GROI% are fixed server values from the same real L30 orders
-                // /ebay2/daily-sales uses, so this page agrees with that page (the per-SKU
-                // datasheet is tax-excluded, lags the Orders API, and only counts filtered rows).
+                // Sales / GPFT% / GROI% — ebay2_order_metrics (same as /ebay2/daily-sales + master).
                 
                 $('#total-sales-amt-badge').text('Sales: $' + Math.round(ORDERS_L30_TOTAL_SALES).toLocaleString());
                 $('#avg-gpft-badge').text('GPFT: ' + Math.round(ORDERS_L30_GPFT) + '%');
@@ -5019,7 +4861,7 @@
                 const blob = fl + ' ' + tl;
 
                 if (
-                    /^(views|l7_views|l7_views_chg_pct|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(f) ||
+                    /^(views|l7_views|l7_views_chg_pct|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|s_bid|ca_promote_with_ad)$/i.test(f) ||
                     /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view)\b/i.test(t) ||
                     /\b(bid|promote|ads)\b/i.test(blob)
                 ) {
@@ -5250,6 +5092,16 @@
                 updateSelectAllCheckbox();
             });
 
+            function setEbay2ColumnVisible(field, visible) {
+                if (!field || !table) return;
+                table.getColumns().forEach(function(col) {
+                    const def = col.getDefinition();
+                    if (def.field !== field) return;
+                    if (visible) col.show();
+                    else col.hide();
+                });
+            }
+
             // Toggle column from dropdown (group header + individual)
             (function() {
                 var colMenu = document.getElementById("column-dropdown-menu");
@@ -5266,10 +5118,7 @@
                             : colMenu.querySelectorAll('.col-vis-field-toggle[data-group="' + group + '"]');
                         itemCbs.forEach(function(cb) {
                             cb.checked = checked;
-                            const col = table.getColumn(cb.value);
-                            if (!col) return;
-                            if (checked) col.show();
-                            else col.hide();
+                            setEbay2ColumnVisible(cb.value, checked);
                         });
                         e.target.indeterminate = false;
                         saveColumnVisibilityToServer();
@@ -5277,14 +5126,14 @@
                     }
 
                     const field = e.target.value;
-                    const col = table.getColumn(field);
-                    if (!col) return;
-                    if (e.target.checked) col.show();
-                    else col.hide();
+                    setEbay2ColumnVisible(field, e.target.checked);
                     syncGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
                     saveColumnVisibilityToServer();
                 });
                 colMenu.addEventListener("click", function(e) {
+                    if (e.target.closest('label') || e.target.type === 'checkbox') {
+                        e.stopPropagation();
+                    }
                     var showAll = e.target.closest('#show-all-columns-btn');
                     if (showAll) {
                         e.preventDefault();
@@ -5387,6 +5236,7 @@
                 'ebay2_ship': 'eBay2 Ship',
                 'LP_productmaster': 'LP',
                 'ca_suggested_bid': 'ES BID',
+                's_bid': 'S BID',
                 'ca_bid_percentage': 'C BID',
                 'ca_promote_with_ad': 'PROMOTE'
             };
