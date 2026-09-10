@@ -59,6 +59,20 @@
         .link-tooltip a:hover {
             text-decoration: underline;
         }
+    
+        /* sales-center-align: headers + cells */
+        .tabulator .tabulator-header .tabulator-col,
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            text-align: center !important;
+        }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+            text-align: center !important;
+            justify-content: center !important;
+        }
+        .tabulator .tabulator-cell {
+            text-align: center !important;
+            justify-content: center !important;
+        }
     </style>
 @endsection
 
@@ -171,6 +185,7 @@
         // Initialize Tabulator
         console.log("Initializing Tabulator for Doba Daily Sales Data...");
         table = new Tabulator("#doba-table", {
+                columnDefaults: { hozAlign: "center", headerHozAlign: "center" },
             ajaxURL: "/doba/daily-sales-data",
             ajaxSorting: false,
             layout: "fitDataStretch",
@@ -278,7 +293,7 @@
                 {
                     title: "Price",
                     field: "price",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     width: 70,
                     formatter: "money",
@@ -292,7 +307,7 @@
                 {
                     title: "Sales AMT",
                     field: "sale_amount",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     width: 70,
                     formatter: "money",
@@ -348,7 +363,7 @@
                 {
                     title: "LP",
                     field: "lp",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     width: 100,
                     formatter: "money",
@@ -362,7 +377,7 @@
                 {
                     title: "Ship",
                     field: "ship",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     width: 100,
                     formatter: "money",
@@ -376,14 +391,14 @@
                 {
                     title: "T Weight",
                     field: "t_weight",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     width: 100
                 },
                 {
                     title: "Ship Cost",
                     field: "ship_cost",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     width: 100,
                     formatter: "money",
@@ -397,7 +412,7 @@
                 {
                     title: "COGS",
                     field: "cogs",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     width: 100,
                     formatter: "money",
@@ -411,7 +426,7 @@
                 {
                     title: "PFT Each",
                     field: "pft_each",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     width: 100,
                     formatter: function(cell) {
@@ -423,7 +438,7 @@
                 {
                     title: "PFT Each %",
                     field: "pft_each_pct",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     width: 100,
                     formatter: function(cell) {
@@ -435,7 +450,7 @@
                 {
                     title: "ROI %",
                     field: "roi",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     width: 100,
                     formatter: function(cell) {

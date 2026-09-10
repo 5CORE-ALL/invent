@@ -59,6 +59,20 @@
         .link-tooltip a:hover {
             text-decoration: underline;
         }
+    
+        /* sales-center-align: headers + cells */
+        .tabulator .tabulator-header .tabulator-col,
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            text-align: center !important;
+        }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+            text-align: center !important;
+            justify-content: center !important;
+        }
+        .tabulator .tabulator-cell {
+            text-align: center !important;
+            justify-content: center !important;
+        }
     </style>
 @endsection
 
@@ -189,6 +203,7 @@
             // Initialize Tabulator
             console.log("Initializing Tabulator for Wayfair Daily Sales Data...");
             table = new Tabulator("#wayfair-table", {
+                columnDefaults: { hozAlign: "center", headerHozAlign: "center" },
                 ajaxURL: "/wayfair/daily-sales-data",
                 ajaxSorting: false,
                 layout: "fitDataStretch",
@@ -280,7 +295,7 @@
                     {
                         title: "Price",
                         field: "price",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 70,
                         formatter: "money",
@@ -294,7 +309,7 @@
                     {
                         title: "Sales AMT",
                         field: "sale_amount",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 70,
                         formatter: "money",
@@ -308,7 +323,7 @@
                     {
                         title: "Total Price",
                         field: "total_price",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 70,
                         visible: false,
@@ -344,7 +359,7 @@
                     {
                         title: "LP",
                         field: "lp",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 100,
                         formatter: "money",
@@ -358,14 +373,14 @@
                     {
                         title: "T Weight",
                         field: "t_weight",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 100
                     },
                     {
                         title: "COGS",
                         field: "cogs",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 100,
                         formatter: "money",
@@ -379,7 +394,7 @@
                     {
                         title: "PFT Each",
                         field: "pft_each",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 100,
                         formatter: function(cell) {
@@ -391,7 +406,7 @@
                     {
                         title: "PFT Each %",
                         field: "pft_each_pct",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 100,
                         formatter: function(cell) {
@@ -403,7 +418,7 @@
                     {
                         title: "T PFT",
                         field: "pft",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 120,
                         formatter: function(cell) {
@@ -415,7 +430,7 @@
                     {
                         title: "ROI %",
                         field: "roi",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 100,
                         formatter: function(cell) {

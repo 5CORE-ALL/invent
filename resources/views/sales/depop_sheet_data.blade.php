@@ -5,6 +5,20 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         .tabulator-paginator label { margin-right: 5px; }
+    
+        /* sales-center-align: headers + cells */
+        .tabulator .tabulator-header .tabulator-col,
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            text-align: center !important;
+        }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+            text-align: center !important;
+            justify-content: center !important;
+        }
+        .tabulator .tabulator-cell {
+            text-align: center !important;
+            justify-content: center !important;
+        }
     </style>
 @endsection
 
@@ -68,6 +82,7 @@
     $(document).ready(function() {
         $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
         table = new Tabulator("#depop-table", {
+                columnDefaults: { hozAlign: "center", headerHozAlign: "center" },
             ajaxURL: "{{ url('/depop/sheet-data') }}",
             layout: "fitDataStretch",
             pagination: true,
@@ -80,17 +95,17 @@
                 { title: "Product", field: "product_name", width: 280 },
                 { title: "Size", field: "size", width: 80 },
                 { title: "SKU", field: "sku", width: 120, cssClass: "text-primary fw-bold" },
-                { title: "Qty", field: "quantity", width: 60, hozAlign: "right" },
-                { title: "Price", field: "price", width: 80, hozAlign: "right", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
-                { title: "Sale AMT", field: "sale_amount", width: 90, hozAlign: "right", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
-                { title: "LP", field: "lp", width: 70, hozAlign: "right", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
-                { title: "Ship", field: "ship", width: 70, hozAlign: "right", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
-                { title: "Ship Cost", field: "ship_cost", width: 80, hozAlign: "right", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
-                { title: "COGS", field: "cogs", width: 80, hozAlign: "right", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
-                { title: "PFT Each", field: "pft_each", width: 90, hozAlign: "right", formatter: function(c) { var v = c.getValue(); var color = v >= 0 ? '#28a745' : '#dc3545'; return '<span style="color:'+color+'">$'+parseFloat(v).toFixed(2)+'</span>'; }},
-                { title: "PFT %", field: "pft_each_pct", width: 80, hozAlign: "right", formatter: function(c) { var v = c.getValue(); return (v != null ? parseFloat(v).toFixed(1) : '0') + '%'; }},
-                { title: "T PFT", field: "t_pft", width: 90, hozAlign: "right", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
-                { title: "ROI %", field: "roi", width: 80, hozAlign: "right", formatter: function(c) { var v = c.getValue(); return (v != null ? parseFloat(v).toFixed(0) : '0') + '%'; }},
+                { title: "Qty", field: "quantity", width: 60, hozAlign: "center" },
+                { title: "Price", field: "price", width: 80, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
+                { title: "Sale AMT", field: "sale_amount", width: 90, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
+                { title: "LP", field: "lp", width: 70, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
+                { title: "Ship", field: "ship", width: 70, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
+                { title: "Ship Cost", field: "ship_cost", width: 80, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
+                { title: "COGS", field: "cogs", width: 80, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
+                { title: "PFT Each", field: "pft_each", width: 90, hozAlign: "center", formatter: function(c) { var v = c.getValue(); var color = v >= 0 ? '#28a745' : '#dc3545'; return '<span style="color:'+color+'">$'+parseFloat(v).toFixed(2)+'</span>'; }},
+                { title: "PFT %", field: "pft_each_pct", width: 80, hozAlign: "center", formatter: function(c) { var v = c.getValue(); return (v != null ? parseFloat(v).toFixed(1) : '0') + '%'; }},
+                { title: "T PFT", field: "t_pft", width: 90, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
+                { title: "ROI %", field: "roi", width: 80, hozAlign: "center", formatter: function(c) { var v = c.getValue(); return (v != null ? parseFloat(v).toFixed(0) : '0') + '%'; }},
             ],
             dataLoaded: function() { updateSummary(); },
             ajaxError: function(e) { showToast("Error loading data", "error"); }

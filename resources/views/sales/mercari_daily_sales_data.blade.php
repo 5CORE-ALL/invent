@@ -59,6 +59,20 @@
         .link-tooltip a:hover {
             text-decoration: underline;
         }
+    
+        /* sales-center-align: headers + cells */
+        .tabulator .tabulator-header .tabulator-col,
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            text-align: center !important;
+        }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+            text-align: center !important;
+            justify-content: center !important;
+        }
+        .tabulator .tabulator-cell {
+            text-align: center !important;
+            justify-content: center !important;
+        }
     </style>
 @endsection
 
@@ -224,6 +238,7 @@
             // Initialize Tabulator
             console.log("Initializing Tabulator for Mercari With Ship Daily Sales...");
             table = new Tabulator("#mercari-table", {
+                columnDefaults: { hozAlign: "center", headerHozAlign: "center" },
                 ajaxURL: "/mercari/daily-data-with-ship",
                 ajaxSorting: false,
                 layout: "fitDataStretch",
@@ -357,7 +372,7 @@
                     {
                         title: "Item Price",
                         field: "item_price",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 100,
                         formatter: "money",
@@ -371,7 +386,7 @@
                     {
                         title: "Buyer Shipping Fee",
                         field: "buyer_shipping_fee",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 120,
                         formatter: "money",
@@ -385,7 +400,7 @@
                     {
                         title: "Seller Shipping Fee",
                         field: "seller_shipping_fee",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 120,
                         formatter: "money",
@@ -399,7 +414,7 @@
                     {
                         title: "Mercari Selling Fee",
                         field: "mercari_selling_fee",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 120,
                         formatter: "money",
@@ -413,7 +428,7 @@
                     {
                         title: "Payment Processing Fee (Seller)",
                         field: "payment_processing_fee_charged_to_seller",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 150,
                         visible: false,
@@ -428,7 +443,7 @@
                     {
                         title: "Shipping Adjustment Fee",
                         field: "shipping_adjustment_fee",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 150,
                         visible: false,
@@ -443,7 +458,7 @@
                     {
                         title: "Penalty Fee",
                         field: "penalty_fee",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 100,
                         visible: false,
@@ -458,7 +473,7 @@
                     {
                         title: "Net Seller Proceeds",
                         field: "net_seller_proceeds",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 140,
                         formatter: function(cell) {
@@ -470,7 +485,7 @@
                     {
                         title: "Sales Tax (Buyer)",
                         field: "sales_tax_charged_to_buyer",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 120,
                         visible: false,
@@ -485,7 +500,7 @@
                     {
                         title: "Merchant Fees (Buyer)",
                         field: "merchant_fees_charged_to_buyer",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 140,
                         visible: false,
@@ -500,7 +515,7 @@
                     {
                         title: "Service Fee (Buyer)",
                         field: "service_fee_charged_to_buyer",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 120,
                         visible: false,
@@ -515,7 +530,7 @@
                     {
                         title: "Buyer Protection (Buyer)",
                         field: "buyer_protection_charged_to_buyer",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 150,
                         visible: false,
@@ -530,7 +545,7 @@
                     {
                         title: "Payment Processing Fee (Buyer)",
                         field: "payment_processing_fee_charged_to_buyer",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 180,
                         visible: false,
@@ -545,7 +560,7 @@
                     {
                         title: "LP",
                         field: "lp",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 100,
                         formatter: "money",
@@ -559,7 +574,7 @@
                     {
                         title: "Ship",
                         field: "ship",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         width: 100,
                         formatter: "money",

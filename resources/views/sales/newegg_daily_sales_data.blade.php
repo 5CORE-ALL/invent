@@ -8,6 +8,20 @@
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
+    
+        /* sales-center-align: headers + cells */
+        .tabulator .tabulator-header .tabulator-col,
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            text-align: center !important;
+        }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+            text-align: center !important;
+            justify-content: center !important;
+        }
+        .tabulator .tabulator-cell {
+            text-align: center !important;
+            justify-content: center !important;
+        }
     </style>
 @endsection
 
@@ -78,7 +92,7 @@
         function moneyCol(title, field, visible = true) {
             return {
                 title, field, visible,
-                hozAlign: "right", sorter: "number", width: 100,
+                hozAlign: "center", sorter: "number", width: 100,
                 formatter: "money",
                 formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
             };
@@ -92,6 +106,7 @@
             $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
 
             table = new Tabulator("#newegg-table", {
+                columnDefaults: { hozAlign: "center", headerHozAlign: "center" },
                 ajaxURL: "{{ route('newegg.daily.sales.data') }}",
                 ajaxSorting: false,
                 layout: "fitDataStretch",
@@ -136,32 +151,32 @@
                     { title: "Customer", field: "customer", width: 150, visible: false },
                     moneyCol("LP", "lp"),
                     moneyCol("Ship", "ship"),
-                    { title: "T Weight", field: "t_weight", hozAlign: "right", sorter: "number", width: 90, visible: false },
+                    { title: "T Weight", field: "t_weight", hozAlign: "center", sorter: "number", width: 90, visible: false },
                     moneyCol("Ship Cost", "ship_cost", false),
                     moneyCol("COGS", "cogs"),
                     {
-                        title: "PFT Each", field: "pft_each", hozAlign: "right", sorter: "number", width: 100,
+                        title: "PFT Each", field: "pft_each", hozAlign: "center", sorter: "number", width: 100,
                         formatter: function(cell) {
                             const v = parseFloat(cell.getValue()) || 0;
                             return `<span style="color: ${pftColor(v)}; font-weight: bold;">$${v.toFixed(2)}</span>`;
                         }
                     },
                     {
-                        title: "PFT Each %", field: "pft_each_pct", hozAlign: "right", sorter: "number", width: 100,
+                        title: "PFT Each %", field: "pft_each_pct", hozAlign: "center", sorter: "number", width: 100,
                         formatter: function(cell) {
                             const v = parseFloat(cell.getValue()) || 0;
                             return `<span style="color: ${pftColor(v)}; font-weight: bold;">${v.toFixed(1)}%</span>`;
                         }
                     },
                     {
-                        title: "T PFT", field: "pft", hozAlign: "right", sorter: "number", width: 110,
+                        title: "T PFT", field: "pft", hozAlign: "center", sorter: "number", width: 110,
                         formatter: function(cell) {
                             const v = parseFloat(cell.getValue()) || 0;
                             return `<span style="color: ${pftColor(v)}; font-weight: bold;">$${v.toFixed(2)}</span>`;
                         }
                     },
                     {
-                        title: "ROI %", field: "roi", hozAlign: "right", sorter: "number", width: 90,
+                        title: "ROI %", field: "roi", hozAlign: "center", sorter: "number", width: 90,
                         formatter: function(cell) {
                             const v = parseFloat(cell.getValue()) || 0;
                             let color = '#6c757d';

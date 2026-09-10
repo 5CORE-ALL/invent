@@ -27,6 +27,20 @@
             padding-right: 0px !important;
         }
         .tabulator-paginator label { margin-right: 5px; }
+    
+        /* sales-center-align: headers + cells */
+        .tabulator .tabulator-header .tabulator-col,
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            text-align: center !important;
+        }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+            text-align: center !important;
+            justify-content: center !important;
+        }
+        .tabulator .tabulator-cell {
+            text-align: center !important;
+            justify-content: center !important;
+        }
     </style>
 @endsection
 
@@ -140,6 +154,7 @@
         $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
 
         table = new Tabulator("#tiktok-two-table", {
+                columnDefaults: { hozAlign: "center", headerHozAlign: "center" },
             ajaxURL: "{{ url('/tiktok-two/daily-sales-data') }}",
             ajaxSorting: false,
             layout: "fitDataStretch",
@@ -170,8 +185,8 @@
                 { title: "ASIN", field: "asin", width: 120, frozen: true },
                 { title: "SKU", field: "sku", headerFilter: "input", headerFilterPlaceholder: "Search SKU...", width: 150, cssClass: "text-primary fw-bold" },
                 { title: "Quantity", field: "quantity", hozAlign: "center", sorter: "number", width: 50 },
-                { title: "Price", field: "price", hozAlign: "right", sorter: "number", width: 70, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
-                { title: "Sales AMT", field: "sale_amount", hozAlign: "right", sorter: "number", width: 70, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
+                { title: "Price", field: "price", hozAlign: "center", sorter: "number", width: 70, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
+                { title: "Sales AMT", field: "sale_amount", hozAlign: "center", sorter: "number", width: 70, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
                 { title: "Order Date", field: "order_date", sorter: "datetime", width: 20, formatter: function(cell) {
                     const value = cell.getValue();
                     if (!value) return '';
@@ -187,23 +202,23 @@
                     return '<span class="badge bg-' + color + '">' + value + '</span>';
                 }},
                 { title: "Period", field: "period", width: 80 },
-                { title: "LP", field: "lp", hozAlign: "right", sorter: "number", width: 100, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
-                { title: "Ship", field: "ship", hozAlign: "right", sorter: "number", width: 100, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
-                { title: "T Weight", field: "t_weight", hozAlign: "right", sorter: "number", width: 100 },
-                { title: "Ship Cost", field: "ship_cost", hozAlign: "right", sorter: "number", width: 100, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
-                { title: "COGS", field: "cogs", hozAlign: "right", sorter: "number", width: 100, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
-                { title: "PFT Each", field: "pft_each", hozAlign: "right", sorter: "number", width: 100, formatter: function(cell) {
+                { title: "LP", field: "lp", hozAlign: "center", sorter: "number", width: 100, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
+                { title: "Ship", field: "ship", hozAlign: "center", sorter: "number", width: 100, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
+                { title: "T Weight", field: "t_weight", hozAlign: "center", sorter: "number", width: 100 },
+                { title: "Ship Cost", field: "ship_cost", hozAlign: "center", sorter: "number", width: 100, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
+                { title: "COGS", field: "cogs", hozAlign: "center", sorter: "number", width: 100, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
+                { title: "PFT Each", field: "pft_each", hozAlign: "center", sorter: "number", width: 100, formatter: function(cell) {
                     var v = cell.getValue();
                     var color = v >= 0 ? '#28a745' : '#dc3545';
                     return '<span style="color:' + color + ';font-weight:bold;">$' + parseFloat(v).toFixed(2) + '</span>';
                 }},
-                { title: "PFT Each %", field: "pft_each_pct", hozAlign: "right", sorter: "number", width: 100, formatter: function(cell) {
+                { title: "PFT Each %", field: "pft_each_pct", hozAlign: "center", sorter: "number", width: 100, formatter: function(cell) {
                     var v = cell.getValue();
                     if (v === null || v === undefined || isNaN(v)) return '0.00%';
                     var color = parseFloat(v) >= 0 ? '#28a745' : '#dc3545';
                     return '<span style="color:' + color + ';font-weight:bold;">' + parseFloat(v).toFixed(2) + '%</span>';
                 }},
-                { title: "ROI %", field: "roi", hozAlign: "right", sorter: "number", width: 100, formatter: function(cell) {
+                { title: "ROI %", field: "roi", hozAlign: "center", sorter: "number", width: 100, formatter: function(cell) {
                     var v = cell.getValue();
                     var color = '#6c757d';
                     if (v < 50) color = '#dc3545';

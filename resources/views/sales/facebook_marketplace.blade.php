@@ -43,6 +43,20 @@
             padding: 1px 6px;
             border-radius: 4px;
         }
+    
+        /* sales-center-align: headers + cells */
+        .tabulator .tabulator-header .tabulator-col,
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            text-align: center !important;
+        }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+            text-align: center !important;
+            justify-content: center !important;
+        }
+        .tabulator .tabulator-cell {
+            text-align: center !important;
+            justify-content: center !important;
+        }
     </style>
 @endsection
 
@@ -309,6 +323,7 @@
 
             function buildTable(rows) {
                 table = new Tabulator('#fbm-table', {
+                columnDefaults: { hozAlign: "center", headerHozAlign: "center" },
                     data: rows,
                     layout: 'fitColumns',
                     pagination: true,
@@ -318,15 +333,15 @@
                     height: '600px',
                     placeholder: 'No FB Sales uploaded yet — use the Upload section above.',
                     columns: [
-                        { title: '#',            field: 'id',           width: 70, hozAlign: 'right' },
+                        { title: '#',            field: 'id',           width: 70, hozAlign: 'center' },
                         { title: 'Order Number', field: 'order_number', headerFilter: 'input', minWidth: 160 },
                         { title: 'SKU',          field: 'sku',          headerFilter: 'input', minWidth: 140 },
-                        { title: 'Qty Sold',     field: 'qty_sold',     hozAlign: 'right', width: 110, headerFilter: 'input' },
-                        { title: 'Sold Price',   field: 'sold_price',   hozAlign: 'right', width: 120,
+                        { title: 'Qty Sold',     field: 'qty_sold',     hozAlign: 'center', width: 110, headerFilter: 'input' },
+                        { title: 'Sold Price',   field: 'sold_price',   hozAlign: 'center', width: 120,
                             formatter: c => fmtMoney(c.getValue()) },
-                        { title: 'Total',        field: 'total',        hozAlign: 'right', width: 120,
+                        { title: 'Total',        field: 'total',        hozAlign: 'center', width: 120,
                             formatter: c => fmtMoney(c.getValue()) },
-                        { title: 'LP',           field: 'lp',           hozAlign: 'right', width: 90,
+                        { title: 'LP',           field: 'lp',           hozAlign: 'center', width: 90,
                             formatter: c => fmtMoney(c.getValue()) },
                         { title: 'ROI %',        field: 'roi',          hozAlign: 'center', width: 90, sorter: 'number',
                             formatter: c => {

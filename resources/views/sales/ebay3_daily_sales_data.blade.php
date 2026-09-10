@@ -43,6 +43,20 @@
         .tabulator-row.parent-row:hover {
             background-color: #fefce8 !important;
         }
+    
+        /* sales-center-align: headers + cells */
+        .tabulator .tabulator-header .tabulator-col,
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            text-align: center !important;
+        }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+            text-align: center !important;
+            justify-content: center !important;
+        }
+        .tabulator .tabulator-cell {
+            text-align: center !important;
+            justify-content: center !important;
+        }
     </style>
 @endsection
 
@@ -219,6 +233,7 @@
             // Initialize Tabulator
             console.log("Initializing Tabulator for eBay 3 Daily Sales Data...");
             table = new Tabulator("#ebay3-table", {
+                columnDefaults: { hozAlign: "center", headerHozAlign: "center" },
                 ajaxURL: "/ebay3/daily-sales-data",
                 ajaxSorting: false,
                 layout: "fitData",
@@ -319,7 +334,7 @@
                         title: "Price",
                         field: "price",
                         width: 60,
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         formatter: "money",
                         formatterParams: {
@@ -333,7 +348,7 @@
                         title: "Sales AMT",
                         field: "sale_amount",
                         width: 65,
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         formatter: "money",
                         formatterParams: {
@@ -381,7 +396,7 @@
                         title: "LP",
                         field: "lp",
                         width: 55,
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         formatter: "money",
                         formatterParams: {
@@ -395,7 +410,7 @@
                         title: "eBay 3 Ship",
                         field: "ship",
                         width: 55,
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         formatter: "money",
                         formatterParams: {
@@ -409,14 +424,14 @@
                         title: "T Wt",
                         field: "t_weight",
                         width: 45,
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number"
                     },
                     {
                         title: "S Cost",
                         field: "ship_cost",
                         width: 55,
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         formatter: "money",
                         formatterParams: {
@@ -430,7 +445,7 @@
                         title: "COGS",
                         field: "cogs",
                         width: 55,
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         formatter: "money",
                         formatterParams: {
@@ -444,7 +459,7 @@
                         title: "PFT Ea",
                         field: "pft_each",
                         width: 60,
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -456,7 +471,7 @@
                         title: "PFT %",
                         field: "pft_each_pct",
                         width: 55,
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -468,7 +483,7 @@
                         title: "T PFT",
                         field: "pft",
                         width: 60,
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -480,7 +495,7 @@
                         title: "ROI %",
                         field: "roi",
                         width: 55,
-                        hozAlign: "right",
+                        hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
