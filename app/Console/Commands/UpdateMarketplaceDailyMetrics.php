@@ -773,13 +773,45 @@ class UpdateMarketplaceDailyMetrics extends Command
     }
 
     /**
-     * Temu 2: mirrors temu2_tabulator_view badges and getTemu2DailyData filtering.
-     * Filters to ProductMaster SKUs, applies fbPrice (+$2.99 if order total < $27),
-     * and reads margin from marketplace_percentages (Temu 2).
-     * Ad spend from temu2_campaign_reports (L30 upload on /temu2/ads).
+     * Temu 2: Temu Price L30 (same as /temu2-tabulator). Prefer temu2_orders,
+     * then the last sheet upload. Ad spend from temu2_campaign_reports.
      */
     private function calculateTemu2Metrics($date)
     {
+        [$liveStart, $liveEnd] = TemuShopifySalesService::channelMasterL30Window();
+        $live = TemuShopifySalesService::computeMetricsFromOrders($liveStart, $liveEnd, true);
+        if ((float) ($live['sales'] ?? 0) > 0 || (int) ($live['qty'] ?? 0) > 0) {
+            $totalL30Sales = (float) $live['sales'];
+            $totalPft = (float) $live['pft'];
+            $totalCogs = (float) $live['cogs'];
+            $pftPercentage = $totalL30Sales > 0 ? ($totalPft / $totalL30Sales) * 100 : 0;
+            $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+            $temu2Spent = (float) (Temu2CampaignReport::where('report_range', 'L30')->sum('spend') ?? 0);
+            $tacosPercentage = $totalL30Sales > 0 ? ($temu2Spent / $totalL30Sales) * 100 : 0;
+            $nPftPercentage = $pftPercentage - $tacosPercentage;
+            $netProfit = $totalPft - $temu2Spent;
+            $nRoiPercentage = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
+
+            return [
+                'total_orders' => (int) $live['orders'],
+                'total_quantity' => (int) $live['qty'],
+                'total_revenue' => $totalL30Sales,
+                'total_sales' => $totalL30Sales,
+                'total_cogs' => $totalCogs,
+                'total_pft' => $totalPft,
+                'pft_percentage' => $pftPercentage,
+                'roi_percentage' => $roiPercentage,
+                'avg_price' => $live['qty'] > 0 ? round($totalL30Sales / $live['qty'], 2) : 0,
+                'l30_sales' => $totalL30Sales,
+                'kw_spent' => round($temu2Spent, 2),
+                'pmt_spent' => 0,
+                'tacos_percentage' => round($tacosPercentage, 1),
+                'ads_percentage' => round($tacosPercentage, 1),
+                'n_pft' => round($nPftPercentage, 1),
+                'n_roi' => round($nRoiPercentage, 1),
+            ];
+        }
+
         $normalizeSku = function ($sku) {
             $sku = strtoupper(trim((string) $sku));
             $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
@@ -829,8 +861,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             return str_replace(' ', '', $normalizeSku($pm->sku ?? ''));
         });
 
-        // Read Temu 2 margin from marketplace_percentages (no hardcoded fallback)
-        $percentage = \App\Services\TemuShopifySalesService::temu2MarginDecimal();
+        // Same Temu margin as /temu2-tabulator (marketplace_percentages.Temu).
+        $percentage = \App\Services\TemuShopifySalesService::temuMarginDecimal();
 
         $totalOrders = 0;
         $totalQuantity = 0;
@@ -865,16 +897,6 @@ class UpdateMarketplaceDailyMetrics extends Command
             $basePrice = (float) ($row->base_price_total ?? 0);
             $totalQuantity += $quantity;
 
-            // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease and /temu-tabulator).
-            $fbPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
-            $totalRevenue  += $fbPrice * $quantity; // match tabulator: revenue uses fbPrice
-            $totalL30Sales += $fbPrice * $quantity;
-
-            if ($quantity > 0 && $basePrice > 0) {
-                $totalWeightedPrice += $basePrice * $quantity;
-                $totalQuantityForPrice += $quantity;
-            }
-
             $lp = 0;
             $temuShip = 0;
             if ($pm) {
@@ -893,8 +915,20 @@ class UpdateMarketplaceDailyMetrics extends Command
             }
 
             if ($quantity > 0 && $basePrice > 0) {
-                $pftDecimal = $fbPrice > 0 ? ($fbPrice * $percentage - $lp - $temuShip) / $fbPrice : 0;
-                $totalPft  += $pftDecimal * $fbPrice * $quantity;
+                $calc = \App\Services\TemuShopifySalesService::temuPriceSalesAndProfit(
+                    $basePrice,
+                    $quantity,
+                    $percentage,
+                    $lp,
+                    $temuShip,
+                    false,
+                    true
+                );
+                $totalRevenue += $calc['sales'];
+                $totalL30Sales += $calc['sales'];
+                $totalWeightedPrice += $calc['base'] * $quantity;
+                $totalQuantityForPrice += $quantity;
+                $totalPft += $calc['profit'];
                 $totalCogs += $lp * $quantity;
             }
         }

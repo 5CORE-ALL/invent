@@ -601,7 +601,7 @@
                             title="Recovery Price = Sales × 0.88 (Full Temu Price × 0.88 × Qty)">Recovery: $0</span>
                         <span class="badge fs-6 p-2" id="total-spend-badge"
                             style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; font-weight: bold;"
-                            title="Sum of Spend from Temu 2 Ads upload">Spend: $0</span>
+                            title="Same L30 Spend as /temu2/ads (latest row per goods_id)">Spend: $0</span>
                         <span class="badge fs-6 p-2 temu-badge-history" id="qty-sold-badge"
                             data-badge-metric="total_quantity" data-badge-label="QTY"
                             style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
@@ -614,7 +614,10 @@
                             title="GROI% = Σ R-Price PFT ÷ Σ COGS × 100 (same as /temu-decrease)">GROI: 0%</span>
                         <span class="badge fs-6 p-2" id="ads-percent-badge"
                             style="background-color: #d63384; color: white; font-weight: bold;"
-                            title="Ads% = Ad Spend / Full Temu Price Sales × 100">Ads: 0%</span>
+                            title="Same as /temu2/ads TAcos% = Spend ÷ all sales (Shopify L30 × price)">Ads: 0%</span>
+                        <span class="badge fs-6 p-2" id="tacos-percent-badge"
+                            style="background-color: #b45309; color: white; font-weight: bold;"
+                            title="Same TAcos% as /temu2/ads: Spend ÷ all sales (Shopify L30 × price)">TAcos%: 0%</span>
                         <span class="badge bg-success fs-6 p-2" id="avg-npft-badge"
                             style="color: white; font-weight: bold;"
                             title="NPFT% = GPFT% − Ads% (Full Temu Price)">NPFT: 0%</span>
@@ -651,9 +654,6 @@
                             style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
                             title="S PRC capped to eBay. Click to show only EB rows."
                             aria-label="S PRC capped to eBay">EB 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter Missing M (listed, INV&gt;0, REQ, INV vs Temu Stock mismatch)">M M: 0</span>
                     </div>
                 </div>
             </div>
@@ -1149,9 +1149,10 @@
         });
         return best;
     }
-    const TEMU_FIXED_ADS_PERCENT = 2.2;
+    let temu2BadgeTacosPercent = null;
     function temuAdsPercentForNet() {
-        return TEMU_FIXED_ADS_PERCENT;
+        const n = parseFloat(temu2BadgeTacosPercent);
+        return Number.isFinite(n) ? n : 0;
     }
     function temu2PftDollars(rowData) {
         const rPrice = temu2RPriceFromRow(rowData);
@@ -1729,7 +1730,7 @@
                                 : isPct
                                     ? data.map(d => Number(d[metric]) || 0)
                                     : data.map(d => Number(d.price) || 0);
-                const temuChartMetricLabels = { price: 'Price', views: 'O Clicks', t_clicks: 'T Clicks', cvr: 'CVR%', temu_l30: 'Temu L30', profit_percent: 'GPRFT%', ads_percent: 'ADS%', roi_percent: 'GROI%', npft_percent: 'NPFT%', nroi_percent: 'NROI%' };
+                const temuChartMetricLabels = { price: 'Price', views: 'O Clicks', t_clicks: 'T Clicks', cvr: 'CVR%', temu_l30: 'Temu L30', profit_percent: 'GPRFT%', ads_percent: 'TAcos%', roi_percent: 'GROI%', npft_percent: 'NPFT%', nroi_percent: 'NROI%' };
                 const temuChartMetricColors = { price: '#adb5bd', views: '#0000FF', t_clicks: '#6610f2', cvr: '#008000', temu_l30: '#fd7e14', profit_percent: '#ff1493', ads_percent: '#ffc107', roi_percent: '#6f42c1', npft_percent: '#28a745', nroi_percent: '#17a2b8' };
                 const bgColors = { price: 'rgba(108,117,125,0.08)', views: 'rgba(0,0,255,0.1)', t_clicks: 'rgba(102,16,242,0.1)', cvr: 'rgba(0,128,0,0.1)', temu_l30: 'rgba(253,126,20,0.1)', profit_percent: 'rgba(255,20,147,0.1)', ads_percent: 'rgba(255,193,7,0.1)', roi_percent: 'rgba(111,66,193,0.1)', npft_percent: 'rgba(40,167,69,0.1)', nroi_percent: 'rgba(23,162,184,0.1)' };
                 const labelText = temuChartMetricLabels[metric] || 'Price';
@@ -2473,7 +2474,7 @@
             currentSkuChartMetric = (el.getAttribute ? el.getAttribute('data-metric') : $(el).data('metric')) || 'price';
             currentSku = sku;
             $('#modalSkuName').text(sku);
-            const metricLabels = { price: 'Price', views: 'O Clicks', t_clicks: 'T Clicks', cvr: 'CVR%', temu_l30: 'Temu L30', profit_percent: 'GPRFT%', ads_percent: 'ADS%', roi_percent: 'GROI%', npft_percent: 'NPFT%', nroi_percent: 'NROI%' };
+            const metricLabels = { price: 'Price', views: 'O Clicks', t_clicks: 'T Clicks', cvr: 'CVR%', temu_l30: 'Temu L30', profit_percent: 'GPRFT%', ads_percent: 'TAcos%', roi_percent: 'GROI%', npft_percent: 'NPFT%', nroi_percent: 'NROI%' };
             $('#temuChartRefLabel').text(metricLabels[currentSkuChartMetric] || 'Price');
             $('#temuChartModalSuffix').text('(Rolling L30)');
             $('#sku-chart-days-filter').val('30');
@@ -2631,32 +2632,12 @@
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
         let missingLFilterActive = false;
-        let missingMFilterActive = false;
         let lessAmzFilterActive = false;
         let moreAmzFilterActive = false;
-        let mapBadgeFilterActive = false;
         // aliases kept for any leftover refs
         let missingBadgeFilterActive = false;
-        let notMapBadgeFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
-
-        // Map tolerance — same formula as /map-issues, /temu-decrease, and the
-        // /all-marketplace-master Temu 2 row helper (getTemuLiveMapMissNMapFromDecreaseData):
-        //   if inv * 3% < 3   →  mapped iff diff <= 3
-        //   else              →  mapped iff round((diff / inv) * 100) <= 3
-        // This produces identical results to those endpoints (down to the round-to-3 edge
-        // case at inv ≈ 350+ and diff/inv between 3.0% and 3.5%) so the badge count exactly
-        // matches the Map / N Map column on /all-marketplace-master's Temu 2 row.
-        // INV <= 0 always counts as mapped.
-        function temuInvWithinMapTolerance(inv, stock) {
-            const invNum = parseFloat(inv) || 0;
-            const stockNum = parseFloat(stock) || 0;
-            if (invNum <= 0) return true;
-            const diff = Math.abs(invNum - stockNum);
-            if (invNum * 0.03 < 3) return diff <= 3;
-            return Math.round((diff / invNum) * 100) <= 3;
-        }
 
         function temu2DisplayedSprice(row) {
             if (typeof temuDisplayedSprice === 'function') {
@@ -2775,21 +2756,6 @@
             applyFilters();
             if (table && missingLFilterActive) {
                 try { table.getColumn('lmp').show(); } catch (e) {}
-            }
-        });
-
-        $('#missing-m-count-badge').on('click', function() {
-            missingMFilterActive = !missingMFilterActive;
-            notMapBadgeFilterActive = missingMFilterActive;
-            mapBadgeFilterActive = false;
-            $(this).toggleClass('bg-secondary', !missingMFilterActive)
-                   .toggleClass('bg-danger', missingMFilterActive);
-            applyFilters();
-            if (table) {
-                try {
-                    if (missingMFilterActive) table.getColumn('MAP').show();
-                    else table.getColumn('MAP').hide();
-                } catch (e) {}
             }
         });
 
@@ -3414,7 +3380,6 @@
             let zeroSoldCount = 0;
             let moreSoldCount = 0;
             let missingCount = 0;
-            let notMappedCount = 0;
             let rowsCount = 0;
 
             // Filtered counts: Rows / 0 Sold / >0 Sold (exclude parent rows from sold badges)
@@ -3440,7 +3405,7 @@
                     : ((parseInt(row.product_clicks, 10) || 0) + (parseInt(row.ad_clicks, 10) || 0));
             });
 
-            // Financials + M L / M M from full dataset (ebay pattern for missing) — SKUs only
+            // Financials + M L from full dataset (ebay pattern for missing) — SKUs only
             // Same calc as /temu-decrease: Sales/GPFT on Full Price; GROI on R Price
             const viewsByGoodsId = {};
             const tClicksByGoodsId = {};
@@ -3488,16 +3453,10 @@
                 totalTemuL30 += temuL30;
 
                 const missing = row.missing;
-                const temuStock = parseFloat(row.temu_stock) || 0;
                 const nrReq = String(row.nr_req || 'REQ').toUpperCase();
 
                 if (missing === 'M' && inventory > 0 && nrReq !== 'NR' && nrReq !== 'NRL') {
                     missingCount++;
-                }
-                if (inventory > 0 && nrReq === 'REQ' && missing !== 'M' && temuPrice > 0 && temuStock > 0) {
-                    if (!temuInvWithinMapTolerance(inventory, temuStock)) {
-                        notMappedCount++;
-                    }
                 }
             });
             Object.keys(viewsByGoodsId).forEach(function(gid) {
@@ -3563,6 +3522,15 @@
             $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGprft) + '%');
             $('#groi-percent-badge').text('GROI: ' + Math.round(avgGroi) + '%');
             $('#ads-percent-badge').text('Ads: ' + (Number(adsPercentForNpft) || 0).toFixed(1) + '%');
+            const tacosFromAds = adTotalsFromBackend && adTotalsFromBackend.tacos != null
+                ? parseFloat(adTotalsFromBackend.tacos)
+                : NaN;
+            const tacosPct = Number.isFinite(tacosFromAds) ? tacosFromAds : (Number(adsPercentForNpft) || 0);
+            temu2BadgeTacosPercent = tacosPct;
+            $('#tacos-percent-badge').text('TAcos%: ' + tacosPct.toFixed(1) + '%');
+            if (table && typeof table.getColumn === 'function' && table.getColumn('ads_percent')) {
+                table.getRows().forEach(function(row) { row.reformat(); });
+            }
             $('#avg-npft-badge').text('NPFT: ' + Math.round(avgNpft) + '%');
             $('#avg-nroi-badge').text('NROI: ' + Math.round(avgNroi) + '%');
             $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
@@ -3602,7 +3570,6 @@
             $('#temu-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
             $('#temu-eb-cap-badge').text('EB ' + ebCapCount.toLocaleString());
             if (typeof syncTemuCapBadgeState === 'function') syncTemuCapBadgeState();
-            $('#missing-m-count-badge').text('M M: ' + notMappedCount.toLocaleString());
 
             // Legacy hidden IDs (if present) — avoid JS errors
             $('#total-products-badge').text('SKU: ' + totalProducts.toLocaleString());
@@ -3677,9 +3644,13 @@
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
                     salesSummaryFromBackend = response.sales_summary || null;
                     adTotalsFromBackend = response.ad_totals || null;
-                    // Use exact aggregate_ads_percent from backend (matches all-marketplace-master)
-                    // This is the authoritative value - always use it for NPFT calculation
-                    if (response.aggregate_ads_percent != null && response.aggregate_ads_percent !== undefined) {
+                    // Ads% / TAcos% from /temu2/ads (Spend ÷ Shopify all sales).
+                    const tacosFromAdsPage = adTotalsFromBackend && adTotalsFromBackend.tacos != null
+                        ? parseFloat(adTotalsFromBackend.tacos)
+                        : NaN;
+                    if (Number.isFinite(tacosFromAdsPage)) {
+                        badgeAvgAds = tacosFromAdsPage;
+                    } else if (response.aggregate_ads_percent != null && response.aggregate_ads_percent !== undefined) {
                         const parsedAggregateAds = parseFloat(response.aggregate_ads_percent);
                         badgeAvgAds = Number.isFinite(parsedAggregateAds) ? parsedAggregateAds : null;
                     } else {
@@ -3912,46 +3883,6 @@
                         if (value === 'M') {
                             return '<span style="color: #dc3545; font-weight: bold;" title="Not found in temu2_metrics (API)">M</span>';
                         }
-                        return '';
-                    }
-                },
-                {
-                    title: "MAP",
-                    field: "MAP",
-                    hozAlign: "center",
-                    width: 90,
-                    sorter: temuSortBy(function(d) {
-                        if (d.missing === 'M' || !d.goods_id) return '';
-                        const inv = parseFloat(d.inventory) || 0;
-                        const stock = parseFloat(d.temu_stock) || 0;
-                        if (!(inv > 0)) return '';
-                        if (typeof temuInvWithinMapTolerance === 'function' && temuInvWithinMapTolerance(inv, stock)) return 1;
-                        return 0;
-                    }),
-                    visible: false,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const missing = rowData['missing'];
-                        
-                        // IMPORTANT: Only show MAP if SKU exists in Temu (not missing)
-                        // Same logic as eBay - check if item exists before showing MAP
-                        if (missing === 'M' || !rowData['goods_id'] || rowData['goods_id'] === '') {
-                            return ''; // Don't show MAP for missing items
-                        }
-                        
-                        const temuStock = parseFloat(rowData['temu_stock']) || 0;
-                        const inv = parseFloat(rowData['inventory']) || 0;
-
-                        if (inv > 0) {
-                            // Tolerance: |INV − stock| <= 3 units OR <= 3% of INV (matches amazon-tabulator-view)
-                            if (temuInvWithinMapTolerance(inv, temuStock)) {
-                                return '<span style="color: #28a745; font-weight: bold;" title="Within tolerance (3 units or 3%)">MP</span>';
-                            }
-                            const diff = inv - temuStock;
-                            const sign = diff > 0 ? '+' : '';
-                            return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
-                        }
-
                         return '';
                     }
                 },
@@ -4239,17 +4170,17 @@
                     }
                 },
                 {
-                    title: "ADS%",
+                    title: "TAcos%",
                     field: "ads_percent",
                     hozAlign: "center",
                     visible: false,
-                    headerTooltip: "ADS% = 2.2% on every row",
+                    headerTooltip: "Same TAcos% as the /temu2/ads badge — Spend ÷ all sales, applied to every row",
                     sorter: "number",
                     formatter: function(cell) {
-                        const displayVal = typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 2.2;
+                        const displayVal = typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 0;
                         const rowData = cell.getRow().getData();
                         const sku = (rowData && rowData.sku) ? rowData.sku : '';
-                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="ads_percent" title="View ADS% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ffc107;"></span></button>` : '';
+                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="ads_percent" title="View TAcos% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ffc107;"></span></button>` : '';
                         return `<span style="color: #ff1493; font-weight: 600;">${displayVal.toFixed(1)}%</span> ${dotBtn}`.trim();
                     }
                 },
@@ -4412,7 +4343,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "Suggested price from Dil → Target GROI% slabs. Temu L30 = 0 uses the minimum Target GROI. CVR Down < 7% subtracts 10 from Target GROI%; CVR Up > 10% adds 10. S PRC is back-solved so SGROI matches the target.",
+                    headerTooltip: "Suggested price from Dil → Target GROI% slabs. Every INV > 0 SKU uses the Dil-matching slab (including Temu L30 = 0). CVR Down < 7% subtracts 10 from Target GROI%; CVR Up > 10% adds 10. S PRC is back-solved so SGROI matches the target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
@@ -4442,7 +4373,7 @@
                     sorter: temuSortBy(function(d) {
                         return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
                     }),
-                    headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC from Sprc Dil (Dil-matching slab, including Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
@@ -4571,7 +4502,7 @@
                     accessorDownload: function(value, data) {
                         return temuExportSgroi(data);
                     },
-                    headerTooltip: "SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP. Sprc Dil back-solves S PRC so this matches the Dil slab Target GROI (or min GROI when Temu L30 = 0).",
+                    headerTooltip: "SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP. Sprc Dil back-solves S PRC so this matches the Dil slab Target GROI.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof chPromoZeroSoldDisplayGroi === 'function') {
@@ -5205,29 +5136,6 @@
                 });
             }
 
-            if (mapBadgeFilterActive) {
-                table.addFilter(function(data) {
-                    const inv = parseFloat(data.inventory) || 0;
-                    const missing = data.missing;
-                    const nrReq = String(data.nr_req || 'REQ').toUpperCase();
-                    const price = parseFloat(data.temu_price) || 0;
-                    const temuStock = parseFloat(data.temu_stock) || 0;
-                    if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0 || temuStock <= 0) return false;
-                    return temuInvWithinMapTolerance(inv, temuStock);
-                });
-            }
-
-            if (missingMFilterActive || notMapBadgeFilterActive) {
-                table.addFilter(function(data) {
-                    const inv = parseFloat(data.inventory) || 0;
-                    const missing = data.missing;
-                    const nrReq = String(data.nr_req || 'REQ').toUpperCase();
-                    const price = parseFloat(data.temu_price) || 0;
-                    const temuStock = parseFloat(data.temu_stock) || 0;
-                    if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0 || temuStock <= 0) return false;
-                    return !temuInvWithinMapTolerance(inv, temuStock);
-                });
-            }
             if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                 table.addFilter(function(data) {
                     return PriceGtLmpBadge.hasRedTriangle(data, 'temu_price', function (row) {
@@ -5274,10 +5182,6 @@
             try {
                 table.getColumn('lmp').show();
             } catch (e) {}
-            try {
-                if (missingMFilterActive || notMapBadgeFilterActive) table.getColumn('MAP').show();
-                else table.getColumn('MAP').hide();
-            } catch (e) {}
         }
 
         function temu2ClearPriceGtLmpCompetingFilters() {
@@ -5285,9 +5189,6 @@
             amzCapFilterActive = false;
             ebCapFilterActive = false;
             priceLt80LmpFilterActive = false;
-            missingMFilterActive = false;
-            mapBadgeFilterActive = false;
-            notMapBadgeFilterActive = false;
             $('#parent-filter').val('skus');
             $('#nrl-filter').val('all');
             $('#inventory-filter').val('more');
@@ -5987,8 +5888,8 @@
 
             // Basics — identity / inventory / listing status (incl. Dil%)
             if (
-                /^(image_path|parent|sku|links_column|goods_id|inventory|temu_stock|ovl30|dil_percent|temu_l30|missing|MAP|nr_req|nrp|o_clicks|product_clicks)$/i.test(f) ||
-                /\b(image|parent|sku|links|goods|inv|stock|ovl|dil|temu\s*l\d+|t\s*l\d+|missing|map|nrl|req|views|o\s*clicks)\b/i.test(tl)
+                /^(image_path|parent|sku|links_column|goods_id|inventory|temu_stock|ovl30|dil_percent|temu_l30|missing|nr_req|nrp|o_clicks|product_clicks)$/i.test(f) ||
+                /\b(image|parent|sku|links|goods|inv|stock|ovl|dil|temu\s*l\d+|t\s*l\d+|missing|nrl|req|views|o\s*clicks)\b/i.test(tl)
             ) {
                 return 'basics';
             }

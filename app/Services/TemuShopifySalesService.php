@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
-use App\Models\Temu2DailyData;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Order;
 use App\Models\Temu2Pricing;
@@ -12,11 +11,13 @@ use App\Models\Temu3DailyData;
 use App\Models\Temu3DailyDataL60;
 use App\Models\Temu3Order;
 use App\Models\Temu3Pricing;
+use App\Models\Temu3ViewData;
 use App\Models\TemuMetric;
 use App\Models\TemuOrder;
 use App\Services\MarketplaceManager\TemuOrderAmountParser;
 use App\Support\Marketplace\Temu3OrderSheet;
 use App\Support\ProductMasterTemuShip;
+use App\Support\TemuGoodsIdHelper;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -50,6 +51,17 @@ class TemuShopifySalesService
         return [
             $end->copy()->subDays(59)->startOfDay(),
             $end->copy()->subDays(30)->endOfDay(),
+        ];
+    }
+
+    /** L7: 7 complete Pacific days ending yesterday (no partial today). */
+    public static function channelMasterL7Window(): array
+    {
+        $end = Carbon::yesterday(self::PST);
+
+        return [
+            $end->copy()->subDays(6)->startOfDay(),
+            $end->copy()->endOfDay(),
         ];
     }
 
@@ -312,6 +324,55 @@ class TemuShopifySalesService
         return $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
     }
 
+    /**
+     * Strip freight from API/stored unit — same as /temu-tabulator Base Price.
+     * Base = unit − $2.99 when unit < $26.99.
+     */
+    public static function goodsBaseFromUnit(float $unit): float
+    {
+        if ($unit <= 0) {
+            return 0.0;
+        }
+        if ($unit < 26.99) {
+            return max(0.0, round($unit - 2.99, 2));
+        }
+
+        return round($unit, 2);
+    }
+
+    /**
+     * Temu Price sales + profit for one line.
+     * Sales = Temu Price × Qty. Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99.
+     * When $profitFromRPrice (Temu 2): GPFT$ = (R Price × margin − LP − Ship) × Qty.
+     * R Price = Base; +$2.99 if Base ≤ $26.99.
+     *
+     * @return array{base: float, temu_price: float, sales: float, profit: float}
+     */
+    public static function temuPriceSalesAndProfit(
+        float $rawUnit,
+        int $qty,
+        float $margin,
+        float $lp,
+        float $ship,
+        bool $stripFreightFromUnit = true,
+        bool $profitFromRPrice = false
+    ): array {
+        $base = $stripFreightFromUnit
+            ? self::goodsBaseFromUnit($rawUnit)
+            : ($rawUnit > 0 ? round($rawUnit, 2) : 0.0);
+        $temuPrice = self::computeFullTemuPrice($base);
+        $sales = $temuPrice * $qty;
+        $profitUnit = $profitFromRPrice ? self::computeFbPrice($base, $qty) : $temuPrice;
+        $profit = $profitUnit > 0 ? ($profitUnit * $margin - $lp - $ship) * $qty : 0.0;
+
+        return [
+            'base' => $base,
+            'temu_price' => $temuPrice,
+            'sales' => $sales,
+            'profit' => $profit,
+        ];
+    }
+
     /** Line revenue using FB Prc. */
     public static function lineSales(float $basePrice, int $quantity): float
     {
@@ -321,20 +382,90 @@ class TemuShopifySalesService
     }
 
     /**
+     * Same L30/L60 totals as /temu2-tabulator summary badges.
+     * Base = base_price_total (no −$2.99, not line_sales/qty).
+     * GPFT$ = (R Price × margin − LP − Temu Ship) × Qty
+     * GPFT% = GPFT$ ÷ Σ (Temu Price × Qty)
+     * GROI% = GPFT$ ÷ Σ (LP × Qty)
+     *
+     * @return array{sales: float, base_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
+     */
+    public static function computeTemu2TabulatorMetrics(Carbon $startDate, Carbon $endDate): array
+    {
+        $empty = ['sales' => 0.0, 'base_sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'gpft' => 0.0, 'cogs' => 0.0];
+        $rows = self::getTemu2OrdersTableRows($startDate, $endDate);
+        if (empty($rows)) {
+            return $empty;
+        }
+
+        $margin = self::temuMarginDecimal();
+        $totalSales = 0.0;
+        $totalBaseSales = 0.0;
+        $totalQty = 0;
+        $totalPft = 0.0;
+        $totalCogs = 0.0;
+        $orderSet = [];
+
+        foreach ($rows as $r) {
+            $parent = (string) ($r['Parent'] ?? '');
+            if ($parent !== '' && str_starts_with($parent, 'PARENT')) {
+                continue;
+            }
+            $sku = trim((string) ($r['contribution_sku'] ?? ''));
+            $orderId = trim((string) ($r['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+
+            $qty = (int) ($r['quantity_purchased'] ?? 0);
+            $base = (float) ($r['base_price_total'] ?? 0);
+            if ($qty <= 0 || $base <= 0) {
+                continue;
+            }
+
+            $lp = (float) ($r['lp'] ?? 0);
+            $ship = (float) ($r['temu_ship'] ?? 0);
+            $lineSales = (float) ($r['line_sales'] ?? 0);
+            $calc = self::temuPriceSalesAndProfit($base, $qty, $margin, $lp, $ship, false, true);
+
+            $totalSales += $calc['sales'];
+            $totalPft += $calc['profit'];
+            $totalCogs += $lp * $qty;
+            $totalQty += $qty;
+            $totalBaseSales += $lineSales > 0 ? $lineSales : ($base * $qty);
+            $orderSet[$orderId] = true;
+        }
+
+        return [
+            'sales' => round($totalSales, 2),
+            'base_sales' => round($totalBaseSales, 2),
+            'orders' => count($orderSet),
+            'qty' => $totalQty,
+            'pft' => round($totalPft, 2),
+            'gpft' => round($totalPft, 2),
+            'cogs' => round($totalCogs, 2),
+        ];
+    }
+
+    /**
      * Sales/orders/qty/pft/cogs from the temu_orders table (Temu API order-wise data).
+     * Temu 2 uses /temu2-tabulator math (computeTemu2TabulatorMetrics).
      *
      * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
      */
     public static function computeMetricsFromOrders(Carbon $startDate, Carbon $endDate, bool $isTemu2 = false): array
     {
-        $rows = $isTemu2
-            ? self::getTemu2OrdersTableRows($startDate, $endDate)
-            : self::getOrdersTableRows($startDate, $endDate);
-
-        if (empty($rows)) {
-            return ['sales' => 0.0, 'base_sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
+        if ($isTemu2) {
+            return self::computeTemu2TabulatorMetrics($startDate, $endDate);
         }
 
+        $rows = self::getOrdersTableRows($startDate, $endDate);
+
+        if (empty($rows)) {
+            return ['sales' => 0.0, 'base_sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'gpft' => 0.0, 'cogs' => 0.0];
+        }
+
+        $margin = self::temuMarginDecimal();
         $totalSales = 0.0;
         $totalBaseSales = 0.0;
         $totalQty = 0;
@@ -346,24 +477,22 @@ class TemuShopifySalesService
             $qty = (int) ($r['quantity_purchased'] ?? 0);
             $base = (float) ($r['base_price_total'] ?? 0);
             $lineSales = (float) ($r['line_sales'] ?? 0);
-            if ($qty <= 0 || ($base <= 0 && $lineSales <= 0)) {
+            $rawUnit = ($lineSales > 0 && $qty > 0) ? ($lineSales / $qty) : $base;
+            if ($qty <= 0 || $rawUnit <= 0) {
                 continue;
             }
 
-            // Official sales from bg.order.amount.query = basePrice + shipAmountTotal
-            // (Temu Seller Central daily sales / estimated revenue). Do not add the
-            // synthetic +$2.99 FB freight on top — that shipping is already in the API.
-            if ($lineSales > 0) {
-                $totalSales += $lineSales;
-                $totalBaseSales += $lineSales;
-            } else {
-                $fbPrice = self::computeFbPrice($base, $qty);
-                $totalSales += $fbPrice * $qty;
-                $totalBaseSales += $base * $qty;
-            }
+            $lp = (float) ($r['lp'] ?? 0);
+            $ship = (float) ($r['temu_ship'] ?? 0);
+            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, $margin, $lp, $ship, true, false);
+
+            $totalSales += $calc['sales'];
+            $totalPft += $calc['profit'];
+            $totalCogs += $lp * $qty;
             $totalQty += $qty;
-            $totalCogs += ((float) ($r['lp'] ?? 0)) * $qty;
-            $totalPft += (float) ($r['pft'] ?? 0);
+
+            // Keep API line sales for Seller Central Y Sales (base + freight).
+            $totalBaseSales += $lineSales > 0 ? $lineSales : ($rawUnit * $qty);
 
             $orderId = trim((string) ($r['order_id'] ?? ''));
             if ($orderId !== '') {
@@ -377,13 +506,13 @@ class TemuShopifySalesService
             'orders' => count($orderSet),
             'qty' => $totalQty,
             'pft' => round($totalPft, 2),
+            'gpft' => round($totalPft, 2),
             'cogs' => round($totalCogs, 2),
         ];
     }
 
     /**
-     * Per Pacific-day FB sales / base sales / qty / orders from temu2_orders
-     * (sheet unit price fills in when order_base_amount is missing).
+     * Per Pacific-day Temu Price sales from temu2_orders (no −$2.99 on Base).
      *
      * @return array<string, array{sales: float, base_sales: float, qty: int, orders: int}>
      */
@@ -404,13 +533,10 @@ class TemuShopifySalesService
                 $out[$d] = ['sales' => 0.0, 'base_sales' => 0.0, 'qty' => 0, 'oids' => []];
             }
             $lineSales = (float) ($r['line_sales'] ?? 0);
-            if ($lineSales > 0) {
-                $out[$d]['sales'] += $lineSales;
-                $out[$d]['base_sales'] += $lineSales;
-            } else {
-                $out[$d]['sales'] += self::lineSales($base, $qty);
-                $out[$d]['base_sales'] += $base * $qty;
-            }
+            $rawUnit = ($lineSales > 0 && $qty > 0) ? ($lineSales / $qty) : $base;
+            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, self::temuMarginDecimal(), 0.0, 0.0, false);
+            $out[$d]['sales'] += $calc['sales'];
+            $out[$d]['base_sales'] += $calc['base'] * $qty;
             $out[$d]['qty'] += $qty;
             $oid = trim((string) ($r['order_id'] ?? ''));
             if ($oid !== '') {
@@ -452,44 +578,6 @@ class TemuShopifySalesService
         return (float) self::computeMetricsFromOrders($start, $end)['base_sales'];
     }
 
-    /**
-     * Seller-center unit prices from the last Temu 2 sheet upload.
-     * Used when temu2_orders.order_base_amount was never fetched (currently all null).
-     *
-     * @return array{0: array<string, float>, 1: array<string, float>} [orderId => price, sku => price]
-     */
-    private static function temu2SheetPriceMaps(): array
-    {
-        static $byOrderId = null;
-        static $bySku = null;
-        if ($byOrderId !== null && $bySku !== null) {
-            return [$byOrderId, $bySku];
-        }
-
-        $byOrderId = [];
-        $bySku = [];
-        if (! Schema::hasTable('temu2_daily_data')) {
-            return [$byOrderId, $bySku];
-        }
-
-        foreach (Temu2DailyData::query()->get(['order_id', 'contribution_sku', 'base_price_total']) as $row) {
-            $price = (float) ($row->base_price_total ?? 0);
-            if ($price <= 0) {
-                continue;
-            }
-            $oid = trim((string) ($row->order_id ?? ''));
-            if ($oid !== '') {
-                $byOrderId[$oid] = $price;
-            }
-            $sku = strtoupper(trim((string) ($row->contribution_sku ?? '')));
-            if ($sku !== '' && ! isset($bySku[$sku])) {
-                $bySku[$sku] = $price;
-            }
-        }
-
-        return [$byOrderId, $bySku];
-    }
-
     /** Y Sales from temu2_orders: base-price revenue on yesterday (wall-clock Pacific). */
     public static function computeYSalesFromTemu2Orders(): ?float
     {
@@ -513,9 +601,7 @@ class TemuShopifySalesService
             return null;
         }
 
-        $latestPacific = Carbon::now(self::PST);
-        $end = $latestPacific->copy()->subDay()->endOfDay();
-        $start = $latestPacific->copy()->subDay()->subDays(6)->startOfDay();
+        [$start, $end] = self::channelMasterL7Window();
 
         return (float) self::computeMetricsFromOrders($start, $end, true)['base_sales'];
     }
@@ -575,16 +661,15 @@ class TemuShopifySalesService
                 continue;
             }
 
-            $full = self::computeFullTemuPrice($base);
-            $rPrice = $base <= 26.99 ? ($base + 2.99) : $base;
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
+            $calc = self::temuPriceSalesAndProfit($base, $qty, $margin, $lp, $ship);
 
-            $totalFull += $full * $qty;
-            $totalBase += $base * $qty;
+            $totalFull += $calc['sales'];
+            $totalBase += $calc['base'] * $qty;
             $totalQty += $qty;
-            $totalGpft += ($full * $margin - $lp - $ship) * $qty;
-            $totalGroiPft += self::computeGroiProfit($rPrice, $margin, $lp, $ship) * $qty;
+            $totalGpft += $calc['profit'];
+            $totalGroiPft += $calc['profit'];
             $totalCogs += $lp * $qty;
             $orderSet[$orderId] = true;
         }
@@ -664,15 +749,14 @@ class TemuShopifySalesService
                 continue;
             }
 
-            $full = self::computeFullTemuPrice($base);
-            $rPrice = $base <= 26.99 ? ($base + 2.99) : $base;
             [$lp, $ship] = self::lpAndTemuShip($productMasters, $sku);
+            $calc = self::temuPriceSalesAndProfit($base, $qty, $margin, $lp, $ship);
 
-            $totalFull += $full * $qty;
-            $totalBase += $base * $qty;
+            $totalFull += $calc['sales'];
+            $totalBase += $calc['base'] * $qty;
             $totalQty += $qty;
-            $totalGpft += ($full * $margin - $lp - $ship) * $qty;
-            $totalGroiPft += self::computeGroiProfit($rPrice, $margin, $lp, $ship) * $qty;
+            $totalGpft += $calc['profit'];
+            $totalGroiPft += $calc['profit'];
             $totalCogs += $lp * $qty;
             $orderSet[$orderId] = true;
         }
@@ -823,6 +907,96 @@ class TemuShopifySalesService
         }
 
         return $out;
+    }
+
+    /**
+     * Temu 3 view-data date window aligned with order sold (includes today).
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    public static function temu3ViewDateWindow(string $period = 'L30'): array
+    {
+        if (strtoupper($period) === 'L7') {
+            $end = Carbon::now(self::PST)->endOfDay();
+
+            return [$end->copy()->subDays(6)->startOfDay(), $end];
+        }
+
+        return self::temu3SheetL30Window();
+    }
+
+    /**
+     * temu3_view_data keyed by normalized Goods ID.
+     * Merges scientific/punctuation variants so clicks are not dropped, and
+     * uses the same L30/L7 date window as temu3_orders when dated rows exist.
+     *
+     * @return Collection<string, object>
+     */
+    public static function temu3ViewDataByGoodsId(string $period = 'L30'): Collection
+    {
+        if (! Schema::hasTable('temu3_view_data')) {
+            return collect();
+        }
+
+        $query = Temu3ViewData::query();
+        [$start, $end] = self::temu3ViewDateWindow($period);
+        $inWindow = (clone $query)
+            ->whereNotNull('date')
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->exists();
+        if ($inWindow) {
+            $query->whereNotNull('date')
+                ->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
+        }
+
+        $byKey = [];
+        foreach ($query->get() as $row) {
+            $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+            if (! $gid) {
+                continue;
+            }
+            if (! isset($byKey[$gid])) {
+                $byKey[$gid] = (object) [
+                    'goods_id' => $gid,
+                    'product_impressions' => 0,
+                    'visitor_impressions' => 0,
+                    'product_clicks' => 0,
+                    'visitor_clicks' => 0,
+                    'ctr' => 0.0,
+                    '_n' => 0,
+                ];
+            }
+            $byKey[$gid]->product_impressions += (int) ($row->product_impressions ?? 0);
+            $byKey[$gid]->visitor_impressions += (int) ($row->visitor_impressions ?? 0);
+            $byKey[$gid]->product_clicks += (int) ($row->product_clicks ?? 0);
+            $byKey[$gid]->visitor_clicks += (int) ($row->visitor_clicks ?? 0);
+            $byKey[$gid]->ctr += (float) ($row->ctr ?? 0);
+            $byKey[$gid]->_n++;
+        }
+        foreach ($byKey as $o) {
+            $o->ctr = $o->_n > 0 ? round($o->ctr / $o->_n, 2) : 0.0;
+            unset($o->_n);
+        }
+
+        return collect($byKey);
+    }
+
+    /**
+     * /temu3-decrease Views + CVR badges: sheet clicks once per Goods ID, sold from L30/L7 orders.
+     *
+     * @return array{total_views: int, total_sold: int, cvr_pct: float}
+     */
+    public static function temu3ViewsSummary(int $totalSold, string $period = 'L30'): array
+    {
+        $totalViews = (int) self::temu3ViewDataByGoodsId($period)->sum(
+            static fn ($row) => (int) ($row->product_clicks ?? 0)
+        );
+
+        return [
+            'total_views' => $totalViews,
+            'total_sold' => $totalSold,
+            'cvr_pct' => $totalViews > 0 ? round(($totalSold / $totalViews) * 100, 2) : 0.0,
+        ];
     }
 
     /**
@@ -1077,6 +1251,12 @@ class TemuShopifySalesService
             $pm = ($sku !== '' && isset($productMasters[$sku])) ? $productMasters[$sku] : null;
             [$lp, $temuShip] = self::lpAndTemuShip($productMasters, $sku);
             $parent = $pm ? ($pm->parent ?? '') : '';
+            $pmValues = [];
+            if ($pm) {
+                $pmValues = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+            }
 
             $quantity = (int) ($o->quantity ?? 0);
 
@@ -1088,15 +1268,6 @@ class TemuShopifySalesService
             if ($orderAmount > 0 && $quantity > 0) {
                 $price = $orderAmount / $quantity;
             }
-            if ($isTemu2 && $price <= 0) {
-                [$sheetByOrder, $sheetBySku] = self::temu2SheetPriceMaps();
-                $oid = trim((string) ($o->parent_order_sn ?: ($o->order_sn ?? '')));
-                if ($oid !== '' && isset($sheetByOrder[$oid])) {
-                    $price = (float) $sheetByOrder[$oid];
-                } elseif ($sku !== '' && isset($sheetBySku[strtoupper($sku)])) {
-                    $price = (float) $sheetBySku[strtoupper($sku)];
-                }
-            }
 
             $hasApiSales = $lineSales !== null && $lineSales > 0;
             $officialUnit = $hasApiSales && $quantity > 0 ? $lineSales / $quantity : $price;
@@ -1104,7 +1275,7 @@ class TemuShopifySalesService
             $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;
             $pft = $pftDecimal * $fbPrice * $quantity;
 
-            $result[] = [
+            $mapped = [
                 'Parent' => $parent,
                 'contribution_sku' => $sku,
                 'order_id' => $o->parent_order_sn ?: ($o->order_sn ?? ''),
@@ -1114,22 +1285,60 @@ class TemuShopifySalesService
                 'quantity_shipped' => 0,
                 'quantity_to_ship' => 0,
                 'base_price_total' => round($officialUnit > 0 ? $officialUnit : $price, 2),
+                'listing_base_price' => round((float) ($priceBySku[$sku] ?? 0), 2),
                 'line_sales' => $hasApiSales ? round($lineSales, 2) : round(self::lineSales($price, $quantity), 2),
                 'fb_price' => round($fbPrice, 2),
                 'lp' => $lp,
                 'temu_ship' => $temuShip,
+                'handling_charge' => $pmValues['handling_charge'] ?? null,
+                'o_size_charge' => $pmValues['o_size_charge'] ?? null,
                 'pft' => round($pft, 2),
                 'order_status' => $o->order_status_text ?? '',
                 'fulfillment_mode' => $o->fulfillment_type ?? '',
-                'tracking_number' => '',
-                'carrier' => '',
+                'tracking_number' => $o->tracking_number ?? '',
+                'carrier' => $o->carrier ?? '',
                 'created_at' => $o->parent_order_time
                     ? $o->parent_order_time->format('Y-m-d H:i:s')
                     : null,
             ];
+
+            $result[] = $isTemu2
+                ? array_merge(self::temu2RawOrderColumns($o), $mapped)
+                : $mapped;
         }
 
         return $result;
+    }
+
+    /**
+     * Scalar temu2_orders columns for the tabulator (JSON blobs omitted).
+     * order_status is renamed so the mapped text status can keep that key.
+     *
+     * @return array<string, mixed>
+     */
+    private static function temu2RawOrderColumns(object $o): array
+    {
+        $skip = ['id', 'raw_json', 'amount_raw_json'];
+        $out = [];
+        foreach ($o->getAttributes() as $key => $unused) {
+            if (in_array($key, $skip, true)) {
+                continue;
+            }
+            $value = $o->{$key};
+            if ($value instanceof \DateTimeInterface) {
+                $out[$key] = $value->format('Y-m-d H:i:s');
+            } elseif (is_array($value) || is_object($value)) {
+                continue;
+            } else {
+                $out[$key] = $value;
+            }
+        }
+        if (array_key_exists('order_status', $out)) {
+            $out['order_status_code'] = $out['order_status'];
+            unset($out['order_status']);
+        }
+
+        return $out;
     }
 
     private static function productMastersForSkus(Collection $skus): Collection

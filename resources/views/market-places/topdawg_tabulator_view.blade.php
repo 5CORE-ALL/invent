@@ -75,7 +75,6 @@
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'topdawg-price-gt-lmp-badge', 'pglChannelKey' => 'topdawg', 'pglPriceField' => 'TD Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'topdawg-price-lt80-lmp-badge', 'pltChannelKey' => 'topdawg', 'pltPriceField' => 'TD Price'])
-                        <span class="badge bg-danger text-center" id="nmap-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="|INV − TD Stock| &gt; 3">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -285,7 +284,7 @@
     let allTableData = [];
     // zeroSoldFilter / moreSoldFilter removed — Sold filter is now owned by the
     // #sold-filter dropdown (driven by badge clicks and the ?badge=zero_sold|more_sold URL).
-    let missingFilter = false, nmapFilter = false;
+    let missingFilter = false;
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
     let blueTriangleFilterActive = false;
@@ -691,17 +690,15 @@
         const p = new URLSearchParams(window.location.search).get('badge');
         // Reset every badge-style filter (including the dropdown-backed Sold filter)
         // before honoring the URL deep-link, so only one filter is active afterwards.
-        missingFilter = nmapFilter = false;
+        missingFilter = false;
         $('#sold-filter').val('all');
         if (p === 'missing') missingFilter = true;
-        else if (p === 'nmap') nmapFilter = true;
         else if (p === 'zero_sold') $('#sold-filter').val('zero');
         else if (p === 'more_sold') $('#sold-filter').val('sold');
     }
 
     function setActiveBadges() {
         $('#missing-badge').toggleClass('active-filter', missingFilter);
-        $('#nmap-badge').toggleClass('active-filter', nmapFilter);
         // Sold-badge active state is now derived from the #sold-filter dropdown value,
         // which is the single source of truth for the Sold filter.
         const sold = $('#sold-filter').val();
@@ -721,7 +718,7 @@
     function updateSummary() {
         const data = getSummaryRows();
         let totalTdL30 = 0;
-        let zeroSold = 0, moreSold = 0, missing = 0, nmapC = 0;
+        let zeroSold = 0, moreSold = 0, missing = 0;
         data.forEach(row => {
             const tdL30 = parseInt(row['TD L30'], 10) || 0;
             totalTdL30 += tdL30;
@@ -731,10 +728,6 @@
             const nrReq = row.nr_req || 'REQ';
             const isMissing = row.Missing === 'M';
             if (isMissing && nrReq === 'REQ' && inv > 0) missing++;
-            const mapVal = row.MAP || '';
-            if (nrReq === 'REQ' && inv > 0 && !isMissing) {
-                if (mapVal.includes('N Map|')) nmapC++;
-            }
         });
 
         // Sales / GPFT / GROI pinned to /topdawg/sales-dashboard (not filter-dependent).
@@ -746,7 +739,6 @@
         $('#gpft-pct-badge').text('GPFT: ' + Math.round(Number(TD_SALES_DASHBOARD_GPFT)) + '%');
         $('#groi-pct-badge').text('GROI: ' + Math.round(Number(TD_SALES_DASHBOARD_ROI)) + '%');
         $('#missing-badge').text('Missing L: ' + missing.toLocaleString());
-        $('#nmap-badge').text('N Map: ' + nmapC.toLocaleString());
         if (window.PriceGtLmpBadge && table) {
             PriceGtLmpBadge.update('#topdawg-price-gt-lmp-badge', table.getData(), 'topdawg', 'TD Price');
                 if (window.PriceLt80LmpBadge) {
@@ -831,7 +823,6 @@
             table.addFilter(data => (parseInt(data['TD L30'], 10) || 0) > 0);
         }
         if (missingFilter) table.addFilter(data => data.Missing === 'M' && data.nr_req === 'REQ' && (parseFloat(data.INV) || 0) > 0);
-        if (nmapFilter) table.addFilter(data => (data.MAP || '').includes('N Map|') && data.nr_req === 'REQ' && (parseFloat(data.INV) || 0) > 0 && data.Missing !== 'M');
         if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
             table.addFilter(function(data) {
                 return PriceGtLmpBadge.hasRedTriangle(data, 'TD Price');
@@ -988,18 +979,6 @@
                     formatter: c => c.getValue() === 'M'
                         ? '<span style="color:#dc3545;font-weight:bold;background:#ffe6e6;padding:2px 6px;border-radius:3px;">M</span>'
                         : '' },
-                { title: 'MAP', field: 'MAP', hozAlign: 'center', width: 90,
-                    formatter: c => {
-                        const v = c.getValue() || '';
-                        if (v === 'Map') {
-                            return '<span style="color:#28a745;font-weight:bold;background:#d4edda;padding:2px 6px;border-radius:3px;">MAP</span>';
-                        }
-                        if (v.includes('N Map|')) {
-                            const diff = v.split('|')[1];
-                            return `<span style="color:#dc3545;font-weight:bold;background:#f8d7da;padding:2px 6px;border-radius:3px;">N MP (${diff})</span>`;
-                        }
-                        return '';
-                    }},
                 { title: 'NR/REQ', field: 'nr_req', hozAlign: 'center', width: 60, headerSort: false,
                     formatter: c => {
                         let value = c.getValue();
@@ -1522,8 +1501,7 @@
             setActiveBadges();
             applyFilters();
         });
-        $('#missing-badge').on('click', function() { missingFilter = !missingFilter; nmapFilter = false; applyFilters(); });
-        $('#nmap-badge').on('click', function() { nmapFilter = !nmapFilter; missingFilter = false; applyFilters(); });
+        $('#missing-badge').on('click', function() { missingFilter = !missingFilter; applyFilters(); });
 
         $('#export-btn').on('click', () => table.download('csv', 'topdawg_pricing.csv'));
 

@@ -4892,12 +4892,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu2-variation-verify/data', [Temu2VariationVerifyController::class, 'data'])->name('temu2.variation.verify.data');
     Route::post('/temu2-variation-verify/pull-listings', [Temu2VariationVerifyController::class, 'pullListings'])->name('temu2.variation.verify.pull');
 
-    // Temu 2 Tabulator View (separate tables: temu2_daily_data, temu2_daily_data_l60)
+    // Temu 2 Tabulator View — temu2_orders API (same pattern as /temu-tabulator)
     Route::get('/temu2-tabulator', [TemuController::class, 'temu2TabulatorView'])->name('temu2.tabulator');
     Route::get('/temu2/daily-data', [TemuController::class, 'getTemu2DailyData'])->name('temu2.daily.data');
     Route::get('/temu2/daily-data-l7', [TemuController::class, 'getTemu2DailyDataL7'])->name('temu2.daily.data.l7');
-    Route::post('/temu2/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataTemu2Chunk']);
-    Route::post('/temu2/upload-daily-data-l60-chunk', [TemuController::class, 'uploadDailyDataTemu2L60Chunk']);
     Route::post('/temu2-column-visibility', [TemuController::class, 'saveTemu2ColumnVisibility']);
     Route::get('/temu2-column-visibility', [TemuController::class, 'getTemu2ColumnVisibility']);
 
@@ -4934,7 +4932,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/temu-decrease-data', [TemuController::class, 'getTemuDecreaseData']);
     Route::get('/temu-decrease-data-l7', [TemuController::class, 'getTemuDecreaseDataL7'])->name('temu.decrease.l7');
-    // Temu 2 pricing (temu2_daily_data orders; no ads / Amazon / eBay)
+    // Temu 2 pricing (temu2_orders API; no ads / Amazon / eBay)
     Route::get('/temu1-data', [TemuController::class, 'temu1DataView'])->name('temu1.data');
     Route::get('/temu2-decrease', [TemuController::class, 'temu2DecreaseView'])->name('temu2.decrease');
     Route::get('/temu2-decrease-data', [TemuController::class, 'getTemu2DecreaseData']);

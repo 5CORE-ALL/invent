@@ -1482,6 +1482,80 @@ class Temu2AdsController extends Controller
     }
 
     /**
+     * Same Spend / Acos% / TAcos% as the /temu2/ads summary badges.
+     *
+     * @return array{spend: float, clicks: int, impressions: int, sold: int, sales: float, all_sales: float, rows: int, acos: float, tacos: float}
+     */
+    public static function adsPageBadgeMetrics(string $period = 'L30'): array
+    {
+        $period = strtoupper($period);
+        $empty = [
+            'spend' => 0.0,
+            'clicks' => 0,
+            'impressions' => 0,
+            'sold' => 0,
+            'sales' => 0.0,
+            'all_sales' => 0.0,
+            'rows' => 0,
+            'acos' => 0.0,
+            'tacos' => 0.0,
+        ];
+        if (! Schema::hasTable('temu2_campaign_reports')) {
+            return $empty;
+        }
+
+        $badge = Temu2CampaignReport::badgeTotals($period);
+        $allSales = self::adsPageAllSales($period);
+        $spend = (float) ($badge['spend'] ?? 0);
+        $adSales = (float) ($badge['sales'] ?? 0);
+
+        return [
+            'spend' => $spend,
+            'clicks' => (int) ($badge['clicks'] ?? 0),
+            'impressions' => (int) ($badge['impressions'] ?? 0),
+            'sold' => (int) ($badge['sold'] ?? 0),
+            'sales' => $adSales,
+            'all_sales' => $allSales,
+            'rows' => (int) ($badge['rows'] ?? 0),
+            'acos' => $adSales > 0 ? round(($spend / $adSales) * 100, 2) : ($spend > 0 ? 100.0 : 0.0),
+            'tacos' => $allSales > 0 ? round(($spend / $allSales) * 100, 2) : ($spend > 0 ? 100.0 : 0.0),
+        ];
+    }
+
+    /** Shopify L30 × price, once per SKU — same TAcos denominator as /temu2/ads. */
+    private static function adsPageAllSales(string $period): float
+    {
+        $query = Temu2CampaignReport::query()->orderByDesc('id');
+        if (in_array($period, ['L7', 'L30', 'L60'], true)) {
+            $query->where('report_range', $period);
+        }
+        $records = $query->get()->unique(fn (Temu2CampaignReport $r) => (string) $r->goods_id)->values();
+        $skus = $records->pluck('sku')
+            ->filter(fn ($s) => $s !== null && trim((string) $s) !== '')
+            ->map(fn ($s) => (string) $s)
+            ->unique()
+            ->values()
+            ->all();
+        $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skus);
+        $seenSku = [];
+        $allSales = 0.0;
+        foreach ($records as $r) {
+            $sku = strtoupper(trim((string) ($r->sku ?? '')));
+            if ($sku === '' || isset($seenSku[$sku])) {
+                continue;
+            }
+            $seenSku[$sku] = true;
+            $skuKey = ShopifySku::normalizeSkuForShopifyLookup((string) ($r->sku ?? ''));
+            $shopify = $skuKey !== '' ? ($shopifyByNorm[$skuKey] ?? null) : null;
+            $soldQty = $shopify ? (float) ($shopify->quantity ?? $shopify->shopify_l30 ?? 0) : 0;
+            $unitPrice = $shopify ? (float) ($shopify->price ?? $shopify->b2c_price ?? 0) : 0;
+            $allSales += $soldQty * $unitPrice;
+        }
+
+        return round($allSales, 2);
+    }
+
+    /**
      * Temu 2 L30 store sales — same TCOS denominator as Temu 2 orders.
      */
     public static function advertisementMasterNetSales(): float

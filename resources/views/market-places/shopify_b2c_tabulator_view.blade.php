@@ -736,7 +736,6 @@
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart" id="nroi-percent-badge" data-metric="nroi_percent" data-format="pct" data-live-value="{{ (float) ($shopifyDirectNroiPct ?? 0) }}" style="background-color: #e83e8c; color: white; font-weight: bold; cursor:pointer;" title="NROI%. Click for rolling history."><span class="summary-trend-dot none" data-metric="nroi_percent" title="Rolling history"></span>NROI: 0%</span>
                         <span class="badge bg-danger fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="less-amz-badge" data-metric="less_amz_count" data-invert="1" data-format="number" data-live-value="0" style="color: white; font-weight: bold; cursor: pointer;" title="Click badge to filter prices less than Amz. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="less_amz_count" title="Rolling history"></span>&lt; Amz: 0</span>
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="more-amz-badge" data-metric="more_amz_count" data-format="number" data-live-value="0" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click badge to filter prices greater than Amz. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="more_amz_count" title="Rolling history"></span>&gt; Amz: 0</span>
-                        <span class="badge bg-danger fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="missing-count-badge" data-metric="missing_count" data-invert="1" data-format="number" data-live-value="0" style="color: white; font-weight: bold; cursor: pointer;" title="Click badge to filter missing SKUs. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="missing_count" title="Rolling history"></span>Miss: 0</span>
                         <span class="badge bg-danger fs-6 p-2 shopifyb2c-badge-chart" id="total-tcos-badge" data-metric="tcos_percent" data-format="pct" data-invert="1" data-live-value="{{ (float) ($shopifyDirectTcosPct ?? 0) }}" style="color: black; font-weight: bold; cursor:pointer;" title="Ads%. Lower is better. Click for rolling history."><span class="summary-trend-dot none" data-metric="tcos_percent" title="Rolling history"></span>Ads: 0%</span>
                         <span class="badge bg-warning fs-6 p-2 shopifyb2c-badge-chart" id="total-spend-badge" data-metric="total_spend" data-format="money" data-live-value="{{ (float) ($shopifyDirectTotalSpend ?? 0) }}" style="color: black; font-weight: bold; cursor:pointer;" title="Ad spend. Click for rolling history."><span class="summary-trend-dot none" data-metric="total_spend" title="Rolling history"></span>Spend: $0</span>
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart" id="avg-npft-badge" data-metric="npft_percent" data-format="pct" data-live-value="{{ (float) ($shopifyDirectNpftPct ?? 0) }}" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="NPFT%. Click for rolling history."><span class="summary-trend-dot none" data-metric="npft_percent" title="Rolling history"></span>NPFT: 0%</span>
@@ -882,14 +881,14 @@
         total_cogs: 'COGS', total_spend: 'Spend', gpft_percent: 'GPFT%', groi_percent: 'GROI%',
         nroi_percent: 'NROI%', npft_percent: 'NPFT%', tcos_percent: 'Ads%',
         total_l30: 'L30', total_views: 'Views', cvr_percent: 'CVR%', total_b2b_l30: 'B2C L30',
-        zero_sold_count: '0 Sold', sold_count: '> 0 Sold', missing_count: 'Miss',
+        zero_sold_count: '0 Sold', sold_count: '> 0 Sold',
         less_amz_count: '< Amz', more_amz_count: '> Amz',
         blue_triangle_count: 'S PRC ≠ Price', purple_triangle_count: 'S PRC raised to Amz',
         lmp_missing_count: 'LMP M.', prc_gt_lmp_count: 'Price > LMP', price_lt80_lmp_count: 'Price < 80% LMP',
         avg_price: 'Price', total_inv: 'INV'
     };
     const shopifyB2cBadgeInvertMetrics = {
-        tcos_percent: true, zero_sold_count: true, missing_count: true, less_amz_count: true,
+        tcos_percent: true, zero_sold_count: true, less_amz_count: true,
         blue_triangle_count: true, purple_triangle_count: true, lmp_missing_count: true,
         prc_gt_lmp_count: true, price_lt80_lmp_count: true
     };
@@ -897,8 +896,7 @@
         'zero-sold-count-badge': 1, 'more-sold-count-badge': 1,
         'shopifyb2c-blue-triangle-badge': 1, 'shopifyb2c-purple-triangle-badge': 1,
         'shopifyb2c-lmp-missing-badge': 1, 'shopifyb2c-price-gt-lmp-badge': 1,
-        'shopifyb2c-price-lt80-lmp-badge': 1, 'less-amz-badge': 1, 'more-amz-badge': 1,
-        'missing-count-badge': 1
+        'shopifyb2c-price-lt80-lmp-badge': 1, 'less-amz-badge': 1, 'more-amz-badge': 1
     };
     let shopifyB2cChartInstance = null;
     let shopifyB2cChartAjax = null;
@@ -2299,14 +2297,6 @@
             applyFilters();
         });
 
-        // Missing badge click handler - filter SKUs missing in Shopify B2C
-        let missingFilterActive = false;
-        $('#missing-count-badge').on('click', function(e) {
-            if ($(e.target).closest('.summary-trend-dot').length) return;
-            missingFilterActive = !missingFilterActive;
-            applyFilters();
-        });
-
         // ========== MANUAL DROPDOWN FUNCTIONALITY (Walmart-style) ==========
         // Initialize dropdown functionality
         $(document).on('click', '.manual-dropdown-container .btn', function(e) {
@@ -2952,20 +2942,6 @@
                             return '<span style="color: #6c757d;">0</span>';
                         }
                         return `<span style="font-weight: 600;">${value}</span>`;
-                    }
-                },
-                {
-                    title: "Missing",
-                    field: "Missing",
-                    hozAlign: "center",
-                    width: 70,
-                    visible: false,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === 'M') {
-                            return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
-                        }
-                        return '';
                     }
                 },
                 {
@@ -3765,10 +3741,6 @@
                 });
             }
 
-            // Missing filter - show SKUs missing in Shopify B2C
-            if (missingFilterActive) {
-                table.addFilter("Missing", "=", "M");
-            }
             if (lmpMissingFilterActive && window.LmpMissingBadge) {
                 table.addFilter(function(data) {
                     return !LmpMissingBadge.isParentRow(data) && !LmpMissingBadge.hasLmp(data);
@@ -3848,7 +3820,6 @@
             lmpMissingFilterActive = false;
             lessAmzFilterActive = false;
             moreAmzFilterActive = false;
-            missingFilterActive = false;
             $('#nrl-filter').val('all');
             $('#sold-filter').val('all');
             $('#gpft-filter').val('all');
@@ -3964,7 +3935,6 @@
             let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
             let totalInv = 0, totalL30 = 0, totalViews = 0, totalB2BL30 = 0, zeroSoldCount = 0, moreSoldCount = 0;
             let totalCogs = 0, totalRoi = 0, roiCount = 0, lessAmzCount = 0, moreAmzCount = 0;
-            let missingCount = 0;
 
             data.forEach(row => {
                 totalPft += parseFloat(row.Profit) || 0;
@@ -4013,10 +3983,6 @@
                     moreAmzCount++;
                 }
 
-                // Count Missing
-                if (row['Missing'] === 'M') {
-                    missingCount++;
-                }
             });
 
             // Calculate GPFT % = (Total PFT / Total Sales) * 100 (same as Sales page)
@@ -4080,7 +4046,6 @@
             setShopifyB2cSummaryBadge($('#roi-percent-badge'), `GROI: ${groiBadge.toFixed(1)}%`, groiBadge);
             setShopifyB2cSummaryBadge($('#less-amz-badge'), `< Amz: ${lessAmzCount}`, lessAmzCount);
             setShopifyB2cSummaryBadge($('#more-amz-badge'), `> Amz: ${moreAmzCount}`, moreAmzCount);
-            setShopifyB2cSummaryBadge($('#missing-count-badge'), `Miss: ${missingCount}`, missingCount);
             
             // Spend / TCOS / NPFT / NROI all read the page-level snapshot now.
             setShopifyB2cSummaryBadge($('#total-tcos-badge'), `Ads: ${Math.round(SHOPIFY_DIRECT_TCOS_PCT)}%`, SHOPIFY_DIRECT_TCOS_PCT);

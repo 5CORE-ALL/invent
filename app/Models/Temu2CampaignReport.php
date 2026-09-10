@@ -78,11 +78,11 @@ class Temu2CampaignReport extends Model
     }
 
     /**
-     * /temu2/ads Spend badge — one row per goods_id (latest), selected period.
+     * Latest campaign-report id per goods_id — same uniqueness as /temu2/ads.
      *
-     * @return array{spend: float, clicks: int, impressions: int, sold: int, sales: float, rows: int}
+     * @return \Illuminate\Support\Collection<int, int|string>
      */
-    public static function badgeTotals(?string $period = 'L30'): array
+    public static function latestRowIdsByGoodsId(?string $period = 'L30')
     {
         $period = strtoupper((string) $period);
         $query = static::query();
@@ -90,12 +90,22 @@ class Temu2CampaignReport extends Model
             $query->where('report_range', $period);
         }
 
-        $ids = (clone $query)
+        return $query
             ->whereNotNull('goods_id')
             ->where('goods_id', '!=', '')
             ->selectRaw('MAX(id) as id')
             ->groupBy('goods_id')
             ->pluck('id');
+    }
+
+    /**
+     * /temu2/ads Spend badge — one row per goods_id (latest), selected period.
+     *
+     * @return array{spend: float, clicks: int, impressions: int, sold: int, sales: float, rows: int}
+     */
+    public static function badgeTotals(?string $period = 'L30'): array
+    {
+        $ids = static::latestRowIdsByGoodsId($period);
 
         // Not Created is the column default for never-status-synced API leftovers.
         // Those rows stored Overall spend and inflated /temu2/ads vs Seller Center.

@@ -233,9 +233,6 @@
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'pls-price-gt-lmp-badge', 'pglChannelKey' => 'pls', 'pglPriceField' => 'price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'pls-price-lt80-lmp-badge', 'pltChannelKey' => 'pls', 'pltPriceField' => 'price'])
-                        <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter Missing M (INV vs PLS Stock mismatch)">M M: 0</span>
                     </div>
                 </div>
             </div>
@@ -322,7 +319,6 @@
     let zeroSoldFilterActive = false;
     let moreSoldFilterActive = false;
     let missingLFilterActive = false;
-    let missingMFilterActive = false;
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
     let blueTriangleFilterActive = false;
@@ -354,31 +350,6 @@
     /** M L — INV>0 and marked Missing (not listed on PLS). */
     function isPlsMissingL(row) {
         return (row.missing || '') === 'M' && (parseInt(row.inventory) || 0) > 0;
-    }
-
-    function plsMismatchIgnoreThreshold(inv) {
-        inv = parseInt(inv) || 0;
-        if (inv <= 0) return 0;
-        return Math.max(3, Math.ceil(inv * 0.03));
-    }
-
-    /** Same as /map-issues: ignore only when Shopify is higher by at most max(3, 3% of INV). */
-    function isPlsQtyMapped(inv, plsInv) {
-        inv = parseInt(inv) || 0;
-        plsInv = parseInt(plsInv) || 0;
-        if (inv <= 0) return plsInv <= 0;
-        if (inv === plsInv) return true;
-        if (inv < plsInv) return false;
-        return (inv - plsInv) <= plsMismatchIgnoreThreshold(inv);
-    }
-
-    /** M M — listed, both INV>0 and PLS stock>0, beyond max(3, 3% of Shopify). PLS higher than Shopify is always N Map. */
-    function isPlsMissingM(row) {
-        if ((row.missing || '') === 'M') return false;
-        const inv = parseInt(row.inventory) || 0;
-        const plsInv = parseInt(row.pls_inventory) || 0;
-        if (inv <= 0 || plsInv <= 0) return false;
-        return !isPlsQtyMapped(inv, plsInv);
     }
 
     function showToast(message, type = 'info') {
@@ -545,7 +516,6 @@
                     if (!(soldQty > 0 && inv > 0)) return false;
                 }
                 if (missingLFilterActive && !isPlsMissingL(data)) return false;
-                if (missingMFilterActive && !isPlsMissingM(data)) return false;
                 if (priceGtLmpFilterActive && window.PriceGtLmpBadge && !PriceGtLmpBadge.hasRedTriangle(data, 'price')) return false;
                 if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge && !PriceLt80LmpBadge.hasPurpleTriangle(data, 'price')) return false;
                 if (blueTriangleFilterActive && !plsHasBlueTriangle(data)) return false;
@@ -927,39 +897,6 @@
                     }
                 },
                 {
-                    title: "MAP",
-                    field: "MAP",
-                    hozAlign: "center",
-                    width: 90,
-                    sorter: "string",
-                    visible: true,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const missing = rowData['missing'];
-
-                        // Only show MAP if SKU exists in PLS (not missing)
-                        if (missing === 'M') {
-                            return ''; // Don't show MAP for missing items
-                        }
-                        
-                        const plsInventory = parseFloat(rowData['pls_inventory']) || 0;
-                        const inv = parseFloat(rowData['inventory']) || 0;
-
-                        if (inv <= 0 || plsInventory <= 0) {
-                            return '';
-                        }
-
-                        if (isPlsQtyMapped(inv, plsInventory)) {
-                            return '<span style="color: #28a745; font-weight: bold;" title="Within max(3, 3% of Shopify) when Shopify is higher">MP</span>';
-                        }
-
-                        const diff = inv - plsInventory;
-                        const sign = diff > 0 ? '+' : '';
-                        const label = sign + diff;
-                        return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${label})</span>`;
-                    }
-                },
-                {
                     title: "GPFT%",
                     field: "gpft_pct",
                     hozAlign: "center",
@@ -1319,10 +1256,8 @@
             });
 
             let missingLCount = 0;
-            let missingMCount = 0;
             allData.forEach(row => {
                 if (isPlsMissingL(row)) missingLCount++;
-                if (isPlsMissingM(row)) missingMCount++;
             });
 
             const avgPrice = weightedL30 > 0 ? totalWeightedPrice / weightedL30 : 0;
@@ -1352,7 +1287,6 @@
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             if (typeof syncPlsTriangleBadgeState === 'function') syncPlsTriangleBadgeState();
-            $('#missing-m-count-badge').text('M M: ' + missingMCount.toLocaleString());
 
             fitSummaryBadges();
         }
@@ -1475,13 +1409,6 @@
             missingLFilterActive = !missingLFilterActive;
             $(this).toggleClass('bg-secondary', !missingLFilterActive)
                    .toggleClass('bg-danger', missingLFilterActive);
-            applyFilters();
-        });
-
-        $('#missing-m-count-badge').on('click', function() {
-            missingMFilterActive = !missingMFilterActive;
-            $(this).toggleClass('bg-secondary', !missingMFilterActive)
-                   .toggleClass('bg-danger', missingMFilterActive);
             applyFilters();
         });
 

@@ -131,7 +131,6 @@
                     <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
                     <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
                     <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">Miss: 0</span>
-                    <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter inventory mapping issues">N Map: 0</span>
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -971,14 +970,6 @@
         let missingFilterActive = false;
         $('#missing-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
-            mappingFilterActive = false;
-            applyFilters();
-        });
-
-        let mappingFilterActive = false;
-        $('#mapping-badge').on('click', function() {
-            mappingFilterActive = !mappingFilterActive;
-            missingFilterActive = false;
             applyFilters();
         });
 
@@ -2338,33 +2329,6 @@
                     width: 60
                 },
                 {
-                    title: "Mapping",
-                    field: "Mapping",
-                    hozAlign: "center",
-                    sorter: "string",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const ourInv = parseFloat(rowData['INV']) || 0;
-                        const mcInv = parseFloat(rowData['MC INV']) || 0; // Marketplace inventory from Macy's
-                        const nrReq = rowData['nr_req'] || 'REQ';
-                        
-                        // Don't show for NR items, INV = 0, or unlisted SKUs
-                        if (nrReq === 'NR' || ourInv === 0 || !isMacysListed(rowData)) {
-                            return '';
-                        }
-                        
-                        if (ourInv === mcInv || Math.abs(ourInv - mcInv) <= 3) {
-                            // Stocks match (or are within tolerance <= 3) - show green MAP
-                            return '<span style="color: #28a745; font-weight: 600; background-color: #d4edda; padding: 2px 6px; border-radius: 3px;">MAP</span>';
-                        } else {
-                            // Stocks don't match - show red N MP with qty difference
-                            const diff = Math.abs(mcInv - ourInv);
-                            return `<span style="color: #a00211; font-weight: 600; background-color: #f8d7da; padding: 2px 6px; border-radius: 3px;">N MP (${diff})</span>`;
-                        }
-                    },
-                    width: 90
-                },
-                {
                     title: "GPFT%",
                     field: "GPFT%",
                     hozAlign: "center",
@@ -2919,15 +2883,6 @@
                 });
             }
 
-            if (mappingFilterActive) {
-                table.addFilter(function(data) {
-                    const ourInv = parseFloat(data['INV']) || 0;
-                    const mcInv = parseFloat(data['MC INV']) || 0;
-                    const nrReq = data['nr_req'] || 'REQ';
-                    return nrReq === 'REQ' && ourInv > 0 && isMacysListed(data) && Math.abs(ourInv - mcInv) > 3;
-                });
-            }
-
             updateSummary();
         }
 
@@ -3007,7 +2962,7 @@
             let totalPft = 0, totalSales = 0, totalPrice = 0, priceCount = 0;
             let totalInv = 0, zeroSoldCount = 0, moreSoldCount = 0, totalDil = 0, dilCount = 0;
             let totalCogs = 0, totalRoi = 0, roiCount = 0;
-            let missingCount = 0, mappingCount = 0;
+            let missingCount = 0;
             let lessAmzCount = 0, moreAmzCount = 0;
 
             data.forEach(row => {
@@ -3059,13 +3014,6 @@
                 const lp = parseFloat(row['LP_productmaster']) || 0;
                 totalCogs += lp * mcL30;
 
-                if (nrReq === 'REQ' && inv > 0 && !isMissing) {
-                    const ourInv = inv;
-                    const mcInv = parseFloat(row['MC INV']) || 0;
-                    if (Math.abs(ourInv - mcInv) > 3) {
-                        mappingCount++;
-                    }
-                }
             });
 
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
@@ -3112,7 +3060,6 @@
             $('#avg-dil-badge').text(`DIL%: ${Math.round(avgDil * 100)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
             $('#missing-badge').text(`Miss: ${missingCount}`);
-            $('#mapping-badge').text(`N Map: ${mappingCount}`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount.toLocaleString()}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount.toLocaleString()}`);
         }
