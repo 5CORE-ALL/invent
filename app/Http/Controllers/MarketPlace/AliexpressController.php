@@ -10,6 +10,8 @@ use App\Models\AliexpressDataView;
 use App\Models\AliexpressListingStatus;
 use App\Models\AliexpressDailyData;
 use App\Models\AliexpressDailyDataL60;
+use App\Models\AliexpressOrderMetric;
+use App\Services\MarketplaceManager\AliexpressOrderSyncService;
 use App\Models\AliexpressLmpDataSheet;
 use App\Models\AliexpressPricingPrice;
 use App\Models\AliexpressMetric;
@@ -544,9 +546,27 @@ class AliexpressController extends Controller
     public function getL60Sales(Request $request)
     {
         try {
+            $window = $this->aliexpressTabulatorPacificWindow(60);
+            if ($this->aliexpressOrderMetricsHasRows($window['start'], $window['end'])) {
+                $agg = $this->aggregateAliexpressOrderRows(
+                    $this->aliexpressOrderMetricsAsDailyRows($window['start'], $window['end'])
+                );
+
+                return response()->json([
+                    'success' => true,
+                    'source' => 'api',
+                    'data' => [
+                        'total_sales' => round($agg['total_sales'], 2),
+                        'total_orders' => $agg['total_orders'],
+                        'total_quantity' => $agg['total_quantity'],
+                    ],
+                ]);
+            }
+
             if (! Schema::hasTable('aliexpress_daily_data_l60')) {
                 return response()->json([
                     'success' => true,
+                    'source' => 'sheet',
                     'data' => [
                         'total_sales' => 0,
                         'total_orders' => 0,
@@ -559,6 +579,7 @@ class AliexpressController extends Controller
 
             return response()->json([
                 'success' => true,
+                'source' => 'sheet',
                 'data' => [
                     'total_sales' => round($agg['total_sales'], 2),
                     'total_orders' => $agg['total_orders'],
@@ -960,13 +981,19 @@ class AliexpressController extends Controller
     }
 
     /**
-     * Get daily data for Aliexpress tabulator view
+     * Get daily data for Aliexpress tabulator view.
+     * Prefers AliExpress API orders (aliexpress_order_metrics, L30 Pacific).
+     * Falls back to uploaded aliexpress_daily_data when the API table is empty.
      */
     public function getDailyData(Request $request)
     {
         try {
-            // Fetch all data from aliexpress_daily_data
-            $aliexpressData = AliexpressDailyData::orderBy('order_date', 'desc')->get();
+            $window = $this->aliexpressTabulatorPacificWindow(30);
+            if ($this->aliexpressOrderMetricsHasRows($window['start'], $window['end'])) {
+                $aliexpressData = $this->aliexpressOrderMetricsAsDailyRows($window['start'], $window['end']);
+            } else {
+                $aliexpressData = AliexpressDailyData::orderBy('order_date', 'desc')->get();
+            }
 
             Log::info('Aliexpress daily data fetched', [
                 'total_records' => $aliexpressData->count()
@@ -1069,14 +1096,14 @@ class AliexpressController extends Controller
                     'order_id' => $item->order_id,
                     'order_status' => $item->order_status,
                     'buyer_name' => $item->buyer_name,
-                    'order_date' => $item->order_date ? $item->order_date->format('Y-m-d H:i') : null,
-                    'payment_time' => $item->payment_time ? $item->payment_time->format('Y-m-d H:i') : null,
+                    'order_date' => $this->aliexpressFormatTs($item->order_date ?? null),
+                    'payment_time' => $this->aliexpressFormatTs($item->payment_time ?? null),
                     'payment_method' => $item->payment_method,
-                    'supply_price' => $item->supply_price,
-                    'product_total' => $item->product_total,
+                    'supply_price' => $item->supply_price ?? $lineTotal,
+                    'product_total' => round($lineTotal, 2),
                     'unit_price' => round($unitPrice, 2), // Price per unit (like eBay)
-                    'shipping_cost' => $item->shipping_cost,
-                    'order_amount' => $item->order_amount,
+                    'shipping_cost' => $item->shipping_cost ?? null,
+                    'order_amount' => $item->order_amount ?? $lineTotal,
                     'platform_coupon' => $item->platform_coupon,
                     'sku_code' => $item->sku_code ?? '',
                     'quantity' => $item->quantity ?? 1,
@@ -1091,8 +1118,8 @@ class AliexpressController extends Controller
                     'buyer_country' => $item->buyer_country,
                     'state_province' => $item->state_province,
                     'city' => $item->city,
-                    'tracking_number' => $item->tracking_number,
-                    'shipping_time' => $item->shipping_time ? $item->shipping_time->format('Y-m-d H:i') : null,
+                    'tracking_number' => $item->tracking_number ?? null,
+                    'shipping_time' => $this->aliexpressFormatTs($item->shipping_time ?? null),
                 ];
             }
 
@@ -1116,6 +1143,173 @@ class AliexpressController extends Controller
     public function aliexpressTabulatorView()
     {
         return view('market-places.aliexpress_tabulator_view');
+    }
+
+    /**
+     * Pull last 60 days of AliExpress orders into aliexpress_order_metrics.
+     * /aliexpress-tabulator then reads L30/L60 from that table.
+     */
+    public function syncTabulatorOrdersFromApi(Request $request, AliexpressOrderSyncService $sync)
+    {
+        if (empty(config('services.aliexpress.access_token'))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'ALIEXPRESS_ACCESS_TOKEN is missing in .env. Run: php artisan aliexpress:auth-url',
+            ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+
+        try {
+            @set_time_limit(0);
+            $days = (int) $request->input('days', 60);
+            $days = max(1, min(180, $days));
+            $result = $sync->fetchAndStore($days);
+
+            $ok = empty($result['message']) || ! str_contains(strtolower((string) $result['message']), 'missing');
+            if (! empty($result['message']) && (
+                str_contains((string) $result['message'], 'ALIEXPRESS_ACCESS_TOKEN')
+                || str_contains((string) $result['message'], 'Run migrations')
+            )) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $result['message'],
+                    'fetched' => (int) ($result['fetched'] ?? 0),
+                    'stored' => (int) ($result['stored'] ?? 0),
+                ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
+            }
+
+            return response()->json([
+                'success' => $ok,
+                'message' => $result['message'] ?? 'AliExpress orders synced.',
+                'fetched' => (int) ($result['fetched'] ?? 0),
+                'stored' => (int) ($result['stored'] ?? 0),
+            ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        } catch (\Throwable $e) {
+            Log::error('AliExpress tabulator order sync failed: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'API sync failed: '.$e->getMessage(),
+            ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+    }
+
+    /**
+     * @return array{start: Carbon, end: Carbon}
+     */
+    private function aliexpressTabulatorPacificWindow(int $days): array
+    {
+        $end = Carbon::now('America/Los_Angeles');
+        $start = $end->copy()->subDays(max(1, $days));
+
+        return ['start' => $start, 'end' => $end];
+    }
+
+    private function aliexpressOrderMetricsHasRows(Carbon $start, Carbon $end): bool
+    {
+        if (! Schema::hasTable('aliexpress_order_metrics')) {
+            return false;
+        }
+
+        return AliexpressOrderMetric::query()
+            ->whereNotNull('order_id')
+            ->where('order_id', '!=', '')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where('sku', '!=', '__order__')
+            ->where('order_date', '>=', $start)
+            ->where('order_date', '<=', $end)
+            ->exists();
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function aliexpressOrderMetricsAsDailyRows(Carbon $start, Carbon $end)
+    {
+        return AliexpressOrderMetric::query()
+            ->whereNotNull('order_id')
+            ->where('order_id', '!=', '')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where('sku', '!=', '__order__')
+            ->where('order_date', '>=', $start)
+            ->where('order_date', '<=', $end)
+            ->orderByDesc('order_date')
+            ->get()
+            ->map(function (AliexpressOrderMetric $row) {
+                $qty = max(1, (int) ($row->quantity ?? 1));
+                $lineTotal = $this->aliexpressMetricLineTotal($row, $qty);
+                $raw = is_array($row->raw_payload) ? $row->raw_payload : [];
+                $order = is_array($raw['order'] ?? null) ? $raw['order'] : $raw;
+
+                return (object) [
+                    'id' => $row->id,
+                    'order_id' => $row->order_id,
+                    'order_status' => $row->status,
+                    'buyer_name' => $order['buyer_signer_fullname']
+                        ?? $order['buyer_name']
+                        ?? $order['receiver_name']
+                        ?? $order['contact_person']
+                        ?? null,
+                    'order_date' => $row->order_date,
+                    'payment_time' => $order['gmt_pay_time'] ?? $order['pay_time'] ?? $row->order_date,
+                    'payment_method' => $order['payment_type'] ?? $order['payment_method'] ?? null,
+                    'supply_price' => $lineTotal,
+                    'product_total' => $lineTotal,
+                    'shipping_cost' => $this->aliexpressMetricMoney($order['logistics_amount']['amount'] ?? $order['logistics_amount'] ?? $order['shipping_fee'] ?? null),
+                    'order_amount' => $lineTotal,
+                    'platform_coupon' => $this->aliexpressMetricMoney($order['platform_coupon'] ?? $order['coupon_amount'] ?? null),
+                    'sku_code' => $row->sku,
+                    'quantity' => $qty,
+                    'buyer_country' => $order['receipt_address']['country'] ?? $order['buyer_country'] ?? null,
+                    'state_province' => $order['receipt_address']['province'] ?? $order['state'] ?? null,
+                    'city' => $order['receipt_address']['city'] ?? $order['city'] ?? null,
+                    'tracking_number' => $order['logistics_info_list'][0]['logistics_no'] ?? $order['tracking_number'] ?? null,
+                    'shipping_time' => $order['gmt_send_goods_time'] ?? $order['delivery_time'] ?? null,
+                ];
+            })
+            ->values();
+    }
+
+    private function aliexpressMetricLineTotal(AliexpressOrderMetric $row, int $qty): float
+    {
+        $raw = is_array($row->raw_payload) ? $row->raw_payload : [];
+        $line = is_array($raw['line'] ?? null) ? $raw['line'] : [];
+        $unit = $line['product_unit_price']['amount'] ?? $line['product_unit_price'] ?? null;
+        if (is_numeric($unit) && (float) $unit > 0) {
+            return round((float) $unit * $qty, 2);
+        }
+
+        $amount = (float) ($row->amount ?? 0);
+        if ($amount > 0) {
+            return round($amount * $qty, 2);
+        }
+
+        $order = is_array($raw['order'] ?? null) ? $raw['order'] : $raw;
+        $orderAmt = $order['order_amount']['amount'] ?? $order['total_amount'] ?? $order['pay_amount'] ?? null;
+
+        return is_numeric($orderAmt) ? round((float) $orderAmt, 2) : 0.0;
+    }
+
+    private function aliexpressMetricMoney($value): ?float
+    {
+        if (is_array($value) && isset($value['amount'])) {
+            $value = $value['amount'];
+        }
+
+        return is_numeric($value) ? (float) $value : null;
+    }
+
+    private function aliexpressFormatTs($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        try {
+            return Carbon::parse($value)->format('Y-m-d H:i');
+        } catch (\Throwable $e) {
+            return is_string($value) ? $value : null;
+        }
     }
 
     /**

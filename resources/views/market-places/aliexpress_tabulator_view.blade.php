@@ -71,6 +71,11 @@
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-file-excel"></i> Export
                     </button>
+                    <button type="button" class="btn btn-sm btn-info" id="ae-tabulator-sync-orders-btn"
+                        title="Pull last 60 days of orders from AliExpress Open Platform. Table uses L30; badges use L60.">
+                        <i class="fas fa-cloud-download-alt"></i> Sync Orders
+                    </button>
+                    <span id="ae-tabulator-sync-status" class="small text-muted"></span>
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
                         <i class="fa fa-upload"></i> Upload L30 Sales
                     </button>
@@ -83,14 +88,14 @@
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary Statistics (L30 Data)</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Orders: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Quantity: 0</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Revenue: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">COGS: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-commission-badge" style="color: white; font-weight: bold;">Commission: $0.00</span>
                     </div>
                     <h6 class="mb-2 mt-3">L60 Statistics</h6>
@@ -261,6 +266,58 @@
         }
 
         loadL60Sales();
+
+        $('#ae-tabulator-sync-orders-btn').on('click', function() {
+            if (!confirm('Sync last 60 days of orders from AliExpress API?\n\nThe table will show L30. L60 badges update from the same pull. This may take several minutes.')) {
+                return;
+            }
+            const $btn = $(this);
+            const originalHtml = $btn.html();
+            const $status = $('#ae-tabulator-sync-status');
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Syncing…');
+            $status.removeClass('text-success text-danger').addClass('text-muted').text('Pulling orders from AliExpress…');
+
+            $.ajax({
+                url: '{{ route("aliexpress.sync.daily.orders") }}',
+                type: 'POST',
+                timeout: 0,
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    days: 60
+                },
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                success: function(response) {
+                    const msg = (response && response.message) ? response.message : 'AliExpress orders synced.';
+                    if (response && response.success === false) {
+                        $status.removeClass('text-muted text-success').addClass('text-danger').text(msg);
+                        showToast(msg, 'error');
+                        return;
+                    }
+                    $status.removeClass('text-muted text-danger').addClass('text-success').text(msg);
+                    showToast(msg, 'success');
+                    if (table) {
+                        table.setData('/aliexpress/daily-data');
+                    }
+                    loadL60Sales();
+                },
+                error: function(xhr) {
+                    let message = 'AliExpress order sync failed.';
+                    const j = xhr.responseJSON;
+                    if (j && j.message) message = j.message;
+                    else if (xhr.status === 419) message = 'Session expired. Refresh the page and try again.';
+                    else if (xhr.status === 0) message = 'Request timed out or network error.';
+                    $status.removeClass('text-muted text-success').addClass('text-danger').text(message);
+                    showToast(message, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html(originalHtml);
+                }
+            });
+        });
         
         // Initialize Tabulator
         console.log("Initializing Tabulator for Aliexpress Daily Data...");
@@ -645,13 +702,13 @@
             // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
             const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
-            $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
-            $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
-            $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
+            $('#total-orders-badge').text('Orders: ' + totalOrders.toLocaleString());
+            $('#total-quantity-badge').text('Quantity: ' + totalQuantity.toLocaleString());
+            $('#total-revenue-badge').text('Revenue: $' + totalRevenue.toFixed(2));
             $('#pft-percentage-badge').text('PFT %: ' + Math.round(pftPercentage) + '%');
             $('#roi-percentage-badge').text('ROI %: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
-            $('#pft-total-badge').text('PFT Total: $' + totalPft.toFixed(2));
+            $('#pft-total-badge').text('PFT: $' + totalPft.toFixed(2));
             
             // Color code PFT Total badge
             const pftBadge = $('#pft-total-badge');
@@ -661,7 +718,7 @@
                 pftBadge.removeClass('bg-dark').addClass('bg-danger');
             }
             
-            $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
+            $('#total-cogs-badge').text('COGS: $' + totalCogs.toFixed(2));
             $('#total-commission-badge').text('Commission: $' + totalCommission.toFixed(2));
         }
 
