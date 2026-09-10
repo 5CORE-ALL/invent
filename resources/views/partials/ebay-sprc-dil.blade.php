@@ -1346,6 +1346,9 @@
             } else if (typeof window.updateSummary === 'function') {
                 try { window.updateSummary(); } catch (e) { /* ignore */ }
             }
+            if (typeof window.chPromoQueueReloadSpricePush === 'function') {
+                try { window.chPromoQueueReloadSpricePush({ delay: 150 }); } catch (e) { /* ignore */ }
+            }
         }
         let ebayDgAutoApplyTimer = null;
         let ebayDgAutoApplyWaits = 0;

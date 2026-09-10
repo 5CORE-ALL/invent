@@ -11684,6 +11684,7 @@
         window.chPromoSpriceFromStdTPromo = chPromoSpriceFromStdTPromo;
         window.chPromoLiveSprice = chPromoLiveSprice;
         window.chPromoPushSpriceAmount = chPromoPushSpriceAmount;
+        window.chPromoQueueReloadSpricePush = chPromoQueueReloadSpricePush;
         window.chPromoPageDisplayedSprice = chPromoPageDisplayedSprice;
         window.chPromoDilSgroiRuleSprice = chPromoDilSgroiRuleSprice;
         window.chPromoDilSgroiForRow = chPromoDilSgroiForRow;

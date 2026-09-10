@@ -986,6 +986,22 @@
                     const shown = chPushSpriceRound2(chPromoPushSpriceAmount(d));
                     if (shown > 0) return shown;
                 }
+                const pageShown = [
+                    'ebay3DisplayedSprice',
+                    'ebay2DisplayedSprice',
+                    'ebayDisplayedSprice',
+                ];
+                for (let i = 0; i < pageShown.length; i++) {
+                    const fn = global[pageShown[i]];
+                    if (typeof fn === 'function') {
+                        const shown = chPushSpriceRound2(fn(d));
+                        if (shown > 0) return shown;
+                    }
+                }
+                if (typeof global.ebaySprcDilForRow === 'function') {
+                    const dil = chPushSpriceRound2(global.ebaySprcDilForRow(d));
+                    if (dil > 0) return dil;
+                }
                 if (typeof chPromoLiveSprice === 'function') {
                     const live = chPushSpriceRound2(chPromoLiveSprice(d));
                     if (live > 0) return live;
@@ -1037,6 +1053,13 @@
                 if (tbl) chPushSpriceWalkRows(tbl, consider);
                 extra.forEach(function(d) { if (d) consider(null, d); });
                 if (!jobs.length) {
+                    const retry = opts.retry || 0;
+                    if (opts.catalog && retry < 6) {
+                        setTimeout(function() {
+                            scanAndQueueChannelPushSprice(tbl, Object.assign({}, opts, { retry: retry + 1 }));
+                        }, 700);
+                        return;
+                    }
                     if (!opts.silent) {
                         setChannelPushSpriceProgress({
                             active: false,
