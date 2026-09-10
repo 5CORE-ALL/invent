@@ -259,6 +259,7 @@
                                 ['value' => 'channel_a_z_claims', 'text' => 'A-Z Claims'],
                                 ['value' => 'channel_violation_compliance', 'text' => 'Violation/Compliance'],
                                 ['value' => 'channel_refunds_returns', 'text' => 'Refunds / Returns'],
+                                ['value' => 'cancelled_orders', 'text' => 'Cancelled Orders'],
                                 ['value' => 'channel_review_dashboard', 'text' => 'Review Dashboard'],
                                 ['value' => 'channel_amazon_product_reviews', 'text' => 'Amz Product Reviews'],
                                 ['value' => 'channel_return_analysis', 'text' => 'Return Analysis'],

@@ -119,6 +119,10 @@
             font-size: calc(1rem * 0.99) !important;
             padding: calc(0.5rem * 0.99) !important;
         }
+        #summary-stats #total-pft-amt-badge,
+        #summary-stats #avg-price-badge {
+            display: none !important;
+        }
         /* Dashboard-standard KPI dots: green = up, red = down, gray = same / no prior */
         #summary-stats .summary-trend-dot {
             display: inline-block;
@@ -820,7 +824,7 @@
                         <span class="badge bg-dark fs-6 p-2" id="rows-count-badge" style="color: white; font-weight: bold;" title="Number of rows currently shown (after filters)">Row: 0</span>
 
                         <!-- Financial Metrics -->
-                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" data-live-value="0" data-format="money" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer; display: none;" title="View trend"><span class="summary-trend-dot none" data-metric="total_pft" title="Rolling history"></span>PFT: $0.00</span>
+                        <span class="badge bg-success fs-6 p-2 amz-badge-chart d-none" data-metric="total_pft" data-live-value="0" data-format="money" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend" aria-hidden="true"><span class="summary-trend-dot none" data-metric="total_pft" title="Rolling history"></span>PFT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" data-live-value="{{ (float) ($amazonSalesL30 ?? 0) }}" data-format="money" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="30-day sales from real Amz orders (same source as /amazon/daily-sales). Click badge or dot for trend."><span class="summary-trend-dot none" data-metric="total_sales" title="Rolling history"></span>Sales: ${{ number_format((float) ($amazonSalesL30 ?? 0)) }}</span>
                         
                         <!-- Percentage Metrics -->
@@ -828,12 +832,12 @@
 
                         <!-- Ads% (from /all-marketplace-master — Amz channel) -->
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="tcos_pct" data-live-value="{{ $amazonAdsPercent !== null ? round((float) $amazonAdsPercent, 1) : 0 }}" data-format="pct" data-invert="1" id="amazon-ads-badge" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Amz Ads% (Total Ad Spend / L30 Sales). Lower is better. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="tcos_pct" title="Rolling history"></span>Ads: {{ $amazonAdsPercent !== null ? round($amazonAdsPercent, 1) . '%' : 'N/A' }}</span>
-                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" data-live-value="0" data-format="pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend"><span class="summary-trend-dot none" data-metric="npft_pct" title="Rolling history"></span>PFT: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" data-live-value="0" data-format="pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend"><span class="summary-trend-dot none" data-metric="npft_pct" title="Rolling history"></span>NPFT: 0%</span>
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="groi_pct" data-live-value="0" data-format="pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View GROI% rolling history"><span class="summary-trend-dot none" data-metric="groi_pct" title="Rolling history"></span>GROI: 0%</span>
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" data-live-value="0" data-format="pct" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View NROI% rolling history — Net ROI = (Total PFT − Ad Spend) / COGS"><span class="summary-trend-dot none" data-metric="nroi_pct" title="Rolling history"></span>NROI: 0%</span>
                         
                         <!-- Amz Metrics -->
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Price: $0.00</span>
+                        <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;" aria-hidden="true"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Price: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Views: 0</span>
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="total_l30_orders" data-live-value="{{ (int) ($amazonUnitsSoldL30 ?? 0) }}" id="total-qty-sold-badge" style="background-color: #20c997; color: black; font-weight: bold; cursor:pointer;" title="Total Amz units sold in the last 30 days from real Amz orders (Pacific, through yesterday) — same source as /amazon/daily-sales. Click for trend."><span class="summary-trend-dot none" data-metric="total_l30_orders" title="Rolling history"></span>Qty: {{ number_format((int) ($amazonUnitsSoldL30 ?? 0)) }}</span>
                         <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>CVR: 0%</span>
@@ -1149,7 +1153,8 @@
         const TABULATOR_COLUMN_CHANNEL = 'amazon_tabulator';
         const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
         const AMAZON_REMOVED_COL_FIELDS = {
-            NR: true, nrp: true, NRL: true, FBA_Quantity: true, FBA: true, fba: true, fba_price: true, S_STATUS: true, PLS_STATUS: true
+            NR: true, nrp: true, NRL: true, FBA_Quantity: true, FBA: true, fba: true, fba_price: true, S_STATUS: true, PLS_STATUS: true,
+            TPFT: true, _parent_expand: true
         };
         const AMAZON_DELETED_RULE_COL_FIELDS = {
             prmt_pct: true, cvr_up_dn: true, zero_sold: true, zero_sold_prmt: true
@@ -1712,7 +1717,7 @@
             'map_count': 'Miss M', 'nmap_count': 'Miss M', 'missing_count': 'Miss L',
             'prc_gt_lmp_count': 'Prc > LMP',
             'total_pft': 'PFT', 'total_sales': 'Sales',
-            'gpft_pct': 'GPFT%', 'npft_pct': 'PFT%', 'groi_pct': 'GROI%', 'nroi_pct': 'NROI%',
+            'gpft_pct': 'GPFT%', 'npft_pct': 'NPFT%', 'groi_pct': 'GROI%', 'nroi_pct': 'NROI%',
             'tcos_pct': 'Ads%', 'total_l30_orders': 'Qty',
         };
 
@@ -3886,7 +3891,6 @@
                             return s || '—';
                         }
                     },
-                    ParentExpand.columnDef(),
 
                     {
                         title: "Image",
@@ -4546,29 +4550,6 @@
                     },
 
                     {
-                        title: "Ship",
-                        field: "Ship_productmaster",
-                        hozAlign: "center",
-                        sorter: "number",
-                        headerTooltip: "Shipping cost from CP Master / Shipping Master (Values.ship).",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            const val = cell.getValue();
-                            if (val == null || val === '') return '';
-                            const value = parseFloat(val);
-                            if (!Number.isFinite(value)) return '';
-                            const labelQty = parseInt(rowData.label_qty, 10);
-                            let tip = '';
-                            if (Number.isFinite(labelQty) && labelQty >= 2) {
-                                tip = ` title="Label QTY ${labelQty}. Ship is the stored CP Master / Shipping Master value (already includes combo)."`;
-                            }
-                            return `<span${tip}>$${value.toFixed(2)}</span>`;
-                        },
-                        width: 60
-                    },
-
-                    {
                         title: "GROI%",
                         field: "GROI%",
                         hozAlign: "center",
@@ -4786,46 +4767,29 @@
                         visible: false
                     },
                     {
-                        title: "TPFT%",
-                        field: "TPFT",
+                        title: "Ship",
+                        field: "Ship_productmaster",
                         hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell){
-                            let value = parseFloat(cell.getValue()) || 0;
-                            let percent = value.toFixed(0);
-                            let color = "";
-                            if (value < 10) {
-                                color = "red";
-                            } else if (value >= 10 && value < 15) {
-                                color = "#ffc107";
-                            } else if (value >= 15 && value < 20) {
-                                color = "blue";
-                            } else if (value >= 20 && value <= 40) {
-                                color = "green";
-                            } else if (value > 40) {
-                                color = "#e83e8c";
+                        sorter: "number",
+                        headerTooltip: "Shipping cost from CP Master / Shipping Master (Values.ship).",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const value = parseFloat(val);
+                            if (!Number.isFinite(value)) return '';
+                            const labelQty = parseInt(rowData.label_qty, 10);
+                            let tip = '';
+                            if (Number.isFinite(labelQty) && labelQty >= 2) {
+                                tip = ` title="Label QTY ${labelQty}. Ship is the stored CP Master / Shipping Master value (already includes combo)."`;
                             }
-                            return `<span style="font-weight:600; color:${color};">${percent}%</span>`;
-                        }
+                            return `<span${tip}>$${value.toFixed(2)}</span>`;
+                        },
+                        width: 60
                     }
                 ]
             });
-
-            if (window.ParentExpand) {
-                ParentExpand.configure({
-                    parentField: 'Parent',
-                    skuField: '(Child) sku',
-                    getTable: () => table,
-                    getDataset: () => allTableData,
-                    onAfterExpand: () => {
-                        if (typeof updateSummary === 'function') updateSummary();
-                    },
-                    onCollapse: () => {
-                        if (typeof applyFilters === 'function') applyFilters();
-                    },
-                });
-                ParentExpand.bind();
-            }
 
             // SKU Search: use applyFilters() so it stacks with Sold, A L30 range, and all other filters
             $('#sku-search').on('keyup', function() {
@@ -5040,12 +5004,6 @@
 
             function applyFilters() {
                 if (typeof table === 'undefined' || !table) return;
-                if (window.ParentExpand && ParentExpand.isExpanded()) {
-                    ParentExpand.beforeFilters(function() {
-                        applyFilters();
-                    });
-                    return;
-                }
                 var sortSnapshot = [];
                 try {
                     sortSnapshot = (table.getSorters() || []).map(function(s) {
@@ -5498,7 +5456,7 @@
                 
                 // AVG PFT% (Net Profit %) = GPFT% − Ads%  (Ads% from /all-marketplace-master, Amazon channel)
                 const avgPft = avgGpft - amazonAdsPercent;
-                setAmzSummaryBadge($('#avg-pft-badge'), 'PFT: ' + Math.round(avgPft) + '%', Math.round(avgPft));
+                setAmzSummaryBadge($('#avg-pft-badge'), 'NPFT: ' + Math.round(avgPft) + '%', Math.round(avgPft));
                 if (typeof syncAmzSummaryTrendDots === 'function') syncAmzSummaryTrendDots();
                 
                 // Save badge stats daily (fire-and-forget, once per page load)
@@ -5569,8 +5527,8 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|push_prc|cvr_discount|review_discount|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
-                    /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|push_prc|cvr_discount|review_discount|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';
                 }
@@ -5910,6 +5868,12 @@
                     if (spriceIdx !== -1) {
                         valid.splice(insertAt, 0, 'SPRICE');
                     }
+                }
+
+                const shipIdx = valid.indexOf('Ship_productmaster');
+                if (shipIdx !== -1) {
+                    valid.splice(shipIdx, 1);
+                    valid.push('Ship_productmaster');
                 }
 
                 amazonApplyingColumnOrder = true;

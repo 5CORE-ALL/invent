@@ -68,6 +68,7 @@ use App\Http\Controllers\Channels\AccountHealthMasterDashboardController;
 use App\Http\Controllers\Channels\ApprovalsChannelMasterController;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\Channels\SalesOrderFulfillmentController;
+use App\Http\Controllers\Channels\SalesCancelledOrderController;
 use App\Http\Controllers\Channels\SalesLossOrderController;
 use App\Http\Controllers\Channels\ChannelMovementAnalysisController;
 use App\Http\Controllers\Channels\ChannelPromotionMasterController;
@@ -592,6 +593,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/sales-order-fulfillment/history/chart-data', [SalesOrderFulfillmentController::class, 'historyChartData'])->name('sales.order.fulfillment.history.chart.data');
     Route::get('/sales-loss-order', [SalesLossOrderController::class, 'index'])->name('sales.loss.order');
     Route::get('/sales-loss-order/data', [SalesLossOrderController::class, 'data'])->name('sales.loss.order.data');
+    Route::get('/cancelled-orders', [SalesCancelledOrderController::class, 'index'])->name('sales.cancelled.order');
+    Route::get('/cancelled-orders/data', [SalesCancelledOrderController::class, 'data'])->name('sales.cancelled.order.data');
     Route::get('/active-channel-npft-nroi', [ChannelMasterController::class, 'getActiveChannelNpftNroi'])->name('active.channel.npft.nroi');
 
     // Listing Master > Amz Data (Amazon Listings raw from SP-API)

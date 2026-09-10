@@ -150,6 +150,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('sales.cancelled.order') }}" class="side-nav-link {{ request()->routeIs('sales.cancelled.order') || request()->routeIs('sales.cancelled.order.*') ? 'active' : '' }}">
+                    <i class="ri-close-circle-line"></i>
+                    <span>Cancelled Orders</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ route('variations.verify.masters') }}" class="side-nav-link variations-verify-masters-nav">
                     <i class="ri-layout-grid-line"></i>
                     <span>Variations Verify Masters</span>
