@@ -220,8 +220,8 @@ class AlibabaTrackingSyncService
                 $q->where('order_date', '>=', now()->subDays(90))
                     ->orWhere('created_at', '>=', now()->subDays(90));
             })
-            ->orderByDesc('order_date')
-            ->orderByDesc('id')
+            ->orderBy('order_date')
+            ->orderBy('id')
             ->limit($limit * 8)
             ->pluck('order_id', 'shopify_order_id');
 

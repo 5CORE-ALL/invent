@@ -382,20 +382,20 @@ class NeweggOrderDetailService
             ];
         }
 
-        $packages = $order['PackageInfoList'] ?? [];
-        if (isset($packages['TrackingNumber']) || isset($packages['ShipCarrier'])) {
-            $packages = [$packages];
-        }
-        if (! is_array($packages)) {
-            $packages = [];
-        }
+        $packages = $this->flattenPackageList($order['PackageInfoList'] ?? $order['PackageList'] ?? []);
 
         $logistics = [];
         foreach ($packages as $pkg) {
             if (! is_array($pkg)) {
                 continue;
             }
-            $tracking = trim((string) ($pkg['TrackingNumber'] ?? $pkg['tracking_number'] ?? ''));
+            $tracking = trim((string) (
+                $pkg['TrackingNumber']
+                ?? $pkg['tracking_number']
+                ?? $pkg['PackageTrackingNumber']
+                ?? $pkg['TrackingNumber1']
+                ?? ''
+            ));
             if ($tracking === '') {
                 continue;
             }
@@ -474,5 +474,58 @@ class NeweggOrderDetailService
             'logistics_type' => (string) ($order['ShipService'] ?? ''),
             'logistics_no' => $logistics[0]['logistics_no'] ?? null,
         ];
+    }
+
+    /**
+     * Newegg nests packages as PackageInfoList.PackageInfo (object or list).
+     *
+     * @param  mixed  $packages
+     * @return list<array<string, mixed>>
+     */
+    protected function flattenPackageList(mixed $packages): array
+    {
+        if (! is_array($packages) || $packages === []) {
+            return [];
+        }
+        if (isset($packages['TrackingNumber']) || isset($packages['ShipCarrier'])) {
+            return [$packages];
+        }
+
+        $inner = $packages['PackageInfo'] ?? $packages['Package'] ?? null;
+        if (is_array($inner)) {
+            $packages = $inner;
+        }
+        if (isset($packages['TrackingNumber']) || isset($packages['ShipCarrier'])) {
+            return [$packages];
+        }
+        if (! is_array($packages)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($packages as $pkg) {
+            if (! is_array($pkg)) {
+                continue;
+            }
+            if (isset($pkg['TrackingNumber']) || isset($pkg['ShipCarrier']) || isset($pkg['tracking_number'])) {
+                $out[] = $pkg;
+
+                continue;
+            }
+            foreach (['PackageInfo', 'Package'] as $key) {
+                $nested = $pkg[$key] ?? null;
+                if (isset($nested['TrackingNumber']) && is_array($nested)) {
+                    $out[] = $nested;
+                } elseif (is_array($nested)) {
+                    foreach ($nested as $row) {
+                        if (is_array($row)) {
+                            $out[] = $row;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $out;
     }
 }

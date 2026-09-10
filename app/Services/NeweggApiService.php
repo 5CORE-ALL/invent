@@ -264,7 +264,8 @@ class NeweggApiService
                 'ShippedQty' => (string) $qty,
             ];
             $neItem = trim((string) ($item['newegg_item_number'] ?? ''));
-            if ($neItem !== '') {
+            // Only send a real Newegg item # — a Shopify/product id here makes Action 2 fail.
+            if ($neItem !== '' && preg_match('/^9SI/i', $neItem)) {
                 $row['NeweggItemNumber'] = $neItem;
             }
             $packageItems[] = $row;
@@ -281,63 +282,165 @@ class NeweggApiService
             ? ['Item' => $packageItems[0]]
             : ['Item' => $packageItems];
 
-        $body = [
-            'Action' => '2',
+        $package = [
+            'TrackingNumber' => $trackingNumber,
+            'ShipCarrier' => $shipCarrier,
+            'ShipService' => $shipService,
+            'ItemList' => $itemList,
+        ];
+
+        // Official JSON sample uses Package as an array. Single-package XML uses one node.
+        $bodies = [
+            $this->shipOrderBody($sellerId, $orderNumber, [$package]),
+            $this->shipOrderBody($sellerId, $orderNumber, $package),
+        ];
+
+        $res = null;
+        foreach ($bodies as $index => $body) {
+            $res = $this->request(
+                'PUT',
+                '/marketplace/ordermgmt/orderstatus/orders/'.$orderNumber,
+                ['version' => '304'],
+                $body
+            );
+
+            if (! empty($res['blocked_by_cloudflare'])) {
+                return [
+                    'success' => false,
+                    'message' => 'Blocked by Cloudflare',
+                    'blocked_by_cloudflare' => true,
+                    'raw' => $res['raw'] ?? null,
+                ];
+            }
+
+            if ($this->shipOrderSucceeded($res)) {
+                return [
+                    'success' => true,
+                    'message' => 'Newegg order marked shipped.',
+                    'order_status' => (string) ($this->shipOrderStatus($res) ?? ''),
+                    'raw' => $res['raw'] ?? null,
+                ];
+            }
+
+            $error = $this->shipOrderError($res);
+            $retryable = $index === 0 && (
+                str_contains(strtolower($error), 'so030')
+                || str_contains(strtolower($error), 'format error')
+            );
+            if (! $retryable) {
+                return [
+                    'success' => false,
+                    'message' => $error,
+                    'raw' => $res['raw'] ?? null,
+                ];
+            }
+        }
+
+        return [
+            'success' => false,
+            'message' => $this->shipOrderError($res ?? []),
+            'raw' => $res['raw'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|list<array<string, mixed>>  $package
+     * @return array<string, mixed>
+     */
+    private function shipOrderBody(string $sellerId, string $orderNumber, array $package): array
+    {
+        return [
+            'Action' => 2,
             'Value' => [
                 'Shipment' => [
                     'Header' => [
                         'SellerID' => $sellerId,
-                        'SONumber' => $orderNumber,
+                        'SONumber' => ctype_digit($orderNumber) ? (int) $orderNumber : $orderNumber,
                     ],
                     'PackageList' => [
-                        'Package' => [[
-                            'TrackingNumber' => $trackingNumber,
-                            'ShipCarrier' => $shipCarrier,
-                            'ShipService' => $shipService,
-                            'ItemList' => $itemList,
-                        ]],
+                        'Package' => $package,
                     ],
                 ],
             ],
         ];
+    }
 
-        $res = $this->request(
-            'PUT',
-            '/marketplace/ordermgmt/orderstatus/orders/'.$orderNumber,
-            ['version' => '304'],
-            $body
-        );
-
-        if (! empty($res['blocked_by_cloudflare'])) {
-            return [
-                'success' => false,
-                'message' => 'Blocked by Cloudflare',
-                'blocked_by_cloudflare' => true,
-                'raw' => $res['raw'] ?? null,
-            ];
-        }
-
-        $json = is_array($res['json'] ?? null) ? $res['json'] : null;
-        $isSuccess = false;
-        if (is_array($json)) {
-            $flag = $json['IsSuccess'] ?? data_get($json, 'ResponseBody.IsSuccess');
-            $isSuccess = $flag === true || $flag === 'true' || $flag === 1 || $flag === '1';
-            $failCount = (int) (data_get($json, 'PackageProcessingSummary.FailCount') ?? 0);
+    /**
+     * @param  array{ok?:bool,status?:int,json?:?array,raw?:string,error?:?string}  $res
+     */
+    private function shipOrderSucceeded(array $res): bool
+    {
+        $nodes = $this->shipOrderResponseNodes($res);
+        foreach ($nodes as $node) {
+            $failCount = (int) (data_get($node, 'PackageProcessingSummary.FailCount') ?? 0);
             if ($failCount > 0) {
-                $isSuccess = false;
+                continue;
+            }
+            $flag = $node['IsSuccess'] ?? data_get($node, 'ResponseBody.IsSuccess');
+            if ($flag === true || $flag === 'true' || $flag === 1 || $flag === '1') {
+                return true;
+            }
+            $successCount = (int) (data_get($node, 'PackageProcessingSummary.SuccessCount') ?? 0);
+            if ($successCount > 0) {
+                return true;
+            }
+            $status = strtolower((string) (data_get($node, 'Result.OrderStatus') ?? ''));
+            if (in_array($status, ['shipped', 'partiallyshipped', 'partially shipped'], true)) {
+                return true;
             }
         }
 
-        if (! empty($res['ok']) && $isSuccess) {
-            return [
-                'success' => true,
-                'message' => 'Newegg order marked shipped.',
-                'order_status' => (string) (data_get($json, 'Result.OrderStatus') ?? ''),
-                'raw' => $res['raw'] ?? null,
-            ];
+        $raw = (string) ($res['raw'] ?? '');
+        if ($raw !== '' && preg_match('/<IsSuccess>\s*true\s*<\/IsSuccess>/i', $raw)) {
+            return ! preg_match('/<FailCount>\s*[1-9]/i', $raw);
         }
 
+        return false;
+    }
+
+    /**
+     * @param  array{json?:?array,raw?:string}  $res
+     */
+    private function shipOrderStatus(array $res): ?string
+    {
+        foreach ($this->shipOrderResponseNodes($res) as $node) {
+            $status = trim((string) (data_get($node, 'Result.OrderStatus') ?? ''));
+            if ($status !== '') {
+                return $status;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array{ok?:bool,status?:int,json?:?array,raw?:string,error?:?string}  $res
+     * @return list<array<string, mixed>>
+     */
+    private function shipOrderResponseNodes(array $res): array
+    {
+        $json = is_array($res['json'] ?? null) ? $res['json'] : null;
+        if (! is_array($json)) {
+            return [];
+        }
+
+        $nodes = [$json];
+        foreach (['NeweggAPIResponse', 'UpdateOrderStatusInfo', 'ResponseBody'] as $key) {
+            if (is_array($json[$key] ?? null)) {
+                $nodes[] = $json[$key];
+            }
+        }
+
+        return $nodes;
+    }
+
+    /**
+     * @param  array{ok?:bool,status?:int,json?:?array,raw?:string,error?:?string}  $res
+     */
+    private function shipOrderError(array $res): string
+    {
         $error = $this->extractItemError($res);
+        $json = is_array($res['json'] ?? null) ? $res['json'] : null;
         if ($error === '' && is_array($json)) {
             $code = (string) (data_get($json, '0.Code') ?? data_get($json, 'Errors.Error.Code') ?? '');
             $msg = (string) (data_get($json, '0.Message') ?? data_get($json, 'Errors.Error.Message') ?? '');
@@ -347,11 +450,7 @@ class NeweggApiService
             $error = 'HTTP '.($res['status'] ?? 0).': '.mb_substr((string) ($res['raw'] ?? ''), 0, 300);
         }
 
-        return [
-            'success' => false,
-            'message' => $error,
-            'raw' => $res['raw'] ?? null,
-        ];
+        return $error;
     }
 
     /**
