@@ -4608,6 +4608,7 @@
                 {
                     title: "SNROI%",
                     field: "sroi_percent",
+                    visible: false,
                     hozAlign: "center",
                     sorter: temuSortBy(function(d) { return temuExportSnroi(d); }),
                     headerTooltip: "SNROI% = SNPFT / LP. SNPFT = SPFT − (S PRC × Ads%)",
@@ -4643,6 +4644,7 @@
                 {
                     title: "SPFT%",
                     field: "spft_percent",
+                    visible: false,
                     hozAlign: "center",
                     sorter: temuSortBy(function(d) { return temuExportSpft(d); }),
                     download: true,
@@ -6351,7 +6353,7 @@
         }
 
         // Columns that should ALWAYS stay hidden, regardless of saved state.
-        var alwaysHiddenColumns = ['cvr_45', 'profit', 'SPRC_DIL'];
+        var alwaysHiddenColumns = ['cvr_45', 'profit', 'SPRC_DIL', 'sroi_percent', 'spft_percent'];
         function enforceAlwaysHiddenColumns() {
             alwaysHiddenColumns.forEach(function(col) {
                 try { table.hideColumn(col); } catch (e) {}
