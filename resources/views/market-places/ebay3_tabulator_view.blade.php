@@ -454,9 +454,6 @@
                         <span class="badge" id="qty-sold-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="L30 units sold (Σ real ebay3 order quantity, excl. cancelled &amp; fully-refunded). Same value /ebay3/daily-sales shows.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}</span>
                         <span class="badge bg-info ebay3-badge-chart ebay3-hover-chart" id="avg-gpft-badge" data-metric="gpft_percent" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">GPFT: 0%</span>
                         <span class="badge bg-secondary ebay3-badge-chart ebay3-hover-chart" id="groi-percent-badge" data-metric="groi_percent" style="color: white; font-weight: bold; cursor: pointer;" title="View trend">GROI: 0%</span>
-                        <span class="badge" id="ads-percent-badge" style="background-color: #d63384; color: white; font-weight: bold;" title="TACOS = eBay 3 channel Total Ad Spend (31-day KW + PMT from ebay_3_priority_reports + ebay_3_general_reports — same source as /ebay3/campaign-ads) ÷ real-orders L30 Sales × 100.">Ads: {{ number_format((float) ($channelAdsPercent ?? 0), 1) }}%</span>
-                        <span class="badge" id="npft-percent-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="NPFT% = GPFT% − Ads% (net profit margin after ad spend).">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%</span>
-                        <span class="badge" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amz (do not cut Ads% from GROI%).">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%</span>
                         <span class="badge bg-warning ebay3-badge-chart ebay3-hover-chart" id="avg-price-badge" data-metric="avg_price" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Prc: $0.00</span>
                         <span class="badge bg-danger ebay3-badge-chart ebay3-hover-chart" id="avg-cvr-badge" data-metric="cvr_percent" style="color: white; font-weight: bold; cursor: pointer;" title="CVR = (real-orders L30 units sold / Σ Views) × 100. Numerator is the orders-API L30 units (same source /ebay3/daily-sales uses), denominator is Σ views across rows with E Stock > 0. Click for trend.">CVR: 0%</span>
                         <span class="badge bg-info ebay3-badge-chart ebay3-hover-chart" id="total-views-badge" data-metric="total_views" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Views: 0</span>
@@ -480,7 +477,7 @@
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                             title="Purple triangle: Price &lt; 80% of LMP. Click to show only those rows.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
-                        <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
+                        <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours">L7: 0</span>
                         <span class="badge bg-primary d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
                     </div>
                 </div>
@@ -612,14 +609,6 @@
 
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay3'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay3'])
-
-                    {{-- Sbid (Views) — same as /ebay-tabulator-view + /ebay3/campaign-ads --}}
-                    <button type="button" class="btn btn-sm pricing-filter-item"
-                            style="border:1px solid #6610f2; color:#6610f2;"
-                            data-bs-toggle="modal" data-bs-target="#sbidViewsRuleModal"
-                            title="Configure Min/Max caps and the daily ±%/day step per L7 View colour for the S BID column">
-                        <i class="fas fa-eye me-1"></i>Sbid
-                    </button>
 
                 </div>
             </div>
@@ -818,106 +807,6 @@
         </div>
     </div>
 
-    {{-- Sbid (Views) Modal — shared with /ebay3/campaign-ads (ebay_sbid_rules.key = ebay3_sbid_views). --}}
-    <div class="modal fade" id="sbidViewsRuleModal" tabindex="-1" aria-labelledby="sbidViewsRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="sbidViewsRuleModalLabel">
-                        <i class="fas fa-eye me-2" style="color:#6610f2;"></i>Sbid (Views)
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted small mb-3">
-                        The <strong>S BID</strong> column adjusts each row's current <strong>C BID</strong> once per day based on
-                        its <strong>L7 View</strong> colour (green = keep C Bid), then clamps the result between the Min and Max caps.
-                        Same rule as <code>/ebay3/campaign-ads</code> and <code>ebay3:update-suggestedbid</code>.
-                    </p>
-
-                    <div class="row g-3 mb-3">
-                        <div class="col-6">
-                            <label class="form-label mb-1" for="sbid-views-min-cap">Min Cap %</label>
-                            <input type="number" step="0.1" id="sbid-views-min-cap" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label mb-1" for="sbid-views-max-cap">Max Cap %</label>
-                            <input type="number" step="0.1" id="sbid-views-max-cap" class="form-control form-control-sm">
-                        </div>
-                    </div>
-
-                    <div class="border rounded p-2 mb-3 bg-light">
-                        <div class="small fw-bold mb-1">Do not decrease when E L30 sold is low</div>
-                        <div class="row g-2 align-items-end">
-                            <div class="col-auto">
-                                <label class="form-label mb-1 small" for="sbid-views-no-dec-max-el30">
-                                    If E L30 sold ≤
-                                </label>
-                                <input type="number" step="1" min="0" id="sbid-views-no-dec-max-el30"
-                                       class="form-control form-control-sm" style="width: 88px;"
-                                       title="When eBay L30 units sold is at or below this qty, Decrease steps are skipped (bid stays at C Bid).">
-                            </div>
-                            <div class="col">
-                                <div class="small text-muted pb-1">
-                                    then <strong>do not decrease</strong> bid (Increase / No change still apply).
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="border rounded p-2">
-                        <div class="small fw-bold mb-2">Daily action per L7 View colour (direction + %/day)</div>
-                        <div class="row g-3">
-                            <div class="col-4">
-                                <label class="form-label mb-1">
-                                    <span style="color:#d63384; font-weight:700;">Pink</span> (high views)
-                                </label>
-                                <select id="sbid-views-pink-dir" class="form-select form-select-sm mb-1">
-                                    <option value="dec">Decrease</option>
-                                    <option value="inc">Increase</option>
-                                    <option value="none">No change</option>
-                                </select>
-                                <input type="number" step="0.1" id="sbid-views-pink-step" class="form-control form-control-sm"
-                                       title="Points/day to apply for Pink L7 (≥ 2× avg)">
-                            </div>
-                            <div class="col-4">
-                                <label class="form-label mb-1">
-                                    <span style="color:#28a745; font-weight:700;">Green</span> (mid views)
-                                </label>
-                                <select id="sbid-views-green-dir" class="form-select form-select-sm mb-1">
-                                    <option value="none">No change</option>
-                                    <option value="inc">Increase</option>
-                                    <option value="dec">Decrease</option>
-                                </select>
-                                <input type="number" step="0.1" id="sbid-views-green-step" class="form-control form-control-sm"
-                                       title="Points/day to apply for Green L7 (avg..2× avg)">
-                            </div>
-                            <div class="col-4">
-                                <label class="form-label mb-1">
-                                    <span style="color:#a00211; font-weight:700;">Red</span> (low views)
-                                </label>
-                                <select id="sbid-views-red-dir" class="form-select form-select-sm mb-1">
-                                    <option value="inc">Increase</option>
-                                    <option value="dec">Decrease</option>
-                                    <option value="none">No change</option>
-                                </select>
-                                <input type="number" step="0.1" id="sbid-views-red-step" class="form-control form-control-sm"
-                                       title="Points/day to apply for Red L7 (< avg)">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="sbid-views-save-btn">
-                        <i class="fas fa-save me-1"></i>Save
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay3'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay3'])
 @endsection
@@ -934,9 +823,6 @@
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     const EBAY3_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
-    const KW_SPENT = {{ $kwSpent ?? 0 }};
-    const PMT_SPENT = {{ $pmtSpent ?? 0 }};
-    const TOTAL_ADS_SPENT = KW_SPENT + PMT_SPENT;
     let table = null;
 
     /** Keep "Showing X–Y of Z rows" in sync with filtered/active set (same as eBay 1). */
@@ -970,7 +856,7 @@
     let samePriceModeActive = false;
     let selectedSkus = new Set();
 
-    /** Average L7 views (rows with E Stock > 0) — drives L7 View colours + Sbid (Views). */
+    /** Average L7 views (rows with E Stock > 0) — drives L7 View colours. */
     let avgL7ViewsGlobal = 0;
 
     /** L7 View colour band: red < avg, green avg..2×avg, pink ≥ 2×avg. */
@@ -981,57 +867,6 @@
         if (v < avg) return { key: 'red', color: '#a00211' };
         if (v < avg * 2) return { key: 'green', color: '#28a745' };
         return { key: 'pink', color: '#d63384' };
-    }
-
-    /** Sbid (Views) settings — shared with /ebay3/campaign-ads (ebay3_sbid_views). */
-    function sbidViewsNum(key, fallback) {
-        const v = parseFloat(localStorage.getItem(key));
-        return isFinite(v) ? v : fallback;
-    }
-    function sbidViewsDir(key, fallback) {
-        const v = localStorage.getItem(key);
-        return (v === 'inc' || v === 'dec' || v === 'none') ? v : fallback;
-    }
-    let sbidViewsMinCap   = sbidViewsNum('ebay3_sbid_views_min_cap', 1);
-    let sbidViewsMaxCap   = sbidViewsNum('ebay3_sbid_views_max_cap', 20);
-    let sbidViewsPinkDir  = sbidViewsDir('ebay3_sbid_views_pink_dir', 'dec');
-    let sbidViewsPinkStep = sbidViewsNum('ebay3_sbid_views_pink_step', 1);
-    let sbidViewsGreenDir = sbidViewsDir('ebay3_sbid_views_green_dir', 'none');
-    let sbidViewsGreenStep = sbidViewsNum('ebay3_sbid_views_green_step', 0);
-    let sbidViewsRedDir   = sbidViewsDir('ebay3_sbid_views_red_dir', 'inc');
-    let sbidViewsRedStep  = sbidViewsNum('ebay3_sbid_views_red_step', 1);
-    let sbidViewsNoDecMaxEl30 = sbidViewsNum('ebay3_sbid_views_no_dec_max_el30', 0);
-
-    function sbidViewsApplyStep(base, dir, step, el30Sold) {
-        let d = dir;
-        if (d === 'dec' && isFinite(el30Sold) && el30Sold <= sbidViewsNoDecMaxEl30) {
-            d = 'none';
-        }
-        const s = isFinite(step) ? step : 0;
-        if (d === 'inc') return base + s;
-        if (d === 'dec') return base - s;
-        return base;
-    }
-
-    /** Daily one-step adjustment of C BID by L7 View band, clamped to Min/Max. */
-    function computeSbidViews(rowData) {
-        const cbid = parseFloat(rowData.ca_bid_percentage);
-        if (!isFinite(cbid) || cbid <= 0) {
-            return { bid: 0, color: '#6c757d', skip: true };
-        }
-        const el30Sold = parseFloat(rowData['eBay L30']) || 0;
-        const band = l7ViewBand(rowData.l7_views);
-        let bid = cbid;
-        if (band.key === 'pink') bid = sbidViewsApplyStep(cbid, sbidViewsPinkDir, sbidViewsPinkStep, el30Sold);
-        else if (band.key === 'green') bid = sbidViewsApplyStep(cbid, sbidViewsGreenDir, sbidViewsGreenStep, el30Sold);
-        else if (band.key === 'red') bid = sbidViewsApplyStep(cbid, sbidViewsRedDir, sbidViewsRedStep, el30Sold);
-
-        const min = isFinite(sbidViewsMinCap) ? sbidViewsMinCap : -Infinity;
-        const max = isFinite(sbidViewsMaxCap) ? sbidViewsMaxCap : Infinity;
-        if (bid < min) bid = min;
-        if (bid > max) bid = max;
-
-        return { bid: bid, color: band.color || '#0d6efd', skip: false };
     }
 
     // Badge filter state variables
@@ -1049,12 +884,8 @@
         sold_count: '> 0 Sold',
         total_pft_amt: 'Total PFT',
         total_sales_amt: 'Sales',
-        total_spend_l30: 'Ad spend (KW+PMT)',
         gpft_percent: 'GPFT %',
-        npft_percent: 'NPFT %',
         groi_percent: 'GROI %',
-        nroi_percent: 'NROI %',
-        tcos_percent: 'TACOS %',
         avg_price: 'Avg price',
         cvr_percent: 'CVR %',
         total_views: 'Views',
@@ -1065,10 +896,6 @@
     const ORDERS_L30_TOTAL_SALES = {{ (float) ($ordersL30TotalSales ?? 0) }};
     const ORDERS_L30_GPFT = {{ (float) ($ordersL30Gpft ?? 0) }};
     const ORDERS_L30_GROI = {{ (float) ($ordersL30Groi ?? 0) }};
-    const ORDERS_L30_PFT = {{ (float) ($ordersL30Pft ?? 0) }};
-    const ORDERS_L30_COGS = {{ (float) ($ordersL30Cogs ?? 0) }};
-    const EBAY3_AD_SPEND = {{ (float) ($ebayAdSpend ?? 0) }};
-    const ORDERS_L30_NROI = {{ (float) ($ordersL30Nroi ?? 0) }};
     const EBAY3_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
 
     /**
@@ -1163,25 +990,6 @@
         return ((price * margin - lp - ship) / lp) * 100;
     }
 
-    /** S GPFT / SNPFT use S PRC (SPRICE). */
-    function ebay3ComputeSgpftFromSprice(rowData) {
-        if (!rowData) return null;
-        const price = ebay3SpriceAmount(rowData);
-        if (!isFinite(price) || price <= 0) return null;
-        const lp = parseFloat(rowData.LP_productmaster) || 0;
-        const ship = parseFloat(rowData.Ship_productmaster) || 0;
-        const marginRaw = parseFloat(rowData.percentage);
-        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY3_TAKEHOME;
-        return ((price * margin - ship - lp) / price) * 100;
-    }
-
-    /**
-     * Net ROI — same shape as Amazon NROI / SNROI badge:
-     *   (gross profit $ − ad spend $) / COGS × 100
-     * where ad spend $ = price × Ads%/100 and COGS = LP.
-     * @param {object} rowData
-     * @param {string} priceKey  'eBay Price' for NROI, 'SPRICE' for SNROI
-     */
     function ebay3ComputeNetRoi(rowData, priceKey) {
         if (!rowData) return null;
         const price = priceKey === 'SPRICE'
@@ -1198,12 +1006,24 @@
         return ((grossPft - adSpend) / lp) * 100;
     }
 
+    /** S GPFT uses S PRC (SPRICE). */
+    function ebay3ComputeSgpftFromSprice(rowData) {
+        if (!rowData) return null;
+        const price = ebay3SpriceAmount(rowData);
+        if (!isFinite(price) || price <= 0) return null;
+        const lp = parseFloat(rowData.LP_productmaster) || 0;
+        const ship = parseFloat(rowData.Ship_productmaster) || 0;
+        const marginRaw = parseFloat(rowData.percentage);
+        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY3_TAKEHOME;
+        return ((price * margin - ship - lp) / price) * 100;
+    }
+
     /** True when S PRC has a saved/entered amount (including when it matches Price). */
     function ebay3HasDistinctSprice(rowData) {
         return ebay3SpriceAmount(rowData) > 0;
     }
-    const ebay3BadgeDollarMetrics = ['total_pft_amt', 'total_sales_amt', 'total_spend_l30', 'avg_price'];
-    const ebay3BadgePctMetrics = ['gpft_percent', 'npft_percent', 'groi_percent', 'nroi_percent', 'tcos_percent', 'cvr_percent'];
+    const ebay3BadgeDollarMetrics = ['total_pft_amt', 'total_sales_amt', 'avg_price'];
+    const ebay3BadgePctMetrics = ['gpft_percent', 'groi_percent', 'cvr_percent'];
     let ebay3ChartInstance = null;
     let ebay3ChartAjax = null;
     let ebay3ChartDays = 30;
@@ -1698,76 +1518,6 @@
         if (lmpModalEl) {
             lmpModalEl.addEventListener('hidden.bs.modal', cleanupLmpModalBackdrop);
         }
-
-        // Sbid (Views) modal — shared settings with /ebay3/campaign-ads
-        function seedSbidViewsInputs() {
-            $('#sbid-views-min-cap').val(isFinite(sbidViewsMinCap) ? sbidViewsMinCap : '');
-            $('#sbid-views-max-cap').val(isFinite(sbidViewsMaxCap) ? sbidViewsMaxCap : '');
-            $('#sbid-views-no-dec-max-el30').val(isFinite(sbidViewsNoDecMaxEl30) ? sbidViewsNoDecMaxEl30 : 0);
-            $('#sbid-views-pink-dir').val(sbidViewsPinkDir);
-            $('#sbid-views-pink-step').val(isFinite(sbidViewsPinkStep) ? sbidViewsPinkStep : '');
-            $('#sbid-views-green-dir').val(sbidViewsGreenDir);
-            $('#sbid-views-green-step').val(isFinite(sbidViewsGreenStep) ? sbidViewsGreenStep : '');
-            $('#sbid-views-red-dir').val(sbidViewsRedDir);
-            $('#sbid-views-red-step').val(isFinite(sbidViewsRedStep) ? sbidViewsRedStep : '');
-        }
-        function applySbidViewsSettings(s) {
-            if (!s || typeof s !== 'object') return;
-            if (isFinite(parseFloat(s.min_cap)))    sbidViewsMinCap   = parseFloat(s.min_cap);
-            if (isFinite(parseFloat(s.max_cap)))    sbidViewsMaxCap   = parseFloat(s.max_cap);
-            if (isFinite(parseFloat(s.no_dec_max_el30))) sbidViewsNoDecMaxEl30 = parseFloat(s.no_dec_max_el30);
-            if (s.pink_dir)  sbidViewsPinkDir  = s.pink_dir;
-            if (isFinite(parseFloat(s.pink_step)))  sbidViewsPinkStep = parseFloat(s.pink_step);
-            if (s.green_dir) sbidViewsGreenDir = s.green_dir;
-            if (isFinite(parseFloat(s.green_step))) sbidViewsGreenStep = parseFloat(s.green_step);
-            if (s.red_dir)   sbidViewsRedDir   = s.red_dir;
-            if (isFinite(parseFloat(s.red_step)))   sbidViewsRedStep  = parseFloat(s.red_step);
-        }
-        $.get(@json(url('/ebay3/campaign-ads/sbid-views-rule')), function(s) {
-            applySbidViewsSettings(s);
-            seedSbidViewsInputs();
-            if (table) table.redraw(false);
-        });
-        seedSbidViewsInputs();
-        $('#sbidViewsRuleModal').on('show.bs.modal', seedSbidViewsInputs);
-        $('#sbid-views-save-btn').on('click', function() {
-            const num = function(sel, dflt) {
-                const v = parseFloat($(sel).val());
-                return isFinite(v) ? v : dflt;
-            };
-            const dir = function(sel, dflt) {
-                let v = $(sel).val();
-                return (v === 'inc' || v === 'dec' || v === 'none') ? v : dflt;
-            };
-            const payload = {
-                min_cap:    num('#sbid-views-min-cap', 1),
-                max_cap:    num('#sbid-views-max-cap', 20),
-                no_dec_max_el30: num('#sbid-views-no-dec-max-el30', 0),
-                pink_dir:   dir('#sbid-views-pink-dir', 'dec'),
-                pink_step:  num('#sbid-views-pink-step', 1),
-                green_dir:  dir('#sbid-views-green-dir', 'none'),
-                green_step: num('#sbid-views-green-step', 0),
-                red_dir:    dir('#sbid-views-red-dir', 'inc'),
-                red_step:   num('#sbid-views-red-step', 1),
-            };
-            $.ajax({
-                url: @json(url('/ebay3/campaign-ads/sbid-views-rule')),
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                contentType: 'application/json',
-                data: JSON.stringify(payload),
-                success: function(resp) {
-                    applySbidViewsSettings(resp && resp.rule ? resp.rule : payload);
-                    if (table) table.redraw(false);
-                    const modalEl = document.getElementById('sbidViewsRuleModal');
-                    const inst = bootstrap.Modal.getInstance(modalEl);
-                    if (inst) inst.hide();
-                },
-                error: function(xhr) {
-                    alert('Save failed: ' + xhr.status);
-                }
-            });
-        });
 
         // ---- Edit Links (Buyer / Seller) ----
         let ebay3EditLinksRow = null;
@@ -2756,6 +2506,7 @@
                 {
                     title: "CVR 60",
                     field: "CVR_60",
+                    visible: false,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -2812,6 +2563,7 @@
                 {
                     title: "E Stock",
                     field: "eBay Stock",
+                    visible: false,
                     hozAlign: "center",
                     width: 60,
                     sorter: "number",
@@ -2832,40 +2584,6 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return Math.round(parseFloat(value) || 0);
-                    }
-                },
-                {
-                    title: "Growth",
-                    field: "growth_percent",
-                    hozAlign: "center",
-                    width: 50,
-                    sorter: function(a, b, aRow, bRow) {
-                        function ebaySalesGrowthPct(row) {
-                            const d = row.getData();
-                            const l30 = parseFloat(d['eBay L30']) || 0;
-                            const l60 = parseFloat(d['eBay L60']) || 0;
-                            if (l60 === 0) return l30 > 0 ? 100 : 0;
-                            return ((l30 - l60) / l60) * 100;
-                        }
-                        return ebaySalesGrowthPct(aRow) - ebaySalesGrowthPct(bRow);
-                    },
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const l30 = parseFloat(rowData['eBay L30']) || 0;
-                        const l60 = parseFloat(rowData['eBay L60']) || 0;
-                        if (l60 === 0) {
-                            if (l30 > 0) {
-                                return `<span style="color: #28a745; font-weight: bold;">+100%</span>`;
-                            }
-                            return '<span style="color: #6c757d;">0%</span>';
-                        }
-                        const growth = ((l30 - l60) / l60) * 100;
-                        const growthRounded = Math.round(growth);
-                        let color = '#6c757d';
-                        if (growthRounded > 0) color = '#28a745';
-                        else if (growthRounded < 0) color = '#dc3545';
-                        const sign = growthRounded > 0 ? '+' : '';
-                        return `<span style="color: ${color}; font-weight: bold;">${sign}${growthRounded}%</span>`;
                     }
                 },
                 {
@@ -2903,6 +2621,7 @@
                     field: "nr_req",
                     hozAlign: "center",
                     headerSort: false,
+                    visible: false,
                     formatter: function(cell) {
                         let value = cell.getValue();
                         if (value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '')) {
@@ -3022,10 +2741,30 @@
                     width: 65
                 },
                 {
+                    title: "GPFT %",
+                    field: "GPFT%",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = '';
+                        
+                        if (percent < 10) color = '#a00211';
+                        else if (percent >= 10 && percent < 15) color = '#ffc107';
+                        else if (percent >= 15 && percent < 20) color = '#3591dc';
+                        else if (percent >= 20 && percent <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
                     title: "NROI",
                     field: "NROI",
                     hozAlign: "center",
-                    // Same formula as Amazon NROI: (PFT$ − Ad Spend$) / LP × 100
                     sorter: function(a, b, aRow, bRow) {
                         const aNet = ebay3ComputeNetRoi(aRow.getData(), 'eBay Price');
                         const bNet = ebay3ComputeNetRoi(bRow.getData(), 'eBay Price');
@@ -3057,62 +2796,6 @@
                         return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
                     },
                     width: 65
-                },
-                {
-                    title: "GPFT %",
-                    field: "GPFT%",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-                        
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 15) color = '#ffc107';
-                        else if (percent >= 15 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    width: 50
-                },
-                {
-                    title: "NPFT",
-                    field: "PFT %",
-                    hozAlign: "center",
-                    sorter: function(a, b, aRow, bRow) {
-                        const ads = (typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) : 0;
-                        return ((parseFloat(aRow.getData()['GPFT%'] || 0) - ads) - (parseFloat(bRow.getData()['GPFT%'] || 0) - ads));
-                    },
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const ads = (typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) : 0;
-                        // NPFT% = GPFT% − Ads% (channel TACOS)
-                        const percent = (parseFloat(rowData['GPFT%'] || 0)) - ads;
-                        let color = '';
-                        
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 15) color = '#ffc107';
-                        else if (percent >= 15 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    bottomCalc: function(values, data) {
-                        const ads = (typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) : 0;
-                        let sum = 0, n = 0;
-                        data.forEach(r => { const v = parseFloat(r['GPFT%']); if (!isNaN(v)) { sum += (v - ads); n++; } });
-                        return n ? sum / n : 0;
-                    },
-                    bottomCalcFormatter: function(cell) {
-                        const value = cell.getValue();
-                        return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
-                    },
-                    width: 50
                 },
                     ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
@@ -3267,121 +2950,6 @@
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 80
-                },
-                {
-                    title: "SNROI",
-                    field: "SROI",
-                    hozAlign: "center",
-                    // Same formula as Amazon SNROI / NROI badge:
-                    // (gross PFT$ − SPRICE×Ads%/100) / LP × 100
-                    sorter: function(a, b, aRow, bRow) {
-                        const aNet = ebay3ComputeNetRoi(aRow.getData(), 'SPRICE');
-                        const bNet = ebay3ComputeNetRoi(bRow.getData(), 'SPRICE');
-                        return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
-                             - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
-                    },
-                    formatter: function(cell) {
-                        const percent = ebay3ComputeNetRoi(cell.getRow().getData(), 'SPRICE');
-                        if (percent === null || !isFinite(percent)) return '';
-
-                        let color = '';
-                        if (percent < 40) color = '#a00211';
-                        else if (percent < 75) color = '#ffc107';
-                        else if (percent < 125) color = '#28a745';
-                        else color = '#d63384';
-
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    width: 80
-                },
-                {
-                    title: "SNPFT",
-                    field: "SPFT",
-                    hozAlign: "center",
-                    sorter: "number",
-                    headerTooltip: "SNPFT = S GPFT − eBay 3 Ads%, with S GPFT from S PRC.",
-                    formatter: function(cell) {
-                        const sgpft = ebay3ComputeSgpftFromSprice(cell.getRow().getData());
-                        if (sgpft === null || !isFinite(sgpft)) return '';
-                        const ads = parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0;
-                        const percent = sgpft - ads;
-
-                        let color = '';
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 15) color = '#ffc107';
-                        else if (percent >= 15 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    width: 80
-                },
-
-                // === Campaign-Ads columns (ES BID / C BID / PROMOTE) ===
-                // Same source & formatters as /ebay3/campaign-ads. SKU-wise via listing_id; rows
-                // without a campaign-ads match stay visible with the data displayed as-is ('—').
-                {
-                    title: "ES BID",
-                    field: "ca_suggested_bid",
-                    hozAlign: "center",
-                    sorter: "number",
-                    width: 90,
-                    formatter: function(cell) {
-                        const v = parseFloat(cell.getValue());
-                        if (isNaN(v)) return '<span class="text-muted">—</span>';
-                        return `<span class="text-info fw-semibold">${v.toFixed(1)}%</span>`;
-                    }
-                },
-                {
-                    title: "C BID",
-                    field: "ca_bid_percentage",
-                    hozAlign: "center",
-                    sorter: "number",
-                    width: 90,
-                    formatter: function(cell) {
-                        const v = parseFloat(cell.getValue());
-                        if (isNaN(v)) return '<span class="text-muted">—</span>';
-                        const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
-                        return `<span style="color:${color}; font-weight:600;">${v.toFixed(1)}%</span>`;
-                    }
-                },
-                {
-                    title: "S BID",
-                    field: "ca_bid_percentage",
-                    hozAlign: "center",
-                    width: 90,
-                    headerTooltip: "Daily adjustment of the current C BID by L7 View band — green keeps C Bid, pink/red apply the direction + %/day set in the 'Sbid (Views)' button — clamped to the Min/Max caps. No C Bid → —. Same as /ebay-tabulator-view and /ebay3/campaign-ads.",
-                    sorter: function(a, b, aRow, bRow) {
-                        return computeSbidViews(aRow.getData()).bid - computeSbidViews(bRow.getData()).bid;
-                    },
-                    formatter: function(cell) {
-                        const res = computeSbidViews(cell.getRow().getData());
-                        if (res.skip) {
-                            return '<span class="text-muted" title="No S Bid — no current C Bid to adjust" style="font-size:11px;">—</span>';
-                        }
-                        return `<span style="color:${res.color}; font-weight:700;">${res.bid.toFixed(1)}%</span>`;
-                    }
-                },
-                {
-                    title: "PROMOTE",
-                    field: "ca_promote_with_ad",
-                    hozAlign: "center",
-                    headerTooltip: "eBay Promotion eligibility status (from /ebay3/campaign-ads)",
-                    width: 140,
-                    formatter: function(cell) {
-                        const v = cell.getValue();
-                        if (!v) return '<span class="text-muted">—</span>';
-                        const map = {
-                            'RECOMMENDED':        { color: '#198754', bg: '#d1f5e0', label: '⭐ Eligible' },
-                            'OPTIONAL':           { color: '#856404', bg: '#fff3cd', label: '⚡ Optional' },
-                            'AD_ALREADY_CREATED': { color: '#0d6efd', bg: '#cfe2ff', label: '📢 In Campaign' },
-                            'NOT_RECOMMENDED':    { color: '#6c757d', bg: '#f8f9fa', label: '— Not Rec.' },
-                            'UNDETERMINED':       { color: '#6c757d', bg: '#f8f9fa', label: '? Unknown' },
-                        };
-                        const s = map[v] || { color: '#6c757d', bg: '#f8f9fa', label: v };
-                        return `<span style="color:${s.color}; background:${s.bg}; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600;">${s.label}</span>`;
-                    }
                 },
             ]
         });
@@ -4281,12 +3849,6 @@
             $('#total-sales-amt-badge').text('Sales: $' + Math.round(ORDERS_L30_TOTAL_SALES).toLocaleString());
             $('#avg-gpft-badge').text('GPFT: ' + Math.round(ORDERS_L30_GPFT) + '%');
             $('#groi-percent-badge').text('GROI: ' + Math.round(ORDERS_L30_GROI) + '%');
-            // NPFT% = GPFT% − Ads%. NROI% = (GPFT$ − Ad Spend) / COGS × 100 (Amazon formula).
-            $('#npft-percent-badge').text('NPFT: ' + Math.round(ORDERS_L30_GPFT - EBAY3_CHANNEL_ADS_PCT) + '%');
-            const nroiBadge = (ORDERS_L30_COGS > 0)
-                ? ((ORDERS_L30_PFT - EBAY3_AD_SPEND) / ORDERS_L30_COGS) * 100
-                : ORDERS_L30_NROI;
-            $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiBadge) + '%');
             $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
@@ -4325,39 +3887,28 @@
             $('#total-inv-badge').text('E Stock: ' + Math.round(totalEStockSum).toLocaleString());
 
 
-            // Repaint L7 View + S BID colours when the avg changes.
+            // Repaint L7 View colours when the avg changes.
             if (table && Math.abs(prevAvgL7Views - avgL7Views) > 0.0001) {
                 table.redraw(false);
             }
         }
 
         // Build Column Visibility Dropdown
-        const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'advertisement', 'others'];
+        const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'others'];
         const COL_VIS_CATEGORY_LABELS = {
             basics: 'Basics',
             pricing: 'Pricing',
-            advertisement: 'Advertisement',
             others: 'Others'
         };
 
         function classifyEbay3Column(field, title) {
             const f = String(field || '');
             const t = String(title || field || '').replace(/<[^>]*>/g, '');
-            const fl = f.toLowerCase();
             const tl = t.toLowerCase();
-            const blob = fl + ' ' + tl;
 
             if (
-                /^(views|l7_views|l7_views_chg_pct|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(f) ||
-                /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view)\b/i.test(t) ||
-                /\b(bid|promote|ads)\b/i.test(blob)
-            ) {
-                return 'advertisement';
-            }
-
-            if (
-                /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SPRC_DIL|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
-                /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|push\s*std\s*prc)\b/i.test(tl) ||
+                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SPRC_DIL|SGPFT|SGROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
+                /\b(prc|price|std\s*prc|gpft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*groi|dil|cvr|push\s*std\s*prc)\b/i.test(tl) ||
                 /^\+$/i.test(t)
             ) {
                 return 'pricing';
@@ -4440,8 +3991,8 @@
                     table.getColumns().forEach(col => {
                         const def = col.getDefinition();
                         if (!def.field) return;
-                        if (def.field === '_parent_expand' || def.field === '_select') return;
-                        if (/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt)$/i.test(def.field)) return;
+                        if (def.field === '_parent_expand' || def.field === '_select' || def.field === 'nr_req' || def.field === 'CVR_60' || def.field === 'eBay Stock') return;
+                        if (/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|growth_percent|PFT %|SROI|SPFT|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(def.field)) return;
 
                         const rawTitle = def.title || def.field;
                         const title = String(rawTitle).replace(/<[^>]*>/g, '').trim() || def.field;
@@ -4481,7 +4032,7 @@
             const visibility = {};
             table.getColumns().forEach(col => {
                 const def = col.getDefinition();
-                if (def.field && !/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt)$/i.test(def.field)) {
+                if (def.field && !/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|nr_req|growth_percent|CVR_60|eBay Stock|PFT %|SROI|SPFT|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(def.field)) {
                     visibility[def.field] = col.isVisible();
                 }
             });
@@ -4512,6 +4063,10 @@
                     table.getColumns().forEach(col => {
                         const def = col.getDefinition();
                         if (!def.field || def.field === '_parent_expand' || def.field === '_select') return;
+                        if (def.field === 'nr_req' || def.field === 'CVR_60' || def.field === 'eBay Stock') {
+                            col.hide();
+                            return;
+                        }
                         if (savedVisibility[def.field] === false) {
                             col.hide();
                         }
@@ -4653,7 +4208,11 @@
                     if (showAll) {
                         e.preventDefault();
                         e.stopPropagation();
-                        table.getColumns().forEach(col => col.show());
+                        table.getColumns().forEach(col => {
+                            const f = col.getField && col.getField();
+                            if (f === 'nr_req' || f === 'CVR_60' || f === 'eBay Stock') return;
+                            col.show();
+                        });
                         buildColumnDropdown();
                         saveColumnVisibilityToServer();
                     }
@@ -4663,6 +4222,8 @@
             if (showAllBtn) {
                 showAllBtn.addEventListener("click", function() {
                     table.getColumns().forEach(col => {
+                        const f = col.getField && col.getField();
+                        if (f === 'nr_req' || f === 'CVR_60' || f === 'eBay Stock') return;
                         col.show();
                     });
                     buildColumnDropdown();
