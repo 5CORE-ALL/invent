@@ -461,7 +461,7 @@
                     visible: false
                 },
                 {
-                    title: "Base Price",
+                    title: "B Pric",
                     field: "fb_price",
                     hozAlign: "center",
                     sorter: "number",

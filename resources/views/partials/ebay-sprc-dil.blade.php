@@ -2,7 +2,7 @@
   Sprc Dil — same Dil → Target GROI slabs as Amazon.
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  Amazon / eBay 1–3 / Doba Pickup: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
+  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
   eBay 1–3 / Temu 1–2 / Reverb / Faire / TikTok / Shopify B2C CVR overlay on Target GROI (editable table + live Count).
   Macys: Dil-matching when Dil is in a slab. If Dil is out of box and 0 Sold, use min Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price (do not keep Std Prc).
@@ -16,7 +16,7 @@
 @php
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
-    $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'doba_withoutship', 'macys', 'macy'], true);
+    $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'doba_withoutship', 'macys', 'macy', 'temu2', 'temu3'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg'], true);

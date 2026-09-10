@@ -1207,6 +1207,13 @@
         const ship = parseFloat(rowData && rowData.temu_ship) || 0;
         return (rPrice * 0.95) - ship - lp;
     }
+    function temu2GpftDollar(rowData) {
+        const rPrice = temu2RPriceFromRow(rowData);
+        if (!(rPrice > 0)) return null;
+        const lp = parseFloat(rowData && rowData.lp) || 0;
+        const ship = parseFloat(rowData && rowData.temu_ship) || 0;
+        return rPrice * temuSpriceMargin(rowData) - lp - ship;
+    }
     function temu2NpftDollars(rowData) {
         const pft = temu2PftDollars(rowData);
         if (pft == null) return null;
@@ -1247,11 +1254,22 @@
         return best > 0 ? (best <= 26.99 ? best + 2.99 : best) : 0;
     }
     function temu2SpftDollars(rowData, spriceOverride) {
-        const sR = temu2SRPriceFromRow(rowData, spriceOverride);
-        if (!(sR > 0)) return null;
+        const recovery = temu2SRecovery(temu2RowSpriceValue(rowData, spriceOverride));
+        if (!(recovery > 0)) return null;
         const lp = parseFloat(rowData && rowData.lp) || 0;
         const ship = parseFloat(rowData && rowData.temu_ship) || 0;
-        return (sR * 0.95) - ship - lp;
+        return recovery * temuSpriceMargin(rowData) - ship - lp;
+    }
+    /** Used by Sprc Dil back-solve so Target GROI matches on-page SGROI% (S Profit ÷ LP). */
+    function temuSpriceCalcParts(rowData, spriceOverride) {
+        const recovery = temu2SRecovery(temu2RowSpriceValue(rowData, spriceOverride));
+        const lp = parseFloat(rowData && rowData.lp) || 0;
+        const ship = parseFloat(rowData && rowData.temu_ship) || 0;
+        if (!(recovery > 0) || !(lp > 0)) {
+            return { sgroi: null, recovery: recovery, spft: null };
+        }
+        const spft = recovery * temuSpriceMargin(rowData) - ship - lp;
+        return { sgroi: (spft / lp) * 100, recovery: recovery, spft: spft };
     }
     function temu2SnpftDollars(rowData, spriceOverride) {
         const spft = temu2SpftDollars(rowData, spriceOverride);
@@ -1275,6 +1293,16 @@
         const s = parseFloat(sprice);
         if (!isFinite(s) || s <= 0) return 0;
         return s * TEMU2_S_RECOVERY_RATE;
+    }
+    /** S Base Prc = S R prc − $2.99 if S R prc < $29.99; otherwise S R prc. */
+    function temu2SBasePrcFromRow(rowData) {
+        const sprice = typeof temuDisplayedSprice === 'function'
+            ? temuDisplayedSprice(rowData)
+            : (parseFloat(rowData && (rowData.sprice != null ? rowData.sprice : rowData.SPRICE)) || 0);
+        const sR = temu2SRecovery(sprice);
+        if (!(sR > 0)) return null;
+        const base = sR < 29.99 ? sR - 2.99 : sR;
+        return base > 0 ? +base.toFixed(2) : null;
     }
     /** S Profit = S Recovery × margin − LP − Temu Ship */
     function temu2SProfit(rowData, sprice) {
@@ -1326,8 +1354,8 @@
     }
     function temuExportSuggBPrice(row) {
         if (!row || (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(row))) return '';
-        const push = temuPushBaseFromSprice(temuExportRowSprice(row));
-        return push == null ? '' : push;
+        const base = typeof temu2SBasePrcFromRow === 'function' ? temu2SBasePrcFromRow(row) : null;
+        return base == null ? '' : base;
     }
     function temuExportSgroi(row) {
         if (!row || (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(row))) return '';
@@ -4073,7 +4101,7 @@
                     }
                 },
                 {
-                    title: "Temu Price",
+                    title: "Price",
                     field: "temu_price_display",
                     hozAlign: "center",
                     minWidth: 90,
@@ -4095,7 +4123,7 @@
                     }
                 },
                 {
-                    title: "Temu R Price",
+                    title: "R Price",
                     field: "temu_price",
                     hozAlign: "center",
                     minWidth: 86,
@@ -4115,26 +4143,24 @@
                     }
                 },
                 {
-                    title: "S Profit",
-                    field: "s_profit",
+                    title: "GPFT$",
+                    field: "gpft_dollar",
                     hozAlign: "center",
-                    minWidth: 88,
+                    minWidth: 80,
                     sorter: temuSortBy(function(d) {
-                        return typeof temu2SProfit === 'function'
-                            ? temu2SProfit(d, typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : undefined)
-                            : 0;
+                        const n = typeof temu2GpftDollar === 'function' ? temu2GpftDollar(d) : null;
+                        return n == null ? 0 : n;
                     }),
-                    headerTooltip: "S Profit = S Recovery × marketplace% − LP − Temu Ship",
+                    headerTooltip: "GPFT$ = R Price × margin − LP − Temu Ship",
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sProfit = temu2SProfit(rowData, typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(rowData) : undefined);
-                        if (sProfit == null) return '';
-                        const color = sProfit < 0 ? '#dc3545' : (sProfit > 0 ? '#28a745' : '#6c757d');
-                        return `<span style="color: ${color}; font-weight: 600;">$${sProfit.toFixed(2)}</span>`;
+                        const n = typeof temu2GpftDollar === 'function' ? temu2GpftDollar(cell.getRow().getData()) : null;
+                        if (n == null) return '';
+                        const color = n < 0 ? '#dc3545' : (n > 0 ? '#28a745' : '#6c757d');
+                        return `<span style="color: ${color}; font-weight: 600;">$${n.toFixed(2)}</span>`;
                     }
                 },
                 {
-                    title: "Base Price",
+                    title: "B Pric",
                     field: "base_price",
                     hozAlign: "center",
                     minWidth: 92,
@@ -4377,6 +4403,7 @@
                 {
                     title: "Sprc Dil",
                     field: "SPRC_DIL",
+                    visible: false,
                     hozAlign: "center",
                     headerSort: true,
                     sorter: function(a, b, aRow, bRow) {
@@ -4387,7 +4414,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "Suggested price from Dil → Target GROI% slabs. Temu L30 = 0 uses the minimum Target GROI. S PRC is back-solved so SGROI matches the target.",
+                    headerTooltip: "Suggested price from Dil → Target GROI% slabs. Every INV > 0 SKU uses the Dil-matching slab (including Temu L30 = 0). S PRC is back-solved so SGROI matches the target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(rowData)) return '';
@@ -4410,12 +4437,11 @@
                     field: "sprice",
                     hozAlign: "center",
                     minWidth: 88,
-                    editor: "input",
                     headerSort: true,
                     sorter: temuSortBy(function(d) {
                         return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
                     }),
-                    headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC from Sprc Dil (Dil-matching slab, including Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(rowData)) return '';
@@ -4460,7 +4486,7 @@
                     }
                 },
                 {
-                    title: "S Recovery",
+                    title: "S R prc",
                     field: "s_recovery",
                     hozAlign: "center",
                     sorter: temuSortBy(function(d) {
@@ -4475,6 +4501,45 @@
                             : (parseFloat(rowData.sprice) || 0);
                         if (sprice <= 0) return '';
                         return temu2FormatMoney(temu2SRecovery(sprice));
+                    }
+                },
+                {
+                    title: "S Base Prc",
+                    field: "stemu_price",
+                    hozAlign: "center",
+                    sorter: temuSortBy(function(d) {
+                        const n = typeof temu2SBasePrcFromRow === 'function' ? temu2SBasePrcFromRow(d) : null;
+                        return n == null ? 0 : n;
+                    }),
+                    download: true,
+                    downloadTitle: "S Base Prc",
+                    accessorDownload: function(value, data) {
+                        return temuExportSuggBPrice(data);
+                    },
+                    headerTooltip: "S Base Prc = S R prc − $2.99 if S R prc < $29.99; otherwise S R prc",
+                    formatter: function(cell) {
+                        const n = typeof temu2SBasePrcFromRow === 'function' ? temu2SBasePrcFromRow(cell.getRow().getData()) : null;
+                        if (n == null) return '';
+                        return temu2FormatMoney(n);
+                    }
+                },
+                {
+                    title: "S Profit",
+                    field: "s_profit",
+                    hozAlign: "center",
+                    minWidth: 88,
+                    sorter: temuSortBy(function(d) {
+                        return typeof temu2SProfit === 'function'
+                            ? temu2SProfit(d, typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : undefined)
+                            : 0;
+                    }),
+                    headerTooltip: "S Profit = S Recovery × marketplace% − LP − Temu Ship",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sProfit = temu2SProfit(rowData, typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(rowData) : undefined);
+                        if (sProfit == null) return '';
+                        const color = sProfit < 0 ? '#dc3545' : (sProfit > 0 ? '#28a745' : '#6c757d');
+                        return `<span style="color: ${color}; font-weight: 600;">$${sProfit.toFixed(2)}</span>`;
                     }
                 },
                 {
@@ -4511,29 +4576,6 @@
                         return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #0d6efd; cursor: pointer;" title="Push base $${pushBase.toFixed(2)} to Temu2"><i class="fas fa-upload"></i></button>`;
                     }
                 },
-           
-                {
-                    title: "S Temu B Prc",
-                    field: "stemu_price",
-                    hozAlign: "center",
-                    sorter: temuSortPushBase,
-                    download: true,
-                    downloadTitle: "Temu S B Prc",
-                    accessorDownload: function(value, data) {
-                        return temuExportSuggBPrice(data);
-                    },
-                    headerTooltip: "Push base from display S PRC (inverse of Temu Price). If display is $34–$37, push = display × 0.88 − $2.99.",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const pushBase = temuPushBaseFromSprice(
-                            typeof temuDisplayedSprice === 'function'
-                                ? temuDisplayedSprice(rowData)
-                                : rowData['sprice']
-                        );
-                        if (pushBase == null) return '';
-                        return temu2FormatMoney(pushBase);
-                    }
-                },
                 {
                     title: "SGROI%",
                     field: "sgroi_percent",
@@ -4544,7 +4586,7 @@
                     accessorDownload: function(value, data) {
                         return temuExportSgroi(data);
                     },
-                    headerTooltip: "SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP. Sprc Dil back-solves S PRC so this matches the Dil slab Target GROI (or min GROI when Temu L30 = 0).",
+                    headerTooltip: "SGROI% = S Profit ÷ LP. S Profit = S R prc × margin − LP − Temu Ship. Sprc Dil back-solves S PRC so this matches the Dil target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof chPromoZeroSoldDisplayGroi === 'function') {
@@ -4585,7 +4627,7 @@
                     field: "sgprft_percent",
                     hozAlign: "center",
                     sorter: temuSortBy(function(d) { return temuExportSgpft(d); }),
-                    headerTooltip: "SGPRFT% = SPFT / S PRC. SPFT = (S R Price × 0.95) − Temu Ship − LP",
+                    headerTooltip: "SGPRFT% = S Profit ÷ S PRC. S Profit = S R prc × margin − LP − Temu Ship",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = typeof temuDisplayedSprice === 'function'
@@ -4868,7 +4910,7 @@
             image_path: 1, links_column: 1, _select: 1, _push: 1, nr_req: 1
         };
         const TEMU2_AUTOFIT_FLOOR = {
-            s_profit: 88, temu_price: 86, base_price: 92,
+            s_profit: 88, temu_price: 86, base_price: 92, gpft_dollar: 80,
             roi_percent: 80, profit_percent: 80, lmp: 88, lmp_delivery: 76, lmp_diff_pct: 84,
             STANDARD_PRICE: 88, sprice: 88, temu_price_display: 90
         };
@@ -5938,7 +5980,7 @@
 
             // Pricing
             if (
-                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|SPRC_DIL|s_recovery|stemu_price|sgroi_percent|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc|_push)$/i.test(f) ||
+                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|gpft_dollar|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|SPRC_DIL|s_recovery|stemu_price|sgroi_percent|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc|_push)$/i.test(f) ||
                 /\b(cvr|price|prc|gpft|gprft|npft|sgroi|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship|recovery|prmt|cpn|dsc|appr|push\s*prc|queue)\b/i.test(tl)
             ) {
                 return 'pricing';
@@ -6309,7 +6351,7 @@
         }
 
         // Columns that should ALWAYS stay hidden, regardless of saved state.
-        var alwaysHiddenColumns = ['cvr_45', 'profit'];
+        var alwaysHiddenColumns = ['cvr_45', 'profit', 'SPRC_DIL'];
         function enforceAlwaysHiddenColumns() {
             alwaysHiddenColumns.forEach(function(col) {
                 try { table.hideColumn(col); } catch (e) {}
@@ -6350,6 +6392,10 @@
             Promise.resolve(applyColumnVisibilityFromServer())
                 .then(function() { return applyColumnOrderFromServer(); })
                 .finally(function() {
+                    temu2ApplyingColumnOrder = true;
+                    try { table.moveColumn('s_recovery', 's_profit', false); } catch (e) {}
+                    try { table.moveColumn('stemu_price', 's_profit', false); } catch (e) {}
+                    temu2ApplyingColumnOrder = false;
                     buildColumnDropdown();
                     try { table.showColumn('spend'); } catch (e) {}
                     enforceAlwaysHiddenColumns();
