@@ -31,6 +31,21 @@
             padding-right: 0px !important;
         }
 
+        .tabulator .tabulator-cell {
+            text-align: center !important;
+            padding: 2px 4px !important;
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #temu3-table,
+        #temu3-table .tabulator {
+            width: 100%;
+            max-width: 100%;
+        }
+
         /* Custom pagination label */
         .tabulator-paginator label {
             margin-right: 5px;
@@ -302,7 +317,7 @@
         table = new Tabulator("#temu3-table", {
             ajaxURL: "/temu3/daily-data",
             ajaxSorting: false,
-            layout: "fitDataStretch",
+            layout: "fitColumns",
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -344,6 +359,11 @@
                     row.getElement().style.backgroundColor = "#fffef2";
                 }
             },
+            columnDefaults: {
+                hozAlign: "center",
+                headerHozAlign: "center",
+                vertAlign: "middle"
+            },
             initialSort: [{
                 column: "created_at",
                 dir: "desc"
@@ -356,23 +376,25 @@
                     headerFilterPlaceholder: "Search Parent...",
                     cssClass: "text-primary",
                     tooltip: true,
-                    frozen: true,
-                    width: 150,
+                    width: 90,
+                    minWidth: 70,
                     visible: false
                 },
                 {
                     title: "Order ID",
                     field: "order_id",
-                    width: 180,
-                    frozen: true
+                    width: 120,
+                    minWidth: 90,
+                    tooltip: true
                 },
                 {
                     title: "SKU",
                     field: "contribution_sku",
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
-                    width: 150,
-                    frozen: true,
+                    width: 110,
+                    minWidth: 80,
+                    tooltip: true,
                     cssClass: "text-primary fw-bold",
                     formatter: function(cell) {
                         const sku = cell.getValue();
@@ -385,43 +407,53 @@
                 {
                     title: "Product Name",
                     field: "product_name_by_customer_order",
-                    width: 300,
+                    width: 120,
+                    minWidth: 80,
+                    visible: false,
                     tooltip: true
                 },
                 {
                     title: "Variation",
                     field: "variation",
-                    width: 120
+                    width: 60,
+                    minWidth: 50,
+                    visible: false
                 },
                 {
                     title: "Qty Purchased",
                     field: "quantity_purchased",
                     hozAlign: "center",
                     sorter: "number",
-                    width: 120
+                    width: 48,
+                    minWidth: 40
                 },
                 {
                     title: "Qty Shipped",
                     field: "quantity_shipped",
                     hozAlign: "center",
                     sorter: "number",
-                    width: 120
+                    width: 48,
+                    minWidth: 40,
+                    visible: false
                 },
                 {
                     title: "Qty To Ship",
                     field: "quantity_to_ship",
                     hozAlign: "center",
                     sorter: "number",
-                    width: 120
+                    width: 48,
+                    minWidth: 40,
+                    visible: false
                 },
                 {
                     title: "Base Price",
                     field: "base_price_total",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: function(a, b) {
                         return temuGoodsBase(a) - temuGoodsBase(b);
                     },
-                    width: 120,
+                    width: 62,
+                    minWidth: 54,
                     headerTooltip: "Base = stored/API unit − $2.99 when that unit is < $26.99. Otherwise stored/API unit.",
                     accessorDownload: function(value) {
                         const n = temuGoodsBase(value);
@@ -438,11 +470,12 @@
                     }
                 },
                 {
-                    title: "FB Prc",
+                    title: "R Prc",
                     field: "fb_price",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 120,
+                    width: 62,
+                    minWidth: 54,
                     formatter: "money",
                     formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 },
                     mutator: function(value, data) {
@@ -453,9 +486,10 @@
                 {
                     title: "Temu Price",
                     field: "temu_price",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 120,
+                    width: 62,
+                    minWidth: 54,
                     headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     mutator: function(value, data) {
                         return temuRowTemuPrice(data);
@@ -472,18 +506,21 @@
                 {
                     title: "LP",
                     field: "lp",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 100,
+                    width: 55,
+                    minWidth: 48,
                     formatter: "money",
                     formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
                 },
                 {
                     title: "COGS",
                     field: "cogs",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 120,
+                    width: 58,
+                    minWidth: 50,
+                    visible: false,
                     formatter: "money",
                     formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 },
                     mutator: function(value, data) {
@@ -496,32 +533,38 @@
                     title: "Hdl Charge",
                     field: "handling_charge",
                     headerTooltip: "Handling Charge saved on Shipping Master (included in Temu Ship)",
-                    hozAlign: "right",
-                    width: 90
+                    hozAlign: "center",
+                    width: 50,
+                    minWidth: 44,
+                    visible: false
                 },
                 {
                     title: "O-Size Charge",
                     field: "o_size_charge",
                     headerTooltip: "O-Size Charge saved on Shipping Master (included in Temu Ship)",
-                    hozAlign: "right",
-                    width: 100
+                    hozAlign: "center",
+                    width: 50,
+                    minWidth: 44,
+                    visible: false
                 },
                 {
                     title: "Temu Ship",
                     field: "temu_ship",
                     headerTooltip: "Saved Temu ship = slab + Handling Charge + O-Size Charge",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 120,
+                    width: 62,
+                    minWidth: 54,
                     formatter: "money",
                     formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
                 },
                 {
                     title: "PFT Total",
                     field: "pft",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 120,
+                    width: 62,
+                    minWidth: 54,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const color = value >= 0 ? '#28a745' : '#dc3545';
@@ -534,28 +577,12 @@
                     }
                 },
                 {
-                    title: "GPFT %",
-                    field: "gpft_percent",
-                    hozAlign: "right",
-                    sorter: "number",
-                    width: 100,
-                    headerTooltip: "GPFT % = (Temu Price × margin − LP − Temu Ship) ÷ Temu Price × 100",
-                    mutator: function(value, data) {
-                        return temuRowGpftPercent(data);
-                    },
-                    formatter: function(cell) {
-                        const n = parseFloat(cell.getValue());
-                        if (!isFinite(n)) return '';
-                        const color = n >= 0 ? '#28a745' : '#dc3545';
-                        return `<span style="color: ${color}; font-weight: bold;">${Math.round(n)}%</span>`;
-                    }
-                },
-                {
                     title: "GROI %",
                     field: "groi_percent",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 100,
+                    width: 48,
+                    minWidth: 42,
                     headerTooltip: "GROI % = (Temu Price × margin − LP − Temu Ship) ÷ LP × 100",
                     mutator: function(value, data) {
                         return temuRowGroiPercent(data);
@@ -568,11 +595,31 @@
                     }
                 },
                 {
+                    title: "GPFT %",
+                    field: "gpft_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 48,
+                    minWidth: 42,
+                    headerTooltip: "GPFT % = (Temu Price × margin − LP − Temu Ship) ÷ Temu Price × 100",
+                    mutator: function(value, data) {
+                        return temuRowGpftPercent(data);
+                    },
+                    formatter: function(cell) {
+                        const n = parseFloat(cell.getValue());
+                        if (!isFinite(n)) return '';
+                        const color = n >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">${Math.round(n)}%</span>`;
+                    }
+                },
+                {
                     title: "L30 Sales",
                     field: "l30_sales",
-                    hozAlign: "right",
+                    visible: false,
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 120,
+                    width: 62,
+                    minWidth: 54,
                     headerTooltip: "L30 Sales = Temu Price × Qty. Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     formatter: "money",
                     formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 },
@@ -584,7 +631,8 @@
                 {
                     title: "Order Status",
                     field: "order_status",
-                    width: 120,
+                    width: 80,
+                    minWidth: 64,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (!value) return '';
@@ -599,23 +647,32 @@
                 {
                     title: "Fulfillment",
                     field: "fulfillment_mode",
-                    width: 150
+                    width: 70,
+                    minWidth: 56,
+                    visible: false
                 },
                 {
                     title: "Tracking",
                     field: "tracking_number",
-                    width: 150
+                    width: 80,
+                    minWidth: 60,
+                    visible: false,
+                    tooltip: true
                 },
                 {
                     title: "Carrier",
                     field: "carrier",
-                    width: 120
+                    width: 60,
+                    minWidth: 50,
+                    visible: false
                 },
                 {
                     title: "Created At",
                     field: "created_at",
                     sorter: "datetime",
-                    width: 160,
+                    width: 90,
+                    minWidth: 70,
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (!value) return '';
