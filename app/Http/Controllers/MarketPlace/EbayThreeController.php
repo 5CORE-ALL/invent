@@ -220,14 +220,9 @@ class EbayThreeController extends Controller
             return null;
         }
 
-        $metric = Ebay3Metric::query()->where('sku', $sku)->first();
-        if ($metric) {
-            return $metric;
-        }
+        $preferred = EbayListingEnded::preferredRow(Ebay3Metric::class, $sku);
 
-        $upper = strtoupper($sku);
-
-        return Ebay3Metric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$upper])->first();
+        return $preferred instanceof Ebay3Metric ? $preferred : null;
     }
 
     public function getViewEbay3DataTabulator(Request $request)
