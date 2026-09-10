@@ -27,6 +27,7 @@ use App\Services\Support\ChannelPushSpriceRunner;
 use App\Support\AmazonDilGroiRule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -1475,6 +1476,16 @@ class ChannelPromoPricingController extends Controller
         }
         if ($channel === 'purchasing_power') {
             \App\Support\PurchasingPowerRuleSpriceApply::dispatch();
+        }
+        if (in_array($channel, ['ebay1', 'ebay2', 'ebay3'], true)) {
+            try {
+                Artisan::queue('ebay:rule-sprice-apply', ['channel' => $channel]);
+            } catch (\Throwable $e) {
+                Log::warning('[EbayRuleSpriceApply] queue failed', [
+                    'channel' => $channel,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return response()->json([
