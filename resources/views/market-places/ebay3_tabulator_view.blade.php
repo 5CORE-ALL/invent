@@ -1823,24 +1823,11 @@
             return parseFloat(row['eBay Stock'] || row['E Stock'] || 0) || 0;
         }
 
-        // Full tree for badge math: use live table data (always has current rows); in Play mode use full snapshot.
         function ebay3GetSummaryTreeRoots() {
-            try {
-                if (typeof isPlayNavigationActive !== 'undefined' && isPlayNavigationActive
-                    && allTableData && allTableData.length) {
-                    return allTableData;
-                }
-                if (typeof table !== 'undefined' && table && typeof table.getData === 'function') {
-                    const live = table.getData('all');
-                    if (live && live.length) {
-                        return live;
-                    }
-                }
-            } catch (e) { /* ignore */ }
             return allTableData || [];
         }
 
-        // Build SKU-only rows from tree (recurse _children, skip PARENT skus) — same idea as PHP flattenEbay3TreeForSummary
+        // Full catalog child SKUs (tree flatten). Used when the table is not ready.
         function ebay3GetBackendSkuRows() {
             const skuRows = [];
             function walk(node) {
@@ -1854,6 +1841,36 @@
                 }
             }
             (ebay3GetSummaryTreeRoots() || []).forEach(walk);
+            return skuRows;
+        }
+
+        // Child SKUs currently shown in the table (active filters / search).
+        function ebay3GetVisibleSkuRows() {
+            const skuRows = [];
+            const seen = new Set();
+            function add(d) {
+                if (!d || ebay3IsAlertParentRow(d)) return;
+                const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim().toUpperCase();
+                if (!sku || sku.includes('PARENT') || seen.has(sku)) return;
+                seen.add(sku);
+                skuRows.push(d);
+            }
+            if (typeof table === 'undefined' || !table) {
+                return ebay3GetBackendSkuRows();
+            }
+            function walk(row) {
+                if (!row || typeof row.getData !== 'function') return;
+                add(row.getData() || {});
+                if (typeof row.getTreeChildren === 'function') {
+                    (row.getTreeChildren() || []).forEach(walk);
+                }
+            }
+            let rows = [];
+            try { rows = table.getRows('active') || []; } catch (e) { rows = []; }
+            if (!rows.length) {
+                try { rows = table.getRows() || []; } catch (e) { rows = []; }
+            }
+            rows.forEach(walk);
             return skuRows;
         }
 
@@ -1919,7 +1936,7 @@
         }
         function ebay3TriangleParentKeys(pred) {
             const keys = {};
-            (ebay3GetBackendSkuRows() || []).forEach(function(d) {
+            (ebay3GetVisibleSkuRows() || []).forEach(function(d) {
                 if (!pred(d)) return;
                 const p = String(d.Parent || '').replace(/^PARENT\s+/i, '').trim().toUpperCase();
                 if (p) keys[p] = true;
@@ -2932,10 +2949,7 @@
 
         // SKU Search functionality
         $('#sku-search, #parent-search').on('keyup', function() {
-            table.setFilter([
-                { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
-                { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
-            ]);
+            applyFilters();
         });
 
         /** Parent + all child SKUs in the same eBay3 tree group (for NR cascade). */
@@ -3283,6 +3297,19 @@
             }
             // If 'both' is selected, no additional filter needed
             // If 'sku' is selected, data is already filtered above
+
+            const skuSearch = String($('#sku-search').val() || '').trim().toUpperCase();
+            const parentSearch = String($('#parent-search').val() || '').trim().toUpperCase();
+            if (skuSearch) {
+                table.addFilter(function(data) {
+                    return String((data && data['(Child) sku']) || '').toUpperCase().indexOf(skuSearch) !== -1;
+                });
+            }
+            if (parentSearch) {
+                table.addFilter(function(data) {
+                    return String((data && data.Parent) || '').toUpperCase().indexOf(parentSearch) !== -1;
+                });
+            }
 
             if (invFilter === 'zero') {
                 table.addFilter(function(data) {
@@ -3808,10 +3835,11 @@
             $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
 
+            const visible = ebay3GetVisibleSkuRows();
             let blueTriangleCount = 0;
             let redTriangleCount = 0;
             let endedListingCount = 0;
-            data.forEach(function(row) {
+            visible.forEach(function(row) {
                 if (ebay3HasBlueTriangle(row)) blueTriangleCount++;
                 if (ebay3HasRedTriangle(row)) redTriangleCount++;
                 if (ebay3IsEndedListing(row)) endedListingCount++;
@@ -3831,10 +3859,10 @@
                 PriceGtLmpBadge.setOutline(document.getElementById('ebay3-red-triangle-badge'), redTriangleFilterActive);
             }
             if (window.LmpMissingBadge) {
-                LmpMissingBadge.update('#ebay3-lmp-missing-badge', data, 'ebay3');
+                LmpMissingBadge.update('#ebay3-lmp-missing-badge', visible, 'ebay3');
             }
             if (window.PriceLt80LmpBadge) {
-                PriceLt80LmpBadge.update('#ebay3-purple-triangle-badge', data, 'ebay3', 'eBay Price');
+                PriceLt80LmpBadge.update('#ebay3-purple-triangle-badge', visible, 'ebay3', 'eBay Price');
             }
             syncEbay3TriangleBadgeState();
 
