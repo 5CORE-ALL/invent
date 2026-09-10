@@ -409,4 +409,54 @@ trait ResolvesTikTokOrderRawJson
 
         return [$email, $customer, $placeholder];
     }
+
+    /**
+     * @return list<string>
+     */
+    protected function tikTokShopifyDuplicateRefs(string $orderId, string $namePrefix): array
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '') {
+            return [];
+        }
+        $prefix = rtrim($namePrefix, '-');
+
+        return array_values(array_unique(array_filter([
+            $orderId,
+            $prefix.'-'.$orderId,
+            '#'.$prefix.'-'.$orderId,
+        ])));
+    }
+
+    protected function sellerSkuFromTikTokLine(object $line): string
+    {
+        $sku = trim((string) ($line->seller_sku ?? ''));
+        if ($sku !== '' && $sku !== '__order__') {
+            return $sku;
+        }
+
+        $raw = $this->normalizeTikTokRawJson($line->raw_json ?? null);
+        $lineId = trim((string) ($line->line_item_id ?? ''));
+        foreach (['line_items', 'order_line_list', 'items'] as $key) {
+            $items = $raw[$key] ?? null;
+            if (! is_array($items)) {
+                continue;
+            }
+            foreach ($items as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $id = trim((string) ($item['id'] ?? $item['order_line_id'] ?? ''));
+                if ($lineId !== '' && $lineId !== '__order__' && $id !== '' && $id !== $lineId) {
+                    continue;
+                }
+                $found = trim((string) ($item['seller_sku'] ?? $item['sku'] ?? ''));
+                if ($found !== '' && $found !== '__order__') {
+                    return $found;
+                }
+            }
+        }
+
+        return '';
+    }
 }

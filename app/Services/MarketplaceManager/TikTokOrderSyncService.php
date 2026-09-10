@@ -344,7 +344,20 @@ class TikTokOrderSyncService
                 continue;
             }
             $mapped = $this->mapTikTokAddressToShopify($this->tikTokAddressFromRaw($order));
-            if (! $this->tikTokShopifyAddressIsComplete($mapped)) {
+            $lineItems = $order['line_items'] ?? $order['order_line_list'] ?? $order['items'] ?? [];
+            $hasSku = false;
+            if (is_array($lineItems)) {
+                foreach ($lineItems as $item) {
+                    if (! is_array($item)) {
+                        continue;
+                    }
+                    if (trim((string) ($item['seller_sku'] ?? $item['sku'] ?? '')) !== '') {
+                        $hasSku = true;
+                        break;
+                    }
+                }
+            }
+            if (! $this->tikTokShopifyAddressIsComplete($mapped) || ! $hasSku) {
                 $needIds[] = $id;
             }
         }

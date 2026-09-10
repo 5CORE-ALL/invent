@@ -93,6 +93,7 @@ trait FindsExistingShopifyOrderByChannelRef
         }
 
         // GraphQL is down — REST tags can still prove an existing copy (link, never create).
+        $tagSearchCompleted = $tagPrefixes === [];
         foreach ($candidates as $ref) {
             foreach ($tagPrefixes as $prefix) {
                 $tag = trim((string) $prefix).$ref;
@@ -103,10 +104,22 @@ trait FindsExistingShopifyOrderByChannelRef
                 if (($byTag['error'] ?? null) !== null) {
                     return $byTag;
                 }
+                $tagSearchCompleted = true;
                 if (! empty($byTag['id'])) {
                     return $byTag;
                 }
             }
+        }
+
+        // REST tag search finished with no match — safe to create. Long TikTok
+        // ids skip the REST name shortcut, so GraphQL 429s were blocking every shop.
+        if ($tagSearchCompleted) {
+            Log::info($logContext.': GraphQL duplicate check failed; REST tags found no copy — create allowed', [
+                'error' => $gql['error'],
+                'refs' => $candidates,
+            ]);
+
+            return ['id' => null, 'matched_by' => null, 'error' => null];
         }
 
         Log::warning($logContext.': duplicate check incomplete — create blocked', [
@@ -629,7 +642,15 @@ GQL,
     {
         $ref = ltrim(trim($ref), '#');
 
-        return $ref !== '' && preg_match('/^\d{1,12}$/', $ref) === 1;
+        if ($ref === '') {
+            return false;
+        }
+        if (preg_match('/^\d{1,12}$/', $ref) === 1) {
+            return true;
+        }
+
+        // TikTok Shopify names are #TT-{id} / #TT2-{id}, not the raw 18-digit id.
+        return preg_match('/^TT2?-\d+$/i', $ref) === 1;
     }
 
     /**
