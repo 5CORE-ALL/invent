@@ -892,8 +892,10 @@
         }
         window.aeApplyPushPatchToSku = aeApplyPushPatchToSku;
         function aePushablePrice(data) {
-            return aeStoredSprice(data) || aeVisibleSprice(data) || 0;
+            return aeVisibleSprice(data) || aeStoredSprice(data) || 0;
         }
+        window.aeVisibleSprice = aeVisibleSprice;
+        window.aePushablePrice = aePushablePrice;
         function aeHasPushCross(data) {
             if (!data || data.is_parent) return false;
             if (aeSpricePushed(data)) return false;
@@ -2275,7 +2277,7 @@
                             const d = cell.getRow().getData() || {};
                             if (d.is_parent || aeSpricePushed(d)) return;
                             const sku = d.sku;
-                            const price = aeStoredSprice(d) || aeVisibleSprice(d);
+                            const price = aePushablePrice(d);
                             if (!sku || !(price > 0)) {
                                 aeNotify('Set Sprice first', 'warning');
                                 return;
@@ -2890,8 +2892,7 @@
                     if (!rows.length) return;
                     const d = rows[0].getData();
                     if (d.is_parent) return;
-                    const price = parseFloat(d.sprice) > 0 ? parseFloat(d.sprice)
-                        : (parseFloat(d.price) > 0 ? parseFloat(d.price) : 0);
+                    const price = aePushablePrice(d) || (parseFloat(d.price) > 0 ? parseFloat(d.price) : 0);
                     if (!(price > 0)) {
                         skipped.push(sku);
                         return;

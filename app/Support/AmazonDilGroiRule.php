@@ -4,7 +4,7 @@ namespace App\Support;
 
 /**
  * Dil% slabs → Target GROI% → Sprc Dil.
- * Used by Amazon (`amazon_dil_vs_groi`), eBay 1–3 (`ebay1_dil_vs_groi` / `ebay2_dil_vs_groi` / `ebay3_dil_vs_groi`), and Temu 1–2 (`temu_dil_vs_groi` / `temu2_dil_vs_groi`).
+ * Used by Amazon, eBay 1–3 / 2 OP, Temu 1–3, and the other Sprc Dil tabulator pages.
  * First-time defaults: five slabs 0.1–25%. Add/delete is allowed; match is by min/max.
  */
 class AmazonDilGroiRule
@@ -111,6 +111,30 @@ class AmazonDilGroiRule
         }
 
         return null;
+    }
+
+    /**
+     * Exact slab, or nearest slab (eBay 1–3): Dil below first From uses first slab,
+     * Dil above last To uses last slab. Dil 0 therefore gets the first slab GROI.
+     *
+     * @param  list<array<string, mixed>>  $rules
+     * @return array{key:string,label:string,min:float,max:float,groi:float}|null
+     */
+    public static function matchOrNearest(float $dil, array $rules): ?array
+    {
+        $exact = self::match($dil, $rules);
+        if ($exact !== null) {
+            return $exact;
+        }
+        $list = self::normalizeList($rules);
+        if ($list === [] || ! is_finite($dil) || $dil < 0) {
+            return null;
+        }
+        if ($dil < $list[0]['min']) {
+            return $list[0];
+        }
+
+        return $list[count($list) - 1];
     }
 
     /** Dil% → slab key, or null when no slab matches. */

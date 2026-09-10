@@ -222,6 +222,7 @@
         }
         .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2op'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay2op'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
 @endsection
@@ -535,6 +536,7 @@
                     <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item">
                         <i class="fa fa-eye"></i> Show All
                     </button>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay2op'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay2op'])
 
                     <button id="ebay2op-price-mode-btn" type="button" class="btn btn-sm btn-secondary pricing-filter-item"
@@ -980,6 +982,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2op'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay2op'])
 @endsection
 
     @section('script-bottom')
@@ -987,6 +990,7 @@
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2op'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay2op'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         const EBAY2OP_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
         const COLUMN_VIS_KEY = "ebay2op_tabulator_column_visibility";

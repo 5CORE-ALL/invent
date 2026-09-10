@@ -1199,7 +1199,15 @@
                 || CHANNEL_PROMO_CHANNEL === 'bestbuy'
                 || CHANNEL_PROMO_CHANNEL === 'newegg'
                 || CHANNEL_PROMO_CHANNEL === 'topdawg'
-                || CHANNEL_PROMO_CHANNEL === 'fb_marketplace';
+                || CHANNEL_PROMO_CHANNEL === 'fb_marketplace'
+                || CHANNEL_PROMO_CHANNEL === 'walmart'
+                || CHANNEL_PROMO_CHANNEL === 'shopify_b2b'
+                || CHANNEL_PROMO_CHANNEL === 'pls'
+                || CHANNEL_PROMO_CHANNEL === 'depop'
+                || CHANNEL_PROMO_CHANNEL === 'vinted'
+                || CHANNEL_PROMO_CHANNEL === 'mercari_wship'
+                || CHANNEL_PROMO_CHANNEL === 'mercari_woship'
+                || CHANNEL_PROMO_CHANNEL === 'ebay2op';
         }
         const CHANNEL_PROMO_HIDE_DIL_PRMT = @json(!empty($channelPromoHideDilPrmt));
         function chPromoHideDilPrmt() {
@@ -1582,7 +1590,7 @@
             },
             mercari_wship: {
                 label: 'Mercari w Ship',
-                saveSpriceUrl: '',
+                saveSpriceUrl: '/mercari-with-ship-tabulator/save-status',
                 pushPriceUrl: null,
                 priceField: 'price',
                 cvrField: 'CVR%',
@@ -1594,7 +1602,7 @@
             },
             mercari_woship: {
                 label: 'Mercari w/o Ship',
-                saveSpriceUrl: '',
+                saveSpriceUrl: '/mercari-without-ship-tabulator/save-status',
                 pushPriceUrl: null,
                 priceField: 'price',
                 cvrField: 'CVR%',
@@ -9066,6 +9074,28 @@
             next();
         }
 
+        /** Page S PRC helpers (Dil-first). Used by Push Prc and the shared S PRC queue. */
+        function chPromoPageDisplayedSprice(d) {
+            if (!d) return 0;
+            const names = [
+                'ebayDisplayedSprice', 'ebay2DisplayedSprice', 'ebay3DisplayedSprice',
+                'aeVisibleSprice', 'aePushablePrice', 'sheinVisibleSprice', 'neShownSprice',
+                'macysDisplayedSprice', 'shopifyB2cShownSprice', 'fbMpDisplayedSprice',
+                'temuDisplayedSprice', 'frPushSprice', 'bestbuyDisplayedSprice',
+                'wayfairRowSpriceForAlert', 'reverbRowSpriceForAlert',
+                'tdDisplayedSprice', 'ppPushPriceValue', 'ttDisplayedSprice',
+                'dobaDisplayedSprice'
+            ];
+            for (let i = 0; i < names.length; i++) {
+                const fn = (typeof window !== 'undefined') ? window[names[i]] : null;
+                if (typeof fn !== 'function') continue;
+                try {
+                    const shown = Number(fn(d)) || 0;
+                    if (shown > 0) return chPromoRound2(shown);
+                } catch (e) { /* ignore */ }
+            }
+            return 0;
+        }
         /** Visible S PRC (live rules + LMP cap) — what Push Prc sends to the listing. */
         function chPromoPushSpriceAmount(d) {
             if (!d) return 0;
@@ -9081,6 +9111,8 @@
                 const shown = Number(ebay3DisplayedSprice(d)) || 0;
                 if (shown > 0) return chPromoRound2(shown);
             }
+            const pageShown = chPromoPageDisplayedSprice(d);
+            if (pageShown > 0) return pageShown;
             let p = 0;
             if (typeof chPromoLiveSprice === 'function') {
                 p = Number(chPromoLiveSprice(d)) || 0;
@@ -11651,6 +11683,8 @@
         window.chPromoIsEndedListing = chPromoIsEndedListing;
         window.chPromoSpriceFromStdTPromo = chPromoSpriceFromStdTPromo;
         window.chPromoLiveSprice = chPromoLiveSprice;
+        window.chPromoPushSpriceAmount = chPromoPushSpriceAmount;
+        window.chPromoPageDisplayedSprice = chPromoPageDisplayedSprice;
         window.chPromoDilSgroiRuleSprice = chPromoDilSgroiRuleSprice;
         window.chPromoDilSgroiForRow = chPromoDilSgroiForRow;
         window.chPromoOverwriteStoredSpriceFromRules = chPromoOverwriteStoredSpriceFromRules;

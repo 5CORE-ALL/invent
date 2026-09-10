@@ -53,6 +53,7 @@
             font-weight: normal;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'walmart'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'walmart'])
     </style>
 @endsection
 
@@ -178,6 +179,7 @@
                     <button id="refresh-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-sync-alt"></i> Refresh
                     </button>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'walmart'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'walmart'])
                 </div>
 
@@ -280,6 +282,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'walmart'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'walmart'])
 @endsection
 
 @section('script-bottom')
@@ -358,6 +361,7 @@
             return sku.includes('PARENT');
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'walmart'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'walmart'])
         function walmartRowSpriceForAlert(data) {
             let sprice = parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
             if (typeof chPromoLiveSprice === 'function' && !isWalmartParentRow(data)) {

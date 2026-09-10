@@ -11,6 +11,7 @@ use App\Http\Controllers\MarketPlace\EbayTwoController;
 use App\Http\Controllers\MarketPlace\NeweggPricingController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\TemuController;
+use App\Http\Controllers\MarketPlace\Temu3Controller;
 use App\Services\AliExpressApiService;
 use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
@@ -404,10 +405,18 @@ class ChannelPushSpriceRunner
             return app(NeweggPricingController::class)->pushPriceToNewegg($neweggReq, app(NeweggApiService::class));
         }
 
-        if (in_array($this->channel, ['temu', 'temu2'], true)) {
+        if (in_array($this->channel, ['temu', 'temu2', 'temu3'], true)) {
             $base = \App\Services\TemuShopifySalesService::computePushBaseFromSprice($price);
             if ($base !== null && $base > 0) {
                 $pushPrice = $base;
+            }
+            if ($this->channel === 'temu3') {
+                $temu3Req = Request::create('/temu3/push-price', 'POST', [
+                    'sku' => $sku,
+                    'price' => $pushPrice,
+                ]);
+
+                return app(Temu3Controller::class)->pushTemu3Price($temu3Req);
             }
             $temuReq = Request::create(
                 $this->channel === 'temu2' ? '/temu2/push-price' : '/temu/push-price',

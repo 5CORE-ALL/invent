@@ -593,6 +593,7 @@
         function frPushSprice(d) {
             return frRowSpriceForAlert(d);
         }
+        window.frPushSprice = frPushSprice;
         function frHasBlueTriangle(data) {
             if (frIsParentRow(data)) return false;
             const sprice = frRowSpriceForAlert(data);
@@ -1090,6 +1091,9 @@
                     row.update({ push_status: 'pushed', price: price }, true);
                     frRefreshPushCell(row);
                     frSavePushStatus(sku, 'pushed', price);
+                    if (typeof updateSummary === 'function') {
+                        try { updateSummary(); } catch (e) { /* ignore */ }
+                    }
                     if (window.toastr) toastr.success('Pushed to Faire: ' + sku);
                     else alert('Pushed to Faire: ' + sku);
                 })

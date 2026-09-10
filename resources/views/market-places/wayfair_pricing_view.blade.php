@@ -394,6 +394,7 @@
             }
             return sprice;
         }
+        window.wayfairRowSpriceForAlert = wayfairRowSpriceForAlert;
         function wayfairHasBlueTriangle(data) {
             if (isWayfairParentRow(data)) return false;
             const sprice = wayfairRowSpriceForAlert(data);

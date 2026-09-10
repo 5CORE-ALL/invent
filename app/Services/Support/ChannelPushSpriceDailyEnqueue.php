@@ -11,6 +11,8 @@ use App\Models\EbayMetric;
 use App\Models\EbayThreeDataView;
 use App\Models\EbayTwoDataView;
 use App\Services\ChannelPromoPricingService;
+use App\Services\DilRuleSpriceApplyService;
+use App\Services\EbayRuleSpriceApplyService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -22,6 +24,25 @@ use Illuminate\Support\Facades\Log;
 class ChannelPushSpriceDailyEnqueue
 {
     public const CHANNELS = ['ebay1', 'ebay2', 'ebay3'];
+
+    /**
+     * @return list<string>
+     */
+    public static function channelsFromArg(string $arg): array
+    {
+        $arg = strtolower(trim($arg));
+        if ($arg === '' || $arg === 'all') {
+            return self::CHANNELS;
+        }
+        if ($arg === 'dil') {
+            return DilRuleSpriceApplyService::PUSH_CHANNELS;
+        }
+        if (in_array($arg, self::CHANNELS, true) || in_array($arg, DilRuleSpriceApplyService::PUSH_CHANNELS, true)) {
+            return [$arg];
+        }
+
+        return [];
+    }
 
     public function __construct(
         private readonly ChannelPromoPricingService $promo
@@ -42,7 +63,8 @@ class ChannelPushSpriceDailyEnqueue
                 'message' => 'Skipped — live S PRC push is disabled on local',
             ];
         }
-        if (! in_array($channel, self::CHANNELS, true)) {
+        $allowed = array_merge(self::CHANNELS, DilRuleSpriceApplyService::PUSH_CHANNELS);
+        if (! in_array($channel, $allowed, true)) {
             return [
                 'channel' => $channel,
                 'queued' => 0,
@@ -114,6 +136,13 @@ class ChannelPushSpriceDailyEnqueue
      */
     public function collect(string $channel): array
     {
+        if (in_array($channel, DilRuleSpriceApplyService::CHANNELS, true)) {
+            return DilRuleSpriceApplyService::for($channel)->collectPushTasks();
+        }
+        if (in_array($channel, EbayRuleSpriceApplyService::CHANNELS, true)) {
+            return EbayRuleSpriceApplyService::for($channel)->collectPushTasks();
+        }
+
         $metricClass = match ($channel) {
             'ebay2' => Ebay2Metric::class,
             'ebay3' => Ebay3Metric::class,

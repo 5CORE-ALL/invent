@@ -45,6 +45,16 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertNull(AmazonDilGroiRule::groiForDil(30, $rules));
     }
 
+    public function test_match_or_nearest_clamps_below_and_above_slabs(): void
+    {
+        $rules = AmazonDilGroiRule::defaults();
+        $this->assertSame('0.1-5', AmazonDilGroiRule::matchOrNearest(0, $rules)['key']);
+        $this->assertSame(50.0, AmazonDilGroiRule::matchOrNearest(0, $rules)['groi']);
+        $this->assertSame('20-25', AmazonDilGroiRule::matchOrNearest(40, $rules)['key']);
+        $this->assertSame(70.0, AmazonDilGroiRule::matchOrNearest(40, $rules)['groi']);
+        $this->assertSame('5-10', AmazonDilGroiRule::matchOrNearest(7, $rules)['key']);
+    }
+
     public function test_normalize_list_keeps_custom_slab_count(): void
     {
         $rules = AmazonDilGroiRule::normalizeList([

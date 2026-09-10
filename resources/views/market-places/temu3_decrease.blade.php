@@ -2104,6 +2104,7 @@
     function temuDisplayedSprice(row) {
         return temuRuleSprice(row);
     }
+    window.temuDisplayedSprice = temuDisplayedSprice;
 
     function temuSpriceCapLabels(row) {
         if (!row || isTemu3ParentRow(row)) return [];
@@ -6097,7 +6098,17 @@
                             if (typeof temuApplyPushedListingPrice === 'function') {
                                 temuApplyPushedListingPrice(row, pushPrice, data);
                             } else {
-                                row.update({ push_status: 'pushed' });
+                                const base = +Number(pushPrice).toFixed(2);
+                                const rPrice = base <= 26.99 ? +(base + 2.99).toFixed(2) : base;
+                                const full = (typeof temu2FullPriceFromBase === 'function')
+                                    ? +temu2FullPriceFromBase(base).toFixed(2)
+                                    : +(base * 1.1364).toFixed(2);
+                                row.update({
+                                    push_status: 'pushed',
+                                    base_price: base,
+                                    temu_price: rPrice,
+                                    temu_price_display: full,
+                                });
                                 row.reformat();
                             }
                             resolve(response);

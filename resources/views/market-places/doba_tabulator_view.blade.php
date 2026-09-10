@@ -678,12 +678,21 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'doba'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'doba'])
-        function dobaRowSpriceForAlert(data) {
+        function dobaDisplayedSprice(data) {
+            if (!data || isDobaParentRow(data)) return 0;
+            if (typeof chPromoLiveSprice === 'function') {
+                const calc = Number(chPromoLiveSprice(data)) || 0;
+                if (calc > 0) return calc;
+            }
             if (typeof chPromoSavedOrLiveSprice === 'function') {
                 return Number(chPromoSavedOrLiveSprice(data)) || 0;
             }
-            return parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
+            return parseFloat(data.sprice != null ? data.sprice : data.SPRICE) || 0;
         }
+        function dobaRowSpriceForAlert(data) {
+            return dobaDisplayedSprice(data);
+        }
+        window.dobaDisplayedSprice = dobaDisplayedSprice;
         function dobaHasBlueTriangle(data) {
             if (isDobaParentRow(data)) return false;
             const sprice = dobaRowSpriceForAlert(data);
@@ -1547,7 +1556,7 @@
                 list.forEach(function(sku) {
                     const row = dobaFindRowBySku(sku);
                     const d = row && typeof row.getData === 'function' ? (row.getData() || {}) : {};
-                    const want = Number(d.sprice || d.SPRICE) || 0;
+                    const want = Number(typeof dobaDisplayedSprice === 'function' ? dobaDisplayedSprice(d) : (d.sprice || d.SPRICE)) || 0;
                     if (want > 0) expectedBySku[String(sku).toUpperCase()] = want;
                 });
                 const csrf = $('meta[name="csrf-token"]').attr('content');
@@ -1712,14 +1721,15 @@
                     const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
                     if (!row) return;
                     const data = row.getData();
-                    if (data.is_parent || !(data.sprice > 0)) return;
-                    if (dobaListingPriceEqualsSprice(data, data.sprice)) {
+                    const shown = dobaDisplayedSprice(data);
+                    if (data.is_parent || !(shown > 0)) return;
+                    if (dobaListingPriceEqualsSprice(data, shown)) {
                         alreadyEqualCount++;
                         return;
                     }
                     skusWithSprice.push({
                         sku: data['(Child) sku'],
-                        price: data.sprice,
+                        price: +shown.toFixed(2),
                         selfPickPrice: data.s_self_pick || null,
                         row: row
                     });
@@ -1761,6 +1771,9 @@
                         } else {
                             showToast('danger', `Failed to push prices for ${errorCount} SKU(s)`);
                         }
+                        if (typeof updateSummary === 'function') {
+                            try { updateSummary(); } catch (e) { /* ignore */ }
+                        }
                         return;
                     }
                     
@@ -1779,7 +1792,7 @@
                             pushedOkSkus.push(sku);
                             console.log(`SKU ${sku}: Price pushed successfully`);
                             dobaPullAfterPush([sku]);
-                            row.update({ push_status: 'pushed', apply_status: null });
+                            row.update({ push_status: 'pushed', apply_status: null, 'doba Price': price });
                             
                             // Force update the cell to show double tick immediately
                             const pushCell = row.getCell('_push');
@@ -1847,7 +1860,7 @@
                 
                 const $btn = $(this);
                 const sku = $btn.data('sku');
-                const price = $btn.data('price');
+                let price = parseFloat($btn.data('price')) || 0;
                 
                 if (!sku || !price) {
                     showToast('danger', 'Invalid SKU or price');
@@ -1875,6 +1888,8 @@
                 
                 // Get S (PP) from row data (calculated as SPRICE - SHIP)
                 const rowData = row.getData();
+                const shown = dobaDisplayedSprice(rowData);
+                if (shown > 0) price = +shown.toFixed(2);
                 if (dobaListingPriceEqualsSprice(rowData, price)) {
                     showToast('success', sku + ': Price already equals S PRC — left unchanged');
                     $btn.prop('disabled', false);
@@ -1890,7 +1905,7 @@
                 pushPriceToDobaWithRetry(sku, price, selfPickPrice, 5, 5000)
                     .then((result) => {
                         // Success - update row immediately
-                        row.update({ push_status: 'pushed', apply_status: null });
+                        row.update({ push_status: 'pushed', apply_status: null, 'doba Price': price });
                         
                         // Force update the cell to show double tick immediately
                         const pushCell = row.getCell('_push');
@@ -2406,9 +2421,8 @@
                                 const parentSprice = parseFloat(rowData.sprice) || 0;
                                 return parentSprice > 0 ? ('$' + parentSprice.toFixed(2)) : '';
                             }
-                            let value = (typeof chPromoSavedOrLiveSprice === 'function')
-                                ? Number(chPromoSavedOrLiveSprice(rowData))
-                                : parseFloat(cell.getValue() || 0);
+                            let value = dobaDisplayedSprice(rowData);
+                            if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
                             const live = parseFloat(rowData['doba Price']) || 0;
                             const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
@@ -2495,8 +2509,8 @@
                             const rowData = cell.getRow().getData();
                             const isParent = rowData.is_parent;
                             const sprice = window.SpriceLmpCap
-                                ? SpriceLmpCap.prepare(rowData, parseFloat(rowData.sprice) || 0)
-                                : (parseFloat(rowData.sprice) || 0);
+                                ? SpriceLmpCap.prepare(rowData, dobaDisplayedSprice(rowData))
+                                : dobaDisplayedSprice(rowData);
                             const pushStatus = rowData.push_status || null;
                             const applyStatus = rowData.apply_status || null;
                             
@@ -3265,8 +3279,9 @@
                     const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
                     if (row) {
                         const data = row.getData();
-                        if (!data.is_parent && data.sprice && data.sprice > 0
-                            && !dobaListingPriceEqualsSprice(data, data.sprice)) {
+                        const shown = dobaDisplayedSprice(data);
+                        if (!data.is_parent && shown > 0
+                            && !dobaListingPriceEqualsSprice(data, shown)) {
                             spriceCount++;
                         }
                     }

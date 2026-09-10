@@ -45,6 +45,7 @@
             white-space: nowrap;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'vinted'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'vinted'])
     </style>
 @endsection
 
@@ -136,6 +137,7 @@
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV" aria-label="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'vinted'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'vinted'])
                     <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal"
                             data-bs-target="#uploadVintedPriceModal" title="Merge-upload into VintedPricing by SKU (keeps SPRICE / NR / links)">
@@ -322,11 +324,13 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'vinted'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'vinted'])
 @endsection
 
 @section('script-bottom')
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'vinted'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'vinted'])
     const COLUMN_VIS_KEY = "vinted_tabulator_column_visibility";
     let table = null;
     let allTableData = [];

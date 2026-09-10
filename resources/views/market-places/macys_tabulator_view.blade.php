@@ -442,8 +442,36 @@
         return false;
     }
     function macysRowSpriceForAlert(data) {
-        return parseFloat(data && data.SPRICE) || 0;
+        return macysDisplayedSprice(data);
     }
+    /** Cell / triangle / push: Dil rule first, not stale stored SPRICE. */
+    function macysDisplayedSprice(data) {
+        if (!data || isMacysParentRow(data)) return 0;
+        let value = 0;
+        if (typeof ebayTiktokRuleDiscount === 'function') {
+            value = Number(ebayTiktokRuleDiscount(data)) || 0;
+        }
+        if (!(value > 0) && typeof ebaySprcDilForRow === 'function') {
+            value = Number(ebaySprcDilForRow(data)) || 0;
+        }
+        if (!(value > 0) && typeof chPromoLiveSprice === 'function') {
+            value = Number(chPromoLiveSprice(data)) || 0;
+        }
+        if (!(value > 0)) value = parseFloat(data.SPRICE) || 0;
+        if (!(value > 0)) return 0;
+        if (typeof chPromoCapSpriceToLmp === 'function') {
+            value = Number(chPromoCapSpriceToLmp(data, value)) || value;
+        } else if (window.SpriceLmpCap) {
+            const cap = SpriceLmpCap.apply(data, value);
+            if (cap && cap.shown > 0) value = cap.shown;
+        }
+        const amz = macysAmazonPriceForRow(data);
+        if (value > 0 && amz > 0 && value < amz - 0.0001) {
+            return Math.round(amz * 100) / 100;
+        }
+        return Math.round(value * 100) / 100;
+    }
+    window.macysDisplayedSprice = macysDisplayedSprice;
     function macysAmazonPriceForRow(data) {
         return Math.round((Number(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0) * 100) / 100;
     }
@@ -1150,16 +1178,7 @@
         }
 
         function macysCappedPushPrice(rowData) {
-            let p = parseFloat(rowData && rowData.SPRICE) || 0;
-            if (typeof chPromoCapSpriceToLmp === 'function' && p > 0) {
-                p = Number(chPromoCapSpriceToLmp(rowData, p)) || p;
-            } else if (window.SpriceLmpCap && p > 0) {
-                p = Number(SpriceLmpCap.prepare(rowData, p)) || p;
-            }
-            p = Math.round((Number(p) || 0) * 100) / 100;
-            const amz = macysAmazonPrice(rowData);
-            if (p > 0 && amz > 0 && p < amz) return amz;
-            return p;
+            return macysDisplayedSprice(rowData);
         }
 
         function macysFindRowBySku(sku) {
@@ -1198,6 +1217,7 @@
                 try { row.update(patch); } catch (e) { /* ignore */ }
                 try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
             });
+            if (typeof updateSummary === 'function') updateSummary();
         }
 
         function macysPushPriceForRow(row) {
@@ -2496,10 +2516,7 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isMacysParentRow(rowData)) return '';
-                        let value = parseFloat(cell.getValue() || 0);
-                        if (!(value > 0) && typeof ebaySprcDilForRow === 'function') {
-                            value = Number(ebaySprcDilForRow(rowData)) || 0;
-                        }
+                        let value = macysDisplayedSprice(rowData);
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData['MC Price']) || 0;

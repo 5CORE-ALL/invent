@@ -22,6 +22,7 @@
                 wayfair: '/wayfair/pricing-save-sprice',
                 temu: '/temu-pricing/save-sprice',
                 temu2: '/temu2-pricing/save-sprice',
+                temu3: '/temu3-pricing/save-sprice',
                 doba: '/doba/save-sprice',
                 doba_withoutship: '/doba/save-sprice-withoutship',
                 tiktok: '/tiktok-save-sprice',
@@ -35,6 +36,8 @@
                 pls: '/save-pls-sprice',
                 vinted: '/vinted/pricing/save-sprice-tabulator',
                 depop: '/depop/pricing/save-sprice',
+                mercari_wship: '/mercari-with-ship-tabulator/save-status',
+                mercari_woship: '/mercari-without-ship-tabulator/save-status',
             })[CH_PUSH_SPRICE_CHANNEL] || '';
             const CH_PUSH_SPRICE_PRICE_FIELD = ({
                 ebay1: 'eBay Price',
@@ -51,6 +54,7 @@
                 wayfair: 'price',
                 temu: 'temu_price',
                 temu2: 'temu_price',
+                temu3: 'temu_price',
                 doba: 'doba Price',
                 doba_withoutship: 'self_pick_price',
                 tiktok: 'TT Price',
@@ -72,7 +76,7 @@
                 ebay1: 1, ebay2: 1, ebay2op: 1, ebay3: 1,
                 shopify_b2c: 1, shopify_b2b: 1,
                 reverb: 1, macys: 1, macy: 1, bestbuy: 1, walmart: 1,
-                temu: 1, temu2: 1, doba: 1, doba_withoutship: 1,
+                temu: 1, temu2: 1, temu3: 1, doba: 1, doba_withoutship: 1,
                 tiktok: 1, tiktok2: 1, topdawg: 1, purchasing_power: 1,
                 faire: 1, pls: 1, newegg: 1, wayfair: 1, aliexpress: 1, shein: 1,
             })[CH_PUSH_SPRICE_CHANNEL] === 1;
@@ -321,7 +325,9 @@
                 function patchRecord(d, t) {
                     if (!d || !t) return false;
                     const st = String(t.status || '');
-                    const live = Number(t.ebay_price != null ? t.ebay_price : t.price);
+                    const pushed = Number(t.price);
+                    const pulled = Number(t.ebay_price != null ? t.ebay_price : 0);
+                    const live = (st === 'ok' && pushed > 0) ? pushed : (pulled > 0 ? pulled : pushed);
                     const patch = {};
                     let priceChanged = false;
                     if (st === 'ok') {
@@ -333,9 +339,10 @@
                         if (live > 0 && !chPushSpriceNearlyEqual(d[CH_PUSH_SPRICE_PRICE_FIELD], live)) {
                             patch[CH_PUSH_SPRICE_PRICE_FIELD] = live;
                             patch['eBay Price'] = live;
+                            if (CH_PUSH_SPRICE_PRICE_FIELD !== 'price') patch.price = live;
                             priceChanged = true;
                         }
-                        if ((CH_PUSH_SPRICE_CHANNEL === 'temu' || CH_PUSH_SPRICE_CHANNEL === 'temu2')
+                        if ((CH_PUSH_SPRICE_CHANNEL === 'temu' || CH_PUSH_SPRICE_CHANNEL === 'temu2' || CH_PUSH_SPRICE_CHANNEL === 'temu3')
                             && live > 0
                             && typeof temuPushBaseFromSprice === 'function') {
                             const base = temuPushBaseFromSprice(live);
@@ -398,7 +405,7 @@
                     const t = sku ? bySku[sku] : null;
                     if (t) patchRecord(d, t);
                 });
-                if (priceChanged && typeof updateSummary === 'function') {
+                if ((priceChanged || Object.keys(bySku).length) && typeof updateSummary === 'function') {
                     clearTimeout(applyChannelPushSpriceTasks._sumTimer);
                     applyChannelPushSpriceTasks._sumTimer = setTimeout(function() {
                         try { updateSummary(); } catch (e) { /* ignore */ }
@@ -667,7 +674,7 @@
             }
             function enqueueChannelPushSpriceAfterSave(sku, price, row, opts) {
                 opts = opts || {};
-                const isTemu = CH_PUSH_SPRICE_CHANNEL === 'temu' || CH_PUSH_SPRICE_CHANNEL === 'temu2';
+                const isTemu = CH_PUSH_SPRICE_CHANNEL === 'temu' || CH_PUSH_SPRICE_CHANNEL === 'temu2' || CH_PUSH_SPRICE_CHANNEL === 'temu3';
                 const force = opts.force === true || (isTemu && opts.force !== false);
                 const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (row || {});
                 let p = chPushSpriceRound2(price);
@@ -759,6 +766,7 @@
                     if (live > 0) {
                         patch[CH_PUSH_SPRICE_PRICE_FIELD] = live;
                         patch['eBay Price'] = live;
+                        if (CH_PUSH_SPRICE_PRICE_FIELD !== 'price') patch.price = live;
                         patch.PUSH_PRC_VALUE = live;
                         patch.SPRICE_PUSHED_VALUE = live;
                     }
@@ -787,6 +795,12 @@
                     Object.assign(d, patch);
                 }
                 chPushClientPatchDatasets(item.sku, patch);
+                if (typeof updateSummary === 'function') {
+                    clearTimeout(chPushClientApplyResult._sumTimer);
+                    chPushClientApplyResult._sumTimer = setTimeout(function() {
+                        try { updateSummary(); } catch (e) { /* ignore */ }
+                    }, 400);
+                }
             }
             function enqueueChannelPushSpriceClient(items, opts) {
                 opts = opts || {};
@@ -968,6 +982,14 @@
                 return chPushSpriceRound2(raw);
             }
             function chPushSpriceSavedFromRow(d) {
+                if (typeof chPromoPushSpriceAmount === 'function') {
+                    const shown = chPushSpriceRound2(chPromoPushSpriceAmount(d));
+                    if (shown > 0) return shown;
+                }
+                if (typeof chPromoLiveSprice === 'function') {
+                    const live = chPushSpriceRound2(chPromoLiveSprice(d));
+                    if (live > 0) return live;
+                }
                 if (typeof chPromoSavedOrLiveSprice === 'function') {
                     return chPushSpriceRound2(chPromoSavedOrLiveSprice(d));
                 }

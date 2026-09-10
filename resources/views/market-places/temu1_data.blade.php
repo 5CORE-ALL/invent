@@ -1997,6 +1997,7 @@
     function temuDisplayedSprice(row) {
         return temuRuleSprice(row);
     }
+    window.temuDisplayedSprice = temuDisplayedSprice;
 
     function temuSpriceCapLabels(row) {
         if (!row || isTemu2ParentRow(row)) return [];
