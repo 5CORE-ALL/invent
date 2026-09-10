@@ -896,7 +896,6 @@
     const ORDERS_L30_TOTAL_SALES = {{ (float) ($ordersL30TotalSales ?? 0) }};
     const ORDERS_L30_GPFT = {{ (float) ($ordersL30Gpft ?? 0) }};
     const ORDERS_L30_GROI = {{ (float) ($ordersL30Groi ?? 0) }};
-    const EBAY3_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
 
     /**
      * Gross ROI — same formula as GROI% (ROI%) column:
@@ -988,22 +987,6 @@
         const marginRaw = parseFloat(rowData.percentage);
         const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY3_TAKEHOME;
         return ((price * margin - lp - ship) / lp) * 100;
-    }
-
-    function ebay3ComputeNetRoi(rowData, priceKey) {
-        if (!rowData) return null;
-        const price = priceKey === 'SPRICE'
-            ? ebay3SpriceAmount(rowData)
-            : parseFloat(rowData[priceKey]);
-        const lp = parseFloat(rowData.LP_productmaster);
-        if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
-        const ship = parseFloat(rowData.Ship_productmaster) || 0;
-        const marginRaw = parseFloat(rowData.percentage);
-        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY3_TAKEHOME;
-        const adsFrac = (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) / 100;
-        const grossPft = (price * margin) - ship - lp;
-        const adSpend = price * adsFrac;
-        return ((grossPft - adSpend) / lp) * 100;
     }
 
     /** S GPFT uses S PRC (SPRICE). */
@@ -2761,42 +2744,6 @@
                     },
                     width: 50
                 },
-                {
-                    title: "NROI",
-                    field: "NROI",
-                    hozAlign: "center",
-                    sorter: function(a, b, aRow, bRow) {
-                        const aNet = ebay3ComputeNetRoi(aRow.getData(), 'eBay Price');
-                        const bNet = ebay3ComputeNetRoi(bRow.getData(), 'eBay Price');
-                        return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
-                             - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
-                    },
-                    formatter: function(cell) {
-                        const percent = ebay3ComputeNetRoi(cell.getRow().getData(), 'eBay Price');
-                        if (percent === null || !isFinite(percent)) return '';
-                        let color = '';
-
-                        if (percent < 40) color = '#a00211';
-                        else if (percent < 75) color = '#ffc107';
-                        else if (percent < 125) color = '#28a745';
-                        else color = '#d63384';
-
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    bottomCalc: function(values, data) {
-                        let sum = 0, n = 0;
-                        data.forEach(r => {
-                            const v = ebay3ComputeNetRoi(r, 'eBay Price');
-                            if (v != null && isFinite(v)) { sum += v; n++; }
-                        });
-                        return n ? sum / n : 0;
-                    },
-                    bottomCalcFormatter: function(cell) {
-                        const value = cell.getValue();
-                        return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
-                    },
-                    width: 65
-                },
                     ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
                     title: "Sprc Dil",
@@ -3907,8 +3854,8 @@
             const tl = t.toLowerCase();
 
             if (
-                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SPRC_DIL|SGPFT|SGROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
-                /\b(prc|price|std\s*prc|gpft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*groi|dil|cvr|push\s*std\s*prc)\b/i.test(tl) ||
+                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SPRC_DIL|SGPFT|SGROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
+                /\b(prc|price|std\s*prc|gpft|groi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*groi|dil|cvr|push\s*std\s*prc)\b/i.test(tl) ||
                 /^\+$/i.test(t)
             ) {
                 return 'pricing';
@@ -3992,7 +3939,7 @@
                         const def = col.getDefinition();
                         if (!def.field) return;
                         if (def.field === '_parent_expand' || def.field === '_select' || def.field === 'nr_req' || def.field === 'CVR_60' || def.field === 'eBay Stock') return;
-                        if (/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|growth_percent|PFT %|SROI|SPFT|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(def.field)) return;
+                        if (/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|growth_percent|NROI|PFT %|SROI|SPFT|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(def.field)) return;
 
                         const rawTitle = def.title || def.field;
                         const title = String(rawTitle).replace(/<[^>]*>/g, '').trim() || def.field;
@@ -4032,7 +3979,7 @@
             const visibility = {};
             table.getColumns().forEach(col => {
                 const def = col.getDefinition();
-                if (def.field && !/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|nr_req|growth_percent|CVR_60|eBay Stock|PFT %|SROI|SPFT|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(def.field)) {
+                if (def.field && !/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt|nr_req|growth_percent|CVR_60|eBay Stock|NROI|PFT %|SROI|SPFT|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(def.field)) {
                     visibility[def.field] = col.isVisible();
                 }
             });
