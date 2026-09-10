@@ -1565,18 +1565,13 @@
                 'background:' + meta.color + ';flex-shrink:0;" title="' + escAttr(tip) + '"></span>';
         }
 
-        /** Editable S PRC — saves with /save-amazon-sprice on blur or Enter (same as grid SPRICE editor) */
+        /** S PRC is Dil/cron-driven — show only, do not edit in the parent modal. */
         function amazonModalSpriceInputHtml(row) {
             const sku = row['(Child) sku'] || '';
             if (!sku) return '<span class="text-muted">—</span>';
             const sprice = parseFloat(row.SPRICE) || 0;
-            const listPrice = parseFloat(row.price) || 0;
-            const val = sprice > 0 ? sprice.toFixed(2) : '';
-            let ph = 'S PRC';
-            if (listPrice > 0) {
-                ph = 'List $' + listPrice.toFixed(2);
-            }
-            return '<input type="number" class="form-control form-control-sm text-end parent-modal-sprice-input" inputmode="decimal" data-sku="' + escAttr(sku) + '" value="' + escAttr(val) + '" step="0.01" min="0.01" placeholder="' + escAttr(ph) + '" title="Enter S PRC — blur or Enter to save" style="max-width: 6.75rem; margin-left: auto;" />';
+            if (!(sprice > 0)) return '<span class="text-muted">—</span>';
+            return '<span class="fw-semibold" title="Not editable">$' + sprice.toFixed(2) + '</span>';
         }
         /** Accept / push from the parent pricing modal (Amazon only). */
         function amazonModalAcceptPushHtml(row) {

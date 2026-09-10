@@ -477,8 +477,8 @@
                         style="width: auto; display: inline-block;"
                         title="ALL = Parent + SKU · Parents = PARENT rows only · SKU = child SKU rows only">
                         <option value="all">ALL</option>
-                        <option value="parent" selected>Parents</option>
-                        <option value="sku">SKU</option>
+                        <option value="parent">Parents</option>
+                        <option value="sku" selected>SKU</option>
                     </select>
 
                     <select id="inventory-filter" class="form-select form-select-sm"
@@ -3361,7 +3361,7 @@
                         headerFilterPlaceholder: "Search SKU...",
                         headerFilterFunc: function(headerValue, rowValue, rowData) {
                             if (headerValue == null || String(headerValue).trim() === '') return true;
-                            const viewMode = $('#view-mode-filter').val() || 'parent';
+                            const viewMode = $('#view-mode-filter').val() || 'sku';
                             if (viewMode !== 'parent' && isEbay2TabulatorParentRow(rowData)) return false;
                             return String(rowValue || '').toUpperCase().includes(String(headerValue).trim().toUpperCase());
                         },
@@ -4524,7 +4524,7 @@
                     }
                 }
 
-                const viewModeFilter = $('#view-mode-filter').val() || 'parent';
+                const viewModeFilter = $('#view-mode-filter').val() || 'sku';
                 const inventoryFilter = $('#inventory-filter').val();
                 const el30Filter = $('#el30-filter').val();
                 const nrlFilter = $('#nrl-filter').val();

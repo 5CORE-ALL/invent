@@ -490,8 +490,8 @@
 
                     <select id="view-mode-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="sku">SKUs</option>
-                        <option value="parent" selected>Parents</option>
+                        <option value="sku" selected>SKUs</option>
+                        <option value="parent">Parents</option>
                         <option value="both">Both</option>
                     </select>
 

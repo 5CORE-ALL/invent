@@ -2681,7 +2681,7 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         visible: false,
-                        editor: "input",
+                        editable: false,
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();

@@ -884,8 +884,8 @@
                         title: "S PRC",
                         field: "SPRICE",
                         hozAlign: "center",
-                        editor: "input",
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                        editable: false,
+                        headerTooltip: "Not editable. S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (isWalmartParentRow(rowData)) return '';

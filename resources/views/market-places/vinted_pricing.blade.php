@@ -990,9 +990,9 @@
                 },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
-                    title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', editor: 'number',
-                    editorParams: { min: 0, step: 0.01 }, sorter: 'number', width: 80,
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ V Price. Red text = S PRC > LMP.",
+                    title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', editable: false,
+                    sorter: 'number', width: 80,
+                    headerTooltip: "Not editable. S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ V Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         let value = parseFloat(cell.getValue() || 0);

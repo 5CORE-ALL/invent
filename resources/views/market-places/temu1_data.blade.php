@@ -4237,7 +4237,7 @@
                     field: "sprice",
                     hozAlign: "center",
                     minWidth: 88,
-                    editor: "input",
+                    editable: false,
                     headerSort: true,
                     sorter: temuSortBy(function(d) {
                         return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);

@@ -599,8 +599,7 @@
                         field: "sprice",
                         hozAlign: "center",
                         width: 90,
-                        editor: "number",
-                        editorParams: { min: 0, step: 0.01 },
+                        editable: false,
                         formatter: function(cell) {
                             const v = cell.getValue();
                             return (v === null || v === '' || isNaN(parseFloat(v))) ? '—' : '$' + parseFloat(v).toFixed(2);

@@ -2403,16 +2403,9 @@
                     title: "S PRC",
                     field: "SPRICE",
                     hozAlign: "center",
-                    editor: "number",
-                    editable: function(cell) {
-                        return !isShopifyB2bParentRow(cell.getRow().getData());
-                    },
-                    editorParams: {
-                        min: 0,
-                        step: 0.01
-                    },
+                    editable: false,
                     sorter: "number",
-                    headerTooltip: "Suggested price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    headerTooltip: "Not editable. Suggested price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) {

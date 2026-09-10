@@ -1631,9 +1631,8 @@
                             const bd = bRow && bRow.getData ? bRow.getData() : {};
                             return (neShownSprice(ad) || 0) - (neShownSprice(bd) || 0);
                         },
-                        editor: "number", editorParams: { min: 0, step: 0.01 },
-                        cssClass: "editable-cell",
-                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Below A Price is raised to Amz. Blue triangle = S PRC ≠ Price. Red triangle = S PRC raised to Amz or capped at LMP.",
+                        editable: false,
+                        headerTooltip: "Not editable. S PRC from Sprc Dil. Dil-matching Target GROI when L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Below A Price is raised to Amz. Blue triangle = S PRC ≠ Price. Red triangle = S PRC raised to Amz or capped at LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             let value = nePriceBeforeAmzFloor(d);
