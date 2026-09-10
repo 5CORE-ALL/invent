@@ -506,6 +506,11 @@ class MissingListingController extends Controller
             'bestbuy' => ['bestbuyusa', 'bestbuy'],
             'fbmarketplace' => ['fbmarketplace', 'facebookmarketplace'],
             'shopifyb2c' => ['shopifyb2c', 'shopify'],
+            'newegg' => ['newegg', 'neweggb2c', 'neweggb2b'],
+            'neweggb2c' => ['newegg', 'neweggb2c'],
+            'neweggb2b' => ['newegg', 'neweggb2b'],
+            'pls' => ['pls', 'shopifypls'],
+            'topdawg' => ['topdawg'],
         ];
 
         foreach ($map[$normalizedKey] ?? [] as $a) {

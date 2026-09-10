@@ -9,9 +9,13 @@ use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
 use App\Models\FaireMetric;
 use App\Models\MacyProduct;
+use App\Models\NeweggItem;
 use App\Models\NeweggMetric;
+use App\Models\NeweggPricing;
 use App\Models\PLSProduct;
 use App\Models\ReverbListingStatus;
+use App\Models\ShopifyCatalogVariant;
+use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
 use App\Models\ReverbProduct;
 use App\Models\SheinMetric;
 use App\Models\ShopifySku;
@@ -97,7 +101,8 @@ class ChannelListingRegistry
             'neweggb2c' => [
                 'dataView' => \App\Models\Neweegb2cDataView::class,
                 'status' => \App\Models\NeweggB2CListingStatus::class,
-                'listed' => ['type' => 'column', 'model' => NeweggMetric::class, 'column' => 'product_id', 'reject_sku' => true],
+                // Listed = live Newegg catalog (newegg_pricing / newegg_items), not stale newegg_metric.
+                'listed' => ['type' => 'custom', 'method' => 'listedNewegg'],
                 'id_field' => 'product_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -105,7 +110,7 @@ class ChannelListingRegistry
             'neweggb2b' => [
                 'dataView' => \App\Models\NeweggB2BDataView::class,
                 'status' => \App\Models\NeweggB2BListingStatus::class,
-                'listed' => ['type' => 'column', 'model' => NeweggMetric::class, 'column' => 'product_id', 'reject_sku' => true],
+                'listed' => ['type' => 'custom', 'method' => 'listedNewegg'],
                 'id_field' => 'product_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -188,7 +193,8 @@ class ChannelListingRegistry
             'pls' => [
                 'dataView' => \App\Models\PLSDataView::class,
                 'status' => \App\Models\PlsListingStatus::class,
-                'listed' => ['type' => 'price', 'model' => PLSProduct::class, 'column' => 'price'],
+                // Listed = Shopify PLS catalog variant (shopify_catalog_* store=pls).
+                'listed' => ['type' => 'custom', 'method' => 'listedPls'],
                 'id_field' => 'listing_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -350,7 +356,8 @@ class ChannelListingRegistry
             'topdawg' => [
                 'dataView' => \App\Models\TopDawgDataView::class,
                 'status' => \App\Models\TopDawgListingStatus::class,
-                'listed' => ['type' => 'column', 'model' => TopDawgProduct::class, 'column' => 'topdawg_listing_id', 'reject_sku' => true],
+                // Listed = row in topdawg_products (API catalog). TopDawg keys on product_code.
+                'listed' => ['type' => 'custom', 'method' => 'listedTopDawg'],
                 'id_field' => 'topdawg_listing_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -835,6 +842,284 @@ class ChannelListingRegistry
                 continue;
             }
             $map[strtolower($sku)] = $variantId;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Newegg Listed = SKU in the live catalog (newegg_pricing / newegg_items),
+     * not only newegg_metric.product_id (that table lags when auto-link is Off).
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedNewegg(array $skus): array
+    {
+        $wantedNorm = self::wantedNormalizedSkus($skus);
+        if ($wantedNorm === []) {
+            return [];
+        }
+
+        $byNorm = [];
+
+        if (class_exists(NeweggItem::class) && \Illuminate\Support\Facades\Schema::hasTable('newegg_items')) {
+            NeweggItem::query()
+                ->whereNotNull('seller_part_number')
+                ->where('seller_part_number', '!=', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$byNorm, $wantedNorm) {
+                    foreach ($rows as $row) {
+                        $sku = trim((string) $row->seller_part_number);
+                        $id = trim((string) ($row->newegg_item_number ?? ''));
+                        self::putListedId($byNorm, $wantedNorm, $sku, $id !== '' ? $id : $sku);
+                    }
+                });
+        }
+
+        if (class_exists(NeweggPricing::class) && \Illuminate\Support\Facades\Schema::hasTable('newegg_pricing')) {
+            NeweggPricing::query()
+                ->whereNotNull('seller_part_number')
+                ->where('seller_part_number', '!=', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$byNorm, $wantedNorm) {
+                    foreach ($rows as $row) {
+                        $sku = trim((string) $row->seller_part_number);
+                        $itemNumber = trim((string) ($row->newegg_item_number ?? ''));
+                        $active = $row->active ?? $row->inventory_active;
+                        $isActive = $active === true || $active === 1 || $active === '1';
+                        $hasPrice = (float) ($row->selling_price ?? 0) > 0;
+                        $hasInv = $row->available_quantity !== null;
+                        if ($itemNumber === '' && ! $hasPrice && ! $isActive && ! $hasInv) {
+                            continue;
+                        }
+                        self::putListedId($byNorm, $wantedNorm, $sku, $itemNumber !== '' ? $itemNumber : $sku);
+                    }
+                });
+        }
+
+        if (class_exists(NeweggMetric::class) && \Illuminate\Support\Facades\Schema::hasTable('newegg_metric')) {
+            NeweggMetric::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->whereNotNull('product_id')
+                ->where('product_id', '!=', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$byNorm, $wantedNorm) {
+                    foreach ($rows as $row) {
+                        $sku = trim((string) $row->sku);
+                        $id = trim((string) ($row->product_id ?? ''));
+                        if ($id === '' || strcasecmp($id, $sku) === 0) {
+                            continue;
+                        }
+                        self::putListedId($byNorm, $wantedNorm, $sku, $id);
+                    }
+                });
+        }
+
+        try {
+            $cached = app(\App\Services\MarketplaceManager\NeweggLiveListingsService::class)->peekCached();
+            if (is_array($cached)) {
+                foreach ($cached as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $sku = trim((string) ($row['sku'] ?? ''));
+                    $id = trim((string) ($row['product_id'] ?? ''));
+                    self::putListedId($byNorm, $wantedNorm, $sku, $id !== '' ? $id : $sku);
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore cache misses
+        }
+
+        return self::listedMapFromByNorm($skus, $byNorm);
+    }
+
+    /**
+     * PLS Listed = variant on the Shopify PLS catalog (store=pls).
+     * pls_products.price is a sales overlay and can stay at 0 / stale.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedPls(array $skus): array
+    {
+        $wantedNorm = self::wantedNormalizedSkus($skus);
+        if ($wantedNorm === []) {
+            return [];
+        }
+
+        $byNorm = [];
+
+        if (class_exists(ShopifyCatalogVariant::class) && \Illuminate\Support\Facades\Schema::hasTable('shopify_catalog_variants')) {
+            ShopifyCatalogVariant::query()
+                ->where('store', 'pls')
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$byNorm, $wantedNorm) {
+                    foreach ($rows as $row) {
+                        $sku = trim((string) $row->sku);
+                        if ($sku === '' || MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
+                            continue;
+                        }
+                        $variantId = trim((string) ($row->shopify_variant_id ?? ''));
+                        $productId = trim((string) ($row->shopify_product_id ?? ''));
+                        $id = $variantId !== '' && $variantId !== '0' ? $variantId : $productId;
+                        if ($id === '' || $id === '0') {
+                            continue;
+                        }
+                        self::putListedId($byNorm, $wantedNorm, $sku, $id);
+                    }
+                });
+        }
+
+        if (class_exists(PLSProduct::class) && \Illuminate\Support\Facades\Schema::hasTable('pls_products')) {
+            $fromPrice = ListingCountsEngine::listedIdsFromPrice(PLSProduct::class, $skus, 'price');
+            foreach ($fromPrice as $key => $id) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $key);
+                if ($norm !== '' && isset($wantedNorm[$norm]) && ! isset($byNorm[$norm])) {
+                    $byNorm[$norm] = (string) $id;
+                }
+            }
+        }
+
+        try {
+            $cached = app(\App\Services\MarketplaceManager\PlsLiveListingsService::class)->peekCached();
+            if (is_array($cached)) {
+                foreach ($cached as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $sku = trim((string) ($row['sku'] ?? ''));
+                    $id = trim((string) ($row['sku_id'] ?? $row['product_id'] ?? ''));
+                    self::putListedId($byNorm, $wantedNorm, $sku, $id !== '' ? $id : $sku);
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore cache misses
+        }
+
+        return self::listedMapFromByNorm($skus, $byNorm);
+    }
+
+    /**
+     * TopDawg Listed = present in topdawg_products (API catalog).
+     * reject_sku was hiding live rows whose listing id equals product_code.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedTopDawg(array $skus): array
+    {
+        $wantedNorm = self::wantedNormalizedSkus($skus);
+        if ($wantedNorm === []) {
+            return [];
+        }
+
+        $byNorm = [];
+
+        if (class_exists(TopDawgProduct::class) && \Illuminate\Support\Facades\Schema::hasTable('topdawg_products')) {
+            TopDawgProduct::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$byNorm, $wantedNorm) {
+                    foreach ($rows as $row) {
+                        $sku = trim((string) $row->sku);
+                        $listingId = trim((string) ($row->topdawg_listing_id ?? ''));
+                        $tdid = trim((string) ($row->tdid ?? ''));
+                        $id = $listingId !== '' ? $listingId : ($tdid !== '' ? $tdid : $sku);
+                        if ($id === '') {
+                            continue;
+                        }
+                        self::putListedId($byNorm, $wantedNorm, $sku, $id);
+                    }
+                });
+        }
+
+        try {
+            $cached = app(\App\Services\MarketplaceManager\TopDawgLiveListingsService::class)->peekCached();
+            if (is_array($cached)) {
+                foreach ($cached as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $sku = trim((string) ($row['sku'] ?? ''));
+                    $id = trim((string) ($row['product_id'] ?? ''));
+                    self::putListedId($byNorm, $wantedNorm, $sku, $id !== '' ? $id : $sku);
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore cache misses
+        }
+
+        return self::listedMapFromByNorm($skus, $byNorm);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, true>
+     */
+    private static function wantedNormalizedSkus(array $skus): array
+    {
+        $wanted = [];
+        foreach ($skus as $raw) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $raw);
+            if ($norm !== '') {
+                $wanted[$norm] = true;
+            }
+        }
+
+        return $wanted;
+    }
+
+    /**
+     * @param  array<string, string>  $byNorm
+     * @param  array<string, true>  $wantedNorm
+     */
+    private static function putListedId(array &$byNorm, array $wantedNorm, string $sku, string $id): void
+    {
+        $sku = trim($sku);
+        $id = trim($id);
+        if ($sku === '' || $id === '') {
+            return;
+        }
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm === '' || ! isset($wantedNorm[$norm])) {
+            return;
+        }
+        $existing = $byNorm[$norm] ?? '';
+        $preferNew = $existing === '' || (
+            strcasecmp($existing, $sku) === 0 && strcasecmp($id, $sku) !== 0
+        );
+        if ($preferNew) {
+            $byNorm[$norm] = $id;
+        }
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @param  array<string, string>  $byNorm
+     * @return array<string, string>
+     */
+    private static function listedMapFromByNorm(array $skus, array $byNorm): array
+    {
+        $map = [];
+        foreach ($skus as $raw) {
+            $sku = trim((string) $raw);
+            if ($sku === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm === '' || ! isset($byNorm[$norm])) {
+                continue;
+            }
+            $id = $byNorm[$norm];
+            $map[strtolower($sku)] = $id;
+            $map[$norm] = $id;
+            $map[strtolower($norm)] = $id;
         }
 
         return $map;
