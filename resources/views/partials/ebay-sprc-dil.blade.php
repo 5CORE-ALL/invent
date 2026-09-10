@@ -451,15 +451,8 @@
         function ebayDgIsShopifyB2c() {
             return EBAY_DIL_GROI_CHANNEL === 'shopify_b2c';
         }
-        function ebayDgIsEbayChannel() {
-            return EBAY_DIL_GROI_CHANNEL === 'ebay1'
-                || EBAY_DIL_GROI_CHANNEL === 'ebay2'
-                || EBAY_DIL_GROI_CHANNEL === 'ebay2op'
-                || EBAY_DIL_GROI_CHANNEL === 'ebay3';
-        }
         function ebayDgUsesClearThenApply() {
-            return ebayDgIsEbayChannel()
-                || ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
+            return ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
                 || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsTopdawg()
                 || ebayDgIsMacys();
         }
@@ -1571,13 +1564,8 @@
                 let price = ebayDgIsFbMarketplace() && typeof fbMpRoundSprice === 'function'
                     ? fbMpRoundSprice(meta.sprc)
                     : ebayDgRound2(meta.sprc);
-                if ((ebayDgIsShopifyB2c() || ebayDgIsMacys() || ebayDgIsEbayChannel())
-                    && typeof chPromoFinalSpriceToSave === 'function') {
+                if ((ebayDgIsShopifyB2c() || ebayDgIsMacys()) && typeof chPromoFinalSpriceToSave === 'function') {
                     price = chPromoFinalSpriceToSave(d, price);
-                } else if (ebayDgIsEbayChannel()) {
-                    if (typeof ebayCapSpriceToLmp === 'function') price = ebayCapSpriceToLmp(d, price);
-                    else if (typeof ebay2CapSpriceToLmp === 'function') price = ebay2CapSpriceToLmp(d, price);
-                    else if (typeof ebay3CapSpriceToLmp === 'function') price = ebay3CapSpriceToLmp(d, price);
                 }
                 if (!(price > 0)) return 0;
                 return ebayDgIsFbMarketplace() && typeof fbMpRoundSprice === 'function'
@@ -1609,8 +1597,8 @@
             return 0;
         }
         /**
-         * eBay 1–3 / TikTok / FB / Shopify B2C / Doba / TopDawg / Macys:
-         * wipe every stored S PRC (save 0), then insert Dil (eBay uses Amazon LMP cap).
+         * TikTok / TikTok 2 / FB Marketplace / Shopify B2C / Doba / Doba Pickup / TopDawg / Macys:
+         * wipe every stored S PRC and save 0, then insert the Dil / 0 Sold / CVR discount (not the LMP Diff).
          */
         async function ebayTiktokClearThenApplyAllRules(opts) {
             opts = opts || {};
@@ -1893,9 +1881,7 @@
                     ? 'Saved via API. SPRICE cleared, then Dil painted on ' + n + ' SKU(s); apply + MCM price push queued in the background.'
                     : (ebayDgIsMacys()
                         ? 'Saved via API. SPRICE cleared, then Dil painted on ' + n + ' SKU(s); persist queued in the background.'
-                        : (ebayDgIsEbayChannel()
-                            ? 'Saved via API. Old S PRC deleted, then Dil written on ' + n + ' SKU(s) (Amazon LMP cap). Only S PRC ≠ Price were queued.'
-                            : ('Saved via API. S PRC applied on ' + n + ' SKU(s); only S PRC ≠ Price were queued.'))));
+                        : ('Saved via API. S PRC applied on ' + n + ' SKU(s); only S PRC ≠ Price were queued.')));
                 return res;
             });
         }
