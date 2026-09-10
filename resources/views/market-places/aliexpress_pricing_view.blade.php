@@ -204,14 +204,14 @@
                                 title="Click for daily trend">Sales: $0</span>
                             <span class="badge bg-info fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-gpft-badge"
                                 data-metric="avg_gpft" style="color:#111;font-weight:700;cursor:pointer;"
-                                title="Click for daily trend">GPFT: 0%</span>
+                                title="L30 GPFT % = PFT ÷ Sales (same API orders as /aliexpress-tabulator). Click for daily trend.">GPFT: 0%</span>
                             <span class="badge bg-success fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-profit-badge"
                                 data-metric="total_pft" style="color:#111;font-weight:700;cursor:pointer;"
                                 title="Click for daily trend">PFT: $0</span>
                             <span class="badge fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-roi-badge"
                                 data-metric="avg_roi"
                                 style="background-color:#6f42c1;color:#fff;font-weight:700;cursor:pointer;"
-                                title="Click for daily trend">GROI: 0%</span>
+                                title="L30 GROI % = PFT ÷ COGS (same API orders as /aliexpress-tabulator). Click for daily trend.">GROI: 0%</span>
 
                             <span class="badge bg-info fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-views-badge"
                                 data-metric="total_views" style="color:#111;font-weight:700;cursor:pointer;"
@@ -581,6 +581,30 @@
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'aliexpress'])
         let summaryDataCache = [];
         let aeLmpModalSku = '';
+        let aeL30OrderBadges = null;
+
+        function aePaintOrderGpftGroi() {
+            if (!aeL30OrderBadges) return;
+            $('#ae-avg-gpft-badge').text(
+                'GPFT: ' + Math.round(parseFloat(aeL30OrderBadges.pft_percentage) || 0) + '%'
+            );
+            $('#ae-avg-roi-badge').text(
+                'GROI: ' + Math.round(parseFloat(aeL30OrderBadges.roi_percentage) || 0) + '%'
+            );
+        }
+
+        function aeLoadOrderBadgeStats() {
+            $.ajax({
+                url: '{{ route("aliexpress.tabulator.badges") }}',
+                type: 'GET',
+                success: function(response) {
+                    if (response && response.success && response.l30) {
+                        aeL30OrderBadges = response.l30;
+                        aePaintOrderGpftGroi();
+                    }
+                }
+            });
+        }
 
         function aeNotify(msg, type) {
             if (window.toastr) {
@@ -1558,8 +1582,6 @@
             if (!rows.length) rows = normalizeRows(summaryDataCache);
 
             let totalSales = 0, totalAl30 = 0, totalProfit = 0;
-            let gpftSum = 0, gpftCount = 0;
-            let roiSum  = 0, roiCount  = 0;
             let zeroSold = 0, moreSold = 0;
             let totalViews = 0, totalOutputOrder = 0;
             const seenViewProducts = {};
@@ -1586,19 +1608,10 @@
                 totalProfit += al30 * profit;
                 totalSales  += parseFloat(row.sales) || 0;
 
-                const gpft = parseFloat(row.gpft);
-                if (Number.isFinite(gpft)) { gpftSum += gpft; gpftCount++; }
-
-                const groi = parseFloat(row.groi);
-                if (Number.isFinite(groi)) { roiSum  += groi; roiCount++; }
-
                 totalAl30 += al30;
                 if (inv <= 0) return;
                 if (al30 === 0) zeroSold++; else moreSold++;
             });
-
-            const avgGpft = gpftCount > 0 ? gpftSum / gpftCount : 0;
-            const avgRoi  = roiCount  > 0 ? roiSum  / roiCount  : 0;
 
             let visibleCount = rows.length;
             if (table && typeof table.getData === 'function') {
@@ -1609,7 +1622,7 @@
 
             $('#ae-total-sales-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
             $('#ae-total-profit-badge').text(`PFT: $${Math.round(totalProfit).toLocaleString()}`);
-            $('#ae-avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
+            aePaintOrderGpftGroi();
             const badgeRows = aeBadgeCountRows();
             const pglAllRows = (typeof aeFullTableData !== 'undefined' && aeFullTableData.length)
                 ? aeFullTableData
@@ -1648,9 +1661,6 @@
             $('#ae-low-sgroi-count').text(lowSgroiCount.toLocaleString());
             $('#ae-stop-low-sgroi-btn').toggleClass('is-on', !!aeStopLowSgroi)
                 .attr('data-on', aeStopLowSgroi ? '1' : '0');
-            if ($('#ae-avg-roi-badge').length) {
-                $('#ae-avg-roi-badge').text(`GROI: ${Math.round(avgRoi)}%`);
-            }
             $('#ae-total-views-badge').text('Views: ' + totalViews.toLocaleString());
             const cvrPct = totalViews > 0 ? (totalOutputOrder / totalViews) * 100 : 0;
             $('#ae-avg-cvr-badge').text('CVR: ' + Math.round(cvrPct) + '%');
@@ -1711,6 +1721,7 @@
         });
 
         $(document).ready(function() {
+            aeLoadOrderBadgeStats();
             table = new Tabulator("#aliexpress-pricing-table", {
                 ajaxURL: "/aliexpress/pricing-data",
                 filterMode: "local",
@@ -2973,6 +2984,7 @@
                         $status.removeClass('text-muted text-danger').addClass('text-success').text(msg);
                         if (window.toastr) toastr.success(msg); else alert(msg);
                         table.setData('/aliexpress/pricing-data');
+                        aeLoadOrderBadgeStats();
                     },
                     error: function(xhr) {
                         let message = 'AliExpress ' + label + ' sync failed.';
