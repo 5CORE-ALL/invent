@@ -17,6 +17,7 @@ use App\Services\ChannelLivePriceSync;
 use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
+use App\Services\TemuShopifySalesService;
 use App\Support\MacysAmazonPriceCap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -39,6 +40,11 @@ class ChannelPushSpriceRunner
         return new self($channel);
     }
 
+    public static function refusesSpriceQueue(string $channel): bool
+    {
+        return in_array(strtolower(trim($channel)), ['temu', 'temu2', 'temu3'], true);
+    }
+
     public static function livePushAllowed(): bool
     {
         if (! app()->environment('local')) {
@@ -51,6 +57,12 @@ class ChannelPushSpriceRunner
     public static function spawnWorker(string $channel): bool
     {
         $channel = strtolower(trim($channel)) ?: 'ebay1';
+        if (self::refusesSpriceQueue($channel)) {
+            ChannelPushSpriceJobStore::for($channel)->forceStop(
+                'Stopped: Temu does not push S PRC. Use Push Prc (S Temu B Prc) only when auto-push is on.'
+            );
+            return false;
+        }
         if (! self::livePushAllowed()) {
             Log::warning('Channel S PRC worker spawn skipped — live push disabled in local', [
                 'channel' => $channel,
@@ -114,6 +126,17 @@ class ChannelPushSpriceRunner
     public function run(): int
     {
         @set_time_limit(0);
+
+        if (self::refusesSpriceQueue($this->channel)) {
+            ChannelPushSpriceJobStore::for($this->channel)->forceStop(
+                'Stopped: Temu does not push S PRC.'
+            );
+            Log::warning('S PRC runner refused Temu listing channel', [
+                'channel' => $this->channel,
+            ]);
+
+            return 0;
+        }
 
         if (! self::livePushAllowed()) {
             ChannelPushSpriceJobStore::for($this->channel)->forceStop(
@@ -240,6 +263,21 @@ class ChannelPushSpriceRunner
                         $price = $floored;
                     }
                 }
+                $sprice = $price;
+                $listingBase = null;
+                if (in_array($this->channel, ['temu', 'temu2', 'temu3'], true)) {
+                    $listingBase = TemuShopifySalesService::computePushBaseFromSprice($sprice);
+                    if (! ($listingBase > 0)) {
+                        throw new \RuntimeException('S Temu B Prc required');
+                    }
+                    $price = $listingBase;
+                    $logger->info('Temu listing push uses S Temu B Prc, not S PRC', [
+                        'channel' => $this->channel,
+                        'sku' => $sku,
+                        'sprice' => $sprice,
+                        'base' => $listingBase,
+                    ]);
+                }
                 $pushRes = $this->pushPrice($sku, $price);
                 $payload = method_exists($pushRes, 'getData') ? $pushRes->getData(true) : [];
                 $status = method_exists($pushRes, 'getStatusCode') ? $pushRes->getStatusCode() : 200;
@@ -263,7 +301,7 @@ class ChannelPushSpriceRunner
                         $live = $pulled;
                     }
                 }
-                ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, (float) $price);
+                ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, (float) $sprice, $listingBase);
             } catch (\Throwable $e) {
                 $ok = false;
                 $error = $e->getMessage();

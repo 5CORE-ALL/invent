@@ -11001,15 +11001,27 @@
                 const prev = chPromoPageReloadPushAllowed();
                 saveChPromoPageReloadPush(on)
                     .done(function() {
+                        if (!on) {
+                            if (typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel()) {
+                                if (typeof cancelTemuListingAutopush === 'function') cancelTemuListingAutopush();
+                                if (typeof stopChannelPushSpriceNow === 'function') stopChannelPushSpriceNow();
+                            }
+                            chPromoToast(
+                                'success',
+                                chPromoIsTemuPromoChannel()
+                                    ? 'Auto-push off — remaining Temu listing pushes cancelled. S PRC is never pushed.'
+                                    : 'Auto-push off — price edits only save. Daily cron still pushes.'
+                            );
+                            return;
+                        }
                         chPromoToast(
                             'success',
                             on
-                                ? 'Auto-push on — only SKUs whose S PRC ≠ Price are queued.'
-                                : (chPromoIsTemuPromoChannel()
-                                    ? 'Auto-push off — price edits only save. No Temu listing cron.'
-                                    : 'Auto-push off — price edits only save. Daily cron still pushes.')
+                                ? (chPromoIsTemuPromoChannel()
+                                    ? 'Auto-push on — only leftover S Temu B Prc (not S PRC) are queued.'
+                                    : 'Auto-push on — only SKUs whose S PRC ≠ Price are queued.')
+                                : 'Auto-push off — price edits only save. Daily cron still pushes.'
                         );
-                        if (!on) return;
                         if (typeof chPromoIsTemuPromoChannel === 'function'
                             && chPromoIsTemuPromoChannel()
                             && typeof scanAndQueueTemuListingPush === 'function') {

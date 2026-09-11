@@ -185,6 +185,32 @@
                     });
                 }
             }
+            function chPushSpriceIsTemu() {
+                return CH_PUSH_SPRICE_CHANNEL === 'temu'
+                    || CH_PUSH_SPRICE_CHANNEL === 'temu2'
+                    || CH_PUSH_SPRICE_CHANNEL === 'temu3';
+            }
+            function stopChannelPushSpriceNow() {
+                stopChannelPushSpricePoll();
+                if (typeof cancelChannelPushSpriceClient === 'function') {
+                    try { cancelChannelPushSpriceClient(); } catch (e) { /* ignore */ }
+                }
+                chPushSpriceBuf = {};
+                chPushSpriceExpecting = false;
+                $.ajax({
+                    url: CH_PUSH_SPRICE_URL + '/cancel',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
+                    data: { _token: chPushSpriceCsrf() },
+                });
+                setChannelPushSpriceProgress({
+                    active: false,
+                    done: 0,
+                    total: 0,
+                    pct: 0,
+                    msg: 'Stopped',
+                });
+            }
             function chPushSpriceCancelQueued() {
                 if (chPushSpriceUsesClientPump() && (chPushClientBusy() || chPushClientCancelled)) {
                     if (!confirm('Cancel remaining listing pushes? Already-pushed SKUs stay on the marketplace.')) return;
@@ -642,6 +668,7 @@
             }
             function enqueueChannelPushSprice(items, opts) {
                 opts = opts || {};
+                if (chPushSpriceIsTemu()) return;
                 if (!CH_PUSH_SPRICE_LIVE) {
                     if (!opts.silent) {
                         chPushSpriceToast('error', 'Live S PRC push is disabled on this environment');
@@ -682,8 +709,9 @@
             }
             function enqueueChannelPushSpriceAfterSave(sku, price, row, opts) {
                 opts = opts || {};
-                const isTemu = CH_PUSH_SPRICE_CHANNEL === 'temu' || CH_PUSH_SPRICE_CHANNEL === 'temu2' || CH_PUSH_SPRICE_CHANNEL === 'temu3';
-                const force = opts.force === true || (isTemu && opts.force !== false);
+                if (chPushSpriceIsTemu()) return false;
+                const isTemu = false;
+                const force = opts.force === true;
                 const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (row || {});
                 let p = chPushSpriceRound2(price);
                 if (!force) {
@@ -812,6 +840,7 @@
             }
             function enqueueChannelPushSpriceClient(items, opts) {
                 opts = opts || {};
+                if (chPushSpriceIsTemu()) return 0;
                 if (!CH_PUSH_SPRICE_LIVE) {
                     chPushSpriceToast('error', 'Live S PRC push is disabled on this environment');
                     return 0;
@@ -1024,6 +1053,7 @@
             }
             function scanAndQueueChannelPushSprice(tbl, opts) {
                 opts = opts || {};
+                if (chPushSpriceIsTemu()) return;
                 // Catalog catch-up is opt-in ({ catalog: true }). Only saved S PRC ≠ live Price.
                 if (!opts.catalog) return;
                 if (opts.once !== false && opts.silent && window._chPushSpricePageChecked) return;
@@ -1093,9 +1123,12 @@
             global.scanAndQueueChannelPushSprice = scanAndQueueChannelPushSprice;
             global.startChannelPushSpricePoll = startChannelPushSpricePoll;
             global.setChannelPushSpriceProgress = setChannelPushSpriceProgress;
+            global.stopChannelPushSpriceNow = stopChannelPushSpriceNow;
             global._chPushSpriceChannel = CH_PUSH_SPRICE_CHANNEL;
 
-            if (CH_PUSH_SPRICE_LIVE) {
+            if (chPushSpriceIsTemu()) {
+                stopChannelPushSpriceNow();
+            } else if (CH_PUSH_SPRICE_LIVE) {
                 $.ajax({
                     url: CH_PUSH_SPRICE_URL + '/status',
                     method: 'GET',

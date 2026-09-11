@@ -110,6 +110,12 @@ class PushedListingPriceTest extends TestCase
         }
     }
 
+    public function test_temu_sprice_inverts_to_listing_base_not_sprice(): void
+    {
+        $this->assertSame(18.68, TemuShopifySalesService::computePushBaseFromSprice(24.22));
+        $this->assertSame(24.22, TemuShopifySalesService::computeFullTemuPrice(18.68));
+    }
+
     public function test_dil_does_not_enqueue_when_live_already_matches(): void
     {
         $m = new \ReflectionMethod(DilRuleSpriceApplyService::class, 'shouldEnqueuePush');

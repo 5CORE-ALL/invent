@@ -6423,12 +6423,6 @@
                 return;
             }
             if (!confirm('Push S Temu B Prc for ' + items.length + ' selected SKU(s)?')) return;
-            if (typeof chPromoQueueSpricePushes === 'function') {
-                chPromoQueueSpricePushes(items.map(function(item) {
-                    return { row: item.row, price: item.pushBase || item.price };
-                }));
-                return;
-            }
             temuRunPushQueue(items, 'Temu 1 S Temu B Prc push done');
         }
         window.temuBulkPushSelected = temuBulkPushSelected;
@@ -6456,9 +6450,11 @@
             const goodsId = data.goods_id || '';
             const skuId = data.sku_id || '';
             const pushBase = typeof temuListingPushBase === 'function' ? temuListingPushBase(data) : null;
-            const raw = parseFloat(price);
             let pushPrice = (pushBase != null && pushBase > 0) ? +pushBase.toFixed(2) : null;
-            if (pushPrice == null && isFinite(raw) && raw > 0) pushPrice = +raw.toFixed(2);
+            if (pushPrice == null && typeof temuPushBaseFromSprice === 'function') {
+                const fromArg = temuPushBaseFromSprice(price);
+                if (fromArg > 0) pushPrice = +Number(fromArg).toFixed(2);
+            }
             if (!sku || !(pushPrice > 0)) {
                 return Promise.reject({ message: 'SKU and S Temu B Prc required' });
             }
@@ -6480,6 +6476,7 @@
                         _token: '{{ csrf_token() }}',
                         sku: sku,
                         price: pushPrice,
+                        as_base: 1,
                         goods_id: goodsId,
                         sku_id: skuId
                     },
