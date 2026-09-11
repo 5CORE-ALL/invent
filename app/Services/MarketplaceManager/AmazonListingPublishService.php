@@ -57,13 +57,15 @@ class AmazonListingPublishService
             if (! ($created['success'] ?? false)) {
                 return $created;
             }
+        }
+        $asin = trim((string) ($inspect['asin'] ?? ''));
+        if ($asin === '') {
             $this->api->disableNonUsMarketplaceOffers($sku, $productType);
-            $inspect = $this->waitForSellerCentralListing($sku, $productType);
+            $inspect = $this->waitForSellerCentralListing($sku);
             $asin = trim((string) ($inspect['asin'] ?? ''));
             if ($asin !== '') {
                 $this->completeUsListing($sku, $details, $title, $qty, $images, $asin);
-                $this->api->disableNonUsMarketplaceOffers($sku, $productType);
-                $inspect = $this->waitForSellerCentralListing($sku, $productType);
+                $inspect = $this->api->inspectSellerCentralListing($sku);
             }
             if (! ($inspect['found'] ?? false)) {
                 return [
@@ -146,19 +148,16 @@ class AmazonListingPublishService
     /**
      * @return array{checked: bool, found: bool, seller_sku?: string, asin?: string, message?: string}
      */
-    private function waitForSellerCentralListing(string $sku, string $productType = ''): array
+    private function waitForSellerCentralListing(string $sku): array
     {
         $last = ['checked' => true, 'found' => false];
-        for ($i = 0; $i < 10; $i++) {
+        for ($i = 0; $i < 6; $i++) {
             if ($i > 0) {
-                sleep(3);
+                sleep(2);
             }
             $last = $this->api->inspectSellerCentralListing($sku);
             if (($last['found'] ?? false) && trim((string) ($last['asin'] ?? '')) !== '') {
                 return $last;
-            }
-            if (trim((string) ($last['seller_sku'] ?? $sku)) !== '') {
-                $this->api->disableNonUsMarketplaceOffers($sku, $productType);
             }
         }
 
@@ -204,7 +203,6 @@ class AmazonListingPublishService
         $attributes = $this->usListingAttributes($sku, $details, $title, $qty, $images);
 
         $result = $this->api->putListingsItem($sku, $productType, $attributes, 'LISTING');
-        $this->api->disableNonUsMarketplaceOffers($sku, $productType);
         $result['skus'] = [$sku];
 
         return $result;

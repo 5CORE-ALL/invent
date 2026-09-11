@@ -2302,6 +2302,7 @@ class ListingManagerController extends Controller
      */
     public function publishDraft(Request $request, int $id)
     {
+        @set_time_limit(180);
         $draft = ListingManagerChannelDraft::query()->with('channel:id,channel')->findOrFail($id);
         $details = $this->ensureIdentifierDefaults(
             ListingManagerPublishStatus::normalizeDetails(

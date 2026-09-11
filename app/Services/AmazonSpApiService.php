@@ -6,6 +6,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Request;
 use Aws\Signature\SignatureV4;
 use Aws\Credentials\Credentials;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
@@ -6320,42 +6321,26 @@ class AmazonSpApiService
             'A2EUQ1WTGCTBG2', // CA
             'A1AM78C64UM0Y8', // MX
         ];
-        foreach ($foreign as $marketplaceId) {
-            $itemUrl = $this->endpoint.'/listings/2021-08-01/items/'
-                .rawurlencode($sellerId).'/'.rawurlencode($sku)
-                .'?marketplaceIds='.rawurlencode($marketplaceId);
-            try {
-                Http::withHeaders([
-                    'x-amz-access-token' => $token,
-                    'Accept' => 'application/json',
-                ])->timeout(20)->delete($itemUrl);
-            } catch (\Throwable $e) {
-                Log::debug('AmazonSpApiService: skip non-US offer delete', [
-                    'sku' => $sku,
-                    'marketplace' => $marketplaceId,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-            try {
-                Http::withHeaders([
-                    'x-amz-access-token' => $token,
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json',
-                ])->timeout(20)->patch($itemUrl, [
-                    'productType' => $productType,
-                    'patches' => [
-                        ['op' => 'delete', 'path' => '/attributes/purchasable_offer'],
-                        ['op' => 'delete', 'path' => '/attributes/list_price'],
-                        ['op' => 'delete', 'path' => '/attributes/fulfillment_availability'],
-                    ],
-                ]);
-            } catch (\Throwable $e) {
-                Log::debug('AmazonSpApiService: skip non-US offer disable', [
-                    'sku' => $sku,
-                    'marketplace' => $marketplaceId,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+        try {
+            Http::pool(function (Pool $pool) use ($foreign, $token, $sellerId, $sku) {
+                foreach ($foreign as $marketplaceId) {
+                    $itemUrl = $this->endpoint.'/listings/2021-08-01/items/'
+                        .rawurlencode($sellerId).'/'.rawurlencode($sku)
+                        .'?marketplaceIds='.rawurlencode($marketplaceId);
+                    $pool->as($marketplaceId)
+                        ->withHeaders([
+                            'x-amz-access-token' => $token,
+                            'Accept' => 'application/json',
+                        ])
+                        ->timeout(8)
+                        ->delete($itemUrl);
+                }
+            });
+        } catch (\Throwable $e) {
+            Log::debug('AmazonSpApiService: skip non-US offer disable', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
