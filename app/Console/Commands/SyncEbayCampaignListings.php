@@ -35,7 +35,7 @@ class SyncEbayCampaignListings extends Command
             $this->warn('=== ELIGIBLE-ONLY — skipping campaign fetch (Step 1) and suggested-bid refresh (Step 3) ===');
         }
         if ($bidsOnly) {
-            $this->warn('=== BIDS-ONLY — skipping campaign fetch (Step 1) and eligible sync (Step 2); only refreshing suggested bids (Step 3) ===');
+            $this->warn('=== BIDS-ONLY — skipping campaign fetch (Step 1) and eligible sync (Step 2); only refreshing suggested bids + promote status (Step 3) ===');
         }
 
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -281,7 +281,10 @@ class SyncEbayCampaignListings extends Command
             $this->info("✅ Eligible listings inserted/updated: {$eligibleInserted}");
         }
 
-        // ── Step 3: Fetch suggested_bid for all listings (batch 20 per API call) ──
+        // ── Step 3: Refresh suggested_bid + promote_with_ad for all listings ──
+        // Step 2 only inserts listings that are not already in the table, so without
+        // this refresh a first-sync UNDETERMINED stays forever even after eBay
+        // flips the listing to RECOMMENDED (Eligible).
         if (!$dryRun && !$eligibleOnly) {
             $this->line('');
             $this->info('🔍 Fetching suggested bids from Recommendation API (batches of 20)...');
@@ -306,7 +309,7 @@ class SyncEbayCampaignListings extends Command
                     foreach ($pendingBidUpdates as $upd) {
                         DB::table('ebay_campaign_ads')
                             ->where('listing_id', $upd['listing_id'])
-                            ->update(['suggested_bid' => $upd['suggested_bid'], 'updated_at' => now()]);
+                            ->update($upd['update']);
                         $bidCount++;
                     }
                 });
@@ -327,6 +330,7 @@ class SyncEbayCampaignListings extends Command
 
                     foreach ($recommendations as $rec) {
                         $lid = $rec['listingId'] ?? null;
+                        $promoteStatus = $rec['marketing']['ad']['promoteWithAd'] ?? null;
                         $bidPercs = $rec['marketing']['ad']['bidPercentages'] ?? [];
                         $suggestedBid = null;
 
@@ -348,13 +352,23 @@ class SyncEbayCampaignListings extends Command
                             $suggestedBid = (float) $bidPercs[0]['value'];
                         }
 
-                        if ($lid && $suggestedBid !== null) {
-                            $pendingBidUpdates[] = [
-                                'listing_id' => (string) $lid,
-                                'suggested_bid' => $suggestedBid,
-                            ];
-                            if (count($pendingBidUpdates) >= $dbChunkSize) {
-                                $flushBids();
+                        if ($lid) {
+                            $update = ['updated_at' => now()];
+                            if ($suggestedBid !== null) {
+                                $update['suggested_bid'] = $suggestedBid;
+                            }
+                            if ($promoteStatus) {
+                                $update['promote_with_ad'] = $promoteStatus;
+                            }
+
+                            if (count($update) > 1) {
+                                $pendingBidUpdates[] = [
+                                    'listing_id' => (string) $lid,
+                                    'update' => $update,
+                                ];
+                                if (count($pendingBidUpdates) >= $dbChunkSize) {
+                                    $flushBids();
+                                }
                             }
                         }
                     }
@@ -366,7 +380,20 @@ class SyncEbayCampaignListings extends Command
             }
 
             $flushBids();
-            $this->info("✅ Suggested bids updated: {$bidCount} listings");
+            $this->info("✅ Suggested bids / promote status updated: {$bidCount} listings");
+        }
+
+        // ── Step 4: Backfill promote_with_ad for any in-campaign row missing it ──
+        if (!$dryRun && !$eligibleOnly) {
+            $backfilled = DB::table('ebay_campaign_ads')
+                ->whereNotNull('campaign_id')
+                ->where(function ($q) {
+                    $q->whereNull('promote_with_ad')->orWhere('promote_with_ad', '');
+                })
+                ->update(['promote_with_ad' => 'AD_ALREADY_CREATED', 'updated_at' => now()]);
+            if ($backfilled > 0) {
+                $this->info("✅ Backfilled promote_with_ad=AD_ALREADY_CREATED on {$backfilled} in-campaign rows.");
+            }
         }
 
         $this->line('');

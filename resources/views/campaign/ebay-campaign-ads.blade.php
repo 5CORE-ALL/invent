@@ -59,6 +59,7 @@
                         <option value="RUNNING">RUNNING</option>
                         <option value="PAUSED">PAUSED</option>
                         <option value="ENDED">ENDED</option>
+                        <option value="INACTIVE">INACTIVE</option>
                     </select>
                 </div>
                 <div class="col-auto">
@@ -490,13 +491,15 @@ $(document).ready(function () {
                 }
             },
             {
-                title: 'Status', field: 'campaign_status', width: 100, hozAlign: 'center',
+                title: 'Status', field: 'campaign_status', width: 110, hozAlign: 'center',
+                headerTooltip: 'Campaign status from eBay. Dash / No Campaign = listing is not in a Promoted Listings campaign yet (Eligible on eBay is the Promote column).',
                 formatter: function(cell) {
-                    const v = cell.getValue();
+                    const v = String(cell.getValue() || '').toUpperCase();
                     if (v === 'RUNNING') return '<span class="badge-run">RUNNING</span>';
                     if (v === 'PAUSED')  return '<span class="badge-paus">PAUSED</span>';
                     if (v === 'ENDED')   return '<span class="badge-end">ENDED</span>';
-                    return '<span style="color:#aaa; font-size:11px;">—</span>';
+                    if (v === 'INACTIVE') return '<span class="badge-end">INACTIVE</span>';
+                    return '<span style="color:#aaa; font-size:11px;" title="Not enrolled in a campaign">No Campaign</span>';
                 }
             },
             {
@@ -566,7 +569,7 @@ $(document).ready(function () {
             },
             {
                 title: 'Promote', field: 'promote_with_ad', width: 140, hozAlign: 'center',
-                headerTooltip: 'eBay Promotion eligibility status',
+                headerTooltip: 'eBay Recommendation API promoteWithAd. Eligible on Seller Hub = RECOMMENDED. Unknown = last sync was UNDETERMINED (often stale until the next sync).',
                 formatter: function(cell) {
                     const v = cell.getValue();
                     if (!v) return '<span class="text-muted">—</span>';
@@ -575,7 +578,7 @@ $(document).ready(function () {
                         'OPTIONAL':           { color: '#856404', bg: '#fff3cd', label: '⚡ Optional' },
                         'AD_ALREADY_CREATED': { color: '#0d6efd', bg: '#cfe2ff', label: '📢 In Campaign' },
                         'NOT_RECOMMENDED':    { color: '#6c757d', bg: '#f8f9fa', label: '— Not Rec.' },
-                        'UNDETERMINED':       { color: '#6c757d', bg: '#f8f9fa', label: '? Unknown' },
+                        'UNDETERMINED':       { color: '#6c757d', bg: '#f8f9fa', label: '? Undetermined' },
                     };
                     const s = map[v] || { color: '#6c757d', bg: '#f8f9fa', label: v };
                     return `<span style="color:${s.color}; background:${s.bg}; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600;">${s.label}</span>`;
