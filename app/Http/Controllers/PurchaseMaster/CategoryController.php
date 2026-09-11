@@ -3797,10 +3797,9 @@ PROMPT;
             ];
             foreach ($fieldKeys as $key) {
                 $row[$key] = $values[$key] ?? null;
-                $img = $values[$key.'_img'] ?? null;
-                $pdf = $values[$key.'_pdf'] ?? null;
-                $row[$key.'_img'] = is_string($img) ? trim($img) : $img;
-                $row[$key.'_pdf'] = is_string($pdf) ? trim($pdf) : $pdf;
+                [$img, $pdf] = ComplianceMasterBadgeCalculator::fieldFiles($values, $key);
+                $row[$key.'_img'] = $img !== '' ? $img : null;
+                $row[$key.'_pdf'] = $pdf !== '' ? $pdf : null;
             }
 
             $normalizedSku = $row['SKU'];
@@ -4022,8 +4021,26 @@ PROMPT;
 
             $field = $validated['field'];
             $pathKey = $validated['kind'] === 'pdf' ? $field.'_pdf' : $field.'_img';
-            $storedPath = trim((string) ($values[$pathKey] ?? ''));
-            $values[$pathKey] = '';
+            [$resolvedImg, $resolvedPdf] = ComplianceMasterBadgeCalculator::fieldFiles($values, $field);
+            $storedPath = $validated['kind'] === 'pdf' ? $resolvedPdf : $resolvedImg;
+            if ($storedPath === '') {
+                $storedPath = trim((string) ($values[$pathKey] ?? ''));
+            }
+
+            $clearKeys = $validated['kind'] === 'pdf'
+                ? [$field.'_pdf', $field.'_PDF', ucfirst($field).'_pdf']
+                : [$field.'_img', $field.'_image', $field.'_Image', ucfirst($field).'_img', ucfirst($field).'_image'];
+            foreach ($clearKeys as $clearKey) {
+                $values[$clearKey] = '';
+            }
+
+            $currentVal = trim((string) ($values[$field] ?? ''));
+            $valueIsThisFile = $currentVal !== ''
+                && strcasecmp($currentVal, $storedPath) === 0;
+            if ($valueIsThisFile) {
+                $values[$field] = 'REQ';
+            }
+
             $product->Values = $values;
             $product->save();
 

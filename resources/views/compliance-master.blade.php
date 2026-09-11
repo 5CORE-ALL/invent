@@ -1212,14 +1212,47 @@
                 return item[key] != null ? String(item[key]).trim() : '';
             }
 
+            function complianceLooksLikePdfPath(value) {
+                const s = String(value || '').trim();
+                return /\.pdf(?:$|\?)/i.test(s) || s.indexOf('compliance_field_pdfs/') !== -1;
+            }
+
+            function complianceLooksLikeImagePath(value) {
+                const s = String(value || '').trim();
+                return /\.(png|jpe?g|gif|webp|svg|bmp)(?:$|\?)/i.test(s) || s.indexOf('compliance_field_images/') !== -1;
+            }
+
+            function complianceFirstNonEmptyPath(item, keys) {
+                if (!item) return '';
+                for (let i = 0; i < keys.length; i++) {
+                    const v = item[keys[i]];
+                    if (v != null && String(v).trim() !== '') return String(v).trim();
+                }
+                return '';
+            }
+
             function complianceFieldImagePath(item, key) {
-                const ik = key + '_img';
-                return item[ik] != null ? String(item[ik]).trim() : '';
+                const fromKeys = complianceFirstNonEmptyPath(item, [
+                    key + '_img',
+                    key + '_image',
+                    key + '_Image',
+                    key.charAt(0).toUpperCase() + key.slice(1) + '_img',
+                    key.charAt(0).toUpperCase() + key.slice(1) + '_image'
+                ]);
+                if (fromKeys) return fromKeys;
+                const raw = complianceFieldStoredValue(item, key);
+                return complianceLooksLikeImagePath(raw) ? raw : '';
             }
 
             function complianceFieldPdfPath(item, key) {
-                const pk = key + '_pdf';
-                return item[pk] != null ? String(item[pk]).trim() : '';
+                const fromKeys = complianceFirstNonEmptyPath(item, [
+                    key + '_pdf',
+                    key + '_PDF',
+                    key.charAt(0).toUpperCase() + key.slice(1) + '_pdf'
+                ]);
+                if (fromKeys) return fromKeys;
+                const raw = complianceFieldStoredValue(item, key);
+                return complianceLooksLikePdfPath(raw) ? raw : '';
             }
 
             function isComplianceNaValue(value) {
@@ -1589,6 +1622,37 @@
                     renderTable(filteredData);
                     updateCounts();
                 }
+                syncComplianceTableRowsFromLocal(Array.from(targets));
+            }
+
+            function syncComplianceTableRowsFromLocal(skuKeys) {
+                if (!complianceTable || typeof complianceTable.getRows !== 'function') return;
+                const want = new Set();
+                (Array.isArray(skuKeys) ? skuKeys : []).forEach(function(s) {
+                    const k = String(s || '').trim().toUpperCase();
+                    if (k) want.add(k);
+                });
+                if (want.size === 0) return;
+                complianceTable.getRows().forEach(function(row) {
+                    const data = row.getData() || {};
+                    const sku = String(data.SKU || '').trim().toUpperCase();
+                    if (!want.has(sku)) return;
+                    const src = findComplianceRowBySku(data.SKU);
+                    if (!src) return;
+                    const patch = {};
+                    COMPLIANCE_BULK_FIELD_KEYS.forEach(function(k) {
+                        patch[k] = src[k];
+                        patch[k + '_img'] = src[k + '_img'] || '';
+                        patch[k + '_pdf'] = src[k + '_pdf'] || '';
+                    });
+                    try {
+                        row.update(patch);
+                    } catch (e) {}
+                    try {
+                        row.reformat();
+                    } catch (e) {}
+                });
+                updateCounts();
             }
 
             // Show loader immediately
@@ -1939,6 +2003,17 @@
                         const pathKey = kind === 'pdf' ? field + '_pdf' : field + '_img';
                         const patch = { sku };
                         patch[pathKey] = '';
+                        if (kind === 'pdf') {
+                            patch[field + '_PDF'] = '';
+                        } else {
+                            patch[field + '_image'] = '';
+                            patch[field + '_Image'] = '';
+                        }
+                        const existing = findComplianceRowBySku(sku);
+                        const currentVal = existing ? complianceFieldStoredValue(existing, field) : '';
+                        if (currentVal && (kind === 'pdf' ? complianceLooksLikePdfPath(currentVal) : complianceLooksLikeImagePath(currentVal))) {
+                            patch[field] = 'REQ';
+                        }
                         patchLocalComplianceRowsFromPayload(patch, []);
                         const openSku = String(complianceEditSku || document.getElementById('addComplianceSku')?.value || '').trim();
                         if (openSku && openSku.toUpperCase() === sku.toUpperCase()) {
@@ -2154,7 +2229,7 @@
             function cmTitleWithCount(label, countId) {
                 return function() {
                     const el = document.createElement('span');
-                    el.innerHTML = escapeHtml(label) + ' <span id="' + countId + '" class="text-danger fw-bold">(0)</span>';
+                    el.innerHTML = escapeHtml(label) + ' <span id="' + countId + '" data-cm-count="' + countId + '" class="cm-col-count text-danger fw-bold">(0)</span>';
                     return el;
                 };
             }
@@ -2336,6 +2411,8 @@
                             return complianceFieldCellHtml(item, fk);
                         }
                     });
+                    cols.push({ title: fk + '_img', field: fk + '_img', visible: false });
+                    cols.push({ title: fk + '_pdf', field: fk + '_pdf', visible: false });
                 });
 
                 cols.push({
@@ -2383,10 +2460,19 @@
                         },
                         tableBuilt: function() {
                             bindComplianceHeaderFilters();
+                            updateCounts();
+                        },
+                        renderComplete: function() {
+                            updateCounts();
                         }
                     });
                 } else {
-                    complianceTable.replaceData(d);
+                    const replaced = complianceTable.replaceData(d);
+                    if (replaced && typeof replaced.then === 'function') {
+                        replaced.then(function() { updateCounts(); }).catch(function() { updateCounts(); });
+                    } else {
+                        updateCounts();
+                    }
                 }
             }
 
@@ -2408,7 +2494,9 @@
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
                         skuCount++;
+                });
 
+                (Array.isArray(tableData) ? tableData : filteredData).forEach(item => {
                     if (isReqFilterMatchForItem(item, 'battery')) batteryMissingCount++;
                     if (isReqFilterMatchForItem(item, 'wireless')) wirelessMissingCount++;
                     if (isReqFilterMatchForItem(item, 'electric')) electricMissingCount++;
@@ -2421,6 +2509,9 @@
                 });
 
                 const setText = function(id, text) {
+                    document.querySelectorAll('[data-cm-count="' + id + '"]').forEach(function(node) {
+                        node.textContent = text;
+                    });
                     const el = document.getElementById(id);
                     if (el) el.textContent = text;
                 };
