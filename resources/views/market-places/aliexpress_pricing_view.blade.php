@@ -2180,7 +2180,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (AL30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                        headerTooltip: "S PRC from Dil → Target GROI% slabs (INV > 0, including 0 Sold). First matching From–To; last slab includes the To value. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof aeIsParentRow === 'function' && aeIsParentRow(rowData)) return '';
@@ -2202,7 +2202,7 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when AL30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when Dil is in a From–To range (INV > 0, including 0 Sold). S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2294,7 +2294,7 @@
                     {
                         title: "SGROI",
                         field: "sroi",
-                        headerTooltip: "SGROI from Sprc Dil S PRC. Dil-matching Target GROI when AL30 > 0; 0 Sold uses the lowest Target GROI. LMP cap on sold rows can lower the shown %.",
+                        headerTooltip: "SGROI from Sprc Dil S PRC. Dil-matching Target GROI when Dil is in a From–To range (INV > 0, including 0 Sold). LMP cap can lower the shown %.",
                         sorter: function(a, b, aRow, bRow) {
                             const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
                             const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
