@@ -1120,13 +1120,18 @@
         if (basePrice > 0) return basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
         return parseFloat(rowData && rowData.temu_price) || 0;
     }
-    /** Full Temu Price from Base: (base × 1.1364), then +$2.99 if ≤ $26.99 */
+    function temuMoneyRound2(n) {
+        const x = parseFloat(n);
+        if (!isFinite(x)) return 0;
+        return Math.round((x + Number.EPSILON) * 100) / 100;
+    }
+    /** Full Temu Price from Base: round(base) × 1.1364, then +$2.99 if ≤ $26.99, then 2¢. */
     function temu2FullPriceFromBase(basePrice) {
-        const b = parseFloat(basePrice) || 0;
+        const b = temuMoneyRound2(basePrice);
         if (b <= 0) return 0;
         let full = b * TEMU_FULL_PRICE_MULT;
         if (full <= 26.99) full += 2.99;
-        return full;
+        return temuMoneyRound2(full);
     }
     function temu2FullPriceFromRow(rowData) {
         return temu2FullPriceFromBase(parseFloat(rowData && rowData.base_price) || 0);

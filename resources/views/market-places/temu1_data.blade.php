@@ -1045,13 +1045,18 @@
         if (basePrice > 0) return basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
         return parseFloat(rowData && rowData.temu_price) || 0;
     }
-    /** Full Temu Price from Base: (base × 1.1364), then +$2.99 if ≤ $26.99 */
+    function temuMoneyRound2(n) {
+        const x = parseFloat(n);
+        if (!isFinite(x)) return 0;
+        return Math.round((x + Number.EPSILON) * 100) / 100;
+    }
+    /** Full Temu Price from Base: round(base) × 1.1364, then +$2.99 if ≤ $26.99, then 2¢. */
     function temu2FullPriceFromBase(basePrice) {
-        const b = parseFloat(basePrice) || 0;
+        const b = temuMoneyRound2(basePrice);
         if (b <= 0) return 0;
         let full = b * TEMU_FULL_PRICE_MULT;
         if (full <= 26.99) full += 2.99;
-        return full;
+        return temuMoneyRound2(full);
     }
     function temu2FullPriceFromRow(rowData) {
         return temu2FullPriceFromBase(parseFloat(rowData && rowData.base_price) || 0);
@@ -1283,7 +1288,15 @@
         if (!isFinite(T) || T <= 0) return null;
         const full = temu2FullPriceFromBase(T);
         if (!(full > 0)) return null;
-        return +full.toFixed(2);
+        return full;
+    }
+    function temuListingBasesMatch(row, sprice) {
+        const listingBase = typeof temuMoneyRound2 === 'function'
+            ? temuMoneyRound2(row && row.base_price)
+            : +Number(row && row.base_price).toFixed(2);
+        if (!(listingBase > 0) || typeof temuPushBaseFromSprice !== 'function') return false;
+        const sBase = temuPushBaseFromSprice(sprice);
+        return sBase > 0 && (typeof temuMoneyRound2 === 'function' ? temuMoneyRound2(sBase) : +Number(sBase).toFixed(2)) === listingBase;
     }
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -1813,12 +1826,26 @@
         return (parseFloat(row && (row.inventory != null ? row.inventory : row.INV)) || 0) > 0;
     }
 
-    /** Same number as the Temu Price column — not Base Price. */
+    /**
+     * Temu Price shown in the grid.
+     * Formula from Base can land 1¢ off Dil S PRC even when S Base == listing Base.
+     * When those bases match, use S PRC so both columns share the same calculate-data.
+     */
     function temuRowTemuPrice(data) {
         const base = parseFloat(data && data.base_price) || 0;
-        if (base > 0 && typeof temu2FullPriceFromBase === 'function') {
-            return +temu2FullPriceFromBase(base).toFixed(2);
+        const fromBase = (base > 0 && typeof temu2FullPriceFromBase === 'function')
+            ? +temu2FullPriceFromBase(base).toFixed(2)
+            : 0;
+        let sprice = 0;
+        if (typeof temuSpriceShownValue === 'function') {
+            sprice = temuSpriceShownValue(data) || 0;
+        } else if (typeof temuDiscountedPrice === 'function') {
+            sprice = temuDiscountedPrice(data) || 0;
         }
+        if (sprice > 0 && typeof temuListingBasesMatch === 'function' && temuListingBasesMatch(data, sprice)) {
+            return +Number(sprice).toFixed(2);
+        }
+        if (fromBase > 0) return fromBase;
         const stored = parseFloat(data && (data.temu_price_display != null ? data.temu_price_display : data.temu_price)) || 0;
         return stored > 0 ? +stored.toFixed(2) : 0;
     }
@@ -4058,15 +4085,17 @@
                             ? temu2FullPriceFromBase(base)
                             : 0;
                     }),
-                    headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
+                    headerTooltip: "Temu Price = S PRC when S Temu B Prc = Base; otherwise (Base × 1.1364) + $2.99 if ≤ $26.99",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const basePrice = parseFloat(rowData['base_price']) || 0;
                         if (basePrice === 0) return '$0.00';
-                        const displayPrice = +temu2FullPriceFromBase(basePrice).toFixed(2);
+                        const displayPrice = typeof temuRowTemuPrice === 'function'
+                            ? temuRowTemuPrice(rowData)
+                            : +temu2FullPriceFromBase(basePrice).toFixed(2);
                         const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(rowData.temu_price || displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
                         const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(rowData.temu_price || displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
-                        return `<span title="(Base × 1.1364)${(basePrice * TEMU_FULL_PRICE_MULT) <= 26.99 ? ' + $2.99' : ''}">$${displayPrice.toFixed(2)}</span>${lmpTri}${purpleTri}`;
+                        return `<span title="Temu Price $${Number(displayPrice).toFixed(2)}">$${Number(displayPrice).toFixed(2)}</span>${lmpTri}${purpleTri}`;
                     }
                 },
                 {

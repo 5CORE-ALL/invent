@@ -129,9 +129,9 @@ class TemuShopifySalesService
     public const DECREASE_ADS_PERCENT = 2.2;
 
     /**
-     * Full Temu Price (listing / Sales / GPFT):
-     *   (base × 1.1364); if that result ≤ $26.99 then +$2.99.
-     * Not the same as Temu R Price (base + $2.99 when base ≤ $26.99).
+     * Full Temu Price (listing / Sales / GPFT / S PRC when S Base = listing base):
+     *   round(base, 2) × 1.1364; if that result ≤ $26.99 then +$2.99; then round to 2¢.
+     * Same money round as the Temu Price column. Not Temu R Price (base + $2.99).
      */
     public static function computeFullTemuPrice(float $basePrice): float
     {
@@ -139,12 +139,13 @@ class TemuShopifySalesService
             return 0.0;
         }
 
+        $basePrice = round($basePrice, 2);
         $full = $basePrice * self::FULL_PRICE_MULT;
         if ($full <= 26.99) {
             $full += 2.99;
         }
 
-        return $full;
+        return round($full, 2);
     }
 
     /**

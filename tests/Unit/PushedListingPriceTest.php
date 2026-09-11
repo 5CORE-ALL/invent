@@ -81,6 +81,35 @@ class PushedListingPriceTest extends TestCase
         $this->assertSame(9.32, TemuShopifySalesService::temuIncomingBaseToWrite(9.32, 11.69));
     }
 
+    public function test_any_base_round_trips_to_the_same_full_price(): void
+    {
+        for ($cents = 100; $cents <= 8000; $cents += 7) {
+            $base = round($cents / 100, 2);
+            $full = TemuShopifySalesService::computeFullTemuPrice($base);
+            $this->assertGreaterThan(0, $full);
+            $push = TemuShopifySalesService::computePushBaseFromSprice($full);
+            $this->assertNotNull($push);
+            $this->assertSame(
+                $full,
+                TemuShopifySalesService::computeFullTemuPrice($push),
+                "base {$base} full {$full} push {$push}"
+            );
+            foreach ([$full - 0.01, $full + 0.01] as $dilOffByCent) {
+                if ($dilOffByCent <= 0) {
+                    continue;
+                }
+                $sBase = TemuShopifySalesService::computePushBaseFromSprice($dilOffByCent);
+                if ($sBase !== null && abs($sBase - $base) < 0.001) {
+                    $this->assertSame(
+                        $full,
+                        TemuShopifySalesService::computeFullTemuPrice($sBase),
+                        "Dil {$dilOffByCent} still maps to Temu Price {$full} when S Base equals listing base {$base}"
+                    );
+                }
+            }
+        }
+    }
+
     public function test_dil_does_not_enqueue_when_live_already_matches(): void
     {
         $m = new \ReflectionMethod(DilRuleSpriceApplyService::class, 'shouldEnqueuePush');
