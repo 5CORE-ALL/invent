@@ -571,7 +571,7 @@ class TopDawgApiService
     /**
      * @return array<string, mixed>|null
      */
-    protected function fetchLiveProductRow(string $sku): ?array
+    protected function fetchLiveProductRow(string $sku, bool $scanCatalog = true): ?array
     {
         $this->assertConfigured();
         $sku = trim($sku);
@@ -579,14 +579,7 @@ class TopDawgApiService
         $codes = $this->topDawgProductCodeCandidates($sku, $resolved);
 
         $url = $this->baseUrl.'/SupplierProduct/list';
-        $local = TopDawgProduct::query()
-            ->where(function ($q) use ($sku, $resolved) {
-                $q->where('sku', $sku)
-                    ->orWhere('sku', $resolved)
-                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
-            })
-            ->orderByDesc('updated_at')
-            ->first();
+        $local = $this->localTopDawgProduct($sku, $resolved);
         if ($local) {
             foreach ([$local->sku, $local->tdid, $local->topdawg_listing_id] as $extra) {
                 $extra = trim((string) $extra);
@@ -596,32 +589,47 @@ class TopDawgApiService
             }
         }
 
-        $hintPage = $this->liveListPageHint[strtoupper($resolved)] ?? $this->liveListPageHint[strtoupper($sku)] ?? null;
-        if ($hintPage !== null) {
-            $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 1000, 'page' => $hintPage], $codes);
-            if ($found !== null) {
-                return $found;
-            }
-        }
+        $listTimeout = $scanCatalog ? 45 : 12;
+        $lookupCodes = $scanCatalog ? $codes : array_slice($codes, 0, 2);
 
-        foreach ($codes as $code) {
-            foreach ([
-                ['product_code' => $code, 'per_page' => 100, 'page' => 1],
-                ['sku' => $code, 'per_page' => 100, 'page' => 1],
-                ['search' => $code, 'per_page' => 100, 'page' => 1],
-            ] as $body) {
-                $found = $this->firstMatchingTopDawgListRow($url, $body, $codes);
+        if ($scanCatalog) {
+            $hintPage = $this->liveListPageHint[strtoupper($resolved)] ?? $this->liveListPageHint[strtoupper($sku)] ?? null;
+            if ($hintPage !== null) {
+                $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 1000, 'page' => $hintPage], $codes, $listTimeout);
                 if ($found !== null) {
                     return $found;
                 }
             }
         }
 
+        foreach ($lookupCodes as $code) {
+            $filters = $scanCatalog
+                ? [
+                    ['product_code' => $code, 'per_page' => 100, 'page' => 1],
+                    ['sku' => $code, 'per_page' => 100, 'page' => 1],
+                    ['search' => $code, 'per_page' => 100, 'page' => 1],
+                ]
+                : [
+                    ['product_code' => $code, 'per_page' => 50, 'page' => 1],
+                ];
+            foreach ($filters as $body) {
+                $found = $this->firstMatchingTopDawgListRow($url, $body, $codes, $listTimeout);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+
+        if (! $scanCatalog) {
+            return null;
+        }
+
+        $hintPage = $this->liveListPageHint[strtoupper($resolved)] ?? $this->liveListPageHint[strtoupper($sku)] ?? null;
         for ($page = 1; $page <= 5; $page++) {
             if ($hintPage !== null && $page === $hintPage) {
                 continue;
             }
-            $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 1000, 'page' => $page], $codes);
+            $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 1000, 'page' => $page], $codes, $listTimeout);
             if ($found !== null) {
                 $this->liveListPageHint[strtoupper($resolved)] = $page;
                 $this->liveListPageHint[strtoupper($sku)] = $page;
@@ -633,15 +641,36 @@ class TopDawgApiService
         return null;
     }
 
+    protected function localTopDawgProduct(string $sku, ?string $resolved = null): ?TopDawgProduct
+    {
+        $sku = trim($sku);
+        $resolved = trim((string) ($resolved ?: $sku));
+        if ($sku === '') {
+            return null;
+        }
+
+        return TopDawgProduct::query()
+            ->where(function ($q) use ($sku, $resolved) {
+                $q->where('sku', $sku)
+                    ->orWhere('sku', $resolved)
+                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+            })
+            ->orderByDesc('updated_at')
+            ->first();
+    }
+
     /**
      * @param  array<string, mixed>  $body
      * @param  list<string>  $codes
      * @return array<string, mixed>|null
      */
-    protected function firstMatchingTopDawgListRow(string $url, array $body, array $codes): ?array
+    protected function firstMatchingTopDawgListRow(string $url, array $body, array $codes, int $timeout = 45): ?array
     {
         try {
-            $response = Http::withHeaders($this->headers())->timeout(45)->post($url, $body);
+            $response = Http::withHeaders($this->headers())
+                ->timeout(max(5, $timeout))
+                ->connectTimeout(8)
+                ->post($url, $body);
         } catch (\Throwable $e) {
             return null;
         }
@@ -706,9 +735,18 @@ class TopDawgApiService
      */
     protected function topDawgUpdateAccepted(int $status, ?array $payload, string $rawBody): array
     {
-        $message = is_array($payload)
-            ? trim((string) ($payload['message'] ?? $payload['error'] ?? ''))
-            : trim($rawBody);
+        $message = '';
+        if (is_array($payload)) {
+            if (isset($payload['errors']) && is_array($payload['errors']) && $payload['errors'] !== []) {
+                $message = implode(' ', array_map(static fn ($err) => trim((string) $err), $payload['errors']));
+            }
+            if ($message === '') {
+                $message = trim((string) ($payload['message'] ?? $payload['error'] ?? ''));
+            }
+        }
+        if ($message === '') {
+            $message = trim($rawBody);
+        }
         $code = is_array($payload) ? (int) ($payload['code'] ?? $status) : $status;
 
         if ($status < 200 || $status >= 300) {
@@ -851,107 +889,58 @@ class TopDawgApiService
             return ['success' => false, 'message' => 'Product code / SKU is required.'];
         }
 
-        $existing = $this->fetchLiveProductRow($sku);
-        if (is_array($existing)) {
-            $ids = $this->listingIdsFromTopDawgRow($existing, $sku);
-            if ($ids['listing_id'] !== '') {
-                return [
-                    'success' => true,
-                    'message' => 'Connected existing TopDawg listing.',
-                    'listing_id' => $ids['listing_id'],
-                    'tdid' => $ids['tdid'],
-                ];
-            }
+        $connected = $this->connectExistingListing($sku);
+        if ($connected !== null) {
+            return $connected;
         }
 
-        $payload = array_filter([
-            'product_code' => $sku,
-            'sku' => $sku,
-            'product_name' => trim((string) ($fields['product_name'] ?? $fields['title'] ?? '')),
-            'subject' => trim((string) ($fields['product_name'] ?? $fields['title'] ?? '')),
-            'title' => trim((string) ($fields['product_name'] ?? $fields['title'] ?? '')),
-            'description' => trim((string) ($fields['description'] ?? '')),
-            'long_description' => trim((string) ($fields['description'] ?? '')),
-            'price' => isset($fields['price']) ? (float) $fields['price'] : null,
-            'qty_available' => isset($fields['qty_available']) ? (int) $fields['qty_available'] : null,
-            'quantity' => isset($fields['qty_available']) ? (int) $fields['qty_available'] : null,
-            'remaining_inventory' => isset($fields['qty_available']) ? (int) $fields['qty_available'] : null,
-        ], static fn ($value) => $value !== null && $value !== '');
-
-        $images = [];
-        foreach ((array) ($fields['images'] ?? []) as $url) {
-            $url = trim((string) $url);
-            if ($url !== '' && preg_match('#^https?://#i', $url) && ! in_array($url, $images, true)) {
-                $images[] = $url;
-            }
-        }
-        if ($images !== []) {
-            $payload['image_url'] = $images[0];
-            $payload['main_image'] = $images[0];
-            $payload['picture_url'] = $images[0];
-            $payload['images'] = $images;
-            $payload['image_urls'] = $images;
+        $payload = $this->buildCreateProductPayload($sku, $fields);
+        $missing = $this->missingCreateProductFields($payload);
+        if ($missing !== []) {
+            return [
+                'success' => false,
+                'message' => 'TopDawg create needs: '.implode(', ', $missing).'.',
+            ];
         }
 
-        $paths = [
-            '/SupplierProduct/create',
-            '/SupplierProduct/add',
-            '/SupplierProduct/store',
-            '/SupplierProduct/save',
-            '/SupplierProduct/update',
-        ];
-        $bodies = [
-            $payload,
-            ['products' => [$payload]],
-            ['product' => $payload],
-        ];
-
-        $lastMessage = 'TopDawg create product failed.';
-        $accepted = false;
-        $listingId = '';
-        $tdid = '';
-        foreach ($paths as $path) {
-            foreach ($bodies as $body) {
-                try {
-                    $response = Http::withHeaders($this->headers())->timeout(45)->post($this->baseUrl.$path, $body);
-                } catch (\Throwable $e) {
-                    $lastMessage = $e->getMessage();
-                    continue;
+        try {
+            $response = Http::withHeaders($this->headers())
+                ->timeout(45)
+                ->connectTimeout(10)
+                ->post($this->baseUrl.'/SupplierProduct/create', $payload);
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+        $json = $response->json();
+        $acceptedResult = $this->topDawgUpdateAccepted(
+            $response->status(),
+            is_array($json) ? $json : null,
+            (string) $response->body()
+        );
+        if (! ($acceptedResult['success'] ?? false)) {
+            $message = (string) ($acceptedResult['message'] ?? 'TopDawg create product failed.');
+            if ($this->isDuplicateCreateMessage($message)) {
+                $connected = $this->connectExistingListing($sku, true);
+                if ($connected !== null) {
+                    return $connected;
                 }
-                $json = $response->json();
-                $acceptedResult = $this->topDawgUpdateAccepted(
-                    $response->status(),
-                    is_array($json) ? $json : null,
-                    (string) $response->body()
-                );
-                if (! ($acceptedResult['success'] ?? false)) {
-                    $lastMessage = (string) ($acceptedResult['message'] ?? $lastMessage);
-                    continue;
-                }
-                $accepted = true;
-                $ids = $this->listingIdsFromTopDawgPayload(is_array($json) ? $json : []);
-                if ($ids['listing_id'] !== '') {
-                    $listingId = $ids['listing_id'];
-                    $tdid = $ids['tdid'];
-                    $lastMessage = (string) ($acceptedResult['message'] ?? 'TopDawg product submitted for review.');
-                    break 2;
-                }
-                $lastMessage = (string) ($acceptedResult['message'] ?? 'TopDawg product submitted for review.');
             }
-        }
+            Log::warning('TopDawgApiService: create product failed', [
+                'sku' => $sku,
+                'status' => $response->status(),
+                'body' => mb_substr((string) $response->body(), 0, 800),
+            ]);
 
-        if (! $accepted) {
-            return ['success' => false, 'message' => $lastMessage];
+            return [
+                'success' => false,
+                'message' => $message,
+            ];
         }
+        $ids = $this->listingIdsFromTopDawgPayload(is_array($json) ? $json : []);
+        $listingId = $ids['listing_id'];
+        $tdid = $ids['tdid'];
+        $lastMessage = (string) ($acceptedResult['message'] ?? 'TopDawg product submitted for review.');
 
-        if ($listingId === '') {
-            $live = $this->fetchLiveProductRow($sku);
-            if (is_array($live)) {
-                $ids = $this->listingIdsFromTopDawgRow($live, $sku);
-                $listingId = $ids['listing_id'];
-                $tdid = $ids['tdid'] !== '' ? $ids['tdid'] : $tdid;
-            }
-        }
         if ($listingId === '' || strcasecmp($listingId, $sku) === 0) {
             $listingId = 'td-'.substr(sha1(strtoupper($sku)), 0, 12);
         }
@@ -962,6 +951,59 @@ class TopDawgApiService
             'listing_id' => $listingId,
             'tdid' => $tdid,
         ];
+    }
+
+    /**
+     * @return array{success: bool, message: string, listing_id: string, tdid: string}|null
+     */
+    protected function connectExistingListing(string $sku, bool $checkLive = false): ?array
+    {
+        $local = $this->localTopDawgProduct($sku);
+        if ($local) {
+            $listingId = trim((string) ($local->topdawg_listing_id ?? ''));
+            $tdid = trim((string) ($local->tdid ?? ''));
+            if ($listingId !== '' || $tdid !== '') {
+                return [
+                    'success' => true,
+                    'message' => 'Connected existing TopDawg listing.',
+                    'listing_id' => $listingId !== '' ? $listingId : $tdid,
+                    'tdid' => $tdid,
+                ];
+            }
+        }
+
+        if (! $checkLive) {
+            return null;
+        }
+
+        $live = $this->fetchLiveProductRow($sku, false);
+        if (! is_array($live)) {
+            return null;
+        }
+        $ids = $this->listingIdsFromTopDawgRow($live, $sku);
+        if ($ids['listing_id'] === '' && $ids['tdid'] === '') {
+            return null;
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Connected existing TopDawg listing.',
+            'listing_id' => $ids['listing_id'] !== '' ? $ids['listing_id'] : $ids['tdid'],
+            'tdid' => $ids['tdid'],
+        ];
+    }
+
+    protected function isDuplicateCreateMessage(string $message): bool
+    {
+        $lower = mb_strtolower($message);
+
+        return $lower !== '' && (
+            str_contains($lower, 'already exist')
+            || str_contains($lower, 'already created')
+            || str_contains($lower, 'already been created')
+            || str_contains($lower, 'duplicate')
+            || str_contains($lower, 'already listed')
+        );
     }
 
     /**
@@ -1006,6 +1048,136 @@ class TopDawgApiService
         }
 
         return ['listing_id' => '', 'tdid' => ''];
+    }
+
+    /**
+     * TopDawg POST /SupplierProduct/create requires catalog fields (not just SKU + title).
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array<string, mixed>
+     */
+    protected function buildCreateProductPayload(string $sku, array $fields): array
+    {
+        $title = trim((string) ($fields['product_name'] ?? $fields['title'] ?? ''));
+        $description = trim((string) ($fields['product_description'] ?? $fields['description'] ?? $title));
+
+        $images = [];
+        foreach ((array) ($fields['images'] ?? []) as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && preg_match('#^https?://#i', $url) && ! in_array($url, $images, true)) {
+                $images[] = $url;
+            }
+        }
+        if ($images !== []) {
+            while (count($images) < 4) {
+                $images[] = $images[count($images) - 1];
+            }
+        }
+
+        $cost = $this->positiveMoney($fields['cost'] ?? $fields['price'] ?? null);
+        $msrp = $this->positiveMoney($fields['msrp'] ?? null);
+        if ($msrp === null && $cost !== null) {
+            $msrp = $cost;
+        }
+        if ($cost !== null && $msrp !== null && $msrp < $cost) {
+            $msrp = $cost;
+        }
+
+        $payload = [
+            'product_code' => $sku,
+            'sku' => $sku,
+            'brand_name' => trim((string) ($fields['brand_name'] ?? '5 Core')) ?: '5 Core',
+            'product_name' => $title,
+            'product_description' => $description,
+            'description' => $description,
+            'long_description' => $description,
+            'dept' => trim((string) ($fields['dept'] ?? 'Electronics')) ?: 'Electronics',
+            'section' => trim((string) ($fields['section'] ?? 'Music')) ?: 'Music',
+            'category' => trim((string) ($fields['category'] ?? 'Music Accessories')) ?: 'Music Accessories',
+            'gender' => trim((string) ($fields['gender'] ?? 'Unisex')) ?: 'Unisex',
+            'age_group' => trim((string) ($fields['age_group'] ?? 'Adults')) ?: 'Adults',
+            'cost' => $cost,
+            'msrp' => $msrp,
+            'qty_available' => isset($fields['qty_available']) ? max(0, (int) $fields['qty_available']) : 0,
+            'pack_of' => isset($fields['pack_of']) && is_numeric($fields['pack_of'])
+                ? max(1, (int) $fields['pack_of'])
+                : 1,
+            'product_weight' => $this->positiveDecimal($fields['product_weight'] ?? null),
+            'ship_length' => $this->positiveDecimal($fields['ship_length'] ?? null),
+            'ship_width' => $this->positiveDecimal($fields['ship_width'] ?? null),
+            'ship_height' => $this->positiveDecimal($fields['ship_height'] ?? null),
+            'product_made_in' => trim((string) ($fields['product_made_in'] ?? 'China')) ?: 'China',
+        ];
+
+        if ($images !== []) {
+            $payload['picture_url'] = implode(',', array_slice($images, 0, 8));
+            $payload['image_url'] = $images[0];
+            $payload['main_image'] = $images[0];
+            for ($i = 1; $i <= 4; $i++) {
+                $payload['picture_url_'.$i] = $images[$i - 1];
+            }
+        }
+
+        return array_filter($payload, static fn ($value) => $value !== null && $value !== '');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return list<string>
+     */
+    protected function missingCreateProductFields(array $payload): array
+    {
+        $required = [
+            'product_code',
+            'brand_name',
+            'product_name',
+            'product_description',
+            'dept',
+            'gender',
+            'age_group',
+            'cost',
+            'msrp',
+            'qty_available',
+            'pack_of',
+            'product_weight',
+            'ship_length',
+            'ship_width',
+            'ship_height',
+            'product_made_in',
+            'picture_url_1',
+            'picture_url_2',
+            'picture_url_3',
+            'picture_url_4',
+        ];
+
+        $missing = [];
+        foreach ($required as $key) {
+            if (! array_key_exists($key, $payload) || $payload[$key] === null || $payload[$key] === '') {
+                $missing[] = $key;
+            }
+        }
+
+        return $missing;
+    }
+
+    protected function positiveMoney(mixed $value): ?float
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+        $n = round((float) $value, 2);
+
+        return $n > 0 ? $n : null;
+    }
+
+    protected function positiveDecimal(mixed $value): ?float
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+        $n = (float) $value;
+
+        return $n > 0 ? $n : null;
     }
 
     /**

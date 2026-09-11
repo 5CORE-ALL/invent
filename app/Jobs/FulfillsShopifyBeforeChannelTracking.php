@@ -14,12 +14,12 @@ trait FulfillsShopifyBeforeChannelTracking
 {
     protected ?string $pendingShopifyCopyMarketplace = null;
 
-    protected int $pendingShopifyCopyLimit = 8;
+    protected int $pendingShopifyCopyLimit = 40;
 
     protected function fulfillShopifyCopiesFirst(string $marketplace, int $limit): void
     {
         $this->pendingShopifyCopyMarketplace = $marketplace;
-        $this->pendingShopifyCopyLimit = max(1, min(8, $limit));
+        $this->pendingShopifyCopyLimit = max(1, min(40, $limit));
     }
 
     protected function runTrackingSafely(callable $callback): void
