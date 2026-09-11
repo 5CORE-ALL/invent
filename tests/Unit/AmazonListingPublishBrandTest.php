@@ -46,6 +46,25 @@ class AmazonListingPublishBrandTest extends TestCase
         $this->assertSame('ATVPDKIKX0DER', $offer['purchasable_offer'][0]['marketplace_id']);
     }
 
+    public function test_copies_package_size_to_item_weight_and_dimensions(): void
+    {
+        $size = AmazonListingPublishService::sizeAttributesFromDetails([
+            'package_length' => 12,
+            'package_width' => 8,
+            'package_height' => 4,
+            'package_weight_lb' => 2,
+            'package_weight_oz' => 8,
+        ]);
+
+        $this->assertEquals(12, $size['item_length_width_height'][0]['length']['value']);
+        $this->assertEquals(8, $size['item_length_width_height'][0]['width']['value']);
+        $this->assertEquals(4, $size['item_length_width_height'][0]['height']['value']);
+        $this->assertEquals(2.5, $size['item_weight'][0]['value']);
+        $this->assertSame('pounds', $size['item_weight'][0]['unit']);
+        $this->assertSame(2.5, $size['item_package_weight'][0]['value']);
+        $this->assertSame('ATVPDKIKX0DER', $size['item_weight'][0]['marketplace_id']);
+    }
+
     public function test_handling_days_default_to_two(): void
     {
         $this->assertSame(2, AmazonListingPublishService::handlingDays([]));
