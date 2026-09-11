@@ -21,11 +21,12 @@ class PullAmazonPushedPricesCommand extends Command
         );
 
         $this->info(sprintf(
-            'Amazon pushed-price pull: due=%d pulled=%d retried=%d failed=%d',
+            'Amazon pushed-price pull: due=%d pulled=%d retried=%d failed=%d restored=%d',
             $stats['due'],
             $stats['pulled'],
             $stats['retried'],
-            $stats['failed']
+            $stats['failed'],
+            $stats['restored'] ?? 0
         ));
 
         return self::SUCCESS;

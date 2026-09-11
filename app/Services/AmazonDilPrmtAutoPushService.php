@@ -44,6 +44,7 @@ class AmazonDilPrmtAutoPushService
             'applied' => 0,
             'pushed' => 0,
             'skipped_unchanged' => 0,
+            'price_repaired' => 0,
             'skipped' => 0,
             'push_failed' => 0,
             'errors' => [],
@@ -87,6 +88,9 @@ class AmazonDilPrmtAutoPushService
                 }
 
                 if (! $pushAll && $this->isUnchanged($row, $computed)) {
+                    if (! $dryRun && $this->repairStalePriceColumn($row, (float) $computed['sprice'])) {
+                        $stats['price_repaired']++;
+                    }
                     $stats['skipped_unchanged']++;
                     continue;
                 }
@@ -304,6 +308,27 @@ class AmazonDilPrmtAutoPushService
             $plan['business_price'],
             $plan['min_price']
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected function repairStalePriceColumn(array $row, float $sprice): bool
+    {
+        try {
+            return app(AmazonPushedPricePullService::class)->repairPriceIfStale(
+                (string) ($row['sku'] ?? ''),
+                (string) ($row['seller_sku'] ?? ''),
+                $sprice
+            );
+        } catch (Throwable $e) {
+            Log::warning('[AmazonDilPrmtAutoPush] stale Price repair failed', [
+                'sku' => $row['sku'] ?? '',
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     protected function saveSpriceAndPrmt(string $sku, float $sprice, float $prmt, float $base): void

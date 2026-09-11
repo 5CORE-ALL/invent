@@ -51,6 +51,7 @@ class AmazonCvrCpnAutoPushService
             'applied' => 0,
             'pushed' => 0,
             'skipped_unchanged' => 0,
+            'price_repaired' => 0,
             'skipped_one_per_day' => 0,
             'skipped' => 0,
             'push_failed' => 0,
@@ -97,6 +98,9 @@ class AmazonCvrCpnAutoPushService
                 }
 
                 if (! $pushAll && $this->isUnchanged($row, $computed)) {
+                    if (! $dryRun && $this->repairStalePriceColumn($row, (float) $computed['sprice'])) {
+                        $stats['price_repaired']++;
+                    }
                     $stats['skipped_unchanged']++;
                     continue;
                 }
@@ -332,6 +336,27 @@ class AmazonCvrCpnAutoPushService
             $plan['business_price'],
             $plan['min_price']
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected function repairStalePriceColumn(array $row, float $sprice): bool
+    {
+        try {
+            return app(AmazonPushedPricePullService::class)->repairPriceIfStale(
+                (string) ($row['sku'] ?? ''),
+                (string) ($row['seller_sku'] ?? ''),
+                $sprice
+            );
+        } catch (Throwable $e) {
+            Log::warning('[AmazonCvrCpnAutoPush] stale Price repair failed', [
+                'sku' => $row['sku'] ?? '',
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     /**

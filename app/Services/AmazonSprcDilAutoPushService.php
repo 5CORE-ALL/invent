@@ -58,6 +58,7 @@ class AmazonSprcDilAutoPushService
             'applied' => 0,
             'pushed' => 0,
             'skipped_unchanged' => 0,
+            'price_repaired' => 0,
             'skipped' => 0,
             'push_failed' => 0,
             'errors' => [],
@@ -108,6 +109,9 @@ class AmazonSprcDilAutoPushService
                     }
 
                     if (! $pushAll && $this->isUnchanged($row, $computed)) {
+                        if (! $dryRun && $this->repairStalePriceColumn($row, (float) $computed['sprice'])) {
+                            $stats['price_repaired']++;
+                        }
                         $stats['skipped_unchanged']++;
                         continue;
                     }
@@ -164,10 +168,11 @@ class AmazonSprcDilAutoPushService
             }
 
             $this->log($logger, sprintf(
-                'Done: applied=%d pushed=%d unchanged=%d skipped=%d failed=%d%s',
+                'Done: applied=%d pushed=%d unchanged=%d repaired=%d skipped=%d failed=%d%s',
                 $stats['applied'],
                 $stats['pushed'],
                 $stats['skipped_unchanged'],
+                $stats['price_repaired'],
                 $stats['skipped'],
                 $stats['push_failed'],
                 ($dryRun || $skipPush) ? ' [no Amazon push]' : ''
@@ -613,6 +618,30 @@ class AmazonSprcDilAutoPushService
             $plan['business_price'],
             $plan['min_price']
         );
+    }
+
+    /**
+     * Last Amazon offer already matches Dil, but listings sync may have put Your Price
+     * back in the Price column. Rewrite Sale without another Listings API push.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function repairStalePriceColumn(array $row, float $sprice): bool
+    {
+        try {
+            return app(AmazonPushedPricePullService::class)->repairPriceIfStale(
+                (string) ($row['sku'] ?? ''),
+                (string) ($row['seller_sku'] ?? ''),
+                $sprice
+            );
+        } catch (Throwable $e) {
+            Log::warning('[AmazonSprcDilAutoPush] stale Price repair failed', [
+                'sku' => $row['sku'] ?? '',
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     /**

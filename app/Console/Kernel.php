@@ -1038,8 +1038,8 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Confirm leftover Price pulls after S PRC / Push Prc (immediate write happens in applyAmazonPrice).
-        // Runs 24/7 (not IST-windowed) so late-evening pushes still refresh.
+        // Confirm leftover Price pulls after S PRC / Push Prc, and restore Sale
+        // if listings sync wrote Your Price over a Dil push. 24/7 on purpose.
         $schedule->command('amazon:pull-pushed-prices')
             ->everyMinute()
             ->name('amazon-pull-pushed-prices')

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Http;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonSbCampaignReport;
+use App\Services\AmazonPushedPricePullService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
@@ -99,6 +100,7 @@ class FetchAmazonListings extends Command
         $defaultChannelCount = 0;
         $pendingWrites = [];
         $chunkSize = $this->monitoredChunkSize();
+        $pushedSaleBySku = app(AmazonPushedPricePullService::class)->pushedSaleLookup();
 
         $flushWrites = function () use (&$pendingWrites, &$processedCount) {
             if ($pendingWrites === []) {
@@ -138,7 +140,11 @@ class FetchAmazonListings extends Command
 
             $asin = $data['asin1'] ?? null;
             $sku = isset($data['seller-sku']) ? preg_replace('/[^\x20-\x7E]/', '', trim($data['seller-sku'])) : null;
-            $price = isset($data['price']) && is_numeric($data['price']) ? $data['price'] : null;
+            $reportPrice = isset($data['price']) && is_numeric($data['price']) ? (float) $data['price'] : null;
+            $pushedSale = $sku
+                ? AmazonPushedPricePullService::lookupPushedSale($pushedSaleBySku, $sku)
+                : null;
+            $price = AmazonPushedPricePullService::listingsReportPriceToWrite($reportPrice, $pushedSale);
             $amazonTitle = isset($data['item-name']) ? preg_replace('/[^\x20-\x7E]/', '', trim($data['item-name'])) : null;
             
             // Create Amazon product link
@@ -149,14 +155,17 @@ class FetchAmazonListings extends Command
             // made the second SKU overwrite the first, leaving product_master SKUs
             // unmatched ("not synced"). This matches the amazon_datsheets_sku_unique migration.
             if ($sku) {
+                $payload = [
+                    'asin' => $asin,
+                    'amazon_title' => $amazonTitle,
+                    'amazon_link' => $amazonLink,
+                ];
+                if ($price !== null) {
+                    $payload['price'] = $price;
+                }
                 $pendingWrites[] = [
                     'sku' => $sku,
-                    'data' => [
-                        'asin' => $asin,
-                        'price' => $price,
-                        'amazon_title' => $amazonTitle,
-                        'amazon_link' => $amazonLink,
-                    ],
+                    'data' => $payload,
                 ];
                 if (count($pendingWrites) >= $chunkSize) {
                     $flushWrites();
