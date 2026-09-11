@@ -29,15 +29,15 @@ class FetchTemu2Metrics extends Command
      */
     protected $description = 'Fetch Temu 2 SKUs, goods IDs, order qty, stock, base prices, and ads analytics (Open API — no sheet)';
 
-    /** @var array<string, true>|null */
-    private ?array $temuPriceHoldSkus = null;
+    /** @var array<string, float>|null */
+    private ?array $pushedPriceLookup = null;
 
     /**
-     * @return array<string, true>
+     * @return array<string, float>
      */
-    private function temuPriceHoldSkus(): array
+    private function temuPushedLookup(): array
     {
-        return $this->temuPriceHoldSkus ??= ChannelLivePriceSync::temuApiPriceHoldSkus('temu2');
+        return $this->pushedPriceLookup ??= ChannelLivePriceSync::lookupMap('temu2');
     }
 
     /**
@@ -295,8 +295,7 @@ class FetchTemu2Metrics extends Command
                 ->whereNotNull('goods_id')
                 ->where('goods_id', '!=', '')
                 ->get(['sku', 'sku_id', 'goods_id']);
-            $holdSkus = $this->temuPriceHoldSkus();
-            $pushedBaseLookup = ChannelLivePriceSync::lookupPushedBaseMap('temu2');
+            $pushedLookup = ChannelLivePriceSync::lookupMap('temu2');
             $idToSku = [];
             foreach ($rows as $row) {
                 $idToSku[(string) $row->sku_id] = (string) $row->sku;
@@ -311,10 +310,6 @@ class FetchTemu2Metrics extends Command
             // Group skuIds under each goodsId (batch-friendly)
             $byGoods = [];
             foreach ($rows as $row) {
-                $skuKey = strtoupper(trim(str_replace("\xc2\xa0", ' ', (string) $row->sku)));
-                if ($skuKey !== '' && isset($holdSkus[$skuKey])) {
-                    continue;
-                }
                 $gid = (string) $row->goods_id;
                 $sid = (int) $row->sku_id;
                 if ($gid === '' || $sid <= 0) {
@@ -400,7 +395,7 @@ class FetchTemu2Metrics extends Command
                             }
                             $sku = $idToSku[(string) $skuId] ?? '';
                             $write = $sku !== ''
-                                ? (float) (ChannelLivePriceSync::preferIncoming('temu2', $sku, (float) $amount, $pushedBaseLookup) ?? $amount)
+                                ? ChannelLivePriceSync::preferIncoming('temu2', $sku, (float) $amount, $pushedLookup)
                                 : (float) $amount;
                             $n = Temu2Metric::where('sku_id', (string) $skuId)->update([
                                 'base_price' => $write,
@@ -419,7 +414,7 @@ class FetchTemu2Metrics extends Command
                     if ($skuId !== null && $amount !== null && is_numeric($amount)) {
                         $sku = $idToSku[(string) $skuId] ?? '';
                         $write = $sku !== ''
-                            ? (float) (ChannelLivePriceSync::preferIncoming('temu2', $sku, (float) $amount, $pushedBaseLookup) ?? $amount)
+                            ? ChannelLivePriceSync::preferIncoming('temu2', $sku, (float) $amount, $pushedLookup)
                             : (float) $amount;
                         $n = Temu2Metric::where('sku_id', (string) $skuId)->update([
                             'base_price' => $write,
@@ -744,8 +739,12 @@ class FetchTemu2Metrics extends Command
                         $price = $sku['salePrice'];
                     }
                     $price = is_numeric($price) ? (float) $price : null;
-                    $skuKey = strtoupper(trim(str_replace("\xc2\xa0", ' ', (string) $outSkuSn)));
-                    $holdSkus = $this->temuPriceHoldSkus();
+                    $price = ChannelLivePriceSync::preferIncoming(
+                        'temu2',
+                        (string) $outSkuSn,
+                        $price,
+                        $this->temuPushedLookup()
+                    );
 
                     $stock = $sku['stock']
                         ?? $sku['quantity']
@@ -754,10 +753,8 @@ class FetchTemu2Metrics extends Command
 
                     $payload = [
                         'sku_id' => (string) $skuId,
+                        'base_price' => $price,
                     ];
-                    if ($price !== null && ! isset($holdSkus[$skuKey])) {
-                        $payload['base_price'] = $price;
-                    }
                     if ($stock !== null && is_numeric($stock)) {
                         $payload['quantity'] = (int) $stock;
                     }

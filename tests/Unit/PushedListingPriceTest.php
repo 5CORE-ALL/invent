@@ -2,7 +2,6 @@
 
 namespace Tests\Unit;
 
-use App\Services\ChannelLivePriceSync;
 use App\Services\DilRuleSpriceApplyService;
 use App\Services\TemuShopifySalesService;
 use App\Support\PushedListingPrice;
@@ -57,63 +56,6 @@ class PushedListingPriceTest extends TestCase
         $sprice = 29.99;
         $expected = TemuShopifySalesService::computePushBaseFromSprice($sprice);
         $this->assertSame($expected, PushedListingPrice::temuBaseToWrite(99.00, $sprice));
-    }
-
-    public function test_temu_prefer_incoming_keeps_live_api_price(): void
-    {
-        $this->assertSame(
-            9.32,
-            ChannelLivePriceSync::preferIncoming('temu', 'CS 04 2W', 9.32, ['CS 04 2W' => 12.67])
-        );
-    }
-
-    public function test_temu_prefer_incoming_keeps_pushed_base_when_api_is_one_cent_off(): void
-    {
-        $this->assertSame(
-            11.69,
-            ChannelLivePriceSync::preferIncoming('temu', 'CS 04 2W', 11.70, ['CS 04 2W' => 11.69])
-        );
-    }
-
-    public function test_temu_incoming_base_to_write_snaps_one_cent(): void
-    {
-        $this->assertSame(11.69, TemuShopifySalesService::temuIncomingBaseToWrite(11.70, 11.69));
-        $this->assertSame(9.32, TemuShopifySalesService::temuIncomingBaseToWrite(9.32, 11.69));
-    }
-
-    public function test_any_base_round_trips_to_the_same_full_price(): void
-    {
-        for ($cents = 100; $cents <= 8000; $cents += 7) {
-            $base = round($cents / 100, 2);
-            $full = TemuShopifySalesService::computeFullTemuPrice($base);
-            $this->assertGreaterThan(0, $full);
-            $push = TemuShopifySalesService::computePushBaseFromSprice($full);
-            $this->assertNotNull($push);
-            $this->assertSame(
-                $full,
-                TemuShopifySalesService::computeFullTemuPrice($push),
-                "base {$base} full {$full} push {$push}"
-            );
-            foreach ([$full - 0.01, $full + 0.01] as $dilOffByCent) {
-                if ($dilOffByCent <= 0) {
-                    continue;
-                }
-                $sBase = TemuShopifySalesService::computePushBaseFromSprice($dilOffByCent);
-                if ($sBase !== null && abs($sBase - $base) < 0.001) {
-                    $this->assertSame(
-                        $full,
-                        TemuShopifySalesService::computeFullTemuPrice($sBase),
-                        "Dil {$dilOffByCent} still maps to Temu Price {$full} when S Base equals listing base {$base}"
-                    );
-                }
-            }
-        }
-    }
-
-    public function test_temu_sprice_inverts_to_listing_base_not_sprice(): void
-    {
-        $this->assertSame(18.68, TemuShopifySalesService::computePushBaseFromSprice(24.22));
-        $this->assertSame(24.22, TemuShopifySalesService::computeFullTemuPrice(18.68));
     }
 
     public function test_dil_does_not_enqueue_when_live_already_matches(): void

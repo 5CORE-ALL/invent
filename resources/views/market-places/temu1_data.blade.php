@@ -77,18 +77,6 @@
             height: 80px !important;
         }
 
-        /* Keep checkbox + Push Prc headers upright (same as Amazon) */
-        .tabulator .tabulator-header .tabulator-col[tabulator-field="_select"] .tabulator-col-content .tabulator-col-title,
-        .tabulator .tabulator-header .tabulator-col[tabulator-field="_push"] .tabulator-col-content .tabulator-col-title {
-            writing-mode: horizontal-tb !important;
-            text-orientation: mixed !important;
-            transform: none !important;
-            height: auto !important;
-        }
-        .tabulator .tabulator-header .tabulator-col[tabulator-field="_select"] .tabulator-col-content .tabulator-col-title input {
-            transform: none !important;
-        }
-
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
         }
@@ -628,9 +616,12 @@
                         <span class="badge fs-6 p-2" id="total-t-clicks-7-badge"
                             style="background-color: #0a58ca; color: white; font-weight: bold;"
                             title="((T Clicks / 30) × 7) ÷ parent count — weekly pace per parent">T Clicks 7: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Click to filter Missing L (INV&gt;0, not listed, REQ)">M L: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'temu2-price-gt-lmp-badge', 'pglChannelKey' => 'temu', 'pglPriceField' => 'temu_price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'temu2-price-lt80-lmp-badge', 'pltChannelKey' => 'temu', 'pltPriceField' => 'temu_price'])
-                        <span class="badge fs-6 p-2" id="temu2-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Temu Price.">
+                        <span class="badge fs-6 p-2" id="temu2-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Price.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="temu-amz-cap-badge"
                             style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
@@ -666,7 +657,7 @@
                             <i class="fa fa-trash"></i> Clear SPRICE
                         </button>
                         <button type="button" id="push-temu2-price-btn" class="btn btn-sm btn-success"
-                            title="Bulk push S Temu B Prc (supplier base) to live Temu listings">
+                            title="Push SPRICE→base: inverse of Temu Price (÷ 1.1364, undo +$2.99 if applied)">
                             <i class="fas fa-cloud-upload-alt"></i> Push Prices
                         </button>
                     </div>
@@ -1042,18 +1033,13 @@
         if (basePrice > 0) return basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
         return parseFloat(rowData && rowData.temu_price) || 0;
     }
-    function temuMoneyRound2(n) {
-        const x = parseFloat(n);
-        if (!isFinite(x)) return 0;
-        return Math.round((x + Number.EPSILON) * 100) / 100;
-    }
-    /** Full Temu Price from Base: round(base) × 1.1364, then +$2.99 if ≤ $26.99, then 2¢. */
+    /** Full Temu Price from Base: (base × 1.1364), then +$2.99 if ≤ $26.99 */
     function temu2FullPriceFromBase(basePrice) {
-        const b = temuMoneyRound2(basePrice);
+        const b = parseFloat(basePrice) || 0;
         if (b <= 0) return 0;
         let full = b * TEMU_FULL_PRICE_MULT;
         if (full <= 26.99) full += 2.99;
-        return temuMoneyRound2(full);
+        return full;
     }
     function temu2FullPriceFromRow(rowData) {
         return temu2FullPriceFromBase(parseFloat(rowData && rowData.base_price) || 0);
@@ -1194,24 +1180,8 @@
         }
         const push = temu2BaseFromFullPrice(s);
         if (!isFinite(push) || !(push > 0)) return null;
-        const rounded = +push.toFixed(2);
-        let best = rounded;
-        let bestErr = Math.abs(temu2FullPriceFromBase(rounded) - s);
-        [rounded - 0.01, rounded + 0.01].forEach(function(candidate) {
-            if (!(candidate > 0)) return;
-            const err = Math.abs(temu2FullPriceFromBase(candidate) - s);
-            if (err + 1e-6 < bestErr) {
-                bestErr = err;
-                best = +candidate.toFixed(2);
-            }
-        });
-        return best;
+        return +push.toFixed(2);
     }
-    function temuListingPushBase(row) {
-        const cap = typeof temuPushSpriceAndBase === 'function' ? temuPushSpriceAndBase(row) : null;
-        return (cap && cap.pushBase != null && cap.pushBase > 0) ? +Number(cap.pushBase).toFixed(2) : null;
-    }
-    window.temuListingPushBase = temuListingPushBase;
     function temuExportRowSprice(row) {
         if (typeof temuDisplayedSprice === 'function') {
             const shown = temuDisplayedSprice(row);
@@ -1285,15 +1255,7 @@
         if (!isFinite(T) || T <= 0) return null;
         const full = temu2FullPriceFromBase(T);
         if (!(full > 0)) return null;
-        return full;
-    }
-    function temuListingBasesMatch(row, sprice) {
-        const listingBase = typeof temuMoneyRound2 === 'function'
-            ? temuMoneyRound2(row && row.base_price)
-            : +Number(row && row.base_price).toFixed(2);
-        if (!(listingBase > 0) || typeof temuPushBaseFromSprice !== 'function') return false;
-        const sBase = temuPushBaseFromSprice(sprice);
-        return sBase > 0 && (typeof temuMoneyRound2 === 'function' ? temuMoneyRound2(sBase) : +Number(sBase).toFixed(2)) === listingBase;
+        return +full.toFixed(2);
     }
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -1823,36 +1785,11 @@
         return (parseFloat(row && (row.inventory != null ? row.inventory : row.INV)) || 0) > 0;
     }
 
-    /**
-     * Temu Price shown in the grid.
-     * Formula from Base can land 1¢ off Dil S PRC even when S Base == listing Base.
-     * When those bases match, use S PRC so both columns share the same calculate-data.
-     */
-    function temuRowTemuPrice(data) {
-        const base = parseFloat(data && data.base_price) || 0;
-        const fromBase = (base > 0 && typeof temu2FullPriceFromBase === 'function')
-            ? +temu2FullPriceFromBase(base).toFixed(2)
-            : 0;
-        let sprice = 0;
-        if (typeof temuSpriceShownValue === 'function') {
-            sprice = temuSpriceShownValue(data) || 0;
-        } else if (typeof temuDiscountedPrice === 'function') {
-            sprice = temuDiscountedPrice(data) || 0;
-        }
-        if (sprice > 0 && typeof temuListingBasesMatch === 'function' && temuListingBasesMatch(data, sprice)) {
-            return +Number(sprice).toFixed(2);
-        }
-        if (fromBase > 0) return fromBase;
-        const stored = parseFloat(data && (data.temu_price_display != null ? data.temu_price_display : data.temu_price)) || 0;
-        return stored > 0 ? +stored.toFixed(2) : 0;
-    }
-    window.temuRowTemuPrice = temuRowTemuPrice;
-
     function temu2HasBlueTriangle(data) {
         if (isTemu2ParentRow(data) || !temuRowHasInv(data)) return false;
         const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(data) : temu2RowSpriceForAlert(data);
-        const temuPrice = temuRowTemuPrice(data);
-        return sprice > 0 && temuPrice > 0 && Math.round(sprice * 100) !== Math.round(temuPrice * 100);
+        const price = parseFloat(data && data.temu_price) || 0;
+        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
 
     function temuRawSprice(row) {
@@ -1992,64 +1929,13 @@
         return { sprice: +sprice.toFixed(2), labels: labels, lmpAlert: lmpAlert, amz: amz, ebay: ebay, lmp: lmp };
     }
 
-    const TEMU_SPRICE_BATCH_URL = '/temu-pricing/save-sprice-batch';
-    const temuSavedSpriceBySku = {};
-    const temuShownSpricePending = {};
-    let temuShownSpriceTimer = null;
-    function temuQueueShownSpriceSave(sku, value) {
-        sku = String(sku || '').trim();
-        if (!sku) return;
-        temuShownSpricePending[sku] = (parseFloat(value) > 0) ? +Number(value).toFixed(2) : 0;
-        if (temuShownSpriceTimer) clearTimeout(temuShownSpriceTimer);
-        temuShownSpriceTimer = setTimeout(function() {
-            if (typeof window.temuFlushShownSpriceSaves === 'function') {
-                window.temuFlushShownSpriceSaves();
-            }
-        }, 600);
-    }
-    window.temuQueueShownSpriceSave = temuQueueShownSpriceSave;
-
-    /** Exact S PRC shown in the cell — Dil + EB/Amz/LMP, then clamp. Same number we persist. */
-    function temuSpriceCapSnapshot(row, extra) {
-        extra = extra || {};
-        if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) {
-            return { sprice: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
-        }
-        const cap = typeof temuSpriceCapResult === 'function'
-            ? temuSpriceCapResult(row, extra.candidate, extra)
-            : { sprice: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
-        let value = (cap && cap.sprice > 0) ? +Number(cap.sprice).toFixed(2) : 0;
-        if (!(value > 0) && !extra.use_passed_as_discounted && window.SpriceLmpCap) {
-            const discounted = typeof temuDiscountedPrice === 'function' ? temuDiscountedPrice(row) : 0;
-            const lmpCap = SpriceLmpCap.apply(row, discounted);
-            if (lmpCap && lmpCap.shown > 0) value = +Number(lmpCap.shown).toFixed(2);
-        }
-        if (typeof temuClampSpriceBand2699 === 'function') {
-            value = temuClampSpriceBand2699(value) || 0;
-        }
-        return {
-            sprice: value > 0 ? +Number(value).toFixed(2) : 0,
-            labels: (cap && cap.labels) || [],
-            lmpAlert: !!(cap && cap.lmpAlert),
-            lmp: (cap && cap.lmp) || 0,
-            amz: (cap && cap.amz) || 0,
-            ebay: (cap && cap.ebay) || 0,
-        };
-    }
-    function temuSpriceShownValue(row) {
-        return temuSpriceCapSnapshot(row).sprice;
-    }
-    window.temuSpriceShownValue = temuSpriceShownValue;
-
     function temuPrepareSpriceForSave(rowData, sprice, extra) {
         extra = extra || {};
         if (extra.use_passed_as_discounted && parseFloat(sprice) > 0) {
             extra.candidate = sprice;
-            const ruled = temuSpriceCapSnapshot(rowData, extra).sprice;
-            if (ruled > 0) return ruled;
         }
-        const shown = temuSpriceShownValue(rowData);
-        if (shown > 0) return shown;
+        const rule = temuRuleSprice(rowData, extra);
+        if (rule > 0) return rule;
         const cap = temuSpriceCapResult(rowData, sprice, extra);
         const out = cap.sprice > 0 ? cap.sprice : (parseFloat(sprice) || sprice);
         return (parseFloat(out) > 0) ? +Number(out).toFixed(2) : 0;
@@ -2077,10 +1963,10 @@
     /** Single rule price used for both display and save. Never listing Full / R Price. */
     function temuRuleSprice(row, extra) {
         extra = extra || {};
-        if (extra.candidate || extra.use_passed_as_discounted) {
-            return temuSpriceCapSnapshot(row, extra).sprice;
-        }
-        return temuSpriceShownValue(row);
+        const cap = typeof temuSpriceCapResult === 'function'
+            ? temuSpriceCapResult(row, extra.candidate, extra)
+            : { sprice: 0 };
+        return (cap && cap.sprice > 0) ? +Number(cap.sprice).toFixed(2) : 0;
     }
     window.temuRuleSprice = temuRuleSprice;
 
@@ -2088,34 +1974,32 @@
         if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) {
             return { value: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
         }
-        const cap = temuSpriceCapSnapshot(row);
-        const value = cap.sprice;
-        const sku = String(row.sku || '').trim();
+        const cap = typeof temuSpriceCapResult === 'function'
+            ? temuSpriceCapResult(row)
+            : { sprice: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
+        const value = (cap && cap.sprice > 0) ? +Number(cap.sprice).toFixed(2) : 0;
         const stored = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
-        if (sku && temuSavedSpriceBySku[sku] == null) {
-            temuSavedSpriceBySku[sku] = stored > 0 ? +stored.toFixed(2) : 0;
-        }
-        row.SPRICE = value > 0 ? value : null;
-        row.sprice = value > 0 ? value : null;
-        row.has_custom_sprice = value > 0;
-        const saved = sku ? (Number(temuSavedSpriceBySku[sku]) || 0) : stored;
-        const expanded = window.ParentExpand && typeof ParentExpand.isExpanded === 'function' && ParentExpand.isExpanded();
-        if (sku && !expanded && Math.abs(saved - value) > 0.009) {
-            temuQueueShownSpriceSave(sku, value);
+        if (value > 0 && Math.abs(stored - value) > 0.009) {
+            row.SPRICE = value;
+            row.sprice = value;
+            row.has_custom_sprice = true;
+        } else if (!(value > 0) && stored > 0) {
+            row.SPRICE = null;
+            row.sprice = null;
         }
         return {
             value: value,
-            labels: cap.labels || [],
-            lmpAlert: !!cap.lmpAlert,
-            lmp: cap.lmp || 0,
-            amz: cap.amz || 0,
-            ebay: cap.ebay || 0,
+            labels: (cap && cap.labels) || [],
+            lmpAlert: !!(cap && cap.lmpAlert),
+            lmp: (cap && cap.lmp) || 0,
+            amz: (cap && cap.amz) || 0,
+            ebay: (cap && cap.ebay) || 0,
         };
     }
     window.temuSpriceCellModel = temuSpriceCellModel;
 
     function temuDisplayedSprice(row) {
-        return temuSpriceShownValue(row);
+        return temuRuleSprice(row);
     }
     window.temuDisplayedSprice = temuDisplayedSprice;
 
@@ -2174,12 +2058,6 @@
             if (typeof temuPushBaseFromSprice !== 'function') return '';
             const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : 0;
             return temuPushBaseFromSprice(sprice);
-        };
-        return temuSortNum(val(aRow.getData()), val(bRow.getData()));
-    }
-    function temuSortPushSprice(a, b, aRow, bRow) {
-        const val = function(d) {
-            return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d && d.sprice) || 0);
         };
         return temuSortNum(val(aRow.getData()), val(bRow.getData()));
     }
@@ -2577,6 +2455,7 @@
 
         // INC / DEC: one button, cycle Off → DEC → INC → SAME → Off
         $('#inc-dec-btn').on('click', function() {
+            const selectColumn = table.getColumn('_select');
             const $btn = $(this);
 
             if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
@@ -2584,6 +2463,7 @@
                 decreaseModeActive = true;
                 increaseModeActive = false;
                 samePriceModeActive = false;
+                selectColumn.show();
                 $btn.removeClass('btn-secondary btn-success btn-info').addClass('btn-danger')
                     .html('<i class="fas fa-arrow-down"></i> DEC <i class="fas fa-times ms-1" title="Click again for INC"></i>');
             } else if (decreaseModeActive) {
@@ -2605,6 +2485,7 @@
                 decreaseModeActive = false;
                 increaseModeActive = false;
                 samePriceModeActive = false;
+                selectColumn.hide();
                 selectedSkus.clear();
                 soldSpriceBlankFilterActive = false;
                 updateSelectedCount();
@@ -2676,8 +2557,11 @@
         // Badge click filters — same pattern as /ebay-tabulator-view
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
+        let missingLFilterActive = false;
         let lessAmzFilterActive = false;
         let moreAmzFilterActive = false;
+        // aliases kept for any leftover refs
+        let missingBadgeFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
 
@@ -2788,6 +2672,17 @@
             moreSoldFilterActive = !moreSoldFilterActive;
             zeroSoldFilterActive = false;
             applyFilters();
+        });
+
+        $('#missing-l-count-badge').on('click', function() {
+            missingLFilterActive = !missingLFilterActive;
+            missingBadgeFilterActive = missingLFilterActive;
+            $(this).toggleClass('bg-secondary', !missingLFilterActive)
+                   .toggleClass('bg-danger', missingLFilterActive);
+            applyFilters();
+            if (table && missingLFilterActive) {
+                try { table.getColumn('lmp').show(); } catch (e) {}
+            }
         });
 
         function updateSelectedCount() {
@@ -2944,7 +2839,6 @@
                     },
                     success: function(response) {
                         const newPriceNum = typeof sprice === 'number' ? sprice : parseFloat(sprice);
-                        temuSavedSpriceBySku[sku] = newPriceNum > 0 ? +Number(newPriceNum).toFixed(2) : 0;
                         const targetRow = temuSyncSpriceUi(sku, newPriceNum, row, {
                             sprice_status: 'saved',
                             sgprft_percent: response.sgprft_percent,
@@ -3003,19 +2897,47 @@
             return wipe.then(insert, insert);
         }
 
-        let temuShownSpriceSaving = false;
-        function temuFlushShownSpriceSaves() {
-            if (temuShownSpriceSaving) {
-                setTimeout(temuFlushShownSpriceSaves, 500);
+        let temuRuleApplyStarted = false;
+        function temuClearThenApplyAllRules() {
+            if (!table || temuRuleApplyStarted) return;
+            temuRuleApplyStarted = true;
+            const rows = (typeof table.getRows === 'function' ? (table.getRows('all') || table.getRows() || []) : []);
+            const updates = [];
+            const blocked = typeof table.blockRedraw === 'function';
+            if (blocked) table.blockRedraw();
+            try {
+                rows.forEach(function(row) {
+                    const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
+                    if (!d || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(d))) return;
+                    const sku = String(d.sku || '').trim();
+                    if (!sku) return;
+                    if (typeof row.update === 'function') {
+                        row.update({ sprice: null, SPRICE: null });
+                    } else {
+                        d.sprice = null;
+                        d.SPRICE = null;
+                    }
+                    const live = (typeof row.getData === 'function') ? (row.getData() || d) : d;
+                    const fill = typeof temuRuleSprice === 'function' ? temuRuleSprice(live) : 0;
+                    if (typeof row.update === 'function') {
+                        row.update({ sprice: fill > 0 ? fill : null, SPRICE: fill > 0 ? fill : null, has_custom_sprice: fill > 0 });
+                    } else {
+                        live.sprice = fill > 0 ? fill : null;
+                        live.SPRICE = fill > 0 ? fill : null;
+                    }
+                    temuPatchLoadedSprice(sku, fill > 0 ? fill : null);
+                    updates.push({ sku: sku, sprice: fill > 0 ? fill : 0 });
+                });
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+            if (!updates.length) {
+                temuRuleApplyStarted = false;
                 return;
             }
-            const skus = Object.keys(temuShownSpricePending);
-            if (!skus.length) return;
-            const updates = skus.map(function(sku) {
-                return { sku: sku, sprice: temuShownSpricePending[sku] };
-            });
-            skus.forEach(function(sku) { delete temuShownSpricePending[sku]; });
-            temuShownSpriceSaving = true;
+            if (typeof showToast === 'function') {
+                showToast('Clearing S PRC and applying rules on ' + updates.length + ' SKU(s)…', 'info');
+            }
             const token = '{{ csrf_token() }}';
             const size = 200;
             let chain = Promise.resolve();
@@ -3024,64 +2946,34 @@
                 const chunk = updates.slice(i, i + size);
                 chain = chain.then(function() {
                     return $.ajax({
-                        url: TEMU_SPRICE_BATCH_URL,
+                        url: '/temu-pricing/save-sprice-batch',
                         method: 'POST',
                         contentType: 'application/json',
                         headers: { 'X-CSRF-TOKEN': token, 'Accept': 'application/json' },
                         data: JSON.stringify({
                             _token: token,
+                            clear_first: 1,
                             skip_push: 1,
                             updates: chunk
                         })
                     }).then(function(res) {
                         ok += parseInt((res && res.ok) || 0, 10) || 0;
-                        chunk.forEach(function(u) {
-                            temuSavedSpriceBySku[u.sku] = u.sprice > 0 ? +Number(u.sprice).toFixed(2) : 0;
-                            if (typeof temuPatchLoadedSprice === 'function') {
-                                temuPatchLoadedSprice(u.sku, u.sprice > 0 ? u.sprice : null);
-                            }
-                        });
                     });
                 });
             }
             chain.then(function() {
-                temuShownSpriceSaving = false;
+                try { table.redraw(true); } catch (e) { /* ignore */ }
+                if (typeof showToast === 'function') {
+                    showToast('S PRC cleared and rules applied (' + ok + ' saved). Display matches save.', 'success');
+                }
             }).catch(function() {
-                temuShownSpriceSaving = false;
-            });
-        }
-        window.temuFlushShownSpriceSaves = temuFlushShownSpriceSaves;
-
-        function temuSyncShownSpriceToSaved() {
-            if (!table) return;
-            const rows = (typeof table.getRows === 'function' ? (table.getRows('all') || table.getRows() || []) : []);
-            rows.forEach(function(row) {
-                const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
-                if (!d || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(d))) return;
-                const sku = String(d.sku || '').trim();
-                if (!sku) return;
-                const shown = typeof temuSpriceShownValue === 'function' ? temuSpriceShownValue(d) : 0;
-                const stored = parseFloat(d.SPRICE != null ? d.SPRICE : d.sprice) || 0;
-                if (temuSavedSpriceBySku[sku] == null) {
-                    temuSavedSpriceBySku[sku] = stored > 0 ? +stored.toFixed(2) : 0;
-                }
-                d.sprice = shown > 0 ? shown : null;
-                d.SPRICE = shown > 0 ? shown : null;
-                d.has_custom_sprice = shown > 0;
-                if (typeof temuPatchLoadedSprice === 'function') {
-                    temuPatchLoadedSprice(sku, shown > 0 ? shown : null);
-                }
-                if (Math.abs((temuSavedSpriceBySku[sku] || 0) - shown) > 0.009) {
-                    temuQueueShownSpriceSave(sku, shown);
+                temuRuleApplyStarted = false;
+                if (typeof showToast === 'function') {
+                    showToast('Failed to apply S PRC rules', 'error');
                 }
             });
-            temuFlushShownSpriceSaves();
-        }
-        function temuClearThenApplyAllRules() {
-            temuSyncShownSpriceToSaved();
         }
         window.temuClearThenApplyAllRules = temuClearThenApplyAllRules;
-        window.temuSyncShownSpriceToSaved = temuSyncShownSpriceToSaved;
 
         function applyDiscount() {
             const rawInput = $('#discount-percentage-input').val();
@@ -3413,6 +3305,7 @@
             let totalTemuL30 = 0;
             let zeroSoldCount = 0;
             let moreSoldCount = 0;
+            let missingCount = 0;
             let rowsCount = 0;
 
             // Filtered counts: Rows / 0 Sold / >0 Sold (exclude parent rows from sold badges)
@@ -3438,7 +3331,7 @@
                     : ((parseInt(row.product_clicks, 10) || 0) + (parseInt(row.ad_clicks, 10) || 0));
             });
 
-            // Financials from full dataset — SKUs only
+            // Financials + M L from full dataset (ebay pattern for missing) — SKUs only
             // Same calc as /temu-decrease: Sales/GPFT on Full Price; GROI on R Price
             const viewsByGoodsId = {};
             const tClicksByGoodsId = {};
@@ -3485,6 +3378,12 @@
                 }
                 totalTemuL30 += temuL30;
 
+                const missing = row.missing;
+                const nrReq = String(row.nr_req || 'REQ').toUpperCase();
+
+                if (missing === 'M' && inventory > 0 && nrReq !== 'NR' && nrReq !== 'NRL') {
+                    missingCount++;
+                }
             });
             Object.keys(viewsByGoodsId).forEach(function(gid) {
                 totalViews += parseInt(viewsByGoodsId[gid], 10) || 0;
@@ -3572,6 +3471,7 @@
                 maximumFractionDigits: 1,
                 minimumFractionDigits: 0
             }));
+            $('#missing-l-count-badge').text('M L: ' + missingCount.toLocaleString());
             if (window.PriceGtLmpBadge && table) {
                 PriceGtLmpBadge.update('#temu2-price-gt-lmp-badge', table.getData(), 'temu', 'temu_price', function (row) {
                     return parseFloat(row && (row.lmp_price || row.lmp || row.LMP)) || 0;
@@ -3687,27 +3587,6 @@
                 return [];
             },
             columns: [
-                {
-                    title: "<div style='transform: rotate(0deg) !important; display: flex; justify-content: center; align-items: center;'><input type='checkbox' id='select-all-checkbox' title='Select / clear all SKUs on this page for bulk S PRC push' style='transform: rotate(0deg) !important; width: 16px; height: 16px; cursor: pointer;'></div>",
-                    field: "_select",
-                    hozAlign: "center",
-                    headerSort: false,
-                    headerVertical: false,
-                    width: 40,
-                    minWidth: 40,
-                    frozen: true,
-                    visible: true,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
-                        const sku = String(rowData.sku || '');
-                        const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                        return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku.replace(/"/g, '&quot;')}" ${isChecked} style="width: 16px; height: 16px; cursor: pointer;">`;
-                    },
-                    cellClick: function(e) {
-                        e.stopPropagation();
-                    }
-                },
                 {
                     title: "Image",
                     field: "image_path",
@@ -3917,10 +3796,24 @@
                     }
                 },
                 {
+                    title: "Missing",
+                    field: "missing",
+                    hozAlign: "center",
+                    sorter: "string",
+                    width: 80,
+                    visible: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === 'M') {
+                            return '<span style="color: #dc3545; font-weight: bold;" title="Not found in temu2_metrics (API)">M</span>';
+                        }
+                        return '';
+                    }
+                },
+                {
                     title: "NRL/REQ",
                     field: "nr_req",
                     hozAlign: "center",
-                    visible: false,
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const nrl = row['nr_req'] || '';
@@ -4046,17 +3939,15 @@
                             ? temu2FullPriceFromBase(base)
                             : 0;
                     }),
-                    headerTooltip: "Temu Price = S PRC when S Temu B Prc = Base; otherwise (Base × 1.1364) + $2.99 if ≤ $26.99",
+                    headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const basePrice = parseFloat(rowData['base_price']) || 0;
                         if (basePrice === 0) return '$0.00';
-                        const displayPrice = typeof temuRowTemuPrice === 'function'
-                            ? temuRowTemuPrice(rowData)
-                            : +temu2FullPriceFromBase(basePrice).toFixed(2);
+                        const displayPrice = +temu2FullPriceFromBase(basePrice).toFixed(2);
                         const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(rowData.temu_price || displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
                         const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(rowData.temu_price || displayPrice, rowData.lmp_price || rowData.lmp || rowData.LMP) : '');
-                        return `<span title="Temu Price $${Number(displayPrice).toFixed(2)}">$${Number(displayPrice).toFixed(2)}</span>${lmpTri}${purpleTri}`;
+                        return `<span title="(Base × 1.1364)${(basePrice * TEMU_FULL_PRICE_MULT) <= 26.99 ? ' + $2.99' : ''}">$${displayPrice.toFixed(2)}</span>${lmpTri}${purpleTri}`;
                     }
                 },
                 {
@@ -4310,6 +4201,20 @@
                         return '<span style="color:' + color + ';font-weight:600;">' + sign + diff.toFixed(1) + '%</span>';
                     }
                 },
+                     {
+                    title: '<input type="checkbox" id="select-all-checkbox">',
+                    field: "_select",
+                    headerSort: false,
+                    visible: false,
+                    formatter: function(cell) {
+                        const sku = String(cell.getRow().getData()['sku'] || '');
+                        const isChecked = selectedSkus.has(sku) ? 'checked' : '';
+                        return `<input type="checkbox" class="sku-select-checkbox" data-sku="${sku.replace(/"/g, '&quot;')}" ${isChecked}>`;
+                    },
+                    cellClick: function(e, cell) {
+                        e.stopPropagation();
+                    }
+                },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: "Sprc Dil",
@@ -4354,7 +4259,7 @@
                     sorter: temuSortBy(function(d) {
                         return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
                     }),
-                    headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Temu Price.",
+                    headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
@@ -4362,7 +4267,15 @@
                             ? temuSpriceCellModel(rowData)
                             : { value: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
                         let value = model.value;
-                        const live = typeof temuRowTemuPrice === 'function' ? temuRowTemuPrice(rowData) : 0;
+                        if (!(value > 0) && window.SpriceLmpCap) {
+                            const discounted = typeof temuDiscountedPrice === 'function'
+                                ? temuDiscountedPrice(rowData)
+                                : (parseFloat(cell.getValue() || 0) || 0);
+                            const lmpCap = SpriceLmpCap.apply(rowData, discounted);
+                            if (lmpCap && lmpCap.shown > 0) value = lmpCap.shown;
+                        }
+                        value = temuClampSpriceBand2699(value);
+                        const live = parseFloat(rowData.temu_price) || 0;
                         const lmp = model.lmp || (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
                         if (!(value > 0)) return '';
                         const formatted = '$' + value.toFixed(2);
@@ -4378,7 +4291,7 @@
                             : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                + value.toFixed(2) + ' ≠ Temu Price $' + live.toFixed(2) + '"></i>'
+                                + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
                         let capHtml = '';
                         (model.labels || []).forEach(function(lbl) {
@@ -4409,84 +4322,46 @@
                     }
                 },
                 {
-                    title: "Push Prc",
+                    title: "Base Prc",
                     field: "_push",
-                    minWidth: 96,
-                    width: 96,
+                    minWidth: 88,
                     hozAlign: "center",
                     headerSort: true,
-                    headerVertical: false,
                     sorter: temuSortPushBase,
-                    visible: true,
+                    visible: false,
                     download: true,
-                    downloadTitle: "Push Prc",
+                    downloadTitle: "Base Prc",
                     accessorDownload: function(value, data) {
-                        const base = typeof temuListingPushBase === 'function' ? temuListingPushBase(data) : null;
-                        return base != null ? base : '';
+                        const cap = temuPushSpriceAndBase(data);
+                        return cap.pushBase == null ? '' : cap.pushBase;
                     },
-                    headerTooltip: "Push Prc — send S Temu B Prc (supplier base) to the live Temu listing. Not S PRC.",
-                    titleFormatter: function() {
-                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;">'
-                            + 'Push Prc'
-                            + '<button type="button" class="btn btn-sm p-0 temu1-push-prc-header-btn" '
-                            + 'title="Bulk push S Temu B Prc for selected SKUs" '
-                            + 'style="border:none;background:none;color:#FF9900;cursor:pointer;padding:0;line-height:1;">'
-                            + '<i class="fas fa-upload"></i></button></span>';
-                    },
-                    headerClick: function(e) {
-                        if (e.target.closest('.temu1-push-prc-header-btn')) {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            if (typeof temuBulkPushSelected === 'function') temuBulkPushSelected();
-                            return false;
-                        }
-                    },
+                    headerTooltip: "Push Temu base = inverse of Temu Price from display S PRC. If display is $34–$37, push = display × 0.88 − $2.99.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
-                        const pushBase = typeof temuListingPushBase === 'function' ? temuListingPushBase(rowData) : null;
-                        const pushStatus = String(rowData.push_status || '');
-                        const doneStatus = String(rowData.push_status || rowData.PUSH_PRC_STATUS || '');
-                        if (!(pushBase > 0)) {
-                            return '<span style="color:#adb5bd;" title="S Temu B Prc required">—</span>';
-                        }
+                        const cap = temuPushSpriceAndBase(rowData);
+                        const pushBase = cap.pushBase;
+                        const sprice = cap.sprice;
+                        const pushStatus = rowData.push_status || null;
+                        if (!(sprice > 0) || pushBase == null) return '';
 
                         const sku = rowData.sku || '';
                         const goodsId = rowData.goods_id || '';
                         const skuId = rowData.sku_id || '';
                         const priceHtml = '<span style="font-weight:600;">$' + pushBase.toFixed(2) + '</span>';
-                        const title = 'Push S Temu B Prc $' + pushBase.toFixed(2) + ' to Temu listing';
+                        const title = 'Push Temu base $' + pushBase.toFixed(2)
+                            + ' (inverse of Temu Price from SPRICE $' + sprice.toFixed(2) + ')';
 
                         if (pushStatus === 'pushing') {
-                            return '<button type="button" class="temu2-push-single-btn" disabled style="border:none;background:none;cursor:wait;color:#ffc107;">'
-                                + priceHtml + ' <i class="fas fa-spinner fa-spin" title="Pushing S Temu B Prc…"></i></button>';
+                            return priceHtml + ' <i class="fas fa-spinner fa-spin" style="color: #ffc107;" title="Pushing to Temu..."></i>';
                         }
-                        if (doneStatus === 'pushed') {
-                            return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border:none;background:none;color:#28a745;cursor:pointer;" title="Pushed S Temu B Prc — click to push again">${priceHtml} <i class="fa-solid fa-check-double"></i></button>`;
+                        if (pushStatus === 'pushed') {
+                            return priceHtml + ' <i class="fa-solid fa-check-double" style="color: #28a745;" title="Pushed to Temu"></i>';
                         }
                         if (pushStatus === 'error') {
-                            return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border:none;background:none;color:#dc3545;cursor:pointer;" title="Push failed — click to retry">${priceHtml} <i class="fa-solid fa-x"></i></button>`;
+                            return priceHtml + ` <button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>`;
                         }
-                        return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border:none;background:none;color:#FF9900;cursor:pointer;" title="${title}">${priceHtml} <i class="fas fa-upload"></i></button>`;
-                    },
-                    cellClick: function(e, cell) {
-                        // Tabulator cellClick runs before document bubble and stops the
-                        // delegated .temu2-push-single-btn handler — push from here.
-                        if (e && e.stopPropagation) e.stopPropagation();
-                        if (e && e.preventDefault) e.preventDefault();
-                        const d = cell.getRow().getData() || {};
-                        if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(d)) return false;
-                        const status = String(d.push_status || '');
-                        if (status === 'pushing') return false;
-                        const sku = String(d.sku || '');
-                        if (selectedSkus && selectedSkus.size > 1 && selectedSkus.has(sku) && typeof temuBulkPushSelected === 'function') {
-                            temuBulkPushSelected();
-                            return false;
-                        }
-                        if (typeof window.temuStartPushForRow === 'function') {
-                            window.temuStartPushForRow(cell.getRow());
-                        }
-                        return false;
+                        return priceHtml + ` <button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #0d6efd; cursor: pointer;" title="${title}"><i class="fas fa-upload"></i></button>`;
                     }
                 },
            
@@ -4606,7 +4481,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         return String(Math.round(value));
                     },
-                    visible: false
+                    visible: true
                 },
                 {
                     title: "ACOS%",
@@ -4762,7 +4637,6 @@
                     hozAlign: "center",
                     width: 80,
                     minWidth: 70,
-                    visible: false,
                     formatter: function(cell) {
                         const v = cell.getValue();
                         return (v === null || v === undefined || v === '') ? '' : v;
@@ -4775,7 +4649,6 @@
                     hozAlign: "center",
                     width: 90,
                     minWidth: 80,
-                    visible: false,
                     formatter: function(cell) {
                         const v = cell.getValue();
                         return (v === null || v === undefined || v === '') ? '' : v;
@@ -4809,7 +4682,6 @@
                     sorter: "string",
                     width: 150,
                     minWidth: 140,
-                    visible: false,
                     accessorDownload: function(value, data) {
                         if (data && data.goods_id_mismatch) {
                             const ids = Array.isArray(data.child_goods_ids) ? data.child_goods_ids.join(' | ') : '';
@@ -4841,8 +4713,6 @@
             temu2AutofitColumns();
         });
 
-        var alwaysHiddenColumns = ['cvr_45', 'profit', 'spend', 'handling_charge', 'o_size_charge', 'goods_id', 'nr_req'];
-        var alwaysVisibleColumns = ['_select', '_push'];
         const TEMU2_AUTOFIT_SKIP = {
             image_path: 1, links_column: 1, _select: 1, _push: 1, nr_req: 1
         };
@@ -4896,10 +4766,6 @@
             table.getColumns().forEach(function(column) {
                 const field = column.getField();
                 if (!field || !Object.prototype.hasOwnProperty.call(state, field)) return;
-                if (alwaysVisibleColumns.indexOf(field) !== -1) {
-                    column.show();
-                    return;
-                }
                 if (state[field]) {
                     column.show();
                 } else {
@@ -4953,7 +4819,7 @@
 
             table.clearFilter(true);
 
-            // Row type: All Rows / Parents / SKUs (default SKUs)
+            // Row type: All Rows / Parents / SKUs (default Parents)
             if (parentFilter === 'parents') {
                 table.addFilter(function(data) {
                     return isTemu2ParentRow(data);
@@ -5151,6 +5017,15 @@
                 table.addFilter(function(data) {
                     if (isTemu2ParentRow(data)) return false;
                     return (parseInt(data.temu_l30, 10) || 0) > 0 && (parseFloat(data.inventory) || 0) > 0;
+                });
+            }
+
+            if (missingLFilterActive || missingBadgeFilterActive) {
+                table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data)) return false;
+                    const inv = parseFloat(data.inventory) || 0;
+                    const nrReq = String(data.nr_req || 'REQ').toUpperCase();
+                    return data.missing === 'M' && inv > 0 && nrReq !== 'NR' && nrReq !== 'NRL';
                 });
             }
 
@@ -6068,6 +5943,8 @@
             }).catch(err => console.error('Error saving column visibility:', err));
         }
 
+        // Columns that should ALWAYS stay hidden, regardless of saved state.
+        var alwaysHiddenColumns = ['cvr_45', 'profit', '_push'];
         function enforceAlwaysHiddenColumns() {
             alwaysHiddenColumns.forEach(function(col) {
                 try { table.hideColumn(col); } catch (e) {}
@@ -6098,9 +5975,6 @@
                     }
                     // Keep Spend visible (display-only; not Temu ads feature set)
                     try { table.showColumn('spend'); } catch (e) {}
-                    alwaysVisibleColumns.forEach(function(col) {
-                        try { table.showColumn(col); } catch (e) {}
-                    });
                     enforceAlwaysHiddenColumns();
                     temu2AutofitColumns();
                 })
@@ -6111,9 +5985,6 @@
             applyColumnVisibilityFromServer();
             buildColumnDropdown();
             try { table.showColumn('spend'); } catch (e) {}
-            alwaysVisibleColumns.forEach(function(col) {
-                try { table.showColumn(col); } catch (e) {}
-            });
             enforceAlwaysHiddenColumns();
         });
 
@@ -6366,105 +6237,20 @@
         updateCampaignPeriodUi();
 
         // --- Temu price push: SPRICE → base via inverse of Temu Price ---
-        function temuWalkAllRows(fn) {
-            if (!table) return;
-            function walk(row) {
-                if (!row) return;
-                fn(row);
-                if (typeof row.getTreeChildren === 'function') {
-                    (row.getTreeChildren() || []).forEach(walk);
-                }
-            }
-            try {
-                (table.getRows('all') || []).forEach(walk);
-            } catch (e) {
-                (table.getRows() || []).forEach(walk);
-            }
-        }
-        function temuCollectSelectedPushItems() {
-            const items = [];
-            const seen = new Set();
-            temuWalkAllRows(function(row) {
-                const d = row.getData() || {};
-                if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(d)) return;
-                const sku = String(d.sku || '').trim();
-                if (!sku || !selectedSkus.has(sku) || seen.has(sku)) return;
-                const pushBase = typeof temuListingPushBase === 'function' ? temuListingPushBase(d) : null;
-                if (!(pushBase > 0)) return;
-                seen.add(sku);
-                items.push({ row: row, sku: sku, price: pushBase, sprice: pushBase, pushBase: pushBase });
-            });
-            return items;
-        }
-        function temuRunPushQueue(items, doneMsg) {
-            if (!items.length) return;
-            let ok = 0, fail = 0, i = 0;
-            function next() {
-                if (i >= items.length) {
-                    showToast((doneMsg || 'Temu 1 push done') + ': ' + ok + ' ok, ' + fail + ' failed', fail ? 'warning' : 'success');
-                    if (typeof updateSummary === 'function') updateSummary();
-                    return;
-                }
-                const item = items[i++];
-                pushTemu2PriceForRow(item.row, item.price).then(function() {
-                    ok++;
-                    setTimeout(next, 250);
-                }).catch(function() {
-                    fail++;
-                    setTimeout(next, 250);
-                });
-            }
-            next();
-        }
-        function temuBulkPushSelected() {
-            const items = temuCollectSelectedPushItems();
-            if (!items.length) {
-                showToast('Select one or more SKUs with S Temu B Prc first', 'error');
-                return;
-            }
-            if (!confirm('Push S Temu B Prc for ' + items.length + ' selected SKU(s)?')) return;
-            temuRunPushQueue(items, 'Temu 1 S Temu B Prc push done');
-        }
-        window.temuBulkPushSelected = temuBulkPushSelected;
-        function temuStartPushForRow(row) {
-            if (!row || typeof row.getData !== 'function') return;
-            const d = row.getData() || {};
-            const sku = String(d.sku || '');
-            const pushBase = typeof temuListingPushBase === 'function' ? temuListingPushBase(d) : null;
-            if (!(pushBase > 0)) {
-                showToast('Cannot push — S Temu B Prc required', 'error');
-                return;
-            }
-            if (!confirm('Push S Temu B Prc $' + pushBase.toFixed(2) + ' for SKU: ' + sku + '?')) return;
-            pushTemu2PriceForRow(row, pushBase).then(function() {
-                showToast('S Temu B Prc pushed to Temu 1', 'success');
-                if (typeof updateSummary === 'function') updateSummary();
-            }).catch(function(err) {
-                showToast((err && err.message) || 'Failed to push price', 'error');
-            });
-        }
-        window.temuStartPushForRow = temuStartPushForRow;
         function pushTemu2PriceForRow(row, price) {
             const data = row.getData();
             const sku = data.sku;
             const goodsId = data.goods_id || '';
             const skuId = data.sku_id || '';
-            const pushBase = typeof temuListingPushBase === 'function' ? temuListingPushBase(data) : null;
-            let pushPrice = (pushBase != null && pushBase > 0) ? +pushBase.toFixed(2) : null;
-            if (pushPrice == null && typeof temuPushBaseFromSprice === 'function') {
-                const fromArg = temuPushBaseFromSprice(price);
-                if (fromArg > 0) pushPrice = +Number(fromArg).toFixed(2);
-            }
+            const cap = temuPushSpriceAndBase(data);
+            const raw = parseFloat(price);
+            let pushPrice = cap.pushBase;
+            if (pushPrice == null && isFinite(raw) && raw > 0) pushPrice = +raw.toFixed(2);
             if (!sku || !(pushPrice > 0)) {
-                return Promise.reject({ message: 'SKU and S Temu B Prc required' });
+                return Promise.reject({ message: 'SKU and price required' });
             }
 
-            row.update({
-                push_status: 'pushing',
-                PUSH_PRC_STATUS: 'pushing',
-                SPRICE_STATUS: 'pushing',
-                push_prc: 'pushing',
-            });
+            row.update({ push_status: 'pushing' });
             row.reformat();
 
             return new Promise(function(resolve, reject) {
@@ -6476,7 +6262,6 @@
                         _token: '{{ csrf_token() }}',
                         sku: sku,
                         price: pushPrice,
-                        as_base: 1,
                         goods_id: goodsId,
                         sku_id: skuId
                     },
@@ -6485,33 +6270,18 @@
                             if (typeof temuApplyPushedListingPrice === 'function') {
                                 temuApplyPushedListingPrice(row, pushPrice, data);
                             } else {
-                                row.update({
-                                    push_status: 'pushed',
-                                    PUSH_PRC_STATUS: 'pushed',
-                                    SPRICE_STATUS: 'pushed',
-                                    push_prc: 'pushed',
-                                });
+                                row.update({ push_status: 'pushed' });
                                 row.reformat();
                             }
                             resolve(response);
                         } else {
-                            row.update({
-                                push_status: 'error',
-                                PUSH_PRC_STATUS: 'error',
-                                SPRICE_STATUS: 'error',
-                                push_prc: 'error',
-                            });
+                            row.update({ push_status: 'error' });
                             row.reformat();
                             reject({ message: (response && response.message) || 'Push failed' });
                         }
                     },
                     error: function(xhr) {
-                        row.update({
-                            push_status: 'error',
-                            PUSH_PRC_STATUS: 'error',
-                            SPRICE_STATUS: 'error',
-                            push_prc: 'error',
-                        });
+                        row.update({ push_status: 'error' });
                         row.reformat();
                         const msg = (xhr.responseJSON && (xhr.responseJSON.message
                             || (xhr.responseJSON.errors && xhr.responseJSON.errors[0] && xhr.responseJSON.errors[0].message)))
@@ -6522,21 +6292,34 @@
             });
         }
 
-        $(document).off('click.temu1push', '.temu2-push-single-btn').on('click.temu1push', '.temu2-push-single-btn', function(e) {
+        $(document).on('click', '.temu2-push-single-btn', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            if (this.disabled) return;
-            const sku = String($(this).data('sku') || '');
-            if (selectedSkus && selectedSkus.size > 1 && selectedSkus.has(sku)) {
-                temuBulkPushSelected();
+            const $btn = $(this);
+            const sku = $btn.data('sku');
+            const row = table.getRows().find(function(r) {
+                return String(r.getData().sku || '') === String(sku);
+            });
+            if (!row) return;
+            const cap = temuPushSpriceAndBase(row.getData());
+            const sprice = cap.sprice;
+            const pushBase = cap.pushBase;
+            if (pushBase == null || pushBase <= 0) {
+                showToast('Cannot push — invalid or negative Push Prc', 'error');
                 return;
             }
-            let found = null;
-            temuWalkAllRows(function(r) {
-                if (found) return;
-                if (String((r.getData() || {}).sku || '') === sku) found = r;
+            if (!confirm(
+                'Push Temu base $' + pushBase.toFixed(2)
+                + ' (inverse of Temu Price from SPRICE $' + sprice.toFixed(2) + ')'
+                + ' for SKU: ' + sku + '?'
+            )) return;
+
+            pushTemu2PriceForRow(row, pushBase).then(function() {
+                showToast('Price pushed to Temu 1', 'success');
+                if (typeof updateSummary === 'function') updateSummary();
+            }).catch(function(err) {
+                showToast((err && err.message) || 'Failed to push price', 'error');
             });
-            if (found) temuStartPushForRow(found);
         });
 
         if (window.TemuViewDataUpload) {
@@ -6560,7 +6343,52 @@
         @endif
 
         $('#push-temu2-price-btn').on('click', function() {
-            temuBulkPushSelected();
+            if (!table) {
+                showToast('Table not ready', 'error');
+                return;
+            }
+            const items = [];
+            table.getRows('active').forEach(function(row) {
+                const d = row.getData();
+                if (d.is_parent) return;
+                const cap = temuPushSpriceAndBase(d);
+                if (cap.sprice > 0 && cap.pushBase != null && d.push_status !== 'pushed') {
+                    items.push({ row: row, price: cap.pushBase, sku: d.sku, pushBase: cap.pushBase });
+                }
+            });
+
+            if (items.length === 0) {
+                showToast('No rows with SPRICE to push (or all already pushed)', 'warning');
+                return;
+            }
+
+            if (!confirm(
+                'Push Temu base for ' + items.length + ' SKU(s)?\n'
+                + 'Base = inverse of Temu Price from SPRICE (÷ 1.1364, undo +$2.99 if applied)'
+            )) return;
+
+            const $btn = $('#push-temu2-price-btn');
+            const btnHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            let ok = 0, fail = 0, i = 0;
+
+            function next() {
+                if (i >= items.length) {
+                    $btn.prop('disabled', false).html(btnHtml);
+                    showToast('Temu2 push done: ' + ok + ' ok, ' + fail + ' failed', fail ? 'warning' : 'success');
+                    if (typeof updateSummary === 'function') updateSummary();
+                    return;
+                }
+                const item = items[i++];
+                pushTemu2PriceForRow(item.row, item.price).then(function() {
+                    ok++;
+                    setTimeout(next, 250);
+                }).catch(function() {
+                    fail++;
+                    setTimeout(next, 250);
+                });
+            }
+            next();
         });
     });
 </script>

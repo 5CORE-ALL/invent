@@ -195,13 +195,6 @@ class ChannelPromoPricingController extends Controller
     public function queuePushSprice(Request $request, string $channel): JsonResponse
     {
         $channel = strtolower(trim($channel));
-        if (ChannelPushSpriceRunner::refusesSpriceQueue($channel)) {
-            ChannelPushSpriceJobStore::for($channel)->forceStop('Stopped: Temu does not push S PRC.');
-            return response()->json([
-                'success' => false,
-                'message' => 'Temu does not push S PRC. Use Push Prc (S Temu B Prc) only when auto-push is on.',
-            ], 422);
-        }
         if (! in_array($channel, self::PUSH_SPRICE_CHANNELS, true)) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel for S PRC queue'], 422);
         }

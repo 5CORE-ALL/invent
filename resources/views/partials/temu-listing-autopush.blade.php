@@ -1,4 +1,4 @@
-{{-- Temu / Temu 2 / Temu 3: S PRC → live listing via /temu(2|3)/push-price. Does not use save-sprice. --}}
+{{-- Temu / Temu 2 / Temu 3: S PRC → listing base via /temu(2|3)/push-price. Does not use save-sprice. --}}
         (function(global) {
             const TEMU_LISTING_CHANNEL = @json($channelPromoChannel ?? '');
             if (TEMU_LISTING_CHANNEL !== 'temu' && TEMU_LISTING_CHANNEL !== 'temu2' && TEMU_LISTING_CHANNEL !== 'temu3') return;
@@ -27,8 +27,6 @@
             let temuListingFail = 0;
             let temuListingTotal = 0;
             let temuListingCancelled = false;
-            let temuListingBatchOpen = false;
-            let temuListingScanScheduled = false;
             const temuListingPushed = new Set();
 
             function temuListingCsrf() {
@@ -55,75 +53,25 @@
                 const n = parseFloat(fallback != null ? fallback : (d && (d.sprice != null ? d.sprice : d.SPRICE)));
                 return n > 0 ? +n.toFixed(2) : 0;
             }
-            function temuListingPushAmount(d, sprice) {
-                if (d && typeof temuListingPushBase === 'function') {
-                    const listing = temuListingPushBase(d);
-                    if (listing > 0) return +Number(listing).toFixed(2);
-                }
-                const shown = temuListingShownSprice(d, sprice);
-                if (typeof temuPushBaseFromSprice === 'function') {
-                    const base = temuPushBaseFromSprice(shown);
-                    if (base > 0) return +Number(base).toFixed(2);
-                }
-                return null;
+            function temuListingPushBase(sprice) {
+                if (typeof temuPushBaseFromSprice !== 'function') return null;
+                const base = temuPushBaseFromSprice(sprice);
+                return (base != null && base > 0) ? +Number(base).toFixed(2) : null;
             }
             function temuListingCurrentBase(d) {
                 const b = parseFloat(d && d.base_price);
                 return b > 0 ? +b.toFixed(2) : 0;
             }
             function temuListingNeedsPush(d, sprice) {
-                return temuListingHasBlueTriangle(d);
-            }
-            /** Same set as the blue-triangle badge: INV > 0 and shown S PRC ≠ Temu Price. */
-            function temuListingHasBlueTriangle(d) {
-                if (!d) return false;
-                if (typeof temu2HasBlueTriangle === 'function') return !!temu2HasBlueTriangle(d);
-                const inv = parseFloat(d.inventory != null ? d.inventory : d.INV) || 0;
-                if (!(inv > 0)) return false;
-                const sku = String(d.sku || d['(Child) sku'] || '').trim().toUpperCase();
-                if (!sku || sku.indexOf('PARENT') !== -1) return false;
-                if (d.is_parent || d.is_parent_row || d.is_parent_summary) return false;
-                const sprice = temuListingShownSprice(d);
-                const temuPrice = (typeof temuRowTemuPrice === 'function')
-                    ? temuRowTemuPrice(d)
-                    : (parseFloat(d.temu_price_display || d.temu_price) || 0);
-                return sprice > 0 && temuPrice > 0 && Math.round(sprice * 100) !== Math.round(temuPrice * 100);
-            }
-            function temuListingAutoEligible(d) {
-                if (!d) return false;
-                const pushSt = String(d.push_status || d.PUSH_PRC_STATUS || d.SPRICE_STATUS || '').toLowerCase();
-                if (pushSt === 'error' || pushSt === 'failed') return false;
-                return temuListingHasBlueTriangle(d);
-            }
-            function temuListingStatusPatch(status, extra) {
-                return Object.assign({
-                    push_status: status,
-                    PUSH_PRC_STATUS: status,
-                    SPRICE_STATUS: status === 'pushing' ? 'pushing' : status,
-                    push_prc: status,
-                }, extra || {});
-            }
-            function temuListingTouchRow(row, sku, patch) {
-                let target = (row && typeof row.update === 'function') ? row : null;
-                if (!target && sku && typeof temuFindTableRowBySku === 'function') {
-                    target = temuFindTableRowBySku(sku);
-                }
-                if (target && typeof target.update === 'function') {
-                    try { target.update(patch); } catch (e) { /* ignore */ }
-                    try { target.reformat(); } catch (e) { /* ignore */ }
-                    return target;
-                }
-                return null;
+                const shown = temuListingShownSprice(d, sprice);
+                const base = temuListingPushBase(shown);
+                if (!(base > 0)) return false;
+                return !temuListingNearly(base, temuListingCurrentBase(d));
             }
             function temuListingSetProgress(active) {
                 const total = temuListingTotal;
                 const done = temuListingDone;
                 const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
-                const finished = !active && total > 0 && done >= total;
-                const doneMsg = finished
-                    ? (temuListingOk + ' ok' + (temuListingFail ? (' · ' + temuListingFail + ' failed') : ''))
-                    : undefined;
-                global.temuListingProgressLocked = !!(active || (total > 0 && done < total));
                 if (typeof global.setChannelPushSpriceProgress === 'function') {
                     global.setChannelPushSpriceProgress({
                         active: !!active,
@@ -133,7 +81,7 @@
                         fail: temuListingFail,
                         pct: pct,
                         title: 'Temu listing',
-                        msg: active ? (done + ' / ' + total) : doneMsg,
+                        msg: active ? (done + ' / ' + total) : undefined,
                     });
                     return;
                 }
@@ -144,7 +92,7 @@
                 $inline.toggleClass('is-fail', temuListingFail > 0);
                 $('#ch-promo-reload-push-progress-pct').text(pct + '%');
                 $('#ch-promo-reload-push-progress-bar').css('width', pct + '%');
-                $('#ch-promo-reload-push-progress-msg').text(active ? (done + ' / ' + total) : (doneMsg || 'Ready'));
+                $('#ch-promo-reload-push-progress-msg').text(active ? (done + ' / ' + total) : (total ? 'Ready' : 'Ready'));
             }
             function temuListingPatchDatasets(sku, patch) {
                 const want = String(sku || '').trim();
@@ -170,16 +118,20 @@
                     ? +temu2FullPriceFromBase(base).toFixed(2)
                     : +(base * 1.1364).toFixed(2);
                 const rPrice = base <= 26.99 ? +(base + 2.99).toFixed(2) : base;
-                const patch = temuListingStatusPatch('pushed', {
+                const patch = {
                     base_price: base,
                     temu_price: rPrice,
                     temu_price_display: full,
-                });
+                    push_status: 'pushed',
+                };
                 const d = data || ((row && typeof row.getData === 'function') ? row.getData() : null);
-                const sku = String((d && d.sku) || (row && row.sku) || '').trim();
-                if (!temuListingTouchRow(row, sku, patch) && d) {
+                if (row && typeof row.update === 'function') {
+                    row.update(patch);
+                    try { row.reformat(); } catch (e) { /* ignore */ }
+                } else if (d) {
                     Object.assign(d, patch);
                 }
+                const sku = String((d && d.sku) || '').trim();
                 temuListingPatchDatasets(sku, patch);
                 if (typeof updateSummary === 'function') {
                     clearTimeout(temuApplyPushedListingPrice._sumTimer);
@@ -197,10 +149,8 @@
                     data: { sku: sku, base_price: base, _token: temuListingCsrf() },
                 });
             }
-            function temuListingPullPrice(sku, row, d, pushedBase) {
+            function temuListingPullPrice(sku, row, d) {
                 if (!sku || !TEMU_LISTING_PULL_URL) return;
-                const sent = parseFloat(pushedBase) || 0;
-                const shown = temuListingShownSprice(d);
                 $.ajax({
                     url: TEMU_LISTING_PULL_URL,
                     method: 'POST',
@@ -216,23 +166,11 @@
                         if (n > 0) live = n;
                     });
                     if (!(live > 0)) return;
-                    if (shown > 0 && Math.abs(live - shown) < 0.05 && typeof temuPushBaseFromSprice === 'function') {
-                        const inverted = temuPushBaseFromSprice(live);
-                        if (inverted > 0) live = inverted;
-                    }
-                    if (sent > 0 && Math.abs(live - sent) <= 0.011) live = sent;
                     temuApplyPushedListingPrice(row, live, d);
                     temuListingPersistBase(sku, live);
                 });
             }
             function temuListingPump() {
-                if (!temuListingAllowed()) {
-                    cancelTemuListingAutopush();
-                    if (typeof global.stopChannelPushSpriceNow === 'function') {
-                        global.stopChannelPushSpriceNow();
-                    }
-                    return;
-                }
                 if (temuListingCancelled) return;
                 while (temuListingInflight < TEMU_LISTING_MAX && temuListingQ.length) {
                     const item = temuListingQ.shift();
@@ -240,7 +178,12 @@
                     const d = (item.row && typeof item.row.getData === 'function')
                         ? (item.row.getData() || {})
                         : {};
-                    temuListingTouchRow(item.row, item.sku, temuListingStatusPatch('pushing'));
+                    if (item.row && typeof item.row.update === 'function') {
+                        try {
+                            item.row.update({ push_status: 'pushing' });
+                            item.row.reformat();
+                        } catch (e) { /* ignore */ }
+                    }
                     temuListingSetProgress(true);
                     $.ajax({
                         url: TEMU_LISTING_PUSH_URL,
@@ -250,7 +193,6 @@
                             _token: temuListingCsrf(),
                             sku: item.sku,
                             price: item.pushBase,
-                            as_base: 1,
                             goods_id: d.goods_id || '',
                             sku_id: d.sku_id || '',
                         },
@@ -260,31 +202,36 @@
                             temuListingPushed.add(String(item.sku).toUpperCase() + '|' + Number(item.pushBase).toFixed(2));
                             temuApplyPushedListingPrice(item.row, item.pushBase, d);
                             temuListingPersistBase(item.sku, item.pushBase);
-                            temuListingPullPrice(item.sku, item.row, d, item.pushBase);
+                            temuListingPullPrice(item.sku, item.row, d);
                         } else {
                             temuListingFail++;
-                            temuListingTouchRow(item.row, item.sku, temuListingStatusPatch('error'));
+                            if (item.row && typeof item.row.update === 'function') {
+                                try {
+                                    item.row.update({ push_status: 'error' });
+                                    item.row.reformat();
+                                } catch (e) { /* ignore */ }
+                            }
                         }
                     }).fail(function() {
                         temuListingFail++;
-                        temuListingTouchRow(item.row, item.sku, temuListingStatusPatch('error'));
+                        if (item.row && typeof item.row.update === 'function') {
+                            try {
+                                item.row.update({ push_status: 'error' });
+                                item.row.reformat();
+                            } catch (e) { /* ignore */ }
+                        }
                     }).always(function() {
                         temuListingDone++;
                         temuListingInflight--;
                         const busy = temuListingInflight > 0 || temuListingQ.length > 0;
                         temuListingSetProgress(busy);
                         if (!busy) {
-                            temuListingBatchOpen = false;
-                            global.temuListingProgressLocked = false;
                             setTimeout(function() {
                                 if (temuListingInflight || temuListingQ.length) return;
                                 temuListingDone = 0;
                                 temuListingOk = 0;
                                 temuListingFail = 0;
                                 temuListingTotal = 0;
-                                temuListingBatchOpen = false;
-                                temuListingScanScheduled = false;
-                                global.temuListingProgressLocked = false;
                             }, 12000);
                         } else {
                             setTimeout(temuListingPump, 200);
@@ -302,101 +249,42 @@
                     ? (tableRow.getData() || {})
                     : ((row && typeof row === 'object') ? row : {});
                 const shown = temuListingShownSprice(d, sprice);
-                const pushAmount = temuListingPushAmount(d, shown);
-                if (!sku || !(pushAmount > 0)) return false;
-                if (!opts.force && !temuListingAutoEligible(d)) return false;
+                const pushBase = temuListingPushBase(shown);
+                if (!sku || !(pushBase > 0)) return false;
+                if (!opts.force && !temuListingNeedsPush(d, shown)) return false;
                 const key = String(sku).toUpperCase();
-                const dedupe = key + '|' + pushAmount.toFixed(2);
+                const dedupe = key + '|' + pushBase.toFixed(2);
                 if (temuListingPushed.has(dedupe)) return false;
-                const already = temuListingQ.some(function(it) {
-                    return String(it.sku).toUpperCase() === key;
-                });
-                if (temuListingBatchOpen && !already) return false;
                 temuListingQ = temuListingQ.filter(function(it) {
                     return String(it.sku).toUpperCase() !== key;
                 });
-                temuListingQ.push({ sku: sku, sprice: shown, pushBase: pushAmount, row: tableRow });
+                temuListingQ.push({ sku: sku, sprice: shown, pushBase: pushBase, row: tableRow });
                 temuListingCancelled = false;
-                if (!temuListingBatchOpen && !already) {
-                    temuListingTotal = temuListingDone + temuListingQ.length + temuListingInflight;
-                }
-                if (!opts.deferPump) {
-                    temuListingSetProgress(true);
-                    temuListingPump();
-                }
+                temuListingTotal = temuListingDone + temuListingQ.length + temuListingInflight;
+                temuListingSetProgress(true);
+                temuListingPump();
                 return true;
-            }
-            function temuListingCollectActive(tbl) {
-                const seen = {};
-                const found = [];
-                const rowBySku = {};
-                const consider = function(row, d) {
-                    if (!d) return;
-                    if (d.is_parent || d.is_parent_row || d.is_parent_summary) return;
-                    if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(d)) return;
-                    const sku = String(d.sku || d['(Child) sku'] || '').trim();
-                    const key = sku.toUpperCase();
-                    if (!sku || key.indexOf('PARENT') !== -1 || seen[key]) return;
-                    if (!temuListingAutoEligible(d)) return;
-                    seen[key] = true;
-                    found.push({ sku: sku, row: row || d });
-                };
-                if (tbl && typeof tbl.getRows === 'function') {
-                    try {
-                        (tbl.getRows('active') || []).forEach(function(row) {
-                            if (!row || typeof row.getData !== 'function') return;
-                            const d = row.getData() || {};
-                            const key = String(d.sku || '').trim().toUpperCase();
-                            if (key) rowBySku[key] = row;
-                        });
-                    } catch (e) { /* ignore */ }
-                }
-                // Filtered leftover only (SKUs + INV>0 + REQ). Unfiltered getData() is ~2× that.
-                if (tbl && typeof tbl.getData === 'function') {
-                    try {
-                        (tbl.getData('active') || []).forEach(function(d) {
-                            const key = String((d && d.sku) || '').trim().toUpperCase();
-                            consider(rowBySku[key] || null, d);
-                        });
-                    } catch (e) { /* ignore */ }
-                }
-                return found;
-            }
-            function temuListingStartLockedBatch(tbl) {
-                const found = temuListingCollectActive(tbl);
-                found.forEach(function(it) {
-                    enqueueTemuListingPushAfterSave(it.sku, null, it.row, { deferPump: true });
-                });
-                temuListingTotal = temuListingQ.length + temuListingInflight + temuListingDone;
-                temuListingBatchOpen = temuListingTotal > 0;
-                global.temuListingProgressLocked = temuListingBatchOpen;
-                if (temuListingTotal > 0) {
-                    temuListingSetProgress(true);
-                    temuListingPump();
-                }
-                return found.length;
             }
             function scanAndQueueTemuListingPush(tbl) {
                 if (!temuListingAllowed()) return 0;
-                if (temuListingBatchOpen && (temuListingQ.length || temuListingInflight || temuListingDone)) {
-                    return 0;
-                }
                 tbl = tbl || (typeof table !== 'undefined' ? table : null);
-                const readyCount = (tbl && typeof tbl.getDataCount === 'function') ? tbl.getDataCount() : 0;
-                if (!(readyCount > 0)) {
-                    setTimeout(function() { scanAndQueueTemuListingPush(tbl); }, 400);
-                    return 0;
-                }
-                if (temuListingScanScheduled) return 0;
-                temuListingScanScheduled = true;
-                setTimeout(function() {
-                    if (temuListingBatchOpen && (temuListingQ.length || temuListingInflight || temuListingDone)) {
-                        return;
+                if (!tbl) return 0;
+                let n = 0;
+                const walk = function(row) {
+                    if (!row || typeof row.getData !== 'function') return;
+                    const d = row.getData() || {};
+                    if (d.is_parent || d.is_parent_row || d.is_parent_summary) return;
+                    const sku = String(d.sku || d['(Child) sku'] || '').trim();
+                    if (!sku || sku.toUpperCase().indexOf('PARENT') !== -1) return;
+                    if (enqueueTemuListingPushAfterSave(sku, null, row)) n++;
+                    if (typeof row.getTreeChildren === 'function') {
+                        (row.getTreeChildren() || []).forEach(walk);
                     }
-                    const n = temuListingStartLockedBatch(tbl);
-                    if (!(n > 0)) temuListingScanScheduled = false;
-                }, 500);
-                return 0;
+                };
+                let rows = [];
+                try { rows = tbl.getRows() || []; } catch (e) { rows = []; }
+                rows.forEach(walk);
+                return n;
             }
             function cancelTemuListingAutopush() {
                 temuListingQ = [];
@@ -407,9 +295,6 @@
                     temuListingOk = 0;
                     temuListingFail = 0;
                     temuListingTotal = 0;
-                    temuListingBatchOpen = false;
-                    temuListingScanScheduled = false;
-                    global.temuListingProgressLocked = false;
                     temuListingSetProgress(false);
                 }
             }
@@ -437,5 +322,4 @@
             global.temuListingPullPrice = temuListingPullPrice;
             global.cancelTemuListingAutopush = cancelTemuListingAutopush;
             global.temuListingNeedsPush = temuListingNeedsPush;
-            global.temuListingHasBlueTriangle = temuListingHasBlueTriangle;
         })(window);

@@ -54,16 +54,6 @@ class ChannelPushSpriceDailyEnqueue
     public function enqueueChannel(string $channel): array
     {
         $channel = strtolower(trim($channel));
-        if (ChannelPushSpriceRunner::refusesSpriceQueue($channel)) {
-            ChannelPushSpriceJobStore::for($channel)->forceStop('Stopped: Temu does not push S PRC.');
-            return [
-                'channel' => $channel,
-                'queued' => 0,
-                'total' => 0,
-                'spawned' => false,
-                'message' => 'Skipped — Temu does not push S PRC',
-            ];
-        }
         if (! ChannelPushSpriceRunner::livePushAllowed()) {
             return [
                 'channel' => $channel,

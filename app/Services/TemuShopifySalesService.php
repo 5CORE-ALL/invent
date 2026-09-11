@@ -129,9 +129,9 @@ class TemuShopifySalesService
     public const DECREASE_ADS_PERCENT = 2.2;
 
     /**
-     * Full Temu Price (listing / Sales / GPFT / S PRC when S Base = listing base):
-     *   round(base, 2) × 1.1364; if that result ≤ $26.99 then +$2.99; then round to 2¢.
-     * Same money round as the Temu Price column. Not Temu R Price (base + $2.99).
+     * Full Temu Price (listing / Sales / GPFT):
+     *   (base × 1.1364); if that result ≤ $26.99 then +$2.99.
+     * Not the same as Temu R Price (base + $2.99 when base ≤ $26.99).
      */
     public static function computeFullTemuPrice(float $basePrice): float
     {
@@ -139,13 +139,12 @@ class TemuShopifySalesService
             return 0.0;
         }
 
-        $basePrice = round($basePrice, 2);
         $full = $basePrice * self::FULL_PRICE_MULT;
         if ($full <= 26.99) {
             $full += 2.99;
         }
 
-        return round($full, 2);
+        return $full;
     }
 
     /**
@@ -240,40 +239,8 @@ class TemuShopifySalesService
             return null;
         }
         $base = self::computeBaseFromFullTemuPrice($sprice);
-        if (! ($base > 0)) {
-            return null;
-        }
 
-        $sprice = round($sprice, 2);
-        $rounded = round($base, 2);
-        $best = $rounded;
-        $bestErr = abs(self::computeFullTemuPrice($rounded) - $sprice);
-        foreach ([$rounded - 0.01, $rounded + 0.01] as $candidate) {
-            if ($candidate <= 0) {
-                continue;
-            }
-            $err = abs(self::computeFullTemuPrice($candidate) - $sprice);
-            if ($err + 1e-6 < $bestErr) {
-                $bestErr = $err;
-                $best = round($candidate, 2);
-            }
-        }
-
-        return $best;
-    }
-
-    /**
-     * After a Temu pull, keep the pushed S Temu B Prc when the API is only 1¢ off.
-     */
-    public static function temuIncomingBaseToWrite(?float $incoming, ?float $pushedBase): ?float
-    {
-        $incoming = ($incoming !== null && $incoming > 0) ? round($incoming, 2) : null;
-        $pushed = ($pushedBase !== null && $pushedBase > 0) ? round($pushedBase, 2) : null;
-        if ($incoming !== null && $pushed !== null && abs($incoming - $pushed) <= 0.011) {
-            return $pushed;
-        }
-
-        return $incoming;
+        return $base > 0 ? round($base, 2) : null;
     }
 
     /**
