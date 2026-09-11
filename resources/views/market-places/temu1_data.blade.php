@@ -4456,27 +4456,35 @@
                         const title = 'Push S Temu B Prc $' + pushBase.toFixed(2) + ' to Temu listing';
 
                         if (pushStatus === 'pushing' || pushStatus === 'processing' || pushStatus === 'queued') {
-                            return priceHtml + ' <i class="fas fa-spinner fa-spin" style="color: #ffc107;" title="Pushing S Temu B Prc…"></i>';
+                            return '<button type="button" class="temu2-push-single-btn" disabled style="border:none;background:none;cursor:wait;color:#ffc107;">'
+                                + priceHtml + ' <i class="fas fa-spinner fa-spin" title="Pushing S Temu B Prc…"></i></button>';
                         }
                         if (pushStatus === 'pushed') {
-                            return priceHtml + ` <button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #28a745; cursor: pointer;" title="Pushed S Temu B Prc — click to push again"><i class="fa-solid fa-check-double"></i></button>`;
+                            return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border:none;background:none;color:#28a745;cursor:pointer;" title="Pushed S Temu B Prc — click to push again">${priceHtml} <i class="fa-solid fa-check-double"></i></button>`;
                         }
                         if (pushStatus === 'error') {
-                            return priceHtml + ` <button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>`;
+                            return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border:none;background:none;color:#dc3545;cursor:pointer;" title="Push failed — click to retry">${priceHtml} <i class="fa-solid fa-x"></i></button>`;
                         }
-                        return priceHtml + ` <button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #FF9900; cursor: pointer;" title="${title}"><i class="fas fa-upload"></i></button>`;
+                        return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border:none;background:none;color:#FF9900;cursor:pointer;" title="${title}">${priceHtml} <i class="fas fa-upload"></i></button>`;
                     },
                     cellClick: function(e, cell) {
-                        const btn = e.target.closest('.temu2-push-single-btn');
-                        if (!btn) return;
-                        e.stopPropagation();
-                        e.preventDefault();
+                        // Tabulator cellClick runs before document bubble and stops the
+                        // delegated .temu2-push-single-btn handler — push from here.
+                        if (e && e.stopPropagation) e.stopPropagation();
+                        if (e && e.preventDefault) e.preventDefault();
                         const d = cell.getRow().getData() || {};
+                        if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(d)) return false;
+                        const status = d.PUSH_PRC_STATUS || d.push_status || null;
+                        if (status === 'pushing' || status === 'processing' || status === 'queued') return false;
                         const sku = String(d.sku || '');
                         if (selectedSkus && selectedSkus.size > 1 && selectedSkus.has(sku) && typeof temuBulkPushSelected === 'function') {
                             temuBulkPushSelected();
                             return false;
                         }
+                        if (typeof window.temuStartPushForRow === 'function') {
+                            window.temuStartPushForRow(cell.getRow());
+                        }
+                        return false;
                     }
                 },
            
@@ -6428,6 +6436,24 @@
             temuRunPushQueue(items, 'Temu 1 S Temu B Prc push done');
         }
         window.temuBulkPushSelected = temuBulkPushSelected;
+        function temuStartPushForRow(row) {
+            if (!row || typeof row.getData !== 'function') return;
+            const d = row.getData() || {};
+            const sku = String(d.sku || '');
+            const pushBase = typeof temuListingPushBase === 'function' ? temuListingPushBase(d) : null;
+            if (!(pushBase > 0)) {
+                showToast('Cannot push — S Temu B Prc required', 'error');
+                return;
+            }
+            if (!confirm('Push S Temu B Prc $' + pushBase.toFixed(2) + ' for SKU: ' + sku + '?')) return;
+            pushTemu2PriceForRow(row, pushBase).then(function() {
+                showToast('S Temu B Prc pushed to Temu 1', 'success');
+                if (typeof updateSummary === 'function') updateSummary();
+            }).catch(function(err) {
+                showToast((err && err.message) || 'Failed to push price', 'error');
+            });
+        }
+        window.temuStartPushForRow = temuStartPushForRow;
         function pushTemu2PriceForRow(row, price) {
             const data = row.getData();
             const sku = data.sku;
@@ -6483,32 +6509,21 @@
             });
         }
 
-        $(document).on('click', '.temu2-push-single-btn', function(e) {
+        $(document).off('click.temu1push', '.temu2-push-single-btn').on('click.temu1push', '.temu2-push-single-btn', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            const $btn = $(this);
-            const sku = String($btn.data('sku') || '');
+            if (this.disabled) return;
+            const sku = String($(this).data('sku') || '');
             if (selectedSkus && selectedSkus.size > 1 && selectedSkus.has(sku)) {
                 temuBulkPushSelected();
                 return;
             }
-            const row = table.getRows().find(function(r) {
-                return String(r.getData().sku || '') === sku;
+            let found = null;
+            temuWalkAllRows(function(r) {
+                if (found) return;
+                if (String((r.getData() || {}).sku || '') === sku) found = r;
             });
-            if (!row) return;
-            const pushBase = typeof temuListingPushBase === 'function' ? temuListingPushBase(row.getData()) : null;
-            if (!(pushBase > 0)) {
-                showToast('Cannot push — S Temu B Prc required', 'error');
-                return;
-            }
-            if (!confirm('Push S Temu B Prc $' + pushBase.toFixed(2) + ' for SKU: ' + sku + '?')) return;
-
-            pushTemu2PriceForRow(row, pushBase).then(function() {
-                showToast('S Temu B Prc pushed to Temu 1', 'success');
-                if (typeof updateSummary === 'function') updateSummary();
-            }).catch(function(err) {
-                showToast((err && err.message) || 'Failed to push price', 'error');
-            });
+            if (found) temuStartPushForRow(found);
         });
 
         if (window.TemuViewDataUpload) {
