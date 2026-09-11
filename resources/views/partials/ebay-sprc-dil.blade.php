@@ -796,6 +796,11 @@
             return groi < 0 ? 0 : groi;
         }
         function ebayDgIsZeroSold(d) {
+            // Temu 1: 0 Sold is Temu orders L30, not Shopify OV / metrics L30.
+            if (EBAY_DIL_GROI_CHANNEL === 'temu') {
+                if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
+                return !(Number(d && d.temu_l30) > 0);
+            }
             if (typeof chPromoIsZeroSoldRow === 'function') return chPromoIsZeroSoldRow(d);
             if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
             const sold = Number(d && (d['eBay L30'] != null ? d['eBay L30'] : d.ebay_l30)) || 0;

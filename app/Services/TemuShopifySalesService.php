@@ -217,10 +217,16 @@ class TemuShopifySalesService
         if (! ($targetSR > 0) || ! is_finite($targetSR)) {
             return 0.0;
         }
-        $base = $targetSR > 29.98 ? $targetSR : max(0.01, $targetSR - 2.99);
+        // targetSR is S R Price: +$2.99 only when that R Price is ≤ $26.99.
+        $base = $targetSR > 26.99 ? $targetSR : max(0.01, $targetSR - 2.99);
         $seed = self::computeFullTemuPrice($base);
         if (! ($seed > 0)) {
             $seed = $targetSR;
+        }
+        $seed = round($seed, 2);
+        $seedSgroi = self::sgroiAtSprice($seed, $lp, $ship, $listingBase);
+        if ($seedSgroi !== null && abs($seedSgroi - $groiPct) <= 1.5) {
+            return $seed;
         }
         $lo = max(0.01, $seed * 0.35);
         $hi = max($seed * 2.8, $seed + 20);

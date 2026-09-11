@@ -1195,8 +1195,20 @@
         const push = temuPushBaseFromSprice(temuExportRowSprice(row));
         return push == null ? '' : push;
     }
+    function temuSprcDilDisplaySgroi(row) {
+        if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return null;
+        if (typeof ebayDilGroiTargetGroi !== 'function') return null;
+        const target = ebayDilGroiTargetGroi(row);
+        if (target == null) return null;
+        const rule = typeof ebaySprcDilForRow === 'function' ? Number(ebaySprcDilForRow(row)) : 0;
+        const used = typeof temuDisplayedSprice === 'function' ? Number(temuDisplayedSprice(row)) : 0;
+        if (!(rule > 0) || !(used > 0) || Math.abs(used - rule) > 0.05) return null;
+        return Number(target);
+    }
     function temuExportSgroi(row) {
         if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return '';
+        const dilTarget = temuSprcDilDisplaySgroi(row);
+        if (dilTarget != null) return Math.round(dilTarget);
         if (typeof chPromoZeroSoldDisplayGroi === 'function') {
             const target = chPromoZeroSoldDisplayGroi(row);
             if (target != null) return Math.round(Number(target));
@@ -4396,6 +4408,13 @@
                     headerTooltip: "SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP. Sprc Dil back-solves S PRC so this matches the Dil slab Target GROI (or min GROI when Temu L30 = 0).",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
+                        const dilTarget = typeof temuSprcDilDisplaySgroi === 'function'
+                            ? temuSprcDilDisplaySgroi(rowData)
+                            : null;
+                        if (dilTarget != null) {
+                            const colorClass = getRoiColor(dilTarget);
+                            return `<span class="dil-percent-value ${colorClass}">${Math.round(Number(dilTarget))}%</span>`;
+                        }
                         if (typeof chPromoZeroSoldDisplayGroi === 'function') {
                             const target = chPromoZeroSoldDisplayGroi(rowData);
                             if (target != null) {

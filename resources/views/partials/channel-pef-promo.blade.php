@@ -4058,7 +4058,10 @@
                 || 0;
         }
         function chPromoParentName(d) {
-            return String((d && d.Parent) || '').trim().replace(/^PARENT\s+/i, '').trim();
+            const raw = (d && d.Parent != null && String(d.Parent).trim() !== '')
+                ? d.Parent
+                : (d && d.parent);
+            return String(raw || '').trim().replace(/^PARENT\s+/i, '').trim();
         }
         /** Variation listing key: shared eBay item_id, else Parent. Same sale hits every child. */
         function chPromoVariationKeyFn(dataset) {
@@ -5156,6 +5159,36 @@
             if (!(sR > 0)) return null;
             return ((sR * 0.95 - ship - lp) / lp) * 100;
         }
+        /**
+         * SGROI% from a Full Temu Price by inverting it — never reuse listing R / Full.
+         * Sprc Dil / 0 Sold must price the candidate, not the live listing.
+         */
+        function chPromoTemuInvertSgroiAtSprice(sprice, lp, ship) {
+            const s = Number(sprice);
+            const cost = Number(lp);
+            const shipN = Number(ship);
+            if (!(s > 0) || !(cost > 0) || !isFinite(s) || !isFinite(cost)) return null;
+            const shipUse = isFinite(shipN) && shipN > 0 ? shipN : 0;
+            const mult = 1.1364;
+            const candidates = [(s - 2.99) / mult, s / mult];
+            let best = 0;
+            let bestErr = Infinity;
+            candidates.forEach(function(base) {
+                if (!(base > 0)) return;
+                let full = base * mult;
+                if (full <= 26.99) full += 2.99;
+                const err = Math.abs(full - s);
+                if (err < bestErr - 1e-6) {
+                    bestErr = err;
+                    best = base;
+                } else if (Math.abs(err - bestErr) <= 1e-6 && base > best) {
+                    best = base;
+                }
+            });
+            if (!(best > 0)) return null;
+            const sR = best <= 26.99 ? best + 2.99 : best;
+            return ((sR * 0.95 - shipUse - cost) / cost) * 100;
+        }
         /** Back-solve S PRC so the on-page Temu SGROI% column equals Target GROI%. */
         function chPromoTemuSpriceFromTargetGroi(d, roiPct) {
             const lp = chPromoLp(d);
@@ -5181,7 +5214,8 @@
             const targetSR = (lp * (1 + roi / 100) + ship) / 0.95;
             if (!(targetSR > 0) || !isFinite(targetSR)) return 0;
             let seed = targetSR;
-            const base = targetSR > 29.98 ? targetSR : Math.max(0.01, targetSR - 2.99);
+            // targetSR is S R Price: +$2.99 only when that R Price is ≤ $26.99.
+            const base = targetSR > 26.99 ? targetSR : Math.max(0.01, targetSR - 2.99);
             if (typeof temuFullPriceFromBase === 'function') {
                 const full = temuFullPriceFromBase(base);
                 if (full > 0) seed = full;
@@ -5193,11 +5227,16 @@
                 if (full <= 26.99) full += 2.99;
                 seed = full;
             }
+            seed = chPromoRound2(seed);
+            const seedSgroi = chPromoTemuInvertSgroiAtSprice(seed, lp, ship);
+            if (seedSgroi != null && Math.abs(seedSgroi - roi) <= 1.5) {
+                return seed;
+            }
             let lo = Math.max(0.01, seed * 0.35);
             let hi = Math.max(seed * 2.8, seed + 20);
             for (let expand = 0; expand < 10; expand++) {
-                const gLo = chPromoTemuSgroiAtSprice(d, lo);
-                const gHi = chPromoTemuSgroiAtSprice(d, hi);
+                const gLo = chPromoTemuInvertSgroiAtSprice(lo, lp, ship);
+                const gHi = chPromoTemuInvertSgroiAtSprice(hi, lp, ship);
                 if (gLo == null || gHi == null) break;
                 if (gLo <= roi && roi <= gHi) break;
                 if (roi < gLo) {
@@ -5212,7 +5251,7 @@
             let bestErr = Infinity;
             for (let i = 0; i < 40; i++) {
                 const mid = (lo + hi) / 2;
-                const g = chPromoTemuSgroiAtSprice(d, mid);
+                const g = chPromoTemuInvertSgroiAtSprice(mid, lp, ship);
                 if (g == null) break;
                 const err = Math.abs(g - roi);
                 if (err < bestErr) {

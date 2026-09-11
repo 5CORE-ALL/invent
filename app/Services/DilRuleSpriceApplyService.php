@@ -47,6 +47,7 @@ use App\Models\WayfairDataView;
 use App\Models\WayfairPricingPrice;
 use App\Support\AliexpressPushGuard;
 use App\Support\AmazonDilGroiRule;
+use App\Support\ProductMasterTemuShip;
 use App\Support\PushedListingPrice;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -339,7 +340,7 @@ class DilRuleSpriceApplyService
         }
 
         $ship = ! empty($cfg['exclude_ship']) ? 0.0 : (float) ($row['ship'] ?? 0);
-        $raw = round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
+        $raw = $this->spriceFromGroi($lp, $ship, (float) $groi, $margin);
         if (! is_finite($raw) || $raw < 0.01) {
             return null;
         }
@@ -357,6 +358,19 @@ class DilRuleSpriceApplyService
             'sprice' => $sprice,
             'groi' => $groi,
         ];
+    }
+
+    /**
+     * Temu 1–3: S PRC so on-page SGROI = ((S R × 0.95) − ship − LP) / LP equals target.
+     * Other channels: (LP × (1 + GROI%/100) + ship) / take-home.
+     */
+    protected function spriceFromGroi(float $lp, float $ship, float $groi, float $margin): float
+    {
+        if (in_array($this->channel, ['temu', 'temu2', 'temu3'], true)) {
+            return TemuShopifySalesService::spriceFromTargetSgroi($lp, $ship, $groi, 0.0);
+        }
+
+        return round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
     }
 
     /**
@@ -590,7 +604,11 @@ class DilRuleSpriceApplyService
                 'live' => round((float) ($metric->{$priceCol} ?? 0), 2),
                 'lp' => $lpShip['lp'],
                 'ship' => $lpShip['ship'],
-                'cvr' => $views > 0 ? round(($ov / $views) * 100, 2) : 0.0,
+                'cvr' => $views > 0
+                    ? round(((($this->channel === 'temu' || $this->channel === 'temu2')
+                        ? (float) ($l30Overlay[$sku] ?? 0)
+                        : $ov) / $views) * 100, 2)
+                    : 0.0,
                 'lmp' => $aeLmpBySku[$sku] ?? ($lmpBySku[$sku] ?? 0.0),
                 'std_price' => $stdBySku[$sku] ?? 0.0,
                 'amz_price' => (float) ($amzBySku[$sku]['price'] ?? 0),
@@ -948,7 +966,9 @@ class DilRuleSpriceApplyService
         if (! ($lp > 0) && isset($master->lp)) {
             $lp = (float) $master->lp;
         }
-        $ship = isset($values['ship']) ? (float) $values['ship'] : (float) ($master->ship ?? 0);
+        $ship = in_array($this->channel, ['temu', 'temu2', 'temu3'], true)
+            ? ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $master)
+            : (isset($values['ship']) ? (float) $values['ship'] : (float) ($master->ship ?? 0));
 
         return ['lp' => $lp, 'ship' => $ship];
     }
@@ -976,6 +996,12 @@ class DilRuleSpriceApplyService
         $ship = ! empty($cfg['exclude_ship']) ? 0.0 : (float) ($row['ship'] ?? 0);
         $sgpft = $sprice > 0 ? round((($sprice * $margin - $ship - $lp) / $sprice) * 100, 2) : 0.0;
         $sgroi = $lp > 0 ? round((($sprice * $margin - $lp - $ship) / $lp) * 100, 2) : 0.0;
+        if (in_array($this->channel, ['temu', 'temu2', 'temu3'], true) && $lp > 0) {
+            $temuSgroi = TemuShopifySalesService::sgroiAtSprice($sprice, $lp, $ship, 0.0);
+            if ($temuSgroi !== null) {
+                $sgroi = round($temuSgroi, 2);
+            }
+        }
 
         unset($existing['SPRICE_CLEARED']);
         $existing['SPRICE'] = $sprice;

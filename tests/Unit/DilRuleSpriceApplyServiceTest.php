@@ -73,8 +73,8 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         ]);
 
         $this->assertNotNull($out);
-        // first slab GROI 50, no CVR adj (8 is between 7 and 10): (10*1.5 + 2)/0.80 = 21.25
-        $this->assertEqualsWithDelta(21.25, $out['sprice'], 0.01);
+        // first slab GROI 50, no CVR adj (8 is between 7 and 10). Temu SGROI back-solve.
+        $this->assertEqualsWithDelta(19.92, $out['sprice'], 0.01);
     }
 
     public function test_exclude_ship_on_wayfair(): void
@@ -108,9 +108,31 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         ]);
 
         $this->assertNotNull($out);
-        // Temu L30 = 0 → min GROI 50, CVR 0 → −10 → 40. Dil 26% (75 slab) is skipped.
+        // Temu L30 = 0 → min GROI 50, CVR 0 → −10 → 40. Dil slab is skipped.
+        // S PRC is back-solved so Temu SGROI (S R × 0.95) equals 40%.
         $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
-        $this->assertEqualsWithDelta(35.00, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(33.49, $out['sprice'], 0.01);
+    }
+
+    public function test_temu_zero_sold_formula_matches_on_page_sgroi(): void
+    {
+        $out = $this->compute('temu', [
+            'inv' => 58,
+            'dil' => 26,
+            'ov_l30' => 15,
+            'temu_l30' => 0,
+            'cvr' => 0,
+            'lp' => 9.22,
+            'ship' => 7.2,
+            'lmp' => 0,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
+        $this->assertEqualsWithDelta(23.65, $out['sprice'], 0.01);
+        $sgroi = \App\Services\TemuShopifySalesService::sgroiAtSprice($out['sprice'], 9.22, 7.2, 0.0);
+        $this->assertNotNull($sgroi);
+        $this->assertEqualsWithDelta(40.0, $sgroi, 0.1);
     }
 
     public function test_temu_sold_uses_dil_slab(): void
@@ -144,8 +166,8 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         ]);
 
         $this->assertNotNull($out);
-        // 50 + (−10) = 40 → (20*1.4)/0.80 = 35.00
-        $this->assertEqualsWithDelta(35.00, $out['sprice'], 0.01);
+        // 50 + (−10) = 40. Temu S PRC so SGROI = 40%.
+        $this->assertEqualsWithDelta(33.49, $out['sprice'], 0.01);
         $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
     }
 
