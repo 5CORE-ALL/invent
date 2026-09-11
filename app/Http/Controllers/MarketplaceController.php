@@ -469,9 +469,9 @@ class MarketplaceController extends Controller
 
     public function fetchTrackingNow(string $marketplace): JsonResponse
     {
-        FetchMarketplaceShopifyTrackingJob::dispatch(500);
+        FetchMarketplaceShopifyTrackingJob::dispatch(800);
 
-        $result = app(VeeqoShopifyFulfillmentService::class)->syncPendingUnfulfilled(40);
+        $result = app(VeeqoShopifyFulfillmentService::class)->syncPendingUnfulfilled(120);
 
         return response()->json([
             'success' => true,

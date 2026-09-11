@@ -1984,7 +1984,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(18)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\FetchMarketplaceShopifyTrackingJob(500))
+        $schedule->job(new \App\Jobs\FetchMarketplaceShopifyTrackingJob(800))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('marketplace-fetch-shopify-tracking')

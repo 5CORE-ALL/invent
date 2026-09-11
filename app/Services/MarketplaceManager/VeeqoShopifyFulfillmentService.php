@@ -619,9 +619,6 @@ class VeeqoShopifyFulfillmentService
     {
         $limit = max(1, min($all ? 8000 : 2000, $limit));
         $marketplaces = MarketplaceManagerRegistry::slugs();
-        $shopifyScanLimit = ($fresh || $all)
-            ? $limit
-            : max(20, (int) ceil($limit * 0.9));
         $checked = 0;
         $fulfilled = 0;
         $skipped = 0;
@@ -638,14 +635,12 @@ class VeeqoShopifyFulfillmentService
             'failed' => 0,
         ]);
 
-        if ($fresh) {
-            $localSweep = $this->syncLocalTrackedLinkedOrders(min(300, $limit));
-            $checked += (int) ($localSweep['checked'] ?? 0);
-            $fulfilled += (int) ($localSweep['fulfilled'] ?? 0);
-            $skipped += (int) ($localSweep['skipped'] ?? 0);
-            $failed += (int) ($localSweep['failed'] ?? 0);
-            $shopifyScanLimit = max(20, $limit - $checked);
-        }
+        $localSweep = $this->syncLocalTrackedLinkedOrders(min(400, max(80, (int) ceil($limit * 0.35))));
+        $checked += (int) ($localSweep['checked'] ?? 0);
+        $fulfilled += (int) ($localSweep['fulfilled'] ?? 0);
+        $skipped += (int) ($localSweep['skipped'] ?? 0);
+        $failed += (int) ($localSweep['failed'] ?? 0);
+        $shopifyScanLimit = max(20, $limit - $checked);
 
         $shopifyScan = $this->syncUnfulfilledShopifyCopies($shopifyScanLimit, $fresh, $all);
         $checked += (int) ($shopifyScan['checked'] ?? 0);
@@ -788,28 +783,35 @@ class VeeqoShopifyFulfillmentService
      */
     public function syncLocalTrackedLinkedOrders(int $limit = 200): array
     {
-        $limit = max(1, min(400, $limit));
+        $limit = max(1, min(800, $limit));
         $checked = 0;
         $fulfilled = 0;
         $skipped = 0;
         $failed = 0;
         $seenShopify = [];
+        $since = now('America/Los_Angeles')->subDays(3)->startOfDay();
 
-        foreach (['temu', 'temu2'] as $slug) {
-            $class = $slug === 'temu2' ? Temu2Order::class : TemuOrder::class;
+        foreach ($this->localTrackedMarketplaceMap() as $slug => [$class, $dateCol]) {
             $table = (new $class)->getTable();
-            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'tracking_number') || ! Schema::hasColumn($table, 'shopify_order_id')) {
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'shopify_order_id')) {
                 continue;
             }
-            $rows = $class::query()
-                ->whereNotNull('tracking_number')
-                ->where('tracking_number', '!=', '')
+            $trackCol = $this->firstTrackingColumn($table);
+            if ($trackCol === null) {
+                continue;
+            }
+            $query = $class::query()
+                ->whereNotNull($trackCol)
+                ->where($trackCol, '!=', '')
                 ->whereNotNull('shopify_order_id')
                 ->where('shopify_order_id', '!=', '')
-                ->where('shopify_order_id', 'not like', 'manual%')
-                ->orderByDesc('id')
-                ->limit($limit)
-                ->get(['id', 'shopify_order_id']);
+                ->where('shopify_order_id', 'not like', 'manual%');
+            if (Schema::hasColumn($table, $dateCol)) {
+                $query->where($dateCol, '>=', $since);
+            } elseif (Schema::hasColumn($table, 'created_at')) {
+                $query->where('created_at', '>=', $since);
+            }
+            $rows = $query->orderByDesc('id')->limit($limit)->get(['id', 'shopify_order_id']);
             foreach ($rows as $row) {
                 if ($checked >= $limit) {
                     break 2;
@@ -909,7 +911,8 @@ class VeeqoShopifyFulfillmentService
                 $checked++;
                 $cacheKey = 'mm_fetch_tracking_shopify_v3:'.$shopifyId;
                 $orderLabel = trim((string) ($order['name'] ?? '')).' '.($marketplace !== '' ? $marketplace : 'marketplace');
-                if (! $fresh && Cache::has($cacheKey)) {
+                $isRecent = $this->shopifyOrderIsRecent($order);
+                if (! $fresh && ! $isRecent && Cache::has($cacheKey)) {
                     $skipped++;
                     $this->bumpProgress('skipped', [
                         'label' => trim($orderLabel),
@@ -1059,6 +1062,16 @@ class VeeqoShopifyFulfillmentService
      */
     protected function listUnfulfilledShopifyOrdersMixed(string $storeUrl, string $token, int $limit): array
     {
+        $recentMin = now('America/Los_Angeles')->subDays(3)->startOfDay()->utc()->toIso8601String();
+        $recentNeed = min(1500, max(400, $limit * 3));
+        $recent = $this->interleaveNewestAndOldest(
+            $this->listUnfulfilledShopifyOrders($storeUrl, $token, $recentNeed, [
+                'created_at_min' => $recentMin,
+                'max_pages' => 24,
+            ]),
+            $recentNeed
+        );
+
         $newestNeed = min(400, max(80, (int) ceil($limit * 0.45)));
         $olderNeed = max($limit, (int) ceil($limit * 1.5));
         $newest = $this->listUnfulfilledShopifyOrders($storeUrl, $token, $newestNeed, [
@@ -1086,7 +1099,7 @@ class VeeqoShopifyFulfillmentService
 
         $out = [];
         $seen = [];
-        foreach (array_merge($older, $newest) as $order) {
+        foreach (array_merge($recent, $older, $newest) as $order) {
             if (! is_array($order)) {
                 continue;
             }
@@ -1101,6 +1114,63 @@ class VeeqoShopifyFulfillmentService
         }
 
         return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     */
+    protected function shopifyOrderIsRecent(array $order): bool
+    {
+        $raw = trim((string) ($order['created_at'] ?? ''));
+        if ($raw === '') {
+            return false;
+        }
+        try {
+            return \Illuminate\Support\Carbon::parse($raw)
+                ->gte(now('America/Los_Angeles')->subDays(3)->startOfDay());
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * @return array<string, array{0: class-string, 1: string}>
+     */
+    protected function localTrackedMarketplaceMap(): array
+    {
+        return [
+            'temu' => [TemuOrder::class, 'parent_order_time'],
+            'temu2' => [Temu2Order::class, 'parent_order_time'],
+            'ebay1' => [Ebay1OrderMetric::class, 'order_date'],
+            'ebay2' => [Ebay2OrderMetric::class, 'order_date'],
+            'ebay3' => [Ebay3OrderMetric::class, 'order_date'],
+            'newegg' => [NeweggOrderMetric::class, 'order_date'],
+            'shein' => [SheinOrderMetric::class, 'order_date'],
+            'reverb' => [ReverbOrderMetric::class, 'order_date'],
+            'faire' => [FaireOrderMetric::class, 'order_date'],
+            'tiktok' => [TiktokOrder::class, 'order_created_at'],
+            'tiktok2' => [Tiktok2Order::class, 'order_created_at'],
+            'aliexpress' => [AliexpressOrderMetric::class, 'order_date'],
+            'alibaba' => [AlibabaOrderMetric::class, 'order_date'],
+            'topdawg' => [TopDawgOrderMetric::class, 'order_date'],
+            'bestbuy' => [BestBuyOrderMetric::class, 'order_created_at'],
+            'macy' => [MacyOrderMetric::class, 'order_created_at'],
+            'wayfair' => [WayfairDailyData::class, 'po_date'],
+            'purchasingpower' => [PurchasingPowerSale::class, 'date_created'],
+            'doba' => [DobaDailyData::class, 'order_time'],
+            'pls' => [PlsSale::class, 'order_date'],
+        ];
+    }
+
+    protected function firstTrackingColumn(string $table): ?string
+    {
+        foreach (['tracking_number', 'tracking', 'tracking_no', 'shipment_tracking'] as $col) {
+            if (Schema::hasColumn($table, $col)) {
+                return $col;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1162,7 +1232,7 @@ class VeeqoShopifyFulfillmentService
                 'fulfillment_status' => $fulfillmentStatus,
                 'limit' => 250,
                 'created_at_min' => $createdMin,
-                'fields' => 'id,name,tags,note,note_attributes,source_name,source_identifier,fulfillment_status,line_items',
+                'fields' => 'id,name,created_at,tags,note,note_attributes,source_name,source_identifier,fulfillment_status,line_items',
             ];
             if ($createdMax !== '') {
                 $payload['created_at_max'] = $createdMax;
@@ -3500,7 +3570,13 @@ class VeeqoShopifyFulfillmentService
      */
     protected function trackingFromModel(object $model): ?array
     {
-        $tn = trim((string) ($model->tracking_number ?? ''));
+        $tn = '';
+        foreach (['tracking_number', 'tracking', 'tracking_no', 'shipment_tracking'] as $field) {
+            $tn = trim((string) ($model->{$field} ?? ''));
+            if (strlen($tn) >= 8) {
+                break;
+            }
+        }
         if (strlen($tn) < 8) {
             return null;
         }
@@ -3674,7 +3750,7 @@ class VeeqoShopifyFulfillmentService
     protected function pendingLinkedOrderIds(string $marketplace, int $limit): array
     {
         $since = now()->subDays(180);
-        $limit = max(1, min(80, $limit));
+        $limit = max(1, min(200, $limit));
 
         if ($marketplace === 'amazon' && Schema::hasTable('amazon_orders') && Schema::hasColumn('amazon_orders', 'shopify_order_id')) {
             $ids = AmazonOrder::query()
