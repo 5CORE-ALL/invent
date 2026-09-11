@@ -2416,6 +2416,59 @@ class TemuController extends Controller
     }
 
     /**
+     * /temu1-data: keep listed temu_metrics SKUs and their PARENT rows only.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\ProductMaster>  $productMasters
+     * @param  \Illuminate\Support\Collection<string, mixed>  $temuPricingSkusNormalized
+     * @return array{0: \Illuminate\Support\Collection, 1: list<string>, 2: array<string, string>}
+     */
+    protected function restrictTemu1ToListedProductMasters($productMasters, $temuPricingSkusNormalized, callable $normalizeSku): array
+    {
+        $listedSkus = [];
+        $listedParentKeys = [];
+        foreach ($productMasters as $pm) {
+            $sku = trim((string) ($pm->sku ?? ''));
+            if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            if (! isset($temuPricingSkusNormalized[$normalizeSku($sku)])) {
+                continue;
+            }
+            $listedSkus[$sku] = true;
+            $pk = strtoupper(trim((string) preg_replace('/^PARENT\s+/i', '', (string) ($pm->parent ?? ''))));
+            if ($pk !== '') {
+                $listedParentKeys[$pk] = true;
+            }
+        }
+
+        $productMasters = $productMasters->filter(function ($pm) use ($listedSkus, $listedParentKeys) {
+            $sku = trim((string) ($pm->sku ?? ''));
+            if ($sku === '') {
+                return false;
+            }
+            if (isset($listedSkus[$sku])) {
+                return true;
+            }
+            if (stripos($sku, 'PARENT') === false) {
+                return false;
+            }
+            $fromSku = strtoupper(trim((string) preg_replace('/^PARENT\s+/i', '', $sku)));
+            $fromParent = strtoupper(trim((string) preg_replace('/^PARENT\s+/i', '', (string) ($pm->parent ?? ''))));
+
+            return ($fromSku !== '' && isset($listedParentKeys[$fromSku]))
+                || ($fromParent !== '' && isset($listedParentKeys[$fromParent]));
+        })->values();
+
+        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        $normalizedSkuMap = [];
+        foreach ($skus as $sku) {
+            $normalizedSkuMap[$normalizeSku($sku)] = $sku;
+        }
+
+        return [$productMasters, $skus, $normalizedSkuMap];
+    }
+
+    /**
      * Parent GPFT% / GROI% from children — same Full-Price GPFT and R-Price GROI as /temu2-decrease.
      *
      * @param  array<string, mixed>  $row
@@ -2665,6 +2718,17 @@ class TemuController extends Controller
             
             // Flip for quick lookup
             $temuPricingSkusNormalized = $temuPricingSkusNormalized->flip();
+
+            // Temu 1: do not connect Missing L (CP Master SKUs absent from temu_metrics).
+            // Drop those rows so Shopify / Amz / eBay / LMP lookups stay on listed SKUs.
+            if (! $isTemu2Pricing && ! $isTemu3) {
+                [$productMasters, $skus, $normalizedSkuMap] = $this->restrictTemu1ToListedProductMasters(
+                    $productMasters,
+                    $temuPricingSkusNormalized,
+                    $normalizeSku
+                );
+                $this->lmpSkuGroupService->prepareForSkus($skus);
+            }
 
             // Side lookup: Temu 2 page "Temu 1 Price" from API metrics (not sheet)
             $temu1PricingBySku = [];
@@ -3152,7 +3216,7 @@ class TemuController extends Controller
                     }
                 });
 
-            // 4. Process data - iterate through ALL product masters
+            // 4. Process data — Temu 1 is listed SKUs only; Temu 2/3 still walk CP Master.
             $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $adsViewsData, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $recommendedBySkuId, $recommendedBySku, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing, $isTemu3, $isSheetPricing, $temu1PricingBySku, $temu2PricingGoodsIdBySku, $promoMap, $lookupStdPrc) {
                 $sku = $productMaster->sku;
                 
@@ -3447,15 +3511,14 @@ class TemuController extends Controller
                     $seller_link = $statusValue['seller_link'] ?? null;
                 }
 
-                // Missing listing: not in Temu API metrics (Temu 1) / temu2_pricing (Temu 2),
-                // or listed with INV>0 and base price 0. Never when INV=0+base>0, or nr_req=NR.
-                // Temu 3 is sheet-only — no API listing source, so Missing is not computed.
+                // Missing listing is Temu 2 only (sheet/API). Temu 1 no longer
+                // joins CP Master to temu_metrics just to flag unlisted SKUs.
                 $inPricing = isset($temuPricingSkusNormalized[$normalizedCurrentSku]);
                 $basePriceVal = (float) $basePrice;
                 $invVal = (float) $inventory;
 
                 $missing = '';
-                if (! $isTemu3) {
+                if ($isTemu2Pricing) {
                     $missing = $inPricing ? '' : 'M';
                     if ($inPricing && $invVal > 0 && $basePriceVal <= 0) {
                         $missing = 'M';

@@ -592,7 +592,7 @@
                         <span class="badge fs-6 p-2" id="ads-percent-badge"
                             style="background-color: #d63384; color: white; font-weight: bold;"
                             title="Same as /temu/ads TAcos% = Spend ÷ all sales">Ads: 0%</span>
-                        <span class="badge fs-6 p-2" id="tacos-percent-badge"
+                        <span class="badge fs-6 p-2 d-none" id="tacos-percent-badge"
                             style="background-color: #b45309; color: white; font-weight: bold;"
                             title="Same TAcos% as /temu/ads: Spend ÷ all sales">TAcos%: 0%</span>
                         <span class="badge bg-success fs-6 p-2" id="avg-npft-badge"
@@ -610,15 +610,6 @@
                         <span class="badge bg-info fs-6 p-2 temu-badge-history" id="total-views-badge"
                             data-badge-metric="total_views" data-badge-label="Views"
                             style="color: black; font-weight: bold; cursor: pointer;">Views: 0</span>
-                        <span class="badge fs-6 p-2" id="total-t-clicks-badge"
-                            style="background-color: #0d6efd; color: white; font-weight: bold;"
-                            title="Sum of T Clicks from parent rows only (goods_id totals; SKUs excluded)">T Clicks: 0</span>
-                        <span class="badge fs-6 p-2" id="total-t-clicks-7-badge"
-                            style="background-color: #0a58ca; color: white; font-weight: bold;"
-                            title="((T Clicks / 30) × 7) ÷ parent count — weekly pace per parent">T Clicks 7: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter Missing L (INV&gt;0, not listed, REQ)">M L: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'temu2-price-gt-lmp-badge', 'pglChannelKey' => 'temu', 'pglPriceField' => 'temu_price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'temu2-price-lt80-lmp-badge', 'pltChannelKey' => 'temu', 'pltPriceField' => 'temu_price'])
                         <span class="badge fs-6 p-2" id="temu2-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Price.">
@@ -2569,11 +2560,8 @@
         // Badge click filters — same pattern as /ebay-tabulator-view
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
-        let missingLFilterActive = false;
         let lessAmzFilterActive = false;
         let moreAmzFilterActive = false;
-        // aliases kept for any leftover refs
-        let missingBadgeFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
 
@@ -2684,17 +2672,6 @@
             moreSoldFilterActive = !moreSoldFilterActive;
             zeroSoldFilterActive = false;
             applyFilters();
-        });
-
-        $('#missing-l-count-badge').on('click', function() {
-            missingLFilterActive = !missingLFilterActive;
-            missingBadgeFilterActive = missingLFilterActive;
-            $(this).toggleClass('bg-secondary', !missingLFilterActive)
-                   .toggleClass('bg-danger', missingLFilterActive);
-            applyFilters();
-            if (table && missingLFilterActive) {
-                try { table.getColumn('lmp').show(); } catch (e) {}
-            }
         });
 
         function updateSelectedCount() {
@@ -3312,12 +3289,9 @@
             let totalSpendL30 = 0;
             let totalViews = 0;
             let totalTClicks = 0;
-            let totalParentTClicks = 0;
-            let totalParentCount = 0;
             let totalTemuL30 = 0;
             let zeroSoldCount = 0;
             let moreSoldCount = 0;
-            let missingCount = 0;
             let rowsCount = 0;
 
             // Filtered counts: Rows / 0 Sold / >0 Sold (exclude parent rows from sold badges)
@@ -3333,17 +3307,7 @@
                 if (inventory > 0 && temuL30 > 0) moreSoldCount++;
             });
 
-            // Parent-only T Clicks badge (goods_id totals on parent rows — never sum SKUs)
-            allData.forEach(row => {
-                if (!isTemu2ParentRow(row)) return;
-                totalParentCount++;
-                const parentT = parseInt(row.t_clicks, 10);
-                totalParentTClicks += Number.isFinite(parentT)
-                    ? parentT
-                    : ((parseInt(row.product_clicks, 10) || 0) + (parseInt(row.ad_clicks, 10) || 0));
-            });
-
-            // Financials + M L from full dataset (ebay pattern for missing) — SKUs only
+            // Financials from full dataset — SKUs only
             // Same calc as /temu-decrease: Sales/GPFT on Full Price; GROI on R Price
             const viewsByGoodsId = {};
             const tClicksByGoodsId = {};
@@ -3351,10 +3315,8 @@
                 if (isTemu2ParentRow(row)) return;
                 const temuL30 = parseInt(row.temu_l30, 10) || 0;
                 const price = parseFloat(row.base_price) || 0;
-                const temuPrice = parseFloat(row.temu_price) || 0;
                 const lpPerUnit = parseFloat(row.lp) || 0;
                 const temuShip = parseFloat(row.temu_ship) || 0;
-                const inventory = parseFloat(row.inventory) || 0;
 
                 totalQuantity += temuL30;
                 totalPriceWeighted += price * temuL30;
@@ -3389,13 +3351,6 @@
                     totalTClicks += tVal;
                 }
                 totalTemuL30 += temuL30;
-
-                const missing = row.missing;
-                const nrReq = String(row.nr_req || 'REQ').toUpperCase();
-
-                if (missing === 'M' && inventory > 0 && nrReq !== 'NR' && nrReq !== 'NRL') {
-                    missingCount++;
-                }
             });
             Object.keys(viewsByGoodsId).forEach(function(gid) {
                 totalViews += parseInt(viewsByGoodsId[gid], 10) || 0;
@@ -3474,16 +3429,6 @@
             $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-            $('#total-t-clicks-badge').text('T Clicks: ' + totalParentTClicks.toLocaleString());
-            // T Clicks 7 = ((T Clicks / 30) × 7) / total parents
-            const tClicks7 = totalParentCount > 0
-                ? ((totalParentTClicks / 30) * 7) / totalParentCount
-                : 0;
-            $('#total-t-clicks-7-badge').text('T Clicks 7: ' + tClicks7.toLocaleString(undefined, {
-                maximumFractionDigits: 1,
-                minimumFractionDigits: 0
-            }));
-            $('#missing-l-count-badge').text('M L: ' + missingCount.toLocaleString());
             if (window.PriceGtLmpBadge && table) {
                 PriceGtLmpBadge.update('#temu2-price-gt-lmp-badge', table.getData(), 'temu', 'temu_price', function (row) {
                     return parseFloat(row && (row.lmp_price || row.lmp || row.LMP)) || 0;
@@ -3808,21 +3753,6 @@
                     }
                 },
                 {
-                    title: "Missing",
-                    field: "missing",
-                    hozAlign: "center",
-                    sorter: "string",
-                    width: 80,
-                    visible: true,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === 'M') {
-                            return '<span style="color: #dc3545; font-weight: bold;" title="Not found in temu2_metrics (API)">M</span>';
-                        }
-                        return '';
-                    }
-                },
-                {
                     title: "NRL/REQ",
                     field: "nr_req",
                     hozAlign: "center",
@@ -3869,31 +3799,6 @@
                         const value = parseInt(cell.getValue(), 10) || parseInt(row.product_clicks, 10) || 0;
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="views" title="View Views chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
                         return `${value.toLocaleString()} ${dotBtn}`.trim();
-                    }
-                },
-                {
-                    title: "T Clicks",
-                    field: "t_clicks",
-                    width: 90,
-                    minWidth: 85,
-                    hozAlign: "center",
-                    sorter: temuSortBy(function(d) {
-                        const v = parseInt(d.t_clicks, 10);
-                        if (Number.isFinite(v)) return v;
-                        const oClicks = parseInt(d.o_clicks, 10) || parseInt(d.product_clicks, 10) || 0;
-                        return oClicks + (parseInt(d.ad_clicks, 10) || 0);
-                    }),
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const sku = row.sku || '';
-                        const oClicks = parseInt(row.o_clicks, 10) || parseInt(row.product_clicks, 10) || 0;
-                        const adClicks = parseInt(row.ad_clicks, 10) || 0;
-                        const value = parseInt(cell.getValue(), 10);
-                        const total = Number.isFinite(value) ? value : (oClicks + adClicks);
-                        const chartBtn = sku
-                            ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="t_clicks" title="Open T Clicks chart" style="border:none;background:none;cursor:pointer;padding:0 2px;line-height:1;vertical-align:middle;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#6610f2;"></span></button>`
-                            : '';
-                        return `${total.toLocaleString()} ${chartBtn}`.trim();
                     }
                 },
                
@@ -4172,47 +4077,6 @@
                         }
                     }
                 },
-                {
-                    title: "Delivery",
-                    field: "lmp_delivery",
-                    hozAlign: "center",
-                    width: 80,
-                    minWidth: 76,
-                    headerSort: true,
-                    sorter: temuSortBy(function(d) {
-                        return typeof getTemu2LowestDelivery === 'function' ? getTemu2LowestDelivery(d) : 0;
-                    }),
-                    headerTooltip: "Delivery from the lowest LMP row in the modal. Defaults to $2.99 when Price < $27 and Delivery is blank.",
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row)) return '';
-                        const d = typeof getTemu2LowestDelivery === 'function' ? getTemu2LowestDelivery(row) : 0;
-                        if (!(d > 0)) return '<span style="color:#999;">—</span>';
-                        return '<span style="font-weight:600;">$' + d.toFixed(2) + '</span>';
-                    }
-                },
-                {
-                    title: "Diff",
-                    field: "lmp_diff_pct",
-                    hozAlign: "center",
-                    width: 84,
-                    minWidth: 84,
-                    headerSort: true,
-                    sorter: temuSortBy(function(d) {
-                        const diff = typeof temu2LmpDiffPct === 'function' ? temu2LmpDiffPct(d) : null;
-                        return diff == null ? '' : diff;
-                    }),
-                    headerTooltip: "S PRC vs lowest LMP (Price+D): (LMP − S PRC) / LMP. Green = S PRC below LMP, Red = S PRC above LMP.",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
-                        const diff = typeof temu2LmpDiffPct === 'function' ? temu2LmpDiffPct(rowData) : null;
-                        if (diff == null) return '<span style="color:#999;">—</span>';
-                        const color = diff < 0 ? '#dc3545' : '#28a745';
-                        const sign = diff > 0 ? '+' : '';
-                        return '<span style="color:' + color + ';font-weight:600;">' + sign + diff.toFixed(1) + '%</span>';
-                    }
-                },
                      {
                     title: '<input type="checkbox" id="select-all-checkbox">',
                     field: "_select",
@@ -4396,42 +4260,6 @@
                     }
                 },
                 {
-                    title: "SGROI%",
-                    field: "sgroi_percent",
-                    hozAlign: "center",
-                    sorter: temuSortBy(function(d) { return temuExportSgroi(d); }),
-                    download: true,
-                    downloadTitle: "SGROI",
-                    accessorDownload: function(value, data) {
-                        return temuExportSgroi(data);
-                    },
-                    headerTooltip: "SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP. Sprc Dil back-solves S PRC so this matches the Dil slab Target GROI (or min GROI when Temu L30 = 0).",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const dilTarget = typeof temuSprcDilDisplaySgroi === 'function'
-                            ? temuSprcDilDisplaySgroi(rowData)
-                            : null;
-                        if (dilTarget != null) {
-                            const colorClass = getRoiColor(dilTarget);
-                            return `<span class="dil-percent-value ${colorClass}">${Math.round(Number(dilTarget))}%</span>`;
-                        }
-                        if (typeof chPromoZeroSoldDisplayGroi === 'function') {
-                            const target = chPromoZeroSoldDisplayGroi(rowData);
-                            if (target != null) {
-                                const colorClass = getRoiColor(target);
-                                return `<span class="dil-percent-value ${colorClass}">${Math.round(Number(target))}%</span>`;
-                            }
-                        }
-                        const lp = parseFloat(rowData['lp']) || 0;
-                        const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(rowData) : 0;
-                        const spft = typeof temu2SpftDollars === 'function' ? temu2SpftDollars(rowData, sprice) : null;
-                        if (spft == null || !(lp > 0)) return '';
-                        const sgroi = (spft / lp) * 100;
-                        const colorClass = getRoiColor(sgroi);
-                        return `<span class="dil-percent-value ${colorClass}">${Math.round(sgroi)}%</span>`;
-                    }
-                },
-                {
                     title: "SNROI%",
                     field: "sroi_percent",
                     hozAlign: "center",
@@ -4490,152 +4318,6 @@
                     }
                 },
                 {
-                    title: "Spend",
-                    field: "spend",
-                    width: 75,
-                    minWidth: 70,
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        return String(Math.round(value));
-                    },
-                    visible: true
-                },
-                {
-                    title: "ACOS%",
-                    field: "acos_ad",
-                    width: 65,
-                    minWidth: 60,
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        return `${Math.round(value)}%`;
-                    },
-                    visible: false
-                },
-                {
-                    title: "Ad Clicks",
-                    field: "ad_clicks",
-                    width: 75,
-                    minWidth: 70,
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseInt(cell.getValue()) || 0;
-                        return value.toLocaleString();
-                    },
-                    visible: false
-                },
-                {
-                    title: "Impressions",
-                    field: "impressions",
-                    width: 90,
-                    minWidth: 85,
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        const v = parseInt(cell.getValue(), 10) || 0;
-                        return v.toLocaleString();
-                    }
-                },
-                {
-                    title: "OUT ROAS",
-                    field: "out_roas_l30",
-                    width: 80,
-                    minWidth: 75,
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: temuSortBy(function(d) {
-                        return parseFloat(d.out_roas_l30 || d.net_roas || 0) || 0;
-                    }),
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        // Use net_roas as OUT ROAS if out_roas_l30 is not available
-                        const value = parseFloat(cell.getValue() || rowData.net_roas || 0);
-                        return value.toFixed(2);
-                    },
-                    visible: false
-                },
-                {
-                    title: "IN ROAS",
-                    field: "in_roas_l30",
-                    width: 75,
-                    minWidth: 70,
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: "number",
-                    editor: "number",
-                    editorParams: {
-                        min: 0,
-                        step: 0.01
-                    },
-                    formatter: function(cell) {
-                        const cellValue = cell.getValue();
-                        const value = (cellValue !== null && cellValue !== undefined) ? parseFloat(cellValue) : 0;
-                        return value.toFixed(2);
-                    },
-                    cellEdited: function(cell) {
-                        const row = cell.getRow();
-                        const rowData = row.getData();
-                        const sku = rowData.sku;
-                        const value = parseFloat(cell.getValue() || 0);
-                        
-                        if (!sku) {
-                            console.error('SKU not found');
-                            showToast('Error: SKU not found', 'error');
-                            return;
-                        }
-                        
-                        $.ajax({
-                            url: '/temu/ads/update',
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                                'Accept': 'application/json'
-                            },
-                            data: {
-                                sku: sku,
-                                field: 'in_roas_l30',
-                                value: value
-                            },
-                            success: function(response) {
-                                if (response.success) {
-                                    cell.setValue(value);
-                                    showToast('IN ROAS updated successfully', 'success');
-                                } else {
-                                    const oldValue = parseFloat(rowData.in_roas_l30 || 0);
-                                    cell.setValue(oldValue);
-                                    showToast('Failed to update IN ROAS: ' + (response.message || 'Unknown error'), 'error');
-                                }
-                            },
-                            error: function(xhr) {
-                                const oldValue = parseFloat(rowData.in_roas_l30 || 0);
-                                cell.setValue(oldValue);
-                                const errorMsg = xhr.responseJSON?.message || xhr.statusText || 'Unknown error';
-                                console.error('Error updating IN ROAS:', xhr);
-                                showToast('Error updating IN ROAS: ' + errorMsg, 'error');
-                            }
-                        });
-                    },
-                    visible: false
-                },
-                {
-                    title: "Target",
-                    field: "target",
-                    width: 75,
-                    minWidth: 70,
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        return '$' + value.toFixed(2);
-                    }
-                },
-                {
                     title: "LP",
                     field: "lp",
                     hozAlign: "center",
@@ -4648,30 +4330,6 @@
                         precision: 2
                     },
                     visible: false
-                },
-                {
-                    title: "Hdl Charge",
-                    field: "handling_charge",
-                    headerTooltip: "Handling Charge saved on Shipping Master (included in Temu Ship)",
-                    hozAlign: "center",
-                    width: 80,
-                    minWidth: 70,
-                    formatter: function(cell) {
-                        const v = cell.getValue();
-                        return (v === null || v === undefined || v === '') ? '' : v;
-                    }
-                },
-                {
-                    title: "O-Size Charge",
-                    field: "o_size_charge",
-                    headerTooltip: "O-Size Charge saved on Shipping Master (included in Temu Ship)",
-                    hozAlign: "center",
-                    width: 90,
-                    minWidth: 80,
-                    formatter: function(cell) {
-                        const v = cell.getValue();
-                        return (v === null || v === undefined || v === '') ? '' : v;
-                    }
                 },
                 {
                     title: "Temu Ship",
@@ -5036,15 +4694,6 @@
                 table.addFilter(function(data) {
                     if (isTemu2ParentRow(data)) return false;
                     return (parseInt(data.temu_l30, 10) || 0) > 0 && (parseFloat(data.inventory) || 0) > 0;
-                });
-            }
-
-            if (missingLFilterActive || missingBadgeFilterActive) {
-                table.addFilter(function(data) {
-                    if (isTemu2ParentRow(data)) return false;
-                    const inv = parseFloat(data.inventory) || 0;
-                    const nrReq = String(data.nr_req || 'REQ').toUpperCase();
-                    return data.missing === 'M' && inv > 0 && nrReq !== 'NR' && nrReq !== 'NRL';
                 });
             }
 
