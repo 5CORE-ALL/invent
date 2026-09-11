@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\AliexpressDataView;
+use App\Models\AliexpressLmpDataSheet;
 use App\Models\AliexpressMetric;
+use App\Models\AmazonDataView;
 use App\Models\AmazonDatasheet;
 use App\Models\BestbuyUsaProduct;
 use App\Models\BestbuyUSADataView;
@@ -43,6 +45,7 @@ use App\Models\WalmartDataView;
 use App\Models\WalmartMetrics;
 use App\Models\WayfairDataView;
 use App\Models\WayfairPricingPrice;
+use App\Support\AliexpressPushGuard;
 use App\Support\AmazonDilGroiRule;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -53,8 +56,9 @@ use Throwable;
  * their own nightly save cron (eBay / Amazon / Shopify B2C / Macys / PP do).
  *
  * Same cell math as ebay-sprc-dil: listing Dil, 0-sold min GROI (except
- * Temu 2/3), CVR overlay where the page uses it, ship excluded on
+ * Temu 2/3 and AliExpress), CVR overlay where the page uses it, ship excluded on
  * Wayfair / Faire / TopDawg / FB, Newegg Amz floor, LMP cap at SGROI ≥ 20%.
+ * AliExpress only: SKU Dil; out of slab → Std then LMP if Std > LMP; Stop < N% skips.
  */
 class DilRuleSpriceApplyService
 {
@@ -283,6 +287,10 @@ class DilRuleSpriceApplyService
      */
     public function computeTarget(array $row, array $dilRules, ?array $cvrAdj, float $margin): ?array
     {
+        if ($this->channel === 'aliexpress') {
+            return $this->computeAliexpressTarget($row, $dilRules, $margin);
+        }
+
         $cfg = $this->channelConfig();
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0) || ! ($margin > 0)) {
@@ -337,6 +345,75 @@ class DilRuleSpriceApplyService
             'sprice' => $sprice,
             'groi' => $groi,
         ];
+    }
+
+    /**
+     * /aliexpress-pricing Sprc Dil: Dil slab (including 0 Sold), else Std then LMP if Std > LMP.
+     * Stop < N% (when ON) skips the save — same cutoff as the pricing-page button.
+     *
+     * @param  list<array{key:string,label:string,min:float,max:float,groi:float}>  $dilRules
+     * @return array{sprice: float, groi: float}|null
+     */
+    public function computeAliexpressTarget(array $row, array $dilRules, float $margin): ?array
+    {
+        $inv = (float) ($row['inv'] ?? 0);
+        if (! ($inv > 0) || ! ($margin > 0)) {
+            return null;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
+            return null;
+        }
+        $ship = (float) ($row['ship'] ?? 0);
+        $dil = (float) ($row['dil'] ?? 0);
+        $al30 = (float) ($row['al30'] ?? 0);
+        $lmp = (float) ($row['lmp'] ?? 0);
+        $rule = AmazonDilGroiRule::match($dil, $dilRules);
+
+        if ($rule !== null) {
+            $groi = (float) $rule['groi'];
+            $raw = round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
+            if (! is_finite($raw) || $raw < 0.01) {
+                return null;
+            }
+            $sprice = $raw;
+            if ($al30 > 0) {
+                $sprice = AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin);
+            }
+            if ($this->aliexpressStopBlocks($sprice, $lp, $ship, $margin)) {
+                return null;
+            }
+
+            return ['sprice' => $sprice, 'groi' => $groi];
+        }
+
+        $std = (float) ($row['std_price'] ?? 0);
+        if (! ($std > 0)) {
+            return null;
+        }
+        $sprice = round($std, 2);
+        if ($lmp > 0 && $std + 0.0001 > $lmp) {
+            $sprice = round($lmp, 2);
+        }
+        if ($this->aliexpressStopBlocks($sprice, $lp, $ship, $margin)) {
+            return null;
+        }
+        $groi = AmazonDilGroiRule::sgroiAtPrice($sprice, $lp, $ship, $margin);
+
+        return [
+            'sprice' => $sprice,
+            'groi' => is_finite((float) $groi) ? (float) $groi : 0.0,
+        ];
+    }
+
+    protected function aliexpressStopBlocks(float $sprice, float $lp, float $ship, float $margin): bool
+    {
+        if (! AliexpressPushGuard::stopLowSgroiEnabled()) {
+            return false;
+        }
+        $sgroi = AmazonDilGroiRule::sgroiAtPrice($sprice, $lp, $ship, $margin);
+
+        return AliexpressPushGuard::shouldSkipSgroi($sgroi);
     }
 
     public function capToLmp(float $sprice, float $lmp, float $lp, float $ship, float $margin): float
@@ -434,6 +511,8 @@ class DilRuleSpriceApplyService
         if (! empty($cfg['amz_floor']) || ! empty($cfg['a_l30'])) {
             $amzBySku = $this->amazonBySku($skus);
         }
+        $stdBySku = $this->channel === 'aliexpress' ? $this->amazonStdBySku($skus) : [];
+        $aeLmpBySku = $this->channel === 'aliexpress' ? $this->aliexpressLmpBySku($skus) : [];
 
         $l30Overlay = [];
         if ($this->channel === 'temu3') {
@@ -453,7 +532,11 @@ class DilRuleSpriceApplyService
             $parent = strtoupper(trim(preg_replace('/^PARENT\s+/i', '', $parent) ?? ''));
 
             $ov = 0.0;
-            if (! empty($cfg['a_l30'])) {
+            $al30 = 0.0;
+            if ($this->channel === 'aliexpress') {
+                $ov = (float) ($shopify->quantity ?? 0);
+                $al30 = (float) ($metric->l30 ?? 0);
+            } elseif (! empty($cfg['a_l30'])) {
                 $ov = (float) ($amzBySku[$sku]['l30'] ?? 0);
             } elseif ($l30Overlay !== []) {
                 $ov = (float) ($l30Overlay[$sku] ?? 0);
@@ -478,11 +561,13 @@ class DilRuleSpriceApplyService
                 'parent' => $parent,
                 'inv' => $inv,
                 'ov_l30' => $ov,
+                'al30' => $al30,
                 'live' => round((float) ($metric->{$priceCol} ?? 0), 2),
                 'lp' => $lpShip['lp'],
                 'ship' => $lpShip['ship'],
                 'cvr' => $views > 0 ? round(($ov / $views) * 100, 2) : 0.0,
-                'lmp' => $lmpBySku[$sku] ?? 0.0,
+                'lmp' => $aeLmpBySku[$sku] ?? ($lmpBySku[$sku] ?? 0.0),
+                'std_price' => $stdBySku[$sku] ?? 0.0,
                 'amz_price' => (float) ($amzBySku[$sku]['price'] ?? 0),
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
             ];
@@ -490,6 +575,12 @@ class DilRuleSpriceApplyService
 
         $dilByKey = $this->listingDilByKey($draft);
         foreach ($draft as $i => $row) {
+            if ($this->channel === 'aliexpress') {
+                $draft[$i]['dil'] = $row['inv'] > 0
+                    ? round(($row['ov_l30'] / $row['inv']) * 100, 2)
+                    : 0.0;
+                continue;
+            }
             $key = $this->listingKey($row);
             $draft[$i]['dil'] = $dilByKey[$key] ?? (
                 $row['inv'] > 0 ? round(($row['ov_l30'] / $row['inv']) * 100, 2) : 0.0
@@ -549,6 +640,95 @@ class DilRuleSpriceApplyService
         }
 
         return $out;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, float>
+     */
+    protected function amazonStdBySku(array $skus): array
+    {
+        if ($skus === [] || ! Schema::hasTable('amazon_data_view')) {
+            return [];
+        }
+        $out = [];
+        foreach (AmazonDataView::query()->whereIn('sku', $skus)->get(['sku', 'value']) as $row) {
+            $val = is_array($row->value)
+                ? $row->value
+                : (json_decode((string) ($row->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (! is_numeric($std) || (float) $std <= 0) {
+                continue;
+            }
+            $sku = strtoupper(trim((string) $row->sku));
+            if ($sku === '' || isset($out[$sku])) {
+                continue;
+            }
+            $out[$sku] = round((float) $std, 2);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, float>
+     */
+    protected function aliexpressLmpBySku(array $skus): array
+    {
+        if ($skus === [] || ! Schema::hasTable('aliexpress_lmp_data_sheet')) {
+            return [];
+        }
+        $wanted = [];
+        foreach ($skus as $sku) {
+            $wanted[strtoupper(trim((string) $sku))] = true;
+        }
+        $out = [];
+        foreach (AliexpressLmpDataSheet::query()->whereIn('sku', $skus)->get() as $row) {
+            $sku = strtoupper(trim((string) $row->sku));
+            if ($sku === '' || ! isset($wanted[$sku]) || isset($out[$sku])) {
+                continue;
+            }
+            $min = $this->aliexpressMinLandedLmp($row);
+            if ($min > 0) {
+                $out[$sku] = $min;
+            }
+        }
+
+        return $out;
+    }
+
+    protected function aliexpressMinLandedLmp(object $row): float
+    {
+        $entries = is_array($row->lmp_entries ?? null) ? $row->lmp_entries : [];
+        if ($entries === [] && ! is_array($row->lmp_entries ?? null)) {
+            if ($row->lmp !== null) {
+                $entries[] = ['price' => $row->lmp];
+            }
+            if (($row->lmp_2 ?? null) !== null) {
+                $entries[] = ['price' => $row->lmp_2];
+            }
+        }
+        $min = 0.0;
+        foreach ($entries as $e) {
+            if (! is_array($e) || ! empty($e['ignored'])) {
+                continue;
+            }
+            $p = isset($e['price']) && $e['price'] !== '' && $e['price'] !== null
+                ? (float) $e['price']
+                : 0.0;
+            if ($p <= 0) {
+                continue;
+            }
+            $shipRaw = $e['ship'] ?? $e['delivery'] ?? $e['shipping_cost'] ?? 0;
+            $s = ($shipRaw !== '' && $shipRaw !== null) ? max(0, (float) $shipRaw) : 0.0;
+            $landed = round($p + $s, 2);
+            if ($min <= 0 || $landed < $min) {
+                $min = $landed;
+            }
+        }
+
+        return $min;
     }
 
     /**
@@ -832,6 +1012,7 @@ class DilRuleSpriceApplyService
                 'view' => AliexpressDataView::class,
                 'price' => 'price',
                 'views' => 'views',
+                'zero_sold_min_groi' => false,
             ],
             'newegg' => [
                 'metric' => NeweggMetric::class,

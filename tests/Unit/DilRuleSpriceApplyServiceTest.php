@@ -3,11 +3,18 @@
 namespace Tests\Unit;
 
 use App\Services\DilRuleSpriceApplyService;
+use App\Support\AliexpressPushGuard;
 use App\Support\AmazonDilGroiRule;
 use Tests\TestCase;
 
 class DilRuleSpriceApplyServiceTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        AliexpressPushGuard::setStopLowSgroi(false, 30);
+    }
+
     public function test_dil_in_slab_uses_target_groi_and_takehome(): void
     {
         $out = $this->compute('bestbuy', [
@@ -141,6 +148,80 @@ class DilRuleSpriceApplyServiceTest extends TestCase
             'ov_l30' => 5,
             'lp' => 20,
             'ship' => 0,
+        ]));
+    }
+
+    public function test_aliexpress_zero_sold_uses_dil_slab_not_min_groi(): void
+    {
+        $out = $this->compute('aliexpress', [
+            'inv' => 9,
+            'dil' => 22,
+            'ov_l30' => 2,
+            'al30' => 0,
+            'lp' => 10,
+            'ship' => 6,
+            'lmp' => 40,
+            'std_price' => 36.99,
+        ]);
+
+        $this->assertNotNull($out);
+        // 20–25 slab GROI 70; 0 Sold Dil does not LMP-cap: (10*1.70 + 6) / 0.80 = 28.75
+        $this->assertEqualsWithDelta(28.75, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(70.0, $out['groi'], 0.01);
+    }
+
+    public function test_aliexpress_out_of_slab_uses_std_then_lmp_cap(): void
+    {
+        $std = $this->compute('aliexpress', [
+            'inv' => 10,
+            'dil' => 55,
+            'al30' => 0,
+            'lp' => 10,
+            'ship' => 6,
+            'lmp' => 23.08,
+            'std_price' => 19.99,
+        ]);
+        $this->assertNotNull($std);
+        $this->assertEqualsWithDelta(19.99, $std['sprice'], 0.01);
+
+        $capped = $this->compute('aliexpress', [
+            'inv' => 10,
+            'dil' => 80,
+            'al30' => 0,
+            'lp' => 5,
+            'ship' => 1,
+            'lmp' => 12,
+            'std_price' => 20,
+        ]);
+        $this->assertNotNull($capped);
+        $this->assertEqualsWithDelta(12.0, $capped['sprice'], 0.01);
+    }
+
+    public function test_aliexpress_stop_skips_low_sgroi_std(): void
+    {
+        AliexpressPushGuard::setStopLowSgroi(true, 30);
+        try {
+            $this->assertNull($this->compute('aliexpress', [
+                'inv' => 10,
+                'dil' => 80,
+                'lp' => 20,
+                'ship' => 10,
+                'lmp' => 0,
+                'std_price' => 25,
+            ]));
+        } finally {
+            AliexpressPushGuard::setStopLowSgroi(false, 30);
+        }
+    }
+
+    public function test_aliexpress_out_of_slab_without_std_skips(): void
+    {
+        $this->assertNull($this->compute('aliexpress', [
+            'inv' => 10,
+            'dil' => 80,
+            'lp' => 10,
+            'ship' => 0,
+            'std_price' => 0,
         ]));
     }
 
