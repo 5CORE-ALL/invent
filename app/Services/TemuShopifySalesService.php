@@ -144,7 +144,7 @@ class TemuShopifySalesService
             $full += 2.99;
         }
 
-        return $full;
+        return round($full, 2);
     }
 
     /**
@@ -239,8 +239,40 @@ class TemuShopifySalesService
             return null;
         }
         $base = self::computeBaseFromFullTemuPrice($sprice);
+        if (! ($base > 0)) {
+            return null;
+        }
 
-        return $base > 0 ? round($base, 2) : null;
+        $sprice = round($sprice, 2);
+        $rounded = round($base, 2);
+        $best = $rounded;
+        $bestErr = abs(self::computeFullTemuPrice($rounded) - $sprice);
+        foreach ([$rounded - 0.01, $rounded + 0.01] as $candidate) {
+            if ($candidate <= 0) {
+                continue;
+            }
+            $err = abs(self::computeFullTemuPrice($candidate) - $sprice);
+            if ($err + 1e-6 < $bestErr) {
+                $bestErr = $err;
+                $best = round($candidate, 2);
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * After a Temu pull, keep the pushed supplier base when the API is only 1¢ off.
+     */
+    public static function temuIncomingBaseToWrite(?float $incoming, ?float $pushedBase): ?float
+    {
+        $incoming = ($incoming !== null && $incoming > 0) ? round($incoming, 2) : null;
+        $pushed = ($pushedBase !== null && $pushedBase > 0) ? round($pushedBase, 2) : null;
+        if ($incoming !== null && $pushed !== null && abs($incoming - $pushed) <= 0.011) {
+            return $pushed;
+        }
+
+        return $incoming;
     }
 
     /**

@@ -165,6 +165,13 @@ class ChannelLivePriceSync
         }
 
         $value = $sprice;
+        if (in_array($channel, ['temu', 'temu2', 'temu3'], true)) {
+            $base = TemuShopifySalesService::computePushBaseFromSprice($sprice);
+            if ($base === null || $base <= 0) {
+                return;
+            }
+            $value = $base;
+        }
 
         foreach (self::writeTargets($channel) as $target) {
             try {
@@ -398,7 +405,9 @@ class ChannelLivePriceSync
             return true;
         }
 
-        $liveCompare = $live;
+        $liveCompare = in_array(self::normalize($channel), ['temu', 'temu2', 'temu3'], true)
+            ? round(TemuShopifySalesService::computeFullTemuPrice($live), 2)
+            : $live;
         if (PushedListingPrice::same($next, $liveCompare)) {
             return true;
         }

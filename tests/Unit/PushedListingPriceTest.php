@@ -67,16 +67,6 @@ class PushedListingPriceTest extends TestCase
         );
     }
 
-    public function test_temu_compares_sprice_to_live_base_not_full_price(): void
-    {
-        $m = new \ReflectionMethod(DilRuleSpriceApplyService::class, 'shouldEnqueuePush');
-        $m->setAccessible(true);
-        $svc = DilRuleSpriceApplyService::for('temu');
-
-        $this->assertFalse($m->invoke($svc, ['sku' => 'CS 04 2W', 'live' => 16.28], 16.28, true));
-        $this->assertTrue($m->invoke($svc, ['sku' => 'CS 04 2W', 'live' => 9.32], 16.28, true));
-    }
-
     public function test_dil_does_not_enqueue_when_live_already_matches(): void
     {
         $m = new \ReflectionMethod(DilRuleSpriceApplyService::class, 'shouldEnqueuePush');

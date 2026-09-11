@@ -1183,7 +1183,7 @@
      * Push base from display S PRC. If display is $34–$37: display × 0.88 − $2.99.
      * Otherwise inverse of Temu Price (undo +$2.99 if applied, then ÷ 1.1364).
      */
-    function temuPushBaseFromSprice(sprice) {
+    function temuPushBaseFromSprice(sprice, row) {
         const s = parseFloat(sprice);
         if (!isFinite(s) || s <= 0) return null;
         if (s >= 34 - 0.001 && s <= 37 + 0.001) {
@@ -1192,7 +1192,12 @@
         }
         const push = temu2BaseFromFullPrice(s);
         if (!isFinite(push) || !(push > 0)) return null;
-        return +push.toFixed(2);
+        let out = +push.toFixed(2);
+        const live = parseFloat(row && (row.base_price != null ? row.base_price : row.SPRICE_PUSHED_BASE)) || 0;
+        if (live > 0 && Math.abs(live - out) <= 0.011) {
+            out = +live.toFixed(2);
+        }
+        return out;
     }
     function temuExportRowSprice(row) {
         if (typeof temuDisplayedSprice === 'function') {
@@ -1204,7 +1209,7 @@
     }
     function temuExportSuggBPrice(row) {
         if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return '';
-        const push = temuPushBaseFromSprice(temuExportRowSprice(row));
+        const push = temuPushBaseFromSprice(temuExportRowSprice(row), row);
         return push == null ? '' : push;
     }
     function temuExportSgroi(row) {
@@ -1244,7 +1249,7 @@
     /** SPRICE used for push + inverse Temu base (same as old /temu-decrease Push Prc). */
     function temuPushSpriceAndBase(row) {
         const sprice = temuExportRowSprice(row);
-        const pushBase = temuPushBaseFromSprice(sprice);
+        const pushBase = temuPushBaseFromSprice(sprice, row);
         return {
             sprice: sprice,
             pushBase: (pushBase != null && pushBase > 0) ? pushBase : null
@@ -1800,8 +1805,12 @@
     function temu2HasBlueTriangle(data) {
         if (isTemu2ParentRow(data) || !temuRowHasInv(data)) return false;
         const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(data) : temu2RowSpriceForAlert(data);
-        const price = parseFloat(data && data.base_price) || 0;
-        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        const live = parseFloat(data && data.base_price) || 0;
+        const want = (typeof temuPushBaseFromSprice === 'function') ? temuPushBaseFromSprice(sprice) : null;
+        if (want != null && want > 0 && live > 0) {
+            return Math.abs(want - live) > 0.011;
+        }
+        return sprice > 0 && live > 0 && Math.round(sprice * 100) !== Math.round(live * 100);
     }
 
     function temuRawSprice(row) {
@@ -4337,7 +4346,7 @@
                     sorter: temuSortBy(function(d) {
                         return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
                     }),
-                    headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ live Base Price.",
+                    headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S Temu B Prc ≠ live Base.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
@@ -4346,6 +4355,7 @@
                             : { value: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
                         let value = model.value;
                         const live = parseFloat(rowData.base_price) || 0;
+                        const wantBase = (typeof temuPushBaseFromSprice === 'function') ? temuPushBaseFromSprice(value) : null;
                         const lmp = model.lmp || (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
                         if (!(value > 0)) return '';
                         const formatted = '$' + value.toFixed(2);
@@ -4359,9 +4369,9 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
                                 + Number(lmp || 0).toFixed(2) + '"></i>'
                             : '';
-                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
-                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                + value.toFixed(2) + ' ≠ Base $' + live.toFixed(2) + '"></i>'
+                        const blueTri = (wantBase != null && wantBase > 0 && live > 0 && Math.abs(wantBase - live) > 0.011)
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S Temu B Prc $'
+                                + Number(wantBase).toFixed(2) + ' ≠ Base $' + live.toFixed(2) + '"></i>'
                             : '';
                         let capHtml = '';
                         (model.labels || []).forEach(function(lbl) {
@@ -6427,11 +6437,14 @@
                 ? temuDisplayedSprice(data)
                 : (parseFloat(data.sprice) || 0);
             const raw = parseFloat(price);
-            let pushPrice = sprice > 0 ? +sprice.toFixed(2) : null;
+            let pushPrice = (typeof temuPushBaseFromSprice === 'function' && sprice > 0)
+                ? temuPushBaseFromSprice(sprice, data)
+                : null;
             if (pushPrice == null && isFinite(raw) && raw > 0) pushPrice = +raw.toFixed(2);
             if (!sku || !(pushPrice > 0)) {
                 return Promise.reject({ message: 'SKU and S PRC required' });
             }
+            pushPrice = +Number(pushPrice).toFixed(2);
 
             row.update({ push_status: 'pushing' });
             row.reformat();
