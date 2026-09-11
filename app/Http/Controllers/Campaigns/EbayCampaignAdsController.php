@@ -550,6 +550,18 @@ class EbayCampaignAdsController extends Controller
             $dil  = $inv > 0 ? ($qty / $inv) * 100 : 0;
 
             $adRow = $ads->get($lid);
+            $localStatus = strtoupper(trim((string) ($adRow?->campaign_status ?? '')));
+            if (in_array($localStatus, ['RUNNING', 'PAUSED'], true)) {
+                $results[] = [
+                    'listing_id' => $lid,
+                    'sku' => $metric?->sku,
+                    'status' => 'skipped',
+                    'reason' => 'Already in a '.$localStatus.' campaign',
+                ];
+                $skipped++;
+                continue;
+            }
+
             $esBid = (float)($adRow?->suggested_bid ?? 0);
 
             if ($this->shouldUseEsBid($l30, $l7, $ruleConfig)) {
@@ -582,7 +594,6 @@ class EbayCampaignAdsController extends Controller
                     // Update our local table
                     DB::table('ebay_campaign_ads')
                         ->where('listing_id', $lid)
-                        ->whereNull('campaign_id')
                         ->update([
                             'campaign_id'      => $campaignId,
                             'funding_strategy' => 'COST_PER_SALE',
