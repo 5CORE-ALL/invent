@@ -1833,7 +1833,13 @@
                         : (Number(d && (d['MC Price'] != null ? d['MC Price'] : d.price)) || 0);
                     const ended = typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d);
                     const needsFill = persist && !nearly(current, price);
-                    const needsPush = !!(allowPush && livePushOn && !ended && current > 0 && live > 0 && !nearly(current, live));
+                    let needsPush = !!(allowPush && livePushOn && !ended && current > 0 && live > 0 && !nearly(current, live));
+                    if (needsPush && typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel()) {
+                        const dForBlue = Object.assign({}, d, { sprice: price, SPRICE: price });
+                        needsPush = (typeof temu2HasBlueTriangle === 'function')
+                            ? !!temu2HasBlueTriangle(dForBlue)
+                            : (typeof temuListingHasBlueTriangle === 'function' && temuListingHasBlueTriangle(dForBlue));
+                    }
                     if (!needsFill && !needsPush) return;
                     jobs.push({ row: row, sku: sku, price: price, needsFill: needsFill, needsPush: needsPush });
                 });

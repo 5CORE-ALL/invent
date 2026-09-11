@@ -1888,8 +1888,11 @@
     function temu2RowSpriceForAlert(data) {
         return typeof temuDiscountedPrice === 'function' ? temuDiscountedPrice(data) : 0;
     }
+    function temuRowHasInv(row) {
+        return (parseFloat(row && (row.inventory != null ? row.inventory : row.INV)) || 0) > 0;
+    }
     function temu2HasBlueTriangle(data) {
-        if (isTemu3ParentRow(data)) return false;
+        if (isTemu3ParentRow(data) || !temuRowHasInv(data)) return false;
         const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(data) : temu2RowSpriceForAlert(data);
         const price = parseFloat(data && data.temu_price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);

@@ -9504,8 +9504,12 @@
             if (opts.persist === false) return { sku: sku, price: fill, row: row };
             const live = chPromoLivePrice(d);
             let alreadyLive = live > 0 && chPromoNearlyEqual(fill, live);
-            if (chPromoIsTemuPromoChannel() && typeof temuListingNeedsPush === 'function') {
-                alreadyLive = !temuListingNeedsPush(d, fill);
+            if (chPromoIsTemuPromoChannel()) {
+                alreadyLive = typeof temu2HasBlueTriangle === 'function'
+                    ? !temu2HasBlueTriangle(d)
+                    : (typeof temuListingHasBlueTriangle === 'function'
+                        ? !temuListingHasBlueTriangle(d)
+                        : alreadyLive);
             }
             if (hadValue && current === fill && alreadyLive) return { sku: sku, price: fill, row: row };
             const extra = {
@@ -9594,8 +9598,10 @@
                     || !(current > 0)
                     || (overwrite && !chPromoNearlyEqual(current, finalFill));
                 const needsPush = !forceSkipPush && livePushOn && current > 0 && live > 0 && (
-                    (chPromoIsTemuPromoChannel() && typeof temuListingNeedsPush === 'function')
-                        ? temuListingNeedsPush(d, current)
+                    chPromoIsTemuPromoChannel()
+                        ? (typeof temu2HasBlueTriangle === 'function'
+                            ? temu2HasBlueTriangle(d)
+                            : (typeof temuListingHasBlueTriangle === 'function' && temuListingHasBlueTriangle(d)))
                         : !chPromoNearlyEqual(current, live)
                 );
                 if (!needsFill && !needsPush) return;
@@ -10998,8 +11004,10 @@
                         chPromoToast(
                             'success',
                             on
-                                ? 'Auto-push on — only SKUs whose saved S PRC ≠ Price are queued.'
-                                : 'Auto-push off — price edits only save. Daily cron still pushes.'
+                                ? 'Auto-push on — only SKUs whose S PRC ≠ Price are queued.'
+                                : (chPromoIsTemuPromoChannel()
+                                    ? 'Auto-push off — price edits only save. No Temu listing cron.'
+                                    : 'Auto-push off — price edits only save. Daily cron still pushes.')
                         );
                         if (!on) return;
                         if (typeof chPromoIsTemuPromoChannel === 'function'
