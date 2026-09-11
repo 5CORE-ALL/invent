@@ -278,11 +278,54 @@ final class ShopifyBulletPointsFormatter
             return ['bullets' => [], 'format' => 'empty', 'confidence' => 0, 'notes' => ['Empty Shopify body_html']];
         }
 
-        $candidates = [
+        $officialCandidates = [
             ['format' => 'marked_master_block', 'confidence' => 100, 'html' => self::matchFirst($body, '/<!--\s*bullet-points-master:start\s*-->([\s\S]*?)<!--\s*bullet-points-master:end\s*-->/is')],
             ['format' => 'about_item_div', 'confidence' => 90, 'html' => self::matchFirst($body, '/<h[1-6]\b[^>]*>(?=[\s\S]*?About\s+Item)[\s\S]*?<\/h[1-6]>\s*<div\b[^>]*class\s*=\s*(["\'])(?=[^"\']*\babout-item\b)[^"\']*\1[^>]*>([\s\S]*?)<\/div>/is', 2)],
             ['format' => 'aplus_about_item_block', 'confidence' => 82, 'html' => self::matchFirst($body, '/<div\b[^>]*class=(["\'])(?=[^"\']*\baplus-3p-center-content\b)[^"\']*\1[^>]*>(?=[\s\S]*?About\s+Item:)(?=[\s\S]*?【)([\s\S]*?)<\/div>/is', 2)],
             ['format' => 'about_item_bracket_paragraphs', 'confidence' => 80, 'html' => self::matchFirst($body, '/<p\b[^>]*>\s*(?:<[^>]+>\s*)*About\s+Item:?\s*(?:<\/[^>]+>\s*)*<\/p>\s*((?:<p\b[^>]*>(?:(?!<\/p>)[\s\S])*?【(?:(?!<\/p>)[\s\S])*?<\/p>\s*){1,8})/is', 1)],
+        ];
+
+        foreach ($officialCandidates as $candidate) {
+            $html = trim((string) ($candidate['html'] ?? ''));
+            if ($html === '') {
+                continue;
+            }
+
+            $bullets = self::extractBulletsFromHtmlFragment($html);
+            if ($bullets === []) {
+                continue;
+            }
+            if (($candidate['format'] ?? '') === 'about_item_bracket_paragraphs' && count($bullets) < 5) {
+                $mixedBullets = self::extractAboutItemMixedParagraphBullets($body);
+                if (count($mixedBullets) > count($bullets)) {
+                    return [
+                        'bullets' => $mixedBullets,
+                        'format' => 'about_item_mixed_paragraphs',
+                        'confidence' => 79,
+                        'notes' => ['Extracted from mixed About Item bracket and bold-label paragraphs'],
+                    ];
+                }
+            }
+
+            return [
+                'bullets' => $bullets,
+                'format' => (string) $candidate['format'],
+                'confidence' => (int) $candidate['confidence'],
+                'notes' => [],
+            ];
+        }
+
+        $headingBodyBullets = self::extractTopHeadingBodyPairBullets($body);
+        if ($headingBodyBullets !== []) {
+            return [
+                'bullets' => $headingBodyBullets,
+                'format' => 'heading_body_pairs',
+                'confidence' => 88,
+                'notes' => ['Extracted from heading + paragraph pairs at the top of the Shopify description'],
+            ];
+        }
+
+        $candidates = [
             ['format' => 'highlighted_features', 'confidence' => 78, 'html' => self::matchFirst($body, '/<h[1-6]\b[^>]*>(?=[\s\S]*?(?:Highlighted\s+Features|Key\s+Benefits|Product\s+Highlights|Main\s+Features|Bullet\s+Points))[\s\S]*?<\/h[1-6]>\s*((?:<p\b[^>]*>[\s\S]*?<\/p>\s*){1,8})/is', 1)],
             ['format' => 'top_bracket_paragraphs_spaced', 'confidence' => 76, 'html' => self::matchFirst($body, '/\A\s*((?=[\s\S]*?【)(?:<(?:p|h[1-6])\b[^>]*>(?:(?!<\/(?:p|h[1-6])>)[\s\S])*?(?:【|&nbsp;|\x{00a0})(?:(?!<\/(?:p|h[1-6])>)[\s\S])*?<\/(?:p|h[1-6])>\s*){2,12})/isu', 1)],
             ['format' => 'top_bracket_paragraphs', 'confidence' => 75, 'html' => self::matchFirst($body, '/\A\s*((?:<(?:p|h[1-6])\b[^>]*>(?:(?!<\/(?:p|h[1-6])>)[\s\S])*?【(?:(?!<\/(?:p|h[1-6])>)[\s\S])*?<\/(?:p|h[1-6])>\s*){1,8})/is', 1)],
@@ -298,17 +341,6 @@ final class ShopifyBulletPointsFormatter
 
             $bullets = self::extractBulletsFromHtmlFragment($html);
             if ($bullets !== []) {
-                if (($candidate['format'] ?? '') === 'about_item_bracket_paragraphs' && count($bullets) < 5) {
-                    $mixedBullets = self::extractAboutItemMixedParagraphBullets($body);
-                    if (count($mixedBullets) > count($bullets)) {
-                        return [
-                            'bullets' => $mixedBullets,
-                            'format' => 'about_item_mixed_paragraphs',
-                            'confidence' => 79,
-                            'notes' => ['Extracted from mixed About Item bracket and bold-label paragraphs'],
-                        ];
-                    }
-                }
                 if (($candidate['format'] ?? '') === 'top_bold_label_paragraphs' && count($bullets) < 5) {
                     continue;
                 }
@@ -319,16 +351,6 @@ final class ShopifyBulletPointsFormatter
                     'notes' => [],
                 ];
             }
-        }
-
-        $headingBodyBullets = self::extractTopHeadingBodyPairBullets($body);
-        if ($headingBodyBullets !== []) {
-            return [
-                'bullets' => $headingBodyBullets,
-                'format' => 'heading_body_pairs',
-                'confidence' => 88,
-                'notes' => ['Extracted from heading + paragraph pairs at the top of the Shopify description'],
-            ];
         }
 
         $topBoldLabelBullets = self::extractTopBoldLabelParagraphBullets($body);
@@ -378,6 +400,15 @@ final class ShopifyBulletPointsFormatter
             $format = (string) ($extract['format'] ?? '');
             if (in_array($format, ['marked_master_block', 'about_item_div', 'heading_body_pairs'], true)) {
                 $score += 40;
+            }
+            $specLike = 0;
+            foreach ($bullets as $line) {
+                if (preg_match('/^.{2,40}:\s*.{1,40}$/u', $line) === 1 && mb_strlen($line) <= 48) {
+                    $specLike++;
+                }
+            }
+            if ($specLike >= 2 && $specLike >= (int) ceil(count($bullets) * 0.6)) {
+                $score -= 80;
             }
             if ($score > $bestScore) {
                 $bestScore = $score;
@@ -485,9 +516,26 @@ final class ShopifyBulletPointsFormatter
      */
     private static function extractTopHeadingBodyPairBullets(string $html): array
     {
-        $remaining = ltrim($html);
+        $remaining = self::stripEmptyStrongTags(ltrim($html));
         if (preg_match('/\A<p\b[^>]*>\s*<a\b[^>]*>[\s\S]*?Download\s+Product\s+Manual[\s\S]*?<\/a>\s*<\/p>\s*/i', $remaining, $manual) === 1) {
             $remaining = substr($remaining, strlen($manual[0]));
+        }
+
+        if (preg_match('/\A\s*(<(?:p|h[1-6])\b[^>]*>[\s\S]*?<\/(?:p|h[1-6])>)/iu', $remaining, $firstBlock) === 1) {
+            $inlineBullets = [];
+            foreach (self::extractBoldLabelBulletsFromParagraph((string) $firstBlock[1]) as $line) {
+                if (preg_match('/^(.{6,90}?)\s+[-–—]\s+(.{20,})$/u', $line, $parts) !== 1) {
+                    continue;
+                }
+                $label = trim((string) $parts[1]);
+                $bodyText = trim((string) $parts[2]);
+                if (self::isFeatureHeadingText($label) && self::isFeatureBodyText($bodyText)) {
+                    $inlineBullets[] = $label.' - '.$bodyText;
+                }
+            }
+            if (count($inlineBullets) >= 2) {
+                return array_values(array_slice(array_unique($inlineBullets), 0, 5));
+            }
         }
 
         $blocks = [];
@@ -718,8 +766,19 @@ final class ShopifyBulletPointsFormatter
     /**
      * @return list<string>
      */
+    private static function stripEmptyStrongTags(string $html): string
+    {
+        $stripped = preg_replace('/<strong\b[^>]*>\s*<\/strong>/iu', '', $html);
+
+        return is_string($stripped) ? $stripped : $html;
+    }
+
+    /**
+     * @return list<string>
+     */
     private static function extractBoldLabelBulletsFromParagraph(string $paragraph): array
     {
+        $paragraph = self::stripEmptyStrongTags($paragraph);
         if (preg_match_all('/<strong\b[^>]*>([\s\S]*?)<\/strong>\s*((?:-|:|–|—)\s*)?([\s\S]*?)(?=<strong\b|$)/iu', $paragraph, $matches, PREG_SET_ORDER) < 1) {
             return [];
         }
