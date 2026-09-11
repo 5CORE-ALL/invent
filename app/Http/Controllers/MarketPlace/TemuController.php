@@ -1110,6 +1110,29 @@ class TemuController extends Controller
     }
 
     /**
+     * Get L7 daily data for Temu tabulator export — same window/math as /temu2/daily-data-l7.
+     */
+    public function getDailyDataL7(Request $request)
+    {
+        try {
+            [$start, $end] = TemuShopifySalesService::channelMasterL7Window();
+            $result = TemuShopifySalesService::getOrdersTableRows($start, $end);
+
+            Log::info('Temu L7 daily data fetched from temu_orders', [
+                'result_count' => count($result),
+            ]);
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Temu L7 daily data from temu_orders: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Get L60 daily data for Temu tabulator — prior 30-day shopify_order_items window.
      */
     public function getDailyDataL60(Request $request)

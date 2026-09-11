@@ -325,7 +325,8 @@ class TemuShopifySalesService
     }
 
     /**
-     * Strip freight from API/stored unit — same as /temu-tabulator Base Price.
+     * Strip freight from API/stored unit (decrease-page fallback only).
+     * /temu-tabulator and /temu2-tabulator keep Base as-is (no −$2.99).
      * Base = unit − $2.99 when unit < $26.99.
      */
     public static function goodsBaseFromUnit(float $unit): float
@@ -449,8 +450,8 @@ class TemuShopifySalesService
 
     /**
      * Sales/orders/qty/pft/cogs from the temu_orders table (Temu API order-wise data).
-     * Temu 1 uses listing base + R Price GPFT$ (same as /temu2-tabulator), not line_sales/qty.
-     * Temu 2 uses /temu2-tabulator math (computeTemu2TabulatorMetrics).
+     * Same math as /temu2-tabulator / computeTemu2TabulatorMetrics:
+     * Base = base_price_total (no −$2.99), GPFT$ on R Price.
      *
      * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
      */
@@ -475,34 +476,33 @@ class TemuShopifySalesService
         $orderSet = [];
 
         foreach ($rows as $r) {
+            $parent = (string) ($r['Parent'] ?? '');
+            if ($parent !== '' && str_starts_with($parent, 'PARENT')) {
+                continue;
+            }
+            $sku = trim((string) ($r['contribution_sku'] ?? ''));
+            $orderId = trim((string) ($r['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+
             $qty = (int) ($r['quantity_purchased'] ?? 0);
-            $listingBase = (float) ($r['listing_base_price'] ?? 0);
-            $rawBase = (float) ($r['base_price_total'] ?? 0);
-            $lineSales = (float) ($r['line_sales'] ?? 0);
-            // Same listing base as /temu2-tabulator / /temu3-tabulator — not line_sales/qty.
-            $base = $listingBase > 0
-                ? $listingBase
-                : ($rawBase > 0 ? self::goodsBaseFromUnit($rawBase) : 0.0);
+            $base = (float) ($r['base_price_total'] ?? 0);
             if ($qty <= 0 || $base <= 0) {
                 continue;
             }
 
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
+            $lineSales = (float) ($r['line_sales'] ?? 0);
             $calc = self::temuPriceSalesAndProfit($base, $qty, $margin, $lp, $ship, false, true);
 
             $totalSales += $calc['sales'];
             $totalPft += $calc['profit'];
             $totalCogs += $lp * $qty;
             $totalQty += $qty;
-
-            // Keep API line sales for Seller Central Y Sales (base + freight).
             $totalBaseSales += $lineSales > 0 ? $lineSales : ($base * $qty);
-
-            $orderId = trim((string) ($r['order_id'] ?? ''));
-            if ($orderId !== '') {
-                $orderSet[$orderId] = true;
-            }
+            $orderSet[$orderId] = true;
         }
 
         return [

@@ -115,18 +115,19 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
                             style="color: white; font-weight: bold;"
-                            title="GPFT % = Σ (R Price × margin − LP − Ship) × Qty ÷ Σ (Temu Price × Qty) × 100 — same as /temu2-tabulator">GPFT: 0%</span>
+                            title="GPFT % = Σ GPFT$ ÷ Σ (Temu Price × Qty) × 100">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"
                             style="background-color: purple; color: white; font-weight: bold;"
-                            title="GROI % = Σ (R Price × margin − LP − Ship) × Qty ÷ Σ (LP × Qty) × 100 — same as /temu2-tabulator">GROI: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
+                            title="GROI % = Σ GPFT$ ÷ Σ (LP × Qty) × 100">GROI: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
+                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;"
+                            title="GPFT$ = Σ (R Price × margin − LP − Temu Ship) × Qty">GPFT$: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
                             style="color: white; font-weight: bold;"
-                            title="L30 Sales = Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">L30 Sales: $0.00</span>
+                            title="L30 Sales = Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">L30 Sales: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="temu-full-price-sales-badge"
                             style="color: white; font-weight: bold;"
-                            title="Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">Temu Full Price Sales: $0.00</span>
+                            title="Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">Temu Full Price Sales: $0</span>
                         <span class="badge fs-6 p-2" id="l60-sales-badge"
                             style="background-color: #17a2b8; color: white; font-weight: bold;"
                             title="L60 Sales = Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">L60 Sales: $0.00</span>
@@ -154,20 +155,15 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     const COLUMN_VIS_KEY = "temu_tabulator_column_visibility";
-    // Temu margin from marketplace_percentages (same source as getOrdersTableRows /
-    // getTemuChannelData) so PFT / GPFT% / ROI match the Temu row on /all-marketplace-master.
+    // Same margin + formulas as /temu2-tabulator (marketplace_percentages.Temu).
     const TEMU_MARGIN = {{ (float) $temuMargin }};
-    // Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99 — same as /temu1-data
     const TEMU_PRICE_MULT = 1.1364;
     const TEMU_FREIGHT = 2.99;
     const TEMU_FREIGHT_CAP = 26.99;
-    /** Strip freight from API/stored unit: Base = unit − $2.99 when unit < $26.99. */
+    /** Same as /temu2-tabulator: Base = stored/API unit as-is (do not subtract $2.99). */
     function temuGoodsBase(rawUnit) {
         const b = parseFloat(rawUnit) || 0;
         if (b <= 0) return 0;
-        if (b < TEMU_FREIGHT_CAP) {
-            return Math.max(0, +(b - TEMU_FREIGHT).toFixed(2));
-        }
         return +b.toFixed(2);
     }
     function temuRowBase(row) {
@@ -180,12 +176,26 @@
         if (price <= TEMU_FREIGHT_CAP) price += TEMU_FREIGHT;
         return price;
     }
+    function temuPriceHoverText(row) {
+        const base = temuRowBase(row);
+        if (!(base > 0)) {
+            return 'Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99';
+        }
+        const afterMult = +(base * TEMU_PRICE_MULT).toFixed(4);
+        const temuPrice = temuPriceFromBase(base);
+        if (afterMult <= TEMU_FREIGHT_CAP) {
+            return 'Temu Price = (Base × 1.1364) + $2.99\n$'
+                + base.toFixed(2) + ' × 1.1364 = $' + afterMult.toFixed(2)
+                + ' + $2.99 = $' + temuPrice.toFixed(2);
+        }
+        return 'Temu Price = (Base × 1.1364)\n$'
+            + base.toFixed(2) + ' × 1.1364 = $' + temuPrice.toFixed(2)
+            + ' (no +$2.99, result > $26.99)';
+    }
     function temuFbPrice(basePrice, quantity) {
         const base = parseFloat(basePrice) || 0;
         const qty = parseInt(quantity) || 0;
-        if (qty <= 0 || base <= 0) {
-            return 0;
-        }
+        if (qty <= 0 || base <= 0) return 0;
         return base <= TEMU_FREIGHT_CAP ? base + TEMU_FREIGHT : base;
     }
     function temuRowTemuPrice(row) {
@@ -195,7 +205,7 @@
         const qty = parseInt(row && row.quantity_purchased) || 0;
         return temuFbPrice(temuRowBase(row), qty);
     }
-    /** Per-unit profit on R Price — same GPFT$ / GROI as /temu2-tabulator and /temu3-tabulator. */
+    /** Per-unit profit on R Price — GPFT$ / GPFT % / GROI %. */
     function temuRowRPriceProfit(row) {
         const rPrice = temuRowRPrice(row);
         if (!(rPrice > 0)) return 0;
@@ -251,6 +261,7 @@
             ajaxURL: "/temu/daily-data",
             ajaxSorting: false,
             layout: "fitDataStretch",
+            tooltip: true,
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -377,6 +388,26 @@
                     width: 120
                 },
                 {
+                    title: "Listing Base",
+                    field: "listing_base_price",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 120,
+                    headerTooltip: "Catalog base from bg.local.goods.sku.list.price.query (temu_metrics)",
+                    formatter: "money",
+                    formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
+                },
+                {
+                    title: "Line Sales",
+                    field: "line_sales",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 110,
+                    headerTooltip: "API line sales = basePrice + shipAmountTotal",
+                    formatter: "money",
+                    formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
+                },
+                {
                     title: "Base Price",
                     field: "base_price_total",
                     hozAlign: "right",
@@ -384,7 +415,7 @@
                         return temuGoodsBase(a) - temuGoodsBase(b);
                     },
                     width: 120,
-                    headerTooltip: "Base = stored/API unit − $2.99 when that unit is < $26.99. Otherwise stored/API unit.",
+                    headerTooltip: "Base = stored/API unit. No −$2.99 (same as /temu2-tabulator).",
                     accessorDownload: function(value) {
                         const n = temuGoodsBase(value);
                         return n > 0 ? n.toFixed(2) : '';
@@ -393,29 +424,39 @@
                         const raw = parseFloat(cell.getValue()) || 0;
                         const base = temuGoodsBase(raw);
                         if (!(base > 0)) return '';
-                        const tip = raw < TEMU_FREIGHT_CAP
-                            ? ('$' + raw.toFixed(2) + ' − $2.99 (unit < $26.99)')
-                            : ('$' + raw.toFixed(2) + ' (unit ≥ $26.99, no −$2.99)');
-                        return `<span title="${tip}">$${base.toFixed(2)}</span>`;
+                        return `<span title="Base = stored/API unit (no −$2.99)">$${base.toFixed(2)}</span>`;
                     }
                 },
                 {
-                    title: "FB Prc",
+                    title: "R Price",
                     field: "fb_price",
                     hozAlign: "right",
                     sorter: "number",
                     width: 120,
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
-                    },
-                    mutator: function(value, data, type, params, component) {
-                        const basePrice = temuRowBase(data);
+                    headerTooltip: "R Price = Base; +$2.99 if Base ≤ $26.99",
+                    mutator: function(value, data) {
                         const quantity = parseInt(data.quantity_purchased) || 0;
-                        return temuFbPrice(basePrice, quantity).toFixed(2);
+                        return temuFbPrice(temuRowBase(data), quantity).toFixed(2);
+                    },
+                    tooltip: function(e, cell) {
+                        const data = cell.getRow().getData();
+                        const base = temuRowBase(data);
+                        const rPrice = parseFloat(cell.getValue()) || 0;
+                        if (!(rPrice > 0) || !(base > 0)) return '';
+                        if (base <= TEMU_FREIGHT_CAP) {
+                            return 'R Price = Base + $2.99\n$' + base.toFixed(2) + ' + $2.99 = $' + rPrice.toFixed(2);
+                        }
+                        return 'R Price = Base (no +$2.99, base > $26.99)\n$' + base.toFixed(2);
+                    },
+                    formatter: function(cell) {
+                        const data = cell.getRow().getData();
+                        const base = temuRowBase(data);
+                        const rPrice = parseFloat(cell.getValue()) || 0;
+                        if (!(rPrice > 0)) return '';
+                        const tip = base <= TEMU_FREIGHT_CAP
+                            ? ('R Price = Base + $2.99 → $' + base.toFixed(2) + ' + $2.99 = $' + rPrice.toFixed(2))
+                            : ('R Price = Base (no +$2.99, base > $26.99) → $' + base.toFixed(2));
+                        return `<span title="${tip}">$${rPrice.toFixed(2)}</span>`;
                     }
                 },
                 {
@@ -423,18 +464,20 @@
                     field: "temu_price",
                     hozAlign: "right",
                     sorter: "number",
-                    width: 120,
+                    width: 130,
+                    visible: true,
                     headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     mutator: function(value, data) {
                         return temuPriceFromBase(temuRowBase(data));
                     },
+                    tooltip: function(e, cell) {
+                        return temuPriceHoverText(cell.getRow().getData());
+                    },
                     formatter: function(cell) {
-                        const basePrice = temuRowBase(cell.getRow().getData());
-                        const temuPrice = parseFloat(cell.getValue()) || temuPriceFromBase(basePrice);
+                        const data = cell.getRow().getData();
+                        const temuPrice = temuRowTemuPrice(data);
                         if (!(temuPrice > 0)) return '';
-                        const afterMult = basePrice * TEMU_PRICE_MULT;
-                        const tip = '(Base × 1.1364)' + (afterMult <= TEMU_FREIGHT_CAP ? ' + $2.99' : '');
-                        return `<span title="${tip}">$${temuPrice.toFixed(2)}</span>`;
+                        return `<span title="${temuPriceHoverText(data).replace(/\n/g, ' — ')}">$${temuPrice.toFixed(2)}</span>`;
                     }
                 },
                 {
@@ -501,7 +544,7 @@
                     }
                 },
                 {
-                    title: "PFT Total",
+                    title: "GPFT$",
                     field: "pft",
                     hozAlign: "right",
                     sorter: "number",
@@ -511,8 +554,8 @@
                         const color = value >= 0 ? '#28a745' : '#dc3545';
                         return `<span style="color: ${color}; font-weight: bold;">$${parseFloat(value).toFixed(2)}</span>`;
                     },
-                    headerTooltip: "GPFT$ = (R Price × margin − LP − Temu Ship) × Qty — same as /temu2-tabulator",
-                    mutator: function(value, data, type, params, component) {
+                    headerTooltip: "PFT $ = (R Price × margin − LP − Temu Ship) × Qty",
+                    mutator: function(value, data) {
                         const quantity = parseInt(data.quantity_purchased) || 0;
                         return (temuRowRPriceProfit(data) * quantity).toFixed(2);
                     }
@@ -523,7 +566,7 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
-                    headerTooltip: "GPFT % = (R Price × margin − LP − Temu Ship) ÷ Temu Price × 100 — same as /temu2-tabulator",
+                    headerTooltip: "GPFT % = GPFT$ ÷ Temu Price × 100",
                     mutator: function(value, data) {
                         return temuRowGpftPercent(data);
                     },
@@ -540,7 +583,7 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
-                    headerTooltip: "GROI % = (R Price × margin − LP − Temu Ship) ÷ LP × 100 — same as /temu2-tabulator",
+                    headerTooltip: "GROI % = GPFT$ ÷ LP × 100",
                     mutator: function(value, data) {
                         return temuRowGroiPercent(data);
                     },
@@ -565,9 +608,9 @@
                         symbol: "$",
                         precision: 2
                     },
-                    mutator: function(value, data, type, params, component) {
+                    mutator: function(value, data) {
                         const quantity = parseInt(data.quantity_purchased) || 0;
-                        return (quantity * temuPriceFromBase(temuRowBase(data))).toFixed(2);
+                        return (quantity * temuRowTemuPrice(data)).toFixed(2);
                     }
                 },
                 {
@@ -623,82 +666,44 @@
             ]);
         });
 
-        function temuLinePrice(row) {
-            const quantity = parseInt(row.quantity_purchased) || 0;
-            return temuFbPrice(temuRowBase(row), quantity);
-        }
-
-        // Update summary stats
         function updateSummary() {
             const data = table.getData("active");
-            let totalOrders = 0;
-            let totalQuantity = 0;
-            let totalPft = 0;
-            let totalL30Sales = 0;
+            let totalOrders = 0, totalQuantity = 0, totalPft = 0, totalL30Sales = 0;
             let totalTemuFullPriceSales = 0;
-            let totalWeightedPrice = 0;
-            let totalQuantityForPrice = 0;
-            let totalCogs = 0;
-            let totalProfitFull = 0;
+            let totalWeightedPrice = 0, totalQuantityForPrice = 0, totalCogs = 0;
 
             data.forEach(row => {
-                // Skip parent rows (like eBay does)
-                if (row.Parent && row.Parent.startsWith('PARENT')) {
-                    return;
-                }
-                
-                // Skip rows with empty SKU or order_id
-                if (!row.contribution_sku || row.contribution_sku === '' || !row.order_id || row.order_id === '') {
-                    return;
-                }
-                
+                if (row.Parent && row.Parent.startsWith('PARENT')) return;
+                if (!row.contribution_sku || row.contribution_sku === '' || !row.order_id || row.order_id === '') return;
                 totalOrders++;
                 const quantity = parseInt(row.quantity_purchased) || 0;
                 const basePrice = temuRowBase(row);
                 const temuPrice = temuRowTemuPrice(row);
                 const lp = parseFloat(row.lp) || 0;
-                
                 totalQuantity += quantity;
-                
                 if (quantity > 0 && basePrice > 0) {
                     totalWeightedPrice += basePrice * quantity;
                     totalQuantityForPrice += quantity;
-                }
-                
-                const hasSales = quantity > 0 && basePrice > 0;
-                if (hasSales) {
-                    const profit = temuRowRPriceProfit(row) * quantity;
-                    totalPft += profit;
+                    totalPft += temuRowRPriceProfit(row) * quantity;
                     totalL30Sales += quantity * temuPrice;
                     totalTemuFullPriceSales += quantity * temuPrice;
-                    totalProfitFull += profit;
                     totalCogs += lp * quantity;
                 }
             });
 
-            // Calculate average price (weighted by quantity, like eBay)
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-
             const pftPercentage = totalTemuFullPriceSales > 0
-                ? (totalProfitFull / totalTemuFullPriceSales) * 100
+                ? (totalPft / totalTemuFullPriceSales) * 100
                 : 0;
-            const roiPercentage = totalCogs > 0 ? (totalProfitFull / totalCogs) * 100 : 0;
+            const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
             $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());
-            $('#pft-total-badge').text('PFT Total: $' + Math.round(totalProfitFull).toLocaleString());
-            
-            // Color code PFT Total badge (Temu Price PFT)
-            const pftBadge = $('#pft-total-badge');
-            if (totalProfitFull >= 0) {
-                pftBadge.removeClass('bg-danger').addClass('bg-dark');
-            } else {
-                pftBadge.removeClass('bg-dark').addClass('bg-danger');
-            }
-            
+            $('#pft-total-badge').text('GPFT$: $' + Math.round(totalPft).toLocaleString());
+            $('#pft-total-badge').toggleClass('bg-danger', totalPft < 0).toggleClass('bg-dark', totalPft >= 0);
             $('#l30-sales-badge').text('L30 Sales: $' + Math.round(totalL30Sales).toLocaleString());
             $('#temu-full-price-sales-badge').text('Temu Full Price Sales: $' + Math.round(totalTemuFullPriceSales).toLocaleString());
             $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
@@ -775,6 +780,10 @@
                 .then(savedVisibility => {
                     table.getColumns().forEach(col => {
                         const def = col.getDefinition();
+                        if (def.field === 'temu_price') {
+                            col.show();
+                            return;
+                        }
                         if (def.field && savedVisibility[def.field] === false) {
                             col.hide();
                         }
@@ -878,46 +887,54 @@
             $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Loading...');
 
             $.ajax({
-                url: '{{ url("/temu-decrease-data-l7") }}',
+                url: '{{ url("/temu/daily-data-l7") }}',
                 method: 'GET',
                 headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
-                success: function(response) {
-                    if (response && response.data && response.data.length > 0) {
-                        const data = response.data;
-                        const headers = Object.keys(data[0]);
-                        const escapeCell = function(val) {
-                            if (val === null || val === undefined) return '';
-                            if (typeof val === 'object') val = JSON.stringify(val);
-                            let s = String(val).replace(/"/g, '""');
-                            if (s.includes(',') || s.includes('\n') || s.includes('"')) {
-                                return '"' + s + '"';
-                            }
-                            return s;
-                        };
-                        let csv = headers.join(',') + '\n';
-                        data.forEach(function(row) {
-                            const values = headers.map(function(header) {
-                                return escapeCell(row[header]);
-                            });
-                            csv += values.join(',') + '\n';
-                        });
-                        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = 'temu_l7_data.csv';
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        window.URL.revokeObjectURL(url);
-                        showToast('Exported ' + data.length + ' L7 records', 'success');
-                    } else {
-                        showToast('No L7 data available to export', 'warning');
+                success: function(data) {
+                    if (!Array.isArray(data)) {
+                        showToast('Invalid response from L7 endpoint', 'error');
+                        return;
                     }
+                    const columns = table.getColumns().map(function(col) {
+                        return col.getField();
+                    }).filter(Boolean);
+                    const headers = columns.join(',');
+                    const escapeCsv = function(val) {
+                        if (val === null || val === undefined) return '""';
+                        const s = String(val);
+                        if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+                            return '"' + s.replace(/"/g, '""') + '"';
+                        }
+                        return '"' + s + '"';
+                    };
+                    const rows = data.map(function(row) {
+                        const qty = parseInt(row.quantity_purchased) || 0;
+                        const temuPrice = temuRowTemuPrice(row);
+                        const l7Sales = (qty * temuPrice).toFixed(2);
+                        const rowData = {
+                            ...row,
+                            base_price_total: temuRowBase(row),
+                            temu_price: temuPrice,
+                            pft: (temuRowRPriceProfit(row) * qty).toFixed(2),
+                            gpft_percent: temuRowGpftPercent(row),
+                            groi_percent: temuRowGroiPercent(row),
+                            l30_sales: l7Sales
+                        };
+                        return columns.map(function(col) {
+                            return escapeCsv(rowData[col] ?? '');
+                        }).join(',');
+                    });
+                    const csv = [headers, ...rows].join('\n');
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = 'temu_l7_daily_data.csv';
+                    link.click();
+                    URL.revokeObjectURL(link.href);
+                    showToast('L7 data exported successfully', 'success');
                 },
                 error: function(xhr) {
-                    const err = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Unknown error';
-                    console.error('Export L7 error:', xhr);
+                    const err = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to fetch L7 data';
                     showToast('Failed to export L7 data: ' + err, 'error');
                 },
                 complete: function() {
