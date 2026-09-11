@@ -55,26 +55,27 @@ class AmazonListingPublishService
         ListingManagerPublishStatus::forgetAmazonLiveCache($sku);
         $inspect = $this->api->inspectSellerCentralListing($sku);
         $productType = trim((string) ($details['product_type'] ?? $details['category'] ?? ''));
+        $createdAsin = '';
         if (! ($inspect['found'] ?? false)) {
             $created = $this->createListing($sku, $details, $title, $qty, $images);
             if (! ($created['success'] ?? false)) {
                 return $created;
             }
+            $createdAsin = AmazonSpApiService::normalizeAsin($created['asin'] ?? '');
         }
-        $asin = trim((string) ($inspect['asin'] ?? ''));
+        $asin = AmazonSpApiService::normalizeAsin($inspect['asin'] ?? '')
+            ?: $createdAsin
+            ?: $this->asinFromDetails($details);
         if ($asin === '') {
             $inspect = $this->waitForSellerCentralListing($sku);
-            $asin = trim((string) ($inspect['asin'] ?? ''));
-        }
-        if ($asin === '') {
-            return [
-                'success' => false,
-                'message' => trim((string) ($inspect['message'] ?? ''))
-                    ?: ('Amazon accepted the US draft for '.$sku.', but no ASIN yet. Publish again after Amazon assigns the ASIN so the US offer can be added.'),
-                'skus' => [$sku],
-            ];
+            $asin = AmazonSpApiService::normalizeAsin($inspect['asin'] ?? '')
+                ?: $createdAsin
+                ?: $this->asinFromDetails($details);
         }
         $existingSku = trim((string) ($inspect['seller_sku'] ?? $sku));
+        if ($existingSku === '') {
+            $existingSku = $sku;
+        }
 
         $offer = $this->completeUsListing($existingSku, $details, $title, $qty, $asin);
         if (! ($offer['success'] ?? false)) {
@@ -117,7 +118,7 @@ class AmazonListingPublishService
         return [
             'success' => true,
             'message' => 'Published Amazon listing for '.$sku
-                .' (ASIN '.$asin
+                .($asin !== '' ? ' (ASIN '.$asin : ' (SKU '.$existingSku)
                 .', '.implode(', ', $ok)
                 .'). Only the US offer is enabled.'
                 .($fail !== [] ? ' '.implode(' ', $fail) : ''),
@@ -137,7 +138,7 @@ class AmazonListingPublishService
                 sleep(2);
             }
             $last = $this->api->inspectSellerCentralListing($sku);
-            if (($last['found'] ?? false) && trim((string) ($last['asin'] ?? '')) !== '') {
+            if (AmazonSpApiService::normalizeAsin($last['asin'] ?? '') !== '') {
                 return $last;
             }
         }
@@ -469,6 +470,21 @@ class AmazonListingPublishService
         }
 
         return $attributes;
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     */
+    private function asinFromDetails(array $details): string
+    {
+        foreach (['asin', 'amazon_asin', 'external_listing_id'] as $key) {
+            $asin = AmazonSpApiService::normalizeAsin($details[$key] ?? '');
+            if ($asin !== '') {
+                return $asin;
+            }
+        }
+
+        return '';
     }
 
     /**
