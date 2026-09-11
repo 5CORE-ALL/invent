@@ -40,6 +40,7 @@ return [
             'tasks:automated-health-alert',
             'sync:amazon-prices',
             'amazon:pull-pushed-prices',
+            'temu:pull-pushed-prices',
             'sync:walmart-metrics-data',
             'app:update-marketplace-daily-metrics',
             'app:aliexpress-sheet-sync',

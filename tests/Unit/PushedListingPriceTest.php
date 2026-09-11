@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Services\ChannelLivePriceSync;
 use App\Services\DilRuleSpriceApplyService;
 use App\Services\TemuShopifySalesService;
 use App\Support\PushedListingPrice;
@@ -56,6 +57,14 @@ class PushedListingPriceTest extends TestCase
         $sprice = 29.99;
         $expected = TemuShopifySalesService::computePushBaseFromSprice($sprice);
         $this->assertSame($expected, PushedListingPrice::temuBaseToWrite(99.00, $sprice));
+    }
+
+    public function test_temu_prefer_incoming_keeps_live_api_price(): void
+    {
+        $this->assertSame(
+            9.32,
+            ChannelLivePriceSync::preferIncoming('temu', 'CS 04 2W', 9.32, ['CS 04 2W' => 17.39])
+        );
     }
 
     public function test_dil_does_not_enqueue_when_live_already_matches(): void

@@ -79,6 +79,46 @@ class ChannelPushedPricePullService
     }
 
     /**
+     * Confirm live Temu / Temu 2 supplier price 2 hours after an S PRC push.
+     *
+     * @return array{due:int,pulled:int,failed:int}
+     */
+    public function pullDueTemu(int $limit = 80, bool $force = false, ?string $channel = null): array
+    {
+        $stats = ['due' => 0, 'pulled' => 0, 'failed' => 0];
+        $channels = $channel !== null && $channel !== '' && $channel !== 'all'
+            ? [strtolower(trim($channel))]
+            : ['temu', 'temu2'];
+
+        foreach ($channels as $ch) {
+            if (! in_array($ch, ['temu', 'temu2'], true)) {
+                continue;
+            }
+            $skus = ChannelLivePriceSync::dueTemuApiPullSkus($ch, max(1, $limit), $force);
+            $stats['due'] += count($skus);
+            if ($skus === []) {
+                continue;
+            }
+            foreach (array_chunk($skus, 100) as $chunk) {
+                foreach ($this->pullSkus($ch, $chunk) as $row) {
+                    if (! empty($row['success'])) {
+                        ChannelLivePriceSync::markTemuApiPulled(
+                            $ch,
+                            (string) ($row['sku'] ?? ''),
+                            isset($row['price']) ? (float) $row['price'] : null
+                        );
+                        $stats['pulled']++;
+                    } else {
+                        $stats['failed']++;
+                    }
+                }
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
      * Live Temu / Temu 2 supplier (base) price via bg.local.goods.sku.list.price.query.
      *
      * @param  list<string>  $skus

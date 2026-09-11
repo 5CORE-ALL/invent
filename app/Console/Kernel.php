@@ -1047,6 +1047,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // After Temu / Temu 2 S PRC push, wait 2 hours then write live API price only.
+        $schedule->command('temu:pull-pushed-prices')
+            ->everyFifteenMinutes()
+            ->name('temu-pull-pushed-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $ist($schedule->command('walmart:fetch-listed-prices')
             ->cron('0 */3 * * *')
             ->name('walmart-fetch-listed-prices')
