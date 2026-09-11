@@ -1046,7 +1046,7 @@ class AmazonSyncController extends Controller
     protected function aeStateBucket(?string $state): string
     {
         $state = strtolower(trim((string) $state));
-        if (in_array($state, ['active', '1', 'true', 'onselling', 'on_selling'], true)) {
+        if (in_array($state, ['active', '1', 'true', 'onselling', 'on_selling', 'live', 'out_of_stock', 'oos', 'discoverable', 'buyable'], true)) {
             return 'active';
         }
         if (in_array($state, ['inactive', '0', 'false', 'offline', 'ended'], true)) {

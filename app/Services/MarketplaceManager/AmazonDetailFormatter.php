@@ -5,10 +5,8 @@ namespace App\Services\MarketplaceManager;
 use App\Models\AmazonListingStatus;
 use App\Models\AmazonOrder;
 use App\Models\MarketplaceSyncSettings;
-use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Schema;
 
 class AmazonDetailFormatter
 {
@@ -21,11 +19,15 @@ class AmazonDetailFormatter
         $linked = AmazonListingStatusHelper::isLinked($listing, (string) $shopify->sku);
         $value = AmazonListingStatusHelper::valueArray($listing);
         $amazonQty = null;
-        if ($linked && Schema::hasTable('product_stock_mappings')) {
-            $map = ProductStockMapping::query()->where('sku', $shopify->sku)->first();
-            if ($map && $map->inventory_amazon !== null && $map->inventory_amazon !== '') {
-                $amazonQty = (int) $map->inventory_amazon;
-            }
+        if ($linked) {
+            $amazonQty = MarketplaceListingStockResolver::qtyFromMap(
+                MarketplaceListingStockResolver::stockMapForSkus(
+                    MarketplaceListingStockResolver::CHANNEL_AMAZON,
+                    [(string) $shopify->sku, (string) ($listing->sku ?? '')]
+                ),
+                (string) $shopify->sku,
+                (string) ($listing->sku ?? null)
+            );
         }
 
         return [

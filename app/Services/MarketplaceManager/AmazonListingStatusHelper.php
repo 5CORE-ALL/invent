@@ -85,17 +85,109 @@ final class AmazonListingStatusHelper
         if ($state === '') {
             return '';
         }
-        if (in_array($state, ['active', 'buyable', 'buyable_by_quantity', 'listed', '1', 'true', 'live'], true)) {
-            return 'active';
+        $normalized = self::normalizePortalStatus($state);
+        if ($normalized !== 'other') {
+            return $normalized;
         }
-        if (in_array($state, ['inactive', '0', 'false', 'incomplete', 'suppressed', 'blocked'], true)) {
-            return 'inactive';
-        }
-        if (in_array($state, ['not_listed', 'missing'], true)) {
+        if (in_array(str_replace([' ', '-'], '_', $state), ['not_listed', 'missing'], true)) {
             return '';
         }
 
         return $state;
+    }
+
+    /**
+     * Seller Central "Out of stock" / SP-API DISCOVERABLE is a live listing (qty 0),
+     * not an inactive/closed offer. Map those to active so MM tabs match Amazon.
+     */
+    public static function normalizePortalStatus(string $raw): string
+    {
+        $state = strtolower(trim($raw));
+        $state = str_replace([' ', '-'], '_', $state);
+
+        if (in_array($state, [
+            'active', 'buyable', 'buyable_by_quantity', 'listed', '1', 'true', 'live',
+            'published', 'out_of_stock', 'oos', 'discoverable',
+        ], true)) {
+            return 'active';
+        }
+        if (in_array($state, [
+            'inactive', 'incomplete', 'suppressed', 'blocked', 'disabled', '0', 'false',
+            'stopped', 'ineligible', 'invalid',
+        ], true)) {
+            return 'inactive';
+        }
+
+        return 'other';
+    }
+
+    /**
+     * Persist amazon_datsheets.listing_status from an SP-API listings-item status.
+     * OUT_OF_STOCK / DISCOVERABLE stay live (ACTIVE), not INACTIVE.
+     */
+    public static function mapAmazonApiStatusToSheet(string $statusValue): string
+    {
+        $statusValue = strtoupper(trim($statusValue));
+        if (in_array($statusValue, ['INCOMPLETE', 'DRAFT', 'PENDING'], true)) {
+            return 'INCOMPLETE';
+        }
+        $normalized = self::normalizePortalStatus($statusValue);
+        if ($normalized === 'active') {
+            return 'ACTIVE';
+        }
+        if ($normalized === 'inactive') {
+            return 'INACTIVE';
+        }
+        if (stripos($statusValue, 'BUY') !== false || stripos($statusValue, 'ACTIVE') !== false) {
+            return 'ACTIVE';
+        }
+        if (stripos($statusValue, 'OUT_OF_STOCK') !== false || stripos($statusValue, 'DISCOVERABLE') !== false) {
+            return 'ACTIVE';
+        }
+        if (stripos($statusValue, 'INACTIVE') !== false
+            || stripos($statusValue, 'INVALID') !== false
+            || stripos($statusValue, 'STOP') !== false
+            || stripos($statusValue, 'SUPPRESS') !== false) {
+            return 'INACTIVE';
+        }
+
+        return $statusValue;
+    }
+
+    /**
+     * Merchant listings report qty/status. Prefer raw_data (report snapshot) over
+     * the quantity column — the column is often overwritten by a Shopify inventory push.
+     *
+     * @return array{quantity: int|null, state: string}
+     */
+    public static function metaFromListingsRawRow(object $row): array
+    {
+        $raw = $row->raw_data ?? null;
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        $quantity = null;
+        foreach (['quantity', 'Quantity'] as $key) {
+            if (isset($raw[$key]) && $raw[$key] !== '' && is_numeric($raw[$key])) {
+                $quantity = (int) $raw[$key];
+                break;
+            }
+        }
+        if ($quantity === null && isset($row->quantity) && $row->quantity !== null && $row->quantity !== '' && is_numeric($row->quantity)) {
+            $quantity = (int) $row->quantity;
+        }
+
+        $status = trim((string) ($raw['status'] ?? $raw['Status'] ?? ''));
+
+        return [
+            'quantity' => $quantity,
+            'state' => $status !== '' ? self::normalizePortalStatus($status) : 'other',
+        ];
     }
 
     /**

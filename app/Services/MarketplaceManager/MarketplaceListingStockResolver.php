@@ -1114,6 +1114,7 @@ final class MarketplaceListingStockResolver
             self::hydrateFromPricing($map, $keys, 'topdawg');
             self::hydrateFromMappings($map, $keys, 'inventory_topdawg');
         } elseif ($channel === self::CHANNEL_AMAZON) {
+            self::hydrateFromAmazonListingsRaw($map, $keys);
             self::hydrateFromAmazonListingStatuses($map, $keys);
             self::hydrateFromMappings($map, $keys, 'inventory_amazon');
         } elseif ($channel === self::CHANNEL_TEMU) {
@@ -1793,6 +1794,44 @@ final class MarketplaceListingStockResolver
      * @param  array<string, int>  $map
      * @param  list<string>  $keys
      */
+    /**
+     * Seller Central snapshot from GET_MERCHANT_LISTINGS_ALL_DATA (raw_data.quantity).
+     * Must run before listing-status JSON / inventory_amazon — those are last Shopify push.
+     *
+     * @param  array<string, int>  $map
+     * @param  list<string>  $keys
+     */
+    protected static function hydrateFromAmazonListingsRaw(array &$map, array $keys): void
+    {
+        if (! Schema::hasTable('amazon_listings_raw') || ! Schema::hasColumn('amazon_listings_raw', 'seller_sku')) {
+            return;
+        }
+
+        $cols = ['seller_sku'];
+        foreach (['quantity', 'raw_data'] as $col) {
+            if (Schema::hasColumn('amazon_listings_raw', $col)) {
+                $cols[] = $col;
+            }
+        }
+
+        DB::table('amazon_listings_raw')
+            ->whereNotNull('seller_sku')
+            ->where('seller_sku', '!=', '')
+            ->whereIn('seller_sku', $keys)
+            ->get($cols)
+            ->each(function ($row) use (&$map) {
+                $sku = trim((string) ($row->seller_sku ?? ''));
+                if ($sku === '') {
+                    return;
+                }
+                $meta = AmazonListingStatusHelper::metaFromListingsRawRow($row);
+                if ($meta['quantity'] === null) {
+                    return;
+                }
+                self::put($map, $sku, (int) $meta['quantity']);
+            });
+    }
+
     protected static function hydrateFromAmazonListingStatuses(array &$map, array $keys): void
     {
         if (! Schema::hasTable('amazon_listing_statuses')) {

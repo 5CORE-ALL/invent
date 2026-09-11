@@ -1,0 +1,67 @@
+<?php
+
+namespace Tests\Unit;
+
+use App\Services\MarketplaceManager\AmazonListingStatusHelper;
+use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
+use PHPUnit\Framework\TestCase;
+
+class AmazonListingStatusHelperTest extends TestCase
+{
+    public function test_out_of_stock_and_discoverable_are_live_not_inactive(): void
+    {
+        $this->assertSame('active', AmazonListingStatusHelper::normalizePortalStatus('OUT_OF_STOCK'));
+        $this->assertSame('active', AmazonListingStatusHelper::normalizePortalStatus('out of stock'));
+        $this->assertSame('active', AmazonListingStatusHelper::normalizePortalStatus('DISCOVERABLE'));
+        $this->assertSame('active', AmazonListingStatusHelper::normalizePortalStatus('Active'));
+        $this->assertSame('inactive', AmazonListingStatusHelper::normalizePortalStatus('INACTIVE'));
+        $this->assertSame('inactive', AmazonListingStatusHelper::normalizePortalStatus('SUPPRESSED'));
+    }
+
+    public function test_api_sheet_mapping_keeps_sold_out_listings_active(): void
+    {
+        $this->assertSame('ACTIVE', AmazonListingStatusHelper::mapAmazonApiStatusToSheet('OUT_OF_STOCK'));
+        $this->assertSame('ACTIVE', AmazonListingStatusHelper::mapAmazonApiStatusToSheet('DISCOVERABLE'));
+        $this->assertSame('ACTIVE', AmazonListingStatusHelper::mapAmazonApiStatusToSheet('BUYABLE'));
+        $this->assertSame('INACTIVE', AmazonListingStatusHelper::mapAmazonApiStatusToSheet('INACTIVE'));
+        $this->assertSame('INACTIVE', AmazonListingStatusHelper::mapAmazonApiStatusToSheet('SUPPRESSED'));
+        $this->assertSame('INCOMPLETE', AmazonListingStatusHelper::mapAmazonApiStatusToSheet('INCOMPLETE'));
+    }
+
+    public function test_portal_tabs_treat_out_of_stock_as_active(): void
+    {
+        $this->assertSame('active', MarketplacePortalStatusTabs::bucket('out_of_stock'));
+        $this->assertSame('active', MarketplacePortalStatusTabs::bucket('discoverable'));
+        $this->assertSame('inactive', MarketplacePortalStatusTabs::bucket('inactive'));
+    }
+
+    public function test_listings_raw_prefers_report_quantity_over_pushed_column(): void
+    {
+        $row = (object) [
+            'quantity' => 66,
+            'raw_data' => [
+                'quantity' => '0',
+                'status' => 'Active',
+                'seller-sku' => '66SF',
+            ],
+        ];
+
+        $meta = AmazonListingStatusHelper::metaFromListingsRawRow($row);
+
+        $this->assertSame(0, $meta['quantity']);
+        $this->assertSame('active', $meta['state']);
+    }
+
+    public function test_listings_raw_falls_back_to_column_when_report_qty_missing(): void
+    {
+        $row = (object) [
+            'quantity' => 12,
+            'raw_data' => json_encode(['status' => 'Inactive', 'seller-sku' => 'ABC']),
+        ];
+
+        $meta = AmazonListingStatusHelper::metaFromListingsRawRow($row);
+
+        $this->assertSame(12, $meta['quantity']);
+        $this->assertSame('inactive', $meta['state']);
+    }
+}

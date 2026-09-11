@@ -431,61 +431,7 @@ class FetchAmazonListingStatus extends Command
      */
     private function mapStatusValue(string $statusValue): string
     {
-        $statusValue = strtoupper(trim($statusValue));
-        
-        // Map Amazon status values to our status values
-        // ACTIVE statuses (buyable/available)
-        $activeStatuses = [
-            'BUYABLE',
-            'BUYABLE_BY_QUANTITY',
-            'ACTIVE',
-            'LIVE',
-            'PUBLISHED',
-        ];
-        
-        // INACTIVE statuses (not buyable)
-        $inactiveStatuses = [
-            'DISCOVERABLE',
-            'INELIGIBLE',
-            'INVALID',
-            'OUT_OF_STOCK',
-            'UNBUYABLE',
-            'INACTIVE',
-            'SUPPRESSED',
-            'STOPPED',
-        ];
-        
-        // INCOMPLETE statuses (needs attention)
-        $incompleteStatuses = [
-            'INCOMPLETE',
-            'DRAFT',
-            'PENDING',
-        ];
-        
-        // Check if status matches any category
-        if (in_array($statusValue, $activeStatuses)) {
-            return 'ACTIVE';
-        } elseif (in_array($statusValue, $inactiveStatuses)) {
-            return 'INACTIVE';
-        } elseif (in_array($statusValue, $incompleteStatuses)) {
-            return 'INCOMPLETE';
-        }
-        
-        // Default: if it contains "BUY" or "ACTIVE", treat as ACTIVE
-        if (stripos($statusValue, 'BUY') !== false || stripos($statusValue, 'ACTIVE') !== false) {
-            return 'ACTIVE';
-        }
-        
-        // Default: if it contains "INACTIVE", "INVALID", "STOP", "SUPPRESS", treat as INACTIVE
-        if (stripos($statusValue, 'INACTIVE') !== false || 
-            stripos($statusValue, 'INVALID') !== false || 
-            stripos($statusValue, 'STOP') !== false ||
-            stripos($statusValue, 'SUPPRESS') !== false) {
-            return 'INACTIVE';
-        }
-        
-        // Return original if we can't determine
-        return $statusValue;
+        return \App\Services\MarketplaceManager\AmazonListingStatusHelper::mapAmazonApiStatusToSheet($statusValue);
     }
 
     private function getAccessToken()

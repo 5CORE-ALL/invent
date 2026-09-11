@@ -14,11 +14,15 @@ use Illuminate\Support\Facades\Schema;
  */
 class AmazonLiveListingsService
 {
-    private const CACHE_KEY = 'mm.amazon.live_listings.v2';
+    private const CACHE_KEY = 'mm.amazon.live_listings.v3';
+
+    /** @var array<string, array{quantity: int|null, state: string}>|null */
+    private ?array $listingsRawMetaMemo = null;
 
     public function clearCache(): void
     {
         Cache::forget(self::CACHE_KEY);
+        Cache::forget('mm.amazon.live_listings.v2');
         Cache::forget('mm.amazon.live_listings.v1');
     }
 
@@ -94,6 +98,7 @@ class AmazonLiveListingsService
         }
 
         $datasheet = $this->datasheetStatusBySku();
+        $reportMeta = $this->listingsRawMetaBySku();
         $rows = AmazonListingStatus::query()
             ->where(function ($q) use ($ids) {
                 $q->whereIn('sku', $ids);
@@ -105,7 +110,7 @@ class AmazonLiveListingsService
 
         $out = [];
         foreach ($rows as $row) {
-            $parsed = $this->mapProduct($row, [], $datasheet);
+            $parsed = $this->mapProduct($row, [], $datasheet, $reportMeta);
             if ($parsed === null) {
                 continue;
             }
@@ -141,6 +146,7 @@ class AmazonLiveListingsService
     {
         $inventoryMap = $this->amazonInventoryBySku();
         $datasheet = $this->datasheetStatusBySku();
+        $reportMeta = $this->listingsRawMetaBySku();
         $seen = [];
         $out = [];
 
@@ -149,9 +155,9 @@ class AmazonLiveListingsService
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
                 ->orderBy('id')
-                ->chunkById(500, function ($rows) use (&$out, &$seen, $inventoryMap, $datasheet) {
+                ->chunkById(500, function ($rows) use (&$out, &$seen, $inventoryMap, $datasheet, $reportMeta) {
                     foreach ($rows as $row) {
-                        $mapped = $this->mapProduct($row, $inventoryMap, $datasheet);
+                        $mapped = $this->mapProduct($row, $inventoryMap, $datasheet, $reportMeta);
                         if ($mapped === null) {
                             continue;
                         }
@@ -167,7 +173,7 @@ class AmazonLiveListingsService
 
         if (Schema::hasTable('amazon_listings_raw')) {
             $rawCols = ['id', 'seller_sku', 'asin1'];
-            foreach (['your_price', 'quantity', 'item_name'] as $col) {
+            foreach (['your_price', 'quantity', 'item_name', 'raw_data'] as $col) {
                 if (Schema::hasColumn('amazon_listings_raw', $col)) {
                     $rawCols[] = $col;
                 }
@@ -177,7 +183,7 @@ class AmazonLiveListingsService
                 ->where('seller_sku', '!=', '')
                 ->select($rawCols)
                 ->orderBy('id')
-                ->chunkById(500, function ($rows) use (&$out, &$seen, $inventoryMap, $datasheet) {
+                ->chunkById(500, function ($rows) use (&$out, &$seen, $inventoryMap, $datasheet, $reportMeta) {
                     foreach ($rows as $row) {
                         $sku = trim((string) ($row->seller_sku ?? ''));
                         if ($sku === '') {
@@ -189,7 +195,12 @@ class AmazonLiveListingsService
                         }
                         $asin = strtoupper(trim((string) ($row->asin1 ?? '')));
                         $ds = $datasheet[$key] ?? null;
-                        $state = $this->normalizeAmazonPortalStatus((string) ($ds['status'] ?? ''));
+                        $report = $reportMeta[$key] ?? AmazonListingStatusHelper::metaFromListingsRawRow($row);
+                        $state = $this->resolvePortalState(
+                            (string) ($ds['status'] ?? ''),
+                            '',
+                            (string) ($report['state'] ?? 'other')
+                        );
                         if ($state !== 'active' && $state !== 'inactive') {
                             continue;
                         }
@@ -198,7 +209,7 @@ class AmazonLiveListingsService
                             'product_id' => preg_match('/^[A-Z0-9]{10}$/', $asin) ? $asin : 'AMZ:'.$sku,
                             'sku' => $sku,
                             'state' => $state,
-                            'inventory' => $inventoryMap[$key] ?? (isset($row->quantity) ? (int) $row->quantity : null),
+                            'inventory' => $report['quantity'] ?? $inventoryMap[$key] ?? (isset($row->quantity) ? (int) $row->quantity : null),
                             'title' => $ds['title'] ?? ($row->item_name !== null ? (string) $row->item_name : null),
                             'price' => isset($ds['price']) && is_numeric($ds['price'])
                                 ? (float) $ds['price']
@@ -215,7 +226,12 @@ class AmazonLiveListingsService
             if (isset($seen[$key])) {
                 continue;
             }
-            $state = $this->normalizeAmazonPortalStatus((string) ($ds['status'] ?? ''));
+            $report = $reportMeta[$key] ?? null;
+            $state = $this->resolvePortalState(
+                (string) ($ds['status'] ?? ''),
+                '',
+                (string) ($report['state'] ?? 'other')
+            );
             if ($state !== 'inactive' && $state !== 'active') {
                 continue;
             }
@@ -229,7 +245,7 @@ class AmazonLiveListingsService
                 'product_id' => preg_match('/^[A-Z0-9]{10}$/', $asin) ? $asin : 'AMZ:'.$sku,
                 'sku' => $sku,
                 'state' => $state,
-                'inventory' => $inventoryMap[$key] ?? null,
+                'inventory' => $report['quantity'] ?? $inventoryMap[$key] ?? null,
                 'title' => $ds['title'] !== '' ? $ds['title'] : null,
                 'price' => isset($ds['price']) && is_numeric($ds['price']) ? (float) $ds['price'] : null,
                 'inactive_reason' => $state === 'inactive'
@@ -244,9 +260,10 @@ class AmazonLiveListingsService
     /**
      * @param  array<string, int>  $inventoryMap
      * @param  array<string, array{sku: string, status: string, title: ?string, price: mixed, asin: ?string}>  $datasheet
+     * @param  array<string, array{quantity: int|null, state: string}>  $reportMeta
      * @return array{product_id: string, sku: string, state: string, inventory: int|null, title: ?string, price: ?float, inactive_reason?: ?string}|null
      */
-    protected function mapProduct(AmazonListingStatus $row, array $inventoryMap = [], array $datasheet = []): ?array
+    protected function mapProduct(AmazonListingStatus $row, array $inventoryMap = [], array $datasheet = [], array $reportMeta = []): ?array
     {
         $sku = trim((string) $row->sku);
         if ($sku === '' || ! AmazonListingStatusHelper::isLinked($row)) {
@@ -256,18 +273,21 @@ class AmazonLiveListingsService
         $productId = AmazonListingStatusHelper::resolveProductId($row);
         $value = AmazonListingStatusHelper::valueArray($row);
         $upper = strtoupper($sku);
-        $inventory = $inventoryMap[$upper] ?? null;
+        $report = $reportMeta[$upper] ?? null;
+        $inventory = is_array($report) && array_key_exists('quantity', $report) && $report['quantity'] !== null
+            ? (int) $report['quantity']
+            : ($inventoryMap[$upper] ?? null);
         if ($inventory === null && isset($value['quantity']) && is_numeric($value['quantity'])) {
             $inventory = (int) $value['quantity'];
         }
 
         $jsonState = $this->normalizeAmazonPortalStatus(AmazonListingStatusHelper::resolveListingState($row));
         $ds = $datasheet[$upper] ?? null;
-        $dsState = $this->normalizeAmazonPortalStatus((string) ($ds['status'] ?? ''));
-        $state = $dsState !== 'other' ? $dsState : $jsonState;
-        if ($state === '') {
-            $state = 'other';
-        }
+        $state = $this->resolvePortalState(
+            (string) ($ds['status'] ?? ''),
+            $jsonState,
+            (string) ($report['state'] ?? 'other')
+        );
 
         $title = $ds['title'] ?? (isset($value['title']) ? (string) $value['title'] : null);
         $price = isset($ds['price']) && is_numeric($ds['price'])
@@ -293,6 +313,12 @@ class AmazonLiveListingsService
     protected function amazonInventoryBySku(): array
     {
         $inventoryMap = [];
+        foreach ($this->listingsRawMetaBySku() as $key => $meta) {
+            if (isset($meta['quantity']) && $meta['quantity'] !== null) {
+                $inventoryMap[$key] = (int) $meta['quantity'];
+            }
+        }
+
         if (! Schema::hasTable('product_stock_mappings') || ! Schema::hasColumn('product_stock_mappings', 'inventory_amazon')) {
             return $inventoryMap;
         }
@@ -304,13 +330,81 @@ class AmazonLiveListingsService
             ->chunkById(1000, function ($chunk) use (&$inventoryMap) {
                 foreach ($chunk as $row) {
                     $sku = trim((string) $row->sku);
-                    if ($sku !== '') {
-                        $inventoryMap[strtoupper($sku)] = (int) $row->inventory_amazon;
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $key = strtoupper($sku);
+                    if (! array_key_exists($key, $inventoryMap)) {
+                        $inventoryMap[$key] = (int) $row->inventory_amazon;
                     }
                 }
             });
 
         return $inventoryMap;
+    }
+
+    /**
+     * @return array<string, array{quantity: int|null, state: string}>
+     */
+    protected function listingsRawMetaBySku(): array
+    {
+        if ($this->listingsRawMetaMemo !== null) {
+            return $this->listingsRawMetaMemo;
+        }
+
+        $map = [];
+        if (! Schema::hasTable('amazon_listings_raw') || ! Schema::hasColumn('amazon_listings_raw', 'seller_sku')) {
+            $this->listingsRawMetaMemo = $map;
+
+            return $map;
+        }
+
+        $cols = ['id', 'seller_sku'];
+        foreach (['quantity', 'raw_data'] as $col) {
+            if (Schema::hasColumn('amazon_listings_raw', $col)) {
+                $cols[] = $col;
+            }
+        }
+
+        DB::table('amazon_listings_raw')
+            ->whereNotNull('seller_sku')
+            ->where('seller_sku', '!=', '')
+            ->select($cols)
+            ->orderBy('id')
+            ->chunkById(1000, function ($chunk) use (&$map) {
+                foreach ($chunk as $row) {
+                    $sku = trim((string) ($row->seller_sku ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $map[strtoupper($sku)] = AmazonListingStatusHelper::metaFromListingsRawRow($row);
+                }
+            });
+
+        $this->listingsRawMetaMemo = $map;
+
+        return $map;
+    }
+
+    /**
+     * Merchant listings report status wins (Seller Central). Datasheet INACTIVE
+     * from SP-API OUT_OF_STOCK must not hide a live Active report row.
+     */
+    protected function resolvePortalState(string $datasheetStatus, string $jsonState, string $reportState): string
+    {
+        $reportState = $this->normalizeAmazonPortalStatus($reportState);
+        if ($reportState === 'active' || $reportState === 'inactive') {
+            return $reportState;
+        }
+
+        $dsState = $this->normalizeAmazonPortalStatus($datasheetStatus);
+        if ($dsState !== 'other') {
+            return $dsState;
+        }
+
+        $jsonState = $this->normalizeAmazonPortalStatus($jsonState);
+
+        return $jsonState !== '' ? $jsonState : 'other';
     }
 
     /**
@@ -356,16 +450,6 @@ class AmazonLiveListingsService
 
     protected function normalizeAmazonPortalStatus(string $raw): string
     {
-        $state = strtolower(trim($raw));
-        $state = str_replace([' ', '-'], '_', $state);
-
-        if (in_array($state, ['active', 'buyable', 'buyable_by_quantity', 'listed', '1', 'true', 'live'], true)) {
-            return 'active';
-        }
-        if (in_array($state, ['inactive', 'incomplete', 'suppressed', 'blocked', 'disabled', '0', 'false'], true)) {
-            return 'inactive';
-        }
-
-        return 'other';
+        return AmazonListingStatusHelper::normalizePortalStatus($raw);
     }
 }
