@@ -63,6 +63,7 @@
         .il-api-dot-yellow { background: #ffc107; }
         .il-api-dot-red { background: #dc3545; }
         #stat-inactive-listings.badge,
+        #stat-cp-inactive-listings.badge,
         .badge-il-stat {
             font-size: 1.35rem !important;
             line-height: 1.35;
@@ -91,10 +92,13 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-warning text-dark badge-il-stat" id="stat-inactive-listings" title="Inactive child SKUs only (parent listings are shown in their own column)">
-                        Inactive Child SKUs: <span id="total-inactive-listings">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedInactiveTotalOrZero()) }}</span>
+                    <span class="badge bg-warning text-dark badge-il-stat" id="stat-cp-inactive-listings" title="CP Master SKUs that are also inactive on the marketplace. Zero-inventory SKUs are excluded.">
+                        Inactive Child SKUs: <span id="total-cp-inactive-listings">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedCpInactiveTotalOrZero()) }}</span>
                     </span>
-                    <span class="text-muted small">Parent and child columns are both shown. The badge counts child SKUs only. Click a marketplace to open every inactive SKU.</span>
+                    <span class="badge bg-secondary badge-il-stat" id="stat-inactive-listings" title="Every inactive listing on the seller platform, including SKUs not in CP Master and 0 Inv.">
+                        Marketplace Inactive Child SKUs: <span id="total-inactive-listings">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedInactiveTotalOrZero()) }}</span>
+                    </span>
+                    <span class="text-muted small">Inactive Listing = in CP Master and the marketplace, inactive, and inventory is not zero. Marketplace Inactive Listing = every inactive seller listing.</span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -125,15 +129,17 @@
         }
     }
 
-    function updateStats(rows, totalInactive) {
-        let total;
-        if (totalInactive !== undefined && totalInactive !== null && !isNaN(Number(totalInactive))) {
-            total = Number(totalInactive);
-        } else {
-            total = (rows || []).reduce((sum, r) => sum + Number(r.inactive_child || r.inactive_listings || 0), 0);
-        }
-        $('#total-inactive-listings').text(total.toLocaleString('en-US'));
-        updateSidebarInactiveCount(total);
+    function updateStats(rows, totals) {
+        const data = rows || [];
+        let marketplaceTotal = totals && totals.marketplace != null && !isNaN(Number(totals.marketplace))
+            ? Number(totals.marketplace)
+            : data.reduce((sum, r) => sum + Number(r.inactive_child || r.inactive_listings || 0), 0);
+        let cpTotal = totals && totals.cp != null && !isNaN(Number(totals.cp))
+            ? Number(totals.cp)
+            : data.reduce((sum, r) => sum + Number(r.cp_inactive_child || 0), 0);
+        $('#total-inactive-listings').text(marketplaceTotal.toLocaleString('en-US'));
+        $('#total-cp-inactive-listings').text(cpTotal.toLocaleString('en-US'));
+        updateSidebarInactiveCount(marketplaceTotal);
     }
 
     function escapeHtml(s) {
@@ -152,22 +158,26 @@
         return '/storage/' + v.replace(/^\/+/, '');
     }
 
-    function skuDetailUrl(row) {
-        return String((row && row.detail_url) || '').trim();
+    function skuDetailUrl(row, field) {
+        const data = row || {};
+        if (field === 'cp_inactive_parent' || field === 'cp_inactive_child') {
+            return String(data.cp_detail_url || '').trim();
+        }
+        return String(data.detail_url || '').trim();
     }
 
     function formatInactiveCount(cell, field) {
         const v = Number(cell.getValue() || 0);
         const row = cell.getRow().getData();
-        const url = skuDetailUrl(row);
+        const url = skuDetailUrl(row, field);
         const color = v === 0 ? '#198754' : '#b45309';
         const label = v.toLocaleString('en-US');
         if (!url) {
             return `<span class="il-inactive-count" style="color:${color};">${label}</span>`;
         }
-        const title = field === 'inactive_parent'
-            ? 'Open all inactive SKUs (parent listings)'
-            : 'Open all inactive child SKUs';
+        const title = (field === 'inactive_parent' || field === 'cp_inactive_parent')
+            ? 'Open inactive parent listings'
+            : 'Open inactive child SKUs';
         return `<a href="${escapeHtml(url)}" class="il-inactive-count" style="color:${color};" title="${title}">${label}</a>`;
     }
 
@@ -176,14 +186,17 @@
             ajaxURL: "{{ url('/inactive-listings/channels-data') }}",
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
-                updateStats(data, response && (response.total_inactive_child != null ? response.total_inactive_child : response.total_inactive));
+                updateStats(data, {
+                    marketplace: response && (response.total_inactive_child != null ? response.total_inactive_child : response.total_inactive),
+                    cp: response && (response.total_cp_inactive_child != null ? response.total_cp_inactive_child : response.total_cp_inactive),
+                });
                 return data;
             },
             layout: "fitDataStretch",
             pagination: true,
             paginationSize: 50,
             paginationSizeSelector: [25, 50, 100, 200, 500],
-            initialSort: [{ column: "inactive_child", dir: "desc" }],
+            initialSort: [{ column: "cp_inactive_child", dir: "desc" }],
             placeholder: "No channels found.",
             columns: [
                 {
@@ -208,10 +221,10 @@
                     minWidth: 240,
                     formatter: function(cell) {
                         const name = (cell.getValue() || '').trim();
-                        const url = skuDetailUrl(cell.getRow().getData());
+                        const url = skuDetailUrl(cell.getRow().getData(), 'cp_inactive_child') || skuDetailUrl(cell.getRow().getData());
                         if (!name) return '';
                         if (!url) return escapeHtml(name);
-                        return `<a href="${escapeHtml(url)}" class="il-channel-link" title="Open all inactive SKUs for ${escapeHtml(name)}">${escapeHtml(name)}</a>`;
+                        return `<a href="${escapeHtml(url)}" class="il-channel-link" title="Open Inactive Listing SKUs for ${escapeHtml(name)}">${escapeHtml(name)}</a>`;
                     },
                 },
                 {
@@ -237,7 +250,48 @@
                 {
                     title: "Inactive Listing",
                     headerHozAlign: "center",
-                    headerTooltip: "Seller-platform inactive listings with inventory (0 Inv SKUs excluded): parent products vs child SKUs. Badge / page total uses Child only.",
+                    headerTooltip: "Present in CP Master and this marketplace, inactive on the marketplace, and inventory is not zero.",
+                    columns: [
+                        {
+                            title: "Parent",
+                            field: "cp_inactive_parent",
+                            width: 110,
+                            hozAlign: "center",
+                            sorter: "number",
+                            headerTooltip: "CP Master parent listings that are inactive on the marketplace (0 Inv excluded)",
+                            formatter: function(cell) {
+                                return formatInactiveCount(cell, 'cp_inactive_parent');
+                            },
+                            bottomCalc: function(values, data) {
+                                return (data || []).reduce((sum, row) => sum + Number(row.cp_inactive_parent || 0), 0);
+                            },
+                            bottomCalcFormatter: function(cell) {
+                                return Number(cell.getValue() || 0).toLocaleString('en-US');
+                            },
+                        },
+                        {
+                            title: "Child",
+                            field: "cp_inactive_child",
+                            width: 110,
+                            hozAlign: "center",
+                            sorter: "number",
+                            headerTooltip: "CP Master child SKUs that are inactive on the marketplace (0 Inv excluded)",
+                            formatter: function(cell) {
+                                return formatInactiveCount(cell, 'cp_inactive_child');
+                            },
+                            bottomCalc: function(values, data) {
+                                return (data || []).reduce((sum, row) => sum + Number(row.cp_inactive_child || 0), 0);
+                            },
+                            bottomCalcFormatter: function(cell) {
+                                return Number(cell.getValue() || 0).toLocaleString('en-US');
+                            },
+                        },
+                    ],
+                },
+                {
+                    title: "Marketplace Inactive Listing",
+                    headerHozAlign: "center",
+                    headerTooltip: "Every inactive listing on the seller platform, including SKUs not in CP Master and 0 Inv.",
                     columns: [
                         {
                             title: "Parent",
@@ -262,7 +316,7 @@
                             width: 110,
                             hozAlign: "center",
                             sorter: "number",
-                            headerTooltip: "Inactive child / variation SKUs. This is the page count. If the channel has no parent listings, this is the full in-stock inactive count.",
+                            headerTooltip: "Inactive child / variation SKUs on the seller platform",
                             formatter: function(cell) {
                                 return formatInactiveCount(cell, 'inactive_child');
                             },

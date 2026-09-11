@@ -2,6 +2,7 @@
 
 namespace App\Support\Marketplace;
 
+use App\Models\ShopifySku;
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
@@ -29,6 +30,9 @@ class ListingInactiveParentChildCounts
 
     /** @var array<string, string>|null uppercase child sku => parent sku */
     private static ?array $parentByChild = null;
+
+    /** @var array<string, true>|null CP Master sku lookup keys */
+    private static ?array $cpMasterSkuKeys = null;
 
     /**
      * @return array{parent: int, child: int, url: ?string}
@@ -262,6 +266,71 @@ class ListingInactiveParentChildCounts
     }
 
     /**
+     * Inactive listings that exist in both CP Master and the marketplace.
+     * Zero-inventory SKUs are excluded even when the marketplace status is inactive.
+     *
+     * @return list<array{sku: string, parent: string, kind: string, inv: int, channel_sku: string, channel_inv: int, diff: int, status: string, state: string}>
+     */
+    public static function cpMasterListingRowsForChannel(string $channel): array
+    {
+        return self::keepCpMasterInStockInactiveRows(
+            self::listingRowsForChannel($channel),
+            self::cpMasterSkuKeys()
+        );
+    }
+
+    /**
+     * @return array{parent: int, child: int}
+     */
+    public static function cpMasterListingCountsForChannel(string $channel): array
+    {
+        $parent = 0;
+        $child = 0;
+        foreach (self::cpMasterListingRowsForChannel($channel) as $row) {
+            if (($row['kind'] ?? 'child') === 'parent') {
+                $parent++;
+            } else {
+                $child++;
+            }
+        }
+
+        return [
+            'parent' => $parent,
+            'child' => $child,
+        ];
+    }
+
+    /**
+     * Keep marketplace-inactive rows that also exist in CP Master and have inventory.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @param  array<string, true>  $cpKeys
+     * @return list<array<string, mixed>>
+     */
+    public static function keepCpMasterInStockInactiveRows(array $rows, array $cpKeys): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '' || ! self::skuMatchesCpKeys($sku, $cpKeys)) {
+                continue;
+            }
+            if (! self::rowHasPositiveInv($row, $sku)) {
+                continue;
+            }
+            $key = strtoupper($sku);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
@@ -489,6 +558,79 @@ class ListingInactiveParentChildCounts
         self::childrenByParent();
 
         return self::$parentByChild ?? [];
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    public static function cpMasterSkuKeys(): array
+    {
+        if (self::$cpMasterSkuKeys !== null) {
+            return self::$cpMasterSkuKeys;
+        }
+
+        self::$cpMasterSkuKeys = [];
+        try {
+            if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'sku')) {
+                return self::$cpMasterSkuKeys;
+            }
+            $q = DB::table('product_master')->whereNotNull('sku')->where('sku', '!=', '');
+            if (Schema::hasColumn('product_master', 'deleted_at')) {
+                $q->whereNull('deleted_at');
+            }
+            foreach ($q->select(['sku'])->cursor() as $row) {
+                $sku = trim((string) ($row->sku ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+                self::$cpMasterSkuKeys[strtoupper($sku)] = true;
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm !== '') {
+                    self::$cpMasterSkuKeys[$norm] = true;
+                }
+                $compact = ShopifySku::compactSkuForLookup($sku);
+                if ($compact !== '') {
+                    self::$cpMasterSkuKeys[$compact] = true;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ListingInactiveParentChildCounts: load CP Master SKUs failed: '.$e->getMessage());
+        }
+
+        return self::$cpMasterSkuKeys;
+    }
+
+    /**
+     * @param  array<string, true>  $cpKeys
+     */
+    public static function skuMatchesCpKeys(string $sku, array $cpKeys): bool
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return false;
+        }
+        if (isset($cpKeys[strtoupper($sku)])) {
+            return true;
+        }
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '' && isset($cpKeys[$norm])) {
+            return true;
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
+
+        return $compact !== '' && isset($cpKeys[$compact]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected static function rowHasPositiveInv(array $row, string $sku): bool
+    {
+        if (array_key_exists('inv', $row) && $row['inv'] !== null && $row['inv'] !== '') {
+            return is_numeric($row['inv']) && (float) $row['inv'] > 0;
+        }
+
+        return self::skuHasPositiveInv($sku);
     }
 
     /**

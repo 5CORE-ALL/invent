@@ -30,7 +30,9 @@ class InactiveListingsController extends Controller
             @set_time_limit(400);
             $data = collect(MappingChannelCounts::inactiveMasterRows(true))->values();
             $total = (int) $data->sum(fn ($row) => (int) ($row['inactive_child'] ?? $row['inactive_listings'] ?? 0));
+            $cpTotal = (int) $data->sum(fn ($row) => (int) ($row['cp_inactive_child'] ?? 0));
             MappingChannelCounts::storeInactiveTotal($total);
+            MappingChannelCounts::storeCpInactiveTotal($cpTotal);
 
             return response()->json([
                 'success' => true,
@@ -39,6 +41,9 @@ class InactiveListingsController extends Controller
                 'total_inactive' => $total,
                 'total_inactive_child' => $total,
                 'total_inactive_parent' => (int) $data->sum(fn ($row) => (int) ($row['inactive_parent'] ?? 0)),
+                'total_cp_inactive' => $cpTotal,
+                'total_cp_inactive_child' => $cpTotal,
+                'total_cp_inactive_parent' => (int) $data->sum(fn ($row) => (int) ($row['cp_inactive_parent'] ?? 0)),
             ]);
         } catch (\Throwable $e) {
             Log::error('Inactive Listings masterData failed: '.$e->getMessage());
@@ -47,7 +52,7 @@ class InactiveListingsController extends Controller
         }
     }
 
-    public function channel(string $channel)
+    public function channel(Request $request, string $channel)
     {
         $resolved = $this->resolveChannel($channel);
         if ($resolved === null) {
@@ -55,6 +60,8 @@ class InactiveListingsController extends Controller
         }
 
         $slug = $resolved['slug'];
+        $source = strtolower(trim((string) $request->query('source', '')));
+        $cpOnly = $source === 'cp';
         $hasSkuDetail = true;
         $channelInvLabel = match (true) {
             in_array($slug, ['tiktok', 'tiktokshop'], true) => 'TikTok 1 inv',
@@ -82,6 +89,7 @@ class InactiveListingsController extends Controller
             'channelInvLabel' => $channelInvLabel,
             'listingsUrl' => MappingChannelCounts::listingsInactiveUrlForSlug($slug),
             'plsApi' => $plsApi,
+            'cpOnly' => $cpOnly,
         ]);
     }
 
@@ -94,7 +102,10 @@ class InactiveListingsController extends Controller
             }
 
             $slug = $resolved['slug'];
-            $rows = ListingInactiveParentChildCounts::listingRowsForChannel($slug);
+            $cpOnly = strtolower(trim((string) $request->query('source', ''))) === 'cp';
+            $rows = $cpOnly
+                ? ListingInactiveParentChildCounts::cpMasterListingRowsForChannel($slug)
+                : ListingInactiveParentChildCounts::listingRowsForChannel($slug);
 
             $data = collect($rows)
                 ->map(function (array $row) use ($resolved) {
@@ -118,6 +129,7 @@ class InactiveListingsController extends Controller
                 'child_count' => $childCount,
                 'parent_count' => $data->count() - $childCount,
                 'channel' => $resolved['name'],
+                'source' => $cpOnly ? 'cp' : 'marketplace',
             ];
 
             if ($slug === 'pls') {
