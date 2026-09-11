@@ -19,16 +19,18 @@ let midnightTimer = null;
 function showView(name) {
     Object.values(views).forEach((v) => v.classList.remove('active'));
     views[name]?.classList.add('active');
-    setLoginPill(name === 'dash');
+    if (name !== 'dash') {
+        setLoginPill(false, 'Logged off');
+    }
 }
 
-function setLoginPill(loggedIn) {
+function setLoginPill(on, label) {
     const pill = $('loginPill');
     const text = $('loginPillText');
     if (!pill || !text) return;
-    pill.classList.toggle('logged-in', !!loggedIn);
-    pill.classList.toggle('logged-off', !loggedIn);
-    text.textContent = loggedIn ? 'Logged in' : 'Logged off';
+    pill.classList.toggle('logged-in', !!on);
+    pill.classList.toggle('logged-off', !on);
+    text.textContent = label || (on ? 'Clocked in' : 'Logged off');
 }
 
 function showError(el, msg) {
@@ -172,6 +174,7 @@ function applyUi(live) {
     $('breakStatBox')?.classList.toggle('stat-live', onBreak);
 
     const clockedIn = state.session && (state.session.status === 'active' || state.session.status === 'paused');
+    setLoginPill(!!clockedIn, clockedIn ? 'Clocked in' : 'Off duty');
     $('actionsZone')?.classList.toggle('actions-bottom', clockedIn);
     $('clockInWrap').style.display = clockedIn ? 'none' : 'flex';
     $('activeActions').style.display = clockedIn ? 'flex' : 'none';
@@ -328,7 +331,7 @@ async function init() {
 
     if (typeof window.agent.onLoginStatus === 'function') {
         window.agent.onLoginStatus((payload) => {
-            setLoginPill(!!payload?.loggedIn);
+            setLoginPill(!!payload?.clockOn, payload?.label);
         });
     }
 
