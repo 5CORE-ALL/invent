@@ -793,6 +793,37 @@
             const m = aeSpriceMetrics(data, shown);
             return { sprice: shown, sgpft: m.sgpft, sroi: m.sroi };
         }
+        function aeSkuDilPct(data) {
+            const inv = parseFloat(data && data.inv) || 0;
+            const ov = parseFloat(data && data.ov_l30) || 0;
+            if (inv > 0) return (ov / inv) * 100;
+            const stored = parseFloat(data && data.dil_percent);
+            return Number.isFinite(stored) ? stored : 0;
+        }
+        /** Why SGROI / Target GROI is this number — Dil slab vs leftover saved S PRC. */
+        function aeTargetGroiWhy(data) {
+            if (!data || data.is_parent) return '';
+            const dil = aeSkuDilPct(data);
+            const shown = aeSpriceMetrics(data).sroi;
+            const meta = (typeof ebayDilGroiMetaForRow === 'function')
+                ? ebayDilGroiMetaForRow(data)
+                : null;
+            if (meta && meta.sprc > 0) {
+                if (meta.outOfSlabStd) {
+                    return 'Dil ' + (isFinite(dil) ? dil.toFixed(1) : '0') + '% is outside slabs. '
+                        + meta.label + ' → S PRC $' + Number(meta.sprc).toFixed(2)
+                        + ' → SGROI ' + shown + '%';
+                }
+                return 'Dil ' + (isFinite(dil) ? dil.toFixed(1) : '0') + '% is in '
+                    + (meta.label || 'slab')
+                    + ' → Target GROI ' + meta.groi + '%'
+                    + ' → S PRC $' + Number(meta.sprc).toFixed(2)
+                    + ' → SGROI ' + shown + '%';
+            }
+            return 'Dil ' + Math.round(dil) + '% is outside slabs, or Std/LMP SGROI is below Stop < '
+                + ((typeof AE_MIN_SGROI === 'number') ? AE_MIN_SGROI : 30)
+                + '%. SGROI ' + shown + '% is from the saved S PRC.';
+        }
         function aeRowSpriceForAlert(data) {
             const visible = aeVisibleSprice(data);
             if (visible > 0) return visible;
@@ -2186,11 +2217,12 @@
                             if (typeof aeIsParentRow === 'function' && aeIsParentRow(rowData)) return '';
                             if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                             const meta = ebayDilGroiMetaForRow(rowData);
-                            if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2);
+                            const tip = aeTargetGroiWhy(rowData);
+                            if (!meta || !(meta.sprc > 0)) {
+                                return tip
+                                    ? '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="color:#adb5bd;">–</span>'
+                                    : '';
+                            }
                             return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                                 + meta.sprc.toFixed(2) + '</span>';
                         },
@@ -2311,7 +2343,10 @@
                             else if (v < 75)  color = '#ffc107';
                             else if (v < 125) color = '#28a745';
                             else              color = '#d63384';
-                            return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
+                            const tip = aeTargetGroiWhy(d);
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;')
+                                + '" style="color:' + color + ';font-weight:600;">'
+                                + Math.round(v) + '%</span>';
                         }
                     },
                     {

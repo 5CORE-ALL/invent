@@ -3,6 +3,7 @@
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
   Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / AliExpress: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
+  AliExpress only: Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
   eBay 1–3: Dil below the first slab or above the last slab uses the nearest slab (0 Sold Dil = 0 and fast-seller Dil > last To).
   eBay 1–3 CVR overlay is level-only (CVR < Down → −10 GROI; CVR > Up → +10 GROI). Temu 1–2 also use the overlay; Reverb / Faire / TikTok / Shopify B2C are level-only.
   Macys: Dil-matching when Dil is in a slab. If Dil is out of box and 0 Sold, use min Target GROI.
@@ -276,6 +277,13 @@
                             <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
                             use that slab’s Target GROI (first match; last slab includes the To value).
                         </li>
+                        @if($ebaySprcDilChannel === 'aliexpress')
+                        <li>
+                            <strong>When</strong> Dil is outside every From–To (INV &gt; 0):
+                            S PRC = <strong>Std Prc</strong>. If Std &gt; LMP, S PRC = <strong>LMP</strong>.
+                            If that price’s SGROI is below <strong>Stop &lt; N%</strong>, skip (no S PRC).
+                        </li>
+                        @endif
                         @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true))
                         <li>
                             <strong>When</strong> Dil is below the first From or above the last To (INV &gt; 0):
@@ -574,6 +582,84 @@
         function ebayDgRound2(n) {
             return Math.round((Number(n) || 0) * 100) / 100;
         }
+        function ebayDgStdPrice(d) {
+            if (typeof chPromoStdBase === 'function') {
+                const n = Number(chPromoStdBase(d));
+                if (isFinite(n) && n > 0) return ebayDgRound2(n);
+            }
+            const raw = d && (d.STANDARD_PRICE != null && d.STANDARD_PRICE !== ''
+                ? d.STANDARD_PRICE
+                : d.standard_price);
+            const n = Number(raw);
+            return (isFinite(n) && n > 0) ? ebayDgRound2(n) : 0;
+        }
+        function ebayDgRowLmp(d) {
+            if (typeof aeEffectiveLmp === 'function') {
+                const n = Number(aeEffectiveLmp(d));
+                if (isFinite(n) && n > 0) return n;
+            }
+            if (typeof chPromoLmp === 'function') {
+                const n = Number(chPromoLmp(d));
+                if (isFinite(n) && n > 0) return n;
+            }
+            return 0;
+        }
+        function ebayDilGroiAliexpressSgroiAt(d, price) {
+            if (typeof aePushSgroiForPrice === 'function') {
+                return Number(aePushSgroiForPrice(d, price)) || 0;
+            }
+            const lp = typeof chPromoLp === 'function' ? Number(chPromoLp(d)) : (parseFloat(d && d.lp) || 0);
+            const ship = typeof chPromoShipCost === 'function' ? Number(chPromoShipCost(d)) : (parseFloat(d && d.ship) || 0);
+            const margin = typeof chPromoTakehomeMargin === 'function'
+                ? Number(chPromoTakehomeMargin(d))
+                : (parseFloat(d && d._margin) || 1);
+            const p = Number(price) || 0;
+            if (!(lp > 0) || !(p > 0)) return 0;
+            return Math.round(((p * margin - lp - ship) / lp) * 100);
+        }
+        function ebayDilGroiAliexpressStopMin() {
+            if (typeof AE_MIN_SGROI === 'number' && isFinite(AE_MIN_SGROI) && AE_MIN_SGROI > 0) {
+                return AE_MIN_SGROI;
+            }
+            if (typeof aeReadMinSgroi === 'function') return aeReadMinSgroi();
+            return 30;
+        }
+        function ebayDilGroiAliexpressStopOn() {
+            if (typeof aeStopLowSgroi === 'undefined') return true;
+            return !!aeStopLowSgroi;
+        }
+        /** Stop < N%: do not use this S PRC when SGROI is below the cutoff. */
+        function ebayDilGroiAliexpressStopBlocks(d, price) {
+            if (!ebayDgIsAliexpress() || !ebayDilGroiAliexpressStopOn()) return false;
+            return ebayDilGroiAliexpressSgroiAt(d, price) < ebayDilGroiAliexpressStopMin();
+        }
+        /** AliExpress: Dil outside slabs → Std Prc, then LMP if Std > LMP. Stop < N% skips. */
+        function ebayDilGroiAliexpressOutOfSlabMeta(d, dil) {
+            const std = ebayDgStdPrice(d);
+            if (!(std > 0)) return null;
+            const lmp = ebayDgRowLmp(d);
+            const lmpCapped = lmp > 0 && std + 0.0001 > lmp;
+            const sprc = lmpCapped ? ebayDgRound2(lmp) : std;
+            if (!(sprc > 0)) return null;
+            if (ebayDilGroiAliexpressStopBlocks(d, sprc)) return null;
+            return {
+                dil: dil,
+                key: 'out-of-slab-std',
+                label: lmpCapped
+                    ? ('out of slab → Std $' + std.toFixed(2) + ' > LMP $' + ebayDgRound2(lmp).toFixed(2))
+                    : ('out of slab → Std $' + std.toFixed(2)),
+                slabGroi: null,
+                groi: null,
+                cvrAdj: 0,
+                sprc: sprc,
+                rawSprc: std,
+                amzApplied: false,
+                zeroSoldMin: false,
+                clamped: false,
+                outOfSlabStd: true,
+                lmpCapped: lmpCapped,
+            };
+        }
         function ebayDgToast(type, msg) {
             if (typeof chPromoToast === 'function') chPromoToast(type, msg);
             else if (typeof showToast === 'function') showToast(type, msg);
@@ -866,6 +952,8 @@
                 label = 'out of box · 0 Sold · min GROI ' + minSlab.groi + '% from ' + minSlab.label;
                 key = minSlab.key || 'zero-sold-min';
                 zeroSoldMin = true;
+            } else if (ebayDgIsAliexpress()) {
+                return ebayDilGroiAliexpressOutOfSlabMeta(d, dil);
             } else {
                 return null;
             }
@@ -895,6 +983,9 @@
                     sprc = amz;
                 }
             }
+            if (ebayDgIsAliexpress() && ebayDilGroiAliexpressStopBlocks(d, sprc)) {
+                return null;
+            }
             return {
                 dil: dil,
                 key: key,
@@ -912,6 +1003,10 @@
         function ebayDilGroiTipText(meta, opts) {
             opts = opts || {};
             if (!meta || !(meta.sprc > 0)) return '';
+            if (meta.outOfSlabStd) {
+                const dilTxt = isFinite(meta.dil) ? ('Dil ' + Number(meta.dil).toFixed(1) + '% ') : '';
+                return dilTxt + meta.label + ' → $' + Number(meta.sprc).toFixed(2);
+            }
             const slabGroi = (meta.slabGroi != null) ? meta.slabGroi : meta.groi;
             const head = meta.zeroSoldMin
                 ? (opts.zeroSoldLabel || '0 Sold → min Target GROI')
