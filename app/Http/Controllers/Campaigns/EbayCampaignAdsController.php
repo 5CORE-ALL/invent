@@ -348,12 +348,11 @@ class EbayCampaignAdsController extends Controller
         ]);
     }
 
-    /** Resolve S Bid from slab rules (first matching slab wins); 0 = no match. */
+    /** Resolve S Bid from View VS SBID slabs (first matching L7 Views range wins). */
     private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, float $l7Views, array $slabs): float
     {
         foreach ($slabs as $s) {
-            if ($this->slabInRange($cvr,   $s['cvr_min']   ?? null, $s['cvr_max']   ?? null)
-                && $this->slabInRange($l7Views, $s['l7_views_min'] ?? null, $s['l7_views_max'] ?? null)) {
+            if ($this->slabInRange($l7Views, $s['l7_views_min'] ?? null, $s['l7_views_max'] ?? null)) {
                 return (float) ($s['sbid'] ?? 0);
             }
         }

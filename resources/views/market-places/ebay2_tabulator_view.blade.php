@@ -567,11 +567,11 @@
                         <i class="fa fa-file-excel"></i>
                     </button>
 
-                    {{-- Sbid Rule — shared with /ebay/campaign-ads (ebay1_sbid_slabs) --}}
+                    {{-- View VS SBID — shared with /ebay-tabulator-view (ebay1_sbid_slabs) --}}
                     <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item"
                             data-bs-toggle="modal" data-bs-target="#sbidRuleModal"
-                            title="Same Sbid Rule as eBay 1 — For L7 Views / CVR that set the S Bid (Parents Only)">
-                        <i class="fas fa-sliders-h me-1"></i>Sbid Rule <span id="sbid-rule-btn-count"></span>
+                            title="Same View VS SBID as eBay 1 — For L7 Views that set the S Bid">
+                        <i class="fas fa-sliders-h me-1"></i>View VS SBID <span id="sbid-rule-btn-count"></span>
                     </button>
 
                     {{-- Sbid (Views) — same as /ebay2/campaign-ads --}}
@@ -903,7 +903,7 @@
         </div>
     </div>
 
-    {{-- Sbid Rule Modal — same slabs as /ebay/campaign-ads (ebay_sbid_rules.key = ebay1_sbid_slabs). --}}
+    {{-- View VS SBID — same slabs as /ebay-tabulator-view (ebay_sbid_rules.key = ebay1_sbid_slabs). --}}
     <div class="modal fade" id="sbidRuleModal" tabindex="-1" aria-labelledby="sbidRuleModalLabel" aria-hidden="true">
         <style>
             #sbidRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
@@ -917,27 +917,24 @@
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="sbidRuleModalLabel">
-                        <i class="fas fa-sliders-h me-2 text-primary"></i>Sbid Rule
+                        <i class="fas fa-sliders-h me-2 text-primary"></i>View VS SBID
                         <span class="badge bg-secondary ms-2" style="font-size:11px;">shared with eBay 1</span>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle" id="sbid-slab-rule-table" style="min-width: 720px;">
+                        <table class="table table-sm table-bordered align-middle" id="sbid-slab-rule-table" style="min-width: 520px;">
                             <thead class="table-light">
                                 <tr>
                                     <th rowspan="2" style="width:34px;" class="text-center align-middle">#</th>
-                                    <th rowspan="2" style="min-width:110px;" class="align-middle">Label</th>
                                     <th colspan="2" class="text-center">For L7 Views</th>
-                                    <th colspan="2" class="text-center">CVR %</th>
                                     <th rowspan="2" style="width:72px;" class="align-middle text-center"
-                                        title="Parent rows whose L7 Views / CVR fall in this slab">Count</th>
+                                        title="SKU rows whose L7 Views fall in this slab (first matching slab wins)">Count</th>
                                     <th rowspan="2" style="width:100px;" class="align-middle text-center">S Bid (%)</th>
                                     <th rowspan="2" style="width:44px;" class="align-middle"></th>
                                 </tr>
                                 <tr>
-                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
                                     <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
                                 </tr>
                             </thead>
@@ -950,11 +947,6 @@
                     <button type="button" class="btn btn-sm btn-primary mb-2" id="sbid-slab-add-rule-btn">
                         <i class="fas fa-plus me-1"></i>Add rule / slab
                     </button>
-                    <div class="alert alert-info small py-2 mb-0">
-                        <i class="fas fa-info-circle me-1"></i>
-                        Same rule as <code>/ebay/campaign-ads</code> (<code>ebay1_sbid_slabs</code>).
-                        First matching For L7 Views + CVR slab sets S Bid. Parents Only uses family totals.
-                    </div>
                     <p class="small text-danger mb-0 mt-2 d-none" id="sbid-slab-rule-err"></p>
                 </div>
                 <div class="modal-footer py-2 d-flex justify-content-between">
@@ -962,8 +954,8 @@
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                         <button type="button" class="btn btn-sm btn-success" id="sbid-slab-apply-btn"
-                                title="Push each visible parent row's computed S Bid to eBay 2">
-                            <i class="fas fa-bolt me-1"></i>Push to Ebay
+                                title="Autopush is on. Changing a slab saves the rule and pushes the new S Bid to eBay 2.">
+                            <i class="fas fa-bolt me-1"></i>Autopush
                         </button>
                         <button type="button" class="btn btn-sm btn-primary" id="sbid-slab-rule-save-btn">
                             <i class="fas fa-save me-1"></i>Save Rule
@@ -1325,8 +1317,7 @@
             return { bid: bid, color: band.color || '#0d6efd', skip: false };
         }
 
-        // S Bid is driven by the shared eBay 1 Sbid Rule (For L7 Views / CVR).
-        // eBay 2 is Parents Only — parent aggregated L7 Views / CVR.
+        // S Bid is driven by View VS SBID slabs (For L7 Views → S Bid).
         let currentSbidSlabRules = [];
 
         function sbidSlabInRange(val, min, max) {
@@ -1336,15 +1327,11 @@
         }
 
         function getCombinedSbid(rowData) {
-            const esold = parseFloat(rowData['eBay L30']) || 0;
-            const views = parseFloat(rowData.views) || 0;
             const l7Views = parseFloat(rowData.l7_views) || 0;
-            const cvr = views > 0 ? (esold / views) * 100 : 0;
             const rules = currentSbidSlabRules || [];
             for (let i = 0; i < rules.length; i++) {
                 const r = rules[i];
-                if (sbidSlabInRange(cvr, r.cvr_min, r.cvr_max)
-                    && sbidSlabInRange(l7Views, r.l7_views_min, r.l7_views_max)) {
+                if (sbidSlabInRange(l7Views, r.l7_views_min, r.l7_views_max)) {
                     const bid = parseFloat(r.sbid);
                     if (isFinite(bid) && bid > 0) {
                         return { bid: bid, color: '#0d6efd', skip: false };
@@ -2124,8 +2111,7 @@
             });
 
             // ════════════════════════════════════════════════════════════════
-            // Sbid Rule modal — shared ebay1_sbid_slabs (same as /ebay/campaign-ads).
-            // Parents Only: Count + Push use parent rows (aggregated L7 / CVR).
+            // View VS SBID modal — shared ebay1_sbid_slabs (For L7 Views → S Bid).
             // ════════════════════════════════════════════════════════════════
             (function() {
                 const getUrl  = @json(url('/ebay-one/sbid-slab-rule'));
@@ -2136,14 +2122,31 @@
                     return (v === null || v === undefined || v === '' || isNaN(v)) ? '' : v;
                 }
 
-                function rangeInputs(rule, key) {
+                function autofillSbidSlabMins(rules) {
+                    if (!rules || !rules.length) return;
+                    const firstMin = parseFloat(rules[0].l7_views_min);
+                    const firstMax = parseFloat(rules[0].l7_views_max);
+                    const diff = (isFinite(firstMin) && isFinite(firstMax)) ? (firstMax - firstMin) : null;
+                    for (let i = 1; i < rules.length; i++) {
+                        const prevMax = rules[i - 1].l7_views_max;
+                        if (prevMax === null || prevMax === undefined || prevMax === '' || isNaN(prevMax)) break;
+                        const prev = parseFloat(prevMax);
+                        rules[i].l7_views_min = prev + 1;
+                        if (diff !== null && diff > 0) {
+                            rules[i].l7_views_max = prev + diff;
+                        }
+                    }
+                }
+
+                function rangeInputs(rule, idx) {
+                    const locked = idx > 0 ? ' readonly tabindex="-1" style="background:#f8f9fa;"' : '';
                     return `
                         <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
-                                   value="${numAttr(rule[key + '_min'])}" data-field="${key}_min"
-                                   onchange="window.sbidSlabUpdate(this)" placeholder="—"></td>
+                                   value="${numAttr(rule.l7_views_min)}" data-field="l7_views_min"
+                                   onchange="window.sbidSlabUpdate(this)" placeholder="—"${locked}></td>
                         <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
-                                   value="${numAttr(rule[key + '_max'])}" data-field="${key}_max"
-                                   onchange="window.sbidSlabUpdate(this)" placeholder="—"></td>`;
+                                   value="${numAttr(rule.l7_views_max)}" data-field="l7_views_max"
+                                   onchange="window.sbidSlabUpdate(this)" placeholder="—"${locked}></td>`;
                 }
 
                 function ebay2RowEl30(d) {
@@ -2200,11 +2203,9 @@
                     const counts = rules.map(function() { return 0; });
                     (rowList || []).forEach(function(d) {
                         const l7 = ebay2RowL7(d);
-                        const cvr = ebay2RowCvr(d);
                         for (let i = 0; i < rules.length; i++) {
                             const r = rules[i];
-                            if (sbidSlabInRange(cvr, r.cvr_min, r.cvr_max)
-                                && sbidSlabInRange(l7, r.l7_views_min, r.l7_views_max)) {
+                            if (sbidSlabInRange(l7, r.l7_views_min, r.l7_views_max)) {
                                 counts[i]++;
                                 break;
                             }
@@ -2232,15 +2233,25 @@
                     return result.counts;
                 }
 
+                function cascadeSbidFromFirstRow(rules) {
+                    if (!rules || !rules.length) return;
+                    const first = parseFloat(rules[0].sbid);
+                    if (!isFinite(first)) return;
+                    for (let i = 1; i < rules.length; i++) {
+                        rules[i].sbid = Math.max(2, first - i);
+                    }
+                }
+
                 function renderSbidSlabRules(rules) {
                     const tbody = document.getElementById('sbid-slab-rules-body');
                     if (!tbody) return;
                     tbody.innerHTML = '';
                     if (!rules.length) {
-                        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted small py-3">
+                        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted small py-3">
                             No rules yet — click <strong>Add rule / slab</strong> to create one.</td></tr>`;
                         return;
                     }
+                    autofillSbidSlabMins(rules);
                     const slabCounts = countRowsBySlab(rules);
                     rules.forEach(function(rule, i) {
                         const tr = document.createElement('tr');
@@ -2248,13 +2259,11 @@
                         const count = slabCounts[i] || 0;
                         tr.innerHTML = `
                             <td class="text-center text-muted small">${i + 1}</td>
-                            <td><input type="text" class="form-control form-control-sm" value="${(rule.label || '').replace(/"/g, '&quot;')}"
-                                       data-field="label" onchange="window.sbidSlabUpdate(this)" placeholder="Rule ${i + 1}"></td>
-                            ${rangeInputs(rule, 'l7_views')}
-                            ${rangeInputs(rule, 'cvr')}
-                            <td class="text-center fw-semibold" title="Parent rows in this slab">${count}</td>
+                            ${rangeInputs(rule, i)}
+                            <td class="text-center fw-semibold" title="SKU rows in this slab">${count}</td>
                             <td><input type="number" step="0.1" min="0" class="form-control form-control-sm text-end fw-semibold"
                                        value="${numAttr(rule.sbid)}" data-field="sbid"
+                                       ${i === 0 ? 'title="Changing this sets following rows to −1 each, minimum 2%"' : ''}
                                        onchange="window.sbidSlabUpdate(this)"></td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
@@ -2269,26 +2278,34 @@
                     const idx = parseInt(tr.getAttribute('data-idx'), 10);
                     const field = el.dataset.field;
                     if (!currentSbidSlabRules[idx]) return;
-                    if (field === 'label') {
-                        currentSbidSlabRules[idx][field] = el.value;
-                    } else {
-                        currentSbidSlabRules[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+                    currentSbidSlabRules[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+                    if (field === 'sbid' && idx === 0) {
+                        cascadeSbidFromFirstRow(currentSbidSlabRules);
+                        renderSbidSlabRules(currentSbidSlabRules);
+                        if (table) table.redraw(true);
+                        scheduleEbay2SbidAutopush();
+                        return;
+                    }
+                    if (field === 'l7_views_min' || field === 'l7_views_max') {
+                        renderSbidSlabRules(currentSbidSlabRules);
                     }
                     if (table) table.redraw(true);
+                    scheduleEbay2SbidAutopush();
                 };
 
                 window.sbidSlabRemove = function(idx) {
                     currentSbidSlabRules.splice(idx, 1);
                     renderSbidSlabRules(currentSbidSlabRules);
-                    if (table) table.redraw(true);
+                    scheduleEbay2SbidAutopush();
                 };
 
                 $(document).on('click', '#sbid-slab-add-rule-btn', function() {
                     currentSbidSlabRules.push({
-                        label: '', cvr_min: null, cvr_max: null,
                         l7_views_min: null, l7_views_max: null, sbid: 2.1
                     });
+                    cascadeSbidFromFirstRow(currentSbidSlabRules);
                     renderSbidSlabRules(currentSbidSlabRules);
+                    scheduleEbay2SbidAutopush();
                 });
 
                 function loadSbidSlabRules() {
@@ -2348,9 +2365,9 @@
                         data: JSON.stringify({ skus: skus }),
                         success: function(resp) {
                             ebay2SbidAutopushBusy = false;
-                            setEbay2AutopushLabel('<i class="fas fa-bolt me-1"></i>Push to Ebay');
+                            setEbay2AutopushLabel('<i class="fas fa-bolt me-1"></i>Autopush');
                             const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
-                            if (statusEl) statusEl.textContent = 'Pushed: ' + s + ' · Failed: ' + f + ' · Skipped: ' + sk;
+                            if (statusEl) statusEl.textContent = 'Autopush: ' + s + ' pushed · ' + f + ' failed · ' + sk + ' skipped';
                             if (typeof showToast === 'function') {
                                 if (f === 0) showToast('S Bid sent for ' + s + ' listing(s)', 'success');
                                 else showToast(s + ' pushed, ' + f + ' failed', 'error');
@@ -2358,7 +2375,7 @@
                         },
                         error: function(xhr) {
                             ebay2SbidAutopushBusy = false;
-                            setEbay2AutopushLabel('<i class="fas fa-bolt me-1"></i>Push to Ebay');
+                            setEbay2AutopushLabel('<i class="fas fa-bolt me-1"></i>Autopush');
                             const msg = (xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText || 'Autopush failed';
                             if (errEl) {
                                 errEl.textContent = msg;
@@ -2380,10 +2397,6 @@
                         const idx = parseInt(tr.getAttribute('data-idx'), 10);
                         if (!currentSbidSlabRules[idx]) return;
                         tr.querySelectorAll('input[data-field]').forEach(function(el) {
-                            if (el.dataset.field === 'label') {
-                                currentSbidSlabRules[idx].label = el.value || '';
-                                return;
-                            }
                             currentSbidSlabRules[idx][el.dataset.field] = (el.value === '' ? null : parseFloat(el.value));
                         });
                     });
@@ -2412,8 +2425,6 @@
                             rules: (currentSbidSlabRules || []).map(function(r) {
                                 return {
                                     label: r.label || '',
-                                    cvr_min: r.cvr_min,
-                                    cvr_max: r.cvr_max,
                                     l7_views_min: r.l7_views_min,
                                     l7_views_max: r.l7_views_max,
                                     sbid: r.sbid
@@ -2454,8 +2465,15 @@
                     });
                 }
 
+                function scheduleEbay2SbidAutopush() {
+                    clearTimeout(ebay2SbidAutopushTimer);
+                    ebay2SbidAutopushTimer = setTimeout(function() {
+                        saveEbay2SbidRules(true);
+                    }, 800);
+                }
+
                 $('#sbid-slab-rule-save-btn').on('click', function() {
-                    saveEbay2SbidRules(false);
+                    saveEbay2SbidRules(true);
                 });
 
                 $('#sbid-slab-apply-btn').on('click', function() {
@@ -4155,7 +4173,7 @@
                         field: "s_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "S Bid from shared eBay 1 Sbid Rule slabs (For L7 Views / CVR). Parents Only — uses parent aggregated L7 Views / CVR.",
+                        headerTooltip: "View VS SBID slabs (For L7 Views). First matching slab wins.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },

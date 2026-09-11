@@ -186,13 +186,9 @@ class UpdateEbayThreeSuggestedBid extends Command
         $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
         $sbidSlabs = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
         if (! is_array($sbidSlabs) || $sbidSlabs === []) {
-            $sbidSlabs = [
-                ['label' => 'Rule 1', 'l7_views_min' => null, 'l7_views_max' => null, 'cvr_min' => 0, 'cvr_max' => 0, 'sbid' => 15],
-                ['label' => 'Rule 2', 'l7_views_min' => 0, 'l7_views_max' => 36, 'cvr_min' => 0.01, 'cvr_max' => 1000, 'sbid' => 10],
-                ['label' => 'Rule 3', 'l7_views_min' => 36, 'l7_views_max' => null, 'cvr_min' => 7, 'cvr_max' => 1000, 'sbid' => 5],
-            ];
+            $sbidSlabs = $this->defaultSbidSlabRules();
         }
-        $this->info('SBID slab rules loaded: ' . count($sbidSlabs) . ' (shared with eBay 1 — For L7 Views / CVR → S Bid)');
+        $this->info('SBID slab rules loaded: ' . count($sbidSlabs) . ' (shared with eBay 1 — For L7 Views → S Bid)');
 
         // Process ProductMaster data in chunks and update campaign listings
         $this->info('Processing bid updates based on Sbid Rule slabs...');
@@ -416,11 +412,35 @@ class UpdateEbayThreeSuggestedBid extends Command
         }
     }
 
+    private function defaultSbidSlabRules(): array
+    {
+        $rules = [];
+        $bid = 15;
+        for ($i = 0; $i < 10; $i++) {
+            $min = $i === 0 ? 0 : ($i * 100) + 1;
+            $max = ($i + 1) * 100;
+            $rules[] = [
+                'label' => $min.'–'.$max,
+                'l7_views_min' => $min,
+                'l7_views_max' => $max,
+                'sbid' => $bid,
+            ];
+            $bid--;
+        }
+        $rules[] = [
+            'label' => '>1000',
+            'l7_views_min' => 1001,
+            'l7_views_max' => null,
+            'sbid' => $bid,
+        ];
+
+        return $rules;
+    }
+
     private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, float $l7Views, array $slabs): float
     {
         foreach ($slabs as $s) {
-            if ($this->slabInRange($cvr,   $s['cvr_min']   ?? null, $s['cvr_max']   ?? null)
-                && $this->slabInRange($l7Views, $s['l7_views_min'] ?? null, $s['l7_views_max'] ?? null)) {
+            if ($this->slabInRange($l7Views, $s['l7_views_min'] ?? null, $s['l7_views_max'] ?? null)) {
                 return (float) ($s['sbid'] ?? 0);
             }
         }

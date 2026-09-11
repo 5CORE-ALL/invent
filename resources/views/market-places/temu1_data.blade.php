@@ -4260,6 +4260,42 @@
                     }
                 },
                 {
+                    title: "SGROI%",
+                    field: "sgroi_percent",
+                    hozAlign: "center",
+                    sorter: temuSortBy(function(d) { return temuExportSgroi(d); }),
+                    download: true,
+                    downloadTitle: "SGROI",
+                    accessorDownload: function(value, data) {
+                        return temuExportSgroi(data);
+                    },
+                    headerTooltip: "SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP. Sprc Dil back-solves S PRC so this matches the Dil slab Target GROI (or min GROI when Temu L30 = 0).",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const dilTarget = typeof temuSprcDilDisplaySgroi === 'function'
+                            ? temuSprcDilDisplaySgroi(rowData)
+                            : null;
+                        if (dilTarget != null) {
+                            const colorClass = getRoiColor(dilTarget);
+                            return `<span class="dil-percent-value ${colorClass}">${Math.round(Number(dilTarget))}%</span>`;
+                        }
+                        if (typeof chPromoZeroSoldDisplayGroi === 'function') {
+                            const target = chPromoZeroSoldDisplayGroi(rowData);
+                            if (target != null) {
+                                const colorClass = getRoiColor(target);
+                                return `<span class="dil-percent-value ${colorClass}">${Math.round(Number(target))}%</span>`;
+                            }
+                        }
+                        const lp = parseFloat(rowData['lp']) || 0;
+                        const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(rowData) : 0;
+                        const spft = typeof temu2SpftDollars === 'function' ? temu2SpftDollars(rowData, sprice) : null;
+                        if (spft == null || !(lp > 0)) return '';
+                        const sgroi = (spft / lp) * 100;
+                        const colorClass = getRoiColor(sgroi);
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(sgroi)}%</span>`;
+                    }
+                },
+                {
                     title: "SNROI%",
                     field: "sroi_percent",
                     hozAlign: "center",
