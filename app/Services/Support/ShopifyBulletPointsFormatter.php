@@ -321,6 +321,16 @@ final class ShopifyBulletPointsFormatter
             }
         }
 
+        $headingBodyBullets = self::extractTopHeadingBodyPairBullets($body);
+        if ($headingBodyBullets !== []) {
+            return [
+                'bullets' => $headingBodyBullets,
+                'format' => 'heading_body_pairs',
+                'confidence' => 88,
+                'notes' => ['Extracted from heading + paragraph pairs at the top of the Shopify description'],
+            ];
+        }
+
         $topBoldLabelBullets = self::extractTopBoldLabelParagraphBullets($body);
         if ($topBoldLabelBullets !== []) {
             return [
@@ -342,6 +352,45 @@ final class ShopifyBulletPointsFormatter
         }
 
         return ['bullets' => [], 'format' => 'not_detected', 'confidence' => 0, 'notes' => ['No supported Shopify bullet format detected']];
+    }
+
+    /**
+     * Prefer the Shopify description feature block (heading + paragraph) over
+     * short spec rows like "Speaker Type: Woofer".
+     *
+     * @param  array{bullets?: list<string>, format?: string, confidence?: int, notes?: list<string>}  ...$extracts
+     * @return array{bullets: list<string>, format: string, confidence: int, notes: list<string>}
+     */
+    public static function preferExtract(array ...$extracts): array
+    {
+        $best = ['bullets' => [], 'format' => 'not_detected', 'confidence' => 0, 'notes' => []];
+        $bestScore = -1;
+        foreach ($extracts as $extract) {
+            $bullets = array_values(array_filter(array_map(
+                static fn ($line) => trim((string) $line),
+                $extract['bullets'] ?? []
+            ), static fn ($line) => $line !== ''));
+            if ($bullets === []) {
+                continue;
+            }
+            $avg = (int) round(array_sum(array_map('mb_strlen', $bullets)) / count($bullets));
+            $score = (count($bullets) * 20) + min(80, $avg);
+            $format = (string) ($extract['format'] ?? '');
+            if (in_array($format, ['marked_master_block', 'about_item_div', 'heading_body_pairs'], true)) {
+                $score += 40;
+            }
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = [
+                    'bullets' => $bullets,
+                    'format' => $format !== '' ? $format : 'unknown',
+                    'confidence' => (int) ($extract['confidence'] ?? 0),
+                    'notes' => is_array($extract['notes'] ?? null) ? $extract['notes'] : [],
+                ];
+            }
+        }
+
+        return $best;
     }
 
     /**
@@ -425,6 +474,148 @@ final class ShopifyBulletPointsFormatter
         }
 
         return (string) ($m[$group] ?? '');
+    }
+
+    /**
+     * Shopify descriptions often start with 5 feature blocks: a short heading
+     * (h2–h4 or bold line) then a sentence paragraph. That is the source of truth
+     * for Bullet Points Master — not later spec rows like "Speaker Type: Woofer".
+     *
+     * @return list<string>
+     */
+    private static function extractTopHeadingBodyPairBullets(string $html): array
+    {
+        $remaining = ltrim($html);
+        if (preg_match('/\A<p\b[^>]*>\s*<a\b[^>]*>[\s\S]*?Download\s+Product\s+Manual[\s\S]*?<\/a>\s*<\/p>\s*/i', $remaining, $manual) === 1) {
+            $remaining = substr($remaining, strlen($manual[0]));
+        }
+
+        $blocks = [];
+        while (count($blocks) < 16 && preg_match('/\A\s*(<(?:p|h[1-6])\b[^>]*>[\s\S]*?<\/(?:p|h[1-6])>)/iu', $remaining, $match) === 1) {
+            $blockHtml = (string) $match[1];
+            $remaining = substr($remaining, strlen((string) $match[0]));
+            if (preg_match('/<img\b/i', $blockHtml) && ! preg_match('/<(?:strong|b|h[1-6])\b/i', $blockHtml)) {
+                break;
+            }
+
+            $plain = self::plainTextFromHtmlFragment($blockHtml);
+            if ($plain === '') {
+                continue;
+            }
+            if (self::isShopifyDescriptionStopHeading($plain)) {
+                break;
+            }
+
+            $blocks[] = [
+                'html' => $blockHtml,
+                'plain' => $plain,
+            ];
+        }
+
+        $bullets = [];
+        $i = 0;
+        $count = count($blocks);
+        while ($i < $count && count($bullets) < 5) {
+            $current = $blocks[$i];
+            $sameBlock = self::splitHeadingAndBodyFromBlock((string) $current['html'], (string) $current['plain']);
+            if ($sameBlock !== null) {
+                $bullets[] = $sameBlock[0].' - '.$sameBlock[1];
+                $i++;
+                continue;
+            }
+
+            $next = $blocks[$i + 1] ?? null;
+            if ($next !== null
+                && self::isFeatureHeadingText((string) $current['plain'])
+                && self::isFeatureBodyText((string) $next['plain'])) {
+                $bullets[] = trim((string) $current['plain']).' - '.trim((string) $next['plain']);
+                $i += 2;
+                continue;
+            }
+
+            if ($bullets !== []) {
+                break;
+            }
+            $i++;
+            if ($i >= 2) {
+                break;
+            }
+        }
+
+        return count($bullets) >= 2 ? array_values(array_unique($bullets)) : [];
+    }
+
+    /**
+     * @return array{0: string, 1: string}|null
+     */
+    private static function splitHeadingAndBodyFromBlock(string $html, string $plain): ?array
+    {
+        if (preg_match('/<(?:strong|b|h[1-6])\b[^>]*>([\s\S]*?)<\/(?:strong|b|h[1-6])>\s*(?:<br\s*\/?>\s*)+([\s\S]+)/iu', $html, $m) === 1) {
+            $label = self::plainTextFromHtmlFragment((string) $m[1]);
+            $body = self::plainTextFromHtmlFragment((string) $m[2]);
+            if (self::isFeatureHeadingText($label) && self::isFeatureBodyText($body)) {
+                return [$label, $body];
+            }
+        }
+
+        if (preg_match('/^(.{6,90}?)\s+[-–—]\s+(.{20,})$/u', $plain, $m) === 1) {
+            $label = trim((string) $m[1]);
+            $body = trim((string) $m[2]);
+            if (self::isFeatureHeadingText($label) && self::isFeatureBodyText($body)) {
+                return [$label, $body];
+            }
+        }
+
+        return null;
+    }
+
+    private static function plainTextFromHtmlFragment(string $html): string
+    {
+        $withBreaks = preg_replace('/<br\s*\/?>/i', ' ', $html) ?? $html;
+        $plain = html_entity_decode(strip_tags($withBreaks), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $plain = str_replace("\xc2\xa0", ' ', $plain);
+        $plain = trim(preg_replace('/\s+/u', ' ', $plain) ?? $plain);
+
+        return $plain;
+    }
+
+    private static function isShopifyDescriptionStopHeading(string $plain): bool
+    {
+        return (bool) preg_match('/^(?:Product\s+Description|Description|Specifications?|Package\s+Information|Package\s+Includes?|About\s+Brand|Features|Key\s+Features|Images?|What\'?s\s+in\s+the\s+Box)\s*:?\s*$/iu', $plain);
+    }
+
+    private static function isFeatureHeadingText(string $text): bool
+    {
+        $text = trim($text);
+        $len = mb_strlen($text);
+        if ($len < 6 || $len > 90) {
+            return false;
+        }
+        if (self::isShopifyDescriptionStopHeading($text)) {
+            return false;
+        }
+        if (substr_count($text, ' ') > 12) {
+            return false;
+        }
+        if (preg_match('/[.!?]{1}.*[.!?]/u', $text)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static function isFeatureBodyText(string $text): bool
+    {
+        $text = trim($text);
+        $len = mb_strlen($text);
+        if ($len < 24 || $len > 600) {
+            return false;
+        }
+        if (self::isShopifyDescriptionStopHeading($text) || (self::isFeatureHeadingText($text) && $len < 40)) {
+            return false;
+        }
+
+        return (bool) preg_match('/[a-z]/u', $text);
     }
 
     /**

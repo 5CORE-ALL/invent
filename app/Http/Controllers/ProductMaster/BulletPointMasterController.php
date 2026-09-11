@@ -282,45 +282,34 @@ class BulletPointMasterController extends Controller
             }
 
             $adminExtracted = ShopifyBulletPointsFormatter::extractBulletPointsForImport((string) ($shopify['body_html'] ?? ''));
-            $extracted = $adminExtracted;
             $publicShopify = $this->fetchPublicShopifyProductHtmlForSku($sku);
-            if (($publicShopify['body_html'] ?? '') !== '') {
-                $publicExtracted = ShopifyBulletPointsFormatter::extractBulletPointsForImport((string) $publicShopify['body_html']);
-                if (count($publicExtracted['bullets'] ?? []) > 0) {
-                    $pullLog->info('Using public Shopify storefront bullets for Product Master pull', [
-                        'sku' => $sku,
-                        'admin_format' => $adminExtracted['format'] ?? null,
-                        'admin_count' => count($adminExtracted['bullets'] ?? []),
-                        'public_format' => $publicExtracted['format'] ?? null,
-                        'public_count' => count($publicExtracted['bullets'] ?? []),
-                        'public_url' => $publicShopify['url'] ?? null,
-                    ]);
-                    $extracted = $publicExtracted;
-                    $shopify['body_html'] = $publicShopify['body_html'];
-                }
+            $publicExtracted = ($publicShopify['body_html'] ?? '') !== ''
+                ? ShopifyBulletPointsFormatter::extractBulletPointsForImport((string) $publicShopify['body_html'])
+                : ['bullets' => []];
+            $cachedShopify = $this->fetchCachedShopifyBodyHtmlForSku($sku);
+            $cachedExtracted = ($cachedShopify['body_html'] ?? '') !== ''
+                ? ShopifyBulletPointsFormatter::extractBulletPointsForImport((string) $cachedShopify['body_html'])
+                : ['bullets' => []];
+            $extracted = ShopifyBulletPointsFormatter::preferExtract($adminExtracted, $publicExtracted, $cachedExtracted);
+            if (($extracted['format'] ?? '') === ($publicExtracted['format'] ?? null)
+                && ($extracted['bullets'] ?? []) === ($publicExtracted['bullets'] ?? [])
+                && ($publicShopify['body_html'] ?? '') !== '') {
+                $shopify['body_html'] = $publicShopify['body_html'];
+            } elseif (($extracted['format'] ?? '') === ($cachedExtracted['format'] ?? null)
+                && ($extracted['bullets'] ?? []) === ($cachedExtracted['bullets'] ?? [])
+                && ($cachedShopify['body_html'] ?? '') !== '') {
+                $shopify['body_html'] = $cachedShopify['body_html'];
+                $shopify['product_id'] = $cachedShopify['product_id'] ?? ($shopify['product_id'] ?? null);
+                $shopify['variant_id'] = $cachedShopify['variant_id'] ?? ($shopify['variant_id'] ?? null);
             }
-
-            if (count($extracted['bullets'] ?? []) <= 1) {
-                $cachedShopify = $this->fetchCachedShopifyBodyHtmlForSku($sku);
-                if (($cachedShopify['body_html'] ?? '') !== '') {
-                    $cachedExtracted = ShopifyBulletPointsFormatter::extractBulletPointsForImport((string) $cachedShopify['body_html']);
-                    if (count($cachedExtracted['bullets'] ?? []) > count($extracted['bullets'] ?? [])) {
-                        $pullLog->info('Using cached Shopify catalog bullets because live sources returned fewer bullets', [
-                            'sku' => $sku,
-                            'selected_format' => $extracted['format'] ?? null,
-                            'selected_count' => count($extracted['bullets'] ?? []),
-                            'cached_format' => $cachedExtracted['format'] ?? null,
-                            'cached_count' => count($cachedExtracted['bullets'] ?? []),
-                            'cached_product_id' => $cachedShopify['product_id'] ?? null,
-                            'cached_variant_id' => $cachedShopify['variant_id'] ?? null,
-                        ]);
-                        $extracted = $cachedExtracted;
-                        $shopify['body_html'] = $cachedShopify['body_html'];
-                        $shopify['product_id'] = $cachedShopify['product_id'] ?? ($shopify['product_id'] ?? null);
-                        $shopify['variant_id'] = $cachedShopify['variant_id'] ?? ($shopify['variant_id'] ?? null);
-                    }
-                }
-            }
+            $pullLog->info('Chose Shopify bullet extract', [
+                'sku' => $sku,
+                'format' => $extracted['format'] ?? null,
+                'count' => count($extracted['bullets'] ?? []),
+                'admin_format' => $adminExtracted['format'] ?? null,
+                'public_format' => $publicExtracted['format'] ?? null,
+                'cached_format' => $cachedExtracted['format'] ?? null,
+            ]);
             $shopifyBullets = array_values(array_filter(array_map(
                 fn ($line) => ShopifyBulletPointsFormatter::cleanBulletLine((string) $line),
                 array_slice($extracted['bullets'] ?? [], 0, 5)
