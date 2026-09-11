@@ -628,9 +628,6 @@
                         <span class="badge fs-6 p-2" id="total-t-clicks-7-badge"
                             style="background-color: #0a58ca; color: white; font-weight: bold;"
                             title="((T Clicks / 30) × 7) ÷ parent count — weekly pace per parent">T Clicks 7: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter Missing L (INV&gt;0, not listed, REQ)">M L: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'temu2-price-gt-lmp-badge', 'pglChannelKey' => 'temu', 'pglPriceField' => 'temu_price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'temu2-price-lt80-lmp-badge', 'pltChannelKey' => 'temu', 'pltPriceField' => 'temu_price'])
                         <span class="badge fs-6 p-2" id="temu2-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Temu Price.">
@@ -2679,11 +2676,8 @@
         // Badge click filters — same pattern as /ebay-tabulator-view
         let zeroSoldFilterActive = false;
         let moreSoldFilterActive = false;
-        let missingLFilterActive = false;
         let lessAmzFilterActive = false;
         let moreAmzFilterActive = false;
-        // aliases kept for any leftover refs
-        let missingBadgeFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
 
@@ -2794,17 +2788,6 @@
             moreSoldFilterActive = !moreSoldFilterActive;
             zeroSoldFilterActive = false;
             applyFilters();
-        });
-
-        $('#missing-l-count-badge').on('click', function() {
-            missingLFilterActive = !missingLFilterActive;
-            missingBadgeFilterActive = missingLFilterActive;
-            $(this).toggleClass('bg-secondary', !missingLFilterActive)
-                   .toggleClass('bg-danger', missingLFilterActive);
-            applyFilters();
-            if (table && missingLFilterActive) {
-                try { table.getColumn('lmp').show(); } catch (e) {}
-            }
         });
 
         function updateSelectedCount() {
@@ -3430,7 +3413,6 @@
             let totalTemuL30 = 0;
             let zeroSoldCount = 0;
             let moreSoldCount = 0;
-            let missingCount = 0;
             let rowsCount = 0;
 
             // Filtered counts: Rows / 0 Sold / >0 Sold (exclude parent rows from sold badges)
@@ -3456,7 +3438,7 @@
                     : ((parseInt(row.product_clicks, 10) || 0) + (parseInt(row.ad_clicks, 10) || 0));
             });
 
-            // Financials + M L from full dataset (ebay pattern for missing) — SKUs only
+            // Financials from full dataset — SKUs only
             // Same calc as /temu-decrease: Sales/GPFT on Full Price; GROI on R Price
             const viewsByGoodsId = {};
             const tClicksByGoodsId = {};
@@ -3503,12 +3485,6 @@
                 }
                 totalTemuL30 += temuL30;
 
-                const missing = row.missing;
-                const nrReq = String(row.nr_req || 'REQ').toUpperCase();
-
-                if (missing === 'M' && inventory > 0 && nrReq !== 'NR' && nrReq !== 'NRL') {
-                    missingCount++;
-                }
             });
             Object.keys(viewsByGoodsId).forEach(function(gid) {
                 totalViews += parseInt(viewsByGoodsId[gid], 10) || 0;
@@ -3596,7 +3572,6 @@
                 maximumFractionDigits: 1,
                 minimumFractionDigits: 0
             }));
-            $('#missing-l-count-badge').text('M L: ' + missingCount.toLocaleString());
             if (window.PriceGtLmpBadge && table) {
                 PriceGtLmpBadge.update('#temu2-price-gt-lmp-badge', table.getData(), 'temu', 'temu_price', function (row) {
                     return parseFloat(row && (row.lmp_price || row.lmp || row.LMP)) || 0;
@@ -3939,21 +3914,6 @@
                         const value = parseInt(cell.getValue()) || 0;
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="temu_l30" title="View Temu L30 chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fd7e14;"></span></button>` : '';
                         return `${value.toLocaleString()} ${dotBtn}`.trim();
-                    }
-                },
-                {
-                    title: "Missing",
-                    field: "missing",
-                    hozAlign: "center",
-                    sorter: "string",
-                    width: 80,
-                    visible: true,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === 'M') {
-                            return '<span style="color: #dc3545; font-weight: bold;" title="Not found in temu2_metrics (API)">M</span>';
-                        }
-                        return '';
                     }
                 },
                 {
@@ -4988,7 +4948,7 @@
 
             table.clearFilter(true);
 
-            // Row type: All Rows / Parents / SKUs (default Parents)
+            // Row type: All Rows / Parents / SKUs (default SKUs)
             if (parentFilter === 'parents') {
                 table.addFilter(function(data) {
                     return isTemu2ParentRow(data);
@@ -5186,15 +5146,6 @@
                 table.addFilter(function(data) {
                     if (isTemu2ParentRow(data)) return false;
                     return (parseInt(data.temu_l30, 10) || 0) > 0 && (parseFloat(data.inventory) || 0) > 0;
-                });
-            }
-
-            if (missingLFilterActive || missingBadgeFilterActive) {
-                table.addFilter(function(data) {
-                    if (isTemu2ParentRow(data)) return false;
-                    const inv = parseFloat(data.inventory) || 0;
-                    const nrReq = String(data.nr_req || 'REQ').toUpperCase();
-                    return data.missing === 'M' && inv > 0 && nrReq !== 'NR' && nrReq !== 'NRL';
                 });
             }
 
