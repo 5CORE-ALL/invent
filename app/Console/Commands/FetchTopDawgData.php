@@ -6,6 +6,7 @@ use App\Models\TopDawgOrderMetric;
 use App\Models\TopDawgProduct;
 use App\Models\TopDawgSyncState;
 use App\Models\ShopifySku;
+use App\Services\ChannelLivePriceSync;
 use App\Services\TopDawgApiService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -17,6 +18,17 @@ class FetchTopDawgData extends Command
     protected $signature = 'topdawg:fetch {--force : Force full fetch (ignore last sync)}';
 
     protected $description = 'Fetch TopDawg orders and products, calculate L30/L60 and store in DB';
+
+    /** @var array<string, float>|null */
+    private ?array $pushedPriceLookup = null;
+
+    /**
+     * @return array<string, float>
+     */
+    private function topdawgPushedLookup(): array
+    {
+        return $this->pushedPriceLookup ??= ChannelLivePriceSync::lookupMap('topdawg');
+    }
 
     public function handle(): int
     {
@@ -79,7 +91,14 @@ class FetchTopDawgData extends Command
                 'product_title' => $item['product_name'] ?? $item['product_title'] ?? $item['title'] ?? null,
                 'r_l30' => $rL30[$sku] ?? 0,
                 'r_l60' => $rL60[$sku] ?? 0,
-                'price' => $item['cost'] ?? $item['price'] ?? null,
+                'price' => ChannelLivePriceSync::preferIncoming(
+                    'topdawg',
+                    (string) $sku,
+                    is_numeric($item['price'] ?? $item['cost'] ?? null)
+                        ? (float) ($item['price'] ?? $item['cost'])
+                        : null,
+                    $this->topdawgPushedLookup()
+                ),
                 'msrp' => $item['msrp'] ?? null,
                 'views' => $item['views'] ?? null,
                 'remaining_inventory' => $item['qty_available'] ?? $item['remaining_inventory'] ?? $item['inventory'] ?? null,

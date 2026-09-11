@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use App\Models\ReverbProduct;
+use App\Services\ChannelLivePriceSync;
 
 class FetchReverbInventory extends Command
 {
@@ -34,11 +35,18 @@ class FetchReverbInventory extends Command
         $listings = $this->fetchAllListings();
 
         $bulkData = [];
+        $pushedLookup = ChannelLivePriceSync::lookupMap('reverb');
         foreach ($listings as $item) {
             $sku = $item['sku'] ?? null;
             if (!$sku) continue;
 
-            $price = $item['price']['amount'] ?? null;
+            $rawPrice = $item['price']['amount'] ?? null;
+            $price = ChannelLivePriceSync::preferIncoming(
+                'reverb',
+                (string) $sku,
+                is_numeric($rawPrice) ? (float) $rawPrice : null,
+                $pushedLookup
+            );
             $remainingInventory = $item['inventory'] ?? null;
 
             $bulkData[] = [

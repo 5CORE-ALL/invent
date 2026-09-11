@@ -13,6 +13,7 @@ use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\TemuController;
 use App\Http\Controllers\MarketPlace\Temu3Controller;
 use App\Services\AliExpressApiService;
+use App\Services\ChannelLivePriceSync;
 use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
@@ -262,6 +263,7 @@ class ChannelPushSpriceRunner
                         $live = $pulled;
                     }
                 }
+                ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, (float) $price);
             } catch (\Throwable $e) {
                 $ok = false;
                 $error = $e->getMessage();

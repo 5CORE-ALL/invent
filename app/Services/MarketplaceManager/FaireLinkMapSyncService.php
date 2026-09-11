@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\FaireMetric;
+use App\Services\ChannelLivePriceSync;
 use App\Services\FaireApiService;
 use App\Support\Marketplace\FaireDuplicateSkuListing;
 use App\Support\Marketplace\MappingChannelCounts;
@@ -17,6 +18,9 @@ use Illuminate\Support\Facades\Schema;
 class FaireLinkMapSyncService
 {
     private const CACHE_KEY = 'faire_link_map_sync';
+
+    /** @var array<string, float>|null */
+    private ?array $pushedPriceLookup = null;
 
     public function __construct(
         protected FaireApiService $faireApi
@@ -242,6 +246,7 @@ class FaireLinkMapSyncService
         }
 
         $count = 0;
+        $pushedLookup = $this->pushedPriceLookup ??= ChannelLivePriceSync::lookupMap('faire');
         foreach ($variants as $variant) {
             if (! is_array($variant)) {
                 continue;
@@ -275,7 +280,7 @@ class FaireLinkMapSyncService
                 $payload['listing_status'] = $listingStatus;
             }
             if ($price !== null) {
-                $payload['price'] = $price;
+                $payload['price'] = ChannelLivePriceSync::preferIncoming('faire', $sku, $price, $pushedLookup);
             }
             if ($qty !== null) {
                 $payload['inventory'] = $qty;

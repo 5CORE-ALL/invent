@@ -449,6 +449,7 @@ class TemuShopifySalesService
 
     /**
      * Sales/orders/qty/pft/cogs from the temu_orders table (Temu API order-wise data).
+     * Temu 1 uses listing base + R Price GPFT$ (same as /temu2-tabulator), not line_sales/qty.
      * Temu 2 uses /temu2-tabulator math (computeTemu2TabulatorMetrics).
      *
      * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
@@ -475,16 +476,20 @@ class TemuShopifySalesService
 
         foreach ($rows as $r) {
             $qty = (int) ($r['quantity_purchased'] ?? 0);
-            $base = (float) ($r['base_price_total'] ?? 0);
+            $listingBase = (float) ($r['listing_base_price'] ?? 0);
+            $rawBase = (float) ($r['base_price_total'] ?? 0);
             $lineSales = (float) ($r['line_sales'] ?? 0);
-            $rawUnit = ($lineSales > 0 && $qty > 0) ? ($lineSales / $qty) : $base;
-            if ($qty <= 0 || $rawUnit <= 0) {
+            // Same listing base as /temu2-tabulator / /temu3-tabulator — not line_sales/qty.
+            $base = $listingBase > 0
+                ? $listingBase
+                : ($rawBase > 0 ? self::goodsBaseFromUnit($rawBase) : 0.0);
+            if ($qty <= 0 || $base <= 0) {
                 continue;
             }
 
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
-            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, $margin, $lp, $ship, true, false);
+            $calc = self::temuPriceSalesAndProfit($base, $qty, $margin, $lp, $ship, false, true);
 
             $totalSales += $calc['sales'];
             $totalPft += $calc['profit'];
@@ -492,7 +497,7 @@ class TemuShopifySalesService
             $totalQty += $qty;
 
             // Keep API line sales for Seller Central Y Sales (base + freight).
-            $totalBaseSales += $lineSales > 0 ? $lineSales : ($rawUnit * $qty);
+            $totalBaseSales += $lineSales > 0 ? $lineSales : ($base * $qty);
 
             $orderId = trim((string) ($r['order_id'] ?? ''));
             if ($orderId !== '') {

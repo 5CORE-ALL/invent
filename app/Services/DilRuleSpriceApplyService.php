@@ -47,6 +47,7 @@ use App\Models\WayfairDataView;
 use App\Models\WayfairPricingPrice;
 use App\Support\AliexpressPushGuard;
 use App\Support\AmazonDilGroiRule;
+use App\Support\PushedListingPrice;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -202,7 +203,7 @@ class DilRuleSpriceApplyService
                         continue;
                     }
                     $next = $computed['sprice'];
-                    if ($this->shouldEnqueuePush($row, $next)) {
+                    if ($this->shouldEnqueuePush($row, $next, $dryRun)) {
                         $pushTasks[] = ['sku' => $row['sku'], 'price' => $next];
                     }
                     $saved = (float) ($row['saved_sprice'] ?? 0);
@@ -274,7 +275,7 @@ class DilRuleSpriceApplyService
                 continue;
             }
             $next = $computed['sprice'];
-            if (! $this->shouldEnqueuePush($row, $next)) {
+            if (! $this->shouldEnqueuePush($row, $next, false)) {
                 continue;
             }
             $out[] = [
@@ -498,6 +499,7 @@ class DilRuleSpriceApplyService
             ProductMaster::query()->whereIn('sku', $skus)->get(['sku', 'parent', 'Values'])
         );
         $savedBySku = [];
+        $pushedBySku = [];
         $lmpBySku = [];
         foreach ($viewClass::query()->whereIn('sku', $skus)->get(['sku', 'value']) as $view) {
             $val = is_array($view->value)
@@ -507,6 +509,10 @@ class DilRuleSpriceApplyService
             $sprice = $val['SPRICE'] ?? null;
             if (is_numeric($sprice) && (float) $sprice > 0) {
                 $savedBySku[$key] = round((float) $sprice, 2);
+            }
+            $pushed = PushedListingPrice::fromValue(is_array($val) ? $val : []);
+            if ($pushed !== null) {
+                $pushedBySku[$key] = $pushed;
             }
             $lmp = $val['lmp_price'] ?? $val['LMP'] ?? null;
             if (is_numeric($lmp) && (float) $lmp > 0) {
@@ -577,6 +583,7 @@ class DilRuleSpriceApplyService
                 'std_price' => $stdBySku[$sku] ?? 0.0,
                 'amz_price' => (float) ($amzBySku[$sku]['price'] ?? 0),
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
+                'pushed_sprice' => $pushedBySku[$sku] ?? 0.0,
             ];
         }
 
@@ -600,7 +607,7 @@ class DilRuleSpriceApplyService
     /**
      * @param  array<string, mixed>  $row
      */
-    protected function shouldEnqueuePush(array $row, float $next): bool
+    protected function shouldEnqueuePush(array $row, float $next, bool $dryRun = false): bool
     {
         if (! in_array($this->channel, self::PUSH_CHANNELS, true)) {
             return false;
@@ -609,11 +616,8 @@ class DilRuleSpriceApplyService
         if (! ($live > 0) || ! ($next > 0)) {
             return false;
         }
-        $liveCompare = ! empty($this->channelConfig()['live_is_base'])
-            ? round(TemuShopifySalesService::computeFullTemuPrice($live), 2)
-            : $live;
 
-        return abs($next - $liveCompare) >= 0.005;
+        return ! ChannelLivePriceSync::shouldSkipPushAndRepair($this->channel, $row, $next, $dryRun);
     }
 
     /**

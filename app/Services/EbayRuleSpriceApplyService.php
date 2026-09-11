@@ -15,6 +15,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\AmazonDilGroiRule;
 use App\Support\Marketplace\EbayListingEnded;
+use App\Support\PushedListingPrice;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -117,7 +118,7 @@ class EbayRuleSpriceApplyService
                     }
                     $next = $computed['sprice'];
                     $live = (float) ($row['live'] ?? 0);
-                    if ($live > 0 && abs($next - $live) >= 0.005) {
+                    if ($live > 0 && ! ChannelLivePriceSync::shouldSkipPushAndRepair($this->channel, $row, $next, $dryRun)) {
                         $pushTasks[] = ['sku' => $row['sku'], 'price' => $next];
                     }
                     $saved = (float) ($row['saved_sprice'] ?? 0);
@@ -187,7 +188,7 @@ class EbayRuleSpriceApplyService
             }
             $live = (float) ($row['live'] ?? 0);
             $next = $computed['sprice'];
-            if (! ($live > 0) || abs($next - $live) < 0.005) {
+            if (! ($live > 0) || ChannelLivePriceSync::shouldSkipPushAndRepair($this->channel, $row, $next, false)) {
                 continue;
             }
             $out[] = [
@@ -300,13 +301,19 @@ class EbayRuleSpriceApplyService
             ProductMaster::query()->whereIn('sku', $skus)->get(['sku', 'parent', 'Values'])
         );
         $savedBySku = [];
+        $pushedBySku = [];
         foreach ($viewClass::query()->whereIn('sku', $skus)->get(['sku', 'value']) as $view) {
             $val = is_array($view->value)
                 ? $view->value
                 : (json_decode((string) ($view->value ?? ''), true) ?: []);
             $sprice = $val['SPRICE'] ?? null;
+            $key = strtoupper(trim((string) $view->sku));
             if (is_numeric($sprice) && (float) $sprice > 0) {
-                $savedBySku[strtoupper(trim((string) $view->sku))] = round((float) $sprice, 2);
+                $savedBySku[$key] = round((float) $sprice, 2);
+            }
+            $pushed = PushedListingPrice::fromValue(is_array($val) ? $val : []);
+            if ($pushed !== null) {
+                $pushedBySku[$key] = $pushed;
             }
         }
 
@@ -346,6 +353,7 @@ class EbayRuleSpriceApplyService
                 'cvr' => $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0.0,
                 'lmp' => (float) ($lmpRow['lmp_price'] ?? 0),
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
+                'pushed_sprice' => $pushedBySku[$sku] ?? 0.0,
             ];
         }
 

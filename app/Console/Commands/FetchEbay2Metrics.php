@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Ebay2Metric;
 use App\Models\EbayTask;
+use App\Services\ChannelLivePriceSync;
 use Illuminate\Console\Command;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -25,6 +26,17 @@ class FetchEbay2Metrics extends Command
      * @var string
      */
     protected $description = 'Command description';
+
+    /** @var array<string, float>|null */
+    private ?array $pushedPriceLookup = null;
+
+    /**
+     * @return array<string, float>
+     */
+    private function pushedLookup(): array
+    {
+        return $this->pushedPriceLookup ??= ChannelLivePriceSync::lookupMap('ebay2');
+    }
 
     /**
      * Execute the console command.
@@ -93,8 +105,9 @@ class FetchEbay2Metrics extends Command
 
             // Keep every item_id+sku pair. The same child SKU can be listed on
             // two eBay items; deleting the "other" item_id left that listing stuck.
+            $incoming = isset($row['price']) && is_numeric($row['price']) ? (float) $row['price'] : null;
             $payload = [
-                'ebay_price' => $row['price'] ?? null,
+                'ebay_price' => ChannelLivePriceSync::preferIncoming('ebay2', $sku, $incoming, $this->pushedLookup()),
                 'ebay_stock' => $row['quantity'] ?? null,
                 'ebay_title' => $row['title'] ?? null,
                 'report_range' => now()->toDateString(),

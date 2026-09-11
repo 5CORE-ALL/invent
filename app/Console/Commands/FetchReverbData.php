@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\ImportReverbManagerOrderToShopify;
 use App\Models\ReverbOrderMetric;
+use App\Services\ChannelLivePriceSync;
 use App\Services\ReverbApiService;
 use App\Models\ReverbProduct;
 use App\Models\ReverbSyncSettings;
@@ -32,6 +33,17 @@ class FetchReverbData extends Command
      * @var string
      */
     protected $description = 'Fetch Reverb listings/orders: replaces reverb_products (truncate + insert), upserts order metrics';
+
+    /** @var array<string, float>|null */
+    private ?array $pushedPriceLookup = null;
+
+    /**
+     * @return array<string, float>
+     */
+    private function reverbPushedLookup(): array
+    {
+        return $this->pushedPriceLookup ??= ChannelLivePriceSync::lookupMap('reverb');
+    }
 
     /**
      * Execute the console command.
@@ -103,7 +115,13 @@ class FetchReverbData extends Command
             $r30 = $rL30[$sku] ?? 0;
             $r60 = $rL60[$sku] ?? 0;
 
-            $price = $listing['price']['amount'] ?? null;
+            $rawPrice = $listing['price']['amount'] ?? null;
+            $price = ChannelLivePriceSync::preferIncoming(
+                'reverb',
+                (string) $sku,
+                is_numeric($rawPrice) ? (float) $rawPrice : null,
+                $this->reverbPushedLookup()
+            );
             $listingAds = ReverbApiService::parseListingBumpAds($listing);
             $views = $listingAds['views'] > 0 ? $listingAds['views'] : ($existingViews[$sku] ?? 0);
             $rawInventory = (int) ($listing['inventory'] ?? 0);

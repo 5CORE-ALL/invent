@@ -110,19 +110,7 @@ class AmazonPushedPricePullService
      */
     public static function listingsReportPriceToWrite(?float $reportPrice, ?float $pushedSale): ?float
     {
-        $report = ($reportPrice !== null && $reportPrice > 0) ? round($reportPrice, 2) : null;
-        $pushed = ($pushedSale !== null && $pushedSale > 0) ? round($pushedSale, 2) : null;
-        if ($pushed === null) {
-            return $report;
-        }
-        if ($report === null) {
-            return $pushed;
-        }
-        if (AmazonSpApiService::listingPriceMatchesSprice($report, $pushed)) {
-            return $report;
-        }
-
-        return $pushed;
+        return \App\Support\PushedListingPrice::prefer($reportPrice, $pushedSale);
     }
 
     /**

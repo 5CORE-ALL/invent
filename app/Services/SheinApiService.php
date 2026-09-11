@@ -34,6 +34,17 @@ class SheinApiService
 
     protected $baseUrl = 'https://openapi.sheincorp.com'; // or sandbox: openapi-test01.sheincorp.cn
 
+    /** @var array<string, float>|null */
+    private ?array $pushedPriceLookup = null;
+
+    /**
+     * @return array<string, float>
+     */
+    private function sheinPushedLookup(): array
+    {
+        return $this->pushedPriceLookup ??= ChannelLivePriceSync::lookupMap('shein');
+    }
+
     /** Counters set during listAllProducts() DB persistence */
     protected int $lastMetricCreated = 0;
 
@@ -251,10 +262,16 @@ class SheinApiService
         $productNumber = trim((string) ($item['product_number'] ?? ''));
         $skuSource = (string) ($item['sku_source'] ?? '');
 
+        $incomingPrice = isset($item['price']) && is_numeric($item['price']) ? (float) $item['price'] : null;
         $metricData = [
             'sku' => $resolvedSku,
             'inventory' => (int) ($item['quantity'] ?? $item['inventory'] ?? 0),
-            'price' => $item['price'] ?? null,
+            'price' => ChannelLivePriceSync::preferIncoming(
+                'shein',
+                $resolvedSku,
+                $incomingPrice,
+                $this->sheinPushedLookup()
+            ),
             'retail_price' => $item['retail_price'] ?? null,
             'views' => $item['views'] ?? 0,
             'rating' => $item['rating'] ?? null,
@@ -1663,10 +1680,16 @@ class SheinApiService
             $sale = isset($item['price']) ? (float) $item['price'] : 0.0;
             $retail = isset($item['retail_price']) ? (float) $item['retail_price'] : 0.0;
             $stock = (int) ($item['quantity'] ?? 0);
+            $listed = $retail > 0 ? $retail : $sale;
             SheinPricingPrice::updateOrCreate(
                 ['sku' => $sku],
                 [
-                    'price' => max(0, $retail > 0 ? $retail : $sale),
+                    'price' => ChannelLivePriceSync::preferIncoming(
+                        'shein',
+                        $sku,
+                        $listed > 0 ? $listed : null,
+                        $this->sheinPushedLookup()
+                    ) ?? max(0, $listed),
                     'original_price' => max(0, $retail),
                     'special_offer_price' => max(0, $sale > 0 ? $sale : $retail),
                     'shein_stock' => max(0, $stock),

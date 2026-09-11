@@ -6,6 +6,7 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\FaireMetric;
 use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
+use App\Services\ChannelLivePriceSync;
 use App\Services\FaireApiService;
 use App\Services\ShopifyApiService;
 use App\Support\Marketplace\MappingChannelCounts;
@@ -544,12 +545,18 @@ class FaireInventorySyncService
      */
     protected function updateLocalMetricPrices(array $rows): void
     {
+        $lookup = ChannelLivePriceSync::lookupMap('faire');
         foreach ($rows as $row) {
             $sku = trim((string) $row['sku_code']);
             if ($sku === '') {
                 continue;
             }
-            FaireMetric::query()->where('sku', $sku)->update(['price' => (float) $row['price']]);
+            $incoming = is_numeric($row['price']) ? (float) $row['price'] : null;
+            $write = ChannelLivePriceSync::preferIncoming('faire', $sku, $incoming, $lookup);
+            if ($write === null) {
+                continue;
+            }
+            FaireMetric::query()->where('sku', $sku)->update(['price' => $write]);
         }
     }
 

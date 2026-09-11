@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Ebay3Metric;
 use App\Models\Ebay3DailyData;
 use App\Models\EbayTask;
+use App\Services\ChannelLivePriceSync;
 use App\Services\EbayThreeApiService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -16,6 +17,17 @@ class FetchEbay3Metrics extends Command
 {
     protected $signature = 'app:fetch-ebay-three-metrics';
     protected $description = 'Fetch eBay price, L30, L60 and views for all SKUs (variations)';
+
+    /** @var array<string, float>|null */
+    private ?array $pushedPriceLookup = null;
+
+    /**
+     * @return array<string, float>
+     */
+    private function pushedLookup(): array
+    {
+        return $this->pushedPriceLookup ??= ChannelLivePriceSync::lookupMap('ebay3');
+    }
 
     public function handle()
     {
@@ -89,10 +101,11 @@ class FetchEbay3Metrics extends Command
             }
 
             // Save per SKU (unique by item_id + sku)
+            $incoming = isset($row['price']) && is_numeric($row['price']) ? (float) $row['price'] : null;
             Ebay3Metric::updateOrCreate(
                 ['item_id' => $itemId, 'sku' => $sku],
                 [
-                    'ebay_price' => $row['price'] ?? null,
+                    'ebay_price' => ChannelLivePriceSync::preferIncoming('ebay3', $sku, $incoming, $this->pushedLookup()),
                     'ebay_stock' => $row['quantity'] ?? null,
                     'ebay_title' => $row['title'] ?? null,
                     'report_range' => now()->toDateString(),

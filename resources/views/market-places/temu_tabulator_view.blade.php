@@ -115,10 +115,10 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
                             style="color: white; font-weight: bold;"
-                            title="GPFT % = Σ (Temu Price × margin − LP − Ship) × Qty ÷ Σ (Temu Price × Qty) × 100">GPFT: 0%</span>
+                            title="GPFT % = Σ (R Price × margin − LP − Ship) × Qty ÷ Σ (Temu Price × Qty) × 100 — same as /temu2-tabulator">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"
                             style="background-color: purple; color: white; font-weight: bold;"
-                            title="GROI % = Σ (Temu Price × margin − LP − Ship) × Qty ÷ Σ (LP × Qty) × 100">GROI: 0%</span>
+                            title="GROI % = Σ (R Price × margin − LP − Ship) × Qty ÷ Σ (LP × Qty) × 100 — same as /temu2-tabulator">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
@@ -191,23 +191,27 @@
     function temuRowTemuPrice(row) {
         return temuPriceFromBase(temuRowBase(row));
     }
-    /** Per-unit profit on Temu Price — used for both GPFT and GROI. */
-    function temuRowTemuProfit(row) {
-        const temuPrice = temuRowTemuPrice(row);
-        if (!(temuPrice > 0)) return 0;
+    function temuRowRPrice(row) {
+        const qty = parseInt(row && row.quantity_purchased) || 0;
+        return temuFbPrice(temuRowBase(row), qty);
+    }
+    /** Per-unit profit on R Price — same GPFT$ / GROI as /temu2-tabulator and /temu3-tabulator. */
+    function temuRowRPriceProfit(row) {
+        const rPrice = temuRowRPrice(row);
+        if (!(rPrice > 0)) return 0;
         const lp = parseFloat(row && row.lp) || 0;
         const ship = parseFloat(row && row.temu_ship) || 0;
-        return temuPrice * TEMU_MARGIN - lp - ship;
+        return rPrice * TEMU_MARGIN - lp - ship;
     }
     function temuRowGpftPercent(row) {
         const temuPrice = temuRowTemuPrice(row);
         if (!(temuPrice > 0)) return 0;
-        return (temuRowTemuProfit(row) / temuPrice) * 100;
+        return (temuRowRPriceProfit(row) / temuPrice) * 100;
     }
     function temuRowGroiPercent(row) {
         const lp = parseFloat(row && row.lp) || 0;
         if (!(lp > 0)) return 0;
-        return (temuRowTemuProfit(row) / lp) * 100;
+        return (temuRowRPriceProfit(row) / lp) * 100;
     }
     let table = null;
     
@@ -507,10 +511,10 @@
                         const color = value >= 0 ? '#28a745' : '#dc3545';
                         return `<span style="color: ${color}; font-weight: bold;">$${parseFloat(value).toFixed(2)}</span>`;
                     },
-                    headerTooltip: "PFT $ = (Temu Price × margin − LP − Temu Ship) × Qty",
+                    headerTooltip: "GPFT$ = (R Price × margin − LP − Temu Ship) × Qty — same as /temu2-tabulator",
                     mutator: function(value, data, type, params, component) {
                         const quantity = parseInt(data.quantity_purchased) || 0;
-                        return (temuRowTemuProfit(data) * quantity).toFixed(2);
+                        return (temuRowRPriceProfit(data) * quantity).toFixed(2);
                     }
                 },
                 {
@@ -519,7 +523,7 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
-                    headerTooltip: "GPFT % = (Temu Price × margin − LP − Temu Ship) ÷ Temu Price × 100",
+                    headerTooltip: "GPFT % = (R Price × margin − LP − Temu Ship) ÷ Temu Price × 100 — same as /temu2-tabulator",
                     mutator: function(value, data) {
                         return temuRowGpftPercent(data);
                     },
@@ -536,7 +540,7 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
-                    headerTooltip: "GROI % = (Temu Price × margin − LP − Temu Ship) ÷ LP × 100",
+                    headerTooltip: "GROI % = (R Price × margin − LP − Temu Ship) ÷ LP × 100 — same as /temu2-tabulator",
                     mutator: function(value, data) {
                         return temuRowGroiPercent(data);
                     },
@@ -663,7 +667,7 @@
                 
                 const hasSales = quantity > 0 && basePrice > 0;
                 if (hasSales) {
-                    const profit = temuRowTemuProfit(row) * quantity;
+                    const profit = temuRowRPriceProfit(row) * quantity;
                     totalPft += profit;
                     totalL30Sales += quantity * temuPrice;
                     totalTemuFullPriceSales += quantity * temuPrice;

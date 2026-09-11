@@ -6,6 +6,7 @@ use App\Models\NeweggItem;
 use App\Models\NeweggOrderItem;
 use App\Models\NeweggPricing;
 use App\Models\ProductMaster;
+use App\Services\ChannelLivePriceSync;
 use App\Services\NeweggApiService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,17 @@ class FetchNeweggItemData extends Command
         {--raw : Print raw JSON for each batch}';
 
     protected $description = 'Fetch Newegg item price + inventory from the API into the newegg_pricing table';
+
+    /** @var array<string, float>|null */
+    private ?array $pushedPriceLookup = null;
+
+    /**
+     * @return array<string, float>
+     */
+    private function neweggPushedLookup(): array
+    {
+        return $this->pushedPriceLookup ??= ChannelLivePriceSync::lookupMap('newegg');
+    }
 
     public function handle(NeweggApiService $newegg): int
     {
@@ -147,7 +159,12 @@ class FetchNeweggItemData extends Command
                             'msrp'                 => $this->num($price['MSRP'] ?? null),
                             'map'                  => $this->num($price['MAP'] ?? null),
                             'checkout_map'         => $price['CheckoutMAP'] ?? null,
-                            'selling_price'        => $this->num($price['SellingPrice'] ?? null),
+                            'selling_price'        => ChannelLivePriceSync::preferIncoming(
+                                'newegg',
+                                (string) $sku,
+                                $this->num($price['SellingPrice'] ?? null),
+                                $this->neweggPushedLookup()
+                            ),
                             'enable_free_shipping' => $price['EnableFreeShipping'] ?? null,
                             'on_promotion'         => $price['OnPromotion'] ?? null,
                             'limit_quantity'       => $price['LimitQuantity'] ?? null,

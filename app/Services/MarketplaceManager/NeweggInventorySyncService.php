@@ -8,6 +8,7 @@ use App\Models\NeweggPricing;
 use App\Models\NeweggPricingPrice;
 use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
+use App\Services\ChannelLivePriceSync;
 use App\Services\NeweggApiService;
 use App\Services\ShopifyApiService;
 use Illuminate\Support\Facades\Log;
@@ -495,14 +496,20 @@ class NeweggInventorySyncService
      */
     protected function updateLocalPrices(array $rows): void
     {
+        $lookup = ChannelLivePriceSync::lookupMap('newegg');
         foreach ($rows as $row) {
             $sku = (string) $row['sku_code'];
-            NeweggMetric::query()->where('sku', $sku)->update(['price' => (float) $row['price']]);
+            $incoming = is_numeric($row['price']) ? (float) $row['price'] : null;
+            $write = ChannelLivePriceSync::preferIncoming('newegg', $sku, $incoming, $lookup) ?? $incoming;
+            if ($write === null) {
+                continue;
+            }
+            NeweggMetric::query()->where('sku', $sku)->update(['price' => $write]);
 
             if (Schema::hasTable('newegg_pricing_prices')) {
                 NeweggPricingPrice::updateOrCreate(
                     ['sku' => strtoupper(trim($sku))],
-                    ['price' => (float) $row['price']]
+                    ['price' => $write]
                 );
             }
 
@@ -510,7 +517,7 @@ class NeweggInventorySyncService
                 NeweggPricing::query()
                     ->where('seller_part_number', $sku)
                     ->orWhere('seller_part_number', strtoupper($sku))
-                    ->update(['selling_price' => (float) $row['price']]);
+                    ->update(['selling_price' => $write]);
             }
         }
     }

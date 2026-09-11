@@ -390,6 +390,7 @@ class WalmartApiService
 
         $now = now();
         $rows = [];
+        $pushedLookup = ChannelLivePriceSync::lookupMap('walmart');
 
         foreach ($items as $item) {
             $sku = strtoupper(trim((string) ($item['sku'] ?? '')));
@@ -398,7 +399,12 @@ class WalmartApiService
                 continue;
             }
 
-            $listedPrice = $this->extractListedPrice($item);
+            $listedPrice = ChannelLivePriceSync::preferIncoming(
+                'walmart',
+                $sku,
+                $this->extractListedPrice($item),
+                $pushedLookup
+            );
             if ($listedPrice !== null) {
                 $stats['with_price']++;
             } else {

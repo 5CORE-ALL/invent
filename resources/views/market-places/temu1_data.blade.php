@@ -585,10 +585,10 @@
                             title="L30 units sold">Qty: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge"
                             style="color: black; font-weight: bold;"
-                            title="GPFT% = Σ Full-Price PFT ÷ Σ Full Temu Price Sales × 100 (same as /temu-decrease)">GPFT: 0%</span>
+                            title="GPFT% = Σ (Full Temu Price × margin − LP − Ship) × Qty ÷ Σ (Full Temu Price × Qty) × 100 — same as /temu2-decrease and /temu3-decrease">GPFT: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge"
                             style="color: white; font-weight: bold;"
-                            title="GROI% = Σ R-Price PFT ÷ Σ COGS × 100 (same as /temu-decrease)">GROI: 0%</span>
+                            title="GROI% = Σ (R Price × margin − LP − Ship) × Qty ÷ Σ (LP × Qty) × 100 — same as /temu2-decrease and /temu3-decrease">GROI: 0%</span>
                         <span class="badge fs-6 p-2" id="ads-percent-badge"
                             style="background-color: #d63384; color: white; font-weight: bold;"
                             title="Ads% = Ad Spend / Full Temu Price Sales × 100">Ads: 0%</span>
@@ -1069,7 +1069,19 @@
         if (!(rPrice > 0)) return null;
         const lp = parseFloat(rowData && rowData.lp) || 0;
         const ship = parseFloat(rowData && rowData.temu_ship) || 0;
-        return (rPrice * 0.95) - ship - lp;
+        return (rPrice * temuSpriceMargin(rowData)) - ship - lp;
+    }
+    /** Same as /temu3-decrease: GPFT$ = R Price × margin − LP − Temu Ship */
+    function temu2GpftDollar(rowData) {
+        return temu2PftDollars(rowData);
+    }
+    /** GPFT $ on Full Temu Price — same badge / /temu2-decrease / /temu3-decrease. */
+    function temu2FullPftDollars(rowData) {
+        const fullPrice = temu2FullPriceFromRow(rowData);
+        if (!(fullPrice > 0)) return null;
+        const lp = parseFloat(rowData && rowData.lp) || 0;
+        const ship = parseFloat(rowData && rowData.temu_ship) || 0;
+        return (fullPrice * temuSpriceMargin(rowData)) - ship - lp;
     }
     function temu2NpftDollars(rowData) {
         const pft = temu2PftDollars(rowData);
@@ -4013,13 +4025,13 @@
                         const lp = parseFloat(d.lp) || 0;
                         return (pft != null && lp > 0) ? (pft / lp) * 100 : (parseFloat(d.roi_percent) || 0);
                     }),
-                    headerTooltip: "GROI% = Gpft / LP. Gpft = (Temu R Price × 0.95) − Temu Ship − LP",
+                    headerTooltip: "GROI% = (R Price × margin − LP − Temu Ship) ÷ LP × 100 — same as /temu2-decrease and /temu3-decrease",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
                         const pft = typeof temu2PftDollars === 'function' ? temu2PftDollars(rowData) : null;
                         const lp = parseFloat(rowData.lp) || 0;
-                        const value = (pft != null && lp > 0) ? (pft / lp) * 100 : (parseFloat(cell.getValue()) || 0);
+                        const value = (pft != null && lp > 0) ? (pft / lp) * 100 : (parseFloat(cell.getValue()) || parseFloat(rowData.roi_percent) || 0);
                         const colorClass = getRoiColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="roi_percent" title="View GROI% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6f42c1;"></span></button>` : '';
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
@@ -4030,22 +4042,22 @@
                     field: "profit_percent",
                     hozAlign: "center",
                     minWidth: 80,
-                    headerTooltip: "GPRFT% = Gpft / Temu Price. Gpft = (Temu R Price × 0.95) − Temu Ship − LP",
+                    headerTooltip: "GPFT% = (Full Temu Price × margin − LP − Temu Ship) ÷ Full Temu Price × 100 — same as /temu2-decrease and /temu3-decrease",
                     sorter: function(a, b, aRow, bRow) {
                         const calc = (row) => {
-                            const gpft = typeof temu2PftDollars === 'function' ? temu2PftDollars(row) : null;
+                            const gpft = typeof temu2FullPftDollars === 'function' ? temu2FullPftDollars(row) : null;
                             const fullPrice = temu2FullPriceFromRow(row);
-                            if (gpft == null || !(fullPrice > 0)) return 0;
-                            return (gpft / fullPrice) * 100;
+                            if (gpft != null && fullPrice > 0) return (gpft / fullPrice) * 100;
+                            return parseFloat(row.profit_percent) || 0;
                         };
                         return calc(aRow.getData()) - calc(bRow.getData());
                     },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
-                        const gpft = typeof temu2PftDollars === 'function' ? temu2PftDollars(rowData) : null;
+                        const gpft = typeof temu2FullPftDollars === 'function' ? temu2FullPftDollars(rowData) : null;
                         const fullPrice = temu2FullPriceFromRow(rowData);
-                        const value = (gpft != null && fullPrice > 0) ? (gpft / fullPrice) * 100 : 0;
+                        const value = (gpft != null && fullPrice > 0) ? (gpft / fullPrice) * 100 : (parseFloat(rowData.profit_percent) || 0);
                         const colorClass = getPftColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="profit_percent" title="View GPRFT% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff1493;"></span></button>` : '';
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
@@ -4878,10 +4890,11 @@
             if (gpftFilter !== 'all') {
                 table.addFilter(function(data) {
                     if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
-                    const price = parseFloat(data.temu_price) || 0;
-                    const gpft = price > 0
-                        ? ((price * TEMU_MARGIN - (parseFloat(data.lp) || 0) - (parseFloat(data.temu_ship) || 0)) / price) * 100
-                        : 0;
+                    const gpftDollars = typeof temu2FullPftDollars === 'function' ? temu2FullPftDollars(data) : null;
+                    const fullPrice = typeof temu2FullPriceFromRow === 'function' ? temu2FullPriceFromRow(data) : 0;
+                    const gpft = (gpftDollars != null && fullPrice > 0)
+                        ? (gpftDollars / fullPrice) * 100
+                        : (parseFloat(data.profit_percent) || 0);
                     if (gpftFilter === 'negative') return gpft < 0;
                     if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
                     if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
@@ -4895,7 +4908,11 @@
             if (groiFilter !== 'all') {
                 table.addFilter(function(data) {
                     if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
-                    const groi = parseFloat(data.roi_percent) || 0;
+                    const pft = typeof temu2PftDollars === 'function' ? temu2PftDollars(data) : null;
+                    const lp = parseFloat(data.lp) || 0;
+                    const groi = (pft != null && lp > 0)
+                        ? (pft / lp) * 100
+                        : (parseFloat(data.roi_percent) || 0);
                     if (groiFilter === 'lt40') return groi < 40;
                     if (groiFilter === '40-75') return groi >= 40 && groi < 75;
                     if (groiFilter === '75-125') return groi >= 75 && groi < 125;

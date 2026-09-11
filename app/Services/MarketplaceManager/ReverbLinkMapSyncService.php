@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\ReverbMetric;
+use App\Services\ChannelLivePriceSync;
 use App\Services\ReverbManagerApiService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -193,6 +194,7 @@ class ReverbLinkMapSyncService
     protected function upsertItems(array $items): int
     {
         $upserted = 0;
+        $pushedLookup = ChannelLivePriceSync::lookupMap('reverb');
 
         foreach ($items as $item) {
             if (! is_array($item)) {
@@ -212,12 +214,13 @@ class ReverbLinkMapSyncService
                     continue;
                 }
 
+                $incoming = isset($row['price']) && is_numeric($row['price']) ? (float) $row['price'] : null;
                 ReverbMetric::updateOrCreate(
                     ['sku' => $sku],
                     [
                         'product_id' => $productId,
                         'product_name' => $row['product_name'] ?? null,
-                        'price' => $row['price'] ?? 0,
+                        'price' => ChannelLivePriceSync::preferIncoming('reverb', $sku, $incoming, $pushedLookup) ?? 0,
                     ]
                 );
                 $upserted++;

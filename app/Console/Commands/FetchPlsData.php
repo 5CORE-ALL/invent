@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\PLSProduct;
+use App\Services\ChannelLivePriceSync;
 use App\Services\ShopifyPlsTokenService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -150,10 +151,12 @@ class FetchPlsData extends Command
         
         $this->info("Step 4: Inserting ALL catalog products (with sales data overlayed)...");
         $insertData = [];
+        $pushedLookup = ChannelLivePriceSync::lookupMap('pls');
         foreach ($catalogProducts as $sku => $data) {
+            $incoming = isset($data['price']) && is_numeric($data['price']) ? (float) $data['price'] : null;
             $row = [
                 'sku'        => $sku,
-                'price'      => $data['price'],
+                'price'      => ChannelLivePriceSync::preferIncoming('pls', (string) $sku, $incoming, $pushedLookup) ?? $data['price'],
                 'p_l30'      => $data['l30'],
                 'p_l60'      => $data['l60'],
                 'created_at' => now(),

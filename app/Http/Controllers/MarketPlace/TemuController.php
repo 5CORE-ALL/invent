@@ -2393,6 +2393,59 @@ class TemuController extends Controller
     }
 
     /**
+     * Parent GPFT% / GROI% from children — same Full-Price GPFT and R-Price GROI as /temu2-decrease.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  list<array<string, mixed>>  $children
+     * @return array<string, mixed>
+     */
+    private function rollupTemuParentProfitMetrics(array $row, array $children, float $percentage): array
+    {
+        $sumFullPft = 0.0;
+        $sumFullSales = 0.0;
+        $sumRPft = 0.0;
+        $sumCogs = 0.0;
+        $sumQty = 0;
+        $sumLpQty = 0.0;
+        $sumShipQty = 0.0;
+
+        foreach ($children as $child) {
+            $qty = (int) ($child['temu_l30'] ?? 0);
+            $base = (float) ($child['base_price'] ?? 0);
+            if ($qty <= 0 || $base <= 0) {
+                continue;
+            }
+            $lp = (float) ($child['lp'] ?? 0);
+            $ship = (float) ($child['temu_ship'] ?? 0);
+            $margin = (float) ($child['percentage'] ?? $percentage);
+            if ($margin <= 0) {
+                $margin = $percentage;
+            }
+            $full = TemuShopifySalesService::computeFullTemuPrice($base);
+            $rPrice = TemuShopifySalesService::computeRPrice($base);
+            $sumFullPft += ($full * $margin - $lp - $ship) * $qty;
+            $sumFullSales += $full * $qty;
+            $sumRPft += TemuShopifySalesService::computeGroiProfit($rPrice, $margin, $lp, $ship) * $qty;
+            $sumCogs += $lp * $qty;
+            $sumQty += $qty;
+            $sumLpQty += $lp * $qty;
+            $sumShipQty += $ship * $qty;
+        }
+
+        if ($sumQty <= 0) {
+            return $row;
+        }
+
+        $row['profit'] = round($sumRPft, 2);
+        $row['profit_percent'] = $sumFullSales > 0 ? round(($sumFullPft / $sumFullSales) * 100, 2) : 0.0;
+        $row['roi_percent'] = $sumCogs > 0 ? round(($sumRPft / $sumCogs) * 100, 2) : 0.0;
+        $row['lp'] = round($sumLpQty / $sumQty, 2);
+        $row['temu_ship'] = round($sumShipQty / $sumQty, 2);
+
+        return $row;
+    }
+
+    /**
      * @param  string|bool  $channel  'temu' | 'temu2' | 'temu3' (bool kept for older callers)
      */
     protected function buildTemuDecreaseDataResponse(Request $request, $channel = 'temu')
@@ -2721,14 +2774,22 @@ class TemuController extends Controller
 
                 $salesTotalOrders++;
                 $qty = (int)($row->quantity_purchased ?? 0);
-                $base = (float)($row->base_price_total ?? 0);
+                $rawBase = (float) ($row->base_price_total ?? 0);
+                $listingBase = (float) ($row->listing_base_price ?? 0);
+                // Listing base for GPFT/GROI (same as /temu2-decrease / /temu3-decrease).
+                // Do not use line_sales/qty — that bulk unit zeroed Temu 1 profit.
+                $base = $listingBase > 0
+                    ? $listingBase
+                    : (($isTemu2Pricing || $isTemu3)
+                        ? $rawBase
+                        : ($rawBase > 0 ? TemuShopifySalesService::goodsBaseFromUnit($rawBase) : 0.0));
                 $salesTotalQuantity += $qty;
 
                 // Full Temu Price = (base × 1.1364); +$2.99 if that ≤ $26.99 — Sales / GPFT
                 $fullPrice = TemuShopifySalesService::computeFullTemuPrice($base);
                 $salesTotalRevenue += $fullPrice * $qty;
 
-                if (($isTemu2Pricing || $isTemu3) && $qty > 0 && $base > 0) {
+                if ($qty > 0 && $base > 0) {
                     $pm = $pmBySku[$rawSku]
                         ?? $pmByNormalized[$normalizedRowSku]
                         ?? $pmByNoSpace[$normalizedRowSkuNoSpace]
@@ -2752,8 +2813,9 @@ class TemuController extends Controller
                         }
                         $orderTemuShip = ProductMasterTemuShip::forPricing($values, $pm);
                     }
-                    // Same as /temu-decrease: GPFT $ on Full Price; GROI $ on Temu R Price
-                    $rPrice = $base <= 26.99 ? ($base + 2.99) : $base;
+                    // Same as /temu2-decrease and /temu3-decrease:
+                    // GPFT $ on Full Price; GROI $ on Temu R Price
+                    $rPrice = TemuShopifySalesService::computeRPrice($base);
                     $salesTotalPftFull += ($fullPrice * $percentage - $orderLp - $orderTemuShip) * $qty;
                     $salesTotalPft += TemuShopifySalesService::computeGroiProfit($rPrice, $percentage, $orderLp, $orderTemuShip) * $qty;
                     $salesTotalCogs += $orderLp * $qty;
@@ -3645,7 +3707,7 @@ class TemuController extends Controller
                     $childrenByParent[$pk][] = $row;
                 }
 
-                $processedData = $processedData->map(function ($row) use ($childrenByParent, $normalizeParentKey, $goodsIdMetricTotals) {
+                $processedData = $processedData->map(function ($row) use ($childrenByParent, $normalizeParentKey, $goodsIdMetricTotals, $percentage) {
                     if (empty($row['is_parent'])) {
                         return $row;
                     }
@@ -3747,6 +3809,7 @@ class TemuController extends Controller
                     $row['cvr_percent'] = $cvrViews > 0 ? round(($temuL30 / $cvrViews) * 100, 2) : 0;
                     $row['cvr_30'] = $row['cvr_percent'];
                     $row['nr_req'] = $hasReq ? 'REQ' : 'NR';
+                    $row = $this->rollupTemuParentProfitMetrics($row, $children, (float) $percentage);
 
                     return $row;
                 })->values();
@@ -3768,7 +3831,7 @@ class TemuController extends Controller
                     $childrenByParent[$pk][] = $row;
                 }
 
-                $processedData = $processedData->map(function ($row) use ($childrenByParent, $normalizeParentKey) {
+                $processedData = $processedData->map(function ($row) use ($childrenByParent, $normalizeParentKey, $percentage) {
                     if (empty($row['is_parent'])) {
                         return $row;
                     }
@@ -3838,6 +3901,7 @@ class TemuController extends Controller
                     $row['cvr_percent'] = $cvrViews > 0 ? round(($temuL30 / $cvrViews) * 100, 2) : 0;
                     $row['cvr_30'] = $row['cvr_percent'];
                     $row['nr_req'] = $hasReq ? 'REQ' : 'NR';
+                    $row = $this->rollupTemuParentProfitMetrics($row, $children, (float) $percentage);
 
                     return $row;
                 })->values();

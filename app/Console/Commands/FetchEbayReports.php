@@ -7,6 +7,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use App\Models\EbayMetric;
 use App\Models\EbayTask;
+use App\Services\ChannelLivePriceSync;
 use Illuminate\Support\Facades\DB;
 use ZipArchive;
 
@@ -148,6 +149,7 @@ class FetchEbayReports extends Command
             // Save metrics with SKU as unique identifier in chunks
             $saved = 0;
             $savedWithStock = 0;
+            $pushedLookup = ChannelLivePriceSync::lookupMap('ebay1');
             $skuChunks = array_chunk($skuToItemId, 100, true);
             foreach ($skuChunks as $chunk) {
                 foreach ($chunk as $sku => $itemId) {
@@ -164,11 +166,14 @@ class FetchEbayReports extends Command
                         $savedWithStock++;
                     }
                     
+                    $incoming = isset($rowData['price']) && is_numeric($rowData['price'])
+                        ? (float) $rowData['price']
+                        : null;
                     EbayMetric::updateOrCreate(
                         ['sku' => $sku],
                         [
                             'item_id' => $itemId,
-                            'ebay_price' => $rowData['price'] ?? null,
+                            'ebay_price' => ChannelLivePriceSync::preferIncoming('ebay1', (string) $sku, $incoming, $pushedLookup),
                             'ebay_stock' => $stockValue,
                             'listed_status' => $listedStatusValue,
                             'report_date' => now()->toDateString(),

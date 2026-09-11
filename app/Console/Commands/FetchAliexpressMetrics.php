@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\AliexpressMetric;
 use App\Models\AliexpressPricingPrice;
 use App\Services\AliExpressApiService;
+use App\Services\ChannelLivePriceSync;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Schema;
 
@@ -108,6 +109,7 @@ class FetchAliexpressMetrics extends Command
         $catalogComplete = false;
         $hasListingStatus = Schema::hasTable('aliexpress_metric')
             && Schema::hasColumn('aliexpress_metric', 'listing_status');
+        $pushedLookup = ChannelLivePriceSync::lookupMap('aliexpress');
 
         while (true) {
             $result = $api->getInventory($page, $pageSize);
@@ -164,6 +166,14 @@ class FetchAliexpressMetrics extends Command
                     if ($sku === '' || (! $hasMerchantSku && $price <= 0 && $stock === null)) {
                         continue;
                     }
+                    if ($hasMerchantSku) {
+                        $price = (float) (ChannelLivePriceSync::preferIncoming(
+                            'aliexpress',
+                            $sku,
+                            $price,
+                            $pushedLookup
+                        ) ?? $price);
+                    }
 
                     $payload = [
                         'price' => $price,
@@ -180,7 +190,7 @@ class FetchAliexpressMetrics extends Command
 
                     // Pricing grid reads aliexpress_pricing_prices — always write merchant SKUs.
                     if ($syncPricing && $hasMerchantSku) {
-                        if ($this->upsertPricingRow($sku, $price, $stock)) {
+                        if ($this->upsertPricingRow($sku, $price, $stock, $pushedLookup)) {
                             $pricingSaved++;
                             if ($stock !== null) {
                                 $stockUpdated++;
@@ -341,12 +351,14 @@ class FetchAliexpressMetrics extends Command
     /**
      * @return bool True if a pricing row was created or updated
      */
-    private function upsertPricingRow(string $sku, float $price, ?int $stock): bool
+    private function upsertPricingRow(string $sku, float $price, ?int $stock, ?array $pushedLookup = null): bool
     {
         $normalized = $this->normalizePricingSku($sku);
         if ($normalized === '') {
             return false;
         }
+
+        $price = (float) (ChannelLivePriceSync::preferIncoming('aliexpress', $normalized, $price, $pushedLookup) ?? $price);
 
         $row = AliexpressPricingPrice::query()->where('sku', $normalized)->first()
             ?? AliexpressPricingPrice::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();

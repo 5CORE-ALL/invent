@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
+use App\Services\ChannelLivePriceSync;
 use App\Services\TikTok2ShopService;
 use App\Services\TikTokShopService;
 use Illuminate\Console\Command;
@@ -37,6 +38,17 @@ class SyncTikTokApiData extends Command
     protected string $productModel = TikTokProduct::class;
 
     protected string $channel = 'tiktok';
+
+    /** @var array<string, float>|null */
+    private ?array $pushedPriceLookup = null;
+
+    /**
+     * @return array<string, float>
+     */
+    private function tiktokPushedLookup(): array
+    {
+        return $this->pushedPriceLookup ??= ChannelLivePriceSync::lookupMap($this->channel);
+    }
 
     /**
      * Execute the console command.
@@ -308,9 +320,15 @@ class SyncTikTokApiData extends Command
                             continue;
                         }
 
+                        $incoming = isset($row['price']) && is_numeric($row['price']) ? (float) $row['price'] : null;
                         $updateData = [
                             'product_id' => (string) $productId,
-                            'price' => $row['price'],
+                            'price' => ChannelLivePriceSync::preferIncoming(
+                                $this->channel,
+                                $normalizedSku,
+                                $incoming,
+                                $this->tiktokPushedLookup()
+                            ),
                         ];
                         if ($hasSkuIdCol && $row['sku_id'] !== null && $row['sku_id'] !== '') {
                             $updateData['sku_id'] = (string) $row['sku_id'];

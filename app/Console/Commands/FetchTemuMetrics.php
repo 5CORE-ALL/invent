@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\TemuMetric;
+use App\Services\ChannelLivePriceSync;
 use App\Services\TemuApiService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -26,6 +27,17 @@ class FetchTemuMetrics extends Command
      * @var string
      */
     protected $description = 'Fetch Temu SKUs, goods IDs, order qty, stock, base prices, and ads analytics';
+
+    /** @var array<string, float>|null */
+    private ?array $pushedPriceLookup = null;
+
+    /**
+     * @return array<string, float>
+     */
+    private function temuPushedLookup(): array
+    {
+        return $this->pushedPriceLookup ??= ChannelLivePriceSync::lookupMap('temu');
+    }
 
     /**
      * Execute the console command.
@@ -276,6 +288,11 @@ class FetchTemuMetrics extends Command
                 ->whereNotNull('goods_id')
                 ->where('goods_id', '!=', '')
                 ->get(['sku', 'sku_id', 'goods_id']);
+            $pushedLookup = ChannelLivePriceSync::lookupMap('temu');
+            $idToSku = [];
+            foreach ($rows as $row) {
+                $idToSku[(string) $row->sku_id] = (string) $row->sku;
+            }
 
             if ($rows->isEmpty()) {
                 $this->warn('No rows with both goods_id and sku_id. Run fetchSkus() + fetchGoodsId() first.');
@@ -369,8 +386,12 @@ class FetchTemuMetrics extends Command
                             if ($skuId === null || $amount === null || ! is_numeric($amount)) {
                                 continue;
                             }
+                            $sku = $idToSku[(string) $skuId] ?? '';
+                            $write = $sku !== ''
+                                ? ChannelLivePriceSync::preferIncoming('temu', $sku, (float) $amount, $pushedLookup)
+                                : (float) $amount;
                             $n = TemuMetric::where('sku_id', (string) $skuId)->update([
-                                'base_price' => (float) $amount,
+                                'base_price' => $write,
                             ]);
                             if ($n) {
                                 $updatedCount += $n;
@@ -384,8 +405,12 @@ class FetchTemuMetrics extends Command
                     $amount = $goodsBlock['basePrice']
                         ?? ($goodsBlock['supplierPrice']['amount'] ?? null);
                     if ($skuId !== null && $amount !== null && is_numeric($amount)) {
+                        $sku = $idToSku[(string) $skuId] ?? '';
+                        $write = $sku !== ''
+                            ? ChannelLivePriceSync::preferIncoming('temu', $sku, (float) $amount, $pushedLookup)
+                            : (float) $amount;
                         $n = TemuMetric::where('sku_id', (string) $skuId)->update([
-                            'base_price' => (float) $amount,
+                            'base_price' => $write,
                         ]);
                         if ($n) {
                             $updatedCount += $n;
@@ -707,6 +732,12 @@ class FetchTemuMetrics extends Command
                         $price = $sku['salePrice'];
                     }
                     $price = is_numeric($price) ? (float) $price : null;
+                    $price = ChannelLivePriceSync::preferIncoming(
+                        'temu',
+                        (string) $outSkuSn,
+                        $price,
+                        $this->temuPushedLookup()
+                    );
 
                     $stock = $sku['stock']
                         ?? $sku['quantity']
