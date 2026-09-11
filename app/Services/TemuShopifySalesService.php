@@ -180,6 +180,94 @@ class TemuShopifySalesService
     }
 
     /**
+     * On-page Temu 1 / Temu 2 SGROI% at a candidate S PRC (Full Temu Price):
+     *   ((S R Price × 0.95) − ship − LP) / LP × 100
+     */
+    public static function sgroiAtSprice(float $sprice, float $lp, float $ship, float $listingBase = 0.0): ?float
+    {
+        if (! ($sprice > 0) || ! ($lp > 0) || ! is_finite($sprice) || ! is_finite($lp)) {
+            return null;
+        }
+        if (! is_finite($ship)) {
+            $ship = 0.0;
+        }
+        $rPrice = $listingBase > 0 ? self::computeRPrice($listingBase) : 0.0;
+        $fullPrice = $listingBase > 0 ? self::computeFullTemuPrice($listingBase) : 0.0;
+        $sR = self::computeSRPrice($sprice, $rPrice, $fullPrice);
+        if (! ($sR > 0)) {
+            return null;
+        }
+
+        return (($sR * self::DECREASE_TAKEHOME) - $ship - $lp) / $lp * 100;
+    }
+
+    /**
+     * Back-solve S PRC (Full Temu Price) so sgroiAtSprice equals Target GROI%.
+     * Target GROI decides S PRC — SGROI is not derived from a leftover price.
+     */
+    public static function spriceFromTargetSgroi(float $lp, float $ship, float $groiPct, float $listingBase = 0.0): float
+    {
+        if (! ($lp > 0) || ! is_finite($lp) || ! is_finite($groiPct)) {
+            return 0.0;
+        }
+        if (! is_finite($ship)) {
+            $ship = 0.0;
+        }
+        $targetSR = ($lp * (1 + $groiPct / 100) + $ship) / self::DECREASE_TAKEHOME;
+        if (! ($targetSR > 0) || ! is_finite($targetSR)) {
+            return 0.0;
+        }
+        $base = $targetSR > 29.98 ? $targetSR : max(0.01, $targetSR - 2.99);
+        $seed = self::computeFullTemuPrice($base);
+        if (! ($seed > 0)) {
+            $seed = $targetSR;
+        }
+        $lo = max(0.01, $seed * 0.35);
+        $hi = max($seed * 2.8, $seed + 20);
+        for ($expand = 0; $expand < 10; $expand++) {
+            $gLo = self::sgroiAtSprice($lo, $lp, $ship, $listingBase);
+            $gHi = self::sgroiAtSprice($hi, $lp, $ship, $listingBase);
+            if ($gLo === null || $gHi === null) {
+                break;
+            }
+            if ($gLo <= $groiPct && $groiPct <= $gHi) {
+                break;
+            }
+            if ($groiPct < $gLo) {
+                $hi = $lo;
+                $lo = max(0.01, $lo * 0.5);
+            } else {
+                $lo = $hi;
+                $hi = $hi * 1.8;
+            }
+        }
+        $best = $seed;
+        $bestErr = INF;
+        for ($i = 0; $i < 40; $i++) {
+            $mid = ($lo + $hi) / 2;
+            $g = self::sgroiAtSprice($mid, $lp, $ship, $listingBase);
+            if ($g === null) {
+                break;
+            }
+            $err = abs($g - $groiPct);
+            if ($err < $bestErr) {
+                $bestErr = $err;
+                $best = $mid;
+            }
+            if ($g < $groiPct) {
+                $lo = $mid;
+            } else {
+                $hi = $mid;
+            }
+        }
+        if (! is_finite($best) || ! ($best > 0)) {
+            return 0.0;
+        }
+
+        return round($best, 2);
+    }
+
+    /**
      * Invert Full Temu Price back to listing base (S Temu B Prc / push base).
      */
     public static function computeBaseFromFullTemuPrice(float $fullPrice): float

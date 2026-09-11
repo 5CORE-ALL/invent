@@ -1027,12 +1027,20 @@
             const meta = ebayDilGroiMetaForRow(d);
             return meta ? meta.sprc : 0;
         }
+        /** Target GROI% that decided S PRC. Null when Sprc Dil has no price. */
+        function ebayDilGroiTargetGroi(d) {
+            const meta = ebayDilGroiMetaForRow(d);
+            if (!meta || !(meta.sprc > 0)) return null;
+            const n = Number(meta.groi);
+            return isFinite(n) ? n : null;
+        }
         function ebayDilGroiOwnsRow(d) {
             const meta = ebayDilGroiMetaForRow(d);
             return !!(meta && meta.sprc > 0);
         }
         window.ebayDilGroiMetaForRow = ebayDilGroiMetaForRow;
         window.ebaySprcDilForRow = ebaySprcDilForRow;
+        window.ebayDilGroiTargetGroi = ebayDilGroiTargetGroi;
         window.ebayDilGroiOwnsRow = ebayDilGroiOwnsRow;
         window.ebayDilGroiTipText = ebayDilGroiTipText;
         window.ebayCvrGroiAdjNow = ebayCvrGroiAdjNow;

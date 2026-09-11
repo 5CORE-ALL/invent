@@ -94,6 +94,43 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(37.50, $out['sprice'], 0.01);
     }
 
+    public function test_temu_zero_sold_uses_order_l30_not_shopify_ov(): void
+    {
+        $out = $this->compute('temu', [
+            'inv' => 58,
+            'dil' => 26,
+            'ov_l30' => 15,
+            'temu_l30' => 0,
+            'cvr' => 0,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 0,
+        ]);
+
+        $this->assertNotNull($out);
+        // Temu L30 = 0 → min GROI 50, CVR 0 → −10 → 40. Dil 26% (75 slab) is skipped.
+        $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
+        $this->assertEqualsWithDelta(35.00, $out['sprice'], 0.01);
+    }
+
+    public function test_temu_sold_uses_dil_slab(): void
+    {
+        $out = $this->compute('temu', [
+            'inv' => 58,
+            'dil' => 22,
+            'ov_l30' => 15,
+            'temu_l30' => 2,
+            'cvr' => 8,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 0,
+        ]);
+
+        $this->assertNotNull($out);
+        // Temu L30 > 0 → Dil 22% uses 20–25 slab GROI 70 (not 0 Sold min).
+        $this->assertEqualsWithDelta(70.0, $out['groi'], 0.01);
+    }
+
     public function test_cvr_down_lowers_groi_on_temu(): void
     {
         $out = $this->compute('temu', [
