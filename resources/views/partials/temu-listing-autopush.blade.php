@@ -66,7 +66,7 @@
                 if (!(shown > 0)) return false;
                 return !temuListingNearly(shown, temuListingCurrentBase(d));
             }
-            /** Same set as the blue-triangle badge: INV > 0 and shown S PRC ≠ live Base Price. */
+            /** Same set as the blue-triangle badge: INV > 0 and shown S PRC ≠ Temu Price. */
             function temuListingHasBlueTriangle(d) {
                 if (!d) return false;
                 if (typeof temu2HasBlueTriangle === 'function') return !!temu2HasBlueTriangle(d);
@@ -76,8 +76,10 @@
                 if (!sku || sku.indexOf('PARENT') !== -1) return false;
                 if (d.is_parent || d.is_parent_row || d.is_parent_summary) return false;
                 const sprice = temuListingShownSprice(d);
-                const price = temuListingCurrentBase(d);
-                return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+                const temuPrice = (typeof temuRowTemuPrice === 'function')
+                    ? temuRowTemuPrice(d)
+                    : (parseFloat(d.temu_price_display || d.temu_price) || 0);
+                return sprice > 0 && temuPrice > 0 && Math.round(sprice * 100) !== Math.round(temuPrice * 100);
             }
             function temuListingAutoEligible(d) {
                 if (!d) return false;

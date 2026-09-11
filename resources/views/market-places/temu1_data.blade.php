@@ -633,7 +633,7 @@
                             title="Click to filter Missing L (INV&gt;0, not listed, REQ)">M L: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'temu2-price-gt-lmp-badge', 'pglChannelKey' => 'temu', 'pglPriceField' => 'temu_price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'temu2-price-lt80-lmp-badge', 'pltChannelKey' => 'temu', 'pltPriceField' => 'temu_price'])
-                        <span class="badge fs-6 p-2" id="temu2-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Price.">
+                        <span class="badge fs-6 p-2" id="temu2-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Temu Price.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="temu-amz-cap-badge"
                             style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
@@ -1813,11 +1813,22 @@
         return (parseFloat(row && (row.inventory != null ? row.inventory : row.INV)) || 0) > 0;
     }
 
+    /** Same number as the Temu Price column — not Base Price. */
+    function temuRowTemuPrice(data) {
+        const base = parseFloat(data && data.base_price) || 0;
+        if (base > 0 && typeof temu2FullPriceFromBase === 'function') {
+            return +temu2FullPriceFromBase(base).toFixed(2);
+        }
+        const stored = parseFloat(data && (data.temu_price_display != null ? data.temu_price_display : data.temu_price)) || 0;
+        return stored > 0 ? +stored.toFixed(2) : 0;
+    }
+    window.temuRowTemuPrice = temuRowTemuPrice;
+
     function temu2HasBlueTriangle(data) {
         if (isTemu2ParentRow(data) || !temuRowHasInv(data)) return false;
         const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(data) : temu2RowSpriceForAlert(data);
-        const price = parseFloat(data && data.base_price) || 0;
-        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        const temuPrice = temuRowTemuPrice(data);
+        return sprice > 0 && temuPrice > 0 && Math.round(sprice * 100) !== Math.round(temuPrice * 100);
     }
 
     function temuRawSprice(row) {
@@ -4353,7 +4364,7 @@
                     sorter: temuSortBy(function(d) {
                         return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
                     }),
-                    headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ live Base Price.",
+                    headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Temu Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
@@ -4361,7 +4372,7 @@
                             ? temuSpriceCellModel(rowData)
                             : { value: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
                         let value = model.value;
-                        const live = parseFloat(rowData.base_price) || 0;
+                        const live = typeof temuRowTemuPrice === 'function' ? temuRowTemuPrice(rowData) : 0;
                         const lmp = model.lmp || (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
                         if (!(value > 0)) return '';
                         const formatted = '$' + value.toFixed(2);
@@ -4377,7 +4388,7 @@
                             : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                + value.toFixed(2) + ' ≠ Base $' + live.toFixed(2) + '"></i>'
+                                + value.toFixed(2) + ' ≠ Temu Price $' + live.toFixed(2) + '"></i>'
                             : '';
                         let capHtml = '';
                         (model.labels || []).forEach(function(lbl) {
