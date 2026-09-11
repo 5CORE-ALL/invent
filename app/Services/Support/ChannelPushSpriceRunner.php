@@ -17,6 +17,7 @@ use App\Services\ChannelLivePriceSync;
 use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
+use App\Services\TemuShopifySalesService;
 use App\Support\MacysAmazonPriceCap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -263,7 +264,14 @@ class ChannelPushSpriceRunner
                         $live = $pulled;
                     }
                 }
-                ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, (float) $price);
+                $listingWrite = null;
+                if (in_array($this->channel, ['temu', 'temu2', 'temu3'], true) && is_array($payload)) {
+                    $sent = $payload['data']['price'] ?? $payload['price'] ?? null;
+                    if (is_numeric($sent) && (float) $sent > 0) {
+                        $listingWrite = (float) $sent;
+                    }
+                }
+                ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, (float) $price, $listingWrite);
             } catch (\Throwable $e) {
                 $ok = false;
                 $error = $e->getMessage();
@@ -408,7 +416,7 @@ class ChannelPushSpriceRunner
         }
 
         if (in_array($this->channel, ['temu', 'temu2', 'temu3'], true)) {
-            $base = \App\Services\TemuShopifySalesService::computePushBaseFromSprice($price);
+            $base = TemuShopifySalesService::computePushBaseFromSprice($pushPrice);
             if ($base !== null && $base > 0) {
                 $pushPrice = $base;
             }

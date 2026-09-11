@@ -1,4 +1,4 @@
-{{-- Temu / Temu 2 / Temu 3: S PRC → listing base via /temu(2|3)/push-price. Does not use save-sprice. --}}
+{{-- Temu / Temu 2 / Temu 3: S PRC → live listing via /temu(2|3)/push-price. Does not use save-sprice. --}}
         (function(global) {
             const TEMU_LISTING_CHANNEL = @json($channelPromoChannel ?? '');
             if (TEMU_LISTING_CHANNEL !== 'temu' && TEMU_LISTING_CHANNEL !== 'temu2' && TEMU_LISTING_CHANNEL !== 'temu3') return;
@@ -53,10 +53,13 @@
                 const n = parseFloat(fallback != null ? fallback : (d && (d.sprice != null ? d.sprice : d.SPRICE)));
                 return n > 0 ? +n.toFixed(2) : 0;
             }
-            function temuListingPushBase(sprice) {
-                if (typeof temuPushBaseFromSprice !== 'function') return null;
-                const base = temuPushBaseFromSprice(sprice);
-                return (base != null && base > 0) ? +Number(base).toFixed(2) : null;
+            function temuListingPushAmount(sprice) {
+                if (typeof temuPushBaseFromSprice === 'function') {
+                    const base = temuPushBaseFromSprice(sprice);
+                    return (base != null && base > 0) ? +Number(base).toFixed(2) : null;
+                }
+                const n = parseFloat(sprice);
+                return n > 0 ? +n.toFixed(2) : null;
             }
             function temuListingCurrentBase(d) {
                 const b = parseFloat(d && d.base_price);
@@ -64,11 +67,11 @@
             }
             function temuListingNeedsPush(d, sprice) {
                 const shown = temuListingShownSprice(d, sprice);
-                const base = temuListingPushBase(shown);
-                if (!(base > 0)) return false;
-                return !temuListingNearly(base, temuListingCurrentBase(d));
+                const want = temuListingPushAmount(shown);
+                if (!(want > 0)) return false;
+                return !temuListingNearly(want, temuListingCurrentBase(d));
             }
-            /** Same set as the blue-triangle badge: INV > 0 and shown S PRC ≠ Temu R Price. */
+            /** Same set as the blue-triangle badge: INV > 0 and shown S PRC ≠ live Base Price. */
             function temuListingHasBlueTriangle(d) {
                 if (!d) return false;
                 if (typeof temu2HasBlueTriangle === 'function') return !!temu2HasBlueTriangle(d);
@@ -78,7 +81,7 @@
                 if (!sku || sku.indexOf('PARENT') !== -1) return false;
                 if (d.is_parent || d.is_parent_row || d.is_parent_summary) return false;
                 const sprice = temuListingShownSprice(d);
-                const price = parseFloat(d.temu_price) || 0;
+                const price = temuListingCurrentBase(d);
                 return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
             }
             function temuListingAutoEligible(d) {
@@ -185,6 +188,10 @@
                         if (n > 0) live = n;
                     });
                     if (!(live > 0)) return;
+                    const pushed = parseFloat(d && (d.SPRICE_PUSHED_BASE != null ? d.SPRICE_PUSHED_BASE : d.base_price)) || 0;
+                    if (pushed > 0 && Math.abs(live - pushed) <= 0.011) {
+                        live = pushed;
+                    }
                     temuApplyPushedListingPrice(row, live, d);
                     temuListingPersistBase(sku, live);
                 });
@@ -221,7 +228,6 @@
                             temuListingPushed.add(String(item.sku).toUpperCase() + '|' + Number(item.pushBase).toFixed(2));
                             temuApplyPushedListingPrice(item.row, item.pushBase, d);
                             temuListingPersistBase(item.sku, item.pushBase);
-                            temuListingPullPrice(item.sku, item.row, d);
                         } else {
                             temuListingFail++;
                             if (item.row && typeof item.row.update === 'function') {
@@ -268,16 +274,16 @@
                     ? (tableRow.getData() || {})
                     : ((row && typeof row === 'object') ? row : {});
                 const shown = temuListingShownSprice(d, sprice);
-                const pushBase = temuListingPushBase(shown);
-                if (!sku || !(pushBase > 0)) return false;
+                const pushAmount = temuListingPushAmount(shown);
+                if (!sku || !(pushAmount > 0)) return false;
                 if (!opts.force && !temuListingAutoEligible(d)) return false;
                 const key = String(sku).toUpperCase();
-                const dedupe = key + '|' + pushBase.toFixed(2);
+                const dedupe = key + '|' + pushAmount.toFixed(2);
                 if (temuListingPushed.has(dedupe)) return false;
                 temuListingQ = temuListingQ.filter(function(it) {
                     return String(it.sku).toUpperCase() !== key;
                 });
-                temuListingQ.push({ sku: sku, sprice: shown, pushBase: pushBase, row: tableRow });
+                temuListingQ.push({ sku: sku, sprice: shown, pushBase: pushAmount, row: tableRow });
                 temuListingCancelled = false;
                 temuListingTotal = temuListingDone + temuListingQ.length + temuListingInflight;
                 temuListingSetProgress(true);
