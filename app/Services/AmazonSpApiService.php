@@ -2487,15 +2487,15 @@ class AmazonSpApiService
     protected function fetchListingsItemSummaries(string $sellerSku, string $accessToken): ?array
     {
         $sellerId = config('services.amazon_sp.seller_id');
-        $marketplaceId = $this->marketplaceId ?? config('services.amazon_sp.marketplace_id');
-        if (empty($sellerId) || empty($marketplaceId)) {
+        $marketplaceId = 'ATVPDKIKX0DER';
+        if (empty($sellerId)) {
             return null;
         }
 
         try {
             $url = $this->endpoint.'/listings/2021-08-01/items/'.$sellerId.'/'.rawurlencode($sellerSku)
-                .'?marketplaceIds='.rawurlencode((string) $marketplaceId)
-                .'&includedData='.rawurlencode('summaries,fulfillmentAvailability');
+                .'?marketplaceIds='.rawurlencode($marketplaceId)
+                .'&includedData='.rawurlencode('summaries,identifiers,attributes,fulfillmentAvailability');
 
             $response = Http::withoutVerifying()->timeout(30)->withHeaders([
                 'x-amz-access-token' => $accessToken,
@@ -2511,7 +2511,7 @@ class AmazonSpApiService
                 return null;
             }
 
-            $asin = $this->asinFromListingsItemBody($body);
+            $asin = self::extractAsinFromListingsItem($body);
             $summary = is_array($body['summaries'][0] ?? null) ? $body['summaries'][0] : [];
             $title = trim((string) ($summary['itemName'] ?? $summary['item_name'] ?? ''));
             $statusList = $summary['status'] ?? [];
@@ -2544,26 +2544,83 @@ class AmazonSpApiService
      */
     protected function asinFromListingsItemBody(array $body): string
     {
+        return self::extractAsinFromListingsItem($body);
+    }
+
+    public static function normalizeAsin(mixed $value): string
+    {
+        $asin = strtoupper(trim((string) $value));
+
+        return preg_match('/^[A-Z0-9]{10}$/', $asin) ? $asin : '';
+    }
+
+    /**
+     * Incomplete drafts often omit summaries.asin even when Seller Central shows an ASIN.
+     *
+     * @param  array<string, mixed>  $body
+     */
+    public static function extractAsinFromListingsItem(array $body): string
+    {
         foreach ($body['summaries'] ?? [] as $summary) {
             if (! is_array($summary)) {
                 continue;
             }
-            $asin = strtoupper(trim((string) ($summary['asin'] ?? $summary['ASIN'] ?? '')));
-            if (preg_match('/^[A-Z0-9]{10}$/', $asin)) {
+            $asin = self::normalizeAsin($summary['asin'] ?? $summary['ASIN'] ?? '');
+            if ($asin !== '') {
                 return $asin;
             }
         }
 
         $identifiers = $body['identifiers'] ?? [];
         if (is_array($identifiers)) {
+            $direct = self::normalizeAsin($identifiers['asin'] ?? $identifiers['ASIN'] ?? '');
+            if ($direct !== '') {
+                return $direct;
+            }
             foreach ($identifiers as $row) {
                 if (! is_array($row)) {
                     continue;
                 }
-                $asin = strtoupper(trim((string) ($row['identifier'] ?? $row['asin'] ?? '')));
-                if (preg_match('/^[A-Z0-9]{10}$/', $asin)) {
-                    return $asin;
+                foreach (['asin', 'ASIN', 'identifier', 'value'] as $key) {
+                    $type = strtoupper((string) ($row['identifierType'] ?? $row['type'] ?? ''));
+                    if ($type !== '' && $type !== 'ASIN' && $key !== 'asin' && $key !== 'ASIN') {
+                        continue;
+                    }
+                    $asin = self::normalizeAsin($row[$key] ?? '');
+                    if ($asin !== '') {
+                        return $asin;
+                    }
                 }
+            }
+        }
+
+        $attrs = is_array($body['attributes'] ?? null) ? $body['attributes'] : [];
+        foreach (['merchant_suggested_asin', 'asin'] as $key) {
+            $asin = self::firstAsinValue($attrs[$key] ?? null);
+            if ($asin !== '') {
+                return $asin;
+            }
+        }
+
+        return '';
+    }
+
+    private static function firstAsinValue(mixed $value): string
+    {
+        if (is_string($value) || is_numeric($value)) {
+            return self::normalizeAsin($value);
+        }
+        if (! is_array($value)) {
+            return '';
+        }
+        $direct = self::normalizeAsin($value['value'] ?? $value['asin'] ?? $value['ASIN'] ?? '');
+        if ($direct !== '') {
+            return $direct;
+        }
+        foreach ($value as $row) {
+            $asin = self::firstAsinValue($row);
+            if ($asin !== '') {
+                return $asin;
             }
         }
 
@@ -6080,14 +6137,6 @@ class AmazonSpApiService
 
         $hit = $this->fetchListingsItemSummaries((string) $matched, $token);
         $asin = trim((string) ($hit['asin'] ?? ''));
-        if ($hit === null || $asin === '') {
-            return [
-                'checked' => true,
-                'found' => false,
-                'seller_sku' => (string) $matched,
-                'message' => 'Amazon has SKU '.$matched.' but it is incomplete (no ASIN). Search Activate listings / Complete drafts in Seller Central, fix Amazon errors, then Save & Publish again.',
-            ];
-        }
 
         return [
             'checked' => true,
@@ -6408,8 +6457,13 @@ class AmazonSpApiService
 
             $status = strtoupper((string) ($json['status'] ?? ''));
             $accepted = $response->successful() && ! in_array($status, ['INVALID', 'FAILED'], true) && $issues === [];
+            $asin = self::extractAsinFromListingsItem($json);
             if ($accepted) {
-                return ['success' => true, 'message' => 'Amazon accepted the new listing for '.$sku.'.'];
+                return [
+                    'success' => true,
+                    'message' => 'Amazon accepted the new listing for '.$sku.'.',
+                    'asin' => $asin !== '' ? $asin : null,
+                ];
             }
 
             return [

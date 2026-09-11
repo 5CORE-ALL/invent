@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Services\AmazonSpApiService;
 use App\Services\MarketplaceManager\AmazonListingPublishService;
 use PHPUnit\Framework\TestCase;
 
@@ -49,5 +50,33 @@ class AmazonListingPublishBrandTest extends TestCase
     {
         $this->assertSame(2, AmazonListingPublishService::handlingDays([]));
         $this->assertSame(3, AmazonListingPublishService::handlingDays(['handling_time' => '3']));
+    }
+
+    public function test_extracts_asin_from_incomplete_draft_payload(): void
+    {
+        $this->assertSame('B0HJK69VHH', AmazonSpApiService::extractAsinFromListingsItem([
+            'sku' => 'LS 100-6 RED',
+            'summaries' => [],
+            'identifiers' => [
+                ['asin' => 'B0HJK69VHH', 'marketplaceId' => 'ATVPDKIKX0DER'],
+            ],
+        ]));
+        $this->assertSame('B0HJK69VHH', AmazonSpApiService::extractAsinFromListingsItem([
+            'attributes' => [
+                'merchant_suggested_asin' => [[
+                    'value' => 'B0HJK69VHH',
+                    'marketplace_id' => 'ATVPDKIKX0DER',
+                ]],
+            ],
+        ]));
+        $this->assertSame('', AmazonSpApiService::extractAsinFromListingsItem([
+            'summaries' => [],
+            'attributes' => [
+                'externally_assigned_product_identifier' => [[
+                    'type' => 'upc',
+                    'value' => '810199603534',
+                ]],
+            ],
+        ]));
     }
 }
