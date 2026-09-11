@@ -105,14 +105,36 @@ class TopDawgListingPublishService
             return ['success' => false, 'message' => 'No public image URL for '.$sku.'. Add an https image on CP Master (or Image Master).'];
         }
 
+        $pkg = $this->packageInches($product, $sku);
+        if ($pkg['weight'] === null || $pkg['length'] === null || $pkg['width'] === null || $pkg['height'] === null) {
+            return [
+                'success' => false,
+                'message' => $sku.': add weight and L/W/H (inches) on /dim-wt-master before publishing to TopDawg.',
+            ];
+        }
+
         $inv = $this->shopifyInv($sku);
         $res = $this->api->createProduct([
             'product_code' => $sku,
             'product_name' => $title,
             'description' => $this->resolveDescription($product, $title),
             'price' => $price,
+            'cost' => $price,
+            'msrp' => $this->resolveMsrp($sku, $product, $price),
             'qty_available' => $inv,
             'images' => $images,
+            'brand_name' => '5 Core',
+            'dept' => 'Electronics',
+            'section' => 'Music',
+            'category' => 'Music Accessories',
+            'gender' => 'Unisex',
+            'age_group' => 'Adults',
+            'pack_of' => 1,
+            'product_weight' => $pkg['weight'],
+            'ship_length' => $pkg['length'],
+            'ship_width' => $pkg['width'],
+            'ship_height' => $pkg['height'],
+            'product_made_in' => 'China',
         ]);
 
         if (empty($res['success'])) {
@@ -326,6 +348,101 @@ class TopDawgListingPublishService
         $ship = isset($values['ship']) && is_numeric($values['ship']) ? (float) $values['ship'] : 0.0;
         if ($lp > 0) {
             return round($lp + $ship, 2);
+        }
+
+        return null;
+    }
+
+    private function resolveMsrp(string $sku, ProductMaster $product, float $price): float
+    {
+        $map = $this->valuesNumber($this->productValues($product), 'map', 'MAP', 'msrp', 'MSRP');
+        if ($map !== null && $map >= $price) {
+            return round($map, 2);
+        }
+
+        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
+        foreach (['compare_at_price', 'compare_at', 'msrp'] as $field) {
+            $raw = $shopify->{$field} ?? null;
+            if (is_numeric($raw) && (float) $raw >= $price) {
+                return round((float) $raw, 2);
+            }
+        }
+
+        return round($price, 2);
+    }
+
+    /**
+     * @return array{weight: ?float, length: ?float, width: ?float, height: ?float}
+     */
+    private function packageInches(ProductMaster $product, string $sku): array
+    {
+        $values = $this->productValues($product);
+        $pkg = [
+            'weight' => $this->valuesNumber($values, 'wt_act', 'itm_wt_gw', 'wt_decl'),
+            'length' => $this->valuesNumber($values, 'l', 'l_decl'),
+            'width' => $this->valuesNumber($values, 'w', 'w_decl'),
+            'height' => $this->valuesNumber($values, 'h', 'h_decl'),
+        ];
+        if ($pkg['weight'] !== null && $pkg['length'] !== null && $pkg['width'] !== null && $pkg['height'] !== null) {
+            return $pkg;
+        }
+
+        $parentSku = trim((string) ($product->parent ?? ''));
+        if ($parentSku === '' || strcasecmp($parentSku, $sku) === 0) {
+            return $pkg;
+        }
+        $parent = $this->findProduct($parentSku);
+        if (! $parent) {
+            return $pkg;
+        }
+        $parentValues = $this->productValues($parent);
+        if ($pkg['weight'] === null) {
+            $pkg['weight'] = $this->valuesNumber($parentValues, 'wt_act', 'itm_wt_gw', 'wt_decl');
+        }
+        if ($pkg['length'] === null) {
+            $pkg['length'] = $this->valuesNumber($parentValues, 'l', 'l_decl');
+        }
+        if ($pkg['width'] === null) {
+            $pkg['width'] = $this->valuesNumber($parentValues, 'w', 'w_decl');
+        }
+        if ($pkg['height'] === null) {
+            $pkg['height'] = $this->valuesNumber($parentValues, 'h', 'h_decl');
+        }
+
+        return $pkg;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function productValues(ProductMaster $product): array
+    {
+        $values = $product->Values;
+        if (is_string($values)) {
+            $decoded = json_decode($values, true);
+            $values = is_array($decoded) ? $decoded : [];
+        }
+
+        return is_array($values) ? $values : [];
+    }
+
+    private function valuesNumber(array $values, string ...$keys): ?float
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $values) || $values[$key] === null || $values[$key] === '') {
+                continue;
+            }
+            $raw = $values[$key];
+            if (is_string($raw)) {
+                $raw = trim(str_replace(',', '', $raw));
+            }
+            if (! is_numeric($raw)) {
+                continue;
+            }
+            $n = (float) $raw;
+            if ($n > 0) {
+                return $n;
+            }
         }
 
         return null;
