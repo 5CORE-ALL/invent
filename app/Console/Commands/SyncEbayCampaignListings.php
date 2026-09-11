@@ -156,6 +156,13 @@ class SyncEbayCampaignListings extends Command
         }
         } // end Step 1 (!$eligibleOnly)
 
+        if (!$dryRun) {
+            $remapped = \App\Support\Marketplace\EbayCampaignEndedListingRemap::remapEndedRows('ebay_campaign_ads');
+            if ($remapped > 0) {
+                $this->info("🔄 Remapped {$remapped} ENDED campaign-ad row(s) to a newer live listing id.");
+            }
+        }
+
         // ── Step 2: Fetch eligible non-campaign listings from ebay_metrics ──
         if (!$dryRun && !$bidsOnly) {
             $this->line('');
