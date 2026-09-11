@@ -6321,24 +6321,34 @@ class AmazonSpApiService
             'A1AM78C64UM0Y8', // MX
         ];
         foreach ($foreign as $marketplaceId) {
+            $itemUrl = $this->endpoint.'/listings/2021-08-01/items/'
+                .rawurlencode($sellerId).'/'.rawurlencode($sku)
+                .'?marketplaceIds='.rawurlencode($marketplaceId);
+            try {
+                Http::withHeaders([
+                    'x-amz-access-token' => $token,
+                    'Accept' => 'application/json',
+                ])->timeout(20)->delete($itemUrl);
+            } catch (\Throwable $e) {
+                Log::debug('AmazonSpApiService: skip non-US offer delete', [
+                    'sku' => $sku,
+                    'marketplace' => $marketplaceId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
             try {
                 Http::withHeaders([
                     'x-amz-access-token' => $token,
                     'Content-Type' => 'application/json',
                     'Accept' => 'application/json',
-                ])->timeout(20)->patch(
-                    $this->endpoint.'/listings/2021-08-01/items/'
-                    .rawurlencode($sellerId).'/'.rawurlencode($sku)
-                    .'?marketplaceIds='.rawurlencode($marketplaceId),
-                    [
-                        'productType' => $productType,
-                        'patches' => [
-                            ['op' => 'delete', 'path' => '/attributes/purchasable_offer'],
-                            ['op' => 'delete', 'path' => '/attributes/list_price'],
-                            ['op' => 'delete', 'path' => '/attributes/fulfillment_availability'],
-                        ],
-                    ]
-                );
+                ])->timeout(20)->patch($itemUrl, [
+                    'productType' => $productType,
+                    'patches' => [
+                        ['op' => 'delete', 'path' => '/attributes/purchasable_offer'],
+                        ['op' => 'delete', 'path' => '/attributes/list_price'],
+                        ['op' => 'delete', 'path' => '/attributes/fulfillment_availability'],
+                    ],
+                ]);
             } catch (\Throwable $e) {
                 Log::debug('AmazonSpApiService: skip non-US offer disable', [
                     'sku' => $sku,
@@ -6355,7 +6365,7 @@ class AmazonSpApiService
      * @param  array<string, mixed>  $attributes
      * @return array{success: bool, message: string, issues?: list<string>}
      */
-    public function putListingsItem(string $sku, string $productType, array $attributes): array
+    public function putListingsItem(string $sku, string $productType, array $attributes, string $requirements = 'LISTING'): array
     {
         $sku = trim($sku);
         $productType = trim($productType);
@@ -6373,9 +6383,15 @@ class AmazonSpApiService
             return ['success' => false, 'message' => 'Could not obtain Amazon access token.'];
         }
 
+        $requirements = strtoupper(trim($requirements));
+        if (! in_array($requirements, ['LISTING', 'LISTING_PRODUCT_ONLY', 'LISTING_OFFER_ONLY'], true)) {
+            $requirements = 'LISTING';
+        }
+
         $url = $this->endpoint.'/listings/2021-08-01/items/'
             .rawurlencode($sellerId).'/'.rawurlencode($sku)
-            .'?marketplaceIds='.rawurlencode($marketplaceId);
+            .'?marketplaceIds='.rawurlencode($marketplaceId)
+            .'&issueLocale=en_US';
 
         try {
             $response = Http::withHeaders([
@@ -6384,7 +6400,7 @@ class AmazonSpApiService
                 'Accept' => 'application/json',
             ])->timeout(60)->put($url, [
                 'productType' => $productType,
-                'requirements' => 'LISTING',
+                'requirements' => $requirements,
                 'attributes' => $attributes,
             ]);
 

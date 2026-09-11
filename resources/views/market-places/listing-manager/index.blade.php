@@ -2252,8 +2252,8 @@
             $('#lc-category-path-input').val($('#lc-category-path-visible').val() || '');
         }
         const images = editorImages.slice();
-        const brand = '5 Core';
-        const manufacturer = '5 Core';
+        const brand = ($('#lc-brand-id').val() || $('#lc-brand').val() || '5 Core').trim() || '5 Core';
+        const manufacturer = ($('#lc-manufacturer').val() || $('#lc-manufacturer-specific').val() || '5 Core').trim() || '5 Core';
         const mpn = ($('#lc-sku').val() || '').trim();
         const upc = ($('#lc-upc').val() || $('#lc-upc-specific').val() || '').trim();
         const specifics = {
