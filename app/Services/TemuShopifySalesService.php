@@ -129,9 +129,9 @@ class TemuShopifySalesService
     public const DECREASE_ADS_PERCENT = 2.2;
 
     /**
-     * Full Temu Price (listing / Sales / GPFT / S PRC when S Base = listing base):
-     *   round(base, 2) × 1.1364; if that result ≤ $26.99 then +$2.99; then round to 2¢.
-     * Same money round as the Temu Price column. Not Temu R Price (base + $2.99).
+     * Full Temu Price (listing / Sales / GPFT):
+     *   (base × 1.1364); if that result ≤ $26.99 then +$2.99.
+     * Not the same as Temu R Price (base + $2.99 when base ≤ $26.99).
      */
     public static function computeFullTemuPrice(float $basePrice): float
     {
@@ -139,13 +139,12 @@ class TemuShopifySalesService
             return 0.0;
         }
 
-        $basePrice = round($basePrice, 2);
         $full = $basePrice * self::FULL_PRICE_MULT;
         if ($full <= 26.99) {
             $full += 2.99;
         }
 
-        return round($full, 2);
+        return $full;
     }
 
     /**
@@ -178,6 +177,94 @@ class TemuShopifySalesService
         }
 
         return self::computeRPrice(self::computeBaseFromFullTemuPrice($sprice));
+    }
+
+    /**
+     * On-page Temu 1 / Temu 2 SGROI% at a candidate S PRC (Full Temu Price):
+     *   ((S R Price × 0.95) − ship − LP) / LP × 100
+     */
+    public static function sgroiAtSprice(float $sprice, float $lp, float $ship, float $listingBase = 0.0): ?float
+    {
+        if (! ($sprice > 0) || ! ($lp > 0) || ! is_finite($sprice) || ! is_finite($lp)) {
+            return null;
+        }
+        if (! is_finite($ship)) {
+            $ship = 0.0;
+        }
+        $rPrice = $listingBase > 0 ? self::computeRPrice($listingBase) : 0.0;
+        $fullPrice = $listingBase > 0 ? self::computeFullTemuPrice($listingBase) : 0.0;
+        $sR = self::computeSRPrice($sprice, $rPrice, $fullPrice);
+        if (! ($sR > 0)) {
+            return null;
+        }
+
+        return (($sR * self::DECREASE_TAKEHOME) - $ship - $lp) / $lp * 100;
+    }
+
+    /**
+     * Back-solve S PRC (Full Temu Price) so sgroiAtSprice equals Target GROI%.
+     * Target GROI decides S PRC — SGROI is not derived from a leftover price.
+     */
+    public static function spriceFromTargetSgroi(float $lp, float $ship, float $groiPct, float $listingBase = 0.0): float
+    {
+        if (! ($lp > 0) || ! is_finite($lp) || ! is_finite($groiPct)) {
+            return 0.0;
+        }
+        if (! is_finite($ship)) {
+            $ship = 0.0;
+        }
+        $targetSR = ($lp * (1 + $groiPct / 100) + $ship) / self::DECREASE_TAKEHOME;
+        if (! ($targetSR > 0) || ! is_finite($targetSR)) {
+            return 0.0;
+        }
+        $base = $targetSR > 29.98 ? $targetSR : max(0.01, $targetSR - 2.99);
+        $seed = self::computeFullTemuPrice($base);
+        if (! ($seed > 0)) {
+            $seed = $targetSR;
+        }
+        $lo = max(0.01, $seed * 0.35);
+        $hi = max($seed * 2.8, $seed + 20);
+        for ($expand = 0; $expand < 10; $expand++) {
+            $gLo = self::sgroiAtSprice($lo, $lp, $ship, $listingBase);
+            $gHi = self::sgroiAtSprice($hi, $lp, $ship, $listingBase);
+            if ($gLo === null || $gHi === null) {
+                break;
+            }
+            if ($gLo <= $groiPct && $groiPct <= $gHi) {
+                break;
+            }
+            if ($groiPct < $gLo) {
+                $hi = $lo;
+                $lo = max(0.01, $lo * 0.5);
+            } else {
+                $lo = $hi;
+                $hi = $hi * 1.8;
+            }
+        }
+        $best = $seed;
+        $bestErr = INF;
+        for ($i = 0; $i < 40; $i++) {
+            $mid = ($lo + $hi) / 2;
+            $g = self::sgroiAtSprice($mid, $lp, $ship, $listingBase);
+            if ($g === null) {
+                break;
+            }
+            $err = abs($g - $groiPct);
+            if ($err < $bestErr) {
+                $bestErr = $err;
+                $best = $mid;
+            }
+            if ($g < $groiPct) {
+                $lo = $mid;
+            } else {
+                $hi = $mid;
+            }
+        }
+        if (! is_finite($best) || ! ($best > 0)) {
+            return 0.0;
+        }
+
+        return round($best, 2);
     }
 
     /**
@@ -240,40 +327,8 @@ class TemuShopifySalesService
             return null;
         }
         $base = self::computeBaseFromFullTemuPrice($sprice);
-        if (! ($base > 0)) {
-            return null;
-        }
 
-        $sprice = round($sprice, 2);
-        $rounded = round($base, 2);
-        $best = $rounded;
-        $bestErr = abs(self::computeFullTemuPrice($rounded) - $sprice);
-        foreach ([$rounded - 0.01, $rounded + 0.01] as $candidate) {
-            if ($candidate <= 0) {
-                continue;
-            }
-            $err = abs(self::computeFullTemuPrice($candidate) - $sprice);
-            if ($err + 1e-6 < $bestErr) {
-                $bestErr = $err;
-                $best = round($candidate, 2);
-            }
-        }
-
-        return $best;
-    }
-
-    /**
-     * After a Temu pull, keep the pushed S Temu B Prc when the API is only 1¢ off.
-     */
-    public static function temuIncomingBaseToWrite(?float $incoming, ?float $pushedBase): ?float
-    {
-        $incoming = ($incoming !== null && $incoming > 0) ? round($incoming, 2) : null;
-        $pushed = ($pushedBase !== null && $pushedBase > 0) ? round($pushedBase, 2) : null;
-        if ($incoming !== null && $pushed !== null && abs($incoming - $pushed) <= 0.011) {
-            return $pushed;
-        }
-
-        return $incoming;
+        return $base > 0 ? round($base, 2) : null;
     }
 
     /**

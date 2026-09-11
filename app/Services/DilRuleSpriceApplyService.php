@@ -57,7 +57,9 @@ use Throwable;
  * their own nightly save cron (eBay / Amazon / Shopify B2C / Macys / PP do).
  *
  * Same cell math as ebay-sprc-dil: listing Dil, 0-sold min GROI (except
- * Temu 2/3 and AliExpress), CVR overlay where the page uses it, ship excluded on
+ * Temu 2/3 and AliExpress). Temu 1 0 Sold uses temu_orders L30 (same as
+ * /temu1-data), not temu_metrics.quantity_purchased_l30. Dil stays Shopify
+ * OV L30. CVR overlay where the page uses it, ship excluded on
  * Wayfair / Faire / TopDawg / FB, Newegg Amz floor, LMP cap at SGROI ≥ 20%.
  * AliExpress only: SKU Dil; out of slab → Std then LMP if Std > LMP; Stop < N% skips.
  */
@@ -85,11 +87,14 @@ class DilRuleSpriceApplyService
         'pls',
     ];
 
-    /** Channels the shared push runner can actually send. Temu is listing-base only (never S PRC). */
+    /** Channels the shared push runner can actually send. FB is save-only. */
     public const PUSH_CHANNELS = [
         'bestbuy',
         'aliexpress',
         'newegg',
+        'temu',
+        'temu2',
+        'temu3',
         'reverb',
         'tiktok',
         'tiktok2',
@@ -306,7 +311,9 @@ class DilRuleSpriceApplyService
             return null;
         }
 
-        $sold = (float) ($row['ov_l30'] ?? 0);
+        $sold = array_key_exists('temu_l30', $row)
+            ? (float) $row['temu_l30']
+            : (float) ($row['ov_l30'] ?? 0);
         $dil = (float) ($row['dil'] ?? 0);
         $groi = null;
 
@@ -527,6 +534,8 @@ class DilRuleSpriceApplyService
         $l30Overlay = [];
         if ($this->channel === 'temu3') {
             $l30Overlay = $this->temu3L30BySku($skus);
+        } elseif ($this->channel === 'temu' || $this->channel === 'temu2') {
+            $l30Overlay = $this->temuOrdersL30BySku($skus, $this->channel === 'temu2');
         } elseif ($this->channel === 'shein') {
             $l30Overlay = $this->sheinL30BySku($skus);
         }
@@ -546,6 +555,9 @@ class DilRuleSpriceApplyService
             if ($this->channel === 'aliexpress') {
                 $ov = (float) ($shopify->quantity ?? 0);
                 $al30 = (float) ($metric->l30 ?? 0);
+            } elseif ($this->channel === 'temu' || $this->channel === 'temu2') {
+                // Dil = Shopify OV L30, same as /temu1-data. Do not use temu_metrics sales.
+                $ov = (float) ($shopify->quantity ?? 0);
             } elseif (! empty($cfg['a_l30'])) {
                 $ov = (float) ($amzBySku[$sku]['l30'] ?? 0);
             } elseif ($l30Overlay !== []) {
@@ -571,6 +583,9 @@ class DilRuleSpriceApplyService
                 'parent' => $parent,
                 'inv' => $inv,
                 'ov_l30' => $ov,
+                'temu_l30' => ($this->channel === 'temu' || $this->channel === 'temu2')
+                    ? (float) ($l30Overlay[$sku] ?? 0)
+                    : $ov,
                 'al30' => $al30,
                 'live' => round((float) ($metric->{$priceCol} ?? 0), 2),
                 'lp' => $lpShip['lp'],
@@ -737,6 +752,58 @@ class DilRuleSpriceApplyService
         }
 
         return $min;
+    }
+
+    /**
+     * /temu1-data and /temu2-decrease Temu L30: orders in the channel-master L30 window.
+     * Never temu_metrics.quantity_purchased_l30.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, float>
+     */
+    protected function temuOrdersL30BySku(array $skus, bool $temu2): array
+    {
+        if ($skus === []) {
+            return [];
+        }
+        try {
+            [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
+            $wanted = [];
+            $noSpace = [];
+            foreach ($skus as $sku) {
+                $n = TemuShopifySalesService::normalizeTemu3Sku($sku);
+                $wanted[$n] = $sku;
+                $compact = str_replace(' ', '', $n);
+                if ($compact !== '') {
+                    $noSpace[$compact] = $sku;
+                }
+            }
+            $out = array_fill_keys($skus, 0.0);
+            $rows = $temu2
+                ? TemuShopifySalesService::getTemu2OrdersTableRows($start, $end)
+                : TemuShopifySalesService::getOrdersTableRows($start, $end);
+            foreach ($rows as $row) {
+                $raw = trim((string) ($row['contribution_sku'] ?? ''));
+                if ($raw === '') {
+                    continue;
+                }
+                $n = TemuShopifySalesService::normalizeTemu3Sku($raw);
+                $key = $wanted[$n] ?? $noSpace[str_replace(' ', '', $n)] ?? '';
+                if ($key === '') {
+                    continue;
+                }
+                $out[$key] = ($out[$key] ?? 0.0) + (float) ($row['quantity_purchased'] ?? 0);
+            }
+
+            return $out;
+        } catch (Throwable $e) {
+            Log::warning('[DilRuleSpriceApply] temu orders L30 overlay failed', [
+                'channel' => $this->channel,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     /**

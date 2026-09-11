@@ -1027,12 +1027,20 @@
             const meta = ebayDilGroiMetaForRow(d);
             return meta ? meta.sprc : 0;
         }
+        /** Target GROI% that decided S PRC. Null when Sprc Dil has no price. */
+        function ebayDilGroiTargetGroi(d) {
+            const meta = ebayDilGroiMetaForRow(d);
+            if (!meta || !(meta.sprc > 0)) return null;
+            const n = Number(meta.groi);
+            return isFinite(n) ? n : null;
+        }
         function ebayDilGroiOwnsRow(d) {
             const meta = ebayDilGroiMetaForRow(d);
             return !!(meta && meta.sprc > 0);
         }
         window.ebayDilGroiMetaForRow = ebayDilGroiMetaForRow;
         window.ebaySprcDilForRow = ebaySprcDilForRow;
+        window.ebayDilGroiTargetGroi = ebayDilGroiTargetGroi;
         window.ebayDilGroiOwnsRow = ebayDilGroiOwnsRow;
         window.ebayDilGroiTipText = ebayDilGroiTipText;
         window.ebayCvrGroiAdjNow = ebayCvrGroiAdjNow;
@@ -1833,13 +1841,7 @@
                         : (Number(d && (d['MC Price'] != null ? d['MC Price'] : d.price)) || 0);
                     const ended = typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d);
                     const needsFill = persist && !nearly(current, price);
-                    let needsPush = !!(allowPush && livePushOn && !ended && current > 0 && live > 0 && !nearly(current, live));
-                    if (needsPush && typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel()) {
-                        const dForBlue = Object.assign({}, d, { sprice: price, SPRICE: price });
-                        needsPush = (typeof temu2HasBlueTriangle === 'function')
-                            ? !!temu2HasBlueTriangle(dForBlue)
-                            : (typeof temuListingHasBlueTriangle === 'function' && temuListingHasBlueTriangle(dForBlue));
-                    }
+                    const needsPush = !!(allowPush && livePushOn && !ended && current > 0 && live > 0 && !nearly(current, live));
                     if (!needsFill && !needsPush) return;
                     jobs.push({ row: row, sku: sku, price: price, needsFill: needsFill, needsPush: needsPush });
                 });
@@ -1889,9 +1891,7 @@
                 try {
                     jobs.forEach(function(job) {
                         if (!job.row || typeof job.row.update !== 'function') return;
-                        const status = (typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel())
-                            ? 'applied'
-                            : (job.needsPush ? 'queued' : 'applied');
+                        const status = job.needsPush ? 'queued' : 'applied';
                         if (typeof chPromoSpricePatch === 'function') {
                             job.row.update(Object.assign({}, chPromoSpricePatch(job.price), { SPRICE_STATUS: status }));
                         } else {

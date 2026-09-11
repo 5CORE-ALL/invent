@@ -9504,12 +9504,8 @@
             if (opts.persist === false) return { sku: sku, price: fill, row: row };
             const live = chPromoLivePrice(d);
             let alreadyLive = live > 0 && chPromoNearlyEqual(fill, live);
-            if (chPromoIsTemuPromoChannel()) {
-                alreadyLive = typeof temu2HasBlueTriangle === 'function'
-                    ? !temu2HasBlueTriangle(d)
-                    : (typeof temuListingHasBlueTriangle === 'function'
-                        ? !temuListingHasBlueTriangle(d)
-                        : alreadyLive);
+            if (chPromoIsTemuPromoChannel() && typeof temuListingNeedsPush === 'function') {
+                alreadyLive = !temuListingNeedsPush(d, fill);
             }
             if (hadValue && current === fill && alreadyLive) return { sku: sku, price: fill, row: row };
             const extra = {
@@ -9598,10 +9594,8 @@
                     || !(current > 0)
                     || (overwrite && !chPromoNearlyEqual(current, finalFill));
                 const needsPush = !forceSkipPush && livePushOn && current > 0 && live > 0 && (
-                    chPromoIsTemuPromoChannel()
-                        ? (typeof temu2HasBlueTriangle === 'function'
-                            ? temu2HasBlueTriangle(d)
-                            : (typeof temuListingHasBlueTriangle === 'function' && temuListingHasBlueTriangle(d)))
+                    (chPromoIsTemuPromoChannel() && typeof temuListingNeedsPush === 'function')
+                        ? temuListingNeedsPush(d, current)
                         : !chPromoNearlyEqual(current, live)
                 );
                 if (!needsFill && !needsPush) return;
@@ -11001,27 +10995,13 @@
                 const prev = chPromoPageReloadPushAllowed();
                 saveChPromoPageReloadPush(on)
                     .done(function() {
-                        if (!on) {
-                            if (typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel()) {
-                                if (typeof cancelTemuListingAutopush === 'function') cancelTemuListingAutopush();
-                                if (typeof stopChannelPushSpriceNow === 'function') stopChannelPushSpriceNow();
-                            }
-                            chPromoToast(
-                                'success',
-                                chPromoIsTemuPromoChannel()
-                                    ? 'Auto-push off — remaining Temu listing pushes cancelled. S PRC is never pushed.'
-                                    : 'Auto-push off — price edits only save. Daily cron still pushes.'
-                            );
-                            return;
-                        }
                         chPromoToast(
                             'success',
                             on
-                                ? (chPromoIsTemuPromoChannel()
-                                    ? 'Auto-push on — only leftover S Temu B Prc (not S PRC) are queued.'
-                                    : 'Auto-push on — only SKUs whose S PRC ≠ Price are queued.')
+                                ? 'Auto-push on — only SKUs whose saved S PRC ≠ Price are queued.'
                                 : 'Auto-push off — price edits only save. Daily cron still pushes.'
                         );
+                        if (!on) return;
                         if (typeof chPromoIsTemuPromoChannel === 'function'
                             && chPromoIsTemuPromoChannel()
                             && typeof scanAndQueueTemuListingPush === 'function') {
