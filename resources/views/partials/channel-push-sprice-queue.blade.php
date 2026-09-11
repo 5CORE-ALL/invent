@@ -248,6 +248,9 @@
             }
             function setChannelPushSpriceProgress(opts) {
                 opts = opts || {};
+                if (global.temuListingProgressLocked && opts.title !== 'Temu listing') {
+                    return;
+                }
                 chPushSpriceEnsureBox();
                 const total = Number(opts.total) || 0;
                 const done = Number(opts.done) || 0;
@@ -365,6 +368,11 @@
                             if (!d.listing_ended) patch.listing_ended = true;
                         }
                     } else if (st === 'pushing' || st === 'pending' || st === 'queued') {
+                        if (CH_PUSH_SPRICE_CHANNEL === 'temu'
+                            || CH_PUSH_SPRICE_CHANNEL === 'temu2'
+                            || CH_PUSH_SPRICE_CHANNEL === 'temu3') {
+                            return false;
+                        }
                         if (d.SPRICE_STATUS !== 'queued') patch.SPRICE_STATUS = 'queued';
                         if (d.push_status !== 'queued') patch.push_status = 'queued';
                     } else {

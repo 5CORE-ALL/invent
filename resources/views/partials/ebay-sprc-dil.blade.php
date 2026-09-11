@@ -1889,7 +1889,9 @@
                 try {
                     jobs.forEach(function(job) {
                         if (!job.row || typeof job.row.update !== 'function') return;
-                        const status = job.needsPush ? 'queued' : 'applied';
+                        const status = (typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel())
+                            ? 'applied'
+                            : (job.needsPush ? 'queued' : 'applied');
                         if (typeof chPromoSpricePatch === 'function') {
                             job.row.update(Object.assign({}, chPromoSpricePatch(job.price), { SPRICE_STATUS: status }));
                         } else {

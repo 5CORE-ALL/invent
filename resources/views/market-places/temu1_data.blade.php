@@ -4445,7 +4445,8 @@
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
                         const pushBase = typeof temuListingPushBase === 'function' ? temuListingPushBase(rowData) : null;
-                        const pushStatus = rowData.PUSH_PRC_STATUS || rowData.push_status || null;
+                        const pushStatus = String(rowData.push_status || '');
+                        const doneStatus = String(rowData.push_status || rowData.PUSH_PRC_STATUS || '');
                         if (!(pushBase > 0)) {
                             return '<span style="color:#adb5bd;" title="S Temu B Prc required">—</span>';
                         }
@@ -4456,11 +4457,11 @@
                         const priceHtml = '<span style="font-weight:600;">$' + pushBase.toFixed(2) + '</span>';
                         const title = 'Push S Temu B Prc $' + pushBase.toFixed(2) + ' to Temu listing';
 
-                        if (pushStatus === 'pushing' || pushStatus === 'processing' || pushStatus === 'queued') {
+                        if (pushStatus === 'pushing') {
                             return '<button type="button" class="temu2-push-single-btn" disabled style="border:none;background:none;cursor:wait;color:#ffc107;">'
                                 + priceHtml + ' <i class="fas fa-spinner fa-spin" title="Pushing S Temu B Prc…"></i></button>';
                         }
-                        if (pushStatus === 'pushed') {
+                        if (doneStatus === 'pushed') {
                             return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border:none;background:none;color:#28a745;cursor:pointer;" title="Pushed S Temu B Prc — click to push again">${priceHtml} <i class="fa-solid fa-check-double"></i></button>`;
                         }
                         if (pushStatus === 'error') {
@@ -4475,8 +4476,8 @@
                         if (e && e.preventDefault) e.preventDefault();
                         const d = cell.getRow().getData() || {};
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(d)) return false;
-                        const status = d.PUSH_PRC_STATUS || d.push_status || null;
-                        if (status === 'pushing' || status === 'processing' || status === 'queued') return false;
+                        const status = String(d.push_status || '');
+                        if (status === 'pushing') return false;
                         const sku = String(d.sku || '');
                         if (selectedSkus && selectedSkus.size > 1 && selectedSkus.has(sku) && typeof temuBulkPushSelected === 'function') {
                             temuBulkPushSelected();
@@ -6462,7 +6463,12 @@
                 return Promise.reject({ message: 'SKU and S Temu B Prc required' });
             }
 
-            row.update({ push_status: 'pushing' });
+            row.update({
+                push_status: 'pushing',
+                PUSH_PRC_STATUS: 'pushing',
+                SPRICE_STATUS: 'pushing',
+                push_prc: 'pushing',
+            });
             row.reformat();
 
             return new Promise(function(resolve, reject) {
@@ -6482,18 +6488,33 @@
                             if (typeof temuApplyPushedListingPrice === 'function') {
                                 temuApplyPushedListingPrice(row, pushPrice, data);
                             } else {
-                                row.update({ push_status: 'pushed' });
+                                row.update({
+                                    push_status: 'pushed',
+                                    PUSH_PRC_STATUS: 'pushed',
+                                    SPRICE_STATUS: 'pushed',
+                                    push_prc: 'pushed',
+                                });
                                 row.reformat();
                             }
                             resolve(response);
                         } else {
-                            row.update({ push_status: 'error' });
+                            row.update({
+                                push_status: 'error',
+                                PUSH_PRC_STATUS: 'error',
+                                SPRICE_STATUS: 'error',
+                                push_prc: 'error',
+                            });
                             row.reformat();
                             reject({ message: (response && response.message) || 'Push failed' });
                         }
                     },
                     error: function(xhr) {
-                        row.update({ push_status: 'error' });
+                        row.update({
+                            push_status: 'error',
+                            PUSH_PRC_STATUS: 'error',
+                            SPRICE_STATUS: 'error',
+                            push_prc: 'error',
+                        });
                         row.reformat();
                         const msg = (xhr.responseJSON && (xhr.responseJSON.message
                             || (xhr.responseJSON.errors && xhr.responseJSON.errors[0] && xhr.responseJSON.errors[0].message)))
