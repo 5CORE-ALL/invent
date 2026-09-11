@@ -234,6 +234,9 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertSame(['pls'], DilRuleSpriceApplyService::channelsFromArg('pls'));
         $this->assertSame([], DilRuleSpriceApplyService::channelsFromArg('ebay3'));
         $this->assertNotContains('fb_marketplace', DilRuleSpriceApplyService::PUSH_CHANNELS);
+        $this->assertNotContains('temu', DilRuleSpriceApplyService::PUSH_CHANNELS);
+        $this->assertNotContains('temu2', DilRuleSpriceApplyService::PUSH_CHANNELS);
+        $this->assertNotContains('temu3', DilRuleSpriceApplyService::PUSH_CHANNELS);
         $this->assertContains('walmart', DilRuleSpriceApplyService::PUSH_CHANNELS);
         $this->assertContains('pls', DilRuleSpriceApplyService::PUSH_CHANNELS);
     }

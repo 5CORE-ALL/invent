@@ -85,14 +85,11 @@ class DilRuleSpriceApplyService
         'pls',
     ];
 
-    /** Channels the shared push runner can actually send. FB is save-only. */
+    /** Channels the shared push runner can actually send. Temu is listing-base only (never S PRC). */
     public const PUSH_CHANNELS = [
         'bestbuy',
         'aliexpress',
         'newegg',
-        'temu',
-        'temu2',
-        'temu3',
         'reverb',
         'tiktok',
         'tiktok2',
