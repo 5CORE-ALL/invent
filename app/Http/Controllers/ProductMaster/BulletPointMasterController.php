@@ -16,6 +16,7 @@ use App\Services\Support\MarketplaceMetricsTableResolver;
 use App\Services\Support\ProductMasterMarketplaceMaps;
 use App\Services\Support\ShopifyBulletPointsFormatter;
 use App\Services\Support\ShopifyBulletPullJobStore;
+use App\Services\Support\ShopifyBulletPullRunner;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -421,7 +422,7 @@ class BulletPointMasterController extends Controller
         }
         $this->releaseUniqueJobLock(RunShopifyBulletPullJob::class, 'shopify-bullet-pull');
 
-        $job = $store->create($validated['skus'], 6);
+        $job = $store->create($validated['skus'], 2);
         try {
             $this->dispatchShopifyBulletPullJob();
         } catch (\Throwable $e) {
@@ -1263,6 +1264,13 @@ class BulletPointMasterController extends Controller
     private function dispatchShopifyBulletPullJob(): void
     {
         RunShopifyBulletPullJob::dispatch();
+        // Dedicated shopify-bullet-pull worker is often not running.
+        // Start after the HTTP response so the page can poll progress immediately.
+        $run = static function () {
+            app(ShopifyBulletPullRunner::class)->run();
+        };
+        dispatch($run)->afterResponse();
+        dispatch($run)->onQueue('default');
     }
 
     private function shopifyPullAdminGet(string $url, string $token): \Illuminate\Http\Client\Response

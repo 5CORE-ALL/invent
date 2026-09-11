@@ -84,6 +84,20 @@
         .toast-container { z-index:1100; }
         .rainbow-loader { display:none; text-align:center; padding:40px; }
         .rainbow-loader .loading-text { margin-top:16px; font-weight:600; color:#2c6ed5; }
+        .shopify-pull-page-loader {
+            display:none; position:fixed; right:16px; bottom:16px; z-index:1085;
+            width:min(420px, calc(100vw - 32px));
+            background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+            box-shadow:0 12px 32px rgba(15,23,42,.18); padding:14px 16px;
+        }
+        .shopify-pull-page-loader.is-visible { display:block; }
+        .shopify-pull-page-loader.is-success { border-color:#86efac; }
+        .shopify-pull-page-loader.is-failed { border-color:#fca5a5; }
+        .shopify-pull-page-loader.is-mixed { border-color:#fcd34d; }
+        .shopify-pull-page-loader-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+        .shopify-pull-page-loader-stats { display:flex; flex-wrap:wrap; gap:8px 12px; font-size:12px; margin-top:8px; }
+        .shopify-pull-page-loader .progress { height:10px; background:#e2e8f0; }
+        .shopify-pull-page-loader-actions { display:flex; gap:8px; margin-top:10px; }
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
         .ai-edit-panel { border:1px solid #dee2e6; border-radius:8px; padding:10px; background:#f8fafc; }
         #editRowModal { z-index: 1055; }
@@ -223,6 +237,28 @@
                     <div id="rainbow-loader" class="rainbow-loader">
                         <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
                         <div class="loading-text">Loading Bullet Points Master Data...</div>
+                    </div>
+                    <div id="shopifyPullPageLoader" class="shopify-pull-page-loader" aria-live="polite">
+                        <div class="shopify-pull-page-loader-head">
+                            <div>
+                                <div class="fw-semibold" id="shopifyPullLoaderTitle">Shopify pull</div>
+                                <div class="small text-muted" id="shopifyPullLoaderMessage">Starting…</div>
+                            </div>
+                            <div class="fw-bold" id="shopifyPullLoaderPct">0%</div>
+                        </div>
+                        <div class="progress mt-2">
+                            <div id="shopifyPullLoaderBar" class="progress-bar bg-warning" role="progressbar" style="width:0%"></div>
+                        </div>
+                        <div class="shopify-pull-page-loader-stats">
+                            <span id="shopifyPullLoaderCounts">0 / 0</span>
+                            <span class="text-success" id="shopifyPullLoaderOk">0 success</span>
+                            <span class="text-danger" id="shopifyPullLoaderFail">0 failed</span>
+                        </div>
+                        <div class="shopify-pull-page-loader-actions">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="shopifyPullLoaderDetailsBtn">Details</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="shopifyPullLoaderStopBtn">Stop</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="shopifyPullLoaderDismissBtn" style="display:none;">Dismiss</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1306,6 +1342,63 @@ document.addEventListener('DOMContentLoaded', () => {
         if (status) status.textContent = text || `${done}/${total}`;
     }
 
+    function renderShopifyPullOverlay(job) {
+        const box = document.getElementById('shopifyPullPageLoader');
+        if (!box) return;
+        job = job || {};
+        const status = job.status || 'idle';
+        const total = Number(job.total || 0);
+        const done = Number(job.current_index || 0);
+        const ok = Number(job.ok_count || 0);
+        const fail = Number(job.fail_count || 0);
+        const active = isShopifyPullActive(status);
+        const finished = ['completed', 'stopped', 'failed'].includes(status);
+        const pct = total > 0 ? Math.round((done / total) * 100) : (finished ? 100 : 0);
+
+        if (!active && !finished && status === 'idle') {
+            box.classList.remove('is-visible', 'is-success', 'is-failed', 'is-mixed');
+            return;
+        }
+
+        box.classList.add('is-visible');
+        box.classList.toggle('is-success', finished && fail === 0 && ok > 0);
+        box.classList.toggle('is-failed', finished && ok === 0 && fail > 0);
+        box.classList.toggle('is-mixed', finished && ok > 0 && fail > 0);
+
+        const title = document.getElementById('shopifyPullLoaderTitle');
+        const message = document.getElementById('shopifyPullLoaderMessage');
+        const pctEl = document.getElementById('shopifyPullLoaderPct');
+        const bar = document.getElementById('shopifyPullLoaderBar');
+        const counts = document.getElementById('shopifyPullLoaderCounts');
+        const okEl = document.getElementById('shopifyPullLoaderOk');
+        const failEl = document.getElementById('shopifyPullLoaderFail');
+        const stopBtn = document.getElementById('shopifyPullLoaderStopBtn');
+        const dismissBtn = document.getElementById('shopifyPullLoaderDismissBtn');
+
+        if (title) {
+            if (status === 'completed') title.textContent = fail === 0 ? 'Shopify pull finished' : 'Shopify pull finished with errors';
+            else if (status === 'stopped') title.textContent = 'Shopify pull stopped';
+            else if (status === 'paused') title.textContent = 'Shopify pull paused';
+            else title.textContent = 'Pulling Shopify bullets';
+        }
+        if (message) {
+            message.textContent = job.last_message
+                || (job.current_sku ? `Fetching ${job.current_sku}` : (active ? 'Fetching from Shopify…' : 'Ready'));
+        }
+        if (pctEl) pctEl.textContent = pct + '%';
+        if (bar) {
+            bar.style.width = pct + '%';
+            bar.classList.toggle('bg-success', finished && fail === 0);
+            bar.classList.toggle('bg-danger', finished && ok === 0 && fail > 0);
+            bar.classList.toggle('bg-warning', !finished || (ok > 0 && fail > 0));
+        }
+        if (counts) counts.textContent = `${done} / ${total}`;
+        if (okEl) okEl.textContent = `${ok} success`;
+        if (failEl) failEl.textContent = `${fail} failed`;
+        if (stopBtn) stopBtn.style.display = active ? 'inline-block' : 'none';
+        if (dismissBtn) dismissBtn.style.display = finished ? 'inline-block' : 'none';
+    }
+
     function productMasterBulletsForRow(row) {
         return [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5]
             .map(v => (v == null ? '' : String(v).trim()))
@@ -1351,6 +1444,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (status === 'completed') text = `Done: ${job.ok_count || 0} ok, ${job.fail_count || 0} failed`;
         if (status === 'stopped') text = `Stopped: ${job.ok_count || 0} ok, ${job.fail_count || 0} failed`;
         setShopifyPullProgress(done, total, text);
+        renderShopifyPullOverlay(job);
 
         if (log) {
             log.innerHTML = '';
@@ -1393,7 +1487,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function startShopifyPullPolling() {
         if (shopifyPullPollTimer !== null) return;
-        shopifyPullPollTimer = window.setInterval(pollShopifyPullStatus, 3000);
+        shopifyPullPollTimer = window.setInterval(pollShopifyPullStatus, 1000);
     }
 
     function stopShopifyPullPolling() {
@@ -1403,7 +1497,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getCheckedSkusForPull() {
-        return Array.from(selectedSkus).map(sku => String(sku || '').trim()).filter(Boolean);
+        const checked = Array.from(selectedSkus).map(sku => String(sku || '').trim()).filter(Boolean);
+        if (checked.length) {
+            return checked;
+        }
+        const visible = (visibleFilteredRows || []).map(row => String(row.SKU || '').trim()).filter(Boolean);
+        if (visible.length) {
+            return visible;
+        }
+        return (tableData || []).map(row => String(row.SKU || '').trim()).filter(Boolean);
     }
 
     async function openShopifyPullModal(skus = null) {
@@ -1464,8 +1566,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const payload = await res.json().catch(() => ({}));
             if (!res.ok || !payload.success) throw new Error(payload.message || 'Unable to start Shopify pull');
             renderShopifyPullJob(payload.job);
+            renderShopifyPullOverlay(payload.job);
             startShopifyPullPolling();
-            toast(options.successMessage || payload.message || 'Background Shopify pull started.');
+            toast(options.successMessage || payload.message || 'Shopify pull started.');
             return true;
         } catch (e) {
             toast('Shopify pull start failed: ' + e.message, false);
@@ -1506,12 +1609,15 @@ document.addEventListener('DOMContentLoaded', () => {
             ? shopifyPullSelectedSkus.slice()
             : getCheckedSkusForPull();
         if (!skus.length) {
-            toast('Select at least one row (checkbox) before Shopify Pull.', false);
+            toast('No products loaded to pull from Shopify.', false);
             return;
         }
+        const checked = Array.from(selectedSkus).map(sku => String(sku || '').trim()).filter(Boolean);
         const scopeText = skus.length === 1
-            ? `checked SKU ${skus[0]}`
-            : `${skus.length} checked SKU(s)`;
+            ? `SKU ${skus[0]}`
+            : (checked.length
+                ? `${skus.length} checked SKU(s)`
+                : `${skus.length} visible SKU(s)`);
         await startShopifyPullJobForSkus(skus, { scopeText });
     }
 
@@ -1806,15 +1912,23 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pullShopifyBtn').addEventListener('click', () => {
         const skus = getCheckedSkusForPull();
         if (!skus.length) {
-            toast('Select at least one row (checkbox) before Shopify Pull.', false);
+            toast('No products loaded to pull from Shopify.', false);
             return;
         }
-        openShopifyPullModal(skus);
+        shopifyPullSelectedSkus = skus;
+        startShopifyPullToLocal();
     });
     document.getElementById('startShopifyPullBtn').addEventListener('click', startShopifyPullToLocal);
     document.getElementById('pauseShopifyPullBtn').addEventListener('click', () => controlShopifyPull('pause'));
     document.getElementById('resumeShopifyPullBtn').addEventListener('click', () => controlShopifyPull('resume'));
     document.getElementById('stopShopifyPullBtn').addEventListener('click', () => controlShopifyPull('stop'));
+    document.getElementById('shopifyPullLoaderStopBtn')?.addEventListener('click', () => controlShopifyPull('stop'));
+    document.getElementById('shopifyPullLoaderDetailsBtn')?.addEventListener('click', () => {
+        if (shopifyPullModal) shopifyPullModal.show();
+    });
+    document.getElementById('shopifyPullLoaderDismissBtn')?.addEventListener('click', () => {
+        document.getElementById('shopifyPullPageLoader')?.classList.remove('is-visible', 'is-success', 'is-failed', 'is-mixed');
+    });
     document.getElementById('shopifyPullConfirmBtn').addEventListener('click', () => {
         if (shopifyPullConfirmResolver) shopifyPullConfirmResolver(true);
         shopifyPullConfirmResolver = null;
