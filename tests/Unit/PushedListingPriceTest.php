@@ -63,8 +63,22 @@ class PushedListingPriceTest extends TestCase
     {
         $this->assertSame(
             9.32,
-            ChannelLivePriceSync::preferIncoming('temu', 'CS 04 2W', 9.32, ['CS 04 2W' => 17.39])
+            ChannelLivePriceSync::preferIncoming('temu', 'CS 04 2W', 9.32, ['CS 04 2W' => 12.67])
         );
+    }
+
+    public function test_temu_prefer_incoming_keeps_pushed_base_when_api_is_one_cent_off(): void
+    {
+        $this->assertSame(
+            11.69,
+            ChannelLivePriceSync::preferIncoming('temu', 'CS 04 2W', 11.70, ['CS 04 2W' => 11.69])
+        );
+    }
+
+    public function test_temu_incoming_base_to_write_snaps_one_cent(): void
+    {
+        $this->assertSame(11.69, TemuShopifySalesService::temuIncomingBaseToWrite(11.70, 11.69));
+        $this->assertSame(9.32, TemuShopifySalesService::temuIncomingBaseToWrite(9.32, 11.69));
     }
 
     public function test_dil_does_not_enqueue_when_live_already_matches(): void

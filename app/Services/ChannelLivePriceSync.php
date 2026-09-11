@@ -80,17 +80,21 @@ class ChannelLivePriceSync
         };
     }
 
-    public static function confirmAfterPush(string $channel, string $sku, float $sprice): void
+    public static function confirmAfterPush(string $channel, string $sku, float $sprice, ?float $listingBase = null): void
     {
         $channel = self::normalize($channel);
         $sku = strtoupper(trim(str_replace("\xc2\xa0", ' ', $sku)));
         $sprice = round($sprice, 2);
+        $listingBase = ($listingBase !== null && $listingBase > 0) ? round($listingBase, 2) : null;
+        if ($sprice <= 0 && $listingBase !== null && in_array($channel, ['temu', 'temu2', 'temu3'], true)) {
+            $sprice = round(TemuShopifySalesService::computeFullTemuPrice($listingBase), 2);
+        }
         if ($sku === '' || $sprice <= 0) {
             return;
         }
 
         try {
-            self::stamp($channel, $sku, $sprice);
+            self::stamp($channel, $sku, $sprice, $listingBase);
         } catch (Throwable $e) {
             Log::warning('ChannelLivePriceSync stamp failed', [
                 'channel' => $channel,
@@ -104,7 +108,7 @@ class ChannelLivePriceSync
         }
 
         try {
-            self::writeLive($channel, $sku, $sprice);
+            self::writeLive($channel, $sku, $sprice, $listingBase);
         } catch (Throwable $e) {
             Log::warning('ChannelLivePriceSync writeLive failed', [
                 'channel' => $channel,
@@ -114,15 +118,17 @@ class ChannelLivePriceSync
         }
     }
 
-    public static function stamp(string $channel, string $sku, float $sprice): void
+    public static function stamp(string $channel, string $sku, float $sprice, ?float $listingBase = null): void
     {
         $viewClass = self::viewClass($channel);
         if ($viewClass === null || ! class_exists($viewClass)) {
             return;
         }
 
+        $channel = self::normalize($channel);
         $sku = strtoupper(trim($sku));
         $sprice = round($sprice, 2);
+        $listingBase = ($listingBase !== null && $listingBase > 0) ? round($listingBase, 2) : null;
         $view = $viewClass::query()
             ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
             ->first()
@@ -134,14 +140,22 @@ class ChannelLivePriceSync
             $existing = [];
         }
 
-        $existing['SPRICE'] = $sprice;
-        $existing['sprice'] = $sprice;
-        $existing['SPRICE_PUSHED_VALUE'] = $sprice;
-        $existing['CHANNEL_PUSHED_PRICE'] = $sprice;
         $existing['SPRICE_PUSHED_AT'] = now()->toDateTimeString();
         $existing['SPRICE_STATUS'] = 'pushed';
         $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
         unset($existing['SPRICE_CLEARED']);
+        if (in_array($channel, ['temu', 'temu2', 'temu3'], true) && $listingBase !== null) {
+            $existing['SPRICE_PUSHED_BASE'] = $listingBase;
+            $existing['CHANNEL_PUSHED_PRICE'] = $listingBase;
+            if ($sprice > 0 && empty($existing['SPRICE_PUSHED_VALUE'])) {
+                $existing['SPRICE_PUSHED_VALUE'] = $sprice;
+            }
+        } else {
+            $existing['SPRICE'] = $sprice;
+            $existing['sprice'] = $sprice;
+            $existing['SPRICE_PUSHED_VALUE'] = $sprice;
+            $existing['CHANNEL_PUSHED_PRICE'] = $sprice;
+        }
         if (in_array($channel, ['temu', 'temu2'], true)) {
             $existing['PRICE_PULL_STATUS'] = 'pending';
             $existing['PRICE_PULL_DUE_AT'] = now()
@@ -155,18 +169,19 @@ class ChannelLivePriceSync
         $view->save();
     }
 
-    public static function writeLive(string $channel, string $sku, float $sprice): void
+    public static function writeLive(string $channel, string $sku, float $sprice, ?float $listingBase = null): void
     {
         $channel = self::normalize($channel);
         $sku = strtoupper(trim($sku));
         $sprice = round($sprice, 2);
-        if ($sku === '' || $sprice <= 0) {
+        $listingBase = ($listingBase !== null && $listingBase > 0) ? round($listingBase, 2) : null;
+        if ($sku === '' || ($sprice <= 0 && $listingBase === null)) {
             return;
         }
 
         $value = $sprice;
         if (in_array($channel, ['temu', 'temu2', 'temu3'], true)) {
-            $base = TemuShopifySalesService::computePushBaseFromSprice($sprice);
+            $base = $listingBase ?? TemuShopifySalesService::computePushBaseFromSprice($sprice);
             if ($base === null || $base <= 0) {
                 return;
             }
@@ -229,13 +244,72 @@ class ChannelLivePriceSync
     }
 
     /**
+     * @return array<string, float> UPPER sku → last pushed Temu supplier base
+     */
+    public static function lookupPushedBaseMap(string $channel): array
+    {
+        $channel = self::normalize($channel);
+        $viewClass = self::viewClass($channel);
+        if ($viewClass === null || ! class_exists($viewClass)) {
+            return [];
+        }
+
+        $map = [];
+        try {
+            $viewClass::query()
+                ->where(function ($q) {
+                    $q->where('value', 'like', '%SPRICE_PUSHED_BASE%')
+                        ->orWhere('value', 'like', '%SPRICE_PUSHED_VALUE%');
+                })
+                ->get(['sku', 'value'])
+                ->each(function ($row) use (&$map) {
+                    $val = is_array($row->value)
+                        ? $row->value
+                        : (json_decode((string) ($row->value ?? ''), true) ?: []);
+                    if (! is_array($val)) {
+                        return;
+                    }
+                    $sku = strtoupper(trim(str_replace("\xc2\xa0", ' ', (string) $row->sku)));
+                    if ($sku === '') {
+                        return;
+                    }
+                    $base = isset($val['SPRICE_PUSHED_BASE']) && is_numeric($val['SPRICE_PUSHED_BASE'])
+                        ? (float) $val['SPRICE_PUSHED_BASE']
+                        : 0.0;
+                    if (! ($base > 0)) {
+                        $sprice = PushedListingPrice::fromValue($val);
+                        $base = $sprice !== null
+                            ? (float) (TemuShopifySalesService::computePushBaseFromSprice($sprice) ?? 0)
+                            : 0.0;
+                    }
+                    if ($base > 0) {
+                        $map[$sku] = round($base, 2);
+                    }
+                });
+        } catch (Throwable $e) {
+            Log::warning('ChannelLivePriceSync pushed-base lookup failed', [
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $map;
+    }
+
+    /**
      * @param  array<string, float>|null  $lookup
      */
     public static function preferIncoming(string $channel, string $sku, ?float $incoming, ?array $lookup = null): ?float
     {
         $channel = self::normalize($channel);
         if (in_array($channel, ['temu', 'temu2', 'temu3'], true)) {
-            return ($incoming !== null && $incoming > 0) ? round($incoming, 2) : $incoming;
+            $key = strtoupper(trim(str_replace("\xc2\xa0", ' ', $sku)));
+            $pushedBase = $key !== '' && is_array($lookup) ? ($lookup[$key] ?? null) : null;
+            if ($pushedBase === null && $lookup === null && $key !== '') {
+                $pushedBase = self::lookupPushedBaseMap($channel)[$key] ?? null;
+            }
+
+            return TemuShopifySalesService::temuIncomingBaseToWrite($incoming, $pushedBase);
         }
 
         $key = strtoupper(trim(str_replace("\xc2\xa0", ' ', $sku)));

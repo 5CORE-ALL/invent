@@ -144,7 +144,7 @@ class TemuShopifySalesService
             $full += 2.99;
         }
 
-        return round($full, 2);
+        return $full;
     }
 
     /**
@@ -262,7 +262,7 @@ class TemuShopifySalesService
     }
 
     /**
-     * After a Temu pull, keep the pushed supplier base when the API is only 1¢ off.
+     * After a Temu pull, keep the pushed S Temu B Prc when the API is only 1¢ off.
      */
     public static function temuIncomingBaseToWrite(?float $incoming, ?float $pushedBase): ?float
     {

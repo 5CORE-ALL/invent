@@ -54,10 +54,6 @@
                 return n > 0 ? +n.toFixed(2) : 0;
             }
             function temuListingPushAmount(sprice) {
-                if (typeof temuPushBaseFromSprice === 'function') {
-                    const base = temuPushBaseFromSprice(sprice);
-                    return (base != null && base > 0) ? +Number(base).toFixed(2) : null;
-                }
                 const n = parseFloat(sprice);
                 return n > 0 ? +n.toFixed(2) : null;
             }
@@ -67,9 +63,8 @@
             }
             function temuListingNeedsPush(d, sprice) {
                 const shown = temuListingShownSprice(d, sprice);
-                const want = temuListingPushAmount(shown);
-                if (!(want > 0)) return false;
-                return !temuListingNearly(want, temuListingCurrentBase(d));
+                if (!(shown > 0)) return false;
+                return !temuListingNearly(shown, temuListingCurrentBase(d));
             }
             /** Same set as the blue-triangle badge: INV > 0 and shown S PRC ≠ live Base Price. */
             function temuListingHasBlueTriangle(d) {
@@ -188,10 +183,6 @@
                         if (n > 0) live = n;
                     });
                     if (!(live > 0)) return;
-                    const pushed = parseFloat(d && (d.SPRICE_PUSHED_BASE != null ? d.SPRICE_PUSHED_BASE : d.base_price)) || 0;
-                    if (pushed > 0 && Math.abs(live - pushed) <= 0.011) {
-                        live = pushed;
-                    }
                     temuApplyPushedListingPrice(row, live, d);
                     temuListingPersistBase(sku, live);
                 });
@@ -228,6 +219,7 @@
                             temuListingPushed.add(String(item.sku).toUpperCase() + '|' + Number(item.pushBase).toFixed(2));
                             temuApplyPushedListingPrice(item.row, item.pushBase, d);
                             temuListingPersistBase(item.sku, item.pushBase);
+                            temuListingPullPrice(item.sku, item.row, d);
                         } else {
                             temuListingFail++;
                             if (item.row && typeof item.row.update === 'function') {

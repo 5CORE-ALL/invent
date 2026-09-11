@@ -289,6 +289,11 @@ class FetchTemuMetrics extends Command
                 ->where('goods_id', '!=', '')
                 ->get(['sku', 'sku_id', 'goods_id']);
             $holdSkus = $this->temuPriceHoldSkus();
+            $pushedBaseLookup = ChannelLivePriceSync::lookupPushedBaseMap('temu');
+            $idToSku = [];
+            foreach ($rows as $row) {
+                $idToSku[(string) $row->sku_id] = (string) $row->sku;
+            }
 
             if ($rows->isEmpty()) {
                 $this->warn('No rows with both goods_id and sku_id. Run fetchSkus() + fetchGoodsId() first.');
@@ -386,7 +391,10 @@ class FetchTemuMetrics extends Command
                             if ($skuId === null || $amount === null || ! is_numeric($amount)) {
                                 continue;
                             }
-                            $write = (float) $amount;
+                            $sku = $idToSku[(string) $skuId] ?? '';
+                            $write = $sku !== ''
+                                ? (float) (ChannelLivePriceSync::preferIncoming('temu', $sku, (float) $amount, $pushedBaseLookup) ?? $amount)
+                                : (float) $amount;
                             $n = TemuMetric::where('sku_id', (string) $skuId)->update([
                                 'base_price' => $write,
                             ]);
@@ -402,7 +410,10 @@ class FetchTemuMetrics extends Command
                     $amount = $goodsBlock['basePrice']
                         ?? ($goodsBlock['supplierPrice']['amount'] ?? null);
                     if ($skuId !== null && $amount !== null && is_numeric($amount)) {
-                        $write = (float) $amount;
+                        $sku = $idToSku[(string) $skuId] ?? '';
+                        $write = $sku !== ''
+                            ? (float) (ChannelLivePriceSync::preferIncoming('temu', $sku, (float) $amount, $pushedBaseLookup) ?? $amount)
+                            : (float) $amount;
                         $n = TemuMetric::where('sku_id', (string) $skuId)->update([
                             'base_price' => $write,
                         ]);

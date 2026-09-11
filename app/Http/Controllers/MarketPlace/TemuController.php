@@ -4342,7 +4342,6 @@ class TemuController extends Controller
             }
 
             $this->persistPushedTemuListingBase($sku, $price, false);
-            \App\Services\ChannelLivePriceSync::confirmAfterPush('temu', $sku, 0, $price);
 
             return response()->json([
                 'success' => true,
@@ -4403,7 +4402,6 @@ class TemuController extends Controller
             }
 
             $this->persistPushedTemuListingBase($sku, $price, true);
-            \App\Services\ChannelLivePriceSync::confirmAfterPush('temu2', $sku, 0, $price);
 
             return response()->json([
                 'success' => true,

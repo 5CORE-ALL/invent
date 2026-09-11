@@ -296,6 +296,11 @@ class FetchTemu2Metrics extends Command
                 ->where('goods_id', '!=', '')
                 ->get(['sku', 'sku_id', 'goods_id']);
             $holdSkus = $this->temuPriceHoldSkus();
+            $pushedBaseLookup = ChannelLivePriceSync::lookupPushedBaseMap('temu2');
+            $idToSku = [];
+            foreach ($rows as $row) {
+                $idToSku[(string) $row->sku_id] = (string) $row->sku;
+            }
 
             if ($rows->isEmpty()) {
                 $this->warn('No rows with both goods_id and sku_id. Run fetchSkus() + fetchGoodsId() first.');
@@ -393,7 +398,10 @@ class FetchTemu2Metrics extends Command
                             if ($skuId === null || $amount === null || ! is_numeric($amount)) {
                                 continue;
                             }
-                            $write = (float) $amount;
+                            $sku = $idToSku[(string) $skuId] ?? '';
+                            $write = $sku !== ''
+                                ? (float) (ChannelLivePriceSync::preferIncoming('temu2', $sku, (float) $amount, $pushedBaseLookup) ?? $amount)
+                                : (float) $amount;
                             $n = Temu2Metric::where('sku_id', (string) $skuId)->update([
                                 'base_price' => $write,
                             ]);
@@ -409,7 +417,10 @@ class FetchTemu2Metrics extends Command
                     $amount = $goodsBlock['basePrice']
                         ?? ($goodsBlock['supplierPrice']['amount'] ?? null);
                     if ($skuId !== null && $amount !== null && is_numeric($amount)) {
-                        $write = (float) $amount;
+                        $sku = $idToSku[(string) $skuId] ?? '';
+                        $write = $sku !== ''
+                            ? (float) (ChannelLivePriceSync::preferIncoming('temu2', $sku, (float) $amount, $pushedBaseLookup) ?? $amount)
+                            : (float) $amount;
                         $n = Temu2Metric::where('sku_id', (string) $skuId)->update([
                             'base_price' => $write,
                         ]);

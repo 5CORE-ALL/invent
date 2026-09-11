@@ -212,13 +212,14 @@ class ChannelPushedPricePullService
             }
 
             try {
+                $write = (float) (ChannelLivePriceSync::preferIncoming($channel, $key, (float) $live) ?? $live);
                 $metricClass::query()
                     ->whereRaw('UPPER(TRIM(sku)) = ?', [$key])
-                    ->update(['base_price' => $live]);
+                    ->update(['base_price' => $write]);
                 if (Schema::hasTable($pricingTable)) {
                     $pricingClass::query()
                         ->whereRaw('UPPER(TRIM(sku)) = ?', [$key])
-                        ->update(['base_price' => $live]);
+                        ->update(['base_price' => $write]);
                 }
             } catch (\Throwable $e) {
                 Log::warning('Temu live price persist failed', [
@@ -232,10 +233,10 @@ class ChannelPushedPricePullService
                 'success' => true,
                 'sku' => $orig,
                 'marketplace' => $channel,
-                'price' => $live,
-                'base_price' => $live,
+                'price' => $write,
+                'base_price' => $write,
                 'sprice' => null,
-                'message' => 'Pulled Temu base $'.number_format($live, 2),
+                'message' => 'Pulled Temu base $'.number_format($write, 2),
             ];
         }
 
