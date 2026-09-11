@@ -3924,7 +3924,7 @@
                 $.ajax({
                     url: "{{ url('/listing-manager/drafts') }}/" + row.id + '/publish',
                     method: 'POST',
-                    timeout: 90000,
+                    timeout: 180000,
                 }).done(function (res) {
                     if (res && res.success) {
                         ok += 1;
@@ -3934,7 +3934,10 @@
                     }
                 }).fail(function (xhr) {
                     fail += 1;
-                    errors.push(xhr.responseJSON?.message || ('Publish failed for ' + (row.sku || 'listing') + '.'));
+                    const timedOut = xhr.statusText === 'timeout' || xhr.status === 0;
+                    errors.push(xhr.responseJSON?.message || (timedOut
+                        ? ('Amazon is still creating ' + (row.sku || 'the listing') + '. Wait a minute, then publish again.')
+                        : ('Publish failed for ' + (row.sku || 'listing') + '.')));
                 }).always(next);
             }
             next();
