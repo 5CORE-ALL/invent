@@ -59,6 +59,7 @@
                         <option value="RUNNING">RUNNING</option>
                         <option value="PAUSED">PAUSED</option>
                         <option value="ENDED">ENDED</option>
+                        <option value="INACTIVE">INACTIVE</option>
                     </select>
                 </div>
                 <div class="col-auto">
@@ -103,8 +104,9 @@
             </div>
             <div class="modal-body">
                 <p class="small text-muted mb-3">
-                    Selected <strong id="enroll-listing-count">0</strong> eligible listing(s) will be added to the chosen campaign
-                    with bid calculated from the shared eBay 1 <strong>Sbid Rule</strong> slabs (For L7 Views / CVR).
+                    <strong id="enroll-listing-count">0</strong> listing(s) can be enrolled
+                    (ENDED / no campaign). Already <strong>RUNNING</strong> ads are skipped.
+                    Bid comes from the shared eBay 1 <strong>Sbid Rule</strong> slabs (For L7 Views / CVR).
                 </p>
                 <label class="form-label fw-semibold">Select Campaign (RUNNING · COST_PER_SALE)</label>
                 <select class="form-select" id="enroll-campaign-select">
@@ -320,12 +322,44 @@ function loadData() {
 }
 
 function listingHasCampaign(listingId) {
-    if (listingId == null || listingId === '') return false;
+    const row = rowByListingId(listingId);
+    return !!(row && campaignIdPresent(row));
+}
+
+function rowByListingId(listingId) {
+    if (listingId == null || listingId === '' || typeof table === 'undefined' || !table) return null;
     const lid = String(listingId);
-    if (typeof table === 'undefined' || !table) return false;
-    return (table.getData() || []).some(function (r) {
-        const cid = r && r.campaign_id;
-        return String(r && r.listing_id) === lid && cid != null && cid !== '' && cid !== 'null';
+    return (table.getData() || []).find(function (r) {
+        return String(r && r.listing_id) === lid;
+    }) || null;
+}
+
+function campaignIdPresent(row) {
+    const cid = row && row.campaign_id;
+    return cid != null && cid !== '' && cid !== 'null';
+}
+
+function campaignStatusOf(row) {
+    return String((row && row.campaign_status) || '').toUpperCase();
+}
+
+/** Already in a live campaign — do not treat as enrollable. */
+function isInActiveCampaign(row) {
+    if (!row) return false;
+    const status = campaignStatusOf(row);
+    if (status === 'RUNNING' || status === 'PAUSED' || status === 'SYSTEM_PAUSED') return true;
+    const bid = parseFloat(row.bid_percentage);
+    return campaignIdPresent(row) && isFinite(bid) && bid > 0 && status !== 'ENDED' && status !== 'INACTIVE';
+}
+
+/** ENDED / INACTIVE / no campaign can join a RUNNING campaign. RUNNING cannot. */
+function isEnrollable(row) {
+    return !!(row && !isInActiveCampaign(row));
+}
+
+function selectedEnrollableIds() {
+    return Array.from(selectedIds).filter(function (lid) {
+        return isEnrollable(rowByListingId(lid));
     });
 }
 
@@ -486,13 +520,16 @@ $(document).ready(function () {
                 }
             },
             {
-                title: 'Status', field: 'campaign_status', width: 100, hozAlign: 'center',
+                title: 'Status', field: 'campaign_status', width: 110, hozAlign: 'center',
+                headerTooltip: 'Campaign status from eBay. Dash / No Campaign = listing is not in a Promoted Listings campaign yet (Eligible on eBay is the Promote column).',
                 formatter: function(cell) {
-                    const v = cell.getValue();
+                    const v = String(cell.getValue() || '').toUpperCase();
                     if (v === 'RUNNING') return '<span class="badge-run">RUNNING</span>';
                     if (v === 'PAUSED')  return '<span class="badge-paus">PAUSED</span>';
+                    if (v === 'SYSTEM_PAUSED') return '<span class="badge-paus">SYSTEM_PAUSED</span>';
                     if (v === 'ENDED')   return '<span class="badge-end">ENDED</span>';
-                    return '<span style="color:#aaa; font-size:11px;">—</span>';
+                    if (v === 'INACTIVE') return '<span class="badge-end">INACTIVE</span>';
+                    return '<span style="color:#aaa; font-size:11px;" title="Not enrolled in a campaign">No Campaign</span>';
                 }
             },
             {
@@ -562,8 +599,12 @@ $(document).ready(function () {
             },
             {
                 title: 'Promote', field: 'promote_with_ad', width: 140, hozAlign: 'center',
-                headerTooltip: 'eBay Promotion eligibility status',
+                headerTooltip: 'eBay Recommendation API promoteWithAd. Eligible on Seller Hub = RECOMMENDED. Unknown = last sync was UNDETERMINED (often stale until the next sync).',
                 formatter: function(cell) {
+                    const row = cell.getRow().getData();
+                    if (isInActiveCampaign(row)) {
+                        return '<span style="color:#0d6efd; background:#cfe2ff; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600;">📢 In Campaign</span>';
+                    }
                     const v = cell.getValue();
                     if (!v) return '<span class="text-muted">—</span>';
                     const map = {
@@ -571,7 +612,7 @@ $(document).ready(function () {
                         'OPTIONAL':           { color: '#856404', bg: '#fff3cd', label: '⚡ Optional' },
                         'AD_ALREADY_CREATED': { color: '#0d6efd', bg: '#cfe2ff', label: '📢 In Campaign' },
                         'NOT_RECOMMENDED':    { color: '#6c757d', bg: '#f8f9fa', label: '— Not Rec.' },
-                        'UNDETERMINED':       { color: '#6c757d', bg: '#f8f9fa', label: '? Unknown' },
+                        'UNDETERMINED':       { color: '#6c757d', bg: '#f8f9fa', label: '? Undetermined' },
                     };
                     const s = map[v] || { color: '#6c757d', bg: '#f8f9fa', label: v };
                     return `<span style="color:${s.color}; background:${s.bg}; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600;">${s.label}</span>`;
@@ -623,22 +664,14 @@ $(document).ready(function () {
 // ── Checkbox selection ─────────────────────────────
 function updateSelectedCount() {
     const count = selectedIds.size;
+    const enrollable = selectedEnrollableIds();
     $('#selected-count, #enroll-count').text(count);
-    $('#enroll-listing-count').text(count);
+    $('#enroll-listing-count').text(enrollable.length);
 
     if (count > 0) {
         $('#push-selected-btn').removeClass('d-none');
-        // Check if any selected are eligible (no campaign)
-        const hasEligible = Array.from(selectedIds).some(lid => {
-            const rows = table ? table.getRows() : [];
-            for (let r of rows) {
-                const d = r.getData();
-                if (d.listing_id == lid && !d.campaign_id) return true;
-            }
-            return false;
-        });
-        if (hasEligible) $('#enroll-selected-btn').removeClass('d-none');
-        else             $('#enroll-selected-btn').addClass('d-none');
+        if (enrollable.length) $('#enroll-selected-btn').removeClass('d-none');
+        else                   $('#enroll-selected-btn').addClass('d-none');
     } else {
         $('#push-selected-btn').addClass('d-none');
         $('#enroll-selected-btn').addClass('d-none');
@@ -662,17 +695,13 @@ document.getElementById('enroll-confirm-btn').addEventListener('click', function
 
     if (!campaignId) { errEl.textContent = 'Please select a campaign.'; errEl.classList.remove('d-none'); return; }
 
-    // Only send eligible (no campaign_id) listings
-    const eligibleIds = Array.from(selectedIds).filter(lid => {
-        const rows = table ? table.getRows() : [];
-        for (let r of rows) {
-            const d = r.getData();
-            if (d.listing_id == lid && !d.campaign_id) return true;
-        }
-        return false;
-    });
+    const eligibleIds = selectedEnrollableIds();
 
-    if (eligibleIds.length === 0) { errEl.textContent = 'No eligible listings selected.'; errEl.classList.remove('d-none'); return; }
+    if (eligibleIds.length === 0) {
+        errEl.textContent = 'No enrollable listings selected. RUNNING ads are already in a campaign; pick ENDED or No Campaign rows.';
+        errEl.classList.remove('d-none');
+        return;
+    }
 
     const btn = this;
     btn.disabled = true;

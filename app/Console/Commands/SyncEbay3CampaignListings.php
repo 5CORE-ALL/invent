@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\Ebay3Metric;
+use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -154,6 +155,13 @@ class SyncEbay3CampaignListings extends Command
                 $inserted += $chunkStats['ins'];
                 $updated += $chunkStats['upd'];
                 $skipped += $chunkStats['skip'];
+            }
+        }
+
+        if (!$dryRun) {
+            $remapped = EbayCampaignEndedListingRemap::remapEndedRows('ebay3_campaign_ads', Ebay3Metric::class);
+            if ($remapped > 0) {
+                $this->info("🔄 Remapped {$remapped} ENDED campaign-ad row(s) to a newer live listing id.");
             }
         }
 

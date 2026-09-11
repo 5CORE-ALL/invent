@@ -8,6 +8,7 @@ use App\Models\Ebay2Metric;
 use App\Models\ProductMaster;
 use App\Services\EbayChannelMetricsService;
 use App\Support\EbayCampaignReportRollup;
+use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -515,7 +516,9 @@ class Ebay2CampaignAdsController extends Controller
 
         $metrics = Ebay2Metric::whereIn('item_id', $listingIds)
             ->get()->keyBy('item_id');
-        $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
+        $shopifyMap = $this->shopifyByNormSku(
+            $ads->pluck('sku')->merge($metrics->pluck('sku'))->filter()->unique()->values()->all()
+        );
 
         try {
             $service = new \App\Services\Ebay2ApiService();
@@ -529,26 +532,41 @@ class Ebay2CampaignAdsController extends Controller
         $failed  = 0;
         $skipped = 0;
 
-        foreach ($listingIds as $lid) {
-            $lid    = (string)$lid;
-            $metric = $metrics->get($lid);
+        foreach ($listingIds as $requestedId) {
+            $resolved = EbayCampaignEndedListingRemap::resolveEnrollListing(
+                'ebay2_campaign_ads',
+                Ebay2Metric::class,
+                (string) $requestedId,
+                $ads->get((string) $requestedId),
+                $metrics->get((string) $requestedId),
+                $token
+            );
+            $lid = $resolved['listing_id'];
+            $metric = $resolved['metric'];
+            $adRow = $resolved['ad'];
+            $sku = $resolved['sku'];
+            if ($resolved['skip']) {
+                $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'skipped', 'reason' => $resolved['skip']];
+                $skipped++;
+                continue;
+            }
+
             $soldL30 = (float) ($metric?->ebay_l30 ?? 0);
             $views   = (float) ($metric?->views ?? 0);
             $l7Views = (float) ($metric?->l7_views ?? 0);
             $scvr    = $views > 0 ? ($soldL30 / $views) * 100 : 0;
-            $shopify = $shopifyMap[$this->normSku($metric?->sku ?? '')] ?? null;
+            $shopify = $shopifyMap[$this->normSku($metric?->sku ?? $sku)] ?? null;
             $inv     = (float) ($shopify->inv ?? 0);
             $qty     = (float) ($shopify->quantity ?? 0);
             $dil     = $inv > 0 ? ($qty / $inv) * 100 : 0;
             $bid     = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $l7Views, $slabs);
 
             if ($bid <= 0) {
-                $adRow = $ads->get($lid);
                 $bid = (float) ($adRow?->suggested_bid ?? 0);
             }
 
             if ($bid <= 0) {
-                $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'skipped', 'reason' => 'No matching Sbid Rule slab and no ES Bid'];
+                $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'skipped', 'reason' => 'No matching Sbid Rule slab and no ES Bid'];
                 $skipped++;
                 continue;
             }
@@ -565,7 +583,6 @@ class Ebay2CampaignAdsController extends Controller
                     $adData = $resp->json();
                     DB::table('ebay2_campaign_ads')
                         ->where('listing_id', $lid)
-                        ->whereNull('campaign_id')
                         ->update([
                             'campaign_id'      => $campaignId,
                             'funding_strategy' => 'COST_PER_SALE',
@@ -576,15 +593,42 @@ class Ebay2CampaignAdsController extends Controller
                             'updated_at'       => now(),
                         ]);
 
-                    $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'enrolled', 'bid' => $bid . '%'];
+                    $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'enrolled', 'bid' => $bid . '%'];
                     $success++;
                 } else {
-                    $errMsg = $resp->json()['errors'][0]['message'] ?? $resp->status();
-                    $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'failed', 'reason' => $errMsg];
+                    $errMsg = (string) ($resp->json()['errors'][0]['message'] ?? $resp->status());
+                    if (EbayCampaignEndedListingRemap::isEndedListingError($errMsg) && $sku !== '') {
+                        $liveId = EbayCampaignEndedListingRemap::liveItemIdForSku($sku, $lid, $token, Ebay2Metric::class);
+                        if ($liveId !== '' && $liveId !== $lid) {
+                            $lid = EbayCampaignEndedListingRemap::remapAdsRow('ebay2_campaign_ads', (string) $requestedId, $liveId, $sku);
+                            $retry = \Illuminate\Support\Facades\Http::withToken($token)
+                                ->withHeaders(['Content-Type' => 'application/json'])
+                                ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/ad", [
+                                    'listingId' => $lid,
+                                    'bidPercentage' => (string) $bid,
+                                ]);
+                            if ($retry->successful() || $retry->status() === 201) {
+                                $adData = $retry->json();
+                                DB::table('ebay2_campaign_ads')->where('listing_id', $lid)->update([
+                                    'campaign_id' => $campaignId,
+                                    'funding_strategy' => 'COST_PER_SALE',
+                                    'campaign_status' => 'RUNNING',
+                                    'bid_percentage' => $bid,
+                                    'promote_with_ad' => 'AD_ALREADY_CREATED',
+                                    'ad_id' => $adData['adId'] ?? null,
+                                    'updated_at' => now(),
+                                ]);
+                                $results[] = ['listing_id' => $lid, 'sku' => $sku, 'status' => 'enrolled', 'bid' => $bid.'%', 'reason' => 'Remapped ended listing to '.$lid];
+                                $success++;
+                                continue;
+                            }
+                        }
+                    }
+                    $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'failed', 'reason' => $errMsg];
                     $failed++;
                 }
             } catch (\Exception $e) {
-                $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'failed', 'reason' => $e->getMessage()];
+                $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'failed', 'reason' => $e->getMessage()];
                 $failed++;
             }
         }
@@ -714,6 +758,8 @@ class Ebay2CampaignAdsController extends Controller
 
     public function getData(Request $request)
     {
+        EbayCampaignEndedListingRemap::remapEndedRows('ebay2_campaign_ads', Ebay2Metric::class);
+
         $query = DB::table('ebay2_campaign_ads as ca')
             ->leftJoin('ebay_2_metrics as em', 'em.item_id', '=', 'ca.listing_id')
             ->select(

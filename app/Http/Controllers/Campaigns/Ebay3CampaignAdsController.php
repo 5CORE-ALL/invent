@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Campaigns\Concerns\ProvidesEbayCampaignAdsBadgeSummary;
 use App\Http\Controllers\Controller;
+use App\Models\Ebay3Metric;
 use App\Services\CronMonitor\ManualActionService;
 use App\Services\EbayChannelMetricsService;
+use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -482,9 +484,11 @@ class Ebay3CampaignAdsController extends Controller
             ->get()
             ->keyBy('listing_id');
 
-        $metrics = \App\Models\Ebay3Metric::whereIn('item_id', $listingIds)
+        $metrics = Ebay3Metric::whereIn('item_id', $listingIds)
             ->get()->keyBy('item_id');
-        $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
+        $shopifyMap = $this->shopifyByNormSku(
+            $ads->pluck('sku')->merge($metrics->pluck('sku'))->filter()->unique()->values()->all()
+        );
 
         try {
             $service = new \App\Services\EbayThreeApiService();
@@ -500,27 +504,41 @@ class Ebay3CampaignAdsController extends Controller
         // Use live campaign status — do not assume RUNNING (eBay may SYSTEM_PAUSE).
         $liveStatus = $this->fetchCampaignStatus($token, (string) $campaignId) ?: 'RUNNING';
 
-        foreach ($listingIds as $lid) {
-            $lid    = (string)$lid;
-            $metric = $metrics->get($lid);
+        foreach ($listingIds as $requestedId) {
+            $resolved = EbayCampaignEndedListingRemap::resolveEnrollListing(
+                'ebay3_campaign_ads',
+                Ebay3Metric::class,
+                (string) $requestedId,
+                $ads->get((string) $requestedId),
+                $metrics->get((string) $requestedId),
+                $token
+            );
+            $lid = $resolved['listing_id'];
+            $metric = $resolved['metric'];
+            $adRow = $resolved['ad'];
+            $sku = $resolved['sku'];
+            if ($resolved['skip']) {
+                $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'skipped', 'reason' => $resolved['skip']];
+                $skipped++;
+                continue;
+            }
+
             $soldL30 = (float) ($metric?->ebay_l30 ?? 0);
             $views   = (float) ($metric?->views ?? 0);
             $l7Views = (float) ($metric?->l7_views ?? 0);
             $scvr    = $views > 0 ? ($soldL30 / $views) * 100 : 0;
-            $shopify = $shopifyMap[$this->normSku($metric?->sku ?? '')] ?? null;
+            $shopify = $shopifyMap[$this->normSku($metric?->sku ?? $sku)] ?? null;
             $inv     = (float) ($shopify->inv ?? 0);
             $qty     = (float) ($shopify->quantity ?? 0);
             $dil     = $inv > 0 ? ($qty / $inv) * 100 : 0;
             $bid     = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $l7Views, $slabs);
 
-            // Fallback to ES Bid when no slab matches.
             if ($bid <= 0) {
-                $adRow = $ads->get($lid);
                 $bid = (float) ($adRow?->suggested_bid ?? 0);
             }
 
             if ($bid <= 0) {
-                $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'skipped', 'reason' => 'No matching Sbid Rule slab and no ES Bid'];
+                $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'skipped', 'reason' => 'No matching Sbid Rule slab and no ES Bid'];
                 $skipped++;
                 continue;
             }
@@ -537,7 +555,6 @@ class Ebay3CampaignAdsController extends Controller
                     $adData = $resp->json();
                     DB::table('ebay3_campaign_ads')
                         ->where('listing_id', $lid)
-                        ->whereNull('campaign_id')
                         ->update([
                             'campaign_id'      => $campaignId,
                             'funding_strategy' => 'COST_PER_SALE',
@@ -548,15 +565,42 @@ class Ebay3CampaignAdsController extends Controller
                             'updated_at'       => now(),
                         ]);
 
-                    $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'enrolled', 'bid' => $bid . '%'];
+                    $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'enrolled', 'bid' => $bid . '%'];
                     $success++;
                 } else {
-                    $errMsg = $resp->json()['errors'][0]['message'] ?? $resp->status();
-                    $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'failed', 'reason' => $errMsg];
+                    $errMsg = (string) ($resp->json()['errors'][0]['message'] ?? $resp->status());
+                    if (EbayCampaignEndedListingRemap::isEndedListingError($errMsg) && $sku !== '') {
+                        $liveId = EbayCampaignEndedListingRemap::liveItemIdForSku($sku, $lid, $token, Ebay3Metric::class);
+                        if ($liveId !== '' && $liveId !== $lid) {
+                            $lid = EbayCampaignEndedListingRemap::remapAdsRow('ebay3_campaign_ads', (string) $requestedId, $liveId, $sku);
+                            $retry = \Illuminate\Support\Facades\Http::withToken($token)
+                                ->withHeaders(['Content-Type' => 'application/json'])
+                                ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/ad", [
+                                    'listingId' => $lid,
+                                    'bidPercentage' => (string) $bid,
+                                ]);
+                            if ($retry->successful() || $retry->status() === 201) {
+                                $adData = $retry->json();
+                                DB::table('ebay3_campaign_ads')->where('listing_id', $lid)->update([
+                                    'campaign_id' => $campaignId,
+                                    'funding_strategy' => 'COST_PER_SALE',
+                                    'campaign_status' => $liveStatus,
+                                    'bid_percentage' => $bid,
+                                    'promote_with_ad' => 'AD_ALREADY_CREATED',
+                                    'ad_id' => $adData['adId'] ?? null,
+                                    'updated_at' => now(),
+                                ]);
+                                $results[] = ['listing_id' => $lid, 'sku' => $sku, 'status' => 'enrolled', 'bid' => $bid.'%', 'reason' => 'Remapped ended listing to '.$lid];
+                                $success++;
+                                continue;
+                            }
+                        }
+                    }
+                    $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'failed', 'reason' => $errMsg];
                     $failed++;
                 }
             } catch (\Exception $e) {
-                $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'failed', 'reason' => $e->getMessage()];
+                $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'failed', 'reason' => $e->getMessage()];
                 $failed++;
             }
         }
@@ -670,6 +714,8 @@ class Ebay3CampaignAdsController extends Controller
 
     public function getData(Request $request)
     {
+        EbayCampaignEndedListingRemap::remapEndedRows('ebay3_campaign_ads', Ebay3Metric::class);
+
         // Local campaign_status goes stale between daily syncs (eBay can SYSTEM_PAUSE
         // mid-day). Refresh from Marketing API so the Status column matches eBay.
         $this->refreshCampaignStatusesFromEbay();
