@@ -55,7 +55,7 @@ final class MarketplacePortalInactiveCount
                 self::columnSkus('tiktok_products_two', 'listing_status', 'sku'),
                 self::jsonLiveInactiveSkus('tiktok_two_shop_listing_statuses')
             ),
-            'amazon' => self::fromPortalAndJson('amazon_datsheets', 'listing_status', ['amazon_listing_statuses']),
+            'amazon' => self::amazonSkus(),
             'reverb' => self::mergeUnique(
                 self::fromPortalAndJson('reverb_products', 'listing_state', ['reverb_listing_statuses']),
                 self::liveCacheInactiveSkus(ReverbLiveListingsService::CACHE_KEY)
@@ -84,6 +84,64 @@ final class MarketplacePortalInactiveCount
     public static function count(string $mmChannel): int
     {
         return count(self::skus($mmChannel));
+    }
+
+    /**
+     * Datasheet INACTIVE includes SP-API OUT_OF_STOCK. Drop SKUs that the
+     * merchant listings report still marks Active (live, including qty 0).
+     *
+     * @return list<string>
+     */
+    protected static function amazonSkus(): array
+    {
+        $inactive = self::fromPortalAndJson('amazon_datsheets', 'listing_status', ['amazon_listing_statuses']);
+        $liveOnReport = self::amazonActiveReportSkuKeys();
+        if ($liveOnReport === []) {
+            return $inactive;
+        }
+
+        return array_values(array_filter(
+            $inactive,
+            static fn (string $sku) => ! isset($liveOnReport[strtoupper(trim($sku))])
+        ));
+    }
+
+    /**
+     * @return array<string, true> UPPER(sku) => true
+     */
+    protected static function amazonActiveReportSkuKeys(): array
+    {
+        if (! Schema::hasTable('amazon_listings_raw') || ! Schema::hasColumn('amazon_listings_raw', 'seller_sku')) {
+            return [];
+        }
+
+        $cols = ['id', 'seller_sku'];
+        foreach (['quantity', 'raw_data'] as $col) {
+            if (Schema::hasColumn('amazon_listings_raw', $col)) {
+                $cols[] = $col;
+            }
+        }
+
+        $out = [];
+        DB::table('amazon_listings_raw')
+            ->whereNotNull('seller_sku')
+            ->where('seller_sku', '!=', '')
+            ->select($cols)
+            ->orderBy('id')
+            ->chunkById(1000, function ($chunk) use (&$out) {
+                foreach ($chunk as $row) {
+                    $sku = trim((string) ($row->seller_sku ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $meta = AmazonListingStatusHelper::metaFromListingsRawRow($row);
+                    if (($meta['state'] ?? '') === 'active') {
+                        $out[strtoupper($sku)] = true;
+                    }
+                }
+            });
+
+        return $out;
     }
 
     /**

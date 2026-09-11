@@ -21,7 +21,7 @@ final class MarketplacePortalStatusTabs
         if (in_array($state, [
             'active', '1', 'true', 'live', 'onselling', 'on_selling',
             'published', 'enabled', 'buyable', 'buyable_by_quantity', 'listed',
-            'activate', 'out_of_stock', 'oos', 'approved', 'available', 'visible',
+            'activate', 'out_of_stock', 'oos', 'discoverable', 'approved', 'available', 'visible',
             'for_sale',
         ], true)) {
             return 'active';

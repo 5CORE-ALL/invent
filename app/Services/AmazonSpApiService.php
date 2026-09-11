@@ -2113,6 +2113,10 @@ class AmazonSpApiService
                     $rowData['condition_type'] = trim((string) $condType);
                     $rowData['condition_type_display'] = self::mapConditionType($rowData['condition_type']);
                 }
+                $reportQty = $data['quantity'] ?? $data['Quantity'] ?? null;
+                if (Schema::hasColumn($tableName, 'quantity') && $reportQty !== null && $reportQty !== '' && is_numeric($reportQty)) {
+                    $rowData['quantity'] = (int) $reportQty;
+                }
                 $batch[] = $rowData;
                 if (count($batch) >= $batchSize) {
                     $inserted += $this->insertBatchWithRetry($batch);

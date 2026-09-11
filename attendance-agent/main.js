@@ -14,7 +14,7 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.4.5';
+const AGENT_VERSION = '1.4.6';
 const UPDATE_SNOOZE_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer = null;
 let lastUpdatePayload = null;
@@ -914,6 +914,22 @@ function isLoggedIn() {
     return !!store.get('token');
 }
 
+function isClockOn() {
+    const status = lastSessionMeta?.status;
+    return isLoggedIn() && (status === 'active' || status === 'paused');
+}
+
+function statusPresence() {
+    if (!isLoggedIn()) {
+        return { on: false, label: 'Logged off' };
+    }
+    if (isClockOn()) {
+        return { on: true, label: 'Clocked in' };
+    }
+
+    return { on: false, label: 'Off duty' };
+}
+
 function makeStatusCircleIcon(rgb, size) {
     const buf = Buffer.alloc(size * size * 4, 0);
     const cx = (size - 1) / 2;
@@ -947,12 +963,11 @@ function makeStatusCircleIcon(rgb, size) {
 }
 
 function statusIconColor() {
-    return isLoggedIn() ? [34, 197, 94] : [239, 68, 68];
+    return statusPresence().on ? [34, 197, 94] : [239, 68, 68];
 }
 
 function applyLoginStatusVisuals() {
-    const loggedIn = isLoggedIn();
-    const label = loggedIn ? 'Logged in' : 'Logged off';
+    const presence = statusPresence();
     const color = statusIconColor();
     const trayIcon = makeStatusCircleIcon(color, 16);
     const overlayIcon = makeStatusCircleIcon(color, 32);
@@ -961,13 +976,14 @@ function applyLoginStatusVisuals() {
         tray.setImage(trayIcon);
     }
     if (win && !win.isDestroyed()) {
-        win.setTitle(`5Core Attendance — ${label}`);
+        win.setTitle(`5Core Attendance — ${presence.label}`);
         try {
-            win.setOverlayIcon(overlayIcon, label);
+            win.setOverlayIcon(overlayIcon, presence.label);
         } catch (_) { /* overlay is Windows-only */ }
         win.webContents.send('login-status', {
-            loggedIn,
-            label,
+            loggedIn: isLoggedIn(),
+            clockOn: presence.on,
+            label: presence.label,
             user: store.get('user') || null,
         });
     }
@@ -979,15 +995,14 @@ function updateTrayTooltip(text) {
     }
     const user = store.get('user');
     const name = user?.name || '5Core Attendance';
-    const login = isLoggedIn() ? 'Logged in' : 'Logged off';
-    const extra = text && text !== login ? ` · ${text}` : '';
-    tray.setToolTip(`${name} — ${login}${extra}`);
+    const presence = statusPresence();
+    const extra = text && text !== presence.label ? ` · ${text}` : '';
+    tray.setToolTip(`${name} — ${presence.label}${extra}`);
 }
 
 function buildTrayMenu() {
-    const loggedIn = isLoggedIn();
     return Menu.buildFromTemplate([
-        { label: loggedIn ? 'Logged in' : 'Logged off', enabled: false },
+        { label: statusPresence().label, enabled: false },
         { type: 'separator' },
         { label: 'Open Dashboard', click: () => showWindow() },
         { type: 'separator' },
@@ -1033,6 +1048,8 @@ function buildTrayMenu() {
             click: async () => {
                 store.delete('token');
                 store.delete('user');
+                lastSessionMeta = null;
+                activityState = 'off';
                 stopLiveWatchPoll();
                 stopTracking();
                 showWindow();
@@ -1361,6 +1378,8 @@ ipcMain.handle('googleLogin', async () => {
 ipcMain.handle('signOut', async () => {
     store.delete('token');
     store.delete('user');
+    lastSessionMeta = null;
+    activityState = 'off';
     stopLiveWatchPoll();
     stopTracking();
     updateTray();

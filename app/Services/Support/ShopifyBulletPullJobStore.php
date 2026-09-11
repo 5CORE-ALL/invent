@@ -103,6 +103,40 @@ class ShopifyBulletPullJobStore
         return in_array($state['status'] ?? 'idle', ['running', 'paused', 'stopping'], true);
     }
 
+    /**
+     * An "active" job whose worker has not touched it for a while is dead/stuck.
+     * Such a job must not block new pulls forever.
+     */
+    public function isStale(array $state, int $seconds = 180): bool
+    {
+        if (! $this->isActive($state)) {
+            return false;
+        }
+        $updatedAt = $state['updated_at'] ?? null;
+        if (! is_string($updatedAt) || $updatedAt === '') {
+            return true;
+        }
+        try {
+            return abs(now()->diffInSeconds(\Illuminate\Support\Carbon::parse($updatedAt))) > $seconds;
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    /**
+     * Force the job inactive so Stop/Cancel always works, even if the worker is gone.
+     */
+    public function forceStop(string $message = 'Stopped by user.'): array
+    {
+        return $this->update(function (array $state) use ($message) {
+            $state['status'] = 'stopped';
+            $state['finished_at'] = now()->toDateTimeString();
+            $state['last_message'] = $message;
+
+            return $state;
+        });
+    }
+
     public function markFailed(string $message): array
     {
         return $this->update(function (array $state) use ($message) {
