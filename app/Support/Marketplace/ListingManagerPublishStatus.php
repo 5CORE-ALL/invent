@@ -447,8 +447,12 @@ class ListingManagerPublishStatus
         $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
         $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core')) ?: '5 Core';
         $defaultCondition = trim((string) config('listing_manager.default_condition', 'New')) ?: 'New';
-        $brand = $defaultBrand;
-        $manufacturer = $defaultManufacturer;
+        $brand = trim((string) ($details['brand'] ?? $details['vendor'] ?? '')) ?: $defaultBrand;
+        $manufacturer = trim((string) ($details['manufacturer'] ?? '')) ?: $defaultManufacturer;
+        $brand = preg_replace('/\s+Inc\.?$/i', '', $brand) ?: $brand;
+        $manufacturer = preg_replace('/\s+Inc\.?$/i', '', $manufacturer) ?: $manufacturer;
+        $brand = trim((string) $brand) ?: $defaultBrand;
+        $manufacturer = trim((string) $manufacturer) ?: $defaultManufacturer;
         $mpn = trim((string) ($details['mpn'] ?? ($specifics['MPN'] ?? '')));
         $upc = trim((string) ($details['upc'] ?? ($specifics['UPC'] ?? '')));
         if ($brand !== '') {

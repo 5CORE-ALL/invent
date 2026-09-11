@@ -51,17 +51,25 @@ class AmazonListingPublishService
 
         ListingManagerPublishStatus::forgetAmazonLiveCache($sku);
         $inspect = $this->api->inspectSellerCentralListing($sku);
+        $productType = trim((string) ($details['product_type'] ?? $details['category'] ?? ''));
         if (! ($inspect['found'] ?? false)) {
             $created = $this->createListing($sku, $details, $title, $qty, $images);
             if (! ($created['success'] ?? false)) {
                 return $created;
             }
-            $inspect = $this->waitForSellerCentralListing($sku);
+            $this->api->disableNonUsMarketplaceOffers($sku, $productType);
+            $inspect = $this->waitForSellerCentralListing($sku, $productType);
+            $asin = trim((string) ($inspect['asin'] ?? ''));
+            if ($asin !== '') {
+                $this->completeUsListing($sku, $details, $title, $qty, $images, $asin);
+                $this->api->disableNonUsMarketplaceOffers($sku, $productType);
+                $inspect = $this->waitForSellerCentralListing($sku, $productType);
+            }
             if (! ($inspect['found'] ?? false)) {
                 return [
                     'success' => false,
                     'message' => trim((string) ($inspect['message'] ?? ''))
-                        ?: ('Amazon accepted the submit, but Seller Central still has no ASIN for '.$sku.'. Search Activate listings and Complete drafts, fix Amazon errors, then publish again.'),
+                        ?: ('Amazon accepted the US draft for '.$sku.', but no ASIN yet. Non-US offers were turned off. Publish again after Amazon assigns the ASIN.'),
                     'skus' => [$sku],
                 ];
             }
@@ -98,7 +106,7 @@ class AmazonListingPublishService
             }
         }
 
-        $this->api->disableNonUsMarketplaceOffers($existingSku, $details['product_type'] ?? $details['category'] ?? '');
+        $this->api->disableNonUsMarketplaceOffers($existingSku, $productType);
 
         $confirmed = $this->api->inspectSellerCentralListing($sku);
         ListingManagerPublishStatus::forgetAmazonLiveCache($sku);
@@ -120,11 +128,15 @@ class AmazonListingPublishService
             ];
         }
 
+        $this->completeUsListing($existingSku, $details, $title, $qty, $images, $asin);
+        $this->api->disableNonUsMarketplaceOffers($existingSku, $productType);
+
         return [
             'success' => true,
-            'message' => 'Updated Amazon listing for '.$sku
-                .($ok !== [] ? ' ('.implode(', ', $ok).')' : '')
-                .'. Confirm it under Manage All Inventory.'
+            'message' => 'Published Amazon listing for '.$sku
+                .' (ASIN '.$asin
+                .($ok !== [] ? ', '.implode(', ', $ok) : '')
+                .'). Only the US offer is enabled.'
                 .($fail !== [] ? ' '.implode(' ', $fail) : ''),
             'goods_id' => $asin,
             'skus' => [$sku],
@@ -134,16 +146,19 @@ class AmazonListingPublishService
     /**
      * @return array{checked: bool, found: bool, seller_sku?: string, asin?: string, message?: string}
      */
-    private function waitForSellerCentralListing(string $sku): array
+    private function waitForSellerCentralListing(string $sku, string $productType = ''): array
     {
         $last = ['checked' => true, 'found' => false];
-        for ($i = 0; $i < 4; $i++) {
+        for ($i = 0; $i < 10; $i++) {
             if ($i > 0) {
-                sleep(2);
+                sleep(3);
             }
             $last = $this->api->inspectSellerCentralListing($sku);
-            if ($last['found'] ?? false) {
+            if (($last['found'] ?? false) && trim((string) ($last['asin'] ?? '')) !== '') {
                 return $last;
+            }
+            if (trim((string) ($last['seller_sku'] ?? $sku)) !== '') {
+                $this->api->disableNonUsMarketplaceOffers($sku, $productType);
             }
         }
 
@@ -186,9 +201,50 @@ class AmazonListingPublishService
             ];
         }
 
+        $attributes = $this->usListingAttributes($sku, $details, $title, $qty, $images);
+
+        $result = $this->api->putListingsItem($sku, $productType, $attributes, 'LISTING');
+        $this->api->disableNonUsMarketplaceOffers($sku, $productType);
+        $result['skus'] = [$sku];
+
+        return $result;
+    }
+
+    /**
+     * After Amazon assigns an ASIN, submit the US offer again so the draft becomes a live listing.
+     *
+     * @param  array<string, mixed>  $details
+     * @param  list<string>  $images
+     */
+    private function completeUsListing(string $sku, array $details, string $title, ?int $qty, array $images, string $asin): void
+    {
+        $productType = trim((string) ($details['product_type'] ?? $details['category'] ?? $details['primary_category_id'] ?? ''));
+        if ($productType === '' || preg_match('/^\d+$/', $productType) || $title === '') {
+            return;
+        }
+
+        $attributes = $this->usListingAttributes($sku, $details, $title, $qty, $images);
+        $asin = trim($asin);
+        if ($asin !== '') {
+            $attributes['merchant_suggested_asin'] = [[
+                'value' => $asin,
+                'marketplace_id' => 'ATVPDKIKX0DER',
+            ]];
+        }
+
+        $this->api->putListingsItem($sku, $productType, $attributes, 'LISTING');
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     * @param  list<string>  $images
+     * @return array<string, mixed>
+     */
+    private function usListingAttributes(string $sku, array $details, string $title, ?int $qty, array $images): array
+    {
         $mp = 'ATVPDKIKX0DER';
-        $brand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
-        $manufacturer = trim((string) config('listing_manager.default_manufacturer', $brand)) ?: $brand;
+        $brand = self::displayBrand($details);
+        $manufacturer = self::displayManufacturer($details);
         $upc = trim((string) ($details['upc'] ?? ''));
         $price = (float) ($details['price'] ?? 0);
         $listPrice = (float) ($details['list_price'] ?? 0);
@@ -201,11 +257,17 @@ class AmazonListingPublishService
         $origin = ListingManagerAmazonHydrator::amazonCountryOfOrigin((string) ($details['country_of_origin'] ?? ''));
         $dgr = ListingManagerAmazonHydrator::amazonDangerousGoods((string) ($details['dangerous_goods_regulations'] ?? ''));
         $bullets = $this->bulletPointsFromDetails($details, $title);
+        $length = (float) ($details['package_length'] ?? 0);
+        $width = (float) ($details['package_width'] ?? 0);
+        $height = (float) ($details['package_height'] ?? 0);
+        $lb = (float) ($details['package_weight_lb'] ?? 0);
+        $oz = (float) ($details['package_weight_oz'] ?? 0);
+        $weightLb = $lb + ($oz / 16);
 
-        $attr = function (mixed $value) use ($mp): array {
+        $attr = static function (mixed $value) use ($mp): array {
             return [['value' => $value, 'marketplace_id' => $mp]];
         };
-        $text = function (string $value) use ($mp): array {
+        $text = static function (string $value) use ($mp): array {
             return [['value' => $value, 'language_tag' => 'en_US', 'marketplace_id' => $mp]];
         };
 
@@ -231,19 +293,23 @@ class AmazonListingPublishService
                 'quantity' => $quantity,
                 'marketplace_id' => $mp,
             ]],
-            'item_package_dimensions' => [[
+        ];
+
+        if ($length > 0 && $width > 0 && $height > 0) {
+            $attributes['item_package_dimensions'] = [[
                 'length' => ['value' => $length, 'unit' => 'inches'],
                 'width' => ['value' => $width, 'unit' => 'inches'],
                 'height' => ['value' => $height, 'unit' => 'inches'],
                 'marketplace_id' => $mp,
-            ]],
-            'item_package_weight' => [[
+            ]];
+        }
+        if ($weightLb > 0) {
+            $attributes['item_package_weight'] = [[
                 'value' => round($weightLb, 3),
                 'unit' => 'pounds',
                 'marketplace_id' => $mp,
-            ]],
-        ];
-
+            ]];
+        }
         if ($price > 0) {
             $attributes['purchasable_offer'] = [[
                 'marketplace_id' => $mp,
@@ -261,7 +327,6 @@ class AmazonListingPublishService
                 'marketplace_id' => $mp,
             ]];
         }
-
         foreach (array_values($images) as $i => $url) {
             $key = $i === 0 ? 'main_product_image_locator' : 'other_product_image_locator_'.$i;
             $attributes[$key] = [[
@@ -269,7 +334,6 @@ class AmazonListingPublishService
                 'marketplace_id' => $mp,
             ]];
         }
-
         if ($upc !== '' && ! preg_match('/^B0/i', $upc)) {
             $attributes['externally_assigned_product_identifier'] = [[
                 'type' => 'upc',
@@ -280,11 +344,41 @@ class AmazonListingPublishService
             $attributes['supplier_declared_has_product_identifier_exemption'] = $attr(true);
         }
 
-        $result = $this->api->putListingsItem($sku, $productType, $attributes);
-        $this->api->disableNonUsMarketplaceOffers($sku, $productType);
-        $result['skus'] = [$sku];
+        return $attributes;
+    }
 
-        return $result;
+    /**
+     * @param  array<string, mixed>  $details
+     */
+    public static function displayBrand(array $details): string
+    {
+        $brand = trim((string) ($details['brand'] ?? $details['vendor'] ?? ''));
+        if ($brand === '') {
+            $brand = trim((string) config('listing_manager.default_brand', '5 Core'));
+        }
+
+        return self::withoutIncSuffix($brand) ?: '5 Core';
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     */
+    public static function displayManufacturer(array $details): string
+    {
+        $manufacturer = trim((string) ($details['manufacturer'] ?? ''));
+        if ($manufacturer === '') {
+            $manufacturer = self::displayBrand($details);
+        }
+
+        return self::withoutIncSuffix($manufacturer) ?: '5 Core';
+    }
+
+    public static function withoutIncSuffix(string $value): string
+    {
+        $value = trim($value);
+        $value = preg_replace('/\s+Inc\.?$/i', '', $value) ?? $value;
+
+        return trim($value);
     }
 
     /**
