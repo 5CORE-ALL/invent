@@ -3921,6 +3921,7 @@
                     title: "NRL/REQ",
                     field: "nr_req",
                     hozAlign: "center",
+                    visible: false,
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const nrl = row['nr_req'] || '';
@@ -4617,7 +4618,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         return String(Math.round(value));
                     },
-                    visible: true
+                    visible: false
                 },
                 {
                     title: "ACOS%",
@@ -4773,6 +4774,7 @@
                     hozAlign: "center",
                     width: 80,
                     minWidth: 70,
+                    visible: false,
                     formatter: function(cell) {
                         const v = cell.getValue();
                         return (v === null || v === undefined || v === '') ? '' : v;
@@ -4785,6 +4787,7 @@
                     hozAlign: "center",
                     width: 90,
                     minWidth: 80,
+                    visible: false,
                     formatter: function(cell) {
                         const v = cell.getValue();
                         return (v === null || v === undefined || v === '') ? '' : v;
@@ -4818,6 +4821,7 @@
                     sorter: "string",
                     width: 150,
                     minWidth: 140,
+                    visible: false,
                     accessorDownload: function(value, data) {
                         if (data && data.goods_id_mismatch) {
                             const ids = Array.isArray(data.child_goods_ids) ? data.child_goods_ids.join(' | ') : '';
@@ -6285,7 +6289,7 @@
         }
 
         // Columns that should ALWAYS stay hidden, regardless of saved state.
-        var alwaysHiddenColumns = ['cvr_45', 'profit'];
+        var alwaysHiddenColumns = ['cvr_45', 'profit', 'spend', 'handling_charge', 'o_size_charge', 'goods_id', 'nr_req'];
         function enforceAlwaysHiddenColumns() {
             alwaysHiddenColumns.forEach(function(col) {
                 try { table.hideColumn(col); } catch (e) {}
