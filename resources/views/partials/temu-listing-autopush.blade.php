@@ -53,18 +53,24 @@
                 const n = parseFloat(fallback != null ? fallback : (d && (d.sprice != null ? d.sprice : d.SPRICE)));
                 return n > 0 ? +n.toFixed(2) : 0;
             }
-            function temuListingPushAmount(sprice) {
-                const n = parseFloat(sprice);
-                return n > 0 ? +n.toFixed(2) : null;
+            function temuListingPushAmount(d, sprice) {
+                if (d && typeof temuListingPushBase === 'function') {
+                    const listing = temuListingPushBase(d);
+                    if (listing > 0) return +Number(listing).toFixed(2);
+                }
+                const shown = temuListingShownSprice(d, sprice);
+                if (typeof temuPushBaseFromSprice === 'function') {
+                    const base = temuPushBaseFromSprice(shown);
+                    if (base > 0) return +Number(base).toFixed(2);
+                }
+                return shown > 0 ? shown : null;
             }
             function temuListingCurrentBase(d) {
                 const b = parseFloat(d && d.base_price);
                 return b > 0 ? +b.toFixed(2) : 0;
             }
             function temuListingNeedsPush(d, sprice) {
-                const shown = temuListingShownSprice(d, sprice);
-                if (!(shown > 0)) return false;
-                return !temuListingNearly(shown, temuListingCurrentBase(d));
+                return temuListingHasBlueTriangle(d);
             }
             /** Same set as the blue-triangle badge: INV > 0 and shown S PRC ≠ Temu Price. */
             function temuListingHasBlueTriangle(d) {
@@ -91,6 +97,10 @@
                 const total = temuListingTotal;
                 const done = temuListingDone;
                 const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+                const finished = !active && total > 0 && done >= total;
+                const doneMsg = finished
+                    ? (temuListingOk + ' ok' + (temuListingFail ? (' · ' + temuListingFail + ' failed') : ''))
+                    : undefined;
                 if (typeof global.setChannelPushSpriceProgress === 'function') {
                     global.setChannelPushSpriceProgress({
                         active: !!active,
@@ -100,7 +110,7 @@
                         fail: temuListingFail,
                         pct: pct,
                         title: 'Temu listing',
-                        msg: active ? (done + ' / ' + total) : undefined,
+                        msg: active ? (done + ' / ' + total) : doneMsg,
                     });
                     return;
                 }
@@ -111,7 +121,7 @@
                 $inline.toggleClass('is-fail', temuListingFail > 0);
                 $('#ch-promo-reload-push-progress-pct').text(pct + '%');
                 $('#ch-promo-reload-push-progress-bar').css('width', pct + '%');
-                $('#ch-promo-reload-push-progress-msg').text(active ? (done + ' / ' + total) : (total ? 'Ready' : 'Ready'));
+                $('#ch-promo-reload-push-progress-msg').text(active ? (done + ' / ' + total) : (doneMsg || 'Ready'));
             }
             function temuListingPatchDatasets(sku, patch) {
                 const want = String(sku || '').trim();
@@ -268,37 +278,45 @@
                     ? (tableRow.getData() || {})
                     : ((row && typeof row === 'object') ? row : {});
                 const shown = temuListingShownSprice(d, sprice);
-                const pushAmount = temuListingPushAmount(shown);
+                const pushAmount = temuListingPushAmount(d, shown);
                 if (!sku || !(pushAmount > 0)) return false;
                 if (!opts.force && !temuListingAutoEligible(d)) return false;
                 const key = String(sku).toUpperCase();
                 const dedupe = key + '|' + pushAmount.toFixed(2);
                 if (temuListingPushed.has(dedupe)) return false;
+                const already = temuListingQ.some(function(it) {
+                    return String(it.sku).toUpperCase() === key;
+                });
                 temuListingQ = temuListingQ.filter(function(it) {
                     return String(it.sku).toUpperCase() !== key;
                 });
                 temuListingQ.push({ sku: sku, sprice: shown, pushBase: pushAmount, row: tableRow });
                 temuListingCancelled = false;
-                temuListingTotal = temuListingDone + temuListingQ.length + temuListingInflight;
-                temuListingSetProgress(true);
-                temuListingPump();
+                const live = temuListingDone + temuListingQ.length + temuListingInflight;
+                if (!already) {
+                    temuListingTotal = temuListingTotal > 0 ? Math.max(temuListingTotal, live) : live;
+                }
+                if (!opts.deferPump) {
+                    temuListingSetProgress(true);
+                    temuListingPump();
+                }
                 return true;
             }
             function scanAndQueueTemuListingPush(tbl) {
                 if (!temuListingAllowed()) return 0;
                 tbl = tbl || (typeof table !== 'undefined' ? table : null);
                 const seen = {};
-                let n = 0;
+                const found = [];
                 const consider = function(row, d) {
                     if (!d) return;
                     if (d.is_parent || d.is_parent_row || d.is_parent_summary) return;
+                    if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(d)) return;
                     const sku = String(d.sku || d['(Child) sku'] || '').trim();
                     const key = sku.toUpperCase();
                     if (!sku || key.indexOf('PARENT') !== -1 || seen[key]) return;
-                    // Same set as the blue triangle badge — do not queue listing-base mismatches.
                     if (!temuListingAutoEligible(d)) return;
                     seen[key] = true;
-                    if (enqueueTemuListingPushAfterSave(sku, null, row || d)) n++;
+                    found.push({ sku: sku, row: row || d });
                 };
                 const walkRow = function(row) {
                     if (!row || typeof row.getData !== 'function') return;
@@ -307,25 +325,26 @@
                         (row.getTreeChildren() || []).forEach(walkRow);
                     }
                 };
+                // Same universe as the blue-triangle badge (current table data), not allTableData.
                 if (tbl && typeof tbl.getRows === 'function') {
                     let rows = [];
-                    try { rows = tbl.getRows() || []; } catch (e) { rows = []; }
+                    try { rows = tbl.getRows('active') || tbl.getRows() || []; } catch (e) { rows = []; }
                     rows.forEach(walkRow);
                 }
-                const extras = [];
-                try {
-                    if (tbl && typeof tbl.getData === 'function') extras.push(tbl.getData() || []);
-                } catch (e) { /* ignore */ }
-                if (typeof allTableData !== 'undefined' && Array.isArray(allTableData)) extras.push(allTableData);
-                if (global.allTableData && Array.isArray(global.allTableData)) extras.push(global.allTableData);
-                const walkData = function(arr) {
-                    (arr || []).forEach(function(d) {
-                        consider(null, d);
-                        if (d && Array.isArray(d._children)) walkData(d._children);
-                    });
-                };
-                extras.forEach(walkData);
-                return n;
+                if (tbl && typeof tbl.getData === 'function') {
+                    try {
+                        (tbl.getData() || []).forEach(function(d) { consider(null, d); });
+                    } catch (e) { /* ignore */ }
+                }
+                found.forEach(function(it) {
+                    enqueueTemuListingPushAfterSave(it.sku, null, it.row, { deferPump: true });
+                });
+                temuListingTotal = temuListingDone + temuListingQ.length + temuListingInflight;
+                if (temuListingTotal > 0) {
+                    temuListingSetProgress(true);
+                    temuListingPump();
+                }
+                return found.length;
             }
             function cancelTemuListingAutopush() {
                 temuListingQ = [];
