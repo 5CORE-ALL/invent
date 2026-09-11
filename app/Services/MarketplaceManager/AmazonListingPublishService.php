@@ -5,6 +5,9 @@ namespace App\Services\MarketplaceManager;
 use App\Services\AmazonSpApiService;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerPublishStatus;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Create/update an Amazon listing via SP-API Listings Items (title, stock, images, package).
@@ -60,25 +63,25 @@ class AmazonListingPublishService
         }
         $asin = trim((string) ($inspect['asin'] ?? ''));
         if ($asin === '') {
-            $this->api->disableNonUsMarketplaceOffers($sku, $productType);
             $inspect = $this->waitForSellerCentralListing($sku);
             $asin = trim((string) ($inspect['asin'] ?? ''));
-            if ($asin !== '') {
-                $this->completeUsListing($sku, $details, $title, $qty, $images, $asin);
-                $inspect = $this->api->inspectSellerCentralListing($sku);
-            }
-            if (! ($inspect['found'] ?? false)) {
-                return [
-                    'success' => false,
-                    'message' => trim((string) ($inspect['message'] ?? ''))
-                        ?: ('Amazon accepted the US draft for '.$sku.', but no ASIN yet. Non-US offers were turned off. Publish again after Amazon assigns the ASIN.'),
-                    'skus' => [$sku],
-                ];
-            }
+        }
+        if ($asin === '') {
+            return [
+                'success' => false,
+                'message' => trim((string) ($inspect['message'] ?? ''))
+                    ?: ('Amazon accepted the US draft for '.$sku.', but no ASIN yet. Publish again after Amazon assigns the ASIN so the US offer can be added.'),
+                'skus' => [$sku],
+            ];
         }
         $existingSku = trim((string) ($inspect['seller_sku'] ?? $sku));
 
-        $ok = [];
+        $offer = $this->completeUsListing($existingSku, $details, $title, $qty, $asin);
+        if (! ($offer['success'] ?? false)) {
+            return $offer;
+        }
+
+        $ok = ['US offer'];
         $fail = [];
 
         if ($title !== '') {
@@ -109,35 +112,13 @@ class AmazonListingPublishService
         }
 
         $this->api->disableNonUsMarketplaceOffers($existingSku, $productType);
-
-        $confirmed = $this->api->inspectSellerCentralListing($sku);
         ListingManagerPublishStatus::forgetAmazonLiveCache($sku);
-        $asin = trim((string) ($confirmed['asin'] ?? ''));
-        if (! ($confirmed['found'] ?? false) || $asin === '') {
-            return [
-                'success' => false,
-                'message' => trim((string) ($confirmed['message'] ?? ''))
-                    ?: ('Amazon has no listing for '.$sku.'. Fill Product Type and Packaging, add a UPC, then Save & Publish. The app will not mark this Active until the SKU appears in Seller Central.'),
-                'skus' => [$sku],
-            ];
-        }
-
-        if ($ok === [] && $fail !== []) {
-            return [
-                'success' => false,
-                'message' => 'Amazon listing update failed. '.implode(' ', $fail),
-                'skus' => [$sku],
-            ];
-        }
-
-        $this->completeUsListing($existingSku, $details, $title, $qty, $images, $asin);
-        $this->api->disableNonUsMarketplaceOffers($existingSku, $productType);
 
         return [
             'success' => true,
             'message' => 'Published Amazon listing for '.$sku
                 .' (ASIN '.$asin
-                .($ok !== [] ? ', '.implode(', ', $ok) : '')
+                .', '.implode(', ', $ok)
                 .'). Only the US offer is enabled.'
                 .($fail !== [] ? ' '.implode(' ', $fail) : ''),
             'goods_id' => $asin,
@@ -209,28 +190,163 @@ class AmazonListingPublishService
     }
 
     /**
-     * After Amazon assigns an ASIN, submit the US offer again so the draft becomes a live listing.
+     * After Amazon assigns an ASIN, submit only the US offer (price, qty, handling).
      *
      * @param  array<string, mixed>  $details
-     * @param  list<string>  $images
+     * @return array{success: bool, message: string, skus?: list<string>}
      */
-    private function completeUsListing(string $sku, array $details, string $title, ?int $qty, array $images, string $asin): void
+    private function completeUsListing(string $sku, array $details, string $title, ?int $qty, string $asin): array
     {
         $productType = trim((string) ($details['product_type'] ?? $details['category'] ?? $details['primary_category_id'] ?? ''));
-        if ($productType === '' || preg_match('/^\d+$/', $productType) || $title === '') {
-            return;
+        if ($productType === '' || preg_match('/^\d+$/', $productType)) {
+            return [
+                'success' => false,
+                'message' => 'Amazon product type is required to add the US offer for '.$sku.'.',
+                'skus' => [$sku],
+            ];
         }
 
-        $attributes = $this->usListingAttributes($sku, $details, $title, $qty, $images);
+        $attributes = self::usOfferAttributes($sku, $details, $qty, $asin);
+        if (! isset($attributes['purchasable_offer'])) {
+            return [
+                'success' => false,
+                'message' => 'Price is required to add the US offer for '.$sku.'.',
+                'skus' => [$sku],
+            ];
+        }
+
+        $result = $this->api->putListingsItem($sku, $productType, $attributes, 'LISTING_OFFER_ONLY');
+        $result['skus'] = [$sku];
+        if (! ($result['success'] ?? false)) {
+            $result['message'] = trim((string) ($result['message'] ?? ''))
+                ?: ('Amazon did not accept the US offer for '.$sku.'.');
+        }
+
+        return $result;
+    }
+
+    /**
+     * Price, quantity, handling time, and shipping template for the US marketplace.
+     *
+     * @param  array<string, mixed>  $details
+     * @return array<string, mixed>
+     */
+    public static function usOfferAttributes(string $sku, array $details, ?int $qty = null, string $asin = ''): array
+    {
+        $mp = 'ATVPDKIKX0DER';
+        $price = (float) ($details['price'] ?? 0);
+        $listPrice = (float) ($details['list_price'] ?? 0);
+        if ($listPrice <= 0) {
+            $listPrice = $price;
+        }
+        $quantity = max(0, (int) ($qty ?? $details['quantity'] ?? 0));
+        $handling = self::handlingDays($details);
+        $shippingGroup = self::shippingGroup($details);
+
+        $attributes = [
+            'condition_type' => [[
+                'value' => 'new_new',
+                'marketplace_id' => $mp,
+            ]],
+            'fulfillment_availability' => [[
+                'fulfillment_channel_code' => 'DEFAULT',
+                'quantity' => $quantity,
+                'lead_time_to_ship_max_days' => $handling,
+                'marketplace_id' => $mp,
+            ]],
+        ];
+
+        if ($price > 0) {
+            $attributes['purchasable_offer'] = [[
+                'marketplace_id' => $mp,
+                'marketplaceId' => $mp,
+                'currency' => 'USD',
+                'audience' => 'ALL',
+                'our_price' => [[
+                    'schedule' => [['value_with_tax' => round($price, 2)]],
+                ]],
+            ]];
+        }
+        if ($listPrice > 0) {
+            $attributes['list_price'] = [[
+                'currency' => 'USD',
+                'value' => round($listPrice, 2),
+                'value_with_tax' => round($listPrice, 2),
+                'marketplace_id' => $mp,
+            ]];
+        }
         $asin = trim($asin);
         if ($asin !== '') {
             $attributes['merchant_suggested_asin'] = [[
                 'value' => $asin,
-                'marketplace_id' => 'ATVPDKIKX0DER',
+                'marketplace_id' => $mp,
+            ]];
+        }
+        if ($shippingGroup !== '') {
+            $attributes['merchant_shipping_group'] = [[
+                'value' => $shippingGroup,
+                'marketplace_id' => $mp,
             ]];
         }
 
-        $this->api->putListingsItem($sku, $productType, $attributes, 'LISTING');
+        return $attributes;
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     */
+    public static function handlingDays(array $details): int
+    {
+        foreach (['handling_time', 'lead_time_to_ship_max_days', 'handling_days'] as $key) {
+            if (! array_key_exists($key, $details) || $details[$key] === '' || $details[$key] === null) {
+                continue;
+            }
+            $days = (int) $details[$key];
+            if ($days >= 0 && $days <= 30) {
+                return max(1, $days);
+            }
+        }
+
+        return 2;
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     */
+    public static function shippingGroup(array $details): string
+    {
+        foreach (['merchant_shipping_group', 'shipping_template', 'shipping_group'] as $key) {
+            $value = trim((string) ($details[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        $configured = trim((string) config('listing_manager.amazon_default_shipping_group', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        try {
+            return (string) Cache::remember('lm.amazon.default_shipping_group', 3600, static function (): string {
+                if (! Schema::hasTable('amazon_listings_raw')) {
+                    return '';
+                }
+
+                $row = DB::table('amazon_listings_raw')
+                    ->whereNotNull('merchant_shipping_group')
+                    ->where('merchant_shipping_group', '!=', '')
+                    ->select('merchant_shipping_group')
+                    ->groupBy('merchant_shipping_group')
+                    ->orderByRaw('COUNT(*) DESC')
+                    ->limit(1)
+                    ->value('merchant_shipping_group');
+
+                return trim((string) $row);
+            });
+        } catch (\Throwable) {
+            return '';
+        }
     }
 
     /**
@@ -289,6 +405,7 @@ class AmazonListingPublishService
             'fulfillment_availability' => [[
                 'fulfillment_channel_code' => 'DEFAULT',
                 'quantity' => $quantity,
+                'lead_time_to_ship_max_days' => self::handlingDays($details),
                 'marketplace_id' => $mp,
             ]],
         ];
@@ -311,10 +428,19 @@ class AmazonListingPublishService
         if ($price > 0) {
             $attributes['purchasable_offer'] = [[
                 'marketplace_id' => $mp,
+                'marketplaceId' => $mp,
                 'currency' => 'USD',
+                'audience' => 'ALL',
                 'our_price' => [[
                     'schedule' => [['value_with_tax' => round($price, 2)]],
                 ]],
+            ]];
+        }
+        $shippingGroup = self::shippingGroup($details);
+        if ($shippingGroup !== '') {
+            $attributes['merchant_shipping_group'] = [[
+                'value' => $shippingGroup,
+                'marketplace_id' => $mp,
             ]];
         }
         if ($listPrice > 0) {

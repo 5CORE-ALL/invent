@@ -76,4 +76,5 @@ return [
     'default_manufacturer' => env('LISTING_MANAGER_DEFAULT_MANUFACTURER', '5 Core'),
     'default_condition' => env('LISTING_MANAGER_DEFAULT_CONDITION', 'New'),
     'default_reverb_condition' => env('LISTING_MANAGER_DEFAULT_REVERB_CONDITION', 'Brand New'),
+    'amazon_default_shipping_group' => env('LISTING_MANAGER_AMAZON_SHIPPING_GROUP', ''),
 ];
