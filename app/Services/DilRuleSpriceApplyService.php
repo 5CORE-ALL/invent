@@ -175,6 +175,7 @@ class DilRuleSpriceApplyService
             'applied' => 0,
             'skipped_unchanged' => 0,
             'skipped' => 0,
+            'cleared' => 0,
             'errors' => [],
         ];
         $pushTasks = [];
@@ -192,6 +193,12 @@ class DilRuleSpriceApplyService
                     $computed = $this->computeTarget($row, $dilRules, $cvrAdj, $margin);
                     if ($computed === null) {
                         $stats['skipped']++;
+                        if ($this->channel === 'aliexpress'
+                            && (float) ($row['saved_sprice'] ?? 0) > 0
+                            && ! $dryRun
+                            && $this->clearSprice((string) ($row['sku'] ?? ''))) {
+                            $stats['cleared']++;
+                        }
                         continue;
                     }
                     $next = $computed['sprice'];
@@ -913,6 +920,41 @@ class DilRuleSpriceApplyService
 
         $view->value = $existing;
         $view->save();
+    }
+
+    /** AliExpress only: drop leftover S PRC when Dil/Std/Stop produces no new price. */
+    protected function clearSprice(string $sku): bool
+    {
+        if ($this->channel !== 'aliexpress') {
+            return false;
+        }
+        $sku = strtoupper(trim($sku));
+        if ($sku === '') {
+            return false;
+        }
+        $view = AliexpressDataView::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+            ->first();
+        if (! $view) {
+            return false;
+        }
+        $existing = is_array($view->value) ? $view->value : [];
+        $had = isset($existing['SPRICE']) && is_numeric($existing['SPRICE']) && (float) $existing['SPRICE'] > 0;
+        if (! $had && isset($existing['sprice']) && is_numeric($existing['sprice']) && (float) $existing['sprice'] > 0) {
+            $had = true;
+        }
+        if (! $had) {
+            return false;
+        }
+        unset($existing['SPRICE'], $existing['sprice'], $existing['SGPFT'], $existing['SGROI']);
+        $existing['has_custom_sprice'] = false;
+        $existing['SPRICE_CLEARED'] = true;
+        $existing['SPRICE_STATUS'] = 'cleared';
+        $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+        $view->value = $existing;
+        $view->save();
+
+        return true;
     }
 
     /**
