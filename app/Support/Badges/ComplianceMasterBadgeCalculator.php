@@ -137,9 +137,72 @@ class ComplianceMasterBadgeCalculator implements PageBadgeCalculator
             return false;
         }
 
-        $img = trim((string) ($values[$key.'_img'] ?? ''));
-        $pdf = trim((string) ($values[$key.'_pdf'] ?? ''));
+        [$img, $pdf] = self::fieldFiles($values, $key);
 
         return $img === '' && $pdf === '';
+    }
+
+    /**
+     * Resolve image/PDF paths for a compliance field, including older Values keys.
+     *
+     * @param  array<string, mixed>  $values
+     * @return array{0: string, 1: string} [image path, pdf path]
+     */
+    public static function fieldFiles(array $values, string $key): array
+    {
+        $img = self::firstNonEmptyString($values, [
+            $key.'_img',
+            $key.'_image',
+            $key.'_Image',
+            ucfirst($key).'_img',
+            ucfirst($key).'_image',
+        ]);
+        $pdf = self::firstNonEmptyString($values, [
+            $key.'_pdf',
+            $key.'_PDF',
+            ucfirst($key).'_pdf',
+        ]);
+
+        $val = trim((string) ($values[$key] ?? ''));
+        if ($img === '' && $pdf === '' && $val !== '' && ! in_array(strtoupper($val), ['REQ', 'N/A', 'NA', 'NRQ'], true)) {
+            if (self::looksLikePdfPath($val)) {
+                $pdf = $val;
+            } elseif (self::looksLikeImagePath($val)) {
+                $img = $val;
+            }
+        }
+
+        return [$img, $pdf];
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @param  list<string>  $keys
+     */
+    private static function firstNonEmptyString(array $values, array $keys): string
+    {
+        foreach ($keys as $k) {
+            if (! array_key_exists($k, $values)) {
+                continue;
+            }
+            $v = trim((string) $values[$k]);
+            if ($v !== '') {
+                return $v;
+            }
+        }
+
+        return '';
+    }
+
+    private static function looksLikePdfPath(string $value): bool
+    {
+        return (bool) preg_match('/\.pdf(?:$|\?)/i', $value)
+            || str_contains($value, 'compliance_field_pdfs/');
+    }
+
+    private static function looksLikeImagePath(string $value): bool
+    {
+        return (bool) preg_match('/\.(png|jpe?g|gif|webp|svg|bmp)(?:$|\?)/i', $value)
+            || str_contains($value, 'compliance_field_images/');
     }
 }
