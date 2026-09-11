@@ -571,7 +571,7 @@ class TopDawgApiService
     /**
      * @return array<string, mixed>|null
      */
-    protected function fetchLiveProductRow(string $sku): ?array
+    protected function fetchLiveProductRow(string $sku, bool $scanCatalog = true): ?array
     {
         $this->assertConfigured();
         $sku = trim($sku);
@@ -579,14 +579,7 @@ class TopDawgApiService
         $codes = $this->topDawgProductCodeCandidates($sku, $resolved);
 
         $url = $this->baseUrl.'/SupplierProduct/list';
-        $local = TopDawgProduct::query()
-            ->where(function ($q) use ($sku, $resolved) {
-                $q->where('sku', $sku)
-                    ->orWhere('sku', $resolved)
-                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
-            })
-            ->orderByDesc('updated_at')
-            ->first();
+        $local = $this->localTopDawgProduct($sku, $resolved);
         if ($local) {
             foreach ([$local->sku, $local->tdid, $local->topdawg_listing_id] as $extra) {
                 $extra = trim((string) $extra);
@@ -596,32 +589,47 @@ class TopDawgApiService
             }
         }
 
-        $hintPage = $this->liveListPageHint[strtoupper($resolved)] ?? $this->liveListPageHint[strtoupper($sku)] ?? null;
-        if ($hintPage !== null) {
-            $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 1000, 'page' => $hintPage], $codes);
-            if ($found !== null) {
-                return $found;
-            }
-        }
+        $listTimeout = $scanCatalog ? 45 : 12;
+        $lookupCodes = $scanCatalog ? $codes : array_slice($codes, 0, 2);
 
-        foreach ($codes as $code) {
-            foreach ([
-                ['product_code' => $code, 'per_page' => 100, 'page' => 1],
-                ['sku' => $code, 'per_page' => 100, 'page' => 1],
-                ['search' => $code, 'per_page' => 100, 'page' => 1],
-            ] as $body) {
-                $found = $this->firstMatchingTopDawgListRow($url, $body, $codes);
+        if ($scanCatalog) {
+            $hintPage = $this->liveListPageHint[strtoupper($resolved)] ?? $this->liveListPageHint[strtoupper($sku)] ?? null;
+            if ($hintPage !== null) {
+                $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 1000, 'page' => $hintPage], $codes, $listTimeout);
                 if ($found !== null) {
                     return $found;
                 }
             }
         }
 
+        foreach ($lookupCodes as $code) {
+            $filters = $scanCatalog
+                ? [
+                    ['product_code' => $code, 'per_page' => 100, 'page' => 1],
+                    ['sku' => $code, 'per_page' => 100, 'page' => 1],
+                    ['search' => $code, 'per_page' => 100, 'page' => 1],
+                ]
+                : [
+                    ['product_code' => $code, 'per_page' => 50, 'page' => 1],
+                ];
+            foreach ($filters as $body) {
+                $found = $this->firstMatchingTopDawgListRow($url, $body, $codes, $listTimeout);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+
+        if (! $scanCatalog) {
+            return null;
+        }
+
+        $hintPage = $this->liveListPageHint[strtoupper($resolved)] ?? $this->liveListPageHint[strtoupper($sku)] ?? null;
         for ($page = 1; $page <= 5; $page++) {
             if ($hintPage !== null && $page === $hintPage) {
                 continue;
             }
-            $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 1000, 'page' => $page], $codes);
+            $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 1000, 'page' => $page], $codes, $listTimeout);
             if ($found !== null) {
                 $this->liveListPageHint[strtoupper($resolved)] = $page;
                 $this->liveListPageHint[strtoupper($sku)] = $page;
@@ -633,15 +641,36 @@ class TopDawgApiService
         return null;
     }
 
+    protected function localTopDawgProduct(string $sku, ?string $resolved = null): ?TopDawgProduct
+    {
+        $sku = trim($sku);
+        $resolved = trim((string) ($resolved ?: $sku));
+        if ($sku === '') {
+            return null;
+        }
+
+        return TopDawgProduct::query()
+            ->where(function ($q) use ($sku, $resolved) {
+                $q->where('sku', $sku)
+                    ->orWhere('sku', $resolved)
+                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+            })
+            ->orderByDesc('updated_at')
+            ->first();
+    }
+
     /**
      * @param  array<string, mixed>  $body
      * @param  list<string>  $codes
      * @return array<string, mixed>|null
      */
-    protected function firstMatchingTopDawgListRow(string $url, array $body, array $codes): ?array
+    protected function firstMatchingTopDawgListRow(string $url, array $body, array $codes, int $timeout = 45): ?array
     {
         try {
-            $response = Http::withHeaders($this->headers())->timeout(45)->post($url, $body);
+            $response = Http::withHeaders($this->headers())
+                ->timeout(max(5, $timeout))
+                ->connectTimeout(8)
+                ->post($url, $body);
         } catch (\Throwable $e) {
             return null;
         }
@@ -860,17 +889,9 @@ class TopDawgApiService
             return ['success' => false, 'message' => 'Product code / SKU is required.'];
         }
 
-        $existing = $this->fetchLiveProductRow($sku);
-        if (is_array($existing)) {
-            $ids = $this->listingIdsFromTopDawgRow($existing, $sku);
-            if ($ids['listing_id'] !== '') {
-                return [
-                    'success' => true,
-                    'message' => 'Connected existing TopDawg listing.',
-                    'listing_id' => $ids['listing_id'],
-                    'tdid' => $ids['tdid'],
-                ];
-            }
+        $connected = $this->connectExistingListing($sku);
+        if ($connected !== null) {
+            return $connected;
         }
 
         $payload = $this->buildCreateProductPayload($sku, $fields);
@@ -885,6 +906,7 @@ class TopDawgApiService
         try {
             $response = Http::withHeaders($this->headers())
                 ->timeout(45)
+                ->connectTimeout(10)
                 ->post($this->baseUrl.'/SupplierProduct/create', $payload);
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
@@ -896,6 +918,13 @@ class TopDawgApiService
             (string) $response->body()
         );
         if (! ($acceptedResult['success'] ?? false)) {
+            $message = (string) ($acceptedResult['message'] ?? 'TopDawg create product failed.');
+            if ($this->isDuplicateCreateMessage($message)) {
+                $connected = $this->connectExistingListing($sku, true);
+                if ($connected !== null) {
+                    return $connected;
+                }
+            }
             Log::warning('TopDawgApiService: create product failed', [
                 'sku' => $sku,
                 'status' => $response->status(),
@@ -904,7 +933,7 @@ class TopDawgApiService
 
             return [
                 'success' => false,
-                'message' => (string) ($acceptedResult['message'] ?? 'TopDawg create product failed.'),
+                'message' => $message,
             ];
         }
         $ids = $this->listingIdsFromTopDawgPayload(is_array($json) ? $json : []);
@@ -912,14 +941,6 @@ class TopDawgApiService
         $tdid = $ids['tdid'];
         $lastMessage = (string) ($acceptedResult['message'] ?? 'TopDawg product submitted for review.');
 
-        if ($listingId === '') {
-            $live = $this->fetchLiveProductRow($sku);
-            if (is_array($live)) {
-                $ids = $this->listingIdsFromTopDawgRow($live, $sku);
-                $listingId = $ids['listing_id'];
-                $tdid = $ids['tdid'] !== '' ? $ids['tdid'] : $tdid;
-            }
-        }
         if ($listingId === '' || strcasecmp($listingId, $sku) === 0) {
             $listingId = 'td-'.substr(sha1(strtoupper($sku)), 0, 12);
         }
@@ -930,6 +951,59 @@ class TopDawgApiService
             'listing_id' => $listingId,
             'tdid' => $tdid,
         ];
+    }
+
+    /**
+     * @return array{success: bool, message: string, listing_id: string, tdid: string}|null
+     */
+    protected function connectExistingListing(string $sku, bool $checkLive = false): ?array
+    {
+        $local = $this->localTopDawgProduct($sku);
+        if ($local) {
+            $listingId = trim((string) ($local->topdawg_listing_id ?? ''));
+            $tdid = trim((string) ($local->tdid ?? ''));
+            if ($listingId !== '' || $tdid !== '') {
+                return [
+                    'success' => true,
+                    'message' => 'Connected existing TopDawg listing.',
+                    'listing_id' => $listingId !== '' ? $listingId : $tdid,
+                    'tdid' => $tdid,
+                ];
+            }
+        }
+
+        if (! $checkLive) {
+            return null;
+        }
+
+        $live = $this->fetchLiveProductRow($sku, false);
+        if (! is_array($live)) {
+            return null;
+        }
+        $ids = $this->listingIdsFromTopDawgRow($live, $sku);
+        if ($ids['listing_id'] === '' && $ids['tdid'] === '') {
+            return null;
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Connected existing TopDawg listing.',
+            'listing_id' => $ids['listing_id'] !== '' ? $ids['listing_id'] : $ids['tdid'],
+            'tdid' => $ids['tdid'],
+        ];
+    }
+
+    protected function isDuplicateCreateMessage(string $message): bool
+    {
+        $lower = mb_strtolower($message);
+
+        return $lower !== '' && (
+            str_contains($lower, 'already exist')
+            || str_contains($lower, 'already created')
+            || str_contains($lower, 'already been created')
+            || str_contains($lower, 'duplicate')
+            || str_contains($lower, 'already listed')
+        );
     }
 
     /**
