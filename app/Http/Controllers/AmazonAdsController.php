@@ -6,6 +6,7 @@ use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Models\AmazonAdsPauseRuleState;
 use App\Services\AmazonAdsPauseRuleApplicator;
 use App\Support\AmazonAdsBgtCvrRule;
 use App\Support\AmazonAdsBgtDilRule;
@@ -76,7 +77,7 @@ class AmazonAdsController extends Controller
      * @var list<string>
      */
     private const PHP_SORT_DISPLAY_COLUMNS = [
-        'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt',
+        'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt',
         'U7%', 'U2%', 'U1%', 'CPC3', 'CPC2',
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
         'pageCvr', 'viewsL30', 'viewsL7',
@@ -176,7 +177,7 @@ class AmazonAdsController extends Controller
     /**
      * Columns sent to the Amazon Ads All DataTables, including Inv/ovl30/dil/price and utilization % after `campaignName`
      * (U7%/U2%/U1% from L7 SP / L2 SP / L1 SP vs `campaignBudgetAmount`; so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
-     * `campaignStatus` (Stat) sits immediately before `bgt`; `ruleStatus` follows Stat; `bgtAcos` then `bgtViews` then `bgtCvr` then `bgtPrc` then `bgtReviews` then `bgtDil` then `sbgt` follow `bgt` when the table has campaign budget.
+     * `campaignStatus` (Stat) sits immediately before `bgt`; `ruleStatus` then `activeAgain` follow Stat; `bgtAcos` then `bgtViews` then `bgtCvr` then `bgtPrc` then `bgtReviews` then `bgtDil` then `sbgt` follow `bgt` when the table has campaign budget.
      */
     private static function displayColumnsForTable(string $table): array
     {
@@ -259,13 +260,13 @@ class AmazonAdsController extends Controller
             }
         }
 
-        // Rule Status immediately after Stat (SP/SB campaign reports only).
+        // Rule Status + Active Again immediately after Stat (SP/SB campaign reports only).
         if (($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports')
             && in_array('campaignStatus', $ordered, true)) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'ruleStatus'));
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'ruleStatus' && $c !== 'activeAgain'));
             $idxStatForRule = array_search('campaignStatus', $ordered, true);
             if ($idxStatForRule !== false) {
-                array_splice($ordered, $idxStatForRule + 1, 0, ['ruleStatus']);
+                array_splice($ordered, $idxStatForRule + 1, 0, ['ruleStatus', 'activeAgain']);
             }
         }
 
@@ -3815,7 +3816,8 @@ class AmazonAdsController extends Controller
         $hasCpc2 = in_array('CPC2', $columns, true);
         $hasCpc3 = in_array('CPC3', $columns, true);
         $needRuleStatus = in_array('ruleStatus', $columns, true);
-        $needSkuMetrics = $needRuleStatus || in_array('sbgt', $columns, true)
+        $needActiveAgain = in_array('activeAgain', $columns, true);
+        $needSkuMetrics = $needRuleStatus || $needActiveAgain || in_array('sbgt', $columns, true)
             || in_array('pageCvr', $columns, true) || in_array('bgtViews', $columns, true)
             || in_array('bgtCvr', $columns, true) || in_array('bgtPrc', $columns, true)
             || in_array('bgtReviews', $columns, true) || in_array('bgtDil', $columns, true)
@@ -3826,7 +3828,7 @@ class AmazonAdsController extends Controller
                 break;
             }
         }
-        $pauseRule = $needRuleStatus ? AmazonAdsPauseRule::resolvedRule() : null;
+        $pauseRule = ($needRuleStatus || $needActiveAgain) ? AmazonAdsPauseRule::resolvedRule() : null;
         $skuMetricsByCampaign = [];
         $pageCvrByCampaign = [];
         if ($needSkuMetrics) {
@@ -3845,7 +3847,8 @@ class AmazonAdsController extends Controller
             }
         }
         $ratingsByCid = [];
-        if ($needSkuMetrics || $needRuleStatus) {
+        $statesByCid = [];
+        if ($needSkuMetrics || $needRuleStatus || $needActiveAgain) {
             $ruleCids = [];
             foreach ($rows as $ruleRow) {
                 $cid = preg_replace('/\D+/', '', trim((string) (((array) $ruleRow)['campaign_id'] ?? ''))) ?: '';
@@ -3853,7 +3856,12 @@ class AmazonAdsController extends Controller
                     $ruleCids[] = $cid;
                 }
             }
-            $ratingsByCid = AmazonAdsCampaignSkuMetrics::minRatingForCampaignIds($ruleCids);
+            if ($needSkuMetrics || $needRuleStatus) {
+                $ratingsByCid = AmazonAdsCampaignSkuMetrics::minRatingForCampaignIds($ruleCids);
+            }
+            if ($needActiveAgain) {
+                $statesByCid = AmazonAdsPauseRuleState::mapForCampaignIds($ruleCids);
+            }
         }
         $sbHasSpendOrCost = in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true);
         $needSbL1Cpc = $table === 'amazon_sb_campaign_reports'
@@ -4159,6 +4167,12 @@ class AmazonAdsController extends Controller
                 ]);
                 $arr['ruleStatus'] = $decision['status'];
                 $arr['ruleStatusTip'] = $decision['reason'];
+            }
+            if ($needActiveAgain) {
+                $cidAgain = preg_replace('/\D+/', '', trim((string) ($rowArr['campaign_id'] ?? ''))) ?: '';
+                $again = AmazonAdsPauseRule::activeAgainDisplay($statesByCid[$cidAgain] ?? null);
+                $arr['activeAgain'] = $again['label'];
+                $arr['activeAgainTip'] = $again['tip'];
             }
             self::roundAmazonAdsDisplayNumericFields($arr, $columns);
             unset($arr['pink_dil_paused_at'], $arr['campaignBudgetCurrencyCode']);

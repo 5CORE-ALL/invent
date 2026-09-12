@@ -113,6 +113,7 @@
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder { padding-left: 2px !important; padding-right: 2px !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaignStatus"] .tabulator-col-title { white-space: nowrap !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="ruleStatus"] .tabulator-col-title { white-space: nowrap !important; }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="activeAgain"] .tabulator-col-title { white-space: nowrap !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-cell .amz-raw-status-cell { white-space: nowrap; }
         #amz-ads-raw-wrap .amz-camp-skus-btn {
             display: inline-flex; align-items: center; justify-content: center;
@@ -794,7 +795,7 @@
                         Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv) and pauses the <strong>campaign</strong>.
                         Price uses the <strong>price</strong> column (including grey LMP) and pauses the <strong>campaign</strong>.
                         Reviews uses each advertised SKU’s star rating and pauses only that <strong>product ad</strong> (campaign stays on).
-                        Save (with auto-pause on) applies matching pauses on Amazon now. The job also runs daily at 18:25 IST.
+                        Save (with auto-pause on) applies matching pauses on Amazon now. Campaigns this rule previously paused are turned back on when Dil% / Price no longer match — those rows show <strong>Active Again</strong> (hover for the original pause reason). The job also runs daily at 18:25 IST.
                     </p>
                     <div class="form-check mb-1">
                         <input class="form-check-input" type="checkbox" id="amazonAdsPrDilEnabled" checked>
@@ -1340,6 +1341,17 @@
                 return '<span class="amz-raw-status-cell" title="' + amzEsc(tipRaw) + '" style="display:inline-flex;align-items:center;justify-content:center;">'
                      + '<span class="d-inline-block rounded-circle" style="width:10px;height:10px;background-color:' + color + ';"></span></span>';
             }
+            function fmtActiveAgain(cell) {
+                var v = cell.getValue();
+                var raw = (v === null || v === undefined) ? '' : String(v).trim();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var tipRaw = (row && row.activeAgainTip) ? String(row.activeAgainTip) : (raw || '—');
+                if (raw === '') {
+                    return '<span class="amz-raw-status-cell text-muted" title="' + amzEsc(tipRaw || '—') + '">—</span>';
+                }
+                return '<span class="amz-raw-status-cell" title="' + amzEsc(tipRaw) + '" style="color:#16a34a;font-weight:500;white-space:nowrap;">'
+                     + amzEsc(raw) + '</span>';
+            }
             function fmtAdType(cell) {
                 var v = cell.getValue();
                 if (v === null || v === undefined) return '';
@@ -1478,6 +1490,14 @@
                 }
                 if (c === 'campaignStatus') { col.title = 'Stat'; col.formatter = fmtCampaignStatus; col.width = 48; col.minWidth = 44; return; }
                 if (c === 'ruleStatus') { col.title = 'Rule'; col.headerTooltip = 'Rule Status — green = stay active, red = pause (PR Dil% / Price)'; col.formatter = fmtRuleStatus; col.width = 52; col.minWidth = 48; return; }
+                if (c === 'activeAgain') {
+                    col.title = 'Active Again';
+                    col.headerTooltip = 'Turned back on after a Pause Rule match. Hover for the original pause reason.';
+                    col.formatter = fmtActiveAgain;
+                    col.width = 108;
+                    col.minWidth = 96;
+                    return;
+                }
                 if (c === 'ad_type') { col.formatter = fmtAdType; return; }
                 if (c === 'adGroupName') { col.title = 'Ad Group'; col.hozAlign = 'left'; col.minWidth = 150; col.widthGrow = 2; return; }
                 if (c === 'keyword') { col.title = 'Keyword'; col.hozAlign = 'left'; col.minWidth = 180; col.widthGrow = 3; return; }

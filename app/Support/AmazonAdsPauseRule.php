@@ -340,6 +340,56 @@ final class AmazonAdsPauseRule
     }
 
     /**
+     * Re-enable a campaign the Pause Rule previously paused once Dil% / Price no longer say PAUSED.
+     */
+    public static function shouldAutoEnable(array $decision, string $status, bool $wasRulePaused): bool
+    {
+        if (! $wasRulePaused) {
+            return false;
+        }
+        $st = strtoupper(trim($status));
+        if ($st === 'ARCHIVED' || $st === self::ACTION_ENABLED) {
+            return false;
+        }
+
+        return ($decision['status'] ?? '') !== self::ACTION_PAUSED;
+    }
+
+    public static function fallbackPauseReason(): string
+    {
+        return 'Pause Rule (Dil% ≥ 100% or Price < $20)';
+    }
+
+    public static function normalizeCampaignName(string $name): string
+    {
+        $n = preg_replace('/\s+/u', ' ', strtoupper(trim(str_replace("\xC2\xA0", ' ', $name)))) ?? '';
+
+        return rtrim($n, ". \t");
+    }
+
+    /**
+     * @param  array{paused_reason?: mixed, reactivated_at?: mixed}|null  $state
+     * @return array{label: string, tip: string}
+     */
+    public static function activeAgainDisplay(?array $state): array
+    {
+        if (! is_array($state) || trim((string) ($state['reactivated_at'] ?? '')) === '') {
+            return ['label' => '', 'tip' => ''];
+        }
+        $reason = trim((string) ($state['paused_reason'] ?? ''));
+        if ($reason === '') {
+            $reason = self::fallbackPauseReason();
+        }
+        $when = trim((string) ($state['reactivated_at'] ?? ''));
+        $tip = $reason;
+        if ($when !== '') {
+            $tip .= ' — turned back on '.$when;
+        }
+
+        return ['label' => 'Active Again', 'tip' => $tip];
+    }
+
+    /**
      * @param  list<array{from: float, to: float, action: string, label: string}>  $bands
      * @return array{action: string, reason: string}|null
      */

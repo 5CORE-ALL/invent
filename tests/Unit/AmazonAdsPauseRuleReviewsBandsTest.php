@@ -94,4 +94,39 @@ class AmazonAdsPauseRuleReviewsBandsTest extends TestCase
             AmazonAdsCampaignSkuSync::amazonAdRef('name:123:SKU')
         );
     }
+
+    public function test_should_auto_enable_only_leftover_rule_pauses(): void
+    {
+        $clear = [
+            'status' => AmazonAdsPauseRule::ACTION_ENABLED,
+            'reason' => 'Active — no pause rule matched',
+            'hits' => [],
+        ];
+        $pause = [
+            'status' => AmazonAdsPauseRule::ACTION_PAUSED,
+            'reason' => 'Pause — PR Dil% 100% ≥ 100%',
+            'hits' => ['PR Dil% 100% ≥ 100%'],
+        ];
+
+        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', true));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', false));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'ENABLED', true));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($pause, 'PAUSED', true));
+        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable(['status' => ''], 'PAUSED', true));
+    }
+
+    public function test_active_again_display_uses_pause_reason_on_hover(): void
+    {
+        $empty = AmazonAdsPauseRule::activeAgainDisplay(null);
+        $this->assertSame('', $empty['label']);
+        $this->assertSame('', $empty['tip']);
+
+        $shown = AmazonAdsPauseRule::activeAgainDisplay([
+            'paused_reason' => 'Pause — PR Dil% 100% ≥ 100%',
+            'reactivated_at' => '12 Sep 2026 18:25',
+        ]);
+        $this->assertSame('Active Again', $shown['label']);
+        $this->assertStringContainsString('PR Dil% 100% ≥ 100%', $shown['tip']);
+        $this->assertStringContainsString('turned back on 12 Sep 2026 18:25', $shown['tip']);
+    }
 }

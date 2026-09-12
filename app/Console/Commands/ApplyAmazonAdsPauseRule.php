@@ -9,9 +9,10 @@ use Illuminate\Support\Facades\Log;
 class ApplyAmazonAdsPauseRule extends Command
 {
     protected $signature = 'amazon:ads-pause-rule
-                            {--dry-run : Evaluate pause/enable without calling Amazon}';
+                            {--dry-run : Evaluate pause/enable without calling Amazon}
+                            {--enable-name=* : Campaign name to turn back on if still paused}';
 
-    protected $description = 'Pause or enable Amazon SP/SB campaigns from Pause Rule / PR; pause low-review product ads from Reviews Rule';
+    protected $description = 'Pause matching Dil%/Price campaigns; re-enable leftover Pause Rule campaigns; pause low-review product ads';
 
     public function handle(AmazonAdsPauseRuleApplicator $applicator): int
     {
@@ -36,6 +37,25 @@ class ApplyAmazonAdsPauseRule extends Command
         ));
         foreach (array_slice($stats['errors'], 0, 20) as $err) {
             $this->warn('  '.$err);
+        }
+
+        $enableNames = array_values(array_filter(array_map('strval', (array) $this->option('enable-name'))));
+        if ($enableNames !== []) {
+            $this->info('Turning named campaigns back on…');
+            $named = $applicator->enableCampaignsByNames($enableNames, $dryRun);
+            Log::info('amazon:ads-pause-rule named enable', $named + ['dry_run' => $dryRun]);
+            $this->info(sprintf(
+                'Named enable: Enabled %d. Unchanged %d. Skipped %d. Failed %d.',
+                $named['enabled'],
+                $named['unchanged'],
+                $named['skipped'],
+                $named['failed']
+            ));
+            foreach (array_slice($named['errors'], 0, 20) as $err) {
+                $this->warn('  '.$err);
+            }
+            $stats['failed'] += (int) ($named['failed'] ?? 0);
+            $stats['enabled'] += (int) ($named['enabled'] ?? 0);
         }
 
         return $stats['failed'] > 0 && $stats['paused'] === 0 && $stats['enabled'] === 0 ? 1 : 0;
