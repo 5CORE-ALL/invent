@@ -14,6 +14,7 @@ use App\Models\Temu2ListingStatus;
 use App\Models\TemuLmp;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Order;
+use App\Models\Temu2Pricing;
 use App\Models\Temu2ViewData;
 use App\Services\DilRuleSpriceApplyService;
 use App\Services\LmpSkuGroupService;
@@ -133,7 +134,8 @@ class NewTemutwoController extends Controller
     public function dataJson()
     {
         try {
-            $productMasters = ProductMaster::orderBy('sku', 'asc')
+            $productMasters = ProductMaster::orderBy('parent', 'asc')
+                ->orderBy('sku', 'asc')
                 ->get();
 
             $productMasters = $productMasters->filter(function ($item) {
@@ -172,6 +174,24 @@ class NewTemutwoController extends Controller
                 $price = (float) ($metric->base_price ?? 0);
                 if (!isset($temuMetricsBySku[$key]) || ($price > 0 && (float) ($temuMetricsBySku[$key]->base_price ?? 0) <= 0)) {
                     $temuMetricsBySku[$key] = $metric;
+                }
+            }
+
+            // Same sheet as /temu2-decrease Up Pricing. When a SKU is on the
+            // upload, that Base price wins over the API metric.
+            $sheetPriceBySku = [];
+            if ($this->hasTable('temu2_pricing')) {
+                foreach (Temu2Pricing::query()->get(['sku', 'base_price']) as $sheet) {
+                    $key = $normalizeSku($sheet->sku);
+                    if ($key === '' || isset($sheetPriceBySku[$key])) {
+                        continue;
+                    }
+                    $sheetPrice = ($sheet->base_price !== null && $sheet->base_price !== '')
+                        ? (float) $sheet->base_price
+                        : 0.0;
+                    if ($sheetPrice > 0) {
+                        $sheetPriceBySku[$key] = $sheetPrice;
+                    }
                 }
             }
 
@@ -326,6 +346,10 @@ class NewTemutwoController extends Controller
                 $lp = $this->productMasterLp($values, $pm);
                 $temuShip = ProductMasterTemuShip::forPricing($values, $pm);
                 $basePrice = $temuMetric ? (float) ($temuMetric->base_price ?? 0) : 0.0;
+                $sheetBase = $sheetPriceBySku[$normalizeSku($sku)] ?? null;
+                if ($sheetBase !== null) {
+                    $basePrice = $sheetBase;
+                }
                 $rPrice = TemuShopifySalesService::computeRPrice($basePrice);
                 $tPrice = $basePrice > 0
                     ? round(TemuShopifySalesService::computeFullTemuPrice($basePrice), 2)

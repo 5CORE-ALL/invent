@@ -4949,12 +4949,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu-decrease-data-l7', [TemuController::class, 'getTemuDecreaseDataL7'])->name('temu.decrease.l7');
     Route::get('/temu1-data', [TemuController::class, 'temu1DataView'])->name('temu1.data');
     // Temu 2 pricing (temu2_orders API; no ads / Amazon / eBay)
-    Route::get('/temu2-decrease', [TemuController::class, 'temu2DecreaseView'])->name('temu2.decrease');
-    Route::get('/temu2-decrease-data', [TemuController::class, 'getTemu2DecreaseData']);
-    Route::get('/temu2-decrease-data-l7', [TemuController::class, 'getTemu2DecreaseDataL7'])->name('temu2.decrease.l7');
-    Route::post('/temu2-decrease-column-visibility', [TemuController::class, 'saveTemu2DecreaseColumnVisibility']);
-    Route::get('/temu2-decrease-column-visibility', [TemuController::class, 'getTemu2DecreaseColumnVisibility']);
-    Route::post('/temu2-decrease/save-links', [TemuController::class, 'saveTemu2DecreaseLinks'])->name('temu2.decrease.save.links');
+    Route::get('/temu2-decrease', function () {
+        return redirect()->route('newtemutwo.index');
+    })->name('temu2.decrease');
 
     // Temu 3 Analytics — sheet-only (no Open API). Price upload truncates temu3_pricing.
     Route::get('/temu3-decrease', [Temu3Controller::class, 'temu3DecreaseView'])->name('temu3.decrease');

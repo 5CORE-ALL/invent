@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'New Temu One', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Temu 1 Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -30,6 +30,13 @@
 
         #new-temuone-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
+        }
+        #new-temuone-table.tabulator .tabulator-cell[tabulator-field="(Child) sku"] {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            text-align: left;
+            line-height: 1.25;
         }
 
         .tabulator-paginator label {
@@ -456,8 +463,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'New Temu One',
-        'sub_title' => 'New Temu One',
+        'page_title' => 'Temu 1 Analytics',
+        'sub_title' => 'Temu 1 Analytics',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -2782,6 +2789,17 @@
         setTimeout(function() { URL.revokeObjectURL(a.href); }, 1000);
     }
 
+    // Same SKU sequence as Listing Temu: Parent group, then SKU (not A–Z across the catalog).
+    function temuListingSkuSequence(a, b) {
+        const parentA = String((a && (a.Parent || a.parent)) || '').replace(/^PARENT\s+/i, '').trim();
+        const parentB = String((b && (b.Parent || b.parent)) || '').replace(/^PARENT\s+/i, '').trim();
+        const parentCmp = parentA.localeCompare(parentB, undefined, { sensitivity: 'base' });
+        if (parentCmp !== 0) return parentCmp;
+        const skuA = String((a && (a['(Child) sku'] || a.sku)) || '');
+        const skuB = String((b && (b['(Child) sku'] || b.sku)) || '');
+        return skuA.localeCompare(skuB, undefined, { sensitivity: 'base', numeric: false });
+    }
+
     $(document).ready(function() {
         table = new Tabulator('#new-temuone-table', {
             ajaxURL: '{{ route("newtemuone.data.json") }}',
@@ -2805,20 +2823,13 @@
                 const sku = ntoRowSku(d);
                 return !!(sku && !d.is_parent_summary && sku.toUpperCase().indexOf('PARENT') !== 0);
             },
-            initialSort: [
-                { column: '(Child) sku', dir: 'asc' }
-            ],
             ajaxResponse: function(url, params, response) {
                 const rows = Array.isArray(response) ? response : [];
                 rows.forEach(function(r) {
                     if (!r) return;
                     if (r.Parent && !r.parent) r.parent = r.Parent;
                 });
-                rows.sort(function(a, b) {
-                    const skuA = String((a && (a['(Child) sku'] || a.sku)) || '');
-                    const skuB = String((b && (b['(Child) sku'] || b.sku)) || '');
-                    return skuA.localeCompare(skuB, undefined, { sensitivity: 'base', numeric: false });
-                });
+                rows.sort(temuListingSkuSequence);
                 return rows;
             },
             columns: [
@@ -2853,19 +2864,21 @@
                     headerFilter: 'input',
                     headerFilterPlaceholder: 'Search SKU...',
                     cssClass: 'text-primary fw-bold',
-                    tooltip: true,
+                    tooltip: false,
                     frozen: true,
                     width: 220,
-                    sorter: function(a, b) {
-                        return String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base', numeric: false });
+                    hozAlign: 'left',
+                    sorter: function(a, b, aRow, bRow) {
+                        return temuListingSkuSequence(aRow.getData(), bRow.getData());
                     },
                     formatter: function(cell) {
                         const sku = cell.getValue() || '';
                         if (!sku) return '';
                         const esc = String(sku).replace(/"/g, '&quot;');
-                        return sku + ' <button type="button" class="btn btn-sm ms-1 copy-sku-btn" data-sku="' + esc
+                        return '<span>' + String(sku).replace(/</g, '&lt;') + '</span>'
+                            + ' <button type="button" class="btn btn-sm ms-1 copy-sku-btn" data-sku="' + esc
                             + '" title="Copy SKU" style="border:none;background:none;color:#87CEEB;padding:2px 6px;">'
-                            + '<i class="fa fa-info-circle"></i></button>';
+                            + '<i class="fa fa-copy"></i></button>';
                     }
                 },
                 {

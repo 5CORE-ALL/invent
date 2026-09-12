@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'New Temu Two', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Temu 2 Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -30,6 +30,13 @@
 
         #new-temu2-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
+        }
+        #new-temu2-table.tabulator .tabulator-cell[tabulator-field="(Child) sku"] {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            text-align: left;
+            line-height: 1.25;
         }
 
         .tabulator-paginator label {
@@ -456,8 +463,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'New Temu Two',
-        'sub_title' => 'New Temu Two',
+        'page_title' => 'Temu 2 Analytics',
+        'sub_title' => 'Temu 2 Analytics',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -553,6 +560,16 @@
                             <i class="fa fa-upload"></i>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="upload-actions-btn">
+                            <li>
+                                <a class="dropdown-item" href="#" id="sync-temu2-api-pricing">
+                                    <i class="fa fa-cloud-download-alt me-1 text-info"></i> Sync Pricing (API)
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
+                                    <i class="fa fa-dollar-sign me-1 text-info"></i> Up Pricing (Goods ID)
+                                </a>
+                            </li>
                             <li>
                                 <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
                                     <i class="fa fa-eye me-1 text-success"></i> Up View Data
@@ -763,6 +780,53 @@
                     <button type="button" class="btn btn-sm btn-primary" id="newtemutwo-cvr-cpn-save-btn"
                         title="Save CVR→CPN slab values. The CPN column updates from these slabs.">
                         <i class="fas fa-save me-1"></i>Save Rule
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="uploadPricingModal" tabindex="-1" aria-labelledby="uploadPricingModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title" id="uploadPricingModalLabel">
+                        <i class="fa fa-dollar-sign me-2"></i>Upload Temu 2 Pricing Data
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadPricingForm" method="POST" action="{{ route('temu2.pricing.upload') }}" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="pricingFile" class="form-label fw-bold">
+                                <i class="fa fa-file-excel text-success me-1"></i>Temu 2 listing / pricing export
+                            </label>
+                            <input type="file" class="form-control" name="pricing_file" id="pricingFile"
+                                   accept=".xlsx,.xls,.csv,.tsv,.txt" required>
+                            <div class="form-text">
+                                Accepts .xlsx, .xls, .csv, or .tsv (Max: 20MB)
+                            </div>
+                        </div>
+                        <div class="alert alert-info mb-2">
+                            <strong>Format:</strong> Category, Category id, Product name, Contribution Goods,
+                            SKU, <strong>Goods ID</strong>, SKU ID, Variation, Quantity, Base price, …
+                            <br>
+                            Same upload as /temu2-decrease. Each upload <strong>replaces</strong> all previous Temu 2 price-sheet rows.
+                            <br>
+                            Prices match by <strong>SKU</strong> to CP Master and fill Base Price / Temu Price.
+                            <br>
+                            <a href="{{ route('temu2.pricing.sample') }}" class="alert-link">
+                                <i class="fa fa-download"></i> Download Sample File
+                            </a>
+                        </div>
+                        <div id="pricingUploadResult" class="alert" style="display:none;"></div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-info" id="startPricingUploadBtn">
+                        <i class="fa fa-upload me-1"></i>Up Pricing
                     </button>
                 </div>
             </div>
@@ -2782,6 +2846,17 @@
         setTimeout(function() { URL.revokeObjectURL(a.href); }, 1000);
     }
 
+    // Same SKU sequence as Listing Temu: Parent group, then SKU (not A–Z across the catalog).
+    function temuListingSkuSequence(a, b) {
+        const parentA = String((a && (a.Parent || a.parent)) || '').replace(/^PARENT\s+/i, '').trim();
+        const parentB = String((b && (b.Parent || b.parent)) || '').replace(/^PARENT\s+/i, '').trim();
+        const parentCmp = parentA.localeCompare(parentB, undefined, { sensitivity: 'base' });
+        if (parentCmp !== 0) return parentCmp;
+        const skuA = String((a && (a['(Child) sku'] || a.sku)) || '');
+        const skuB = String((b && (b['(Child) sku'] || b.sku)) || '');
+        return skuA.localeCompare(skuB, undefined, { sensitivity: 'base', numeric: false });
+    }
+
     $(document).ready(function() {
         table = new Tabulator('#new-temu2-table', {
             ajaxURL: '{{ route("newtemutwo.data.json") }}',
@@ -2805,20 +2880,13 @@
                 const sku = ntoRowSku(d);
                 return !!(sku && !d.is_parent_summary && sku.toUpperCase().indexOf('PARENT') !== 0);
             },
-            initialSort: [
-                { column: '(Child) sku', dir: 'asc' }
-            ],
             ajaxResponse: function(url, params, response) {
                 const rows = Array.isArray(response) ? response : [];
                 rows.forEach(function(r) {
                     if (!r) return;
                     if (r.Parent && !r.parent) r.parent = r.Parent;
                 });
-                rows.sort(function(a, b) {
-                    const skuA = String((a && (a['(Child) sku'] || a.sku)) || '');
-                    const skuB = String((b && (b['(Child) sku'] || b.sku)) || '');
-                    return skuA.localeCompare(skuB, undefined, { sensitivity: 'base', numeric: false });
-                });
+                rows.sort(temuListingSkuSequence);
                 return rows;
             },
             columns: [
@@ -2853,19 +2921,21 @@
                     headerFilter: 'input',
                     headerFilterPlaceholder: 'Search SKU...',
                     cssClass: 'text-primary fw-bold',
-                    tooltip: true,
+                    tooltip: false,
                     frozen: true,
                     width: 220,
-                    sorter: function(a, b) {
-                        return String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base', numeric: false });
+                    hozAlign: 'left',
+                    sorter: function(a, b, aRow, bRow) {
+                        return temuListingSkuSequence(aRow.getData(), bRow.getData());
                     },
                     formatter: function(cell) {
                         const sku = cell.getValue() || '';
                         if (!sku) return '';
                         const esc = String(sku).replace(/"/g, '&quot;');
-                        return sku + ' <button type="button" class="btn btn-sm ms-1 copy-sku-btn" data-sku="' + esc
+                        return '<span>' + String(sku).replace(/</g, '&lt;') + '</span>'
+                            + ' <button type="button" class="btn btn-sm ms-1 copy-sku-btn" data-sku="' + esc
                             + '" title="Copy SKU" style="border:none;background:none;color:#87CEEB;padding:2px 6px;">'
-                            + '<i class="fa fa-info-circle"></i></button>';
+                            + '<i class="fa fa-copy"></i></button>';
                     }
                 },
                 {
@@ -3043,7 +3113,7 @@
                     hozAlign: 'center',
                     width: 70,
                     sorter: 'number',
-                    headerTooltip: 'Live Temu listing base from the Temu API pull (temu_metrics.base_price). Not S Base Prc — Temu does not accept a pushed base instantly.',
+                    headerTooltip: 'Temu 2 uploaded sheet (temu2_pricing.base_price) when that SKU was uploaded; otherwise live API base (temu2_metrics.base_price). Not S Base Prc.',
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue());
                         if (value === null || value === undefined || isNaN(value) || value === 0) {
@@ -3528,6 +3598,77 @@
                 }
             });
         }
+
+        $('#startPricingUploadBtn').on('click', function() {
+            const fileInput = document.getElementById('pricingFile');
+            const file = fileInput && fileInput.files && fileInput.files[0];
+            if (!file) {
+                showToast('Choose a Temu 2 pricing file first', 'error');
+                return;
+            }
+            const $btn = $(this);
+            const $result = $('#pricingUploadResult');
+            $result.hide().removeClass('alert-success alert-danger');
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Uploading…');
+
+            const fd = new FormData();
+            fd.append('pricing_file', file);
+            fd.append('_token', '{{ csrf_token() }}');
+
+            $.ajax({
+                url: '{{ route("temu2.pricing.upload") }}',
+                method: 'POST',
+                data: fd,
+                processData: false,
+                contentType: false,
+                timeout: 180000,
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                success: function(res) {
+                    const msg = (res && res.message) || 'Pricing uploaded';
+                    $result.addClass(res && res.success === false ? 'alert-danger' : 'alert-success')
+                        .text(msg).show();
+                    showToast(msg, res && res.success === false ? 'error' : 'success');
+                    if (res && res.success !== false) {
+                        setTimeout(function() { location.reload(); }, 900);
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                        || 'Temu 2 pricing upload failed';
+                    $result.addClass('alert-danger').text(msg).show();
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html('<i class="fa fa-upload me-1"></i>Up Pricing');
+                }
+            });
+        });
+
+        $('#sync-temu2-api-pricing').on('click', function(e) {
+            e.preventDefault();
+            if (!confirm('Sync Temu 2 listings/prices/stock from Open API into temu2_metrics?')) {
+                return;
+            }
+            const $link = $(this);
+            $link.addClass('disabled').css('pointer-events', 'none');
+            showToast('Syncing Temu 2 from API…', 'info');
+            $.ajax({
+                url: '{{ route("temu2.sync.metrics") }}',
+                method: 'POST',
+                data: { _token: '{{ csrf_token() }}' },
+                success: function(res) {
+                    showToast((res && res.message) || 'Temu 2 sync complete', res && res.success === false ? 'error' : 'success');
+                    location.reload();
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Temu 2 API sync failed';
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $link.removeClass('disabled').css('pointer-events', '');
+                }
+            });
+        });
         @if(session('success'))
         showToast(@json(session('success')), 'success');
         @endif

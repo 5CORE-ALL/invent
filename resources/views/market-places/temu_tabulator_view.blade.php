@@ -100,7 +100,7 @@
                         <i class="fa fa-download"></i> Export L7
                     </button>
                     <a href="{{ route('newtemuone.index') }}" class="btn btn-sm btn-outline-primary" title="View SKU analytics (DIL%, CVR, pricing, ads)">
-                        <i class="fa fa-chart-line"></i> New Temu One
+                        <i class="fa fa-chart-line"></i> Temu 1 Analytics
                     </a>
                 </div>
 

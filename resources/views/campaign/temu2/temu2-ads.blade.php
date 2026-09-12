@@ -486,7 +486,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-3">Shared with /temu2-decrease. L7 clicks below the threshold stay in Run mode. L7 clicks at or above the threshold are Pause. Auto Cron only pushes rows whose Active/Pause status actually changes.</p>
+                    <p class="text-muted small mb-3">Shared with Temu 2 Analytics. L7 clicks below the threshold stay in Run mode. L7 clicks at or above the threshold are Pause. Auto Cron only pushes rows whose Active/Pause status actually changes.</p>
                     <div class="d-inline-flex flex-wrap align-items-center gap-1 border rounded px-3 py-2 bg-light">
                         <label for="temu-l7-clicks-red-threshold" class="mb-0 small fw-semibold text-nowrap">L7 Clicks &lt;</label>
                         <input type="number" id="temu-l7-clicks-red-threshold" class="form-control form-control-sm"

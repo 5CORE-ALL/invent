@@ -546,58 +546,6 @@ class TemuController extends Controller
         ]);
     }
 
-    /** Temu 2: save Buyer (B) / Seller (S) links into temu2_data_view.value JSON (preserves nr_req etc.). */
-    public function saveTemu2DecreaseLinks(Request $request)
-    {
-        $validated = $request->validate([
-            'sku'         => 'required|string',
-            'buyer_link'  => 'nullable|string|max:1000',
-            'seller_link' => 'nullable|string|max:1000',
-        ]);
-
-        $sku = trim((string) $validated['sku']);
-
-        $buyerLink  = isset($validated['buyer_link']) ? trim((string) $validated['buyer_link']) : '';
-        $sellerLink = isset($validated['seller_link']) ? trim((string) $validated['seller_link']) : '';
-
-        foreach (['buyer_link' => $buyerLink, 'seller_link' => $sellerLink] as $label => $link) {
-            if ($link !== '' && !filter_var($link, FILTER_VALIDATE_URL)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => ucfirst(str_replace('_', ' ', $label)) . ' must be a valid URL.',
-                ], 422);
-            }
-        }
-
-        $row = Temu2DataView::firstOrNew(['sku' => $sku]);
-        $row->sku = $sku;
-
-        $existing = is_array($row->value)
-            ? $row->value
-            : (is_string($row->value) ? json_decode($row->value, true) : []);
-        if (!is_array($existing)) {
-            $raw = $row->getRawOriginal('value');
-            $existing = is_string($raw) && $raw !== '' ? (json_decode($raw, true) ?: []) : [];
-        }
-        if (!is_array($existing)) {
-            $existing = [];
-        }
-
-        $existing['buyer_link']  = $buyerLink;
-        $existing['seller_link'] = $sellerLink;
-
-        $row->value = $existing;
-        $row->save();
-
-        return response()->json([
-            'success'     => true,
-            'message'     => 'Links saved.',
-            'buyer_link'  => $buyerLink,
-            'seller_link' => $sellerLink,
-        ]);
-    }
-
-
     public function saveSpriceToDatabase(Request $request)
     {
         $sku = $request->input('sku');
@@ -2265,13 +2213,6 @@ class TemuController extends Controller
         }
     }
 
-    public function temu2DecreaseView()
-    {
-        // Same margin source/name as /temu-decrease (marketplace_percentages.Temu)
-        $temuMargin = TemuShopifySalesService::temuMarginDecimal();
-        return view('market-places.temu2_decrease', compact('temuMargin'));
-    }
-
     /**
      * Old /temu1-data page. The view and save keys were replaced by New Temu One.
      */
@@ -2403,13 +2344,6 @@ class TemuController extends Controller
      */
     public function getTemu2DecreaseData(Request $request)
     {
-        return $this->buildTemuDecreaseDataResponse($request, 'temu2');
-    }
-
-    public function getTemu2DecreaseDataL7(Request $request)
-    {
-        $request->query->set('period', 'L7');
-
         return $this->buildTemuDecreaseDataResponse($request, 'temu2');
     }
 
@@ -4658,38 +4592,6 @@ class TemuController extends Controller
             ], 500);
         }
     }
-
-    public function saveTemu2DecreaseColumnVisibility(Request $request)
-    {
-        try {
-            $userId = auth()->id() ?? 'guest';
-            $key = "temu2_decrease_column_visibility_{$userId}";
-
-            $visibility = $request->input('visibility', []);
-            Cache::put($key, $visibility, now()->addDays(30));
-
-            return response()->json(['success' => true]);
-        } catch (\Exception $e) {
-            Log::error('Error saving Temu 2 Decrease column visibility: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to save preferences'], 500);
-        }
-    }
-
-    public function getTemu2DecreaseColumnVisibility()
-    {
-        try {
-            $userId = auth()->id() ?? 'guest';
-            $key = "temu2_decrease_column_visibility_{$userId}";
-
-            $visibility = Cache::get($key, []);
-
-            return response()->json($visibility);
-        } catch (\Exception $e) {
-            Log::error('Error getting Temu 2 Decrease column visibility: ' . $e->getMessage());
-            return response()->json([], 500);
-        }
-    }
-
 
     /**
      * Scrape Temu Seller Center product analytics → temu_view_data (cookie session).

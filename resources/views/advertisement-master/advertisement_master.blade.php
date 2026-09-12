@@ -632,8 +632,8 @@
                 'Shopify · TikTok Video Ads': "{{ Route::has('tiktok.ads.master') ? route('tiktok.ads.master') : route('tiktok.video.ads') }}",
                 'Temu': "{{ Route::has('temu.ads') ? route('temu.ads') : url('/new-temuone') }}",
                 'Temu Total': "{{ Route::has('temu.ads') ? route('temu.ads') : url('/new-temuone') }}",
-                'Temu 2': "{{ Route::has('temu2.ads') ? route('temu2.ads') : url('/temu2-decrease') }}",
-                'Temu 2 Total': "{{ Route::has('temu2.ads') ? route('temu2.ads') : url('/temu2-decrease') }}",
+                'Temu 2': "{{ Route::has('temu2.ads') ? route('temu2.ads') : url('/new-temu2') }}",
+                'Temu 2 Total': "{{ Route::has('temu2.ads') ? route('temu2.ads') : url('/new-temu2') }}",
                 'TikTok 2': "{{ Route::has('tiktok.gmv.ads.raw') ? route('tiktok.gmv.ads.raw') : route('tiktok2.pricing') }}",
                 'TikTok 2 Total': "{{ Route::has('tiktok.gmv.ads.raw') ? route('tiktok.gmv.ads.raw') : route('tiktok2.pricing') }}",
             };

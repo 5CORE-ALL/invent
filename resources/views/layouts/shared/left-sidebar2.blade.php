@@ -1313,7 +1313,7 @@
                                             <a href="{{ route('temu.pricing.dsc') }}"> Temu Pricing Decrease CVR</a>
                                         </li>
                                         <li>
-                                            <a href="{{ route('newtemuone.index') }}">New Temu One</a>
+                                            <a href="{{ route('newtemuone.index') }}">Temu 1 Analytics</a>
                                         </li>
 
                                         @if (isset($permissions['listing_temu']) && in_array('view', $permissions['listing_temu']))
@@ -1335,10 +1335,7 @@
                                 <div class="collapse" id="sidebarTemu2Analytics">
                                     <ul class="side-nav-third-level">
                                         <li>
-                                            <a href="{{ url('temu2-decrease') }}">Temu 2 Pricing</a>
-                                        </li>
-                                        <li>
-                                            <a href="{{ route('newtemutwo.index') }}">New Temu Two</a>
+                                            <a href="{{ route('newtemutwo.index') }}">Temu 2 Analytics</a>
                                         </li>
                                         <li>
                                             <a href="{{ route('temu2.ads') }}">Temu 2 Ads</a>

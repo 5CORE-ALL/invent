@@ -11,7 +11,7 @@
                 <div class="page-title-box d-flex align-items-center justify-content-between">
                     <h4 class="mb-0">Temu LMP</h4>
                     <a href="{{ route('newtemuone.index') }}" class="btn btn-outline-primary btn-sm">
-                        <i class="fa fa-arrow-left me-1"></i> New Temu One
+                        <i class="fa fa-arrow-left me-1"></i> Temu 1 Analytics
                     </a>
                 </div>
             </div>

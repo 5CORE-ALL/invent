@@ -133,7 +133,8 @@ class NewTemuoneController extends Controller
     public function dataJson()
     {
         try {
-            $productMasters = ProductMaster::orderBy('sku', 'asc')
+            $productMasters = ProductMaster::orderBy('parent', 'asc')
+                ->orderBy('sku', 'asc')
                 ->get();
 
             $productMasters = $productMasters->filter(function ($item) {

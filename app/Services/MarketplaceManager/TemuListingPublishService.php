@@ -34,7 +34,7 @@ class TemuListingPublishService extends Temu2ListingPublishService
 
     protected function stdPriceHelp(): string
     {
-        return 'New Temu One (/new-temuone)';
+        return 'Temu 1 Analytics (/new-temuone)';
     }
 
     protected function pricingTable(): string

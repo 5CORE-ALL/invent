@@ -115,11 +115,8 @@
                         <span class="spinner-border spinner-border-sm text-success" role="status"></span>
                         <span class="ms-1">Loading L7 data...</span>
                     </span>
-                    <a href="{{ route('temu2.decrease') }}" class="btn btn-sm btn-outline-primary" title="View Temu 2 pricing (DIL%, CVR, orders from temu2_orders)">
-                        <i class="fa fa-chart-line"></i> Temu Analytics
-                    </a>
-                    <a href="{{ route('newtemutwo.index') }}" class="btn btn-sm btn-outline-primary" title="New Temu Two — same methods as New Temu One, Temu 2 listings">
-                        <i class="fa fa-chart-line"></i> New Temu Two
+                    <a href="{{ route('newtemutwo.index') }}" class="btn btn-sm btn-outline-primary" title="Temu 2 Analytics — listings, Dil, CVR, pricing">
+                        <i class="fa fa-chart-line"></i> Temu 2 Analytics
                     </a>
                 </div>
 

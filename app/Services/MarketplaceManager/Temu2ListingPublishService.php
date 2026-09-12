@@ -67,7 +67,7 @@ class Temu2ListingPublishService
 
     protected function stdPriceHelp(): string
     {
-        return 'Temu 2 Analytics (/temu2-decrease)';
+        return 'Temu 2 Analytics (/new-temu2)';
     }
 
     protected function pricingTable(): string
