@@ -126,6 +126,7 @@ class AmazonAdsPauseRuleReviewsBandsTest extends TestCase
     {
         $empty = AmazonAdsPauseRule::activeAgainDisplay(null);
         $this->assertSame('', $empty['label']);
+        $this->assertSame('', $empty['reason']);
         $this->assertSame('', $empty['tip']);
 
         $shown = AmazonAdsPauseRule::activeAgainDisplay([
@@ -133,6 +134,7 @@ class AmazonAdsPauseRuleReviewsBandsTest extends TestCase
             'reactivated_at' => '12 Sep 2026 18:25',
         ]);
         $this->assertSame('Active Again', $shown['label']);
+        $this->assertSame('Pause — PR Dil% 100% ≥ 100%', $shown['reason']);
         $this->assertStringContainsString('PR Dil% 100% ≥ 100%', $shown['tip']);
         $this->assertStringContainsString('turned back on 12 Sep 2026 18:25', $shown['tip']);
     }

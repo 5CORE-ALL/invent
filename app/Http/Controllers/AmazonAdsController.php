@@ -3848,12 +3848,19 @@ class AmazonAdsController extends Controller
         }
         $ratingsByCid = [];
         $statesByCid = [];
+        $statesByName = [];
         if ($needSkuMetrics || $needRuleStatus || $needActiveAgain) {
             $ruleCids = [];
+            $ruleNames = [];
             foreach ($rows as $ruleRow) {
-                $cid = preg_replace('/\D+/', '', trim((string) (((array) $ruleRow)['campaign_id'] ?? ''))) ?: '';
+                $rowState = (array) $ruleRow;
+                $cid = preg_replace('/\D+/', '', trim((string) ($rowState['campaign_id'] ?? ''))) ?: '';
                 if ($cid !== '') {
                     $ruleCids[] = $cid;
+                }
+                $cn = trim((string) ($rowState['campaignName'] ?? ''));
+                if ($cn !== '') {
+                    $ruleNames[] = $cn;
                 }
             }
             if ($needSkuMetrics || $needRuleStatus) {
@@ -3861,6 +3868,7 @@ class AmazonAdsController extends Controller
             }
             if ($needActiveAgain) {
                 $statesByCid = AmazonAdsPauseRuleState::mapForCampaignIds($ruleCids);
+                $statesByName = AmazonAdsPauseRuleState::mapForCampaignNames($ruleNames);
             }
         }
         $sbHasSpendOrCost = in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true);
@@ -4170,8 +4178,14 @@ class AmazonAdsController extends Controller
             }
             if ($needActiveAgain) {
                 $cidAgain = preg_replace('/\D+/', '', trim((string) ($rowArr['campaign_id'] ?? ''))) ?: '';
-                $again = AmazonAdsPauseRule::activeAgainDisplay($statesByCid[$cidAgain] ?? null);
+                $nameAgain = AmazonAdsPauseRule::normalizeCampaignName((string) ($rowArr['campaignName'] ?? ''));
+                $stateAgain = $statesByCid[$cidAgain]
+                    ?? $statesByCid['id:'.$cidAgain]
+                    ?? $statesByName[$nameAgain]
+                    ?? null;
+                $again = AmazonAdsPauseRule::activeAgainDisplay($stateAgain);
                 $arr['activeAgain'] = $again['label'];
+                $arr['activeAgainReason'] = $again['reason'];
                 $arr['activeAgainTip'] = $again['tip'];
             }
             self::roundAmazonAdsDisplayNumericFields($arr, $columns);

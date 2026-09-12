@@ -410,12 +410,12 @@ final class AmazonAdsPauseRule
 
     /**
      * @param  array{paused_reason?: mixed, reactivated_at?: mixed}|null  $state
-     * @return array{label: string, tip: string}
+     * @return array{label: string, reason: string, tip: string}
      */
     public static function activeAgainDisplay(?array $state): array
     {
         if (! is_array($state) || trim((string) ($state['reactivated_at'] ?? '')) === '') {
-            return ['label' => '', 'tip' => ''];
+            return ['label' => '', 'reason' => '', 'tip' => ''];
         }
         $reason = trim((string) ($state['paused_reason'] ?? ''));
         if ($reason === '') {
@@ -427,7 +427,7 @@ final class AmazonAdsPauseRule
             $tip .= ' — turned back on '.$when;
         }
 
-        return ['label' => 'Active Again', 'tip' => $tip];
+        return ['label' => 'Active Again', 'reason' => $reason, 'tip' => $tip];
     }
 
     /**

@@ -1347,12 +1347,16 @@
                 var v = cell.getValue();
                 var raw = (v === null || v === undefined) ? '' : String(v).trim();
                 var row = cell.getRow ? cell.getRow().getData() : {};
-                var tipRaw = (row && row.activeAgainTip) ? String(row.activeAgainTip) : (raw || '—');
+                var reason = (row && row.activeAgainReason) ? String(row.activeAgainReason).trim() : '';
+                var tipRaw = (row && row.activeAgainTip) ? String(row.activeAgainTip) : (reason || raw || '—');
                 if (raw === '') {
                     return '<span class="amz-raw-status-cell text-muted" title="' + amzEsc(tipRaw || '—') + '">—</span>';
                 }
-                return '<span class="amz-raw-status-cell" title="' + amzEsc(tipRaw) + '" style="color:#16a34a;font-weight:500;white-space:nowrap;">'
-                     + amzEsc(raw) + '</span>';
+                var reasonHtml = reason
+                    ? '<span style="display:block;font-size:11px;font-weight:400;color:#64748b;white-space:normal;line-height:1.25;">' + amzEsc(reason) + '</span>'
+                    : '';
+                return '<span class="amz-raw-status-cell" title="' + amzEsc(tipRaw) + '" style="display:block;color:#16a34a;font-weight:500;line-height:1.2;">'
+                     + amzEsc(raw) + reasonHtml + '</span>';
             }
             function fmtAdType(cell) {
                 var v = cell.getValue();
@@ -1494,10 +1498,11 @@
                 if (c === 'ruleStatus') { col.title = 'Rule'; col.headerTooltip = 'Rule Status — green = stay active, red = pause (PR Dil% / Price)'; col.formatter = fmtRuleStatus; col.width = 52; col.minWidth = 48; return; }
                 if (c === 'activeAgain') {
                     col.title = 'Active Again';
-                    col.headerTooltip = 'Turned back on after a Pause Rule match. Hover for the original pause reason.';
+                    col.headerTooltip = 'Turned back on after a Pause Rule match. Status and original pause reason.';
                     col.formatter = fmtActiveAgain;
-                    col.width = 108;
-                    col.minWidth = 96;
+                    col.width = 200;
+                    col.minWidth = 160;
+                    col.variableHeight = true;
                     return;
                 }
                 if (c === 'ad_type') { col.formatter = fmtAdType; return; }

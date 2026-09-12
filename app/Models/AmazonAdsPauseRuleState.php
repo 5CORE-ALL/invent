@@ -92,11 +92,47 @@ class AmazonAdsPauseRuleState extends Model
 
         $out = [];
         foreach (self::query()->whereIn('campaign_id', $ids)->get() as $row) {
-            $cid = trim((string) $row->campaign_id);
+            $cid = preg_replace('/\D+/', '', trim((string) $row->campaign_id)) ?: trim((string) $row->campaign_id);
             if ($cid === '') {
                 continue;
             }
-            $out[$cid] = [
+            $entry = [
+                'paused_reason' => trim((string) ($row->paused_reason ?? '')),
+                'paused_at' => $row->paused_at ? $row->paused_at->format('j M Y H:i') : '',
+                'reactivated_at' => $row->reactivated_at ? $row->reactivated_at->format('j M Y H:i') : '',
+            ];
+            $out[$cid] = $entry;
+            $out['id:'.$cid] = $entry;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $campaignNames
+     * @return array<string, array{paused_reason: string, reactivated_at: string, paused_at: string}>
+     */
+    public static function mapForCampaignNames(array $campaignNames): array
+    {
+        self::ensureTable();
+        $want = [];
+        foreach ($campaignNames as $name) {
+            $key = AmazonAdsPauseRule::normalizeCampaignName((string) $name);
+            if ($key !== '') {
+                $want[$key] = true;
+            }
+        }
+        if ($want === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach (self::query()->whereNotNull('reactivated_at')->get(['campaign_name', 'paused_reason', 'paused_at', 'reactivated_at']) as $row) {
+            $key = AmazonAdsPauseRule::normalizeCampaignName((string) ($row->campaign_name ?? ''));
+            if ($key === '' || ! isset($want[$key])) {
+                continue;
+            }
+            $out[$key] = [
                 'paused_reason' => trim((string) ($row->paused_reason ?? '')),
                 'paused_at' => $row->paused_at ? $row->paused_at->format('j M Y H:i') : '',
                 'reactivated_at' => $row->reactivated_at ? $row->reactivated_at->format('j M Y H:i') : '',
