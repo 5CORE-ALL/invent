@@ -191,20 +191,7 @@ final class AmazonListingStatusHelper
             }
         }
 
-        $channel = '';
-        foreach (['fulfillment-channel', 'fulfillment_channel', 'Fulfilment-channel'] as $key) {
-            $candidate = strtoupper(trim((string) ($raw[$key] ?? '')));
-            if ($candidate !== '') {
-                $channel = $candidate;
-                break;
-            }
-        }
-        $fulfillment = '';
-        if (in_array($channel, ['AMAZON', 'AFN', 'FBA'], true)) {
-            $fulfillment = 'fba';
-        } elseif (in_array($channel, ['DEFAULT', 'MFN', 'FBM', 'MERCHANT'], true)) {
-            $fulfillment = 'fbm';
-        }
+        $fulfillment = self::fulfillmentFromRaw($raw, (string) ($row->seller_sku ?? ''));
 
         return [
             'quantity' => $quantity,
@@ -214,20 +201,54 @@ final class AmazonListingStatusHelper
     }
 
     /**
-     * Closed FBA leftovers (and inactive rows with no FBM channel) are not
-     * Seller Central "Inactive Listing". The same SKU is often still Active FBM.
+     * @param  array<string, mixed>  $raw
+     */
+    public static function fulfillmentFromRaw(array $raw, string $sku = ''): string
+    {
+        foreach ($raw as $key => $value) {
+            $norm = strtolower(trim((string) $key));
+            $norm = str_replace([' ', '_'], '-', $norm);
+            $val = strtoupper(trim((string) (is_scalar($value) ? $value : '')));
+            if ($val === '') {
+                continue;
+            }
+            $looksLikeChannel = str_contains($norm, 'fulfill') || str_contains($norm, 'fulfil') || $norm === 'channel';
+            if (! $looksLikeChannel && ! in_array($val, ['AMAZON', 'AFN', 'FBA', 'DEFAULT', 'MFN', 'FBM', 'MERCHANT'], true)) {
+                continue;
+            }
+            if (in_array($val, ['AMAZON', 'AFN', 'FBA', 'AMAZON_NA'], true) || str_contains($val, 'AFN') || $val === 'FBA') {
+                return 'fba';
+            }
+            if (in_array($val, ['DEFAULT', 'MFN', 'FBM', 'MERCHANT'], true)) {
+                return 'fbm';
+            }
+        }
+        if (preg_match('/\bFBA\b/i', $sku)) {
+            return 'fba';
+        }
+
+        return '';
+    }
+
+    public static function reportRowIsFba(object $row): bool
+    {
+        return self::metaFromListingsRawRow($row)['fulfillment'] === 'fba';
+    }
+
+    /**
+     * FBA rows are never Inactive Listing. Closed FBA leftovers stay off this page.
      */
     public static function reportRowIsClosedFba(object $row): bool
     {
         $meta = self::metaFromListingsRawRow($row);
+        if (($meta['fulfillment'] ?? '') === 'fba') {
+            return true;
+        }
         if (($meta['state'] ?? '') !== 'inactive') {
             return false;
         }
-        if (($meta['fulfillment'] ?? '') === 'fbm') {
-            return false;
-        }
 
-        return true;
+        return ($meta['fulfillment'] ?? '') !== 'fbm';
     }
 
     /**
@@ -279,19 +300,27 @@ final class AmazonListingStatusHelper
      * One seller SKU can have an Active FBM offer and a Closed FBA offer.
      * If any report row is live, the SKU is not Inactive Listing.
      *
-     * @param  list<array{sku: string, live: bool, ignore?: bool}>  $rows
+     * @param  list<array{sku: string, live: bool, ignore?: bool, fba?: bool}>  $rows
      * @return array{active: array<string, true>, inactive: list<string>}
      */
     public static function classifyReportSkus(array $rows): array
     {
         $liveByKey = [];
         $deadByKey = [];
+        $hasFba = [];
         foreach ($rows as $row) {
             $sku = trim((string) ($row['sku'] ?? ''));
-            if ($sku === '' || ! empty($row['ignore'])) {
+            if ($sku === '') {
                 continue;
             }
             $key = strtoupper($sku);
+            if (! empty($row['fba'])) {
+                $hasFba[$key] = true;
+                continue;
+            }
+            if (! empty($row['ignore'])) {
+                continue;
+            }
             if (! empty($row['live'])) {
                 $liveByKey[$key] = $sku;
             } else {
@@ -306,7 +335,7 @@ final class AmazonListingStatusHelper
 
         $inactive = [];
         foreach ($deadByKey as $key => $sku) {
-            if (isset($liveByKey[$key]) || isset($active[$key])) {
+            if (isset($hasFba[$key]) || isset($liveByKey[$key]) || isset($active[$key])) {
                 continue;
             }
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);

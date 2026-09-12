@@ -465,10 +465,12 @@ final class MarketplacePortalInactiveCount
                     if ($sku === '') {
                         continue;
                     }
+                    $isFba = AmazonListingStatusHelper::reportRowIsFba($row);
                     $classified[] = [
                         'sku' => $sku,
                         'live' => AmazonListingStatusHelper::reportRowIsLive($row),
-                        'ignore' => AmazonListingStatusHelper::reportRowIsClosedFba($row),
+                        'ignore' => $isFba || AmazonListingStatusHelper::reportRowIsClosedFba($row),
+                        'fba' => $isFba,
                     ];
                 }
             });

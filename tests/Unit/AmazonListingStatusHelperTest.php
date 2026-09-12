@@ -109,10 +109,35 @@ class AmazonListingStatusHelperTest extends TestCase
     public function test_closed_fba_leftover_alone_is_not_inactive_listing(): void
     {
         $sets = AmazonListingStatusHelper::classifyReportSkus([
-            ['sku' => '1/4M-3/8M Camera Screw 5Pcs', 'live' => false, 'ignore' => true],
+            ['sku' => '1/4M-3/8M Camera Screw 5Pcs', 'live' => false, 'ignore' => true, 'fba' => true],
         ]);
 
         $this->assertSame([], $sets['inactive']);
+    }
+
+    public function test_sku_with_fba_row_is_never_inactive_listing(): void
+    {
+        $sets = AmazonListingStatusHelper::classifyReportSkus([
+            ['sku' => '1/4M-3/8M Camera Screw 5Pcs', 'live' => false, 'fba' => true, 'ignore' => true],
+            ['sku' => '1/4M-3/8M Camera Screw 5Pcs', 'live' => false, 'fba' => false],
+        ]);
+
+        $this->assertSame([], $sets['inactive']);
+    }
+
+    public function test_fulfillment_channel_with_spaces_is_fba(): void
+    {
+        $row = (object) [
+            'seller_sku' => '1/4M-3/8M Camera Screw 5Pcs',
+            'quantity' => 0,
+            'raw_data' => [
+                'status' => 'Inactive',
+                'Fulfillment Channel' => 'AMAZON',
+            ],
+        ];
+
+        $this->assertTrue(AmazonListingStatusHelper::reportRowIsFba($row));
+        $this->assertTrue(AmazonListingStatusHelper::reportRowIsClosedFba($row));
     }
 
     public function test_closed_fba_row_is_detected_from_report(): void
