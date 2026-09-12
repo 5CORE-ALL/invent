@@ -4,6 +4,7 @@ namespace App\Services\Support;
 
 use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
+use App\Http\Controllers\MarketPlace\MacyController;
 use App\Http\Controllers\MarketPlace\DobaController;
 use App\Http\Controllers\MarketPlace\EbayController;
 use App\Http\Controllers\MarketPlace\EbayThreeController;
@@ -190,6 +191,7 @@ class ChannelPushSpriceRunner
                         "Completed: {$state['ok_count']} ok, {$state['fail_count']} failed.",
                         ((int) ($state['fail_count'] ?? 0)) === 0
                     );
+                    $this->pullMacysListedAfterBatch($state, $logger);
 
                     return 0;
                 }
@@ -256,13 +258,8 @@ class ChannelPushSpriceRunner
                     ? ($payload['ebay_price'] ?? $payload['price'] ?? $price)
                     : $price;
                 $ok = true;
-                $shouldPullLive = in_array($this->channel, ['tiktok', 'tiktok2', 'doba', 'doba_withoutship', 'macys', 'macy'], true)
-                    && (
-                        in_array($this->channel, ['macys', 'macy'], true)
-                        || ! is_numeric($live)
-                        || abs((float) $live - (float) $price) >= 0.05
-                    );
-                if ($shouldPullLive) {
+                if (in_array($this->channel, ['tiktok', 'tiktok2', 'doba', 'doba_withoutship'], true)
+                    && (! is_numeric($live) || abs((float) $live - (float) $price) >= 0.05)) {
                     $pulled = $this->pullLivePriceAfterPush($sku, (float) $price);
                     if ($pulled > 0) {
                         $live = $pulled;
@@ -327,7 +324,41 @@ class ChannelPushSpriceRunner
             });
 
             $store->appendMessage(($ok ? 'OK ' : 'Fail ').$sku.($error ? (': '.$error) : ''), $ok);
-            usleep(250000);
+            usleep(in_array($this->channel, ['macys', 'macy'], true) ? 50000 : 250000);
+        }
+    }
+
+    /**
+     * After Macys auto-push, refresh listed MC Price from MCM once — do not wait per SKU.
+     */
+    private function pullMacysListedAfterBatch(array $state, \Psr\Log\LoggerInterface $logger): void
+    {
+        if (! in_array($this->channel, ['macys', 'macy'], true)) {
+            return;
+        }
+        $skus = [];
+        foreach ($state['tasks'] ?? [] as $task) {
+            if (! is_array($task) || ($task['status'] ?? '') !== 'ok') {
+                continue;
+            }
+            $sku = trim((string) ($task['sku'] ?? ''));
+            if ($sku !== '') {
+                $skus[] = $sku;
+            }
+        }
+        $skus = array_values(array_unique($skus));
+        if ($skus === []) {
+            return;
+        }
+        $logger->info('Macy listed-price pull after auto-push', ['count' => count($skus)]);
+        try {
+            foreach (array_chunk($skus, 100) as $chunk) {
+                app(\App\Services\ChannelPushedPricePullService::class)->pullSkus($this->channel, $chunk);
+            }
+        } catch (\Throwable $e) {
+            $logger->warning('Macy listed-price pull after auto-push failed', [
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -415,6 +446,15 @@ class ChannelPushSpriceRunner
             $aeReq->headers->set('Accept', 'application/json');
 
             return app(AliexpressController::class)->pushPricingPrice($aeReq, app(AliExpressApiService::class));
+        }
+
+        if (in_array($this->channel, ['macys', 'macy'], true)) {
+            $macysReq = Request::create('/macys-push-price', 'POST', [
+                'sku' => $sku,
+                'price' => $pushPrice,
+            ]);
+
+            return app(MacyController::class)->pushPriceTabulator($macysReq);
         }
 
         if ($this->channel === 'newegg') {
