@@ -18,8 +18,8 @@ use App\Models\TemuViewData;
 use App\Services\DilRuleSpriceApplyService;
 use App\Services\LmpSkuGroupService;
 use App\Services\Support\ChannelPushSpriceRunner;
+use App\Services\Support\NewTemuoneSuggestedPriceStore;
 use App\Services\TemuShopifySalesService;
-use App\Support\AmazonDilGroiRule;
 use App\Support\ProductMasterTemuShip;
 use App\Support\TemuGoodsIdHelper;
 use Carbon\Carbon;
@@ -259,6 +259,8 @@ class NewTemuoneController extends Controller
             $dilStore = DilRuleSpriceApplyService::for('temu')->loadDilGroiStore();
             $dilRules = $dilStore['rules'] ?? [];
             $cvrAdj = $dilStore['cvr_adj'] ?? null;
+            $suggestedStore = new NewTemuoneSuggestedPriceStore();
+            $suggestedStore->loadForSkus($skus);
             $percentage = TemuShopifySalesService::temuMarginDecimal();
             // One channel-level Ads% nets every row, same as /temu2-decrease.
             $adsPercent = (float) $this->temuChannelAdsSummary()['percent'];
@@ -341,36 +343,43 @@ class NewTemuoneController extends Controller
                 }
 
                 $lmpInfo = $this->resolveTemu2Lmp($sku, $temuLmpByNormalizedSku, $normalizeSku);
-                $sprcDil = $this->computeTemu1TableSprcDil(
-                    $inv,
-                    $lp,
-                    $temuShip,
-                    $dilPct,
-                    $cvrPercent,
-                    $cvr60,
+                $suggested = $suggestedStore->resolve(
+                    $sku,
+                    [
+                        'inv' => $inv,
+                        'lp' => $lp,
+                        'ship' => $temuShip,
+                        'dil' => $dilPct,
+                        'cvr' => $cvrPercent,
+                        'cvr60' => $cvr60,
+                        'ebay' => $this->temuEbayRefPrice($ebayPrice, $ebay2Price),
+                        'amz' => $amazonPrice,
+                        'lmp' => $lmpInfo['raw'],
+                    ],
                     $dilRules,
                     is_array($cvrAdj) ? $cvrAdj : null
                 );
-                $spriceCap = $this->capTemu2Sprice(
-                    $sprcDil,
-                    $this->temuEbayRefPrice($ebayPrice, $ebay2Price),
-                    $amazonPrice,
-                    $lmpInfo['raw']
-                );
-                $sprice = $spriceCap['sprice'];
-                $sBasePrice = $sprice > 0
-                    ? round(TemuShopifySalesService::computeBaseFromFullTemuPrice($sprice), 2)
-                    : 0.0;
+                $sprcDil = (float) ($suggested['sprc_dil'] ?? 0);
+                $sprice = (float) ($suggested['sprice'] ?? 0);
+                $sBasePrice = (float) ($suggested['s_base'] ?? 0);
                 $sRPrice = TemuShopifySalesService::computeRPrice($sBasePrice);
+                $spriceCap = [
+                    'sprice' => $sprice,
+                    'labels' => $suggested['labels'] ?? [],
+                    'lmpAlert' => (bool) ($suggested['lmp_alert'] ?? false),
+                ];
 
-                // GPFT / GROI on the listing R Price; SGPFT / SGROI on S R Prc.
-                // Margin is marketplace_percentages "Temu".
+                // GPFT / GROI on the listing R Price (marketplace Temu margin).
+                // SPFT / SGROI use the same 0.95 take-home as Sprc Dil. SGROI is the
+                // persisted Dil+CVR rule number (110), never the inverted 111.
                 $gpftDollars = TemuShopifySalesService::computeGroiProfit($rPrice, $percentage, $lp, $temuShip);
                 $gpftPercent = ($rPrice > 0 && $tPrice > 0) ? round(($gpftDollars / $tPrice) * 100, 2) : 0.0;
                 $groiPercent = ($rPrice > 0 && $lp > 0) ? round(($gpftDollars / $lp) * 100, 2) : 0.0;
-                $spftDollars = TemuShopifySalesService::computeGroiProfit($sRPrice, $percentage, $lp, $temuShip);
+                $spftDollars = ($sRPrice > 0)
+                    ? ($sRPrice * TemuShopifySalesService::DECREASE_TAKEHOME) - $temuShip - $lp
+                    : 0.0;
                 $sgpftPercent = ($sRPrice > 0 && $sprice > 0) ? round(($spftDollars / $sprice) * 100, 2) : 0.0;
-                $sgroiPercent = ($sRPrice > 0 && $lp > 0) ? round(($spftDollars / $lp) * 100, 2) : 0.0;
+                $sgroiPercent = $suggested['sgroi'];
 
                 // NPFT = Gpft − (T Price × Ads%); SNPFT = SPFT − (S PRC × Ads%).
                 $npftDollars = $gpftDollars - ($tPrice * ($adsPercent / 100));
@@ -423,6 +432,8 @@ class NewTemuoneController extends Controller
                     'roi_percent' => $groiPercent,
                     'sgpft_percent' => $sgpftPercent,
                     'sgroi_percent' => $sgroiPercent,
+                    'nto_use_saved' => (bool) ($suggested['use_saved'] ?? false),
+                    'nto_capped' => (bool) ($suggested['capped'] ?? false),
                     'npft_percent' => $npftPercent,
                     'nroi_percent' => $nroiPercent,
                     'snpft_percent' => $snpftPercent,
@@ -433,6 +444,8 @@ class NewTemuoneController extends Controller
                     'S Link' => $sellerLink,
                 ];
             }
+
+            $suggestedStore->flush();
 
             return response()->json($result);
         } catch (\Exception $e) {
@@ -529,86 +542,6 @@ class NewTemuoneController extends Controller
         }
 
         return $out;
-    }
-
-    /**
-     * Sprc Dil using the /temu1-data Dil vs GROI table, with Temu 2 0-sold
-     * behavior (Dil-matching slab, not min GROI).
-     */
-    private function computeTemu1TableSprcDil(
-        float $inv,
-        float $lp,
-        float $ship,
-        float $dil,
-        float $cvr,
-        float $cvrPrior,
-        array $dilRules,
-        ?array $cvrAdj
-    ): float {
-        if (! ($inv > 0) || ! ($lp > 0)) {
-            return 0.0;
-        }
-        $rule = AmazonDilGroiRule::match($dil, $dilRules);
-        if ($rule === null) {
-            return 0.0;
-        }
-        // Same CVR overlay as the Amazon tabulator: the trend decides whether the level
-        // threshold fires, comparing CVR 30 against the prior window (CVR 60 for Temu).
-        // With no usable prior the Sprc Dil partial drops to level-only in the browser,
-        // and the browser value is the one shown, so match it here or the two disagree.
-        $groi = $cvrPrior > 0
-            ? AmazonDilGroiRule::adjustGroiForCvr(
-                (float) $rule['groi'],
-                $cvr,
-                AmazonDilGroiRule::cvrTrend($cvr, $cvrPrior),
-                $cvrAdj
-            )
-            : AmazonDilGroiRule::adjustGroiForCvrLevel((float) $rule['groi'], $cvr, $cvrAdj);
-        $raw = TemuShopifySalesService::spriceFromTargetSgroi($lp, $ship, (float) $groi, 0.0);
-        if (! is_finite($raw) || $raw < 0.01) {
-            return 0.0;
-        }
-
-        return round($raw, 2);
-    }
-
-    /**
-     * Same S PRC cap as /temu2-decrease: lowest of eBay / Amazon / LMP when cheaper.
-     *
-     * @return array{sprice: float, labels: list<string>, lmpAlert: bool}
-     */
-    private function capTemu2Sprice(float $discounted, float $ebay, float $amz, $lmp): array
-    {
-        $sprice = $discounted > 0 ? $discounted : 0.0;
-        if (! ($sprice > 0)) {
-            return ['sprice' => 0.0, 'labels' => [], 'lmpAlert' => false];
-        }
-        $ebay = $ebay > 0 ? round($ebay, 2) : 0.0;
-        $amz = $amz > 0 ? round($amz, 2) : 0.0;
-        $lmp = (is_numeric($lmp) && (float) $lmp > 0) ? round((float) $lmp, 2) : 0.0;
-        if ($ebay > 0 && $sprice > $ebay) {
-            $sprice = round($ebay, 2);
-        }
-        if ($amz > 0 && $sprice > $amz) {
-            $sprice = round($amz, 2);
-        }
-        if ($lmp > 0 && $sprice > $lmp) {
-            $sprice = round($lmp, 2);
-        }
-
-        $labels = [];
-        if ($ebay > 0 && round($sprice, 2) === $ebay && $discounted > $ebay) {
-            $labels[] = 'EB';
-        }
-        if ($amz > 0 && round($sprice, 2) === $amz && $discounted > $amz) {
-            $labels[] = 'Amz';
-        }
-
-        return [
-            'sprice' => round($sprice, 2),
-            'labels' => $labels,
-            'lmpAlert' => $lmp > 0 && round($sprice, 2) === $lmp && $discounted > $lmp,
-        ];
     }
 
     private function temuEbayRefPrice(float $ebay, float $ebay2): float

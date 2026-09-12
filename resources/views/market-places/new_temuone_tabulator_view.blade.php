@@ -933,13 +933,35 @@
         return temuParseMoney(row && (row.temu_price != null ? row.temu_price : row.t_price));
     }
 
+    function ntoRowUsesSaved(row) {
+        if (!row) return false;
+        const flag = row.nto_use_saved;
+        return flag === true || flag === 1 || flag === '1';
+    }
+
+    function ntoSavedSprice(row) {
+        const n = parseFloat(row && (row.sprice != null ? row.sprice : row.SPRICE));
+        return (isFinite(n) && n > 0) ? +n.toFixed(2) : 0;
+    }
+
+    function ntoSavedSgroi(row) {
+        if (!row || row.sgroi_percent == null || row.sgroi_percent === '') return null;
+        const n = Number(row.sgroi_percent);
+        return isFinite(n) ? n : null;
+    }
+
     /**
      * Discounted Price = Sprc Dil (OV L30 Dil → Target GROI).
      * If Dil is missing or over the last slab (no match), Amazon-style fallback:
      * STD (T Price). Cap compute then takes min(eBay, Amazon, LMP) when cheaper.
+     * Saved S PRC from the server is reused until Dil / CVR / pricing inputs change.
      */
     function temuDiscountedPrice(row) {
         if (!row) return 0;
+        if (ntoRowUsesSaved(row)) {
+            const saved = ntoSavedSprice(row);
+            if (saved > 0) return saved;
+        }
         if (typeof ebaySprcDilForRow === 'function') {
             const sprcDil = Number(ebaySprcDilForRow(row));
             if (sprcDil > 0) return +sprcDil.toFixed(2);
@@ -988,6 +1010,20 @@
     /** S PRC = Dil (or STD fallback), then the lowest of eBay / Amazon / LMP when cheaper. */
     function temuSpriceCapCompute(row, rawSprice, extra) {
         extra = extra || {};
+        if (ntoRowUsesSaved(row) && extra.use_passed_as_discounted !== true) {
+            const saved = ntoSavedSprice(row);
+            if (saved > 0) {
+                const labels = Array.isArray(row.sprice_labels) ? row.sprice_labels : [];
+                return {
+                    sprice: saved,
+                    labels: labels,
+                    lmpAlert: !!row.sprice_lmp_alert,
+                    amz: +temuAmzRefPrice(row).toFixed(2),
+                    ebay: +temuEbayRefPrice(row).toFixed(2),
+                    lmp: extra.skip_lmp_cap ? 0 : +temuLmpRefPrice(row).toFixed(2),
+                };
+            }
+        }
         const liveDiscounted = temuDiscountedPrice(row);
         const passed = parseFloat(rawSprice);
         let discounted = 0;
@@ -1026,7 +1062,7 @@
         if (!row) return { value: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
         const cap = temuSpriceCapResult(row);
         const value = (cap && cap.sprice > 0) ? +Number(cap.sprice).toFixed(2) : 0;
-        if (value > 0) {
+        if (value > 0 && !ntoRowUsesSaved(row)) {
             row.SPRICE = value;
             row.sprice = value;
         }
@@ -1095,7 +1131,7 @@
         return (rPrice * temuRowMargin(row)) - ship - lp;
     }
 
-    /** SPFT$ = (S R Prc × margin) − Temu Ship − LP. */
+    /** SPFT$ = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as Sprc Dil / /temu2-decrease. */
     function temuSpftDollars(row, spriceOverride) {
         const sprice = spriceOverride != null
             ? (parseFloat(spriceOverride) || 0)
@@ -1104,7 +1140,7 @@
         if (!(sR > 0)) return null;
         const lp = parseFloat(row && row.lp) || 0;
         const ship = parseFloat(row && row.temu_ship) || 0;
-        return (sR * temuRowMargin(row)) - ship - lp;
+        return (sR * 0.95) - ship - lp;
     }
 
     function temuGpftPercent(row) {
@@ -1128,7 +1164,30 @@
         return (spft / sprice) * 100;
     }
 
+    function temuSgroiFromRule(row) {
+        if (ntoRowUsesSaved(row) && !row.nto_capped) {
+            return ntoSavedSgroi(row);
+        }
+        if (typeof ebayDilGroiTargetGroi !== 'function') return null;
+        const rule = ebayDilGroiTargetGroi(row);
+        if (rule == null || !isFinite(rule)) return null;
+        const cap = typeof temuSpriceCapResult === 'function' ? temuSpriceCapResult(row) : null;
+        if (cap && ((cap.labels && cap.labels.length) || cap.lmpAlert)) return null;
+        const meta = typeof ebayDilGroiMetaForRow === 'function' ? ebayDilGroiMetaForRow(row) : null;
+        const sprice = temuDisplayedSprice(row);
+        if (meta && meta.sprc > 0 && sprice > 0
+            && Math.round(sprice * 100) !== Math.round(Number(meta.sprc) * 100)) {
+            return null;
+        }
+        return rule;
+    }
     function temuSgroiPercent(row) {
+        if (ntoRowUsesSaved(row)) {
+            const saved = ntoSavedSgroi(row);
+            if (saved != null) return saved;
+        }
+        const fromRule = temuSgroiFromRule(row);
+        if (fromRule != null) return fromRule;
         const spft = temuSpftDollars(row);
         const lp = parseFloat(row && row.lp) || 0;
         if (spft == null || !(lp > 0)) return null;
@@ -1596,7 +1655,8 @@
                 lmp_entries: entries,
                 lmp_raw: raw,
                 lmp: recovery,
-                lmp_link: lowestLink
+                lmp_link: lowestLink,
+                nto_use_saved: false
             };
             const cap = typeof temuSpriceCapCompute === 'function'
                 ? temuSpriceCapCompute(Object.assign({}, d, next))
@@ -1809,6 +1869,10 @@
         if (!d || d.is_parent_summary) return 0;
         const sku = ntoRowSku(d);
         if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return 0;
+        if (ntoRowUsesSaved(d)) {
+            const savedBase = parseFloat(d.s_base_price);
+            if (isFinite(savedBase) && savedBase > 0) return +savedBase.toFixed(2);
+        }
         const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : 0;
         return typeof temuSBaseFromSprice === 'function' ? temuSBaseFromSprice(sprice) : 0;
     }
@@ -3022,8 +3086,10 @@
                         const sprice = typeof temuDisplayedSprice === 'function'
                             ? temuDisplayedSprice(rowData)
                             : (parseFloat(rowData.sprice) || 0);
-                        const sBase = temuSBaseFromSprice(sprice);
-                        const sRPrice = temuSRPriceFromSprice(sprice);
+                        const sBase = ntoRowSBase(rowData);
+                        const sRPrice = (ntoRowUsesSaved(rowData) && parseFloat(rowData.s_r_price) > 0)
+                            ? +parseFloat(rowData.s_r_price).toFixed(2)
+                            : temuSRPriceFromSprice(sprice);
                         if (!(sRPrice > 0)) {
                             return '<span style="color: #6c757d;">—</span>';
                         }
@@ -3039,7 +3105,7 @@
                     hozAlign: 'center',
                     width: 60,
                     sorter: 'number',
-                    headerTooltip: 'SGPFT% = SPFT ÷ S PRC. SPFT = (S R Prc × Temu margin) − Temu Ship − LP. Margin from marketplace_percentages "Temu".',
+                    headerTooltip: 'SGPFT% = SPFT ÷ S PRC. SPFT = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as Sprc Dil / /temu2-decrease.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSgpftPercent(row);
@@ -3047,7 +3113,7 @@
                         const spft = temuSpftDollars(row);
                         const tip = 'SPFT $' + spft.toFixed(2)
                             + ' ÷ S PRC $' + temuDisplayedSprice(row).toFixed(2)
-                            + ' (margin ' + Math.round(temuRowMargin(row) * 100) + '%)';
+                            + ' (0.95 take-home)';
                         return temuPercentCell(value, 'pft', tip);
                     }
                 },
@@ -3057,15 +3123,22 @@
                     hozAlign: 'center',
                     width: 60,
                     sorter: 'number',
-                    headerTooltip: 'SGROI% = SPFT ÷ LP. SPFT = (S R Prc × Temu margin) − Temu Ship − LP. Sprc Dil back-solves S PRC so this matches the Dil slab Target GROI.',
+                    headerTooltip: 'SGROI% is the saved Dil + CVR Target GROI (Dil 100 + CVR 10 = 110 exactly). Recalculated only when Dil, CVR, or a pricing input changes. If S PRC was capped to eBay / Amazon / LMP, it shows the actual SPFT ÷ LP instead.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSgroiPercent(row);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const spft = temuSpftDollars(row);
-                        const tip = 'SPFT $' + spft.toFixed(2)
-                            + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
-                            + ' (margin ' + Math.round(temuRowMargin(row) * 100) + '%)';
+                        const fromRule = temuSgroiFromRule(row);
+                        let tip;
+                        if (fromRule != null && typeof ebayDilGroiTipText === 'function') {
+                            const meta = ebayDilGroiMetaForRow(row);
+                            tip = ebayDilGroiTipText(meta) || ('Target GROI ' + fromRule + '%');
+                        } else {
+                            const spft = temuSpftDollars(row);
+                            tip = 'SPFT $' + (spft != null ? spft.toFixed(2) : '—')
+                                + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
+                                + ' (capped S PRC)';
+                        }
                         return temuPercentCell(value, 'roi', tip);
                     }
                 },
@@ -3119,6 +3192,18 @@
             applyFilters();
             window._ntoReloadPushQueued = false;
             setTimeout(function() { ntoTryQueuePushOnReload(); }, 800);
+        });
+
+        $(document).on('ajaxComplete.ntoDilPersist', function(e, xhr, settings) {
+            const url = String((settings && settings.url) || '');
+            if (url.indexOf('/channel-promo-pricing/temu/dil-groi') === -1) return;
+            const method = String((settings && (settings.type || settings.method)) || 'GET').toUpperCase();
+            if (method !== 'POST') return;
+            setTimeout(function() {
+                if (!table || typeof table.replaceData !== 'function') return;
+                temuClearCapMemo();
+                table.replaceData();
+            }, 400);
         });
 
         initNtoReloadPushUi();
