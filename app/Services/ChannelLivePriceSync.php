@@ -44,6 +44,9 @@ use App\Models\TopDawgDataView;
 use App\Models\TopDawgProduct;
 use App\Models\WalmartDataView;
 use App\Models\WalmartMetrics;
+use App\Models\MacyDataView;
+use App\Models\MacyProduct;
+use App\Models\MacysPriceData;
 use App\Models\WalmartPricingSales;
 use App\Models\WayfairDataView;
 use App\Models\WayfairPricingPrice;
@@ -63,6 +66,7 @@ class ChannelLivePriceSync
         $channel = strtolower(trim($channel));
 
         return match ($channel) {
+            'macy' => 'macys',
             'bb', 'best_buy', 'bestbuyusa' => 'bestbuy',
             'ae', 'ali' => 'aliexpress',
             'tt', 'tiktokshop' => 'tiktok',
@@ -293,6 +297,7 @@ class ChannelLivePriceSync
             'walmart' => WalmartDataView::class,
             'pls' => PLSDataView::class,
             'fb_marketplace' => FBMarketplaceDataView::class,
+            'macys', 'macy' => MacyDataView::class,
             default => null,
         };
     }
@@ -367,6 +372,10 @@ class ChannelLivePriceSync
             ],
             'fb_marketplace' => [
                 ['model' => FbMarketplacePriceSoldData::class, 'column' => 'price'],
+            ],
+            'macys', 'macy' => [
+                ['model' => MacyProduct::class, 'column' => 'price'],
+                ['model' => MacysPriceData::class, 'column' => 'price'],
             ],
             default => [],
         };
