@@ -16,6 +16,7 @@ class AmazonListingStatusHelperTest extends TestCase
         $this->assertSame('active', AmazonListingStatusHelper::normalizePortalStatus('Active'));
         $this->assertSame('inactive', AmazonListingStatusHelper::normalizePortalStatus('INACTIVE'));
         $this->assertSame('inactive', AmazonListingStatusHelper::normalizePortalStatus('SUPPRESSED'));
+        $this->assertSame('inactive', AmazonListingStatusHelper::normalizePortalStatus('Closed'));
     }
 
     public function test_api_sheet_mapping_keeps_sold_out_listings_active(): void
@@ -63,5 +64,110 @@ class AmazonListingStatusHelperTest extends TestCase
 
         $this->assertSame(12, $meta['quantity']);
         $this->assertSame('inactive', $meta['state']);
+    }
+
+    public function test_report_row_without_status_is_still_live(): void
+    {
+        $row = (object) [
+            'quantity' => 8,
+            'raw_data' => ['seller-sku' => 'A-54', 'quantity' => '8'],
+        ];
+
+        $this->assertTrue(AmazonListingStatusHelper::reportRowIsLive($row));
+    }
+
+    public function test_report_row_inactive_status_is_not_live(): void
+    {
+        $row = (object) [
+            'quantity' => 0,
+            'raw_data' => ['status' => 'Inactive', 'seller-sku' => 'A-54'],
+        ];
+
+        $this->assertFalse(AmazonListingStatusHelper::reportRowIsLive($row));
+    }
+
+    public function test_closed_fba_does_not_override_active_fbm_same_sku(): void
+    {
+        $sets = AmazonListingStatusHelper::classifyReportSkus([
+            ['sku' => '1/4M-3/8M Camera Screw 5Pcs', 'live' => false],
+            ['sku' => '1/4M-3/8M Camera Screw 5Pcs', 'live' => true],
+        ]);
+
+        $this->assertSame([], $sets['inactive']);
+        $this->assertTrue(isset($sets['active'][strtoupper('1/4M-3/8M Camera Screw 5Pcs')]));
+    }
+
+    public function test_closed_only_sku_stays_inactive(): void
+    {
+        $sets = AmazonListingStatusHelper::classifyReportSkus([
+            ['sku' => 'ONLY-CLOSED', 'live' => false],
+        ]);
+
+        $this->assertSame(['ONLY-CLOSED'], $sets['inactive']);
+    }
+
+    public function test_closed_fba_leftover_alone_is_not_inactive_listing(): void
+    {
+        $sets = AmazonListingStatusHelper::classifyReportSkus([
+            ['sku' => '1/4M-3/8M Camera Screw 5Pcs', 'live' => false, 'ignore' => true, 'fba' => true],
+        ]);
+
+        $this->assertSame([], $sets['inactive']);
+    }
+
+    public function test_sku_with_fba_row_is_never_inactive_listing(): void
+    {
+        $sets = AmazonListingStatusHelper::classifyReportSkus([
+            ['sku' => '1/4M-3/8M Camera Screw 5Pcs', 'live' => false, 'fba' => true, 'ignore' => true],
+            ['sku' => '1/4M-3/8M Camera Screw 5Pcs', 'live' => false, 'fba' => false],
+        ]);
+
+        $this->assertSame([], $sets['inactive']);
+    }
+
+    public function test_fulfillment_channel_with_spaces_is_fba(): void
+    {
+        $row = (object) [
+            'seller_sku' => '1/4M-3/8M Camera Screw 5Pcs',
+            'quantity' => 0,
+            'raw_data' => [
+                'status' => 'Inactive',
+                'Fulfillment Channel' => 'AMAZON',
+            ],
+        ];
+
+        $this->assertTrue(AmazonListingStatusHelper::reportRowIsFba($row));
+        $this->assertTrue(AmazonListingStatusHelper::reportRowIsClosedFba($row));
+    }
+
+    public function test_closed_fba_row_is_detected_from_report(): void
+    {
+        $row = (object) [
+            'quantity' => 0,
+            'raw_data' => [
+                'status' => 'Inactive',
+                'fulfillment-channel' => 'AMAZON',
+                'seller-sku' => '1/4M-3/8M Camera Screw 5Pcs',
+            ],
+        ];
+
+        $this->assertTrue(AmazonListingStatusHelper::reportRowIsClosedFba($row));
+        $this->assertFalse(AmazonListingStatusHelper::reportRowIsLive($row));
+    }
+
+    public function test_fbm_row_with_qty_is_live(): void
+    {
+        $row = (object) [
+            'quantity' => 145,
+            'raw_data' => [
+                'status' => 'Active',
+                'fulfillment-channel' => 'DEFAULT',
+                'quantity' => '145',
+                'seller-sku' => '1/4M-3/8M Camera Screw 5Pcs',
+            ],
+        ];
+
+        $this->assertFalse(AmazonListingStatusHelper::reportRowIsClosedFba($row));
+        $this->assertTrue(AmazonListingStatusHelper::reportRowIsLive($row));
     }
 }

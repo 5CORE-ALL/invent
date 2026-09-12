@@ -377,7 +377,18 @@ class AmazonLiveListingsService
                     if ($sku === '') {
                         continue;
                     }
-                    $map[strtoupper($sku)] = AmazonListingStatusHelper::metaFromListingsRawRow($row);
+                    $key = strtoupper($sku);
+                    $meta = AmazonListingStatusHelper::metaFromListingsRawRow($row);
+                    $existing = $map[$key] ?? null;
+                    if ($existing !== null && AmazonListingStatusHelper::reportRowIsClosedFba($row)) {
+                        continue;
+                    }
+                    if ($existing !== null
+                        && (($existing['state'] ?? '') === 'active' || (int) ($existing['quantity'] ?? 0) > 0)
+                        && ($meta['state'] ?? '') === 'inactive') {
+                        continue;
+                    }
+                    $map[$key] = $meta;
                 }
             });
 

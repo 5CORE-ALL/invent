@@ -67,7 +67,7 @@ class ListingInactiveParentChildCountsTest extends TestCase
         $this->assertSame([], $kept);
     }
 
-    public function test_drops_sku_with_marketplace_stock(): void
+    public function test_keeps_marketplace_inactive_sku_even_with_leftover_channel_qty(): void
     {
         $rows = [
             ['sku' => 'WF 6.5 100 PP 4OHM', 'kind' => 'child', 'inv' => 12, 'channel_inv' => 12, 'state' => 'inactive'],
@@ -76,7 +76,8 @@ class ListingInactiveParentChildCountsTest extends TestCase
 
         $kept = ListingInactiveParentChildCounts::keepCpMasterInStockInactiveRows($rows, $cpKeys);
 
-        $this->assertSame([], $kept);
+        $this->assertCount(1, $kept);
+        $this->assertSame('WF 6.5 100 PP 4OHM', $kept[0]['sku']);
     }
 
     public function test_drops_sku_in_marketplace_active_key_set(): void

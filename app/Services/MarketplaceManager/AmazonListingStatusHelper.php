@@ -113,7 +113,7 @@ final class AmazonListingStatusHelper
         }
         if (in_array($state, [
             'inactive', 'incomplete', 'suppressed', 'blocked', 'disabled', '0', 'false',
-            'stopped', 'ineligible', 'invalid',
+            'stopped', 'ineligible', 'invalid', 'closed',
         ], true)) {
             return 'inactive';
         }
@@ -182,11 +182,176 @@ final class AmazonListingStatusHelper
             $quantity = (int) $row->quantity;
         }
 
-        $status = trim((string) ($raw['status'] ?? $raw['Status'] ?? ''));
+        $status = '';
+        foreach (['status', 'Status', 'item-status', 'listing-status', 'listing_status'] as $key) {
+            $candidate = trim((string) ($raw[$key] ?? ''));
+            if ($candidate !== '') {
+                $status = $candidate;
+                break;
+            }
+        }
+
+        $fulfillment = self::fulfillmentFromRaw($raw, (string) ($row->seller_sku ?? ''));
 
         return [
             'quantity' => $quantity,
             'state' => $status !== '' ? self::normalizePortalStatus($status) : 'other',
+            'fulfillment' => $fulfillment,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $raw
+     */
+    public static function fulfillmentFromRaw(array $raw, string $sku = ''): string
+    {
+        foreach ($raw as $key => $value) {
+            $norm = strtolower(trim((string) $key));
+            $norm = str_replace([' ', '_'], '-', $norm);
+            $val = strtoupper(trim((string) (is_scalar($value) ? $value : '')));
+            if ($val === '') {
+                continue;
+            }
+            $looksLikeChannel = str_contains($norm, 'fulfill') || str_contains($norm, 'fulfil') || $norm === 'channel';
+            if (! $looksLikeChannel && ! in_array($val, ['AMAZON', 'AFN', 'FBA', 'DEFAULT', 'MFN', 'FBM', 'MERCHANT'], true)) {
+                continue;
+            }
+            if (in_array($val, ['AMAZON', 'AFN', 'FBA', 'AMAZON_NA'], true) || str_contains($val, 'AFN') || $val === 'FBA') {
+                return 'fba';
+            }
+            if (in_array($val, ['DEFAULT', 'MFN', 'FBM', 'MERCHANT'], true)) {
+                return 'fbm';
+            }
+        }
+        if (preg_match('/\bFBA\b/i', $sku)) {
+            return 'fba';
+        }
+
+        return '';
+    }
+
+    public static function reportRowIsFba(object $row): bool
+    {
+        return self::metaFromListingsRawRow($row)['fulfillment'] === 'fba';
+    }
+
+    /**
+     * FBA rows are never Inactive Listing. Closed FBA leftovers stay off this page.
+     */
+    public static function reportRowIsClosedFba(object $row): bool
+    {
+        $meta = self::metaFromListingsRawRow($row);
+        if (($meta['fulfillment'] ?? '') === 'fba') {
+            return true;
+        }
+        if (($meta['state'] ?? '') !== 'inactive') {
+            return false;
+        }
+
+        return ($meta['fulfillment'] ?? '') !== 'fbm';
+    }
+
+    /**
+     * Live unless this row is a closed offer with no stock.
+     * Qty > 0 means Seller Central still has an available offer.
+     */
+    public static function reportRowIsLive(object $row): bool
+    {
+        if (self::reportRowIsClosedFba($row)) {
+            return false;
+        }
+        $meta = self::metaFromListingsRawRow($row);
+        if (($meta['quantity'] ?? null) !== null && (int) $meta['quantity'] > 0) {
+            return true;
+        }
+
+        return ($meta['state'] ?? '') !== 'inactive';
+    }
+
+    /**
+     * @param  array<string, true>  $keys
+     */
+    public static function rememberSkuLookupKeys(array &$keys, string $sku): void
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return;
+        }
+        $keys[strtoupper($sku)] = true;
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '') {
+            $keys[$norm] = true;
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        if ($compact !== '') {
+            $keys[strtoupper($compact)] = true;
+        }
+        $base = trim((string) preg_replace('/\s+(FBA|FBM)$/i', '', $sku));
+        if ($base !== '' && strcasecmp($base, $sku) !== 0) {
+            $keys[strtoupper($base)] = true;
+            $baseNorm = ShopifySku::normalizeSkuForShopifyLookup($base);
+            if ($baseNorm !== '') {
+                $keys[$baseNorm] = true;
+            }
+        }
+    }
+
+    /**
+     * One seller SKU can have an Active FBM offer and a Closed FBA offer.
+     * If any report row is live, the SKU is not Inactive Listing.
+     *
+     * @param  list<array{sku: string, live: bool, ignore?: bool, fba?: bool}>  $rows
+     * @return array{active: array<string, true>, inactive: list<string>}
+     */
+    public static function classifyReportSkus(array $rows): array
+    {
+        $liveByKey = [];
+        $deadByKey = [];
+        $hasFba = [];
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $key = strtoupper($sku);
+            if (! empty($row['fba'])) {
+                $hasFba[$key] = true;
+                continue;
+            }
+            if (! empty($row['ignore'])) {
+                continue;
+            }
+            if (! empty($row['live'])) {
+                $liveByKey[$key] = $sku;
+            } else {
+                $deadByKey[$key] = $sku;
+            }
+        }
+
+        $active = [];
+        foreach ($liveByKey as $sku) {
+            self::rememberSkuLookupKeys($active, $sku);
+        }
+
+        $inactive = [];
+        foreach ($deadByKey as $key => $sku) {
+            if (isset($hasFba[$key]) || isset($liveByKey[$key]) || isset($active[$key])) {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '' && isset($active[$norm])) {
+                continue;
+            }
+            $compact = strtoupper(ShopifySku::compactSkuForLookup($sku) ?: '');
+            if ($compact !== '' && isset($active[$compact])) {
+                continue;
+            }
+            $inactive[] = $sku;
+        }
+
+        return [
+            'active' => $active,
+            'inactive' => $inactive,
         ];
     }
 
