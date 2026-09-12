@@ -407,7 +407,7 @@ class ChannelPushSpriceRunner
             return app(NeweggPricingController::class)->pushPriceToNewegg($neweggReq, app(NeweggApiService::class));
         }
 
-        if (in_array($this->channel, ['temu', 'temu2', 'temu3'], true)) {
+        if (in_array($this->channel, ['temu', 'temu2', 'temu3', 'newtemuone'], true)) {
             $base = \App\Services\TemuShopifySalesService::computePushBaseFromSprice($price);
             if ($base !== null && $base > 0) {
                 $pushPrice = $base;

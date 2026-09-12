@@ -72,6 +72,7 @@ class ChannelLivePriceSync
             'wf' => 'wayfair',
             'wm', 'walmart_wfs' => 'walmart',
             'ebay2op' => 'ebay2',
+            'newtemuone' => 'temu',
             default => $channel,
         };
     }

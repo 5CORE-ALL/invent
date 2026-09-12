@@ -63,13 +63,290 @@
             margin-left: 3px;
             cursor: help;
         }
+        #newtemuone-cvr-vs-cpn-btn {
+            background: #20c997;
+            border-color: #20c997;
+            color: #fff;
+        }
+        #newtemuone-cvr-vs-cpn-btn:hover,
+        #newtemuone-cvr-vs-cpn-btn:focus {
+            background: #1aa179;
+            border-color: #1aa179;
+            color: #fff;
+        }
+        #newtemuone-cvr-cpn-table .newtemuone-cvr-cpn-input {
+            max-width: 90px;
+            margin-left: auto;
+            text-align: right;
+            font-weight: 600;
+            background: #198754;
+            border-color: #198754;
+            color: #fff;
+        }
+        #column-dropdown-menu.show {
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.55rem;
+        }
+        #column-dropdown-menu > li.col-vis-full { list-style: none; }
+        #column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 280px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-item { list-style: none; margin: 0; padding: 0; border-radius: 4px; }
+        #column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+        }
+        #column-dropdown-menu .col-vis-item > label:hover { background: #e9ecef; }
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'temu'])
+        .nto-reload-push-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 auto;
+            white-space: nowrap;
+            padding: 4px 10px 4px 12px;
+            border: 1px solid #86efac;
+            border-radius: 999px;
+            background: #f0fdf4;
+            font-size: 12px;
+            font-weight: 700;
+            color: #15803d;
+            line-height: 1.2;
+            cursor: pointer;
+            user-select: none;
+            margin: 0;
+        }
+        .nto-reload-push-switch.is-off {
+            border-color: #cbd5e1;
+            background: #f8fafc;
+            color: #64748b;
+        }
+        .nto-reload-push-switch .nto-reload-push-text {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .nto-reload-push-switch .nto-reload-push-state {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: #16a34a;
+        }
+        .nto-reload-push-switch.is-off .nto-reload-push-state {
+            color: #94a3b8;
+        }
+        .nto-reload-push-switch > input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            position: relative !important;
+            float: none !important;
+            left: auto !important;
+            margin: 0 !important;
+            flex: 0 0 36px;
+            width: 36px;
+            height: 20px;
+            border: 0;
+            border-radius: 999px;
+            background: #86efac;
+            box-shadow: inset 0 0 0 1px #4ade80;
+            cursor: pointer;
+        }
+        .nto-reload-push-switch.is-off > input[type="checkbox"] {
+            background: #cbd5e1;
+            box-shadow: inset 0 0 0 1px #94a3b8;
+        }
+        .nto-reload-push-switch > input[type="checkbox"]::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .25);
+            transition: left .15s ease;
+        }
+        .nto-reload-push-switch > input[type="checkbox"]:checked::after {
+            left: 18px;
+        }
+        .nto-reload-push-cluster {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1 1 auto;
+            min-width: 0;
+            max-width: 100%;
+        }
+        .nto-reload-push-progress {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1 1 180px;
+            min-width: 160px;
+            max-width: 320px;
+            padding: 4px 10px;
+            border: 1px solid #bfdbfe;
+            border-radius: 999px;
+            background: #eff6ff;
+            font-size: 11px;
+            font-weight: 700;
+            color: #1d4ed8;
+            line-height: 1.2;
+        }
+        .nto-reload-push-progress.is-busy { border-color: #93c5fd; }
+        .nto-reload-push-progress.is-done {
+            border-color: #86efac;
+            background: #f0fdf4;
+            color: #15803d;
+        }
+        .nto-reload-push-progress.is-fail {
+            border-color: #fcd34d;
+            background: #fffbeb;
+            color: #b45309;
+        }
+        .nto-reload-push-progress-track {
+            flex: 1 1 72px;
+            height: 8px;
+            min-width: 64px;
+            border-radius: 999px;
+            background: #bfdbfe;
+            overflow: hidden;
+        }
+        .nto-reload-push-progress-track > span {
+            display: block;
+            height: 100%;
+            width: 0;
+            background: #93c5fd;
+            border-radius: 999px;
+            transition: width .25s ease;
+        }
+        .nto-reload-push-progress.is-done .nto-reload-push-progress-track > span { background: #22c55e; }
+        .nto-reload-push-progress.is-fail .nto-reload-push-progress-track > span {
+            background: linear-gradient(90deg, #22c55e 70%, #f59e0b 100%);
+        }
+        .nto-reload-push-progress-pct {
+            flex: 0 0 auto;
+            min-width: 2.4em;
+            text-align: right;
+        }
+        .nto-reload-push-progress-msg {
+            flex: 0 1 auto;
+            min-width: 0;
+            max-width: 9.5rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 600;
+            color: #64748b;
+        }
+        .nto-reload-push-progress.is-done .nto-reload-push-progress-msg { color: #15803d; }
+        .nto-reload-push-progress-cancel {
+            display: none;
+            flex: 0 0 auto;
+            padding: 0 6px;
+            border: 1px solid #fca5a5;
+            border-radius: 999px;
+            background: #fff;
+            color: #dc2626;
+            font-size: 10px;
+            font-weight: 800;
+            line-height: 16px;
+            cursor: pointer;
+        }
+        .nto-reload-push-progress.is-busy .nto-reload-push-progress-cancel { display: inline-block; }
     </style>
+    @push('page-title-after')
+        <div class="nto-reload-push-cluster" id="nto-reload-push-cluster">
+            <label class="nto-reload-push-switch{{ !empty($newtemuonePageReloadPushEnabled) ? '' : ' is-off' }}"
+                id="nto-reload-push-wrap"
+                title="When ON, this page queues S PRC for blue-triangle SKUs only (S PRC ≠ T Price) on load and when you flip the switch. When OFF, nothing auto-pushes. Progress shows in the bar.">
+                <span class="nto-reload-push-text">
+                    Push on reload
+                    <span class="nto-reload-push-state" id="nto-reload-push-label">{{ !empty($newtemuonePageReloadPushEnabled) ? 'On' : 'Off' }}</span>
+                </span>
+                <input type="checkbox" role="switch" id="nto-reload-push-switch"
+                    {{ !empty($newtemuonePageReloadPushEnabled) ? 'checked' : '' }}>
+            </label>
+            <div id="nto-reload-push-progress" class="nto-reload-push-progress"
+                aria-live="polite" title="Blue-triangle S PRC push progress">
+                <div class="nto-reload-push-progress-track">
+                    <span id="nto-reload-push-progress-bar"></span>
+                </div>
+                <span class="nto-reload-push-progress-pct" id="nto-reload-push-progress-pct">0%</span>
+                <span class="nto-reload-push-progress-msg" id="nto-reload-push-progress-msg">Ready</span>
+                <button type="button" class="nto-reload-push-progress-cancel" id="nto-reload-push-progress-cancel">Cancel</button>
+            </div>
+        </div>
+    @endpush
 @endsection
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/temu-view-data-upload.js') }}?v={{ @filemtime(public_path('js/temu-view-data-upload.js')) ?: 1 }}"></script>
 @endsection
 
 @section('content')
@@ -101,6 +378,49 @@
                         'ebaySprcDilChannel' => 'temu',
                         'ebaySprcDilZeroSoldUsesMinGroi' => false,
                     ])
+                    <button type="button" class="btn btn-sm" id="newtemuone-cvr-vs-cpn-btn"
+                        title="Map CVR% slabs to CPN%. CPN% live-fills when a slab changes (no coupon push).">
+                        CVR%
+                    </button>
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            aria-expanded="false" title="Show / hide columns">
+                            <i class="fa fa-eye"></i>
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"></ul>
+                    </div>
+                    <div class="dropdown d-inline-block">
+                        <button type="button" class="btn btn-sm btn-success" id="export-btn"
+                            data-bs-toggle="dropdown" aria-expanded="false" title="Download sheet">
+                            <i class="fa fa-download"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="export-btn">
+                            <li>
+                                <a class="dropdown-item" href="#" id="export-l30-btn">
+                                    <i class="fa fa-download me-1"></i> Export L30
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="dropdown d-inline-block">
+                        <button type="button" class="btn btn-sm btn-success" id="upload-actions-btn"
+                            data-bs-toggle="dropdown" aria-expanded="false" title="Upload">
+                            <i class="fa fa-upload"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="upload-actions-btn">
+                            <li>
+                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
+                                    <i class="fa fa-eye me-1 text-success"></i> Up View Data
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadLmpModal">
+                                    <i class="fa fa-link me-1 text-warning"></i> Up LMP
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
                 <div id="newtemuone-badge-row" class="d-flex flex-wrap gap-1 mt-2" role="group" aria-label="Summary metrics">
                     <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
@@ -261,6 +581,133 @@
         'ebaySprcDilChannel' => 'temu',
         'ebaySprcDilZeroSoldUsesMinGroi' => false,
     ])
+
+    <div class="modal fade" id="newTemuoneCvrVsCpnModal" tabindex="-1" aria-labelledby="newTemuoneCvrVsCpnModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="newTemuoneCvrVsCpnModalLabel">CVR%</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Map CVR% slabs to <strong>CPN %</strong> (no 0% slab).
+                        Change a slab to autofill rows below by <strong>−1</strong> each (min 0).
+                        <strong>Save Rule</strong> stores the slabs
+                        (same table as <strong>/temu1-data</strong>).
+                        <strong>CPN% live-fills the column when a slab changes</strong>
+                        (no marketplace coupon).
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="newtemuone-cvr-cpn-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:55%;">CVR%</th>
+                                    <th style="width:45%;" class="text-end">CPN %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="newtemuone-cvr-cpn-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="newtemuone-cvr-cpn-status"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-primary" id="newtemuone-cvr-cpn-save-btn"
+                        title="Save CVR→CPN slab values. The CPN column updates from these slabs.">
+                        <i class="fas fa-save me-1"></i>Save Rule
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="uploadLmpModal" tabindex="-1" aria-labelledby="uploadLmpModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title" id="uploadLmpModalLabel">
+                        <i class="fa fa-link me-2"></i>Upload Temu LMP
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadLmpForm" method="POST" action="{{ route('temu.lmp.upload') }}" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="lmp_file" class="form-label fw-bold">File (Excel or CSV/TSV)</label>
+                            <input type="file" class="form-control" id="lmp_file" name="lmp_file"
+                                   accept=".xlsx,.xls,.csv,.txt" required>
+                            <div class="form-text">
+                                Writes to shared <code>temu_lmp</code> (same as /temu1-data).
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadLmpForm" class="btn btn-warning">
+                        <i class="fa fa-upload me-1"></i>Upload LMP
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="uploadViewDataModal" tabindex="-1" aria-labelledby="uploadViewDataModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="uploadViewDataModalLabel">
+                        <i class="fa fa-eye me-2"></i>Upload Temu View Data
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if(session('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            {{ session('success') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    @if(session('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {{ session('error') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    <form id="uploadViewDataForm" action="{{ route('temu.viewdata.upload') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        @if(isset($errors) && $errors->any())
+                            <div class="alert alert-danger py-2">{{ $errors->first() }}</div>
+                        @endif
+                        <div class="mb-3">
+                            <label for="viewDataFile" class="form-label fw-bold">
+                                <i class="fa fa-file-excel text-success me-1"></i>Choose View File(s)
+                            </label>
+                            <input type="file" class="form-control" id="viewDataFile" name="files[]" accept=".xlsx,.xls,.csv,.tsv,.txt" multiple>
+                            <div class="form-text">
+                                Select multiple Seller Center daily exports. Writes to <code>temu_view_data</code> — same as /temu1-data.
+                            </div>
+                            <div id="viewDataFileList" class="small mt-2"></div>
+                            <div id="viewDataUploadStatus" class="alert py-2 px-3 mb-0 mt-2" style="display:none;"></div>
+                        </div>
+                        <div class="alert alert-warning">
+                            First batch replaces existing rows in <code>temu_view_data</code>. Extra files merge.
+                            <a href="{{ route('temu.viewdata.sample') }}" class="alert-link">
+                                <i class="fa fa-download"></i> Download Sample File
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadViewDataForm" class="btn btn-success">
+                        <i class="fa fa-upload me-1"></i>Up View Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -642,6 +1089,171 @@
             + '<i class="fas ' + icon + '" style="color: ' + color + '; font-size: 12px;"></i></span>';
     }
 
+    // Same CVR% → CPN% slabs as /temu1-data (channel-pef-promo). Stored as temu_cvr_vs_cpn.
+    const TEMU_CVR_CPN_URL = '{{ url("/channel-promo-pricing/temu/cvr-cpn") }}';
+    const TEMU_CVR_CPN_DEFAULTS = [
+        { key: '0.01-1', label: '0.01–1%', cpn: 9 },
+        { key: '1-1.5', label: '1–1.5%', cpn: 8 },
+        { key: '1.5-2', label: '1.5–2%', cpn: 7 },
+        { key: '2-3', label: '2–3%', cpn: 6 },
+        { key: '3-4', label: '3–4%', cpn: 5 },
+        { key: '4-5', label: '4–5%', cpn: 4 },
+        { key: '5-6', label: '5–6%', cpn: 3 },
+        { key: '6-6.5', label: '6–6.5%', cpn: 2 },
+        { key: '6.5-7', label: '6.5–7%', cpn: 1 },
+        { key: 'gt-7', label: '> 7%', cpn: 0 },
+    ];
+    let temuCvrCpnRules = TEMU_CVR_CPN_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+
+    function temuCvrCpnCsrf() {
+        return (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+    }
+
+    function temuCvrSlabKey(cvr) {
+        const n = Number(cvr);
+        if (!isFinite(n) || n <= 0) return 'eq-0';
+        if (n > 7) return 'gt-7';
+        if (n >= 6.5) return '6.5-7';
+        if (n >= 6) return '6-6.5';
+        if (n >= 5) return '5-6';
+        if (n >= 4) return '4-5';
+        if (n >= 3) return '3-4';
+        if (n >= 2) return '2-3';
+        if (n >= 1.5) return '1.5-2';
+        if (n >= 1) return '1-1.5';
+        return '0.01-1';
+    }
+
+    function temuCpnForCvr(cvr) {
+        const key = temuCvrSlabKey(cvr);
+        const rule = temuCvrCpnRules.find(function(r) { return r.key === key; });
+        if (!rule) return 0;
+        const n = Number(rule.cpn);
+        return isFinite(n) && n >= 0 ? n : 0;
+    }
+
+    /** INV = 0 or CVR = 0 → 0. Same as /temu1-data. */
+    function temuCpnForRow(row) {
+        if (!row || row.is_parent_summary) return 0;
+        const inv = parseFloat(row.INV != null ? row.INV : row.inventory) || 0;
+        const cvr = parseFloat(row.cvr_percent != null ? row.cvr_percent : row.cvr_30) || 0;
+        if (!(inv > 0) || !(cvr > 0)) return 0;
+        return temuCpnForCvr(cvr);
+    }
+
+    function temuRenderCvrCpnModalTable() {
+        const $tb = $('#newtemuone-cvr-cpn-tbody').empty();
+        temuCvrCpnRules.forEach(function(r, idx) {
+            const cpn = isFinite(Number(r.cpn)) ? Number(r.cpn) : 0;
+            $tb.append(
+                '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
+                + '<td>' + String(r.label || r.key) + '</td>'
+                + '<td class="text-end">'
+                + '<input type="number" class="form-control form-control-sm newtemuone-cvr-cpn-input" '
+                + 'min="0" step="0.1" value="' + cpn + '" data-idx="' + idx + '">'
+                + '</td></tr>'
+            );
+        });
+    }
+
+    function temuReadCvrCpnRulesFromModal() {
+        $('#newtemuone-cvr-cpn-tbody tr').each(function() {
+            const key = String($(this).attr('data-key') || '');
+            const val = parseFloat($(this).find('.newtemuone-cvr-cpn-input').val());
+            const rule = temuCvrCpnRules.find(function(r) { return r.key === key; });
+            if (!rule) return;
+            rule.cpn = (isFinite(val) && val >= 0) ? val : 0;
+        });
+        return temuCvrCpnRules.map(function(r) {
+            return { key: r.key, label: r.label, cpn: Number(r.cpn) || 0 };
+        });
+    }
+
+    function temuCascadeCvrCpnFromInput(inputEl) {
+        const $inputs = $('#newtemuone-cvr-cpn-tbody .newtemuone-cvr-cpn-input');
+        const start = $inputs.index(inputEl);
+        if (start < 0) return;
+        const startVal = parseFloat($(inputEl).val());
+        if (!isFinite(startVal)) return;
+        $inputs.each(function(i) {
+            if (i < start) return;
+            const cpn = Math.max(0, startVal - (i - start));
+            $(this).val(cpn);
+            const key = String($(this).closest('tr').attr('data-key') || '');
+            const rule = temuCvrCpnRules.find(function(r) { return r.key === key; });
+            if (rule) rule.cpn = cpn;
+        });
+        if (table) {
+            try { table.redraw(true); } catch (e) { /* ignore */ }
+        }
+    }
+
+    function temuApplyCvrCpnRules(list) {
+        if (!Array.isArray(list) || !list.length) return;
+        temuCvrCpnRules = list
+            .filter(function(r) { return r && r.key !== 'eq-0'; })
+            .map(function(r) {
+                const cpn = r.cpn != null ? r.cpn : r.disc;
+                return { key: r.key, label: r.label, cpn: Number(cpn) || 0 };
+            });
+    }
+
+    function temuLoadCvrCpnRules() {
+        $('#newtemuone-cvr-cpn-status').text('Loading…');
+        return $.ajax({
+            url: TEMU_CVR_CPN_URL,
+            method: 'GET',
+            dataType: 'json',
+        }).done(function(res) {
+            if (res && Array.isArray(res.rules) && res.rules.length) {
+                temuApplyCvrCpnRules(res.rules);
+            }
+            temuRenderCvrCpnModalTable();
+            $('#newtemuone-cvr-cpn-status').text(res && res.is_default
+                ? 'Using first-time defaults (0.01–1% → 9 … > 7% → 0, no 0% slab). Save Rule to store.'
+                : 'Loaded saved CVR → CPN slabs (same as /temu1-data).');
+            if (table) {
+                try { table.redraw(true); } catch (e) { /* ignore */ }
+            }
+        }).fail(function() {
+            temuRenderCvrCpnModalTable();
+            $('#newtemuone-cvr-cpn-status').text('Could not load saved rules — showing defaults.');
+        });
+    }
+
+    function temuSaveCvrCpnRules() {
+        const rules = temuReadCvrCpnRulesFromModal();
+        const $btn = $('#newtemuone-cvr-cpn-save-btn');
+        const html = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
+        return $.ajax({
+            url: TEMU_CVR_CPN_URL,
+            method: 'POST',
+            dataType: 'json',
+            contentType: 'application/json',
+            headers: {
+                'X-CSRF-TOKEN': temuCvrCpnCsrf(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            data: JSON.stringify({ rules: rules }),
+        }).done(function(res) {
+            if (res && Array.isArray(res.rules) && res.rules.length) {
+                temuApplyCvrCpnRules(res.rules);
+            }
+            temuRenderCvrCpnModalTable();
+            $('#newtemuone-cvr-cpn-status').text('Saved.');
+            showToast('CVR → CPN rules saved', 'success');
+            if (table) {
+                try { table.redraw(true); } catch (e) { /* ignore */ }
+            }
+        }).fail(function() {
+            $('#newtemuone-cvr-cpn-status').text('Save failed. Slabs still apply on this page.');
+            showToast('Could not save CVR → CPN rules', 'error');
+        }).always(function() {
+            $btn.prop('disabled', false).html(html);
+        });
+    }
+
     /** Band + hex for a metric. kind 'pft' = GPFT/SGPFT slabs, 'roi' = GROI/SGROI slabs. */
     function temuPercentBand(value, kind) {
         if (!window.MetricPctColors) return { band: '', color: '' };
@@ -973,11 +1585,301 @@
         return !!cap.lmpAlert || (cap.lmp > 0 && cap.sprice >= cap.lmp);
     }
 
-    /** Blue triangle: S PRC differs from the live T Price. */
+    /** Blue triangle: INV > 0 and S PRC differs from the live T Price (same as Amazon). */
     function temuHasBlueTriangle(row) {
+        if (!(parseFloat(row && row.INV) > 0)) return false;
         const sprice = temuDisplayedSprice(row);
         const live = parseFloat(row && (row.temu_price || row.t_price)) || 0;
         return sprice > 0 && live > 0 && Math.round(sprice * 100) !== Math.round(live * 100);
+    }
+    window.temuHasBlueTriangle = temuHasBlueTriangle;
+
+    const NTO_PUSH_SPRICE_URL = '/channel-push-sprice/newtemuone';
+    const NTO_PUSH_SPRICE_LIVE = @json(!empty($newtemuonePushSpriceLive));
+    const NTO_PUSH_SPRICE_CHUNK = 200;
+    let ntoPageReloadPushEnabled = @json(!empty($newtemuonePageReloadPushEnabled));
+    let ntoPushSpricePollTimer = null;
+    let ntoPushSpriceExpecting = false;
+    let ntoPushSpriceLastToastKey = '';
+
+    function ntoPushCsrf() {
+        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    }
+    function ntoPageReloadPushAllowed() {
+        return ntoPageReloadPushEnabled !== false;
+    }
+    function syncNtoReloadPushSwitchUi() {
+        const on = ntoPageReloadPushAllowed();
+        const $wrap = $('#nto-reload-push-wrap');
+        const $sw = $('#nto-reload-push-switch');
+        $wrap.toggleClass('is-off', !on);
+        $('#nto-reload-push-label').text(on ? 'On' : 'Off');
+        if ($sw.length && $sw.prop('checked') !== on) $sw.prop('checked', on);
+    }
+    function saveNtoPageReloadPush(enabled) {
+        ntoPageReloadPushEnabled = !!enabled;
+        syncNtoReloadPushSwitchUi();
+        return $.ajax({
+            url: '/channel-promo-pricing/newtemuone/page-reload-push',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': ntoPushCsrf(), 'Accept': 'application/json' },
+            data: { _token: ntoPushCsrf(), enabled: enabled ? 1 : 0 },
+        });
+    }
+    function setNtoPushSpriceProgress(opts) {
+        opts = opts || {};
+        const $pill = $('#nto-reload-push-progress');
+        if (!$pill.length) return;
+        const total = Number(opts.total) || 0;
+        const done = Number(opts.done) || 0;
+        const ok = Number(opts.ok) || 0;
+        const fail = Number(opts.fail) || 0;
+        const active = !!opts.active;
+        const pct = (opts.pct != null)
+            ? Math.min(100, Number(opts.pct) || 0)
+            : (total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0);
+        const finished = !active && total > 0 && (done >= total || pct >= 100);
+
+        $pill.toggleClass('is-busy', !!active);
+        $pill.toggleClass('is-done', !!(finished || (!active && pct >= 100)));
+        $pill.toggleClass('is-fail', fail > 0);
+        $('#nto-reload-push-progress-pct').text(pct + '%');
+        $('#nto-reload-push-progress-bar').css('width', pct + '%');
+
+        let msg = opts.msg || '';
+        if (!msg && total) {
+            msg = done + '/' + total + ' jobs · ' + ok + ' ok'
+                + (fail ? (' · ' + fail + ' failed') : '');
+        }
+        $('#nto-reload-push-progress-msg').text(msg || 'Ready');
+
+        if (finished) {
+            clearTimeout(setNtoPushSpriceProgress._hideTimer);
+            setNtoPushSpriceProgress._hideTimer = setTimeout(function() {
+                if (!$pill.hasClass('is-done')) return;
+                $pill.removeClass('is-busy is-done is-fail');
+                $('#nto-reload-push-progress-bar').css('width', '0%');
+                $('#nto-reload-push-progress-pct').text('0%');
+                $('#nto-reload-push-progress-msg').text('Ready');
+            }, 8000);
+        }
+    }
+    function collectNtoReloadPushItems() {
+        const seen = {};
+        const items = [];
+        function consider(d) {
+            if (!d) return;
+            const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
+            const key = sku.toUpperCase();
+            if (!sku || seen[key] || key.indexOf('PARENT') === 0) return;
+            if (!temuHasBlueTriangle(d)) return;
+            const price = temuDisplayedSprice(d);
+            if (!(price > 0)) return;
+            seen[key] = true;
+            items.push({ sku: sku, price: price });
+        }
+        if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
+            table.getRows().forEach(function(row) {
+                consider(row.getData());
+            });
+        }
+        return items;
+    }
+    function stopNtoPushSpricePoll() {
+        if (ntoPushSpricePollTimer) {
+            clearInterval(ntoPushSpricePollTimer);
+            ntoPushSpricePollTimer = null;
+        }
+    }
+    function pollNtoPushSpriceStatus() {
+        $.ajax({
+            url: NTO_PUSH_SPRICE_URL + '/status',
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            timeout: 20000,
+        }).done(function(resp) {
+            if (!resp) return;
+            if (ntoPushSpriceExpecting && !resp.active && !(Number(resp.total) > 0)) {
+                return;
+            }
+            const active = !!resp.active;
+            setNtoPushSpriceProgress({
+                active: active,
+                done: Number(resp.done_count) || 0,
+                total: Number(resp.total) || 0,
+                ok: Number(resp.ok_count) || 0,
+                fail: Number(resp.fail_count) || 0,
+                pct: Number(resp.pct) || 0,
+                msg: active ? '' : (resp.message || ''),
+            });
+            if (!active) {
+                stopNtoPushSpricePoll();
+                const jobStatus = resp.job && resp.job.status ? String(resp.job.status) : '';
+                const toastKey = jobStatus + '|' + resp.ok_count + '|' + resp.fail_count + '|' + resp.total;
+                if (toastKey !== ntoPushSpriceLastToastKey && (Number(resp.total) || 0) > 0) {
+                    ntoPushSpriceLastToastKey = toastKey;
+                    showToast(
+                        resp.message || ('S PRC: ' + (resp.ok_count || 0) + ' ok'),
+                        (Number(resp.fail_count) || 0) && !(Number(resp.ok_count) || 0) ? 'error' : 'success'
+                    );
+                }
+            }
+        });
+    }
+    function startNtoPushSpricePoll() {
+        stopNtoPushSpricePoll();
+        ntoPushSpricePollTimer = setInterval(pollNtoPushSpriceStatus, 1500);
+        pollNtoPushSpriceStatus();
+    }
+    function postNtoPushSpriceItems(items) {
+        if (!items || !items.length) return $.Deferred().resolve(null).promise();
+        setNtoPushSpriceProgress({
+            active: true,
+            done: 0,
+            total: items.length,
+            ok: 0,
+            fail: 0,
+            pct: 0,
+        });
+        return $.ajax({
+            url: NTO_PUSH_SPRICE_URL,
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': ntoPushCsrf(), 'Accept': 'application/json' },
+            data: { _token: ntoPushCsrf(), items: items },
+            timeout: 60000,
+        }).done(function(resp) {
+            ntoPushSpriceExpecting = false;
+            startNtoPushSpricePoll();
+            if (resp) {
+                setNtoPushSpriceProgress({
+                    active: !!resp.active,
+                    done: Number(resp.done_count) || 0,
+                    total: Number(resp.total) || items.length,
+                    ok: Number(resp.ok_count) || 0,
+                    fail: Number(resp.fail_count) || 0,
+                    pct: Number(resp.pct) || 0,
+                });
+            }
+        }).fail(function(xhr) {
+            ntoPushSpriceExpecting = false;
+            showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Could not queue blue-triangle prices', 'error');
+            setNtoPushSpriceProgress({
+                active: false,
+                done: 0,
+                total: items.length,
+                pct: 0,
+                msg: 'Queue failed',
+            });
+        });
+    }
+    function queueNtoPushSpriceItems(items, opts) {
+        opts = opts || {};
+        if (!NTO_PUSH_SPRICE_LIVE) {
+            if (!opts.silent) {
+                showToast('Live S PRC push is disabled on this environment', 'error');
+            }
+            return;
+        }
+        if (!items || !items.length) return;
+        ntoPushSpriceExpecting = true;
+        if (!opts.silent) {
+            setNtoPushSpriceProgress({
+                active: true,
+                done: 0,
+                total: items.length,
+                ok: 0,
+                fail: 0,
+                pct: 0,
+            });
+        }
+        let i = 0;
+        function nextChunk() {
+            if (i >= items.length) return;
+            const chunk = items.slice(i, i + NTO_PUSH_SPRICE_CHUNK);
+            i += chunk.length;
+            postNtoPushSpriceItems(chunk).always(nextChunk);
+        }
+        nextChunk();
+    }
+    function ntoTryQueuePushOnReload(opts) {
+        opts = opts || {};
+        if (!ntoPageReloadPushAllowed()) return;
+        if (window._ntoReloadPushQueued) return;
+        const retry = opts.retry || 0;
+        if (typeof table === 'undefined' || !table || typeof table.getDataCount !== 'function' || table.getDataCount() === 0) {
+            if (retry < 12) {
+                setTimeout(function() {
+                    ntoTryQueuePushOnReload({ retry: retry + 1 });
+                }, 400);
+            }
+            return;
+        }
+        const items = collectNtoReloadPushItems();
+        window._ntoReloadPushQueued = true;
+        if (!items.length) return;
+        queueNtoPushSpriceItems(items, { silent: true });
+    }
+    function cancelNtoPushSpriceJob() {
+        $.ajax({
+            url: NTO_PUSH_SPRICE_URL + '/cancel',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': ntoPushCsrf(), 'Accept': 'application/json' },
+            data: { _token: ntoPushCsrf() },
+        }).done(function(resp) {
+            showToast((resp && resp.message) || 'Price push cancelled', 'success');
+            pollNtoPushSpriceStatus();
+        }).fail(function(xhr) {
+            showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Cancel failed', 'error');
+        });
+    }
+    function initNtoReloadPushUi() {
+        syncNtoReloadPushSwitchUi();
+        $('#nto-reload-push-switch').off('change.ntoReload').on('change.ntoReload', function() {
+            const on = !!this.checked;
+            const prev = ntoPageReloadPushAllowed();
+            saveNtoPageReloadPush(on)
+                .done(function() {
+                    showToast(
+                        on
+                            ? 'Push on reload on — blue-triangle SKUs (S PRC ≠ T Price) will queue here and on refresh.'
+                            : 'Push on reload off — nothing auto-pushes.',
+                        'success'
+                    );
+                    if (!on) return;
+                    window._ntoReloadPushQueued = false;
+                    ntoTryQueuePushOnReload();
+                })
+                .fail(function(xhr) {
+                    ntoPageReloadPushEnabled = prev;
+                    syncNtoReloadPushSwitchUi();
+                    showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Could not save reload-push switch', 'error');
+                });
+        });
+        $('#nto-reload-push-progress-cancel').off('click.ntoReload').on('click.ntoReload', function(e) {
+            e.preventDefault();
+            cancelNtoPushSpriceJob();
+        });
+        if (NTO_PUSH_SPRICE_LIVE) {
+            $.ajax({
+                url: NTO_PUSH_SPRICE_URL + '/status',
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                timeout: 15000,
+            }).done(function(resp) {
+                if (resp && resp.active) startNtoPushSpricePoll();
+                else if (resp && Number(resp.total) > 0) {
+                    setNtoPushSpriceProgress({
+                        active: false,
+                        done: Number(resp.done_count) || 0,
+                        total: Number(resp.total) || 0,
+                        ok: Number(resp.ok_count) || 0,
+                        fail: Number(resp.fail_count) || 0,
+                        pct: Number(resp.pct) || 0,
+                        msg: resp.message || '',
+                    });
+                }
+            });
+        }
     }
 
     function syncBadgeOutlines() {
@@ -1046,8 +1948,7 @@
             const cap = temuSpriceCapResult(row);
             const sprice = (cap && cap.sprice > 0) ? cap.sprice : 0;
             if (sprice > 0) {
-                const live = parseFloat(row.temu_price || row.t_price) || 0;
-                if (live > 0 && Math.round(sprice * 100) !== Math.round(live * 100)) blueTriangle++;
+                if (temuHasBlueTriangle(row)) blueTriangle++;
                 if (cap.lmpAlert || (cap.lmp > 0 && sprice >= cap.lmp)) lmpCapped++;
                 const labels = cap.labels || [];
                 if (labels.indexOf('Amz') !== -1) amzCap++;
@@ -1155,6 +2056,232 @@
         updateSummary();
     }
 
+    // Same hide/show + persist as /temu1-data, stored under this page's channel.
+    const TABULATOR_COLUMN_CHANNEL = 'newtemuone';
+    const TABULATOR_COLUMN_VISIBILITY_URL = '{{ url("/tabulator-column-visibility") }}';
+    const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'advertisement', 'others'];
+    const COL_VIS_CATEGORY_LABELS = {
+        basics: 'Basics',
+        pricing: 'Pricing',
+        advertisement: 'Advertisement',
+        others: 'Others'
+    };
+    const alwaysHiddenColumns = [];
+
+    function classifyTemuoneColumn(field, title) {
+        const f = String(field || '');
+        const t = String(title || field || '').replace(/<[^>]*>/g, '');
+        const fl = f.toLowerCase();
+        const tl = t.toLowerCase();
+        if (
+            /^(spend|spend_l30|ad_sold_l30|acos_ad|ad_clicks|t_clicks|impressions|ads_percent)$/i.test(f) ||
+            /\b(spend|ad\s*sold|acos|ad\s*clicks|impressions|roas|ads\s*%)\b/i.test(tl)
+        ) {
+            return 'advertisement';
+        }
+        if (
+            /^(\(child\) sku|links_column|inv|inventory|l30|temu_l30|views|dil%)$/i.test(f) ||
+            /\b(sku|links|inv|stock|ovl|dil|temu\s*l\d+|views)\b/i.test(tl)
+        ) {
+            return 'basics';
+        }
+        if (
+            /^(cvr_percent|cvr_30|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
+            /\b(cvr|cpn|price|prc|gpft|npft|groi|nroi|lmp|s\s*prc|sgpft|sgroi|snpft|snroi)\b/i.test(tl)
+        ) {
+            return 'pricing';
+        }
+        return 'others';
+    }
+
+    function enforceAlwaysHiddenColumns() {
+        alwaysHiddenColumns.forEach(function(col) {
+            try { table.hideColumn(col); } catch (e) {}
+        });
+    }
+
+    function syncGroupHeaderCheckbox(groupEl) {
+        if (!groupEl) return;
+        const headerCb = groupEl.querySelector('.col-vis-group-toggle');
+        const itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
+        if (!headerCb || !itemCbs.length) return;
+        let checked = 0;
+        itemCbs.forEach(function(cb) { if (cb.checked) checked++; });
+        headerCb.checked = checked === itemCbs.length;
+        headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+    }
+
+    function saveColumnVisibilityToServer() {
+        if (!table) return;
+        const visibility = {};
+        table.getColumns().forEach(function(col) {
+            const def = col.getDefinition();
+            if (def.field) visibility[def.field] = col.isVisible();
+        });
+        fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            },
+            body: JSON.stringify({
+                channel: TABULATOR_COLUMN_CHANNEL,
+                visibility: visibility,
+            }),
+        }).catch(function(err) { console.error('Error saving column visibility:', err); });
+    }
+
+    function applyColumnVisibilityFromServer() {
+        if (!table) return;
+        fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            },
+        })
+            .then(function(response) { return response.json(); })
+            .then(function(savedVisibility) {
+                if (savedVisibility && typeof savedVisibility === 'object') {
+                    table.getColumns().forEach(function(col) {
+                        const def = col.getDefinition();
+                        if (def.field && savedVisibility.hasOwnProperty(def.field)) {
+                            if (savedVisibility[def.field]) col.show();
+                            else col.hide();
+                        }
+                    });
+                }
+                enforceAlwaysHiddenColumns();
+            })
+            .catch(function(err) { console.error('Error applying column visibility:', err); });
+    }
+
+    function buildColumnDropdown() {
+        const menu = document.getElementById('column-dropdown-menu');
+        if (!menu || !table) return;
+        menu.innerHTML = '';
+        fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            },
+        })
+            .then(function(response) { return response.json(); })
+            .then(function(savedVisibility) {
+                const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+                const showAllLi = document.createElement('li');
+                showAllLi.className = 'col-vis-full';
+                showAllLi.innerHTML = '<a class="dropdown-item py-1" href="#" id="show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a>';
+                menu.appendChild(showAllLi);
+
+                const groupsLi = document.createElement('li');
+                groupsLi.className = 'col-vis-full';
+                const groupsWrap = document.createElement('div');
+                groupsWrap.className = 'col-vis-groups';
+                const lists = {};
+                const groupEls = {};
+                COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                    const group = document.createElement('div');
+                    group.className = 'col-vis-group';
+                    group.dataset.category = cat;
+                    const titleEl = document.createElement('label');
+                    titleEl.className = 'col-vis-group-title';
+                    const groupCb = document.createElement('input');
+                    groupCb.type = 'checkbox';
+                    groupCb.className = 'col-vis-group-toggle';
+                    groupCb.dataset.group = cat;
+                    groupCb.title = 'Select / deselect all in ' + COL_VIS_CATEGORY_LABELS[cat];
+                    titleEl.appendChild(groupCb);
+                    titleEl.appendChild(document.createTextNode(COL_VIS_CATEGORY_LABELS[cat]));
+                    group.appendChild(titleEl);
+                    const list = document.createElement('ul');
+                    list.className = 'col-vis-group-list';
+                    group.appendChild(list);
+                    groupsWrap.appendChild(group);
+                    lists[cat] = list;
+                    groupEls[cat] = group;
+                });
+
+                table.getColumns().forEach(function(col) {
+                    const def = col.getDefinition();
+                    if (!def.field) return;
+                    if (alwaysHiddenColumns.indexOf(def.field) !== -1) return;
+                    const rawTitle = def.title || def.field;
+                    const title = String(rawTitle).replace(/<[^>]*>/g, '').trim() || def.field;
+                    const cat = classifyTemuoneColumn(def.field, title);
+                    const li = document.createElement('li');
+                    li.className = 'col-vis-item';
+                    const label = document.createElement('label');
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = def.field;
+                    checkbox.className = 'col-vis-field-toggle';
+                    checkbox.dataset.group = cat;
+                    checkbox.checked = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : col.isVisible();
+                    label.appendChild(checkbox);
+                    label.appendChild(document.createTextNode(title));
+                    label.title = title;
+                    li.appendChild(label);
+                    lists[cat].appendChild(li);
+                });
+
+                COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                    syncGroupHeaderCheckbox(groupEls[cat]);
+                });
+                groupsLi.appendChild(groupsWrap);
+                menu.appendChild(groupsLi);
+            })
+            .catch(function(err) { console.error('Error loading column visibility:', err); });
+    }
+
+    function temuCsvEscape(v) {
+        if (v == null) return '';
+        const s = String(v);
+        if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+        return s;
+    }
+
+    function temuDownloadSheet(filename) {
+        if (!table) return;
+        const cols = table.getColumns().filter(function(col) {
+            const def = col.getDefinition();
+            return def.field && col.isVisible() && alwaysHiddenColumns.indexOf(def.field) === -1;
+        });
+        const headers = cols.map(function(col) {
+            const def = col.getDefinition();
+            return String(def.title || def.field).replace(/<[^>]*>/g, '').trim();
+        });
+        const rows = table.getData('active') || [];
+        const lines = [headers.map(temuCsvEscape).join(',')];
+        rows.forEach(function(row) {
+            lines.push(cols.map(function(col) {
+                const field = col.getDefinition().field;
+                let v = row[field];
+                if (field === 'links_column') {
+                    v = [row['B Link'] || '', row['S Link'] || ''].filter(Boolean).join(' | ');
+                } else if (field === 'cpn_pct') {
+                    v = temuCpnForRow(row);
+                } else if (field === 'sprice') {
+                    v = (typeof temuDisplayedSprice === 'function') ? temuDisplayedSprice(row) : v;
+                } else if (field === 'Dil%') {
+                    const inv = parseFloat(row.INV) || 0;
+                    const ov = parseFloat(row.L30) || 0;
+                    v = inv > 0 ? Math.round((ov / inv) * 100) : 0;
+                }
+                return temuCsvEscape(v == null ? '' : v);
+            }).join(','));
+        });
+        const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename || 'new_temuone_l30.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function() { URL.revokeObjectURL(a.href); }, 1000);
+    }
+
     $(document).ready(function() {
         table = new Tabulator('#new-temuone-table', {
             ajaxURL: '{{ route("newtemuone.data.json") }}',
@@ -1197,6 +2324,9 @@
                 {
                     title: 'Links',
                     field: 'links_column',
+                    accessorDownload: function(value, data) {
+                        return [data['B Link'] || '', data['S Link'] || ''].filter(Boolean).join(' | ');
+                    },
                     frozen: true,
                     width: 55,
                     hozAlign: 'center',
@@ -1270,6 +2400,28 @@
                         const row = cell.getRow().getData() || {};
                         if (row.is_parent_summary) return cell1;
                         return cell1 + temuCvrTrendArrowHtml(val, parseFloat(row.cvr_60) || 0);
+                    }
+                },
+                {
+                    title: 'CPN',
+                    field: 'cpn_pct',
+                    accessorDownload: function(value, data) { return temuCpnForRow(data); },
+                    hozAlign: 'center',
+                    width: 55,
+                    sorter: function(a, b, aRow, bRow) {
+                        return temuCpnForRow(aRow.getData()) - temuCpnForRow(bRow.getData());
+                    },
+                    headerTooltip: 'Live from CVR → CPN slabs (0.01–1% → 9 … > 7% → 0). No 0% CVR slab. INV = 0 or CVR = 0 → 0. Same rule as /temu1-data. Not a marketplace coupon.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        if (row.is_parent_summary) return '';
+                        const cpn = temuCpnForRow(row);
+                        const cvr = parseFloat(row.cvr_percent != null ? row.cvr_percent : row.cvr_30) || 0;
+                        const tip = 'CVR ' + (cvr > 3.5 ? Math.round(cvr) : cvr.toFixed(1)) + '% → CPN ' + cpn + '%';
+                        if (!(cpn > 0)) {
+                            return '<span style="color: #6c757d;" title="' + tip + '">—</span>';
+                        }
+                        return '<span style="color: #198754; font-weight: 700;" title="' + tip + '">' + cpn + '%</span>';
                     }
                 },
                 {
@@ -1348,7 +2500,14 @@
                         const tip = afterMult <= 26.99
                             ? ('T Price = (Base × 1.1364) + $2.99 → $' + base.toFixed(2) + ' × 1.1364 = $' + afterMult.toFixed(2) + ' + $2.99 = $' + tPrice.toFixed(2))
                             : ('T Price = (Base × 1.1364) → $' + base.toFixed(2) + ' × 1.1364 = $' + tPrice.toFixed(2) + ' (no +$2.99, result > $26.99)');
-                        return '<span style="font-weight: 600;" title="' + tip + '">$' + tPrice.toFixed(2) + '</span>';
+                        const live = parseFloat(row.temu_price || tPrice) || tPrice;
+                        const lmp = temuBadgeLmpValue(row);
+                        const redTri = (window.PriceGtLmpBadge
+                            ? PriceGtLmpBadge.triangleHtml(live, lmp) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge
+                            ? PriceLt80LmpBadge.triangleHtml(live, lmp) : '');
+                        return '<span style="font-weight: 600;" title="' + tip + '">$' + tPrice.toFixed(2) + '</span>'
+                            + redTri + purpleTri;
                     }
                 },
                 {
@@ -1629,10 +2788,19 @@
             ]
         });
 
+        table.on('tableBuilt', function() {
+            applyColumnVisibilityFromServer();
+            buildColumnDropdown();
+        });
+
         table.on('dataLoaded', function() {
             temuClearCapMemo();
             applyFilters();
+            window._ntoReloadPushQueued = false;
+            setTimeout(function() { ntoTryQueuePushOnReload(); }, 800);
         });
+
+        initNtoReloadPushUi();
 
         // Every render starts from a clean memo, so a Sprc Dil slab edit (which redraws
         // the table) can never be served a stale cap.
@@ -1646,6 +2814,96 @@
 
         $('#sku-search, #parent-search').on('keyup', applyFilters);
         $('#inventory-filter, #dil-filter').on('change', applyFilters);
+
+        temuLoadCvrCpnRules();
+
+        (function() {
+            const colMenu = document.getElementById('column-dropdown-menu');
+            if (!colMenu) return;
+            colMenu.addEventListener('change', function(e) {
+                if (e.target.type !== 'checkbox') return;
+                if (e.target.classList.contains('col-vis-group-toggle')) {
+                    const checked = e.target.checked;
+                    const groupEl = e.target.closest('.col-vis-group');
+                    const itemCbs = groupEl
+                        ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]')
+                        : [];
+                    itemCbs.forEach(function(cb) {
+                        const field = cb.value;
+                        if (alwaysHiddenColumns.indexOf(field) !== -1) return;
+                        cb.checked = checked;
+                        const col = table.getColumn(field);
+                        if (!col) return;
+                        if (checked) col.show();
+                        else col.hide();
+                    });
+                    e.target.indeterminate = false;
+                    enforceAlwaysHiddenColumns();
+                    saveColumnVisibilityToServer();
+                    return;
+                }
+                const field = e.target.value;
+                const col = table.getColumn(field);
+                if (!col) return;
+                if (e.target.checked) col.show();
+                else col.hide();
+                syncGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
+                saveColumnVisibilityToServer();
+            });
+            colMenu.addEventListener('click', function(e) {
+                const showAll = e.target.closest('#show-all-columns-btn');
+                if (!showAll) return;
+                e.preventDefault();
+                e.stopPropagation();
+                table.getColumns().forEach(function(col) { col.show(); });
+                enforceAlwaysHiddenColumns();
+                buildColumnDropdown();
+                saveColumnVisibilityToServer();
+            });
+        })();
+
+        $('#export-l30-btn').on('click', function(e) {
+            e.preventDefault();
+            temuDownloadSheet('new_temuone_l30.csv');
+        });
+
+        if (window.TemuViewDataUpload) {
+            TemuViewDataUpload.init({
+                formId: 'uploadViewDataForm',
+                inputId: 'viewDataFile',
+                listId: 'viewDataFileList',
+                statusId: 'viewDataUploadStatus',
+                onSuccess: function() {
+                    if (table) table.setData('{{ route("newtemuone.data.json") }}');
+                }
+            });
+        }
+        @if(session('success'))
+        showToast(@json(session('success')), 'success');
+        @endif
+        @if(session('error'))
+        showToast(@json(session('error')), 'error');
+        @endif
+        @if(session('success') || session('error') || (isset($errors) && $errors->any()))
+        try {
+            const uploadViewModalEl = document.getElementById('uploadViewDataModal');
+            if (uploadViewModalEl && window.bootstrap) {
+                bootstrap.Modal.getOrCreateInstance(uploadViewModalEl).show();
+            }
+        } catch (e) {}
+        @endif
+        $('#newtemuone-cvr-vs-cpn-btn').on('click', function(e) {
+            e.preventDefault();
+            temuRenderCvrCpnModalTable();
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('newTemuoneCvrVsCpnModal')).show();
+        });
+        $('#newtemuone-cvr-cpn-save-btn').on('click', function(e) {
+            e.preventDefault();
+            temuSaveCvrCpnRules();
+        });
+        $(document).on('input change', '#newtemuone-cvr-cpn-tbody .newtemuone-cvr-cpn-input', function() {
+            temuCascadeCvrCpnFromInput(this);
+        });
 
         // Badge filters — one at a time, click again to clear (same as /temu2-decrease).
         const badgeFilters = [

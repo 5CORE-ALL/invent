@@ -17,6 +17,7 @@ use App\Models\TemuOrder;
 use App\Models\TemuViewData;
 use App\Services\DilRuleSpriceApplyService;
 use App\Services\LmpSkuGroupService;
+use App\Services\Support\ChannelPushSpriceRunner;
 use App\Services\TemuShopifySalesService;
 use App\Support\AmazonDilGroiRule;
 use App\Support\ProductMasterTemuShip;
@@ -38,6 +39,8 @@ class NewTemuoneController extends Controller
         return view('market-places.new_temuone_tabulator_view', [
             'temuMargin' => TemuShopifySalesService::temuMarginDecimal(),
             'temuAds' => $this->temuChannelAdsSummary(),
+            'newtemuonePageReloadPushEnabled' => ChannelPromoPricingController::isPageReloadPushEnabled('newtemuone'),
+            'newtemuonePushSpriceLive' => ChannelPushSpriceRunner::livePushAllowed(),
         ]);
     }
 
