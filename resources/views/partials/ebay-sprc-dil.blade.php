@@ -4,7 +4,7 @@
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
   Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / AliExpress: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
   AliExpress only: Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
-  eBay 1–3: Dil below the first slab or above the last slab uses the nearest slab (0 Sold Dil = 0 and fast-seller Dil > last To).
+  eBay 1–3 / New Temu One: Dil below the first slab or above the last slab uses the nearest slab (0 Sold Dil = 0 and fast-seller Dil > last To).
   eBay 1–3 CVR overlay is level-only (CVR < Down → −10 GROI; CVR > Up → +10 GROI). Temu 1–2 also use the overlay; Reverb / Faire / TikTok / Shopify B2C are level-only.
   Macys: Dil-matching when Dil is in a slab. If Dil is out of box and 0 Sold, use min Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price (do not keep Std Prc).
@@ -23,6 +23,8 @@
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'macys', 'macy', 'temu2', 'temu3', 'aliexpress'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b'], true);
+    $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
+        ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'mercari_wship', 'mercari_woship'], true);
@@ -430,6 +432,7 @@
         const EBAY_DIL_GROI_CHANNEL = @json($ebaySprcDilChannel);
         const EBAY_DIL_GROI_ZERO_SOLD_MIN = @json($ebaySprcDilZeroSoldUsesMinGroi);
         const EBAY_DIL_GROI_CVR_ADJ = @json(!empty($ebaySprcDilCvrGroiAdj));
+        const EBAY_DIL_GROI_CLAMP_NEAREST = @json(!empty($ebaySprcDilClampToNearest));
         const EBAY_DIL_GROI_HIDE_CVR_PIE = @json(!empty($ebaySprcDilHideCvrPie));
         function ebayDgIsMacys() {
             return EBAY_DIL_GROI_CHANNEL === 'macys' || EBAY_DIL_GROI_CHANNEL === 'macy';
@@ -786,7 +789,8 @@
                 || EBAY_DIL_GROI_CHANNEL === 'shopify_b2b';
         }
         function ebayDgClampsDilToNearestSlab() {
-            return EBAY_DIL_GROI_CHANNEL === 'ebay1'
+            return !!EBAY_DIL_GROI_CLAMP_NEAREST
+                || EBAY_DIL_GROI_CHANNEL === 'ebay1'
                 || EBAY_DIL_GROI_CHANNEL === 'ebay2'
                 || EBAY_DIL_GROI_CHANNEL === 'ebay2op'
                 || EBAY_DIL_GROI_CHANNEL === 'ebay3';
@@ -878,7 +882,7 @@
             }
             return null;
         }
-        /** Exact slab, or nearest slab on eBay 1–3 so 0 Sold (Dil 0) and Dil above last To still get GROI. */
+        /** Exact slab, or nearest slab when clamp is on so 0 Sold (Dil 0) and Dil above last To still get GROI. */
         function ebayDilGroiResolve(dil) {
             const exact = ebayDilGroiMatch(dil);
             if (exact) return exact;

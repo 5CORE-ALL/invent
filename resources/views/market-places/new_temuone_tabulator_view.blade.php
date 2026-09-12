@@ -158,7 +158,11 @@
             height: 14px;
         }
         #column-dropdown-menu .col-vis-item > label:hover { background: #e9ecef; }
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'temu'])
+        @include('partials.ebay-sprc-dil', [
+            'ebaySprcDilPart' => 'css',
+            'ebaySprcDilChannel' => 'temu',
+            'ebaySprcDilClampToNearest' => true,
+        ])
         .nto-reload-push-switch {
             display: inline-flex;
             align-items: center;
@@ -377,6 +381,7 @@
                         'ebaySprcDilPart' => 'buttons',
                         'ebaySprcDilChannel' => 'temu',
                         'ebaySprcDilZeroSoldUsesMinGroi' => false,
+                        'ebaySprcDilClampToNearest' => true,
                     ])
                     <button type="button" class="btn btn-sm" id="newtemuone-cvr-vs-cpn-btn"
                         title="Map CVR% slabs to CPN%. CPN% live-fills when a slab changes (no coupon push).">
@@ -580,6 +585,7 @@
         'ebaySprcDilPart' => 'modals',
         'ebaySprcDilChannel' => 'temu',
         'ebaySprcDilZeroSoldUsesMinGroi' => false,
+        'ebaySprcDilClampToNearest' => true,
     ])
 
     <div class="modal fade" id="newTemuoneCvrVsCpnModal" tabindex="-1" aria-labelledby="newTemuoneCvrVsCpnModalLabel" aria-hidden="true">
@@ -783,10 +789,33 @@
     }
     window.chPromoSpriceFromTargetRoi = chPromoSpriceFromTargetRoi;
 
+    function chPromoIsChildRow(d) {
+        return !!(d && !d.is_parent_summary && d['(Child) sku']
+            && String(d['(Child) sku']).indexOf('PARENT') === -1);
+    }
+    function chPromoInv(d) {
+        return Number(d && (d.INV != null ? d.INV : d.inventory)) || 0;
+    }
+    /** Same Dil% as the Dil column: Temu L30 ÷ INV. */
+    function chPromoDil(d) {
+        const inv = chPromoInv(d);
+        if (!(inv > 0)) return 0;
+        const l30 = Number(d && (d.temu_l30 != null ? d.temu_l30 : d.L30)) || 0;
+        return (l30 / inv) * 100;
+    }
+    function chPromoListingDil(d) {
+        return chPromoDil(d);
+    }
+    window.chPromoIsChildRow = chPromoIsChildRow;
+    window.chPromoInv = chPromoInv;
+    window.chPromoDil = chPromoDil;
+    window.chPromoListingDil = chPromoListingDil;
+
     @include('partials.ebay-sprc-dil', [
         'ebaySprcDilPart' => 'script',
         'ebaySprcDilChannel' => 'temu',
         'ebaySprcDilZeroSoldUsesMinGroi' => false,
+        'ebaySprcDilClampToNearest' => true,
     ])
 
     function temuParseMoney(v) {
@@ -810,7 +839,15 @@
         return temuParseMoney(row && (row.lmp_raw != null ? row.lmp_raw : row.lmp));
     }
 
-    /** Discounted Price = Sprc Dil from the /temu1-data Dil table (Temu 2: Dil slab including 0 Sold). */
+    function temuStdPrc(row) {
+        return temuParseMoney(row && (row.temu_price != null ? row.temu_price : row.t_price));
+    }
+
+    /**
+     * Discounted Price = Sprc Dil (Temu L30 Dil → Target GROI).
+     * If Dil is missing or over the last slab (no match), Amazon-style fallback:
+     * STD (T Price). Cap compute then takes min(eBay, Amazon, LMP) when cheaper.
+     */
     function temuDiscountedPrice(row) {
         if (!row) return 0;
         if (typeof ebaySprcDilForRow === 'function') {
@@ -829,8 +866,11 @@
             const calc = chPromoSpriceFromStdTPromo(row, { skip_lmp_cap: true });
             if (calc > 0) return +Number(calc).toFixed(2);
         }
-        const fallback = parseFloat(row.sprc_dil);
-        return fallback > 0 ? +fallback.toFixed(2) : 0;
+        const stored = parseFloat(row.sprc_dil);
+        if (stored > 0) return +stored.toFixed(2);
+        if (!(chPromoInv(row) > 0)) return 0;
+        const std = temuStdPrc(row);
+        return std > 0 ? std : 0;
     }
 
     // The cap chain runs a GROI bisection per call, and a dozen formatters plus the badge
@@ -855,7 +895,7 @@
         return cap;
     }
 
-    /** S PRC = Discounted Price, then the lowest of eBay / Amazon / LMP when cheaper. Same as /temu2-decrease. */
+    /** S PRC = Dil (or STD fallback), then the lowest of eBay / Amazon / LMP when cheaper. */
     function temuSpriceCapCompute(row, rawSprice, extra) {
         extra = extra || {};
         const liveDiscounted = temuDiscountedPrice(row);
@@ -866,12 +906,16 @@
         } else if (liveDiscounted > 0) {
             discounted = +liveDiscounted.toFixed(2);
         }
-        let sprice = discounted > 0 ? discounted : 0;
-        if (!(sprice > 0)) return { sprice: 0, labels: [], lmpAlert: false, amz: 0, ebay: 0, lmp: 0 };
-
         const ebay = +temuEbayRefPrice(row).toFixed(2);
         const amz = +temuAmzRefPrice(row).toFixed(2);
         const lmp = extra.skip_lmp_cap ? 0 : +temuLmpRefPrice(row).toFixed(2);
+        if (!(discounted > 0) && chPromoInv(row) > 0) {
+            const floor = [ebay, amz, lmp].filter(function(n) { return n > 0; });
+            if (floor.length) discounted = Math.min.apply(null, floor);
+        }
+        let sprice = discounted > 0 ? discounted : 0;
+        if (!(sprice > 0)) return { sprice: 0, labels: [], lmpAlert: false, amz: amz, ebay: ebay, lmp: lmp };
+
         const zeroSoldOwns = typeof chPromoTemuZeroSoldOwnsSprice === 'function'
             && chPromoTemuZeroSoldOwnsSprice(row);
 
@@ -2511,6 +2555,78 @@
                     }
                 },
                 {
+                    title: 'GROI',
+                    field: 'roi_percent',
+                    hozAlign: 'center',
+                    width: 60,
+                    sorter: 'number',
+                    headerTooltip: 'GROI% = Gpft ÷ LP. Gpft = (R Price × Temu margin) − Temu Ship − LP. Margin from marketplace_percentages "Temu".',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const value = temuGroiPercent(row);
+                        if (value == null) return '<span style="color: #6c757d;">—</span>';
+                        const gpft = temuGpftDollars(row);
+                        const tip = 'Gpft $' + gpft.toFixed(2)
+                            + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
+                            + ' (margin ' + Math.round(temuRowMargin(row) * 100) + '%)';
+                        return temuPercentCell(value, 'roi', tip);
+                    }
+                },
+                {
+                    title: 'GPFT',
+                    field: 'profit_percent',
+                    hozAlign: 'center',
+                    width: 60,
+                    sorter: 'number',
+                    headerTooltip: 'GPFT% = Gpft ÷ T Price. Gpft = (R Price × Temu margin) − Temu Ship − LP. Margin from marketplace_percentages "Temu".',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const value = temuGpftPercent(row);
+                        if (value == null) return '<span style="color: #6c757d;">—</span>';
+                        const gpft = temuGpftDollars(row);
+                        const tip = 'Gpft $' + gpft.toFixed(2)
+                            + ' ÷ T Price $' + (parseFloat(row.t_price) || 0).toFixed(2)
+                            + ' (margin ' + Math.round(temuRowMargin(row) * 100) + '%)';
+                        return temuPercentCell(value, 'pft', tip);
+                    }
+                },
+                {
+                    title: 'GNROI',
+                    field: 'nroi_percent',
+                    hozAlign: 'center',
+                    width: 60,
+                    sorter: 'number',
+                    headerTooltip: 'GNROI% = GNPFT ÷ LP. GNPFT = Gpft − (T Price × Ads%). Same formula as /temu2-decrease NROI.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const value = temuNroiPercent(row);
+                        if (value == null) return '<span style="color: #6c757d;">—</span>';
+                        const npft = temuNpftDollars(row);
+                        const tip = 'GNPFT $' + npft.toFixed(2)
+                            + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
+                            + ' (Ads ' + temuAdsPercentForNet().toFixed(2) + '%)';
+                        return temuPercentCell(value, 'roi', tip);
+                    }
+                },
+                {
+                    title: 'GNPFT',
+                    field: 'npft_percent',
+                    hozAlign: 'center',
+                    width: 60,
+                    sorter: 'number',
+                    headerTooltip: 'GNPFT% = GNPFT ÷ T Price. GNPFT = Gpft − (T Price × Ads%). Ads% is the channel Ads badge — same formula as /temu2-decrease NPFT.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const value = temuNpftPercent(row);
+                        if (value == null) return '<span style="color: #6c757d;">—</span>';
+                        const npft = temuNpftDollars(row);
+                        const tip = 'GNPFT $' + npft.toFixed(2)
+                            + ' ÷ T Price $' + (parseFloat(row.t_price) || 0).toFixed(2)
+                            + ' (Ads ' + temuAdsPercentForNet().toFixed(2) + '%)';
+                        return temuPercentCell(value, 'pft', tip);
+                    }
+                },
+                {
                     title: 'Std Price',
                     field: 'STANDARD_PRICE',
                     hozAlign: 'center',
@@ -2562,7 +2678,7 @@
                     hozAlign: 'center',
                     width: 88,
                     sorter: 'number',
-                    headerTooltip: 'Same formula as /temu2-decrease: Sprc Dil from the /temu1-data Dil table (including Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Saved on temu_data_view.',
+                    headerTooltip: 'Sprc Dil from Temu L30 Dil → Target GROI. Dil below the first From or above the last To uses the nearest slab (0 Sold and high Dil). Then the lowest of eBay, Amazon, and LMP.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const model = typeof temuSpriceCellModel === 'function'
@@ -2641,42 +2757,6 @@
                     }
                 },
                 {
-                    title: 'GPFT',
-                    field: 'profit_percent',
-                    hozAlign: 'center',
-                    width: 60,
-                    sorter: 'number',
-                    headerTooltip: 'GPFT% = Gpft ÷ T Price. Gpft = (R Price × Temu margin) − Temu Ship − LP. Margin from marketplace_percentages "Temu".',
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const value = temuGpftPercent(row);
-                        if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const gpft = temuGpftDollars(row);
-                        const tip = 'Gpft $' + gpft.toFixed(2)
-                            + ' ÷ T Price $' + (parseFloat(row.t_price) || 0).toFixed(2)
-                            + ' (margin ' + Math.round(temuRowMargin(row) * 100) + '%)';
-                        return temuPercentCell(value, 'pft', tip);
-                    }
-                },
-                {
-                    title: 'GROI',
-                    field: 'roi_percent',
-                    hozAlign: 'center',
-                    width: 60,
-                    sorter: 'number',
-                    headerTooltip: 'GROI% = Gpft ÷ LP. Gpft = (R Price × Temu margin) − Temu Ship − LP. Margin from marketplace_percentages "Temu".',
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const value = temuGroiPercent(row);
-                        if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const gpft = temuGpftDollars(row);
-                        const tip = 'Gpft $' + gpft.toFixed(2)
-                            + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
-                            + ' (margin ' + Math.round(temuRowMargin(row) * 100) + '%)';
-                        return temuPercentCell(value, 'roi', tip);
-                    }
-                },
-                {
                     title: 'SGPFT',
                     field: 'sgpft_percent',
                     hozAlign: 'center',
@@ -2709,42 +2789,6 @@
                         const tip = 'SPFT $' + spft.toFixed(2)
                             + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
                             + ' (margin ' + Math.round(temuRowMargin(row) * 100) + '%)';
-                        return temuPercentCell(value, 'roi', tip);
-                    }
-                },
-                {
-                    title: 'NPFT',
-                    field: 'npft_percent',
-                    hozAlign: 'center',
-                    width: 60,
-                    sorter: 'number',
-                    headerTooltip: 'NPFT% = NPFT ÷ T Price. NPFT = Gpft − (T Price × Ads%). Ads% is the channel Ads badge — same formula as /temu2-decrease.',
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const value = temuNpftPercent(row);
-                        if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const npft = temuNpftDollars(row);
-                        const tip = 'NPFT $' + npft.toFixed(2)
-                            + ' ÷ T Price $' + (parseFloat(row.t_price) || 0).toFixed(2)
-                            + ' (Ads ' + temuAdsPercentForNet().toFixed(2) + '%)';
-                        return temuPercentCell(value, 'pft', tip);
-                    }
-                },
-                {
-                    title: 'NROI',
-                    field: 'nroi_percent',
-                    hozAlign: 'center',
-                    width: 60,
-                    sorter: 'number',
-                    headerTooltip: 'NROI% = NPFT ÷ LP. NPFT = Gpft − (T Price × Ads%). Same formula as /temu2-decrease.',
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const value = temuNroiPercent(row);
-                        if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const npft = temuNpftDollars(row);
-                        const tip = 'NPFT $' + npft.toFixed(2)
-                            + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
-                            + ' (Ads ' + temuAdsPercentForNet().toFixed(2) + '%)';
                         return temuPercentCell(value, 'roi', tip);
                     }
                 },
