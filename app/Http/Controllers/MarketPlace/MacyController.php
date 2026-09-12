@@ -8,6 +8,7 @@ use App\Models\ChannelMaster;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\MacyDataView;
 use App\Models\MacyProduct;
+use App\Models\MacysPriceData;
 use App\Models\MacysListingStatus;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
@@ -149,6 +150,8 @@ class MacyController extends Controller
                 return [strtolower($item->sku) => $item];
             });
 
+        $activatedByNorm = $this->buildMacyOfferActivatedLookup($skus);
+
         // Macy's Sales Quantity (sum from MiraklDailyData for L30)
         $salesQtyData = MiraklDailyData::where('channel_name', "Macy's, Inc.")
             ->whereIn('sku', $skus)
@@ -185,6 +188,15 @@ class MacyController extends Controller
             $row["L30"] = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
             // MC L30 / MC INV / MC Price from macy_products (MCM OF21 overlay).
+            // Inactive MCM offers still have a seller price — do not show it as listed.
+            if ($macysMetric) {
+                if (array_key_exists($pmSkuNorm, $activatedByNorm)) {
+                    $macysMetric->activated = $activatedByNorm[$pmSkuNorm];
+                }
+                if (self::isListingMarkedInactive($listingStatus)) {
+                    $macysMetric->activated = false;
+                }
+            }
             $resolvedPrice = self::resolveListedPrice($macysMetric);
             $row["MC L30"] = $macysMetric->m_l30 ?? 0;
             $row["MC Price"] = $resolvedPrice['price'];
@@ -424,6 +436,10 @@ class MacyController extends Controller
      */
     public static function resolveListedPrice($product, $sheet = null): array
     {
+        if (self::isMacyOfferInactive($product)) {
+            return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
+        }
+
         $price = null;
         if (is_object($product)) {
             $raw = $product->price ?? null;
@@ -444,6 +460,69 @@ class MacyController extends Controller
             'source' => 'mcm',
             'missing' => false,
         ];
+    }
+
+    public static function isMacyOfferInactive($product): bool
+    {
+        if (! is_object($product)) {
+            return false;
+        }
+
+        if (isset($product->activated)) {
+            return ! filter_var($product->activated, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        $status = strtolower(trim((string) ($product->listing_status ?? '')));
+
+        return in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true);
+    }
+
+    public static function isListingMarkedInactive($listingStatus): bool
+    {
+        if (! $listingStatus) {
+            return false;
+        }
+        $value = is_object($listingStatus)
+            ? ($listingStatus->value ?? null)
+            : $listingStatus;
+        if (is_string($value)) {
+            $value = json_decode($value, true);
+        }
+        if (! is_array($value)) {
+            return false;
+        }
+        $flag = strtolower(trim((string) ($value['live_inactive'] ?? '')));
+
+        return in_array($flag, ['inactive', 'offline', 'ended', 'disabled'], true);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, bool> normalized sku => MCM offer is active
+     */
+    private function buildMacyOfferActivatedLookup(array $skus): array
+    {
+        $out = [];
+        try {
+            $rows = MacysPriceData::query()
+                ->where(function ($q) use ($skus) {
+                    $q->whereIn('sku', $skus)->orWhereIn('offer_sku', $skus);
+                })
+                ->get(['sku', 'offer_sku', 'activated']);
+            foreach ($rows as $row) {
+                $active = (bool) $row->activated;
+                foreach ([(string) $row->sku, (string) $row->offer_sku] as $sku) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                    if ($norm !== '') {
+                        $out[$norm] = $active;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Macys activated lookup failed: '.$e->getMessage());
+        }
+
+        return $out;
     }
 
     /**
@@ -1280,7 +1359,7 @@ class MacyController extends Controller
         try {
             $result = app(MacysApiService::class)->updatePrice($sku, $sprice);
             $ok = (bool) ($result['success'] ?? false);
-            $this->persistMacysPushStatus($sku, $ok ? 'pushed' : 'error', $sprice);
+            self::persistSpricePushStatus($sku, $ok ? 'pushed' : 'error', $sprice);
             $result['price'] = $sprice;
             $result['amazon_price'] = $applied['amazon_price'];
             $result['capped'] = $applied['capped'];
@@ -1291,7 +1370,7 @@ class MacyController extends Controller
 
             return $result;
         } catch (\Throwable $e) {
-            $this->persistMacysPushStatus($sku, 'error', $sprice);
+            self::persistSpricePushStatus($sku, 'error', $sprice);
             Log::error('Macy price push call failed', ['sku' => $sku, 'error' => $e->getMessage()]);
             return [
                 'success' => false,
@@ -1303,7 +1382,7 @@ class MacyController extends Controller
         }
     }
 
-    private function persistMacysPushStatus(string $sku, string $status, ?float $price = null): void
+    public static function persistSpricePushStatus(string $sku, string $status, ?float $price = null): void
     {
         try {
             $skuKey = strtoupper(trim($sku));

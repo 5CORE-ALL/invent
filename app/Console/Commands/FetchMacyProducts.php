@@ -497,18 +497,35 @@ class FetchMacyProducts extends Command
                     foreach (array_chunk($updates, 50) as $chunk) {
                         $values = [];
                         $bindings = [];
+                        $hasListingStatus = Schema::hasColumn('macy_products', 'listing_status');
                         foreach ($chunk as $update) {
-                            $values[] = '(?, ?, ?, 0, ?, ?)';
-                            $bindings[] = $update['sku'];
-                            $bindings[] = $update['price'];
-                            $bindings[] = $update['quantity'];
-                            $bindings[] = $now;
-                            $bindings[] = $now;
+                            $listedPrice = ! empty($update['activated']) ? $update['price'] : 0;
+                            $listingStatus = ! empty($update['activated']) ? 'active' : 'inactive';
+                            if ($hasListingStatus) {
+                                $values[] = '(?, ?, ?, 0, ?, ?, ?)';
+                                $bindings[] = $update['sku'];
+                                $bindings[] = $listedPrice;
+                                $bindings[] = $update['quantity'];
+                                $bindings[] = $listingStatus;
+                                $bindings[] = $now;
+                                $bindings[] = $now;
+                            } else {
+                                $values[] = '(?, ?, ?, 0, ?, ?)';
+                                $bindings[] = $update['sku'];
+                                $bindings[] = $listedPrice;
+                                $bindings[] = $update['quantity'];
+                                $bindings[] = $now;
+                                $bindings[] = $now;
+                            }
                         }
 
-                        $sql = 'INSERT INTO macy_products (sku, price, stock, m_l30, created_at, updated_at) VALUES '
-                            .implode(', ', $values)
-                            .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), updated_at = VALUES(updated_at)';
+                        $sql = $hasListingStatus
+                            ? 'INSERT INTO macy_products (sku, price, stock, m_l30, listing_status, created_at, updated_at) VALUES '
+                                .implode(', ', $values)
+                                .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), listing_status = VALUES(listing_status), updated_at = VALUES(updated_at)'
+                            : 'INSERT INTO macy_products (sku, price, stock, m_l30, created_at, updated_at) VALUES '
+                                .implode(', ', $values)
+                                .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), updated_at = VALUES(updated_at)';
 
                         DB::statement($sql, $bindings);
 

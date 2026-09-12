@@ -166,91 +166,205 @@ class MacysApiService
     /**
      * Push listed price via Mirakl MCM PRI01. Macy live price is on the offer, not Connect catalog.
      *
-     * @return array{success: bool, message: string, status_code?: int|null, import_id?: string|null}
+     * @return array{success: bool, message: string, status_code?: int|null, import_id?: string|null, price?: float}
      */
     public function updatePrice(string $sku, float $price): array
     {
         $sku = $this->resolveMacyMiraklSku($sku);
-        $price = round((float) $price, 2);
-        if ($sku === '' || $price <= 0) {
-            return ['success' => false, 'message' => 'Valid SKU and price are required', 'status_code' => 422];
+        $results = $this->updatePrices([$sku => $price]);
+
+        return $results[$sku] ?? [
+            'success' => false,
+            'message' => 'Macy price push failed',
+            'status_code' => 500,
+        ];
+    }
+
+    /**
+     * Push each SKU with its own PRI01. Unlisted SKUs fail locally — no MCM import guesses.
+     *
+     * @param  array<string, float>  $skuPrices
+     * @return array<string, array{success: bool, message: string, status_code?: int|null, import_id?: string|null, price?: float}>
+     */
+    public function updatePrices(array $skuPrices): array
+    {
+        $results = [];
+        $normalized = [];
+        foreach ($skuPrices as $sku => $price) {
+            $sku = trim((string) $sku);
+            $price = round((float) $price, 2);
+            if ($sku === '' || $price <= 0) {
+                $results[(string) $sku] = [
+                    'success' => false,
+                    'message' => 'Valid SKU and price are required',
+                    'status_code' => 422,
+                ];
+
+                continue;
+            }
+            $normalized[$sku] = $price;
+        }
+        if ($normalized === []) {
+            return $results;
         }
 
         $apiKey = $this->miraklMcmApiKey();
         $baseUrl = rtrim((string) config('services.macy.mcm_base_url', 'https://macysus-prod.mirakl.net'), '/');
         if ($apiKey === null || $apiKey === '' || $baseUrl === '') {
-            return [
-                'success' => false,
-                'message' => 'Macy MCM API key is not configured (MACY_MCM_API_KEY).',
-                'status_code' => 401,
-            ];
+            foreach ($normalized as $sku => $price) {
+                $results[$sku] = [
+                    'success' => false,
+                    'message' => 'Macy MCM API key is not configured (MACY_MCM_API_KEY).',
+                    'status_code' => 401,
+                    'price' => $price,
+                ];
+            }
+
+            return $results;
         }
 
-        $sheetProduct = $this->resolveLocalMcmSheetProductSku($sku);
-        $sheetOffer = $this->resolveLocalMcmSheetOfferSku($sku);
-        $live = $this->resolveMcmOfferSkuFromOffersApi($sku, $apiKey, $baseUrl, array_values(array_filter([
-            $sheetProduct,
-            $sheetOffer,
-        ])));
-        $queue = $this->miraklMcmPricingOfferSkuQueue($sku, [
-            'live' => $live,
-            'sheet_offer' => $sheetOffer,
-            'sheet_product' => $sheetProduct,
-        ]);
-        if ($queue === []) {
-            return [
-                'success' => false,
-                'message' => "SKU is not listed on Macy MCM: {$sku}",
-                'status_code' => 404,
+        $offers = $this->resolveLocalListedMacyOfferSkus(array_keys($normalized));
+        $rows = [];
+        foreach ($normalized as $sku => $price) {
+            $offerSku = $offers[$sku] ?? $offers[strtoupper($sku)] ?? null;
+            if ($offerSku === null || $offerSku === '') {
+                $results[$sku] = [
+                    'success' => false,
+                    'message' => "SKU is not listed on Macy MCM: {$sku}",
+                    'status_code' => 404,
+                    'price' => $price,
+                ];
+
+                continue;
+            }
+            $rows[] = [
+                'sku' => $sku,
+                'offer_sku' => $offerSku,
+                'price' => $price,
             ];
+        }
+        if ($rows === []) {
+            return $results;
         }
 
         try {
-            $tried = [];
-            $last = [
-                'success' => false,
-                'message' => "SKU is not listed on Macy MCM: {$sku}",
-                'status_code' => 404,
-            ];
-            foreach (array_slice($queue, 0, 6) as $trySku) {
-                if (isset($tried[$trySku])) {
-                    continue;
-                }
-                $tried[$trySku] = true;
-                $last = $this->runMacyPricingImport($sku, $trySku, $price, $apiKey, $baseUrl);
-                if (($last['success'] ?? false) === true
-                    || ! self::isMiraklOfferNotFoundError((string) ($last['message'] ?? ''))) {
-                    return $last;
-                }
+            $imported = $this->runMacyPricingImportRows($rows, $apiKey, $baseUrl);
+            foreach ($imported as $sku => $result) {
+                $results[$sku] = $result;
             }
-
-            $triedList = implode(', ', array_keys($tried));
-            $last['message'] = 'Macy price push failed: No existing offer for '.$sku
-                .' (tried: '.$triedList.')';
-
-            return $last;
         } catch (\Throwable $e) {
             Log::error('Macy MCM PRI01 exception', [
-                'sku' => $sku,
+                'skus' => array_column($rows, 'sku'),
                 'error' => $e->getMessage(),
             ]);
-
-            return [
-                'success' => false,
-                'message' => 'Macy API error: '.$e->getMessage(),
-                'status_code' => null,
-            ];
+            foreach ($rows as $row) {
+                $results[$row['sku']] = [
+                    'success' => false,
+                    'message' => 'Macy API error: '.$e->getMessage(),
+                    'status_code' => null,
+                    'price' => $row['price'],
+                ];
+            }
         }
+
+        return $results;
     }
 
     /**
-     * @return array{success: bool, message: string, status_code?: int|null, import_id?: string|null}
+     * @param  list<string>  $skus
+     * @return array<string, string> original sku / UPPER sku => MCM offer-sku
      */
-    private function runMacyPricingImport(string $sku, string $offerSku, float $price, string $apiKey, string $baseUrl): array
+    protected function resolveLocalListedMacyOfferSkus(array $skus): array
     {
-        $csv = "offer-sku;price\n"
-            .'"'.str_replace('"', '""', $offerSku).'";'
-            .number_format($price, 2, '.', '')."\n";
+        $wanted = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $wanted[strtoupper($sku)] = $sku;
+            }
+        }
+        if ($wanted === []) {
+            return [];
+        }
+
+        $found = [];
+        $uppers = array_keys($wanted);
+        $placeholders = implode(',', array_fill(0, count($uppers), '?'));
+        try {
+            $sheetRows = \App\Models\MacysPriceData::query()
+                ->where(function ($q) use ($placeholders, $uppers) {
+                    $q->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $uppers)
+                        ->orWhereRaw("UPPER(TRIM(offer_sku)) IN ({$placeholders})", $uppers);
+                })
+                ->get(['sku', 'offer_sku', 'activated']);
+            foreach ($sheetRows as $row) {
+                if (isset($row->activated) && ! filter_var($row->activated, FILTER_VALIDATE_BOOLEAN)) {
+                    continue;
+                }
+                $offer = trim((string) ($row->offer_sku ?: $row->sku));
+                if ($offer === '') {
+                    continue;
+                }
+                foreach ([strtoupper(trim((string) $row->sku)), strtoupper(trim((string) $row->offer_sku))] as $key) {
+                    if ($key !== '' && isset($wanted[$key]) && ! isset($found[$key])) {
+                        $found[$key] = $offer;
+                    }
+                }
+            }
+
+            $missing = array_diff_key($wanted, $found);
+            if ($missing !== []) {
+                $missingUppers = array_keys($missing);
+                $missingPlaceholders = implode(',', array_fill(0, count($missingUppers), '?'));
+                $productRows = \App\Models\MacyProduct::query()
+                    ->whereRaw("UPPER(TRIM(sku)) IN ({$missingPlaceholders})", $missingUppers)
+                    ->get(array_values(array_filter([
+                        'sku',
+                        'price',
+                        Schema::hasColumn('macy_products', 'listing_status') ? 'listing_status' : null,
+                    ])));
+                foreach ($productRows as $row) {
+                    $status = strtolower(trim((string) ($row->listing_status ?? '')));
+                    if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished'], true)) {
+                        continue;
+                    }
+                    if ((float) ($row->price ?? 0) <= 0) {
+                        continue;
+                    }
+                    $offer = trim((string) $row->sku);
+                    $key = strtoupper($offer);
+                    if ($offer !== '' && isset($wanted[$key]) && ! isset($found[$key])) {
+                        $found[$key] = $offer;
+                    }
+                }
+            }
+        } catch (\Throwable) {
+            // ignore — missing tables / query errors mean "not listed"
+        }
+
+        $out = [];
+        foreach ($wanted as $upper => $orig) {
+            if (! isset($found[$upper])) {
+                continue;
+            }
+            $out[$orig] = $found[$upper];
+            $out[$upper] = $found[$upper];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array{sku: string, offer_sku: string, price: float}>  $rows
+     * @return array<string, array{success: bool, message: string, status_code?: int|null, import_id?: string|null, price?: float}>
+     */
+    private function runMacyPricingImportRows(array $rows, string $apiKey, string $baseUrl): array
+    {
+        $csv = "offer-sku;price\n";
+        foreach ($rows as $row) {
+            $csv .= '"'.str_replace('"', '""', $row['offer_sku']).'";'
+                .number_format((float) $row['price'], 2, '.', '')."\n";
+        }
 
         $query = [];
         $shopId = config('services.macy.shop_id');
@@ -263,7 +377,7 @@ class MacysApiService
             $url .= '?'.http_build_query($query);
         }
 
-        $filename = 'macy-price-'.preg_replace('/[^A-Za-z0-9_-]+/', '_', $offerSku).'.csv';
+        $filename = 'macy-price-batch-'.count($rows).'.csv';
         $response = $this->miraklMcmPostPricingImport($apiKey, $url, $csv, $filename);
 
         if ($response !== null && $response->status() === 404 && $query !== []) {
@@ -275,99 +389,119 @@ class MacysApiService
             );
         }
 
+        $failAll = function (string $message, ?int $status = null, ?string $importId = null) use ($rows): array {
+            $out = [];
+            foreach ($rows as $row) {
+                $out[$row['sku']] = [
+                    'success' => false,
+                    'message' => $message,
+                    'status_code' => $status,
+                    'price' => $row['price'],
+                ];
+                if ($importId !== null) {
+                    $out[$row['sku']]['import_id'] = $importId;
+                }
+            }
+
+            return $out;
+        };
+
         if ($response === null || ! $response->successful()) {
             $status = $response?->status();
             $body = $response ? substr($response->body(), 0, 300) : 'no response';
             Log::warning('Macy MCM PRI01 price push failed', [
-                'sku' => $sku,
-                'offer_sku' => $offerSku,
+                'count' => count($rows),
                 'status' => $status,
                 'body' => $body,
             ]);
 
-            return [
-                'success' => false,
-                'message' => 'Macy price push failed: HTTP '.($status ?? 'n/a').' '.$body,
-                'status_code' => $status,
-            ];
+            return $failAll('Macy price push failed: HTTP '.($status ?? 'n/a').' '.$body, $status);
         }
 
         $json = $response->json() ?? [];
         $importId = $json['import_id'] ?? $json['importId'] ?? null;
         if ($importId === null || $importId === '') {
-            return [
-                'success' => false,
-                'message' => 'Macy price push accepted no import_id.',
-                'status_code' => $response->status(),
-            ];
+            return $failAll('Macy price push accepted no import_id.', $response->status());
         }
 
-        $import = $this->waitForPricingImport((string) $importId, $apiKey, $baseUrl);
+        $import = $this->waitForPricingImport((string) $importId, $apiKey, $baseUrl, count($rows) > 1 ? 15 : 10);
         $linesOk = (int) ($import['lines_in_success'] ?? 0);
         $linesErr = (int) ($import['lines_in_error'] ?? 0);
         $status = strtoupper((string) ($import['status'] ?? ''));
+        $failedOffers = [];
+        if ($linesErr > 0) {
+            $failedOffers = $this->fetchPricingImportFailedOfferSkus((string) $importId, $apiKey, $baseUrl);
+        }
 
-        if ($linesErr > 0 || ($import !== [] && $linesOk < 1 && $status !== 'COMPLETE')) {
+        if ($import !== [] && $linesOk < 1 && $status !== 'COMPLETE' && $failedOffers === []) {
             $errMsg = $this->fetchPricingImportErrorSummary((string) $importId, $apiKey, $baseUrl);
-            Log::warning('Macy MCM PRI01 completed with errors', [
-                'sku' => $sku,
-                'offer_sku' => $offerSku,
-                'import_id' => $importId,
-                'status' => $status,
-                'lines_in_success' => $linesOk,
-                'lines_in_error' => $linesErr,
-                'error' => $errMsg,
-            ]);
 
-            return [
-                'success' => false,
-                'message' => $errMsg !== ''
+            return $failAll(
+                $errMsg !== ''
                     ? ('Macy price push failed: '.$errMsg)
                     : ('Macy price push failed (import '.$importId.' status '.$status.')'),
-                'status_code' => 400,
+                400,
+                (string) $importId
+            );
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            $offerKey = strtoupper(trim($row['offer_sku']));
+            $failMsg = $failedOffers[$offerKey] ?? $failedOffers[strtoupper(trim($row['sku']))] ?? null;
+            if ($failMsg !== null) {
+                $out[$row['sku']] = [
+                    'success' => false,
+                    'message' => 'Macy price push failed: '.$failMsg,
+                    'status_code' => 400,
+                    'import_id' => (string) $importId,
+                    'price' => $row['price'],
+                ];
+
+                continue;
+            }
+            $this->syncLocalMacyPriceAfterPush($row['sku'], $row['offer_sku'], (float) $row['price']);
+            $out[$row['sku']] = [
+                'success' => true,
+                'message' => 'Price $'.number_format((float) $row['price'], 2).' pushed to Macy for SKU: '.$row['offer_sku']
+                    .' (import '.$importId.')',
+                'status_code' => $response->status(),
                 'import_id' => (string) $importId,
+                'price' => $row['price'],
             ];
         }
 
+        Log::info('Macy MCM PRI01 price push complete', [
+            'count' => count($rows),
+            'ok' => count(array_filter($out, fn ($r) => ($r['success'] ?? false) === true)),
+            'import_id' => $importId,
+        ]);
+
+        return $out;
+    }
+
+    protected function syncLocalMacyPriceAfterPush(string $sku, string $offerSku, float $price): void
+    {
         try {
-            if (Schema::hasTable('macy_products')) {
-                \App\Models\MacyProduct::query()
-                    ->where(function ($q) use ($offerSku, $sku) {
-                        $q->where('sku', $offerSku)->orWhere('sku', $sku);
-                    })
-                    ->update(['price' => $price]);
-            }
-            if (Schema::hasTable('macys_price_data')) {
-                \App\Models\MacysPriceData::query()
-                    ->where(function ($q) use ($offerSku, $sku) {
-                        $q->where('sku', $offerSku)
-                            ->orWhere('sku', $sku)
-                            ->orWhere('offer_sku', $offerSku)
-                            ->orWhere('offer_sku', $sku);
-                    })
-                    ->update(['price' => $price, 'original_price' => $price]);
-            }
+            \App\Models\MacyProduct::query()
+                ->where(function ($q) use ($offerSku, $sku) {
+                    $q->where('sku', $offerSku)->orWhere('sku', $sku);
+                })
+                ->update(['price' => $price]);
+            \App\Models\MacysPriceData::query()
+                ->where(function ($q) use ($offerSku, $sku) {
+                    $q->where('sku', $offerSku)
+                        ->orWhere('sku', $sku)
+                        ->orWhere('offer_sku', $offerSku)
+                        ->orWhere('offer_sku', $sku);
+                })
+                ->update(['price' => $price, 'original_price' => $price]);
         } catch (\Throwable $e) {
             Log::warning('Macy local price sync after PRI01 failed', [
                 'sku' => $offerSku,
                 'error' => $e->getMessage(),
             ]);
         }
-
-        Log::info('Macy MCM PRI01 price push complete', [
-            'sku' => $sku,
-            'offer_sku' => $offerSku,
-            'price' => $price,
-            'import_id' => $importId,
-        ]);
-
-        return [
-            'success' => true,
-            'message' => 'Price $'.number_format($price, 2).' pushed to Macy for SKU: '.$offerSku
-                .' (import '.$importId.')',
-            'status_code' => $response->status(),
-            'import_id' => (string) $importId,
-        ];
     }
 
     /**
@@ -438,18 +572,25 @@ class MacysApiService
             return null;
         }
 
+        $active = filter_var($match['active'] ?? true, FILTER_VALIDATE_BOOLEAN);
         $liveSku = trim((string) ($match['shop_sku'] ?? $offerSku));
         $stock = isset($match['quantity']) && is_numeric($match['quantity'])
             ? (int) $match['quantity']
             : 0;
+        $listedPrice = $active ? $price : 0;
+        $listingStatus = $active ? 'active' : 'inactive';
 
         try {
             if (Schema::hasTable('macy_products')) {
+                $productUpdate = ['price' => $listedPrice, 'stock' => $stock];
+                if (Schema::hasColumn('macy_products', 'listing_status')) {
+                    $productUpdate['listing_status'] = $listingStatus;
+                }
                 \App\Models\MacyProduct::query()
                     ->where(function ($q) use ($liveSku, $sku) {
                         $q->where('sku', $liveSku)->orWhere('sku', $sku);
                     })
-                    ->update(['price' => $price, 'stock' => $stock]);
+                    ->update($productUpdate);
             }
             if (Schema::hasTable('macys_price_data')) {
                 \App\Models\MacysPriceData::query()
@@ -459,7 +600,11 @@ class MacysApiService
                             ->orWhere('offer_sku', $liveSku)
                             ->orWhere('offer_sku', $sku);
                     })
-                    ->update(['price' => $price, 'original_price' => $price]);
+                    ->update([
+                        'price' => $price,
+                        'original_price' => $price,
+                        'activated' => $active,
+                    ]);
             }
         } catch (\Throwable $e) {
             Log::warning('Macy local price sync after OF21 pull failed', [
@@ -467,6 +612,10 @@ class MacysApiService
                 'offer_sku' => $liveSku,
                 'error' => $e->getMessage(),
             ]);
+        }
+
+        if (! $active) {
+            return null;
         }
 
         return [
@@ -1995,11 +2144,12 @@ class MacysApiService
     /**
      * @return array<string, mixed>
      */
-    protected function waitForPricingImport(string $importId, string $apiKey, string $baseUrl): array
+    protected function waitForPricingImport(string $importId, string $apiKey, string $baseUrl, int $maxPolls = 10): array
     {
-        for ($i = 0; $i < 15; $i++) {
+        $maxPolls = max(3, min(20, $maxPolls));
+        for ($i = 0; $i < $maxPolls; $i++) {
             if ($i > 0) {
-                usleep(1500000);
+                usleep(400000);
             }
             try {
                 $response = Http::withoutVerifying()
@@ -2034,7 +2184,75 @@ class MacysApiService
         return [];
     }
 
-    protected function fetchPricingImportErrorSummary(string $importId, string $apiKey, string $baseUrl): string
+    /**
+     * @return array<string, string> UPPER offer-sku => error message
+     */
+    protected function fetchPricingImportFailedOfferSkus(string $importId, string $apiKey, string $baseUrl): array
+    {
+        $body = $this->fetchPricingImportErrorReportBody($importId, $apiKey, $baseUrl);
+        if ($body === '') {
+            return [];
+        }
+
+        return $this->parsePricingImportFailedOfferSkus($body);
+    }
+
+    /**
+     * @return array<string, string> UPPER offer-sku => error message
+     */
+    protected function parsePricingImportFailedOfferSkus(string $body): array
+    {
+        $failed = [];
+        if (preg_match_all('/No existing offer with SKU [\'"]([^\'"]+)[\'"] found/i', $body, $m)) {
+            foreach ($m[1] as $sku) {
+                $sku = trim((string) $sku);
+                if ($sku !== '') {
+                    $failed[strtoupper($sku)] = "No existing offer with SKU '{$sku}' found";
+                }
+            }
+        }
+
+        $lines = preg_split("/\r\n|\n|\r/", $body) ?: [];
+        $header = null;
+        $skuIdx = null;
+        $msgIdx = null;
+        foreach ($lines as $idx => $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
+                continue;
+            }
+            $cols = str_getcsv($line, ';');
+            if ($header === null) {
+                $header = array_map(static fn ($c) => strtolower(trim((string) $c)), $cols);
+                foreach ($header as $i => $name) {
+                    if (in_array($name, ['offer-sku', 'offer_sku', 'sku', 'shop-sku', 'shop_sku'], true)) {
+                        $skuIdx = $i;
+                    }
+                    if (in_array($name, ['error-message', 'error_message', 'message', 'error'], true)) {
+                        $msgIdx = $i;
+                    }
+                }
+
+                continue;
+            }
+            if ($skuIdx === null || ! isset($cols[$skuIdx])) {
+                continue;
+            }
+            $sku = trim((string) $cols[$skuIdx]);
+            if ($sku === '') {
+                continue;
+            }
+            $msg = $msgIdx !== null ? trim((string) ($cols[$msgIdx] ?? '')) : '';
+            if ($msg === '') {
+                $msg = $line;
+            }
+            $failed[strtoupper($sku)] = substr($msg, 0, 300);
+        }
+
+        return $failed;
+    }
+
+    protected function fetchPricingImportErrorReportBody(string $importId, string $apiKey, string $baseUrl): string
     {
         try {
             $response = Http::withoutVerifying()
@@ -2049,7 +2267,20 @@ class MacysApiService
                 return '';
             }
 
-            $body = trim((string) $response->body());
+            return trim((string) $response->body());
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
+    protected function fetchPricingImportErrorSummary(string $importId, string $apiKey, string $baseUrl): string
+    {
+        $body = $this->fetchPricingImportErrorReportBody($importId, $apiKey, $baseUrl);
+        if ($body === '') {
+            return '';
+        }
+
+        try {
             if (preg_match('/No existing offer with SKU [\'"]([^\'"]+)[\'"] found/i', $body, $m)) {
                 return "No existing offer with SKU '{$m[1]}' found";
             }
