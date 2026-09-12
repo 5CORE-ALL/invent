@@ -18,7 +18,8 @@ use Throwable;
 
 /**
  * Wipe stale SPRICE, then write Sprc Dil (A Price floor). Page does not need to stay open.
- * Dil match when Dil is in a slab. Out of box + MC L30 = 0 uses min Target GROI.
+ * MC L30 = 0 uses min Target GROI (not the Dil-matching slab). Dil is MC L30 ÷ INV.
+ * Sold + Dil in a slab uses that slab. Out of box + sold uses Std Prc.
  * If that price is below A Price, SPRICE = A Price.
  */
 class MacysRuleSpriceApplyService
@@ -153,10 +154,10 @@ class MacysRuleSpriceApplyService
         $amz = round((float) ($row['amz'] ?? 0), 2);
         $rule = AmazonDilGroiRule::match($dil, $dilRules);
         $groi = null;
-        if ($rule !== null) {
-            $groi = (float) $rule['groi'];
-        } elseif ($sold <= 0) {
+        if ($sold <= 0) {
             $groi = AmazonDilGroiRule::minTarget($dilRules);
+        } elseif ($rule !== null) {
+            $groi = (float) $rule['groi'];
         }
         if ($groi === null) {
             $std = round((float) ($row['std'] ?? 0), 2);
@@ -256,7 +257,7 @@ class MacysRuleSpriceApplyService
                 continue;
             }
             $inv = (float) ($shopify->inv ?? 0);
-            $ovL30 = (float) ($shopify->quantity ?? 0);
+            $mcL30 = (float) (($macyBySku[$sku]->m_l30 ?? 0));
             $values = is_array($master->Values)
                 ? $master->Values
                 : (is_string($master->Values) ? json_decode($master->Values, true) : []);
@@ -275,8 +276,8 @@ class MacysRuleSpriceApplyService
             $out[] = [
                 'sku' => $sku,
                 'inv' => $inv,
-                'dil' => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0.0,
-                'mc_l30' => (float) (($macyBySku[$sku]->m_l30 ?? 0)),
+                'dil' => $inv > 0 ? round(($mcL30 / $inv) * 100, 2) : 0.0,
+                'mc_l30' => $mcL30,
                 'mc_price' => isset($sheetBySku[$sku]) ? (float) ($sheetBySku[$sku]->price ?? 0) : 0.0,
                 'lp' => $lp,
                 'ship' => $ship,

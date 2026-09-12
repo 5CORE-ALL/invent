@@ -111,9 +111,6 @@
                     <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Sales: $0</span>
                     <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;" title="GPFT% from visible rows (same aggregate as /macys/daily-sales).">GPFT: 0%</span>
                     <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: white; font-weight: bold;" title="GROI% / ROI% from visible rows.">GROI: 0%</span>
-                    <span class="badge fs-6 p-2" id="ads-percent-badge" style="background-color: #d63384; color: white; font-weight: bold;" title="Macys has no ads — Ads%/TACOS is always 0% (same as /all-marketplace-master).">Ads: 0%</span>
-                    <span class="badge fs-6 p-2" id="npft-percent-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="NPFT% = GPFT% (Macys has no ads — same as /all-marketplace-master N PFT).">NPFT: 0%</span>
-                    <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = GROI% (Macys has no ads — same as /all-marketplace-master N ROI).">NROI: 0%</span>
                     <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold; display: none;">Price: $0</span>
                     <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
                     @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'macys-lmp-missing-badge', 'lmpChannelKey' => 'macys'])
@@ -209,65 +206,9 @@
                     </button>
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'macys'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'macys'])
-
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = 0.80 for Macys) --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 px-1 border rounded bg-light"
-                        id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.80 on every selected row (back-solves so SROI column equals the target)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <i class="fas fa-bullseye text-danger"></i> ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.80 for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 px-1 border rounded bg-light"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / (0.80 − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <i class="fas fa-bullseye text-danger"></i> GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Macys take-home margin (< 80%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / (0.80 − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
-                <!-- Discount Input Box (always visible) -->
-                <div id="discount-input-container" class="p-2 bg-light border-bottom">
-                    <div class="d-flex align-items-center gap-2">
-                        <span id="selected-skus-count" class="fw-bold">0 SKUs selected</span>
-                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
-                        <span id="discount-type-select-wrap">
-                        <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
-                            <option value="percentage">Percentage</option>
-                            <option value="value">Value ($)</option>
-                        </select>
-                        </span>
-                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
-                            placeholder="Enter %" step="0.01" style="width: 100px;">
-                        <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
-                        <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
-                            <i class="fas fa-copy"></i> Sugg Amz Prc
-                        </button>
-                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
-                            <i class="fas fa-eraser"></i> Clear SPRICE
-                        </button>
-                    </div>
-                </div>
                 <div id="macys-table-wrapper" style="height: calc(100vh - 160px); display: flex; flex-direction: column;">
                     <!-- SKU & Parent Search -->
                     <div class="px-2 py-1 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
@@ -684,26 +625,6 @@
                 .html('<i class="fas fa-equals"></i> Same Price Mode');
         }
 
-        // Swap the discount input UI between %/$ and Same Price modes.
-        function syncDiscountInputUi() {
-            const $input = $('#discount-percentage-input');
-            if (samePriceModeActive) {
-                $('#discount-type-select-wrap').hide();
-                $('#discount-input-label').removeClass('d-none');
-                $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
-                $('#apply-discount-btn').text('Apply Same Price');
-            } else {
-                $('#discount-type-select-wrap').show();
-                $('#discount-input-label').addClass('d-none');
-                const t = $('#discount-type-select').val();
-                $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
-                $('#apply-discount-btn').text('Apply');
-            }
-        }
-
-        // Keep placeholder in sync when the user toggles % vs $.
-        $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
-
         // Single toggle that cycles: Prc Mode (off) → Decrease → Increase → Same Price → off
         $('#mode-toggle-btn').on('click', function() {
             const selectColumn = table.getColumn('_select');
@@ -731,7 +652,6 @@
                 if (selectColumn) selectColumn.show();
                 updateSelectedCount();
             }
-            syncDiscountInputUi();
         });
 
         // Select all checkbox handler
@@ -765,173 +685,6 @@
             }
             updateSelectedCount();
             updateSelectAllCheckbox();
-        });
-
-        // Apply discount button
-        $('#apply-discount-btn').on('click', function() {
-            applyDiscount();
-        });
-
-        // Apply discount on Enter key
-        $('#discount-percentage-input').on('keypress', function(e) {
-            if (e.which === 13) {
-                applyDiscount();
-            }
-        });
-
-        /*
-         * Target ROI% bulk apply (Macys, margin = row.percentage / MarketplacePercentage)
-         * ---------------------------------------------
-         * For every selected row with a usable LP, back-solve the sale price so the
-         * resulting SROI column matches Target ROI%:
-         *     SROI = ((sprice * margin − ship − lp) / lp) * 100
-         *   → sprice = (lp * (1 + ROI%/100) + ship) / margin
-         * Optimistic SGPFT / SPFT / SROI are written client-side and the existing
-         * bulk save endpoint (/macys-save-sprice-batch) reconciles them server-side.
-         * Rounding is plain 2-decimal — no .99 / .49 retail snapping — because
-         * snapping would shift the achieved SROI / SGPFT off the user-typed target.
-         */
-        $('#apply-target-roi-btn').on('click', function () {
-            const rawInput = $('#target-roi-input').val();
-            const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                showToast('Please enter a Target ROI%', 'error');
-                return;
-            }
-            if (!isFinite(targetRoiPct)) {
-                showToast('Target ROI% must be a number', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                const selectColumn = table && table.getColumn ? table.getColumn('_select') : null;
-                if (selectColumn) selectColumn.show();
-                showToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const roiMultiplier = 1 + (targetRoiPct / 100);
-            const updates = [];
-            let updatedCount = 0;
-            let skippedNoLp = 0;
-
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                if (rows.length === 0) return;
-                const row = rows[0];
-                const rowData = row.getData();
-                if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return;
-
-                const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                const MACYS_MARGIN = getMacysMargin(rowData);
-
-                const candidate = (lp * roiMultiplier + ship) / MACYS_MARGIN;
-                const newSprice = +candidate.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                updates.push({ sku: sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (updates.length === 0) {
-                showToast('No selected rows have a usable LP > 0', 'warning');
-                return;
-            }
-
-            saveSpriceUpdates(updates);
-            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-            showToast(`Target ROI ${targetRoiPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
-        });
-
-        /*
-         * Target GPFT% bulk apply (Macys, margin = row.percentage / MarketplacePercentage)
-         * ----------------------------------------------
-         * Mirrors Target ROI but back-solves so SGPFT = Target GPFT%:
-         *     SGPFT = ((sprice * margin − ship − lp) / sprice) * 100
-         *   → sprice = (lp + ship) / (margin − GPFT%/100)
-         * Constraint: (margin − target/100) must be > 0.
-         */
-        $('#apply-target-gpft-btn').on('click', function () {
-            const rawInput = $('#target-gpft-input').val();
-            const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                showToast('Please enter a Target GPFT%', 'error');
-                return;
-            }
-            if (!isFinite(targetGpftPct)) {
-                showToast('Target GPFT% must be a number', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                const selectColumn = table && table.getColumn ? table.getColumn('_select') : null;
-                if (selectColumn) selectColumn.show();
-                showToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const updates = [];
-            let updatedCount = 0;
-            let skippedNoLp = 0;
-            let skippedBadTarget = 0;
-
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                if (rows.length === 0) return;
-                const row = rows[0];
-                const rowData = row.getData();
-                if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return;
-
-                const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                const MACYS_MARGIN = getMacysMargin(rowData);
-                const denom = MACYS_MARGIN - (targetGpftPct / 100);
-                if (denom <= 0) { skippedBadTarget++; return; }
-
-                const candidate = (lp + ship) / denom;
-                const newSprice = +candidate.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                updates.push({ sku: sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (updates.length === 0) {
-                if (skippedBadTarget > 0) {
-                    showToast(`Target GPFT% ${targetGpftPct}% is too high — must be < Macys take-home margin (~${Math.round(MACYS_DEFAULT_MARGIN * 100)}%).`, 'error');
-                } else {
-                    showToast('No selected rows have a usable LP > 0', 'warning');
-                }
-                return;
-            }
-
-            saveSpriceUpdates(updates);
-            const notes = [];
-            if (skippedNoLp > 0) notes.push(`${skippedNoLp} skipped — no LP`);
-            if (skippedBadTarget > 0) notes.push(`${skippedBadTarget} skipped — target ≥ margin`);
-            const note = notes.length ? ` (${notes.join('; ')})` : '';
-            showToast(`Target GPFT ${targetGpftPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
-        });
-
-        // Enter inside Target ROI%/GPFT% inputs triggers Apply S PRC
-        $('#target-roi-input').on('keypress', function(e) {
-            if (e.which === 13) $('#apply-target-roi-btn').click();
-        });
-        $('#target-gpft-input').on('keypress', function(e) {
-            if (e.which === 13) $('#apply-target-gpft-btn').click();
-        });
-
-        // Sugg Amz Prc button
-        $('#sugg-amz-prc-btn').on('click', function() {
-            applySuggestAmazonPrice();
-        });
-
-        // Clear SPRICE button
-        $('#clear-sprice-btn').on('click', function() {
-            clearSpriceForSelected();
         });
 
         // Badge clicks just toggle the #sold-filter dropdown so the dropdown stays the
@@ -990,99 +743,6 @@
                 [...filteredSkus].every(sku => selectedSkus.has(sku));
             
             $('#select-all-checkbox').prop('checked', allFilteredSelected);
-        }
-
-        // Custom price rounding function to round to .99 endings
-        function roundToRetailPrice(price) {
-            if (price < 20.99) {
-                return +price.toFixed(2);
-            }
-            // Round to the nearest dollar and subtract 0.01 to make it .99
-            const roundedDollar = Math.ceil(price);
-            return roundedDollar - 0.01;
-        }
-
-        // Apply discount / same price to selected SKUs (based on MC Price).
-        function applyDiscount() {
-            const discountType = $('#discount-type-select').val();
-            const discountValue = parseFloat($('#discount-percentage-input').val());
-
-            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
-                showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
-                return;
-            }
-            if (isNaN(discountValue) || discountValue <= 0) {
-                showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid value', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                showToast('Please select at least one SKU', 'error');
-                return;
-            }
-
-            let updatedCount = 0;
-            const updates = []; // Store updates for backend saving
-
-            // Loop through selected SKUs
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows("(Child) sku", "=", sku);
-
-                if (rows.length > 0) {
-                    const row = rows[0];
-                    const rowData = row.getData();
-                    const currentPrice = parseFloat(rowData['MC Price']) || 0;
-
-                    // Same Price applies even if MC Price is 0; %/$ modes need a positive MC Price.
-                    if (samePriceModeActive || currentPrice > 0) {
-                        let newSprice;
-
-                        if (samePriceModeActive) {
-                            // The ONE price the user typed, applied verbatim to every selected SKU.
-                            newSprice = Math.max(0.99, discountValue);
-                        } else if (discountType === 'percentage') {
-                            if (decreaseModeActive) {
-                                newSprice = currentPrice * (1 - discountValue / 100);
-                            } else {
-                                newSprice = currentPrice * (1 + discountValue / 100);
-                            }
-                        } else {
-                            if (decreaseModeActive) {
-                                newSprice = currentPrice - discountValue;
-                            } else {
-                                newSprice = currentPrice + discountValue;
-                            }
-                        }
-
-                        // Same Price: keep the typed price exact (no .99 snap) so
-                        // SPRICE === MC Price ⇒ SPFT === GPFT. Decrease/Increase still retail-round.
-                        if (!samePriceModeActive) {
-                            newSprice = roundToRetailPrice(newSprice);
-                        } else {
-                            newSprice = +Number(newSprice).toFixed(2);
-                        }
-
-                        // Ensure minimum price
-                        newSprice = Math.max(0.99, newSprice);
-
-                        updates.push({
-                            sku: sku,
-                            sprice: newSprice
-                        });
-
-                        updatedCount++;
-                    }
-                }
-            });
-
-            // Save to backend if there are updates
-            if (updates.length > 0) {
-                saveSpriceUpdates(updates);
-            }
-
-            const action = samePriceModeActive ? 'Same Price' : (decreaseModeActive ? 'Decrease' : 'Increase');
-            const suffix = samePriceModeActive ? '' : ' based on MC Price';
-            showToast(`${action} applied to ${updatedCount} SKU(s)${suffix}`, 'success');
-            $('#discount-percentage-input').val('');
         }
 
         function isMacysParentRow(rowData) {
@@ -1229,54 +889,6 @@
             };
         }
 
-        // Apply Amazon suggested price
-        function applySuggestAmazonPrice() {
-            if (selectedSkus.size === 0) {
-                showToast('Please select SKUs first', 'error');
-                return;
-            }
-
-            let updatedCount = 0;
-            let noAmazonPriceCount = 0;
-            const updates = []; // Store updates for backend saving
-
-            // Loop through selected SKUs
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows("(Child) sku", "=", sku);
-                
-                if (rows.length > 0) {
-                    const row = rows[0];
-                    const rowData = row.getData();
-                    const amazonPrice = parseFloat(rowData['A Price']);
-                    
-                    if (amazonPrice && amazonPrice > 0) {
-                        updates.push({
-                            sku: sku,
-                            sprice: amazonPrice
-                        });
-                        
-                        updatedCount++;
-                    } else {
-                        noAmazonPriceCount++;
-                    }
-                } else {
-                    noAmazonPriceCount++;
-                }
-            });
-            
-            // Save to backend if there are updates
-            if (updates.length > 0) {
-                saveSpriceUpdates(updates);
-            }
-            
-            let message = `Amz price applied to ${updatedCount} SKU(s)`;
-            if (noAmazonPriceCount > 0) {
-                message += ` (${noAmazonPriceCount} SKU(s) had no Amz price or not found)`;
-            }
-            
-            showToast(message, updatedCount > 0 ? 'success' : 'warning');
-        }
-
         // Save SPRICE updates to backend (unified function for all SPRICE updates)
         function saveSpriceUpdates(updates, opts) {
             opts = opts || {};
@@ -1345,47 +957,6 @@
                     showToast(errorMessage, 'error');
                 }
             });
-        }
-
-        // Clear SPRICE for selected SKUs
-        function clearSpriceForSelected() {
-            if (selectedSkus.size === 0) {
-                showToast('Please select SKUs first', 'error');
-                return;
-            }
-
-            if (!confirm(`Are you sure you want to clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) {
-                return;
-            }
-
-            let clearedCount = 0;
-            const updates = [];
-
-            table.getRows().forEach(row => {
-                const rowData = row.getData();
-                const sku = rowData['(Child) sku'];
-                if (!selectedSkus.has(sku)) return;
-                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
-                else {
-                    row.update({
-                        SPRICE: 0,
-                        sprice: 0,
-                        SGPFT: 0,
-                        SPFT: 0,
-                        SROI: 0,
-                        has_custom_sprice: false,
-                    });
-                }
-                updates.push({ sku: sku, sprice: 0 });
-                clearedCount++;
-            });
-
-            // Save to backend if there are updates
-            if (updates.length > 0) {
-                saveSpriceUpdates(updates);
-            }
-
-            showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
         }
 
         // ========== LMP + Sku Link LMP (MacySkuCompetitor source) ==========
@@ -2054,7 +1625,7 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const INV = parseFloat(rowData.INV) || 0;
-                        const OVL30 = parseFloat(rowData['L30']) || 0;
+                        const OVL30 = parseFloat(rowData['MC L30']) || 0;
                         
                         if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
                         
@@ -2428,7 +1999,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "Dil-matching slab when Dil is in range. Out of box + 0 Sold uses min Target GROI. If that S PRC < A Price, S PRC = A Price.",
+                    headerTooltip: "MC L30 = 0 uses min Target GROI. Sold SKUs use the Dil-matching slab. If that S PRC < A Price, S PRC = A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isMacysParentRow(rowData)) return '';
@@ -2452,7 +2023,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC from Dil slab, or min GROI when Dil is out of box and 0 Sold. Out of box + sold uses Std Prc. If that price < A Price, S PRC = A Price.",
+                    headerTooltip: "S PRC from Dil slab when MC L30 > 0, or min GROI when MC L30 = 0. Out of box + sold uses Std Prc. If that price < A Price, S PRC = A Price.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {
@@ -2769,11 +2340,11 @@
                 });
             }
 
-            // DIL filter (calculated as L30 / INV * 100)
+            // DIL filter (MC L30 / INV * 100) — same Dil as Sprc Dil / 0 Sold
             if (dilFilter !== 'all') {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['INV']) || 0;
-                    const l30 = parseFloat(data['L30']) || 0;
+                    const l30 = parseFloat(data['MC L30']) || 0;
                     const dil = inv === 0 ? 0 : (l30 / inv) * 100;
                     
                     if (dilFilter === 'red') return dil < 25;
@@ -2988,10 +2559,6 @@
             // GROI from dollar totals when possible (matches /macys/daily-sales + master); else avg of row ROI%
             const groiBadge = totalCogs > 0 ? (totalPft / totalCogs) * 100 : avgRoi;
             $('#roi-percent-badge').text(`GROI: ${Math.round(groiBadge)}%`);
-            // Macys has no ads — Ads%=0, NPFT=GPFT, NROI=GROI (same as /all-marketplace-master).
-            $('#ads-percent-badge').text('Ads: 0%');
-            $('#npft-percent-badge').text('NPFT: ' + Math.round(avgGpft) + '%');
-            $('#nroi-percent-badge').text('NROI: ' + Math.round(groiBadge) + '%');
             $('#avg-price-badge').text(`Price: $${Math.round(avgPrice).toLocaleString()}`);
             $('#total-inv-badge').text(`Total INV: ${Math.round(totalInv).toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);

@@ -7,8 +7,9 @@
   eBay 1–3: Dil below the first slab or above the last slab uses the nearest slab (Dil 0 and fast-seller Dil > last To).
   Temu 1 / New Temu One / New Temu Two: Temu L30 = 0 uses the minimum Target GROI (not the Dil-matching slab). Dil is still OV L30 ÷ INV. New Temu Two uses Temu 2 L30 and the same Temu Dil store.
   eBay 1–3 CVR overlay is level-only (CVR < Down → −10 GROI; CVR > Up → +10 GROI). Temu 1–2 also use the overlay; Reverb / Faire / TikTok / Shopify B2C are level-only.
-  Macys: Dil-matching when Dil is in a slab. If Dil is out of box and 0 Sold, use min Target GROI.
-  If that Dil / min-ROI S PRC is below A Price, S PRC = A Price (do not keep Std Prc).
+  Macys: Dil-matching when MC L30 > 0. MC L30 = 0 (0 Sold) always uses the minimum Target GROI
+  (not the Dil-matching slab). Dil is MC L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price,
+  S PRC = A Price (do not keep a lower Dil/Std price). Out of box + sold uses Std Prc, then the same A Price floor.
   Purchasing Power / Best Buy: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
   Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
@@ -22,7 +23,7 @@
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
-        ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'macys', 'macy', 'temu2', 'temu3', 'aliexpress'], true);
+        ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'aliexpress'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true);
@@ -211,9 +212,7 @@
 
 @if($ebaySprcDilPart === 'buttons' || $ebaySprcDilPart === 'all')
                     <button type="button" class="btn btn-sm" id="ebay-dil-groi-btn"
-                        title="{{ !empty($ebaySprcDilIsMacys)
-                            ? 'Dil-matching slab, or min GROI when Dil is out of box and 0 Sold. If that S PRC < A Price, use A Price.'
-                            : ($ebaySprcDilZeroSoldUsesMinGroi
+                        title="{{ $ebaySprcDilZeroSoldUsesMinGroi
                             ? 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR overlay (editable, with Count) adjusts Target GROI.' : '').' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.'.(!empty($ebaySprcDilUsesAmzFloor) ? ' If that S PRC < A Price, use A Price.' : '')
                             : 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR overlay (editable, with Count) adjusts Target GROI.' : '').' Every INV > 0 SKU uses the Dil-matching slab.') }}">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
@@ -279,6 +278,12 @@
                             <strong>When</strong> that Dil / min-ROI S PRC is <strong>below A Price</strong>:
                             do not keep the slab price — S PRC uses <strong>A Price</strong>.
                             If it is at or above A Price, keep the Dil / min-ROI price.
+                        </li>
+                        @endif
+                        @if(!empty($ebaySprcDilIsMacys))
+                        <li>
+                            <strong>When</strong> Dil is <strong>out of box</strong> and {{ $ebaySprcDilSoldLabel }} &gt; 0:
+                            S PRC uses <strong>Std Prc</strong>. If Std Prc is below A Price, S PRC = A Price.
                         </li>
                         @endif
                         <li>

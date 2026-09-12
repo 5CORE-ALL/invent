@@ -56,6 +56,42 @@ class MacysRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(39.60, $out['sprice'], 0.001);
     }
 
+    public function test_zero_sold_uses_min_groi_even_when_dil_matches_a_slab(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 3,
+            'mc_l30' => 0,
+            'lp' => 10,
+            'ship' => 0,
+            'amz' => 0,
+        ], [
+            AmazonDilGroiRule::make(0.1, 5, 50),
+            AmazonDilGroiRule::make(5, 10, 40),
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(17.50, $out['sprice'], 0.01);
+    }
+
+    public function test_zero_sold_keeps_min_groi_when_at_or_above_amazon(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 8,
+            'mc_l30' => 0,
+            'lp' => 20,
+            'ship' => 0,
+            'amz' => 10,
+        ], [
+            AmazonDilGroiRule::make(0.1, 5, 40),
+            AmazonDilGroiRule::make(5, 10, 70),
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(35.00, $out['sprice'], 0.01);
+    }
+
     public function test_out_of_box_with_sales_uses_std_then_amazon_floor(): void
     {
         $out = $this->compute([

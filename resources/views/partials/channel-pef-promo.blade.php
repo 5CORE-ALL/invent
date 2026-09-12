@@ -3964,9 +3964,14 @@
                 const ovl30 = Number(d['L30'] != null ? d['L30'] : d.L30) || 0;
                 return (ovl30 / inv) * 100;
             }
-            // Macys / Best Buy / Purchasing Power Dil column = (OV L30 / INV) × 100
-            if (CHANNEL_PROMO_CHANNEL === 'macys' || CHANNEL_PROMO_CHANNEL === 'macy'
-                || CHANNEL_PROMO_CHANNEL === 'bestbuy'
+            // Macys Dil = (MC L30 / INV) × 100 — 0 Sold / Sprc Dil must not use Shopify OV L30.
+            if (CHANNEL_PROMO_CHANNEL === 'macys' || CHANNEL_PROMO_CHANNEL === 'macy') {
+                if (inv <= 0) return 0;
+                const ovl30 = Number(d['MC L30'] != null ? d['MC L30'] : (chPromoCfg && chPromoCfg.soldField ? d[chPromoCfg.soldField] : 0)) || 0;
+                return (ovl30 / inv) * 100;
+            }
+            // Best Buy / Purchasing Power Dil column = (OV L30 / INV) × 100
+            if (CHANNEL_PROMO_CHANNEL === 'bestbuy'
                 || CHANNEL_PROMO_CHANNEL === 'purchasing_power') {
                 if (inv <= 0) return 0;
                 const ovl30 = Number(d['L30'] != null ? d['L30'] : d.L30) || 0;
