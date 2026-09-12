@@ -135,6 +135,8 @@ class PurchasingPowerController extends Controller
             $row['PP Price'] = $resolvedPrice['price'];
             $row['PP Price Source'] = $resolvedPrice['source'];
             $row['is_missing_pp'] = $resolvedPrice['missing'];
+            $row['is_pp_inactive'] = $listingInactive;
+            $row['live_inactive'] = $listingInactive ? 'Inactive' : null;
 
             $mcmStock = $ppMetric && $ppMetric->stock !== null
                 ? (int) $ppMetric->stock
@@ -337,6 +339,41 @@ class PurchasingPowerController extends Controller
         return in_array($flag, ['inactive', 'offline', 'ended', 'disabled'], true);
     }
 
+    /**
+     * Why this SKU must not be pushed. Null = listed and active.
+     */
+    public static function pricePushBlockReason(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return 'SKU required';
+        }
+
+        $listing = null;
+        if (Schema::hasTable('purchasing_power_listing_statuses')) {
+            $listing = PurchasingPowerListingStatus::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->first();
+        }
+        if (self::isListingMarkedInactive($listing)) {
+            return 'Inactive listing — price push skipped';
+        }
+
+        $product = PurchasingPowerProduct::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+            ->first();
+        $resolved = self::resolveListedPrice(
+            $product,
+            self::productInLatestMcm($product),
+            false
+        );
+        if (! $resolved['listed']) {
+            return 'SKU is not listed on Purchasing Power MCM — price push skipped';
+        }
+
+        return null;
+    }
+
     public function updateNrReq(Request $request)
     {
         $sku    = trim($request->input('sku'));
@@ -432,13 +469,17 @@ class PurchasingPowerController extends Controller
             Log::info('PP SPRICE saved', ['sku' => $sku, 'sprice' => $sprice]);
 
             $skipPush = $request->boolean('skip_push') || $sprice <= 0;
+            $blockReason = $sprice > 0 ? self::pricePushBlockReason($sku) : null;
+            if ($blockReason) {
+                $skipPush = true;
+            }
             if ($sprice <= 0) {
                 $this->persistPpPushStatus($sku, 'cleared', 0);
             } elseif ($skipPush) {
                 $this->persistPpPushStatus($sku, 'applied', $sprice);
             }
             $pushResult = $skipPush
-                ? ['success' => true, 'message' => 'Saved without marketplace push', 'skipped' => true]
+                ? ['success' => true, 'message' => $blockReason ?: 'Saved without marketplace push', 'skipped' => true]
                 : $this->pushPriceToPurchasingPower($sku, $sprice);
 
             return response()->json([
@@ -517,7 +558,7 @@ class PurchasingPowerController extends Controller
                 $view->value = $stored;
                 $view->save();
                 $updatedCount++;
-                if ($sprice > 0) {
+                if ($sprice > 0 && self::pricePushBlockReason($sku) === null) {
                     $pricePushQueue[] = ['sku' => $sku, 'sprice' => $sprice];
                 }
             }
@@ -857,6 +898,10 @@ class PurchasingPowerController extends Controller
     {
         if ($sprice <= 0) {
             return ['success' => false, 'message' => 'Skipping push for non-positive price'];
+        }
+        $block = self::pricePushBlockReason($sku);
+        if ($block !== null) {
+            return ['success' => false, 'message' => $block, 'skipped' => true, 'status_code' => 422];
         }
 
         try {

@@ -8800,6 +8800,16 @@ class CvrMasterController extends Controller
      */
     private function pushToPurchasingPower($sku, $price)
     {
+        $block = PurchasingPowerController::pricePushBlockReason((string) $sku);
+        if ($block !== null) {
+            $this->savePricePushStatus($sku, 'ppower', 'error', $price);
+            return response()->json([
+                'success' => false,
+                'skipped' => true,
+                'message' => $block,
+                'price' => $price,
+            ], 422);
+        }
         $applied = MacysAmazonPriceCap::applyForSku((string) $sku, (float) $price);
         $price = (float) $applied['price'];
         try {

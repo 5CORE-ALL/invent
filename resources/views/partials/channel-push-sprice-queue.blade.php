@@ -687,6 +687,7 @@
                 }
                 p = chPushSpriceCapMacysToAmz(d, p);
                 if (!sku || !(p > 0)) return false;
+                if (chPushSpriceRowBlocked(d)) return false;
                 if (!CH_PUSH_SPRICE_CAN_LIVE) return false;
                 if (!chPushSpriceAutoPushAllowed()) {
                     try {
@@ -972,6 +973,17 @@
                 raw.forEach(walk);
                 return flat;
             }
+            function chPushSpriceRowBlocked(d) {
+                if (!d) return true;
+                if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return true;
+                const flag = String(d.live_inactive || d.listing_status || '').toLowerCase();
+                if (['inactive', 'offline', 'ended', 'disabled'].indexOf(flag) !== -1) return true;
+                if (d.is_pp_inactive === true || d.is_missing_pp === true) return true;
+                if (typeof isPpListed === 'function' && CH_PUSH_SPRICE_CHANNEL === 'purchasing_power' && !isPpListed(d)) return true;
+                if (typeof isMacysListed === 'function' && (CH_PUSH_SPRICE_CHANNEL === 'macys' || CH_PUSH_SPRICE_CHANNEL === 'macy') && !isMacysListed(d)) return true;
+                if (d.is_missing_macy === true) return true;
+                return false;
+            }
             function chPushSpriceLiveFromRow(d) {
                 if (!d) return 0;
                 const raw = d[CH_PUSH_SPRICE_PRICE_FIELD] != null && d[CH_PUSH_SPRICE_PRICE_FIELD] !== ''
@@ -1038,7 +1050,7 @@
                 const seen = new Set();
                 function consider(row, d) {
                     if (!chPushSpriceIsChild(d)) return;
-                    if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return;
+                    if (chPushSpriceRowBlocked(d)) return;
                     const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
                     const key = sku.toUpperCase();
                     if (!sku || seen.has(key)) return;

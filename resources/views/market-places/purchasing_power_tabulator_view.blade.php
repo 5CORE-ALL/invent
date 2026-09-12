@@ -538,10 +538,17 @@
         }
         function isPpListed(rowData) {
             if (!rowData || ppIsParentRow(rowData)) return false;
+            if (rowData.is_pp_inactive === true) return false;
             if (typeof rowData.is_missing_pp !== 'undefined') {
                 return !rowData.is_missing_pp;
             }
             return (parseFloat(rowData['PP Price']) || 0) > 0;
+        }
+        function isPpInactive(rowData) {
+            if (!rowData) return false;
+            if (rowData.is_pp_inactive === true) return true;
+            const flag = String(rowData.live_inactive || rowData.listing_status || '').toLowerCase();
+            return ['inactive', 'offline', 'ended', 'disabled'].indexOf(flag) !== -1;
         }
         function ppPushPriceValue(d) {
             let p = ppDisplayedSprice(d);
@@ -596,6 +603,10 @@
             const status = String(d.push_status || d.SPRICE_STATUS || '');
             if (!sku || !(price > 0)) {
                 showToast('Set a valid SPRICE before pushing', 'error');
+                return;
+            }
+            if (isPpInactive(d) || !isPpListed(d)) {
+                showToast('Inactive / not listed — skip push', 'warning');
                 return;
             }
             if (status === 'pushing' || status === 'processing' || status === 'queued') return;

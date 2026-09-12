@@ -62,4 +62,14 @@ class PurchasingPowerListedPriceTest extends TestCase
         $this->assertFalse(PurchasingPowerController::productInLatestMcm($stale, $freshAfter));
         $this->assertFalse(PurchasingPowerController::productInLatestMcm(null, $freshAfter));
     }
+
+    public function test_listing_inactive_flag(): void
+    {
+        $this->assertTrue(PurchasingPowerController::isListingMarkedInactive((object) [
+            'value' => ['live_inactive' => 'Inactive'],
+        ]));
+        $this->assertFalse(PurchasingPowerController::isListingMarkedInactive((object) [
+            'value' => ['live_inactive' => 'Live'],
+        ]));
+    }
 }

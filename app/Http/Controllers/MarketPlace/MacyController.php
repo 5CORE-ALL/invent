@@ -507,6 +507,46 @@ class MacyController extends Controller
     }
 
     /**
+     * Why this SKU must not be pushed. Null = listed and active.
+     */
+    public static function pricePushBlockReason(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return 'SKU required';
+        }
+
+        $listing = MacysListingStatus::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+            ->first();
+        if (self::isListingMarkedInactive($listing)) {
+            return 'Inactive listing — price push skipped';
+        }
+
+        $product = MacyProduct::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+            ->first();
+        $sheet = MacysPriceData::query()
+            ->where(function ($q) use ($sku) {
+                $upper = strtoupper($sku);
+                $q->whereRaw('UPPER(TRIM(sku)) = ?', [$upper])
+                    ->orWhereRaw('UPPER(TRIM(offer_sku)) = ?', [$upper]);
+            })
+            ->first();
+        if ($product) {
+            $product->activated = $sheet
+                ? (bool) filter_var($sheet->activated, FILTER_VALIDATE_BOOLEAN)
+                : false;
+        }
+        $resolved = self::resolveListedPrice($product);
+        if (! $resolved['listed']) {
+            return 'SKU is not listed on Macy MCM — price push skipped';
+        }
+
+        return null;
+    }
+
+    /**
      * @param  list<string>  $skus
      * @return array<string, bool> normalized sku => MCM offer is active
      */
@@ -1359,6 +1399,15 @@ class MacyController extends Controller
      */
     private function pushPriceToMacy(string $sku, float $sprice): array
     {
+        $block = self::pricePushBlockReason($sku);
+        if ($block !== null) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => $block,
+                'price' => $sprice,
+            ];
+        }
         $applied = MacysAmazonPriceCap::applyForSku($sku, $sprice);
         $sprice = (float) $applied['price'];
         if ($sprice <= 0) {

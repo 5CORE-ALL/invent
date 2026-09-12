@@ -339,6 +339,11 @@ class PurchasingPowerApiService extends BestBuyApiService
             return ['success' => false, 'message' => 'Valid SKU and price are required.', 'status_code' => 422];
         }
 
+        $block = \App\Http\Controllers\MarketPlace\PurchasingPowerController::pricePushBlockReason($sku);
+        if ($block !== null) {
+            return ['success' => false, 'message' => $block, 'status_code' => 422, 'skipped' => true];
+        }
+
         $apiKey = (string) ($this->miraklMcmApiKey() ?? '');
         $baseUrl = rtrim((string) config('services.purchasingpower.mcm_base_url', ''), '/');
         if ($apiKey === '' || $baseUrl === '') {

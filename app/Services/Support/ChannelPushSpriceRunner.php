@@ -230,6 +230,18 @@ class ChannelPushSpriceRunner
                 if ($sku === '' || ! ($price > 0)) {
                     throw new \RuntimeException('SKU and S PRC > 0 required');
                 }
+                if ($this->channel === 'purchasing_power') {
+                    $block = \App\Http\Controllers\MarketPlace\PurchasingPowerController::pricePushBlockReason($sku);
+                    if ($block !== null) {
+                        throw new \RuntimeException($block);
+                    }
+                }
+                if (in_array($this->channel, ['macys', 'macy'], true)) {
+                    $block = \App\Http\Controllers\MarketPlace\MacyController::pricePushBlockReason($sku);
+                    if ($block !== null) {
+                        throw new \RuntimeException($block);
+                    }
+                }
                 if (in_array($this->channel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true)) {
                     $floored = MacysAmazonPriceCap::capForSku($sku, $price);
                     if ($floored > 0 && abs($floored - $price) >= 0.005) {
