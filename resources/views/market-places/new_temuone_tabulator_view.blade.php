@@ -405,8 +405,7 @@
             color: #6c757d;
             cursor: wait;
         }
-        #new-temuone-table.tabulator .tabulator-header .tabulator-col[tabulator-field="_select"] .tabulator-col-title,
-        #new-temuone-table.tabulator .tabulator-header .tabulator-col[tabulator-field="_parent_expand"] .tabulator-col-title {
+        #new-temuone-table.tabulator .tabulator-header .tabulator-col[tabulator-field="_select"] .tabulator-col-title {
             writing-mode: horizontal-tb;
             text-orientation: mixed;
             transform: none;
@@ -810,7 +809,6 @@
 @section('script-bottom')
 <script>
     let table = null;
-    let allTableData = [];
     let newTemuoneEditLinksRow = null;
 
     function chPromoRound2(n) {
@@ -2205,10 +2203,6 @@
 
     function applyFilters() {
         if (!table) return;
-        if (window.ParentExpand && ParentExpand.isExpanded()) {
-            ParentExpand.beforeFilters(function() { applyFilters(); });
-            return;
-        }
 
         const inventoryFilter = $('#inventory-filter').val();
         const dilFilter = $('#dil-filter').val();
@@ -2299,7 +2293,7 @@
             return 'advertisement';
         }
         if (
-            /^(_select|_parent_expand|parent|\(child\) sku|links_column|inv|inventory|l30|temu_l30|views|dil%)$/i.test(f) ||
+            /^(_select|parent|\(child\) sku|links_column|inv|inventory|l30|temu_l30|views|dil%)$/i.test(f) ||
             /\b(sku|links|inv|stock|ovl|dil|temu\s*l\d+|views|parent)\b/i.test(tl)
         ) {
             return 'basics';
@@ -2465,7 +2459,7 @@
         if (!table) return;
         const cols = table.getColumns().filter(function(col) {
             const def = col.getDefinition();
-            return def.field && def.field !== '_select' && def.field !== '_parent_expand' && col.isVisible() && alwaysHiddenColumns.indexOf(def.field) === -1;
+            return def.field && def.field !== '_select' && col.isVisible() && alwaysHiddenColumns.indexOf(def.field) === -1;
         });
         const headers = cols.map(function(col) {
             const def = col.getDefinition();
@@ -2534,8 +2528,6 @@
                     if (!r) return;
                     if (r.Parent && !r.parent) r.parent = r.Parent;
                 });
-                allTableData = rows;
-                if (window.ParentExpand) ParentExpand.captureDataset(rows);
                 return rows;
             },
             columns: [
@@ -2562,32 +2554,6 @@
                     formatter: function(cell) {
                         const value = String(cell.getValue() || '').replace(/^PARENT\s+/i, '').trim();
                         return value || '';
-                    }
-                },
-                {
-                    title: 'P',
-                    field: '_parent_expand',
-                    headerSort: false,
-                    hozAlign: 'center',
-                    frozen: true,
-                    width: 36,
-                    download: false,
-                    headerTooltip: 'Show this parent family, SKU low to high',
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        const parent = String(d.Parent || d.parent || '').replace(/^PARENT\s+/i, '').trim();
-                        const icon = (window.ParentExpand && typeof ParentExpand.yellowSvg === 'function')
-                            ? ParentExpand.yellowSvg()
-                            : '';
-                        if (!parent) {
-                            return '<span class="pm-parent-sku-dot no-parent">' + icon + '</span>';
-                        }
-                        const esc = parent.replace(/"/g, '&quot;');
-                        const expanded = window.ParentExpand && typeof ParentExpand.getExpandedKey === 'function'
-                            && String(ParentExpand.getExpandedKey() || '').toUpperCase() === parent.toUpperCase();
-                        return '<span class="pm-parent-sku-dot pm-parent-expand-btn' + (expanded ? ' is-expanded' : '')
-                            + '" data-parent="' + esc + '" title="Show all SKUs for parent: ' + esc + '">'
-                            + icon + '</span>';
                     }
                 },
                 {
@@ -3142,34 +3108,6 @@
                 }
             ]
         });
-
-        if (window.ParentExpand) {
-            ParentExpand.configure({
-                parentField: 'Parent',
-                skuField: '(Child) sku',
-                getTable: function() { return table; },
-                getDataset: function() { return allTableData; },
-                setDataset: function(rows) { allTableData = rows; },
-                onAfterExpand: function() {
-                    if (table && typeof table.setSort === 'function') {
-                        table.setSort([
-                            { column: '(Child) sku', dir: 'asc' }
-                        ]);
-                    }
-                    if (typeof updateSummary === 'function') updateSummary();
-                },
-                onCollapse: function() {
-                    if (typeof applyFilters === 'function') applyFilters();
-                    if (table && typeof table.setSort === 'function') {
-                        table.setSort([
-                            { column: 'Parent', dir: 'asc' },
-                            { column: '(Child) sku', dir: 'asc' }
-                        ]);
-                    }
-                }
-            });
-            ParentExpand.bind();
-        }
 
         table.on('tableBuilt', function() {
             applyColumnVisibilityFromServer();
