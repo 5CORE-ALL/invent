@@ -2130,8 +2130,8 @@
             return 'basics';
         }
         if (
-            /^(cvr_percent|cvr_30|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
-            /\b(cvr|cpn|price|prc|gpft|npft|groi|nroi|lmp|s\s*prc|sgpft|sgroi|snpft|snroi)\b/i.test(tl)
+            /^(cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
+            /\b(cvr|cpn|price|prc|gpft|npft|groi|nroi|lmp|sprc\s*dil|s\s*prc|sgpft|sgroi|snpft|snroi)\b/i.test(tl)
         ) {
             return 'pricing';
         }
@@ -2492,18 +2492,46 @@
                     width: 50
                 },
                 {
-                    title: 'Base Price',
-                    field: 'base_price',
+                    title: 'Std Price',
+                    field: 'STANDARD_PRICE',
                     hozAlign: 'center',
                     width: 70,
                     sorter: 'number',
-                    headerTooltip: 'temu_metrics.base_price',
+                    headerTooltip: 'Standard Price — same amazon_data_view.STANDARD_PRICE source as /temu2-decrease',
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue());
-                        if (value === null || value === undefined || isNaN(value) || value === 0) {
+                        if (value === null || value === undefined || isNaN(value) || value <= 0) {
                             return '<span style="color: #6c757d;">—</span>';
                         }
                         return '<span style="font-weight: 600;">$' + value.toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: 'Temu Price',
+                    field: 't_price',
+                    hozAlign: 'center',
+                    width: 70,
+                    sorter: 'number',
+                    headerTooltip: 'Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const base = parseFloat(row.base_price) || 0;
+                        const tPrice = parseFloat(cell.getValue()) || 0;
+                        if (!(tPrice > 0) || !(base > 0)) {
+                            return '<span style="color: #6c757d;">—</span>';
+                        }
+                        const afterMult = +(base * 1.1364).toFixed(2);
+                        const tip = afterMult <= 26.99
+                            ? ('Temu Price = (Base × 1.1364) + $2.99 → $' + base.toFixed(2) + ' × 1.1364 = $' + afterMult.toFixed(2) + ' + $2.99 = $' + tPrice.toFixed(2))
+                            : ('Temu Price = (Base × 1.1364) → $' + base.toFixed(2) + ' × 1.1364 = $' + tPrice.toFixed(2) + ' (no +$2.99, result > $26.99)');
+                        const live = parseFloat(row.temu_price || tPrice) || tPrice;
+                        const lmp = temuBadgeLmpValue(row);
+                        const redTri = (window.PriceGtLmpBadge
+                            ? PriceGtLmpBadge.triangleHtml(live, lmp) : '');
+                        const purpleTri = (window.PriceLt80LmpBadge
+                            ? PriceLt80LmpBadge.triangleHtml(live, lmp) : '');
+                        return '<span style="font-weight: 600;" title="' + tip + '">$' + tPrice.toFixed(2) + '</span>'
+                            + redTri + purpleTri;
                     }
                 },
                 {
@@ -2527,31 +2555,18 @@
                     }
                 },
                 {
-                    title: 'T Price',
-                    field: 't_price',
+                    title: 'Base Price',
+                    field: 'base_price',
                     hozAlign: 'center',
                     width: 70,
                     sorter: 'number',
-                    headerTooltip: 'Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99',
+                    headerTooltip: 'temu_metrics.base_price',
                     formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const base = parseFloat(row.base_price) || 0;
-                        const tPrice = parseFloat(cell.getValue()) || 0;
-                        if (!(tPrice > 0) || !(base > 0)) {
+                        const value = parseFloat(cell.getValue());
+                        if (value === null || value === undefined || isNaN(value) || value === 0) {
                             return '<span style="color: #6c757d;">—</span>';
                         }
-                        const afterMult = +(base * 1.1364).toFixed(2);
-                        const tip = afterMult <= 26.99
-                            ? ('T Price = (Base × 1.1364) + $2.99 → $' + base.toFixed(2) + ' × 1.1364 = $' + afterMult.toFixed(2) + ' + $2.99 = $' + tPrice.toFixed(2))
-                            : ('T Price = (Base × 1.1364) → $' + base.toFixed(2) + ' × 1.1364 = $' + tPrice.toFixed(2) + ' (no +$2.99, result > $26.99)');
-                        const live = parseFloat(row.temu_price || tPrice) || tPrice;
-                        const lmp = temuBadgeLmpValue(row);
-                        const redTri = (window.PriceGtLmpBadge
-                            ? PriceGtLmpBadge.triangleHtml(live, lmp) : '');
-                        const purpleTri = (window.PriceLt80LmpBadge
-                            ? PriceLt80LmpBadge.triangleHtml(live, lmp) : '');
-                        return '<span style="font-weight: 600;" title="' + tip + '">$' + tPrice.toFixed(2) + '</span>'
-                            + redTri + purpleTri;
+                        return '<span style="font-weight: 600;">$' + value.toFixed(2) + '</span>';
                     }
                 },
                 {
@@ -2627,21 +2642,6 @@
                     }
                 },
                 {
-                    title: 'Std Price',
-                    field: 'STANDARD_PRICE',
-                    hozAlign: 'center',
-                    width: 70,
-                    sorter: 'number',
-                    headerTooltip: 'Standard Price — same amazon_data_view.STANDARD_PRICE source as /temu2-decrease',
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue());
-                        if (value === null || value === undefined || isNaN(value) || value <= 0) {
-                            return '<span style="color: #6c757d;">—</span>';
-                        }
-                        return '<span style="font-weight: 600;">$' + value.toFixed(2) + '</span>';
-                    }
-                },
-                {
                     title: 'LMP',
                     field: 'lmp_raw',
                     hozAlign: 'center',
@@ -2670,6 +2670,65 @@
                             const row = cell.getRow().getData();
                             openLmpModal(row.sku || row['(Child) sku'], row.lmp_entries || []);
                         }
+                    }
+                },
+                {
+                    title: 'Sprc Dil',
+                    field: 'SPRC_DIL',
+                    hozAlign: 'center',
+                    width: 78,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            return (typeof ebaySprcDilForRow === 'function')
+                                ? (ebaySprcDilForRow(row) || 0)
+                                : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: 'Dil → Target GROI price (before eBay / Amazon / LMP caps). Dil below the first From or above the last To uses the nearest slab.',
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                        const meta = ebayDilGroiMetaForRow(rowData);
+                        if (!meta || !(meta.sprc > 0)) return '';
+                        const tip = (typeof ebayDilGroiTipText === 'function')
+                            ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold Temu L30 → nearest slab Target GROI' })
+                            : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                + ' → ' + meta.label
+                                + ' → GROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2));
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                            + Number(meta.sprc).toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: 'cvr%',
+                    field: 'cvr_pct',
+                    hozAlign: 'center',
+                    width: 58,
+                    sorter: function(a, b, aRow, bRow) {
+                        const v = function(row) {
+                            return parseFloat(row && (row.cvr_percent != null ? row.cvr_percent : row.cvr_30)) || 0;
+                        };
+                        return v(aRow.getData()) - v(bRow.getData());
+                    },
+                    headerTooltip: 'CVR% = (Temu L30 / Views) × 100. Grey dot = 0. Green = up vs CVR 60. Red = down vs CVR 60.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const val = parseFloat(row.cvr_percent != null ? row.cvr_percent : row.cvr_30) || 0;
+                        const prior = parseFloat(row.cvr_60) || 0;
+                        const trend = temuCvrTrend(val, prior);
+                        let dotColor = '#adb5bd';
+                        if (val > 0) {
+                            dotColor = trend === 'down' ? '#a00211' : (trend === 'up' ? '#20c997' : '#ffc107');
+                        }
+                        const shown = Math.round(val);
+                        const tip = 'CVR ' + (val > 3.5 ? String(Math.round(val)) : val.toFixed(1))
+                            + '% vs CVR 60 ' + prior.toFixed(1) + '%';
+                        return '<span title="' + tip.replace(/"/g, '&quot;') + '" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;font-weight:600;">'
+                            + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>'
+                            + shown
+                            + '</span>';
                     }
                 },
                 {
