@@ -2033,7 +2033,6 @@
                     width: 150,
                     visible: false
                 },
-                ParentExpand.columnDef(),
                 {
                     title: "SKU",
                     field: "(Child) sku",

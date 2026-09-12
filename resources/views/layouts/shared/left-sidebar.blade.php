@@ -1671,8 +1671,6 @@
                                         <a href="{{ url('/macys-pricing') }}">Macys - Analytics</a>
                                     </li>
 
-
-
                                 </ul>
                             </div>
                         </li>
