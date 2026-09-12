@@ -440,11 +440,9 @@ final class MarketplacePortalInactiveCount
             return self::$amazonReportMemo;
         }
 
-        $active = [];
-        $inactive = [];
-        $seen = [];
+        $classified = [];
         if (! Schema::hasTable('amazon_listings_raw') || ! Schema::hasColumn('amazon_listings_raw', 'seller_sku')) {
-            self::$amazonReportMemo = ['active' => $active, 'inactive' => $inactive];
+            self::$amazonReportMemo = ['active' => [], 'inactive' => []];
 
             return self::$amazonReportMemo;
         }
@@ -461,31 +459,20 @@ final class MarketplacePortalInactiveCount
             ->where('seller_sku', '!=', '')
             ->select($cols)
             ->orderBy('id')
-            ->chunkById(1000, function ($chunk) use (&$active, &$inactive, &$seen) {
+            ->chunkById(1000, function ($chunk) use (&$classified) {
                 foreach ($chunk as $row) {
                     $sku = trim((string) ($row->seller_sku ?? ''));
                     if ($sku === '') {
                         continue;
                     }
-                    $key = strtoupper($sku);
-                    $live = AmazonListingStatusHelper::reportRowIsLive($row);
-                    if ($live) {
-                        $seen[$key] = 'active';
-                        AmazonListingStatusHelper::rememberSkuLookupKeys($active, $sku);
-                        continue;
-                    }
-                    if (($seen[$key] ?? '') === 'active') {
-                        continue;
-                    }
-                    $seen[$key] = 'inactive';
-                    $inactive[$key] = $sku;
+                    $classified[] = [
+                        'sku' => $sku,
+                        'live' => AmazonListingStatusHelper::reportRowIsLive($row),
+                    ];
                 }
             });
 
-        self::$amazonReportMemo = [
-            'active' => $active,
-            'inactive' => array_values($inactive),
-        ];
+        self::$amazonReportMemo = AmazonListingStatusHelper::classifyReportSkus($classified);
 
         return self::$amazonReportMemo;
     }

@@ -16,6 +16,7 @@ class AmazonListingStatusHelperTest extends TestCase
         $this->assertSame('active', AmazonListingStatusHelper::normalizePortalStatus('Active'));
         $this->assertSame('inactive', AmazonListingStatusHelper::normalizePortalStatus('INACTIVE'));
         $this->assertSame('inactive', AmazonListingStatusHelper::normalizePortalStatus('SUPPRESSED'));
+        $this->assertSame('inactive', AmazonListingStatusHelper::normalizePortalStatus('Closed'));
     }
 
     public function test_api_sheet_mapping_keeps_sold_out_listings_active(): void
@@ -83,5 +84,25 @@ class AmazonListingStatusHelperTest extends TestCase
         ];
 
         $this->assertFalse(AmazonListingStatusHelper::reportRowIsLive($row));
+    }
+
+    public function test_closed_fba_does_not_override_active_fbm_same_sku(): void
+    {
+        $sets = AmazonListingStatusHelper::classifyReportSkus([
+            ['sku' => '1/4M-3/8M Camera Screw 5Pcs', 'live' => false],
+            ['sku' => '1/4M-3/8M Camera Screw 5Pcs', 'live' => true],
+        ]);
+
+        $this->assertSame([], $sets['inactive']);
+        $this->assertTrue(isset($sets['active'][strtoupper('1/4M-3/8M Camera Screw 5Pcs')]));
+    }
+
+    public function test_closed_only_sku_stays_inactive(): void
+    {
+        $sets = AmazonListingStatusHelper::classifyReportSkus([
+            ['sku' => 'ONLY-CLOSED', 'live' => false],
+        ]);
+
+        $this->assertSame(['ONLY-CLOSED'], $sets['inactive']);
     }
 }

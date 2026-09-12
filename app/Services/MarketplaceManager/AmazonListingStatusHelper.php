@@ -113,7 +113,7 @@ final class AmazonListingStatusHelper
         }
         if (in_array($state, [
             'inactive', 'incomplete', 'suppressed', 'blocked', 'disabled', '0', 'false',
-            'stopped', 'ineligible', 'invalid',
+            'stopped', 'ineligible', 'invalid', 'closed',
         ], true)) {
             return 'inactive';
         }
@@ -232,6 +232,57 @@ final class AmazonListingStatusHelper
                 $keys[$baseNorm] = true;
             }
         }
+    }
+
+    /**
+     * One seller SKU can have an Active FBM offer and a Closed FBA offer.
+     * If any report row is live, the SKU is not Inactive Listing.
+     *
+     * @param  list<array{sku: string, live: bool}>  $rows
+     * @return array{active: array<string, true>, inactive: list<string>}
+     */
+    public static function classifyReportSkus(array $rows): array
+    {
+        $liveByKey = [];
+        $deadByKey = [];
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $key = strtoupper($sku);
+            if (! empty($row['live'])) {
+                $liveByKey[$key] = $sku;
+            } else {
+                $deadByKey[$key] = $sku;
+            }
+        }
+
+        $active = [];
+        foreach ($liveByKey as $sku) {
+            self::rememberSkuLookupKeys($active, $sku);
+        }
+
+        $inactive = [];
+        foreach ($deadByKey as $key => $sku) {
+            if (isset($liveByKey[$key]) || isset($active[$key])) {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '' && isset($active[$norm])) {
+                continue;
+            }
+            $compact = strtoupper(ShopifySku::compactSkuForLookup($sku) ?: '');
+            if ($compact !== '' && isset($active[$compact])) {
+                continue;
+            }
+            $inactive[] = $sku;
+        }
+
+        return [
+            'active' => $active,
+            'inactive' => $inactive,
+        ];
     }
 
     /**

@@ -1814,12 +1814,14 @@ final class MarketplaceListingStockResolver
             }
         }
 
+        $liveQty = [];
+        $closedQty = [];
         DB::table('amazon_listings_raw')
             ->whereNotNull('seller_sku')
             ->where('seller_sku', '!=', '')
             ->whereIn('seller_sku', $keys)
             ->get($cols)
-            ->each(function ($row) use (&$map) {
+            ->each(function ($row) use (&$liveQty, &$closedQty) {
                 $sku = trim((string) ($row->seller_sku ?? ''));
                 if ($sku === '') {
                     return;
@@ -1828,8 +1830,18 @@ final class MarketplaceListingStockResolver
                 if ($meta['quantity'] === null) {
                     return;
                 }
-                self::put($map, $sku, (int) $meta['quantity']);
+                if (AmazonListingStatusHelper::reportRowIsLive($row)) {
+                    self::put($liveQty, $sku, (int) $meta['quantity']);
+                } else {
+                    self::put($closedQty, $sku, (int) $meta['quantity']);
+                }
             });
+        foreach ($liveQty as $sku => $qty) {
+            self::put($map, (string) $sku, (int) $qty);
+        }
+        foreach ($closedQty as $sku => $qty) {
+            self::put($map, (string) $sku, (int) $qty);
+        }
     }
 
     protected static function hydrateFromAmazonListingStatuses(array &$map, array $keys): void

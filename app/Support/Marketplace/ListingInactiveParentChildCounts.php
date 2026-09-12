@@ -56,7 +56,7 @@ class ListingInactiveParentChildCounts
             if ($mm !== null) {
                 $skus = MarketplacePortalInactiveCount::skus($mm);
             }
-            if ($skus === [] && ! in_array($mm, ['temu', 'temu2'], true)) {
+            if ($skus === [] && ! in_array($mm, ['temu', 'temu2', 'amazon'], true)) {
                 $skus = self::fallbackInactiveSkus($norm);
             }
         } catch (\Throwable $e) {
@@ -140,7 +140,7 @@ class ListingInactiveParentChildCounts
             if ($mm !== null) {
                 $skus = MarketplacePortalInactiveCount::skus($mm);
             }
-            if ($skus === [] && ! in_array($mm, ['temu', 'temu2'], true)) {
+            if ($skus === [] && ! in_array($mm, ['temu', 'temu2', 'amazon'], true)) {
                 $skus = self::fallbackInactiveSkus($norm);
             }
         } catch (\Throwable $e) {
