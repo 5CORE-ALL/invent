@@ -116,10 +116,14 @@ class MarketplaceChannelFulfillmentHub
         $sku = trim((string) ($result['sku'] ?? ''));
         $pushed = [];
         $hay = strtolower(trim((string) ($shopifyOrder['tags'] ?? '')).' '.trim((string) ($shopifyOrder['note'] ?? '')));
+        $primarySlug = app(ShopifyFulfillmentTrackingMatcher::class)->primaryMarketplaceSlug($shopifyOrder);
         $slugs = array_keys($this->channelMap());
         usort($slugs, static fn ($a, $b) => strlen((string) $b) <=> strlen((string) $a));
 
         foreach ($slugs as $slug) {
+            if ($primarySlug !== '' && $slug !== $primarySlug) {
+                continue;
+            }
             if (! preg_match('/(?:^|[\s,])'.preg_quote($slug, '/').'-([^\s,]+)/i', $hay, $m)) {
                 continue;
             }
@@ -139,6 +143,9 @@ class MarketplaceChannelFulfillmentHub
         foreach ($this->findLinesByShopifyOrderId($shopifyOrderId, $sku) as $hit) {
             $key = $hit['slug'].':'.(int) ($hit['line']->id ?? 0);
             if (isset($pushed[$key])) {
+                continue;
+            }
+            if ($primarySlug !== '' && $hit['slug'] !== $primarySlug) {
                 continue;
             }
             $this->pushLine($hit['slug'], $hit['line']);

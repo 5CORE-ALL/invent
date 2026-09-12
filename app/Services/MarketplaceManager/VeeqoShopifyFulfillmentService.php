@@ -226,10 +226,22 @@ class VeeqoShopifyFulfillmentService
         }
 
         $strict = $this->isStrictTrackingMarketplace($marketplace);
-        $marketplaceOrderIds = app(ShopifyFulfillmentTrackingMatcher::class)->uniqueIds(
+        $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
+        $marketplaceOrderIds = $matcher->uniqueIds(
             $marketplaceOrderIds !== [] ? $marketplaceOrderIds : $refs
         );
         $marketplaceOrderIds = $this->expandMarketplaceOrderIdVariants($marketplaceOrderIds);
+        $marketplace = strtolower(trim($marketplace));
+        if ($marketplace !== '') {
+            $marketplaceOrderIds = array_values(array_filter(
+                $marketplaceOrderIds,
+                static function ($id) use ($matcher, $marketplace) {
+                    $slug = $matcher->slugFromOrderId((string) $id);
+
+                    return $slug === '' || $slug === $marketplace;
+                }
+            ));
+        }
         // Keep confirmed channel ids (Newegg/eBay/etc. are often 8–10 digits).
         // Only drop Shopify Admin 13-digit ids — never the marketplace order number.
         $marketplaceOrderIds = array_values(array_filter(
@@ -1430,7 +1442,7 @@ class VeeqoShopifyFulfillmentService
         }
 
         $amazonId = $this->amazonOrderIdFromShopifyOrder($order);
-        if ($amazonId !== '') {
+        if ($amazonId !== '' && ($slug === '' || $slug === 'amazon')) {
             $pushId($amazonId);
             if ($slug === '') {
                 $slug = 'amazon';
@@ -2580,7 +2592,7 @@ class VeeqoShopifyFulfillmentService
             if ($tracking === null) {
                 continue;
             }
-            if ($skuMiss && count($buckets) !== 1) {
+            if ($skuMiss) {
                 continue;
             }
             $carrier = $this->carrierFrom($shipment, $row, $tracking);
@@ -2590,9 +2602,6 @@ class VeeqoShopifyFulfillmentService
 
         $direct = $this->trackingNumberFrom($order);
         if ($direct !== null && ! $skuMiss) {
-            return ['tracking' => $direct, 'carrier' => $this->carrierFrom($order, [], $direct)];
-        }
-        if ($direct !== null && $skuMiss) {
             return ['tracking' => $direct, 'carrier' => $this->carrierFrom($order, [], $direct)];
         }
 
