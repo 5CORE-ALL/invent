@@ -481,7 +481,7 @@
                     @include('partials.ebay-sprc-dil', [
                         'ebaySprcDilPart' => 'buttons',
                         'ebaySprcDilChannel' => 'temu',
-                        'ebaySprcDilZeroSoldUsesMinGroi' => false,
+                        'ebaySprcDilZeroSoldUsesMinGroi' => true,
                         'ebaySprcDilClampToNearest' => true,
                     ])
                     <button type="button" class="btn btn-sm" id="newtemuone-cvr-vs-cpn-btn"
@@ -685,7 +685,7 @@
     @include('partials.ebay-sprc-dil', [
         'ebaySprcDilPart' => 'modals',
         'ebaySprcDilChannel' => 'temu',
-        'ebaySprcDilZeroSoldUsesMinGroi' => false,
+        'ebaySprcDilZeroSoldUsesMinGroi' => true,
         'ebaySprcDilClampToNearest' => true,
     ])
 
@@ -915,7 +915,7 @@
     @include('partials.ebay-sprc-dil', [
         'ebaySprcDilPart' => 'script',
         'ebaySprcDilChannel' => 'temu',
-        'ebaySprcDilZeroSoldUsesMinGroi' => false,
+        'ebaySprcDilZeroSoldUsesMinGroi' => true,
         'ebaySprcDilClampToNearest' => true,
     ])
 
@@ -2664,7 +2664,6 @@
                 return !!(sku && !d.is_parent_summary && sku.toUpperCase().indexOf('PARENT') !== 0);
             },
             initialSort: [
-                { column: 'Parent', dir: 'asc' },
                 { column: '(Child) sku', dir: 'asc' }
             ],
             ajaxResponse: function(url, params, response) {
@@ -2672,6 +2671,11 @@
                 rows.forEach(function(r) {
                     if (!r) return;
                     if (r.Parent && !r.parent) r.parent = r.Parent;
+                });
+                rows.sort(function(a, b) {
+                    const skuA = String((a && (a['(Child) sku'] || a.sku)) || '');
+                    const skuB = String((b && (b['(Child) sku'] || b.sku)) || '');
+                    return skuA.localeCompare(skuB, undefined, { sensitivity: 'base', numeric: false });
                 });
                 return rows;
             },
@@ -2710,6 +2714,9 @@
                     tooltip: true,
                     frozen: true,
                     width: 220,
+                    sorter: function(a, b) {
+                        return String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base', numeric: false });
+                    },
                     formatter: function(cell) {
                         const sku = cell.getValue() || '';
                         if (!sku) return '';
@@ -2768,6 +2775,31 @@
                     sorter: 'number'
                 },
                 {
+                    title: 'Dil',
+                    field: 'Dil%',
+                    hozAlign: 'center',
+                    sorter: 'number',
+                    headerTooltip: 'Dil% = OV L30 ÷ INV. Same Dil Sprc Dil uses for the Target GROI slab.',
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const INV = parseFloat(rowData.INV) || 0;
+                        const dil = typeof chPromoDil === 'function'
+                            ? chPromoDil(rowData)
+                            : (INV > 0 ? ((parseFloat(rowData.L30) || 0) / INV) * 100 : 0);
+
+                        if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
+
+                        let color = '';
+
+                        if (dil < 25) color = '#dc3545';
+                        else if (dil >= 25 && dil < 50) color = '#28a745';
+                        else color = '#e83e8c';
+
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
                     title: 'L30',
                     field: 'temu_l30',
                     hozAlign: 'center',
@@ -2799,31 +2831,6 @@
                         if (row.is_parent_summary) return cell1;
                         return cell1 + temuCvrTrendArrowHtml(val, parseFloat(row.cvr_60) || 0);
                     }
-                },
-                {
-                    title: 'Dil',
-                    field: 'Dil%',
-                    hozAlign: 'center',
-                    sorter: 'number',
-                    headerTooltip: 'Dil% = OV L30 ÷ INV. Same Dil Sprc Dil uses for the Target GROI slab.',
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const INV = parseFloat(rowData.INV) || 0;
-                        const dil = typeof chPromoDil === 'function'
-                            ? chPromoDil(rowData)
-                            : (INV > 0 ? ((parseFloat(rowData.L30) || 0) / INV) * 100 : 0);
-
-                        if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
-
-                        let color = '';
-
-                        if (dil < 25) color = '#dc3545';
-                        else if (dil >= 25 && dil < 50) color = '#28a745';
-                        else color = '#e83e8c';
-
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
-                    },
-                    width: 50
                 },
                 {
                     title: 'Std Price',
@@ -3041,14 +3048,14 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: 'Dil → Target GROI price (before eBay / Amazon / LMP caps). Dil below the first From or above the last To uses the nearest slab.',
+                    headerTooltip: 'Dil → Target GROI price (before eBay / Amazon / LMP caps). Temu L30 = 0 uses the lowest Target GROI. Dil below the first From or above the last To uses the nearest slab.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                         const meta = ebayDilGroiMetaForRow(rowData);
                         if (!meta || !(meta.sprc > 0)) return '';
                         const tip = (typeof ebayDilGroiTipText === 'function')
-                            ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold Temu L30 → nearest slab Target GROI' })
+                            ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold Temu L30 → min Target GROI' })
                             : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                                 + ' → ' + meta.label
                                 + ' → GROI ' + meta.groi + '%'
@@ -3093,7 +3100,7 @@
                     hozAlign: 'center',
                     width: 88,
                     sorter: 'number',
-                    headerTooltip: 'Sprc Dil from Dil (OV L30 ÷ INV) → Target GROI. Dil below the first From or above the last To uses the nearest slab (0 Sold and high Dil). Then the lowest of eBay, Amazon, and LMP.',
+                    headerTooltip: 'Sprc Dil from Dil (OV L30 ÷ INV) → Target GROI, except Temu L30 = 0 uses the lowest Target GROI. Then the lowest of eBay, Amazon, and LMP.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const model = typeof temuSpriceCellModel === 'function'

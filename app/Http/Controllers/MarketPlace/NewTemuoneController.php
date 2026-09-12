@@ -133,9 +133,7 @@ class NewTemuoneController extends Controller
     public function dataJson()
     {
         try {
-            $productMasters = ProductMaster::orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                ->orderBy('sku', 'asc')
+            $productMasters = ProductMaster::orderBy('sku', 'asc')
                 ->get();
 
             $productMasters = $productMasters->filter(function ($item) {
@@ -350,6 +348,7 @@ class NewTemuoneController extends Controller
                         'lp' => $lp,
                         'ship' => $temuShip,
                         'dil' => $dilPct,
+                        'temu_l30' => $temuL30,
                         'cvr' => $cvrPercent,
                         'cvr60' => $cvr60,
                         'ebay' => $this->temuEbayRefPrice($ebayPrice, $ebay2Price),

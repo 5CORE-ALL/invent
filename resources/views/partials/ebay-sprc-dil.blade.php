@@ -4,7 +4,8 @@
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
   Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / AliExpress: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
   AliExpress only: Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
-  eBay 1–3 / New Temu One: Dil below the first slab or above the last slab uses the nearest slab (0 Sold Dil = 0 and fast-seller Dil > last To).
+  eBay 1–3: Dil below the first slab or above the last slab uses the nearest slab (Dil 0 and fast-seller Dil > last To).
+  Temu 1 / New Temu One: Temu L30 = 0 uses the minimum Target GROI (not the Dil-matching slab). New Temu One Dil is still OV L30 ÷ INV.
   eBay 1–3 CVR overlay is level-only (CVR < Down → −10 GROI; CVR > Up → +10 GROI). Temu 1–2 also use the overlay; Reverb / Faire / TikTok / Shopify B2C are level-only.
   Macys: Dil-matching when Dil is in a slab. If Dil is out of box and 0 Sold, use min Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price (do not keep Std Prc).

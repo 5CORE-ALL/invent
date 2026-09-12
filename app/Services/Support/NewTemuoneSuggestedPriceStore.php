@@ -90,6 +90,8 @@ class NewTemuoneSuggestedPriceStore
      *     lp: float,
      *     ship: float,
      *     dil: float,
+     *     temu_l30?: float|int,
+     *     sold?: float|int,
      *     cvr: float,
      *     cvr60: float,
      *     ebay: float,
@@ -198,6 +200,7 @@ class NewTemuoneSuggestedPriceStore
 
     /**
      * Dil slab + CVR overlay. Dil 100 + CVR +10 → 110 exactly.
+     * Temu L30 = 0 (0 Sold) uses the lowest Target GROI in the table, same as Temu 1.
      */
     public static function targetSgroi(
         float $inv,
@@ -205,23 +208,32 @@ class NewTemuoneSuggestedPriceStore
         float $cvr,
         float $cvrPrior,
         array $dilRules,
-        ?array $cvrAdj
+        ?array $cvrAdj,
+        bool $zeroSold = false
     ): ?float {
         if (! ($inv > 0)) {
             return null;
         }
-        $rule = AmazonDilGroiRule::matchOrNearest($dil, $dilRules);
-        if ($rule === null) {
-            return null;
+        if ($zeroSold) {
+            $slabGroi = AmazonDilGroiRule::minTarget($dilRules);
+            if ($slabGroi === null) {
+                return null;
+            }
+        } else {
+            $rule = AmazonDilGroiRule::matchOrNearest($dil, $dilRules);
+            if ($rule === null) {
+                return null;
+            }
+            $slabGroi = (float) $rule['groi'];
         }
         $groi = $cvrPrior > 0
             ? AmazonDilGroiRule::adjustGroiForCvr(
-                (float) $rule['groi'],
+                $slabGroi,
                 $cvr,
                 AmazonDilGroiRule::cvrTrend($cvr, $cvrPrior),
                 $cvrAdj
             )
-            : AmazonDilGroiRule::adjustGroiForCvrLevel((float) $rule['groi'], $cvr, $cvrAdj);
+            : AmazonDilGroiRule::adjustGroiForCvrLevel($slabGroi, $cvr, $cvrAdj);
 
         return is_finite($groi) ? (float) $groi : null;
     }
@@ -259,10 +271,11 @@ class NewTemuoneSuggestedPriceStore
         $dil = (float) ($inputs['dil'] ?? 0);
         $cvr = (float) ($inputs['cvr'] ?? 0);
         $cvr60 = (float) ($inputs['cvr60'] ?? 0);
+        $sold = (float) ($inputs['temu_l30'] ?? $inputs['sold'] ?? 0);
         if (! ($inv > 0) || ! ($lp > 0)) {
             return $empty;
         }
-        $ruleSgroi = self::targetSgroi($inv, $dil, $cvr, $cvr60, $dilRules, $cvrAdj);
+        $ruleSgroi = self::targetSgroi($inv, $dil, $cvr, $cvr60, $dilRules, $cvrAdj, $sold <= 0);
         if ($ruleSgroi === null) {
             return $empty;
         }
@@ -459,8 +472,9 @@ class NewTemuoneSuggestedPriceStore
         $cvr = AmazonDilGroiRule::normalizeCvrAdj($cvrAdj);
         $lmp = $inputs['lmp'] ?? 0;
         $payload = [
-            'v' => 1,
+            'v' => 2,
             'rules' => $normRules,
+            'temu_l30' => (int) ($inputs['temu_l30'] ?? $inputs['sold'] ?? 0),
             'cvr_adj' => [
                 'down_lt' => round((float) $cvr['down_lt'], 2),
                 'down_adj' => round((float) $cvr['down_adj'], 2),
