@@ -63,4 +63,19 @@ class ShopifyFulfillmentTrackingMatcherTest extends TestCase
             ['sku' => '__order__'],
         ]));
     }
+
+    public function test_channel_order_id_comes_from_marketplace_tag(): void
+    {
+        $matcher = new ShopifyFulfillmentTrackingMatcher;
+
+        $this->assertSame('GSU1RG5550019KF', $matcher->channelOrderIdFromOrder([
+            'tags' => 'shein-GSU1RG5550019KF',
+            'note' => '',
+        ]));
+        $this->assertSame('113-3340426-4270650', $matcher->channelOrderIdFromOrder([
+            'tags' => 'amazon-113-3340426-4270650',
+            'note' => '',
+        ]));
+        $this->assertTrue($matcher->trackingNumbersEqual('1Z 999 AA1 01 2345 6784', '1z999aa10123456784'));
+    }
 }

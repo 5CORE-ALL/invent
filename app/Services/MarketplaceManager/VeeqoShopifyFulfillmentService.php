@@ -345,6 +345,20 @@ class VeeqoShopifyFulfillmentService
             $marketplaceOrderIds,
             $strict
         );
+        if ($existing !== null && $this->isStolenMarketplaceTracking(
+            (string) ($existing['tracking'] ?? ''),
+            $marketplace,
+            $marketplaceOrderIds,
+            $shopifyOrderId
+        )) {
+            Log::info('VeeqoShopifyFulfillmentService: wrong-channel tracking on Shopify — will replace', [
+                'marketplace' => $marketplace,
+                'shopify_order_id' => $shopifyOrderId,
+                'wanted' => $marketplaceOrderIds,
+                'tracking' => $existing['tracking'] ?? null,
+            ]);
+            $existing = null;
+        }
         if ($existing !== null) {
             $existingTn = (string) ($existing['tracking'] ?? '');
             $existingCarrier = (string) ($existing['carrier'] ?? '');
@@ -372,22 +386,6 @@ class VeeqoShopifyFulfillmentService
                     'sku' => $sku !== '' ? $sku : null,
                 ];
             }
-
-            $this->cacheTrackingOnShopifyRawOrder(
-                $shopifyOrderId,
-                $existingTn,
-                $existingCarrier
-            );
-
-            return [
-                'success' => true,
-                'skipped' => true,
-                'action' => 'already_on_shopify',
-                'message' => 'Shopify already has tracking '.$existingTn.'.',
-                'tracking' => $existingTn,
-                'carrier' => $existing['carrier'],
-                'sku' => $sku !== '' ? $sku : null,
-            ];
         }
 
         if (strtolower(trim($marketplace)) === 'doba' && ! $this->dobaMayUseExternalLabel($localTracking, $shopifyConfig, $shopifyOrderId)) {
@@ -405,6 +403,61 @@ class VeeqoShopifyFulfillmentService
             false,
             $sku
         );
+        if ($found !== null && $this->isStolenMarketplaceTracking(
+            (string) ($found['tracking'] ?? ''),
+            $marketplace,
+            $marketplaceOrderIds,
+            $shopifyOrderId
+        )) {
+            Log::info('VeeqoShopifyFulfillmentService: looked-up label belongs to another order — ignored', [
+                'marketplace' => $marketplace,
+                'shopify_order_id' => $shopifyOrderId,
+                'wanted' => $marketplaceOrderIds,
+                'tracking' => $found['tracking'] ?? null,
+            ]);
+            $found = null;
+        }
+
+        if (
+            $existing !== null
+            && $found !== null
+            && $strict
+            && $marketplace !== 'doba'
+            && ! app(ShopifyFulfillmentTrackingMatcher::class)->trackingNumbersEqual(
+                (string) ($existing['tracking'] ?? ''),
+                (string) ($found['tracking'] ?? '')
+            )
+        ) {
+            Log::info('VeeqoShopifyFulfillmentService: Shopify tracking is not this order\'s label — replacing', [
+                'marketplace' => $marketplace,
+                'shopify_order_id' => $shopifyOrderId,
+                'wanted' => $marketplaceOrderIds,
+                'shopify_tracking' => $existing['tracking'] ?? null,
+                'label_tracking' => $found['tracking'] ?? null,
+            ]);
+            $existing = null;
+        }
+
+        if ($existing !== null) {
+            $existingTn = (string) ($existing['tracking'] ?? '');
+            $existingCarrier = (string) ($existing['carrier'] ?? '');
+            $this->cacheTrackingOnShopifyRawOrder(
+                $shopifyOrderId,
+                $existingTn,
+                $existingCarrier
+            );
+
+            return [
+                'success' => true,
+                'skipped' => true,
+                'action' => 'already_on_shopify',
+                'message' => 'Shopify already has tracking '.$existingTn.'.',
+                'tracking' => $existingTn,
+                'carrier' => $existing['carrier'],
+                'sku' => $sku !== '' ? $sku : null,
+            ];
+        }
+
         if ($found === null) {
             $checked = [];
             if ($this->veeqo->isConfigured()) {
@@ -2502,6 +2555,48 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
+     * True when this tracking already belongs to a different marketplace order.
+     *
+     * @param  list<string>  $marketplaceOrderIds
+     */
+    protected function isStolenMarketplaceTracking(
+        string $tracking,
+        string $marketplace,
+        array $marketplaceOrderIds,
+        string $shopifyOrderId
+    ): bool {
+        $tracking = trim($tracking);
+        $marketplace = strtolower(trim($marketplace));
+        if ($tracking === '' || $marketplace === '') {
+            return false;
+        }
+
+        $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
+        $channelOrderId = '';
+        foreach ($marketplaceOrderIds as $id) {
+            $id = trim((string) $id);
+            if ($id === '') {
+                continue;
+            }
+            $slug = $matcher->slugFromOrderId($id);
+            if ($slug === '' || $slug === $marketplace) {
+                $channelOrderId = $id;
+                break;
+            }
+        }
+        if ($channelOrderId === '' && $marketplaceOrderIds !== []) {
+            $channelOrderId = trim((string) $marketplaceOrderIds[0]);
+        }
+
+        return app(MarketplaceTrackingOwnership::class)->isWrongFor(
+            $tracking,
+            $marketplace,
+            $channelOrderId,
+            $shopifyOrderId
+        );
+    }
+
+    /**
      * Attach a label only when the Shopify copy contains this full
      * marketplace order id and this SKU. Never search by Shopify #.
      */
@@ -3966,7 +4061,7 @@ class VeeqoShopifyFulfillmentService
 
     protected function autoFetchCacheKey(string $marketplace, int $orderId, string $kind): string
     {
-        return 'mm_fetch_tracking_v2_'.$kind.':'.$marketplace.':'.$orderId;
+        return 'mm_fetch_tracking_v3_'.$kind.':'.$marketplace.':'.$orderId;
     }
 
     /**
