@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use App\Models\MacyProduct;
+use App\Models\MacysPriceData;
 use App\Models\PurchasingPowerProduct;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -20,7 +21,9 @@ class FetchMacyProducts extends Command
      *
      * @var string
      */
-    protected $signature = 'app:fetch-macy-products {--pp-mcm-only : Only sync Purchasing Power prices from MCM OF21}';
+    protected $signature = 'app:fetch-macy-products
+                            {--pp-mcm-only : Only sync Purchasing Power prices from MCM OF21}
+                            {--macy-mcm-only : Only sync Macy listed prices from MCM OF21}';
 
     /**
      * The console command description.
@@ -317,6 +320,13 @@ class FetchMacyProducts extends Command
             DB::connection()->disconnect();
             return self::SUCCESS;
         }
+
+        if ($this->option('macy-mcm-only')) {
+            $this->syncMacyPricesFromMcm();
+            \App\Support\MacysRuleSpriceApply::dispatch();
+            DB::connection()->disconnect();
+            return self::SUCCESS;
+        }
         
         $token = $this->getAccessToken();
         if (!$token) return;
@@ -325,6 +335,8 @@ class FetchMacyProducts extends Command
 
         // Fetch and store Macy's products with channel-specific pricing
         $this->fetchChannelProducts($token, 'macys', "Macy's, Inc.", $skuSales);
+        // Overlay live MCM offer prices — Connect discount_prices diverge (e.g. GSS BLU 2PCS $20.98 vs live $23.41).
+        $this->syncMacyPricesFromMcm();
         \App\Support\MacysRuleSpriceApply::dispatch();
         
         // Close DB connection between channels to prevent buildup
@@ -351,6 +363,197 @@ class FetchMacyProducts extends Command
         DB::connection()->disconnect();
         
         $this->info("All Macy, BestbuyUSA, Purchasing Power products stored successfully.");
+    }
+
+    /**
+     * OF21 — pull Macy MCM offer prices into macy_products + macys_price_data.
+     * /macys-pricing reads macys_price_data; Connect catalog prices often differ from the live listed price.
+     */
+    private function syncMacyPricesFromMcm(): void
+    {
+        $apiKey = trim((string) config('services.macy.mcm_api_key', ''));
+        $baseUrl = rtrim((string) config('services.macy.mcm_base_url', 'https://macysus-prod.mirakl.net'), '/');
+
+        if ($apiKey === '' || $baseUrl === '') {
+            $this->warn('Macy MCM API key not set (MACY_MCM_API_KEY); skipping MCM price sync.');
+            return;
+        }
+
+        $this->info('Syncing Macy prices from MCM offers (OF21)...');
+
+        $shopId = config('services.macy.shop_id');
+        $offset = 0;
+        $max = 100;
+        $totalUpdated = 0;
+        $page = 1;
+
+        try {
+            do {
+                $params = [
+                    'max' => $max,
+                    'offset' => $offset,
+                ];
+                if ($shopId !== null && $shopId !== '') {
+                    $params['shop_id'] = (int) $shopId;
+                }
+
+                $response = null;
+                for ($attempt = 1; $attempt <= 5; $attempt++) {
+                    $response = Http::withoutVerifying()
+                        ->withHeaders([
+                            'Authorization' => $apiKey,
+                            'Accept' => 'application/json',
+                        ])
+                        ->timeout(60)
+                        ->get($baseUrl.'/api/offers', $params);
+
+                    if ($response->status() !== 429) {
+                        break;
+                    }
+
+                    $sleepSec = min(30, 3 * $attempt);
+                    $this->warn("Macy MCM rate limited (429); sleeping {$sleepSec}s then retry {$attempt}/5...");
+                    sleep($sleepSec);
+                }
+
+                if (! $response || ! $response->successful()) {
+                    $status = $response ? $response->status() : 0;
+                    $body = $response ? substr($response->body(), 0, 300) : 'no response';
+                    $this->error('Macy MCM OF21 failed: HTTP '.$status.' '.$body);
+                    Log::error('Macy MCM OF21 failed', [
+                        'status' => $status,
+                        'body' => $response ? substr($response->body(), 0, 1000) : null,
+                    ]);
+                    return;
+                }
+
+                $offers = $response->json('offers') ?? [];
+                $totalCount = (int) ($response->json('total_count') ?? 0);
+                $updates = [];
+
+                foreach ($offers as $offer) {
+                    if (! is_array($offer)) {
+                        continue;
+                    }
+
+                    $sku = trim((string) ($offer['shop_sku'] ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+
+                    $price = $this->extractMcmOfferPrice($offer);
+                    if ($price === null) {
+                        continue;
+                    }
+
+                    $inactivity = $offer['inactivity_reasons'] ?? '';
+                    if (is_array($inactivity)) {
+                        $inactivity = implode(',', array_filter(array_map('strval', $inactivity)));
+                    }
+
+                    $upc = null;
+                    foreach ($offer['product_references'] ?? [] as $ref) {
+                        if (! is_array($ref)) {
+                            continue;
+                        }
+                        if (strcasecmp((string) ($ref['reference_type'] ?? ''), 'UPC') === 0) {
+                            $upc = trim((string) ($ref['reference'] ?? ''));
+                            break;
+                        }
+                    }
+
+                    $updates[] = [
+                        'sku' => $sku,
+                        'offer_sku' => $sku,
+                        'product_sku' => trim((string) ($offer['product_sku'] ?? '')) ?: null,
+                        'category_code' => trim((string) ($offer['category_code'] ?? '')) ?: null,
+                        'category_label' => trim((string) ($offer['category_label'] ?? '')) ?: null,
+                        'brand' => trim((string) ($offer['product_brand'] ?? '')) ?: null,
+                        'product_name' => trim((string) ($offer['product_title'] ?? '')) ?: null,
+                        'price' => $price,
+                        'original_price' => is_numeric(data_get($offer, 'applicable_pricing.unit_origin_price'))
+                            ? round((float) data_get($offer, 'applicable_pricing.unit_origin_price'), 2)
+                            : $price,
+                        'discount_price' => is_numeric(data_get($offer, 'discount.discount_price'))
+                            ? round((float) data_get($offer, 'discount.discount_price'), 2)
+                            : null,
+                        'quantity' => isset($offer['quantity']) && is_numeric($offer['quantity'])
+                            ? (int) $offer['quantity']
+                            : 0,
+                        'activated' => (bool) ($offer['active'] ?? false),
+                        'upc' => $upc !== '' ? $upc : null,
+                        'inactivity_reason' => is_string($inactivity) ? $inactivity : null,
+                    ];
+                }
+
+                if (! empty($updates)) {
+                    $now = now()->toDateTimeString();
+                    foreach (array_chunk($updates, 50) as $chunk) {
+                        $values = [];
+                        $bindings = [];
+                        foreach ($chunk as $update) {
+                            $values[] = '(?, ?, ?, 0, ?, ?)';
+                            $bindings[] = $update['sku'];
+                            $bindings[] = $update['price'];
+                            $bindings[] = $update['quantity'];
+                            $bindings[] = $now;
+                            $bindings[] = $now;
+                        }
+
+                        $sql = 'INSERT INTO macy_products (sku, price, stock, m_l30, created_at, updated_at) VALUES '
+                            .implode(', ', $values)
+                            .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), updated_at = VALUES(updated_at)';
+
+                        DB::statement($sql, $bindings);
+
+                        foreach ($chunk as $update) {
+                            $existing = MacysPriceData::query()
+                                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($update['sku']))])
+                                ->first();
+
+                            $payload = [
+                                'offer_sku' => $update['offer_sku'],
+                                'product_sku' => $update['product_sku'],
+                                'category_code' => $update['category_code'],
+                                'category_label' => $update['category_label'],
+                                'brand' => $update['brand'],
+                                'product_name' => $update['product_name'],
+                                'price' => $update['price'],
+                                'original_price' => $update['original_price'],
+                                'discount_price' => $update['discount_price'],
+                                'quantity' => $update['quantity'],
+                                'activated' => $update['activated'],
+                                'upc' => $update['upc'],
+                                'inactivity_reason' => $update['inactivity_reason'],
+                            ];
+
+                            if ($existing) {
+                                $existing->fill($payload);
+                                $existing->save();
+                            } else {
+                                MacysPriceData::create($payload + ['sku' => $update['sku']]);
+                            }
+                        }
+
+                        $totalUpdated += count($chunk);
+                    }
+                }
+
+                $fetched = count($offers);
+                $this->info("Macy MCM offers page {$page}: processed {$fetched} (updated {$totalUpdated}, total_count={$totalCount})");
+                $offset += $max;
+                $page++;
+                unset($offers, $updates);
+                sleep(1);
+
+                $hasMore = $fetched >= $max && ($totalCount === 0 || $offset < $totalCount);
+            } while ($hasMore);
+
+            $this->info("Macy MCM price sync complete. Updated: {$totalUpdated}");
+        } catch (\Throwable $e) {
+            $this->error('Macy MCM price sync error: '.$e->getMessage());
+            Log::error('Macy MCM price sync error', ['error' => $e->getMessage()]);
+        }
     }
 
     /**
@@ -626,9 +829,13 @@ class FetchMacyProducts extends Command
                         }
                         
                         if ($hasListingStatus) {
+                            // Macy listed price comes from MCM OF21, not Connect catalog.
+                            $priceUpdate = $tableName === 'macy_products'
+                                ? 'price = price'
+                                : 'price = COALESCE(VALUES(price), price)';
                             $sql = "INSERT INTO {$tableName} (sku, price, stock, m_l30, listing_status, created_at, updated_at) VALUES "
                                  . implode(', ', $values)
-                                 . " ON DUPLICATE KEY UPDATE price = COALESCE(VALUES(price), price), stock = VALUES(stock), m_l30 = VALUES(m_l30), listing_status = COALESCE(VALUES(listing_status), listing_status), updated_at = VALUES(updated_at)";
+                                 . " ON DUPLICATE KEY UPDATE {$priceUpdate}, stock = VALUES(stock), m_l30 = VALUES(m_l30), listing_status = COALESCE(VALUES(listing_status), listing_status), updated_at = VALUES(updated_at)";
                         } else {
                             $sql = "INSERT INTO {$tableName} (sku, price, stock, m_l30, created_at, updated_at) VALUES "
                                  . implode(', ', $values)

@@ -118,8 +118,8 @@ class MacyController extends Controller
         // NBSP / unicode spaces in PM vs macy_products break plain whereIn + strtoupper match (SKU looks identical in UI)
         $macysByNormSku = $this->buildMacyProductLookupByNormalizedSku($skus);
 
-        // Uploaded price sheet (macys_price_data) is the only Price source.
-        // Not in the sheet (or sheet price ≤ 0) → not listed, do not use macy_products.price.
+        // Listed price: MCM OF21 cache in macys_price_data (filled by app:fetch-macy-products).
+        // Do not use Connect catalog macy_products.price — it diverges from the live listed price.
         $priceDataCollection = MacysPriceData::whereIn('sku', $skus)
             ->get()
             ->keyBy(function ($item) {
@@ -194,7 +194,7 @@ class MacyController extends Controller
             $row["INV"] = $shopify ? (int) ($shopify->inv ?? 0) : 0;
             $row["L30"] = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
-            // MC L30 / MC INV from macy_products. MC Price = uploaded sheet only.
+            // MC L30 / MC INV from macy_products. MC Price = MCM OF21 via macys_price_data.
             $resolvedPrice = self::resolveListedPrice($macysMetric, $priceData);
             $row["MC L30"] = $macysMetric->m_l30 ?? 0;
             $row["MC Price"] = $resolvedPrice['price'];
@@ -425,12 +425,12 @@ class MacyController extends Controller
     }
 
     /**
-     * Macys Price comes from the uploaded sheet (macys_price_data) only.
-     * macy_products is not used for price (L30/INV still come from there).
-     * No sheet row or sheet price ≤ 0 → not listed.
+     * Macys listed price comes from MCM OF21 (cached in macys_price_data).
+     * macy_products Connect catalog price is not used (L30/INV still come from there).
+     * No MCM/sheet row or price ≤ 0 → not listed.
      *
      * @param  object|null  $product  unused; kept so existing callers can pass macy_products
-     * @param  object|float|int|string|null  $sheet  macys_price_data row or numeric sheet price
+     * @param  object|float|int|string|null  $sheet  macys_price_data row or numeric MCM price
      * @return array{listed: bool, price: float, source: string, missing: bool}
      */
     public static function resolveListedPrice($product, $sheet = null): array
@@ -452,7 +452,7 @@ class MacyController extends Controller
         return [
             'listed' => true,
             'price' => $sheetPrice,
-            'source' => 'sheet',
+            'source' => 'mcm',
             'missing' => false,
         ];
     }

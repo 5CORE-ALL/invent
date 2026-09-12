@@ -513,7 +513,7 @@
         });
     }
 
-    /** Listed = uploaded sheet has a price (row.is_missing_macy from API). */
+    /** Listed = MCM OF21 / macys_price_data has a price (row.is_missing_macy from API). */
     function isMacysListed(rowData) {
         if (!rowData || rowData.is_parent_summary) return false;
         if (typeof rowData.is_missing_macy !== 'undefined') {

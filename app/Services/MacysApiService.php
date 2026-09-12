@@ -337,6 +337,16 @@ class MacysApiService
                     })
                     ->update(['price' => $price]);
             }
+            if (Schema::hasTable('macys_price_data')) {
+                \App\Models\MacysPriceData::query()
+                    ->where(function ($q) use ($offerSku, $sku) {
+                        $q->where('sku', $offerSku)
+                            ->orWhere('sku', $sku)
+                            ->orWhere('offer_sku', $offerSku)
+                            ->orWhere('offer_sku', $sku);
+                    })
+                    ->update(['price' => $price, 'original_price' => $price]);
+            }
         } catch (\Throwable $e) {
             Log::warning('Macy local price sync after PRI01 failed', [
                 'sku' => $offerSku,
