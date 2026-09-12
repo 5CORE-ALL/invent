@@ -51,7 +51,7 @@
                     <span class="badge bg-dark badge-mmc-stat" title="All inactive rows on this page">
                         Rows: <span id="ilc-row-count">0</span>
                     </span>
-                    <span class="text-muted small">{{ $channelName }} — really inactive on the marketplace, and Active with stock in CP Master.</span>
+                    <span class="text-muted small">{{ $channelName }} — listed but not live on this marketplace, and Active with stock in CP Master.</span>
                     @if (!empty($listingsUrl))
                         <a href="{{ $listingsUrl }}" class="btn btn-sm btn-outline-primary">Open marketplace listings</a>
                     @endif

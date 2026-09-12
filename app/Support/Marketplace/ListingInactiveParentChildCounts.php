@@ -320,9 +320,6 @@ class ListingInactiveParentChildCounts
             if (! self::rowHasPositiveInv($row, $sku)) {
                 continue;
             }
-            if ((int) ($row['channel_inv'] ?? 0) > 0) {
-                continue;
-            }
             if (MarketplacePortalInactiveCount::skuIsActive($sku, $activeKeys)) {
                 continue;
             }

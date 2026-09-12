@@ -94,7 +94,7 @@
                     <span class="badge bg-warning text-dark badge-il-stat" id="stat-cp-inactive-listings" title="CP Master SKUs that are also inactive on the marketplace. Zero-inventory SKUs are excluded.">
                         Inactive Child SKUs: <span id="total-cp-inactive-listings">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedCpInactiveTotalOrZero()) }}</span>
                     </span>
-                    <span class="text-muted small">Inactive Listing = really inactive on the marketplace, and Active with stock in CP Master.</span>
+                    <span class="text-muted small">Inactive Listing = listed on the marketplace but not live there, and Active with stock in CP Master. Zero does not mean every CP Master SKU is live on every channel — missing / never-listed SKUs are on Missing Listing.</span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
