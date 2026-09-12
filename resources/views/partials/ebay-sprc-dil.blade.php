@@ -85,6 +85,18 @@
         'ebay2op' => 'eBay 2 OP',
         default => 'eBay',
     };
+    $ebaySprcDilBtnTitle = 'Dil slabs → Target GROI%.';
+    if (!empty($ebaySprcDilCvrGroiAdj)) {
+        $ebaySprcDilBtnTitle .= ' CVR overlay (editable, with Count) adjusts Target GROI.';
+    }
+    if ($ebaySprcDilZeroSoldUsesMinGroi) {
+        $ebaySprcDilBtnTitle .= ' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.';
+        if (!empty($ebaySprcDilUsesAmzFloor)) {
+            $ebaySprcDilBtnTitle .= ' If that S PRC < A Price, use A Price.';
+        }
+    } else {
+        $ebaySprcDilBtnTitle .= ' Every INV > 0 SKU uses the Dil-matching slab.';
+    }
 @endphp
 
 @if($ebaySprcDilPart === 'css' || $ebaySprcDilPart === 'all')
@@ -212,9 +224,7 @@
 
 @if($ebaySprcDilPart === 'buttons' || $ebaySprcDilPart === 'all')
                     <button type="button" class="btn btn-sm" id="ebay-dil-groi-btn"
-                        title="{{ $ebaySprcDilZeroSoldUsesMinGroi
-                            ? 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR overlay (editable, with Count) adjusts Target GROI.' : '').' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.'.(!empty($ebaySprcDilUsesAmzFloor) ? ' If that S PRC < A Price, use A Price.' : '')
-                            : 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR overlay (editable, with Count) adjusts Target GROI.' : '').' Every INV > 0 SKU uses the Dil-matching slab.') }}">
+                        title="{{ $ebaySprcDilBtnTitle }}">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
 @endif
