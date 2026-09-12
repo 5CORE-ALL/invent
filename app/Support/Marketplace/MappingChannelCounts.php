@@ -27,11 +27,11 @@ class MappingChannelCounts
 
     public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v1';
 
-    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v10';
+    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v13';
 
-    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v10';
+    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v13';
 
-    public const INACTIVE_CP_TOTAL_CACHE_KEY = 'inactive_listings_cp_total_v10';
+    public const INACTIVE_CP_TOTAL_CACHE_KEY = 'inactive_listings_cp_total_v13';
 
     public const LINKED_MISMATCH_TOTAL_CACHE_KEY = 'linked_mismatch_sku_total_v2';
 
@@ -223,6 +223,15 @@ class MappingChannelCounts
             Cache::forget('inactive_listings_total_v9');
             Cache::forget('inactive_listings_master_rows_v9');
             Cache::forget('inactive_listings_cp_total_v10');
+            Cache::forget('inactive_listings_total_v10');
+            Cache::forget('inactive_listings_master_rows_v10');
+            Cache::forget(self::INACTIVE_CP_TOTAL_CACHE_KEY);
+            Cache::forget('inactive_listings_total_v11');
+            Cache::forget('inactive_listings_master_rows_v11');
+            Cache::forget('inactive_listings_cp_total_v11');
+            Cache::forget('inactive_listings_total_v12');
+            Cache::forget('inactive_listings_master_rows_v12');
+            Cache::forget('inactive_listings_cp_total_v12');
         } catch (\Throwable $e) {
             // ignore
         }
@@ -309,25 +318,7 @@ class MappingChannelCounts
 
     public static function cachedInactiveTotalOrZero(): int
     {
-        try {
-            $cached = Cache::get(self::INACTIVE_TOTAL_CACHE_KEY);
-            if ($cached !== null) {
-                return (int) $cached;
-            }
-        } catch (\Throwable $e) {
-            // ignore
-        }
-
-        try {
-            $rows = Cache::get(self::INACTIVE_MASTER_ROWS_CACHE_KEY);
-            if (is_array($rows) && $rows !== []) {
-                return (int) collect($rows)->sum(fn ($row) => (int) ($row['inactive_child'] ?? $row['inactive_listings'] ?? 0));
-            }
-        } catch (\Throwable $e) {
-            // ignore
-        }
-
-        return 0;
+        return self::cachedCpInactiveTotalOrZero();
     }
 
     public static function storeInactiveTotal(int $total): void
@@ -372,10 +363,9 @@ class MappingChannelCounts
     }
 
     /**
-     * Master table rows: seller-platform inactive parent / child counts.
-     * Badge + inactive_listings = child SKUs only (parents are shown separately).
+     * Master table rows: CP Master inactive parent / child counts (0 Inv excluded).
      *
-     * @return list<array{channel: string, channel_slug: string, image: ?string, inactive_listings: int, inactive_parent: int, inactive_child: int, cp_inactive_listings: int, cp_inactive_parent: int, cp_inactive_child: int, detail_url: string, cp_detail_url: string, listings_url: ?string, has_sku_detail: bool, api_status: string, api_connected: bool, api_updated_at: ?string, api_label: string}>
+     * @return list<array{channel: string, channel_slug: string, image: ?string, cp_inactive_listings: int, cp_inactive_parent: int, cp_inactive_child: int, detail_url: string, cp_detail_url: string, listings_url: ?string, has_sku_detail: bool, api_status: string, api_connected: bool, api_updated_at: ?string, api_label: string}>
      */
     public static function inactiveMasterRows(bool $useCache = false): array
     {
@@ -415,42 +405,20 @@ class MappingChannelCounts
                 'api_label' => 'API not linked',
             ];
 
-            $listingRows = ListingInactiveParentChildCounts::listingRowsForChannel($slug);
-            $child = 0;
-            $parent = 0;
-            foreach ($listingRows as $listingRow) {
-                if (($listingRow['kind'] ?? 'child') === 'parent') {
-                    $parent++;
-                } else {
-                    $child++;
-                }
-            }
-            $cpRows = ListingInactiveParentChildCounts::keepCpMasterInStockInactiveRows(
-                $listingRows,
-                ListingInactiveParentChildCounts::cpMasterSkuKeys()
-            );
-            $cpChild = 0;
-            $cpParent = 0;
-            foreach ($cpRows as $cpRow) {
-                if (($cpRow['kind'] ?? 'child') === 'parent') {
-                    $cpParent++;
-                } else {
-                    $cpChild++;
-                }
-            }
+            $cpCounts = ListingInactiveParentChildCounts::cpMasterListingCountsForChannel($slug);
+            $cpChild = (int) ($cpCounts['child'] ?? 0);
+            $cpParent = (int) ($cpCounts['parent'] ?? 0);
+            $detailUrl = url('/inactive-listings/channel/'.$slug);
 
             $rows[] = [
                 'channel' => $label,
                 'channel_slug' => $slug,
                 'image' => $logos[$slug] ?? null,
-                'inactive_listings' => $child,
-                'inactive_parent' => $parent,
-                'inactive_child' => $child,
                 'cp_inactive_listings' => $cpChild,
                 'cp_inactive_parent' => $cpParent,
                 'cp_inactive_child' => $cpChild,
-                'detail_url' => url('/inactive-listings/channel/'.$slug),
-                'cp_detail_url' => url('/inactive-listings/channel/'.$slug.'?source=cp'),
+                'detail_url' => $detailUrl,
+                'cp_detail_url' => $detailUrl,
                 'listings_url' => self::listingsInactiveUrlForSlug($slug),
                 'has_sku_detail' => MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null,
                 'api_status' => $api['api_status'],
@@ -463,7 +431,6 @@ class MappingChannelCounts
         try {
             $ttl = MarketplacePortalInactiveCount::$portalSyncIncomplete ? 1 : 10;
             Cache::put(self::INACTIVE_MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes($ttl));
-            self::storeInactiveTotal((int) collect($rows)->sum('inactive_child'));
             self::storeCpInactiveTotal((int) collect($rows)->sum('cp_inactive_child'));
         } catch (\Throwable $e) {
             // ignore

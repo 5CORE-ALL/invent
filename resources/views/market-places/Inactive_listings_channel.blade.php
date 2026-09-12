@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => (!empty($cpOnly) ? 'Inactive Listing ' : 'Marketplace Inactive Listings ') . $channelName, 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Inactive Listing ' . $channelName, 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -31,7 +31,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => (!empty($cpOnly) ? 'Inactive Listing ' : 'Marketplace Inactive Listings ') . $channelName,
+        'page_title' => 'Inactive Listing ' . $channelName,
         'sub_title'  => '',
     ])
 
@@ -42,7 +42,7 @@
                     <a href="{{ url('/inactive-listings') }}" class="btn btn-sm btn-outline-secondary">
                         <i class="fas fa-arrow-left me-1"></i> Inactive Listings
                     </a>
-                    <span class="badge bg-warning text-dark badge-mmc-stat" title="{{ !empty($cpOnly) ? 'CP Master child SKUs inactive on this marketplace (0 Inv excluded)' : 'Inactive child SKUs only' }}">
+                    <span class="badge bg-warning text-dark badge-mmc-stat" title="CP Master child SKUs inactive on this marketplace (0 Inv excluded)">
                         Inactive Child SKUs: <span id="ilc-child-count">0</span>
                     </span>
                     <span class="badge bg-secondary badge-mmc-stat" title="Inactive parent listings">
@@ -51,7 +51,7 @@
                     <span class="badge bg-dark badge-mmc-stat" title="All inactive rows on this page">
                         Rows: <span id="ilc-row-count">0</span>
                     </span>
-                    <span class="text-muted small">{{ $channelName }} — {{ !empty($cpOnly) ? 'in CP Master and this marketplace, inactive, inventory not zero.' : 'all marketplace inactive listings and status.' }}</span>
+                    <span class="text-muted small">{{ $channelName }} — really inactive on the marketplace, and Active with stock in CP Master.</span>
                     @if (!empty($listingsUrl))
                         <a href="{{ $listingsUrl }}" class="btn btn-sm btn-outline-primary">Open marketplace listings</a>
                     @endif
@@ -103,7 +103,7 @@
 
     $(document).ready(function() {
         ilcTable = new Tabulator("#ilc-table", {
-            ajaxURL: "{{ url('/inactive-listings/channel/' . $channelSlug . '/data') }}{{ !empty($cpOnly) ? '?source=cp' : '' }}",
+            ajaxURL: "{{ url('/inactive-listings/channel/' . $channelSlug . '/data') }}",
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
                 const child = Number(response && response.child_count != null ? response.child_count : data.filter(function (r) { return String(r.kind || '') !== 'parent'; }).length);

@@ -2,6 +2,7 @@
 
 namespace App\Support\Marketplace;
 
+use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
@@ -16,8 +17,8 @@ use Illuminate\Support\Facades\Schema;
  * Inactive parent vs child counts.
  *
  * /missing-listing uses forChannel() and drops zero-inventory SKUs.
- * /inactive-listings uses listingRowsForChannel() / listingCountsForChannel()
- * and shows every portal inactive SKU (including 0 inv).
+ * /inactive-listings uses cpMasterListingRowsForChannel() / cpMasterListingCountsForChannel()
+ * (CP Master + marketplace inactive + inventory > 0).
  * Parent = PARENT-placeholder SKUs, not product_master parent names.
  */
 class ListingInactiveParentChildCounts
@@ -55,7 +56,7 @@ class ListingInactiveParentChildCounts
             if ($mm !== null) {
                 $skus = MarketplacePortalInactiveCount::skus($mm);
             }
-            if ($skus === []) {
+            if ($skus === [] && ! in_array($mm, ['temu', 'temu2'], true)) {
                 $skus = self::fallbackInactiveSkus($norm);
             }
         } catch (\Throwable $e) {
@@ -139,7 +140,7 @@ class ListingInactiveParentChildCounts
             if ($mm !== null) {
                 $skus = MarketplacePortalInactiveCount::skus($mm);
             }
-            if ($skus === []) {
+            if ($skus === [] && ! in_array($mm, ['temu', 'temu2'], true)) {
                 $skus = self::fallbackInactiveSkus($norm);
             }
         } catch (\Throwable $e) {
@@ -232,37 +233,10 @@ class ListingInactiveParentChildCounts
                 : $row['state'];
         }
 
-        return $rows;
-    }
-
-    /**
-     * @return array{parent: int, child: int, url: ?string}
-     */
-    public static function listingCountsForChannel(string $channel): array
-    {
-        $parent = 0;
-        $child = 0;
-        foreach (self::rowsForChannel($channel) as $row) {
-            if (($row['kind'] ?? 'child') === 'parent') {
-                $parent++;
-            } else {
-                $child++;
-            }
-        }
-
-        $url = null;
-        try {
-            $norm = ListingChannelCounts::normalize($channel);
-            $url = MappingChannelCounts::listingsInactiveUrlForSlug($norm !== '' ? $norm : $channel);
-        } catch (\Throwable $e) {
-            $url = null;
-        }
-
-        return [
-            'parent' => $parent,
-            'child' => $child,
-            'url' => $url,
-        ];
+        return array_values(array_filter(
+            $rows,
+            static fn (array $row) => MarketplacePortalStatusTabs::bucket((string) ($row['state'] ?? $row['status'] ?? 'inactive')) !== 'active'
+        ));
     }
 
     /**
@@ -273,9 +247,35 @@ class ListingInactiveParentChildCounts
      */
     public static function cpMasterListingRowsForChannel(string $channel): array
     {
+        $norm = ListingChannelCounts::normalize($channel);
+        $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($norm);
+        $activeKeys = $mm !== null ? MarketplacePortalInactiveCount::activeSkuKeys($mm) : [];
+        $rows = self::listingRowsForChannel($channel);
+        if ($mm !== null && $rows !== []) {
+            $skus = array_values(array_filter(array_map(
+                static fn (array $row) => trim((string) ($row['sku'] ?? '')),
+                $rows
+            )));
+            try {
+                $mpQty = MarketplaceListingStockResolver::stockMapForSkus($mm, $skus);
+            } catch (\Throwable $e) {
+                $mpQty = [];
+            }
+            foreach ($rows as $i => $row) {
+                if ((int) ($row['channel_inv'] ?? 0) > 0) {
+                    continue;
+                }
+                $qty = MarketplaceListingStockResolver::qtyFromMap($mpQty, (string) ($row['sku'] ?? ''));
+                if ($qty !== null) {
+                    $rows[$i]['channel_inv'] = (int) $qty;
+                }
+            }
+        }
+
         return self::keepCpMasterInStockInactiveRows(
-            self::listingRowsForChannel($channel),
-            self::cpMasterSkuKeys()
+            $rows,
+            self::cpMasterSkuKeys(),
+            $activeKeys
         );
     }
 
@@ -305,9 +305,10 @@ class ListingInactiveParentChildCounts
      *
      * @param  list<array<string, mixed>>  $rows
      * @param  array<string, true>  $cpKeys
+     * @param  array<string, true>  $activeKeys
      * @return list<array<string, mixed>>
      */
-    public static function keepCpMasterInStockInactiveRows(array $rows, array $cpKeys): array
+    public static function keepCpMasterInStockInactiveRows(array $rows, array $cpKeys, array $activeKeys = []): array
     {
         $out = [];
         $seen = [];
@@ -317,6 +318,16 @@ class ListingInactiveParentChildCounts
                 continue;
             }
             if (! self::rowHasPositiveInv($row, $sku)) {
+                continue;
+            }
+            if ((int) ($row['channel_inv'] ?? 0) > 0) {
+                continue;
+            }
+            if (MarketplacePortalInactiveCount::skuIsActive($sku, $activeKeys)) {
+                continue;
+            }
+            $state = MarketplacePortalStatusTabs::bucket((string) ($row['state'] ?? $row['status'] ?? 'inactive'));
+            if ($state === 'active') {
                 continue;
             }
             $key = strtoupper($sku);
@@ -578,9 +589,14 @@ class ListingInactiveParentChildCounts
             if (Schema::hasColumn('product_master', 'deleted_at')) {
                 $q->whereNull('deleted_at');
             }
-            foreach ($q->select(['sku'])->cursor() as $row) {
+            $hasValues = Schema::hasColumn('product_master', 'Values');
+            $select = $hasValues ? ['sku', 'Values'] : ['sku'];
+            foreach ($q->select($select)->cursor() as $row) {
                 $sku = trim((string) ($row->sku ?? ''));
                 if ($sku === '') {
+                    continue;
+                }
+                if ($hasValues && strtolower(ProductMaster::statusValueFromValues($row->Values ?? [])) !== 'active') {
                     continue;
                 }
                 self::$cpMasterSkuKeys[strtoupper($sku)] = true;

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use App\Models\ShopifySku;
 use App\Models\TopDawgProduct;
 use App\Services\TopDawgApiService;
 
@@ -17,6 +18,9 @@ final class MarketplacePortalInactiveCount
 {
     /** @var array<string, list<string>> */
     private static array $skuMemo = [];
+
+    /** @var array<string, array<string, true>> */
+    private static array $activeMemo = [];
 
     /** @var array<string, list<string>> */
     private static array $sheetMemo = [];
@@ -45,8 +49,8 @@ final class MarketplacePortalInactiveCount
             ),
             'ebay2' => self::ebaySkus(2),
             'ebay3' => self::ebaySkus(3),
-            'temu' => self::fromPortalAndJson('temu_metrics', 'listing_status', ['temu_listing_statuses']),
-            'temu2' => self::fromPortalAndJson('temu2_metrics', 'listing_status', ['temu2_listing_statuses']),
+            'temu' => self::fromPortalAndJson('temu_metrics', 'listing_status', []),
+            'temu2' => self::fromPortalAndJson('temu2_metrics', 'listing_status', []),
             'tiktok' => self::mergeUnique(
                 self::columnSkus('tiktok_products', 'listing_status', 'sku'),
                 self::jsonLiveInactiveSkus('tiktok_shop_listing_statuses')
@@ -77,8 +81,326 @@ final class MarketplacePortalInactiveCount
             'aliexpress' => self::aliexpressSkus(),
             default => [],
         };
+        self::$skuMemo[$mmChannel] = self::withoutActiveSkus($mmChannel, self::$skuMemo[$mmChannel]);
 
         return self::$skuMemo[$mmChannel];
+    }
+
+    /**
+     * SKUs that are currently Active / live on the seller portal.
+     * These must never count as Inactive Listing.
+     *
+     * @return array<string, true>
+     */
+    public static function activeSkuKeys(string $mmChannel): array
+    {
+        $mmChannel = strtolower(trim($mmChannel));
+        if (array_key_exists($mmChannel, self::$activeMemo)) {
+            return self::$activeMemo[$mmChannel];
+        }
+
+        $keys = [];
+        foreach (self::portalActiveKeys($mmChannel) as $key => $_) {
+            $keys[$key] = true;
+        }
+        foreach (self::jsonActiveKeys($mmChannel) as $key => $_) {
+            $keys[$key] = true;
+        }
+        foreach (self::liveCacheActiveKeys($mmChannel) as $key => $_) {
+            $keys[$key] = true;
+        }
+        if ($mmChannel === 'amazon') {
+            foreach (self::amazonActiveReportSkuKeys() as $key => $_) {
+                $keys[$key] = true;
+            }
+        }
+
+        self::$activeMemo[$mmChannel] = $keys;
+
+        return $keys;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return list<string>
+     */
+    public static function withoutActiveSkus(string $mmChannel, array $skus): array
+    {
+        $active = self::activeSkuKeys($mmChannel);
+        if ($active === []) {
+            return array_values($skus);
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $key = strtoupper($sku);
+            if (isset($seen[$key]) || self::skuIsActive($sku, $active)) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $sku;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, true>  $active
+     */
+    public static function skuIsActive(string $sku, array $active): bool
+    {
+        $sku = trim($sku);
+        if ($sku === '' || $active === []) {
+            return false;
+        }
+        if (isset($active[strtoupper($sku)])) {
+            return true;
+        }
+        $norm = strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: '');
+        if ($norm !== '' && isset($active[$norm])) {
+            return true;
+        }
+        $compact = strtoupper(ShopifySku::compactSkuForLookup($sku) ?: '');
+
+        return $compact !== '' && isset($active[$compact]);
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    protected static function portalActiveKeys(string $mmChannel): array
+    {
+        $skip = ['missing', 'not_listed'];
+        $ebaySkip = ['missing', 'not_listed', 'sold'];
+
+        $pairs = match ($mmChannel) {
+            'ebay1' => [['ebay_metrics', 'listing_status', 'sku', $ebaySkip]],
+            'ebay2' => [['ebay_2_metrics', 'listing_status', 'sku', $ebaySkip]],
+            'ebay3' => [['ebay_3_metrics', 'listing_status', 'sku', $ebaySkip]],
+            'temu' => [['temu_metrics', 'listing_status', 'sku', $skip]],
+            'temu2' => [['temu2_metrics', 'listing_status', 'sku', $skip]],
+            'tiktok' => [['tiktok_products', 'listing_status', 'sku', $skip]],
+            'tiktok2' => [['tiktok_products_two', 'listing_status', 'sku', $skip]],
+            'amazon' => [['amazon_datsheets', 'listing_status', 'sku', $skip]],
+            'reverb' => [['reverb_products', 'listing_state', 'sku', $skip]],
+            'shein' => [['shein_metrics', 'status', 'sku', $skip]],
+            'topdawg' => [['topdawg_products', 'listing_state', 'sku', $skip]],
+            'pls' => [],
+            'macy' => [['macy_products', 'listing_status', 'sku', $skip]],
+            'wayfair' => [],
+            'bestbuy' => [['bestbuy_usa_products', 'listing_status', 'sku', $skip]],
+            'faire' => [['faire_metric', 'listing_status', 'sku', $skip]],
+            'aliexpress' => [
+                ['aliexpress_metric', 'listing_status', 'sku', $skip],
+                ['aliexpress_metric', 'status', 'sku', $skip],
+            ],
+            default => [],
+        };
+
+        $keys = [];
+        foreach ($pairs as $pair) {
+            [$table, $column, $skuCol, $skipStatuses] = $pair;
+            foreach (self::columnKeySet($table, $column, $skuCol, 'active', $skipStatuses) as $key => $_) {
+                $keys[$key] = true;
+            }
+        }
+        if ($mmChannel === 'pls') {
+            foreach (self::plsActiveSkus() as $sku) {
+                $keys[strtoupper($sku)] = true;
+            }
+        }
+        if ($mmChannel === 'newegg') {
+            foreach (self::neweggActiveSkus() as $sku) {
+                $keys[strtoupper($sku)] = true;
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    protected static function jsonActiveKeys(string $mmChannel): array
+    {
+        $tables = match ($mmChannel) {
+            'ebay1' => ['ebay_listing_statuses', 'ebay_variation_listing_statuses'],
+            'ebay2' => ['ebay_two_listing_statuses'],
+            'ebay3' => ['ebay_three_listing_statuses'],
+            'temu' => ['temu_listing_statuses'],
+            'temu2' => ['temu2_listing_statuses'],
+            'tiktok' => ['tiktok_shop_listing_statuses'],
+            'tiktok2' => ['tiktok_two_shop_listing_statuses'],
+            'amazon' => ['amazon_listing_statuses'],
+            'reverb' => ['reverb_listing_statuses'],
+            'shein' => ['shein_listing_statuses'],
+            'newegg' => ['newegg_b2c_listing_statuses'],
+            'pls' => ['pls_listing_statuses'],
+            'macy' => ['macys_listing_statuses'],
+            'wayfair' => ['wayfair_listing_statuses'],
+            'bestbuy' => ['bestbuy_usa_listing_statuses'],
+            'faire' => ['faire_listing_statuses'],
+            'aliexpress' => ['aliexpress_listing_statuses'],
+            default => [],
+        };
+
+        $keys = [];
+        foreach ($tables as $table) {
+            foreach (self::jsonLiveStatusSkus($table, 'active') as $sku) {
+                $keys[strtoupper($sku)] = true;
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    protected static function liveCacheActiveKeys(string $mmChannel): array
+    {
+        $cacheKey = match ($mmChannel) {
+            'ebay1' => 'mm.ebay1.live_listings.v3',
+            'ebay2' => 'mm.ebay2.live_listings.v3',
+            'ebay3' => 'mm.ebay3.live_listings.v3',
+            'temu' => 'mm.temu.live_listings.v2',
+            'temu2' => 'mm.temu2.live_listings.v4',
+            'amazon' => 'mm.amazon.live_listings.v3',
+            'reverb' => ReverbLiveListingsService::CACHE_KEY,
+            'shein' => SheinLiveListingsService::CACHE_KEY,
+            'topdawg' => 'mm.topdawg.live_listings.v1',
+            'newegg' => NeweggLiveListingsService::CACHE_KEY,
+            'pls' => 'mm.pls.live_listings.v1',
+            'macy' => 'mm.macy.live_listings.v1',
+            'wayfair' => 'mm.wayfair.live_listings.v1',
+            'bestbuy' => 'mm.bestbuy.live_listings.v1',
+            'faire' => 'mm.faire.live_listings.v2',
+            'aliexpress' => AliexpressLiveListingsService::CACHE_KEY,
+            default => null,
+        };
+        if ($cacheKey === null) {
+            return [];
+        }
+
+        $keys = [];
+        foreach (self::liveCacheStatusSkus($cacheKey, 'active') as $sku) {
+            $keys[strtoupper($sku)] = true;
+        }
+
+        return $keys;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function liveCacheStatusSkus(string $cacheKey, string $wantBucket): array
+    {
+        try {
+            $cached = Cache::get($cacheKey);
+        } catch (\Throwable $e) {
+            return [];
+        }
+        if (! is_array($cached) || $cached === []) {
+            return [];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($cached as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $key = strtoupper($sku);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            if (MarketplacePortalStatusTabs::bucket((string) ($row['state'] ?? '')) !== $wantBucket) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $sku;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function plsActiveSkus(): array
+    {
+        if (! Schema::hasTable('shopify_catalog_variants') || ! Schema::hasTable('shopify_catalog_products')) {
+            return [];
+        }
+        $out = [];
+        $seen = [];
+        $rows = DB::table('shopify_catalog_variants as v')
+            ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+            ->where('v.store', 'pls')
+            ->whereNotNull('v.sku')
+            ->where('v.sku', '!=', '')
+            ->select(['v.sku', 'p.status']);
+        foreach ($rows->cursor() as $row) {
+            $sku = trim((string) ($row->sku ?? ''));
+            $key = strtoupper($sku);
+            if ($sku === '' || isset($seen[$key])) {
+                continue;
+            }
+            if (MarketplacePortalStatusTabs::bucket((string) ($row->status ?? '')) !== 'active') {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $sku;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function neweggActiveSkus(): array
+    {
+        if (! Schema::hasTable('newegg_pricing') || ! Schema::hasColumn('newegg_pricing', 'seller_part_number')) {
+            return [];
+        }
+        if (! Schema::hasColumn('newegg_pricing', 'active') && ! Schema::hasColumn('newegg_pricing', 'inventory_active')) {
+            return [];
+        }
+        $q = DB::table('newegg_pricing')
+            ->whereNotNull('seller_part_number')
+            ->where('seller_part_number', '!=', '');
+        $q->where(function ($inner) {
+            if (Schema::hasColumn('newegg_pricing', 'active')) {
+                $inner->where('active', 1)->orWhere('active', true)->orWhere('active', '1');
+            }
+            if (Schema::hasColumn('newegg_pricing', 'inventory_active')) {
+                $inner->orWhere('inventory_active', 1)->orWhere('inventory_active', true);
+            }
+        });
+
+        $out = [];
+        $seen = [];
+        foreach ($q->pluck('seller_part_number') as $sku) {
+            $sku = trim((string) $sku);
+            $key = strtoupper($sku);
+            if ($sku === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $sku;
+        }
+
+        return $out;
     }
 
     public static function count(string $mmChannel): int
@@ -690,7 +1012,8 @@ final class MarketplacePortalInactiveCount
             if (! isset($inactive[$key])) {
                 continue;
             }
-            if (MarketplacePortalStatusTabs::bucket((string) ($row['state'] ?? '')) === 'inactive') {
+            $liveBucket = MarketplacePortalStatusTabs::bucket((string) ($row['state'] ?? ''));
+            if ($liveBucket === 'active' || $liveBucket === 'inactive') {
                 continue;
             }
             $rows[$i]['state'] = 'inactive';
@@ -744,6 +1067,12 @@ final class MarketplacePortalInactiveCount
             $json = self::mergeUnique($json, self::jsonLiveInactiveSkus($jsonTable));
         }
 
+        foreach ($jsonTables as $jsonTable) {
+            foreach (self::jsonLiveStatusSkus($jsonTable, 'active') as $sku) {
+                $activeKeys[strtoupper($sku)] = $sku;
+            }
+        }
+
         $fromJson = [];
         foreach ($json as $sku) {
             if (isset($activeKeys[strtoupper($sku)])) {
@@ -752,7 +1081,15 @@ final class MarketplacePortalInactiveCount
             $fromJson[] = $sku;
         }
 
-        return self::mergeUnique($inactive, $fromJson);
+        $fromPortal = [];
+        foreach ($inactive as $sku) {
+            if (isset($activeKeys[strtoupper($sku)])) {
+                continue;
+            }
+            $fromPortal[] = $sku;
+        }
+
+        return self::mergeUnique($fromPortal, $fromJson);
     }
 
     /**
@@ -828,6 +1165,14 @@ final class MarketplacePortalInactiveCount
      */
     protected static function jsonLiveInactiveSkus(string $table): array
     {
+        return self::jsonLiveStatusSkus($table, 'inactive');
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function jsonLiveStatusSkus(string $table, string $wantBucket): array
+    {
         if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku') || ! Schema::hasColumn($table, 'value')) {
             return [];
         }
@@ -844,7 +1189,7 @@ final class MarketplacePortalInactiveCount
             ? fn ($cb) => $query->chunkById(500, $cb)
             : fn ($cb) => $query->chunk(500, $cb);
 
-        $walker(function ($rows) use (&$out, &$seen) {
+        $walker(function ($rows) use (&$out, &$seen, $wantBucket) {
             foreach ($rows as $row) {
                 $sku = trim((string) ($row->sku ?? ''));
                 if ($sku === '' || stripos($sku, 'PARENT') !== false) {
@@ -863,7 +1208,7 @@ final class MarketplacePortalInactiveCount
                     continue;
                 }
                 $raw = self::jsonStatusRaw($value);
-                if (MarketplacePortalStatusTabs::bucket($raw) !== 'inactive') {
+                if (MarketplacePortalStatusTabs::bucket($raw) !== $wantBucket) {
                     continue;
                 }
                 $seen[$key] = true;
