@@ -29,18 +29,13 @@ class InactiveListingsController extends Controller
         try {
             @set_time_limit(400);
             $data = collect(MappingChannelCounts::inactiveMasterRows(true))->values();
-            $total = (int) $data->sum(fn ($row) => (int) ($row['inactive_child'] ?? $row['inactive_listings'] ?? 0));
             $cpTotal = (int) $data->sum(fn ($row) => (int) ($row['cp_inactive_child'] ?? 0));
-            MappingChannelCounts::storeInactiveTotal($total);
             MappingChannelCounts::storeCpInactiveTotal($cpTotal);
 
             return response()->json([
                 'success' => true,
                 'data' => $data,
                 'count' => $data->count(),
-                'total_inactive' => $total,
-                'total_inactive_child' => $total,
-                'total_inactive_parent' => (int) $data->sum(fn ($row) => (int) ($row['inactive_parent'] ?? 0)),
                 'total_cp_inactive' => $cpTotal,
                 'total_cp_inactive_child' => $cpTotal,
                 'total_cp_inactive_parent' => (int) $data->sum(fn ($row) => (int) ($row['cp_inactive_parent'] ?? 0)),
@@ -60,8 +55,7 @@ class InactiveListingsController extends Controller
         }
 
         $slug = $resolved['slug'];
-        $source = strtolower(trim((string) $request->query('source', '')));
-        $cpOnly = $source === 'cp';
+        $cpOnly = true;
         $hasSkuDetail = true;
         $channelInvLabel = match (true) {
             in_array($slug, ['tiktok', 'tiktokshop'], true) => 'TikTok 1 inv',
@@ -102,10 +96,8 @@ class InactiveListingsController extends Controller
             }
 
             $slug = $resolved['slug'];
-            $cpOnly = strtolower(trim((string) $request->query('source', ''))) === 'cp';
-            $rows = $cpOnly
-                ? ListingInactiveParentChildCounts::cpMasterListingRowsForChannel($slug)
-                : ListingInactiveParentChildCounts::listingRowsForChannel($slug);
+            $cpOnly = true;
+            $rows = ListingInactiveParentChildCounts::cpMasterListingRowsForChannel($slug);
 
             $data = collect($rows)
                 ->map(function (array $row) use ($resolved) {
@@ -129,7 +121,7 @@ class InactiveListingsController extends Controller
                 'child_count' => $childCount,
                 'parent_count' => $data->count() - $childCount,
                 'channel' => $resolved['name'],
-                'source' => $cpOnly ? 'cp' : 'marketplace',
+                'source' => 'cp',
             ];
 
             if ($slug === 'pls') {

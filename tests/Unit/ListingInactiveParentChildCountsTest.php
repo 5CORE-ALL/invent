@@ -54,4 +54,44 @@ class ListingInactiveParentChildCountsTest extends TestCase
 
         $this->assertCount(1, $kept);
     }
+
+    public function test_drops_sku_that_is_active_on_the_marketplace(): void
+    {
+        $rows = [
+            ['sku' => 'WF 6.5 100 PP 4OHM', 'kind' => 'child', 'inv' => 12, 'state' => 'active'],
+        ];
+        $cpKeys = ['WF 6.5 100 PP 4OHM' => true];
+
+        $kept = ListingInactiveParentChildCounts::keepCpMasterInStockInactiveRows($rows, $cpKeys);
+
+        $this->assertSame([], $kept);
+    }
+
+    public function test_drops_sku_with_marketplace_stock(): void
+    {
+        $rows = [
+            ['sku' => 'WF 6.5 100 PP 4OHM', 'kind' => 'child', 'inv' => 12, 'channel_inv' => 12, 'state' => 'inactive'],
+        ];
+        $cpKeys = ['WF 6.5 100 PP 4OHM' => true];
+
+        $kept = ListingInactiveParentChildCounts::keepCpMasterInStockInactiveRows($rows, $cpKeys);
+
+        $this->assertSame([], $kept);
+    }
+
+    public function test_drops_sku_in_marketplace_active_key_set(): void
+    {
+        $rows = [
+            ['sku' => 'WF 6.5 100 PP 4OHM', 'kind' => 'child', 'inv' => 12, 'state' => 'inactive'],
+        ];
+        $cpKeys = ['WF 6.5 100 PP 4OHM' => true];
+
+        $kept = ListingInactiveParentChildCounts::keepCpMasterInStockInactiveRows(
+            $rows,
+            $cpKeys,
+            ['WF 6.5 100 PP 4OHM' => true]
+        );
+
+        $this->assertSame([], $kept);
+    }
 }
