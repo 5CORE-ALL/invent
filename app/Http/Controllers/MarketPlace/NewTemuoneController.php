@@ -10,10 +10,10 @@ use App\Models\EbayMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuAdsApiReport;
-use App\Models\TemuDataView;
 use App\Models\TemuListingStatus;
 use App\Models\TemuLmp;
 use App\Models\TemuMetric;
+use App\Models\TemuOrder;
 use App\Models\TemuViewData;
 use App\Services\DilRuleSpriceApplyService;
 use App\Services\LmpSkuGroupService;
@@ -21,7 +21,9 @@ use App\Services\TemuShopifySalesService;
 use App\Support\AmazonDilGroiRule;
 use App\Support\ProductMasterTemuShip;
 use App\Support\TemuGoodsIdHelper;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -33,7 +35,96 @@ class NewTemuoneController extends Controller
 
     public function index()
     {
-        return view('market-places.new_temuone_tabulator_view');
+        return view('market-places.new_temuone_tabulator_view', [
+            'temuMargin' => TemuShopifySalesService::temuMarginDecimal(),
+            'temuAds' => $this->temuChannelAdsSummary(),
+        ]);
+    }
+
+    /**
+     * Schema::hasTable hits information_schema, which costs ~45 ms per call on this
+     * database. Table existence never changes mid-request, so memoize it.
+     *
+     * @var array<string, bool>
+     */
+    private static array $tableExistsCache = [];
+
+    private function hasTable(string $table): bool
+    {
+        if (array_key_exists($table, self::$tableExistsCache)) {
+            return self::$tableExistsCache[$table];
+        }
+
+        try {
+            $exists = (bool) Cache::remember(
+                'newtemuone_has_table:'.$table,
+                now()->addHours(12),
+                static fn () => Schema::hasTable($table)
+            );
+        } catch (\Throwable $e) {
+            $exists = Schema::hasTable($table);
+        }
+
+        return self::$tableExistsCache[$table] = $exists;
+    }
+
+    /**
+     * Temu 1 Ads% with the same definition /channel-master uses for the Temu row:
+     * L30 ad spend from temu_ads_api_reports ÷ L30 order revenue from temu_orders.
+     *
+     * @return array{spend: float, sales: float, percent: float, window: string}
+     */
+    private function temuChannelAdsSummary(): array
+    {
+        // index() and dataJson() both need this; the orders scan behind it is not cheap.
+        static $memo = null;
+        if ($memo !== null) {
+            return $memo;
+        }
+
+        try {
+            $cached = Cache::get('newtemuone_channel_ads_summary');
+            if (is_array($cached)) {
+                return $memo = $cached;
+            }
+        } catch (\Throwable $e) {
+            // Cache unavailable — fall through and compute.
+        }
+
+        $spend = 0.0;
+        $sales = 0.0;
+        $window = '';
+
+        try {
+            if ($this->hasTable('temu_ads_api_reports')) {
+                $spend = (float) (TemuAdsApiReport::badgeTotals('L30')['spend'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('New Temu One ads spend failed: '.$e->getMessage());
+        }
+
+        try {
+            [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
+            $window = substr((string) $start, 0, 10).' → '.substr((string) $end, 0, 10);
+            $sales = (float) (TemuShopifySalesService::computeMetricsFromOrders($start, $end)['sales'] ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('New Temu One ads sales failed: '.$e->getMessage());
+        }
+
+        $summary = [
+            'spend' => round($spend, 2),
+            'sales' => round($sales, 2),
+            'percent' => $sales > 0 ? round(($spend / $sales) * 100, 2) : 0.0,
+            'window' => $window,
+        ];
+
+        try {
+            Cache::put('newtemuone_channel_ads_summary', $summary, now()->addMinutes(10));
+        } catch (\Throwable $e) {
+            // Cache unavailable — value is still correct for this request.
+        }
+
+        return $memo = $summary;
     }
 
     public function dataJson()
@@ -85,7 +176,7 @@ class NewTemuoneController extends Controller
 
             // Views — same as /temu1-data: temu_view_data.product_clicks by goods_id,
             // else temu_metrics.product_clicks_l30 + Ads API clicks when the sheet has no row.
-            $viewDataByGoodsId = Schema::hasTable('temu_view_data')
+            $viewDataByGoodsId = $this->hasTable('temu_view_data')
                 ? TemuViewData::selectRaw('goods_id, SUM(product_clicks) as product_clicks')
                     ->groupBy('goods_id')
                     ->get()
@@ -93,7 +184,7 @@ class NewTemuoneController extends Controller
                 : collect();
 
             $adsViewsByGoodsId = collect();
-            if (Schema::hasTable('temu_ads_api_reports')) {
+            if ($this->hasTable('temu_ads_api_reports')) {
                 $adsViewsByGoodsId = TemuAdsApiReport::query()
                     ->liveAds()
                     ->inLatestWindow('L30')
@@ -119,29 +210,31 @@ class NewTemuoneController extends Controller
                 }
             }
 
-            [$l30Start, $l30End] = TemuShopifySalesService::channelMasterL30Window();
-            foreach (TemuShopifySalesService::getOrdersTableRows($l30Start, $l30End) as $orderRow) {
-                $raw = trim((string) ($orderRow['contribution_sku'] ?? ''));
-                if ($raw === '') {
-                    continue;
-                }
-                $n = $normalizeSku($raw);
-                $qty = (int) ($orderRow['quantity_purchased'] ?? 0);
-                if (isset($l30ByNormalizedSku[$n])) {
-                    $l30ByNormalizedSku[$n] += $qty;
-                } else {
-                    $nNoSpace = str_replace(' ', '', $n);
-                    if (isset($noSpaceToNormalized[$nNoSpace])) {
-                        $l30ByNormalizedSku[$noSpaceToNormalized[$nNoSpace]] += $qty;
+            $l60ByNormalizedSku = $l30ByNormalizedSku;
+
+            $tallyOrders = function (array $window, array &$bucket) use ($normalizeSku, $noSpaceToNormalized): void {
+                foreach ($this->temuOrderQtyBySku($window[0], $window[1]) as $raw => $qty) {
+                    $n = $normalizeSku($raw);
+                    if (isset($bucket[$n])) {
+                        $bucket[$n] += $qty;
+                    } else {
+                        $nNoSpace = str_replace(' ', '', $n);
+                        if (isset($noSpaceToNormalized[$nNoSpace])) {
+                            $bucket[$noSpaceToNormalized[$nNoSpace]] += $qty;
+                        }
                     }
                 }
-            }
+            };
+
+            $tallyOrders(TemuShopifySalesService::channelMasterL30Window(), $l30ByNormalizedSku);
+            // Prior 30 complete Pacific days (31–60). Feeds CVR 45 / CVR 60, which is what
+            // the CVR up/down arrow and the Sprc Dil CVR overlay compare against.
+            $tallyOrders(TemuShopifySalesService::channelMasterL60Window(), $l60ByNormalizedSku);
 
             $lookupStdPrc = $this->buildStdPriceLookup($skus, $normalizeSku);
             $amazonPriceBySku = [];
             $ebayPriceBySku = [];
             $ebay2PriceBySku = [];
-            $temuDataViewBySku = [];
             foreach (array_chunk($skus, 500) as $skuChunk) {
                 $amazonPriceBySku += $this->buildPriceLookup(
                     AmazonDatasheet::whereIn('sku', $skuChunk)->get(['sku', 'price']),
@@ -158,23 +251,17 @@ class NewTemuoneController extends Controller
                     $normalizeSku,
                     static fn ($row) => is_numeric($row->ebay_price ?? null) ? (float) $row->ebay_price : null
                 );
-                if (Schema::hasTable('temu_data_view')) {
-                    foreach (TemuDataView::whereIn('sku', $skuChunk)->get(['sku', 'value']) as $dv) {
-                        $val = is_array($dv->value)
-                            ? $dv->value
-                            : (json_decode((string) ($dv->value ?? ''), true) ?: []);
-                        $temuDataViewBySku[(string) $dv->sku] = is_array($val) ? $val : [];
-                    }
-                }
             }
 
             $dilStore = DilRuleSpriceApplyService::for('temu')->loadDilGroiStore();
             $dilRules = $dilStore['rules'] ?? [];
             $cvrAdj = $dilStore['cvr_adj'] ?? null;
             $percentage = TemuShopifySalesService::temuMarginDecimal();
+            // One channel-level Ads% nets every row, same as /temu2-decrease.
+            $adsPercent = (float) $this->temuChannelAdsSummary()['percent'];
 
             $temuLmpByNormalizedSku = [];
-            if (Schema::hasTable('temu_lmp')) {
+            if ($this->hasTable('temu_lmp')) {
                 foreach (TemuLmp::all() as $row) {
                     $nk = $normalizeSku($row->sku);
                     if ($nk !== '' && !isset($temuLmpByNormalizedSku[$nk])) {
@@ -205,6 +292,12 @@ class NewTemuoneController extends Controller
                 $adsViews = $goodsIdKey ? (int) ($adsViewsByGoodsId->get($goodsIdKey) ?? 0) : 0;
                 $views = $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
                 $cvrPercent = $views > 0 ? round(($temuL30 / $views) * 100, 2) : 0.0;
+                // Same CVR 45 / CVR 60 definition as /temu2-decrease: one Views denominator,
+                // L45 units being the midpoint of the current and prior 30-day windows.
+                $temuL60 = (int) ($l60ByNormalizedSku[$normalizeSku($sku)] ?? 0);
+                $temuL45 = round(($temuL30 + $temuL60) / 2, 2);
+                $cvr45 = $views > 0 ? round(($temuL45 / $views) * 100, 2) : 0.0;
+                $cvr60 = $views > 0 ? round(($temuL60 / $views) * 100, 2) : 0.0;
 
                 $buyerLink = '';
                 $sellerLink = '';
@@ -234,11 +327,6 @@ class NewTemuoneController extends Controller
                 $amazonPrice = $this->lookupMappedPrice($amazonPriceBySku, $sku, $normalizeSku);
                 $ebayPrice = $this->lookupMappedPrice($ebayPriceBySku, $sku, $normalizeSku);
                 $ebay2Price = $this->lookupMappedPrice($ebay2PriceBySku, $sku, $normalizeSku);
-                $savedView = $temuDataViewBySku[$sku] ?? [];
-                $storedSprice = isset($savedView['sprice']) && is_numeric($savedView['sprice'])
-                    ? (float) $savedView['sprice']
-                    : null;
-
                 $stdPrc = $lookupStdPrc($sku);
                 if ($stdPrc === null) {
                     foreach ($this->lmpSkuGroupService->groupContaining($sku) as $linkedSku) {
@@ -256,6 +344,7 @@ class NewTemuoneController extends Controller
                     $temuShip,
                     $dilPct,
                     $cvrPercent,
+                    $cvr60,
                     $dilRules,
                     is_array($cvrAdj) ? $cvrAdj : null
                 );
@@ -265,22 +354,45 @@ class NewTemuoneController extends Controller
                     $amazonPrice,
                     $lmpInfo['raw']
                 );
+                $sprice = $spriceCap['sprice'];
+                $sBasePrice = $sprice > 0
+                    ? round(TemuShopifySalesService::computeBaseFromFullTemuPrice($sprice), 2)
+                    : 0.0;
+                $sRPrice = TemuShopifySalesService::computeRPrice($sBasePrice);
+
+                // GPFT / GROI on the listing R Price; SGPFT / SGROI on S R Prc.
+                // Margin is marketplace_percentages "Temu".
+                $gpftDollars = TemuShopifySalesService::computeGroiProfit($rPrice, $percentage, $lp, $temuShip);
+                $gpftPercent = ($rPrice > 0 && $tPrice > 0) ? round(($gpftDollars / $tPrice) * 100, 2) : 0.0;
+                $groiPercent = ($rPrice > 0 && $lp > 0) ? round(($gpftDollars / $lp) * 100, 2) : 0.0;
+                $spftDollars = TemuShopifySalesService::computeGroiProfit($sRPrice, $percentage, $lp, $temuShip);
+                $sgpftPercent = ($sRPrice > 0 && $sprice > 0) ? round(($spftDollars / $sprice) * 100, 2) : 0.0;
+                $sgroiPercent = ($sRPrice > 0 && $lp > 0) ? round(($spftDollars / $lp) * 100, 2) : 0.0;
+
+                // NPFT = Gpft − (T Price × Ads%); SNPFT = SPFT − (S PRC × Ads%).
+                $npftDollars = $gpftDollars - ($tPrice * ($adsPercent / 100));
+                $npftPercent = ($rPrice > 0 && $tPrice > 0) ? round(($npftDollars / $tPrice) * 100, 2) : 0.0;
+                $nroiPercent = ($rPrice > 0 && $lp > 0) ? round(($npftDollars / $lp) * 100, 2) : 0.0;
+                $snpftDollars = $spftDollars - ($sprice * ($adsPercent / 100));
+                $snpftPercent = ($sRPrice > 0 && $sprice > 0) ? round(($snpftDollars / $sprice) * 100, 2) : 0.0;
+                $snroiPercent = ($sRPrice > 0 && $lp > 0) ? round(($snpftDollars / $lp) * 100, 2) : 0.0;
 
                 $result[] = [
                     'Parent' => $pm->parent,
                     'sku' => $sku,
                     '(Child) sku' => $sku,
-                    'is_parent' => false,
                     'INV' => $inv,
                     'inventory' => $inv,
                     'L30' => $ovL30,
-                    'ovl30' => $ovL30,
                     'temu_l30' => $temuL30,
+                    'temu_l45' => $temuL45,
+                    'temu_l60' => $temuL60,
                     'views' => $views,
                     'cvr_percent' => $cvrPercent,
                     'cvr_30' => $cvrPercent,
+                    'cvr_45' => $cvr45,
+                    'cvr_60' => $cvr60,
                     'Dil%' => $dilPct,
-                    'dil_percent' => $dilPct,
                     'lp' => $lp,
                     'LP_productmaster' => $lp,
                     'temu_ship' => $temuShip,
@@ -299,9 +411,18 @@ class NewTemuoneController extends Controller
                     'lmp_link' => $lmpInfo['link'],
                     'lmp_entries' => $lmpInfo['entries'],
                     'sprc_dil' => $sprcDil > 0 ? $sprcDil : null,
-                    'sprice' => $spriceCap['sprice'] > 0 ? $spriceCap['sprice'] : null,
-                    'SPRICE' => $spriceCap['sprice'] > 0 ? $spriceCap['sprice'] : null,
-                    'stored_sprice' => $storedSprice,
+                    'sprice' => $sprice > 0 ? $sprice : null,
+                    'SPRICE' => $sprice > 0 ? $sprice : null,
+                    's_base_price' => $sBasePrice > 0 ? $sBasePrice : null,
+                    's_r_price' => $sRPrice > 0 ? $sRPrice : null,
+                    'profit_percent' => $gpftPercent,
+                    'roi_percent' => $groiPercent,
+                    'sgpft_percent' => $sgpftPercent,
+                    'sgroi_percent' => $sgroiPercent,
+                    'npft_percent' => $npftPercent,
+                    'nroi_percent' => $nroiPercent,
+                    'snpft_percent' => $snpftPercent,
+                    'snroi_percent' => $snroiPercent,
                     'sprice_labels' => $spriceCap['labels'],
                     'sprice_lmp_alert' => $spriceCap['lmpAlert'],
                     'B Link' => $buyerLink,
@@ -358,6 +479,55 @@ class NewTemuoneController extends Controller
     }
 
     /**
+     * Units per SKU from temu_orders for one window.
+     *
+     * TemuShopifySalesService::getOrdersTableRows() answers the same question, but it
+     * hydrates every order model and joins product masters, metrics and margins to build
+     * a full row per order — two windows of that exhausted a 128 MB request. The window,
+     * the cancel filter and the SKU (ext_code, falling back to display_sku) match it
+     * exactly; only the summing moved into SQL.
+     *
+     * @return array<string, int> raw order SKU => units
+     */
+    private function temuOrderQtyBySku(Carbon $start, Carbon $end): array
+    {
+        if (! $this->hasTable('temu_orders')) {
+            return [];
+        }
+
+        $appTz = config('app.timezone');
+
+        // Grouped on the raw columns rather than the fallback expression: ONLY_FULL_GROUP_BY
+        // rejects grouping by an expression containing a literal. One row per SKU pair.
+        $rows = TemuOrder::query()
+            ->whereBetween('parent_order_time', [
+                $start->copy()->setTimezone($appTz),
+                $end->copy()->setTimezone($appTz),
+            ])
+            ->where(function ($q) {
+                $q->whereNull('order_status_text')
+                    ->orWhereRaw('UPPER(order_status_text) NOT IN (?, ?)', ['CANCELED', 'CANCELLED']);
+            })
+            ->selectRaw('ext_code, display_sku, SUM(quantity) as units')
+            ->groupBy('ext_code', 'display_sku')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row->ext_code ?? ''));
+            if ($sku === '') {
+                $sku = trim((string) ($row->display_sku ?? ''));
+            }
+            if ($sku === '') {
+                continue;
+            }
+            $out[$sku] = ($out[$sku] ?? 0) + (int) $row->units;
+        }
+
+        return $out;
+    }
+
+    /**
      * Sprc Dil using the /temu1-data Dil vs GROI table, with Temu 2 0-sold
      * behavior (Dil-matching slab, not min GROI).
      */
@@ -367,6 +537,7 @@ class NewTemuoneController extends Controller
         float $ship,
         float $dil,
         float $cvr,
+        float $cvrPrior,
         array $dilRules,
         ?array $cvrAdj
     ): float {
@@ -377,7 +548,18 @@ class NewTemuoneController extends Controller
         if ($rule === null) {
             return 0.0;
         }
-        $groi = AmazonDilGroiRule::adjustGroiForCvrLevel((float) $rule['groi'], $cvr, $cvrAdj);
+        // Same CVR overlay as the Amazon tabulator: the trend decides whether the level
+        // threshold fires, comparing CVR 30 against the prior window (CVR 60 for Temu).
+        // With no usable prior the Sprc Dil partial drops to level-only in the browser,
+        // and the browser value is the one shown, so match it here or the two disagree.
+        $groi = $cvrPrior > 0
+            ? AmazonDilGroiRule::adjustGroiForCvr(
+                (float) $rule['groi'],
+                $cvr,
+                AmazonDilGroiRule::cvrTrend($cvr, $cvrPrior),
+                $cvrAdj
+            )
+            : AmazonDilGroiRule::adjustGroiForCvrLevel((float) $rule['groi'], $cvr, $cvrAdj);
         $raw = TemuShopifySalesService::spriceFromTargetSgroi($lp, $ship, (float) $groi, 0.0);
         if (! is_finite($raw) || $raw < 0.01) {
             return 0.0;
