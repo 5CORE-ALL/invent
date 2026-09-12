@@ -344,7 +344,7 @@ function isInActiveCampaign(row) {
     return campaignIdPresent(row) && isFinite(bid) && bid > 0 && status !== 'ENDED' && status !== 'INACTIVE';
 }
 
-/** ENDED / INACTIVE / no campaign can join a RUNNING campaign. RUNNING cannot. */
+/** ENDED / no-campaign rows are enrollable — enroll remaps to the live listing id. */
 function isEnrollable(row) {
     return !!(row && !isInActiveCampaign(row));
 }
@@ -521,6 +521,10 @@ $(document).ready(function () {
                     if (v === 'SYSTEM_PAUSED') return '<span class="badge-paus">SYSTEM_PAUSED</span>';
                     if (v === 'ENDED')   return '<span class="badge-end">ENDED</span>';
                     if (v === 'INACTIVE') return '<span class="badge-end">INACTIVE</span>';
+                    const listingStatus = String((cell.getRow().getData() || {}).listing_status || '').toUpperCase();
+                    if (['ENDED', 'INACTIVE', 'UNSOLD', 'COMPLETED', 'SOLD'].includes(listingStatus)) {
+                        return '<span class="badge-end" title="Listing ended on eBay">ENDED</span>';
+                    }
                     return '<span style="color:#aaa; font-size:11px;" title="Not enrolled in a campaign">No Campaign</span>';
                 }
             },

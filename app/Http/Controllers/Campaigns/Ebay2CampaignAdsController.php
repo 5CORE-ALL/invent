@@ -550,11 +550,48 @@ class Ebay2CampaignAdsController extends Controller
                 continue;
             }
 
+            if (! $metric || \App\Support\Marketplace\EbayListingEnded::isEnded($metric->listing_status ?? null)) {
+                $live = EbayCampaignEndedListingRemap::resolveLiveListing(
+                    $sku !== '' ? $sku : (string) ($metric?->sku ?? ''),
+                    $lid,
+                    $token,
+                    Ebay2Metric::class
+                );
+                $liveId = trim((string) ($live['listing_id'] ?? ''));
+                $liveSku = trim((string) ($live['sku'] ?? $sku));
+                if ($liveId !== '' && $liveId !== $lid) {
+                    $lid = EbayCampaignEndedListingRemap::remapAdsRow('ebay2_campaign_ads', (string) $requestedId, $liveId, $liveSku !== '' ? $liveSku : $sku);
+                    $adRow = DB::table('ebay2_campaign_ads')->where('listing_id', $lid)->first();
+                    $metric = $live['metric'] ?: Ebay2Metric::where('item_id', $lid)->first();
+                    $sku = $liveSku !== '' ? $liveSku : $sku;
+                }
+            }
+
+            if (! $metric || \App\Support\Marketplace\EbayListingEnded::isEnded($metric->listing_status ?? null)) {
+                DB::table('ebay2_campaign_ads')->where('listing_id', $lid)->update([
+                    'campaign_status' => 'ENDED',
+                    'updated_at' => now(),
+                ]);
+                $results[] = [
+                    'listing_id' => $lid,
+                    'sku' => $sku !== '' ? $sku : $metric?->sku,
+                    'status' => 'skipped',
+                    'reason' => 'Listing ended on eBay — no live listing for this SKU',
+                ];
+                $skipped++;
+                continue;
+            }
+
             $soldL30 = (float) ($metric?->ebay_l30 ?? 0);
             $views   = (float) ($metric?->views ?? 0);
             $l7Views = (float) ($metric?->l7_views ?? 0);
             $scvr    = $views > 0 ? ($soldL30 / $views) * 100 : 0;
-            $shopify = $shopifyMap[$this->normSku($metric?->sku ?? $sku)] ?? null;
+            $shopifyKey = $this->normSku($metric?->sku ?? $sku);
+            $shopify = $shopifyMap[$shopifyKey] ?? null;
+            if (! $shopify && $shopifyKey !== '') {
+                $shopifyMap = array_merge($shopifyMap, $this->shopifyByNormSku([$metric?->sku, $sku]));
+                $shopify = $shopifyMap[$shopifyKey] ?? null;
+            }
             $inv     = (float) ($shopify->inv ?? 0);
             $qty     = (float) ($shopify->quantity ?? 0);
             $dil     = $inv > 0 ? ($qty / $inv) * 100 : 0;
@@ -597,9 +634,12 @@ class Ebay2CampaignAdsController extends Controller
                 } else {
                     $errMsg = (string) ($resp->json()['errors'][0]['message'] ?? $resp->status());
                     if (EbayCampaignEndedListingRemap::isEndedListingError($errMsg) && $sku !== '') {
-                        $liveId = EbayCampaignEndedListingRemap::liveItemIdForSku($sku, $lid, $token, Ebay2Metric::class);
+                        $live = EbayCampaignEndedListingRemap::resolveLiveListing($sku, $lid, $token, Ebay2Metric::class);
+                        $liveId = trim((string) ($live['listing_id'] ?? ''));
+                        $liveSku = trim((string) ($live['sku'] ?? $sku));
                         if ($liveId !== '' && $liveId !== $lid) {
-                            $lid = EbayCampaignEndedListingRemap::remapAdsRow('ebay2_campaign_ads', (string) $requestedId, $liveId, $sku);
+                            $lid = EbayCampaignEndedListingRemap::remapAdsRow('ebay2_campaign_ads', (string) $requestedId, $liveId, $liveSku !== '' ? $liveSku : $sku);
+                            $sku = $liveSku !== '' ? $liveSku : $sku;
                             $retry = \Illuminate\Support\Facades\Http::withToken($token)
                                 ->withHeaders(['Content-Type' => 'application/json'])
                                 ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/ad", [
@@ -621,6 +661,11 @@ class Ebay2CampaignAdsController extends Controller
                                 $success++;
                                 continue;
                             }
+                        } else {
+                            DB::table('ebay2_campaign_ads')->where('listing_id', $lid)->update([
+                                'campaign_status' => 'ENDED',
+                                'updated_at' => now(),
+                            ]);
                         }
                     }
                     $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'failed', 'reason' => $errMsg];
@@ -777,6 +822,43 @@ class Ebay2CampaignAdsController extends Controller
     }
 
     /**
+     * Ended / missing-metrics campaign-ads rows (OPEN BOX, old item ids) →
+     * current ACTIVE listing in ebay_2_metrics, then enroll uses that id.
+     */
+    private function remapStaleEligibleToLiveListings(): void
+    {
+        $stale = DB::table('ebay2_campaign_ads')
+            ->where(function ($q) {
+                $q->whereNull('campaign_id')
+                    ->orWhere('campaign_id', '')
+                    ->orWhereRaw("UPPER(TRIM(COALESCE(campaign_status, ''))) IN ('ENDED', 'INACTIVE')");
+            })
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['listing_id', 'sku']);
+
+        foreach ($stale as $row) {
+            $oldId = (string) $row->listing_id;
+            $live = EbayCampaignEndedListingRemap::resolveLiveListing(
+                (string) $row->sku,
+                $oldId,
+                null,
+                Ebay2Metric::class
+            );
+            $liveId = trim((string) ($live['listing_id'] ?? ''));
+            if ($liveId === '' || $liveId === $oldId) {
+                continue;
+            }
+            EbayCampaignEndedListingRemap::remapAdsRow(
+                'ebay2_campaign_ads',
+                $oldId,
+                $liveId,
+                $live['sku'] !== '' ? $live['sku'] : (string) $row->sku
+            );
+        }
+    }
+
+    /**
      * Eligible listings live in ebay_2_metrics but were never inserted into
      * ebay2_campaign_ads (apicentral.ebay2_metrics gap). Searching then filtering
      * Eligible (RECOMMENDED) returns an empty grid. Backfill matching ACTIVE
@@ -893,6 +975,7 @@ class Ebay2CampaignAdsController extends Controller
     public function getData(Request $request)
     {
         EbayCampaignEndedListingRemap::remapEndedRows('ebay2_campaign_ads', Ebay2Metric::class);
+        $this->remapStaleEligibleToLiveListings();
         $this->backfillMissingEligibleForSearch($request->input('search'));
 
         $query = DB::table('ebay2_campaign_ads as ca')
@@ -914,6 +997,7 @@ class Ebay2CampaignAdsController extends Controller
                 'em.views',
                 'em.l7_views',
                 'em.ebay_l30',
+                'em.listing_status',
                 // Dilution inputs (from shopify_skus, matched by sku). Correlated subqueries
                 // avoid row multiplication and keep every ad row visible even when unmatched.
                 // DIL = (quantity / inv) * 100  — quantity = L30 sold, inv = stock on hand.
@@ -945,7 +1029,7 @@ class Ebay2CampaignAdsController extends Controller
                                     $q3->whereNull('ca.promote_with_ad')
                                         ->orWhere('ca.promote_with_ad', '');
                                 })
-                                ->whereRaw("UPPER(TRIM(COALESCE(em.listing_status, 'ACTIVE'))) = 'ACTIVE'");
+                                ->whereRaw("UPPER(TRIM(em.listing_status)) = 'ACTIVE'");
                         });
                 });
             } else {

@@ -58,7 +58,7 @@ final class EbayListingEnded
     public static function preferLiveMetric(iterable $metrics): ?object
     {
         $best = null;
-        $bestEnded = null;
+        $bestScore = -1;
         $bestId = null;
 
         foreach ($metrics as $metric) {
@@ -69,14 +69,18 @@ final class EbayListingEnded
             if ($itemId === '') {
                 continue;
             }
-            $ended = self::isEnded($metric->listing_status ?? null);
+            $status = strtoupper(trim((string) ($metric->listing_status ?? '')));
+            $ended = self::isEnded($status);
+            $unknown = $status === '';
+            // ACTIVE (2) beats unknown (1) beats ENDED (0); newer row wins ties.
+            $score = $ended ? 0 : ($unknown ? 1 : 2);
             $id = (int) ($metric->id ?? 0);
             if ($best === null
-                || ($bestEnded && ! $ended)
-                || ($ended === $bestEnded && $id > $bestId)
+                || $score > $bestScore
+                || ($score === $bestScore && $id > $bestId)
             ) {
                 $best = $metric;
-                $bestEnded = $ended;
+                $bestScore = $score;
                 $bestId = $id;
             }
         }

@@ -23,26 +23,89 @@ final class EbayCampaignEndedListingRemap
         ?string $token = null,
         string $metricClass = EbayMetric::class,
     ): string {
+        return self::resolveLiveListing($sku, $fallback, $token, $metricClass)['listing_id'];
+    }
+
+    /**
+     * Find the current live listing when the campaign-ads row still has an
+     * ended item_id. Tries the exact SKU, then OPEN BOX / USED / pack suffixes
+     * (e.g. "KBB BLK HD OPEN BOX" → "KBB BLK HD", "CM 001 2Pcs" → "CM 001").
+     *
+     * @param  class-string  $metricClass
+     * @return array{listing_id: string, sku: string, metric: ?object}
+     */
+    public static function resolveLiveListing(
+        ?string $sku,
+        string $fallback = '',
+        ?string $token = null,
+        string $metricClass = EbayMetric::class,
+    ): array {
         $sku = trim((string) $sku);
         $fallback = trim($fallback);
+        $empty = ['listing_id' => $fallback, 'sku' => $sku, 'metric' => null];
         if ($sku === '') {
-            return $fallback;
+            return $empty;
         }
 
-        $live = EbayListingEnded::preferredRow($metricClass, $sku);
-        $fromMetrics = trim((string) ($live?->item_id ?? ''));
-        if ($fromMetrics !== '' && ! EbayListingEnded::isEnded($live->listing_status ?? null)) {
-            return $fromMetrics;
-        }
+        foreach (self::skuCandidates($sku) as $candidate) {
+            $live = EbayListingEnded::preferredRow($metricClass, $candidate);
+            $fromMetrics = trim((string) ($live?->item_id ?? ''));
+            if ($fromMetrics !== '' && ! EbayListingEnded::isEnded($live->listing_status ?? null)) {
+                return [
+                    'listing_id' => $fromMetrics,
+                    'sku' => trim((string) ($live->sku ?? $candidate)),
+                    'metric' => $live,
+                ];
+            }
 
-        if ($token) {
-            $fromApi = EbaySellInventoryListingResolver::resolveListingIdBySku($token, $sku);
-            if (is_string($fromApi) && $fromApi !== '') {
-                return $fromApi;
+            if ($token) {
+                $fromApi = EbaySellInventoryListingResolver::resolveListingIdBySku($token, $candidate);
+                if (is_string($fromApi) && $fromApi !== '') {
+                    $metric = $metricClass::query()->where('item_id', $fromApi)->first()
+                        ?: EbayListingEnded::preferredRow($metricClass, $candidate);
+
+                    return [
+                        'listing_id' => $fromApi,
+                        'sku' => trim((string) ($metric?->sku ?? $candidate)),
+                        'metric' => $metric,
+                    ];
+                }
             }
         }
 
-        return $fromMetrics !== '' ? $fromMetrics : $fallback;
+        $live = EbayListingEnded::preferredRow($metricClass, $sku);
+
+        return [
+            'listing_id' => $fallback !== '' ? $fallback : trim((string) ($live?->item_id ?? '')),
+            'sku' => $sku,
+            'metric' => $live,
+        ];
+    }
+
+    /** @return list<string> */
+    public static function skuCandidates(string $sku): array
+    {
+        $sku = trim(preg_replace('/\s+/u', ' ', $sku) ?? $sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $out = [$sku];
+        $base = $sku;
+        foreach (['OPEN BOX', 'OPENBOX', 'USED'] as $noise) {
+            if (stripos($base, $noise) !== false) {
+                $base = trim(preg_replace('/\s+/u', ' ', str_ireplace($noise, '', $base)) ?? $base);
+                if ($base !== '' && strcasecmp($base, $sku) !== 0) {
+                    $out[] = $base;
+                }
+            }
+        }
+        $stripped = trim((string) preg_replace('/\s+\d+\s*(pcs?|pieces?|pk|pack)\s*$/i', '', $base));
+        if ($stripped !== '' && strcasecmp($stripped, $base) !== 0) {
+            $out[] = $stripped;
+        }
+
+        return array_values(array_unique($out));
     }
 
     /**
@@ -103,6 +166,7 @@ final class EbayCampaignEndedListingRemap
         }
 
         $normSkus = $ended->pluck('sku')
+            ->flatMap(fn ($s) => self::skuCandidates((string) $s))
             ->map(fn ($s) => strtoupper(trim((string) $s)))
             ->filter()
             ->unique()
@@ -124,12 +188,21 @@ final class EbayCampaignEndedListingRemap
             if ($oldId === '' || $sku === '') {
                 continue;
             }
-            $live = EbayListingEnded::preferLiveMetric($metrics[strtoupper($sku)] ?? []);
+            $live = null;
+            $liveSku = $sku;
+            foreach (self::skuCandidates($sku) as $candidate) {
+                $live = EbayListingEnded::preferLiveMetric($metrics[strtoupper($candidate)] ?? []);
+                if ($live && ! EbayListingEnded::isEnded($live->listing_status ?? null)) {
+                    $liveSku = trim((string) ($live->sku ?? $candidate));
+                    break;
+                }
+                $live = null;
+            }
             $liveId = trim((string) ($live?->item_id ?? ''));
             if ($liveId === '' || $liveId === $oldId || EbayListingEnded::isEnded($live->listing_status ?? null)) {
                 continue;
             }
-            self::remapAdsRow($adsTable, $oldId, $liveId, $sku);
+            self::remapAdsRow($adsTable, $oldId, $liveId, $liveSku !== '' ? $liveSku : $sku);
             $changed++;
         }
 
@@ -178,12 +251,16 @@ final class EbayCampaignEndedListingRemap
             || ! $metric
             || EbayListingEnded::isEnded($metric->listing_status ?? null);
         if ($needsLive && $sku !== '') {
-            $liveId = self::liveItemIdForSku($sku, $lid, $token, $metricClass);
+            $live = self::resolveLiveListing($sku, $lid, $token, $metricClass);
+            $liveId = trim((string) ($live['listing_id'] ?? ''));
+            $liveSku = trim((string) ($live['sku'] ?? $sku));
             if ($liveId !== '' && $liveId !== $lid) {
-                $lid = self::remapAdsRow($adsTable, (string) $requestedId, $liveId, $sku);
+                $lid = self::remapAdsRow($adsTable, (string) $requestedId, $liveId, $liveSku !== '' ? $liveSku : $sku);
                 $adRow = DB::table($adsTable)->where('listing_id', $lid)->first();
-                $metric = $metricClass::query()->where('item_id', $lid)->first()
-                    ?: EbayListingEnded::preferredRow($metricClass, $sku);
+                $metric = $live['metric']
+                    ?: $metricClass::query()->where('item_id', $lid)->first()
+                    ?: EbayListingEnded::preferredRow($metricClass, $liveSku !== '' ? $liveSku : $sku);
+                $sku = $liveSku !== '' ? $liveSku : $sku;
                 $status = strtoupper(trim((string) ($adRow?->campaign_status ?? '')));
                 if (in_array($status, ['RUNNING', 'PAUSED', 'SYSTEM_PAUSED'], true)) {
                     return [
