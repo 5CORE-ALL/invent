@@ -1036,7 +1036,7 @@ class CvrMasterController extends Controller
             $macyMarketplace = MarketplacePercentage::where('marketplace', 'Macys')->first();
             $macyPercentage = $macyMarketplace ? ($macyMarketplace->percentage / 100) : 0.80;
 
-            // Same price source as /macys-pricing: uploaded sheet only.
+            // Same price source as /macys-pricing: MCM OF21 → macy_products.price.
             $normalizeMacySku = static fn ($s) => strtoupper(trim(preg_replace('/\s+/u', ' ', str_replace("\u{00a0}", ' ', (string) $s))));
             $macyProducts = MacyProduct::whereIn('sku', $skus)->get()
                 ->keyBy(fn ($m) => $normalizeMacySku($m->sku));
@@ -2031,7 +2031,7 @@ class CvrMasterController extends Controller
                 // Shopify B2C PFT% = GPFT% (no ads)
                 $sb2cPFT = $sb2cGPFT;
 
-                // Macy's price — same as /macys-pricing: uploaded sheet only.
+                // Macy's price — same as /macys-pricing: MCM OF21 → macy_products.price.
                 $macySkuKey = $normalizeMacySku($sku);
                 $macyProduct = $macyProducts->get($macySkuKey);
                 $macySheetRow = $macyPriceSheet->get($macySkuKey);
@@ -4520,7 +4520,7 @@ class CvrMasterController extends Controller
                 'seller_link' => null,
             ];
 
-            // Macy — same as /macys-pricing: Price = uploaded sheet only.
+            // Macy — same as /macys-pricing: Price = MCM OF21 → macy_products.price.
             $macySkuNorm = strtoupper(trim(preg_replace('/\s+/u', ' ', str_replace("\u{00a0}", ' ', (string) $fullSku))));
             $macyProduct = MacyProduct::where('sku', $fullSku)->first()
                 ?? MacyProduct::whereRaw('UPPER(TRIM(REPLACE(sku, CHAR(160), \' \'))) = ?', [$macySkuNorm])->first();

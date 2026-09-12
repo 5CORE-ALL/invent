@@ -9,7 +9,6 @@ use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\MacyDataView;
 use App\Models\MacyProduct;
 use App\Models\MacysListingStatus;
-use App\Models\MacysPriceData;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\MarketplacePercentage;
@@ -118,14 +117,6 @@ class MacyController extends Controller
         // NBSP / unicode spaces in PM vs macy_products break plain whereIn + strtoupper match (SKU looks identical in UI)
         $macysByNormSku = $this->buildMacyProductLookupByNormalizedSku($skus);
 
-        // Listed price: MCM OF21 cache in macys_price_data (filled by app:fetch-macy-products).
-        // Do not use Connect catalog macy_products.price — it diverges from the live listed price.
-        $priceDataCollection = MacysPriceData::whereIn('sku', $skus)
-            ->get()
-            ->keyBy(function ($item) {
-                return strtoupper($item->sku);
-            });
-
         // NR/REQ + SPRICE data from MacyDataView
         $dataViews = MacyDataView::whereIn("sku", $skus)->pluck("value", "sku");
 
@@ -184,7 +175,6 @@ class MacyController extends Controller
             $macysMetric = $macysByNormSku[$pmSkuNorm] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
             $amazon = $amazonData[$pmSkuU] ?? null;
-            $priceData = $priceDataCollection[$pmSkuU] ?? null;
 
             $row = [];
             $row["Parent"] = $parent;
@@ -194,8 +184,8 @@ class MacyController extends Controller
             $row["INV"] = $shopify ? (int) ($shopify->inv ?? 0) : 0;
             $row["L30"] = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
-            // MC L30 / MC INV from macy_products. MC Price = MCM OF21 via macys_price_data.
-            $resolvedPrice = self::resolveListedPrice($macysMetric, $priceData);
+            // MC L30 / MC INV / MC Price from macy_products (MCM OF21 overlay).
+            $resolvedPrice = self::resolveListedPrice($macysMetric);
             $row["MC L30"] = $macysMetric->m_l30 ?? 0;
             $row["MC Price"] = $resolvedPrice['price'];
             $row["MC INV"] = $macysMetric ? (int) ($macysMetric->stock ?? 0) : 0;
@@ -425,33 +415,32 @@ class MacyController extends Controller
     }
 
     /**
-     * Macys listed price comes from MCM OF21 (cached in macys_price_data).
-     * macy_products Connect catalog price is not used (L30/INV still come from there).
-     * No MCM/sheet row or price ≤ 0 → not listed.
+     * Macys listed price comes from MCM OF21 (cached on macy_products.price).
+     * Uploaded sheet is not used. Price ≤ 0 → not listed.
      *
-     * @param  object|null  $product  unused; kept so existing callers can pass macy_products
-     * @param  object|float|int|string|null  $sheet  macys_price_data row or numeric MCM price
+     * @param  object|float|int|string|null  $product  macy_products row or numeric MCM price
+     * @param  mixed  $sheet  unused; kept so existing callers can still pass a second arg
      * @return array{listed: bool, price: float, source: string, missing: bool}
      */
     public static function resolveListedPrice($product, $sheet = null): array
     {
-        $sheetPrice = null;
-        if (is_object($sheet)) {
-            $raw = $sheet->price ?? null;
+        $price = null;
+        if (is_object($product)) {
+            $raw = $product->price ?? null;
             if ($raw !== null && $raw !== '') {
-                $sheetPrice = floatval($raw);
+                $price = floatval($raw);
             }
-        } elseif (is_numeric($sheet)) {
-            $sheetPrice = floatval($sheet);
+        } elseif (is_numeric($product)) {
+            $price = floatval($product);
         }
 
-        if ($sheetPrice === null || $sheetPrice <= 0) {
+        if ($price === null || $price <= 0) {
             return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
         }
 
         return [
             'listed' => true,
-            'price' => $sheetPrice,
+            'price' => $price,
             'source' => 'mcm',
             'missing' => false,
         ];
@@ -608,93 +597,6 @@ class MacyController extends Controller
             'price_push_capped' => (bool) ($pushResult['capped'] ?? false),
             'amazon_price' => $pushResult['amazon_price'] ?? null,
         ]);
-    }
-
-    // Upload Price Data for Macys
-    public function uploadPriceData(Request $request)
-    {
-        $request->validate([
-            'excel_file' => 'required|file'
-        ]);
-
-        try {
-            $file = $request->file('excel_file');
-            $rows = $this->parseFile($file);
-
-            if (empty($rows)) {
-                return response()->json(['error' => 'File is empty'], 400);
-            }
-
-            $headers = array_shift($rows);
-            $headers = array_map('trim', $headers);
-
-            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-            MacysPriceData::truncate();
-            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-
-            Log::info('Macys Price Data table truncated before import');
-
-            $imported = 0;
-            $skipped = 0;
-
-            DB::beginTransaction();
-            try {
-                foreach ($rows as $row) {
-                    $row = array_map('trim', $row);
-                    if (count(array_filter($row)) === 0) {
-                        $skipped++;
-                        continue;
-                    }
-                    $rowData = array_combine($headers, $row);
-                    $sku = strtoupper($rowData['Offer SKU'] ?? $rowData['SKU'] ?? '');
-                    if (empty($sku)) {
-                        $skipped++;
-                        continue;
-                    }
-
-                    MacysPriceData::create([
-                        'sku' => $sku,
-                        'offer_sku' => $rowData['Offer SKU'] ?? null,
-                        'product_sku' => $rowData['Product SKU'] ?? null,
-                        'category_code' => $rowData['Category code'] ?? null,
-                        'category_label' => $rowData['Category label'] ?? null,
-                        'brand' => $rowData['Brand'] ?? null,
-                        'product_name' => $rowData['Product'] ?? null,
-                        'offer_state' => $rowData['Offer state'] ?? null,
-                        'price' => !empty($rowData['Price']) ? floatval($rowData['Price']) : null,
-                        'original_price' => !empty($rowData['Original price']) ? floatval($rowData['Original price']) : null,
-                        'quantity' => !empty($rowData['Quantity']) ? intval($rowData['Quantity']) : null,
-                        'alert_threshold' => !empty($rowData['Alert threshold']) ? intval($rowData['Alert threshold']) : null,
-                        'logistic_class' => $rowData['Logistic Class'] ?? null,
-                        'activated' => isset($rowData['Activated']) ? filter_var($rowData['Activated'], FILTER_VALIDATE_BOOLEAN) : false,
-                        'available_start_date' => !empty($rowData['Available Start Date']) ? date('Y-m-d', strtotime($rowData['Available Start Date'])) : null,
-                        'available_end_date' => !empty($rowData['Available End Date']) ? date('Y-m-d', strtotime($rowData['Available End Date'])) : null,
-                        'favorite_offer' => isset($rowData['Favorite Offer']) ? filter_var($rowData['Favorite Offer'], FILTER_VALIDATE_BOOLEAN) : false,
-                        'discount_price' => !empty($rowData['Discount price']) ? floatval($rowData['Discount price']) : null,
-                        'discount_start_date' => !empty($rowData['Discount Start Date']) ? date('Y-m-d', strtotime($rowData['Discount Start Date'])) : null,
-                        'discount_end_date' => !empty($rowData['Discount End Date']) ? date('Y-m-d', strtotime($rowData['Discount End Date'])) : null,
-                        'lead_time_to_ship' => !empty($rowData['Lead time to ship']) ? intval($rowData['Lead time to ship']) : null,
-                        'upc' => $rowData['UPC'] ?? null,
-                        'inactivity_reason' => $rowData['Inactivity reason'] ?? null,
-                        'fulfillment_center_code' => $rowData['Fulfillment center code'] ?? null,
-                    ]);
-                    $imported++;
-                }
-                DB::commit();
-                MacysRuleSpriceApply::dispatch();
-                return response()->json([
-                    'success' => "Successfully imported $imported price records (skipped $skipped)",
-                    'imported' => $imported,
-                    'skipped' => $skipped
-                ]);
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
-        } catch (\Exception $e) {
-            Log::error('Error importing Macys price data: ' . $e->getMessage());
-            return response()->json(['error' => 'Error importing file: ' . $e->getMessage()], 500);
-        }
     }
 
     // Parse different file formats

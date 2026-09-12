@@ -210,10 +210,6 @@
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'macys'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'macys'])
 
-                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadPriceModal" title="Upload Price">
-                        <i class="fa fa-upload"></i> Prc
-                    </button>
-
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                          Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = 0.80 for Macys) --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 px-1 border rounded bg-light"
@@ -280,35 +276,6 @@
                     </div>
                     <!-- Table body -->
                     <div id="macys-table" style="flex: 1;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Upload Price Modal -->
-    <div class="modal fade" id="uploadPriceModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title"><i class="fa fa-dollar-sign me-2"></i>Upload Price Data</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="uploadPriceForm" action="{{ route('macys.upload.price') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Choose File</label>
-                            <input type="file" class="form-control" name="excel_file" accept=".xlsx,.xls,.csv,.tsv" required>
-                            <small class="text-muted">Supported formats: Excel (.xlsx, .xls), CSV, TSV</small>
-                        </div>
-                        <div class="alert alert-warning">
-                            <i class="fa fa-exclamation-triangle me-2"></i><strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading!
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadPriceForm" class="btn btn-success"><i class="fa fa-upload me-1"></i>Upload</button>
                 </div>
             </div>
         </div>
@@ -513,7 +480,7 @@
         });
     }
 
-    /** Listed = MCM OF21 / macys_price_data has a price (row.is_missing_macy from API). */
+    /** Listed = MCM OF21 price on macy_products (row.is_missing_macy from API). */
     function isMacysListed(rowData) {
         if (!rowData || rowData.is_parent_summary) return false;
         if (typeof rowData.is_missing_macy !== 'undefined') {
@@ -999,30 +966,6 @@
         $('#missing-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
             applyFilters();
-        });
-
-        // Upload Price Form Handler
-        $('#uploadPriceForm').on('submit', function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData(this);
-            
-            $.ajax({
-                url: $(this).attr('action'),
-                method: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                success: function(response) {
-                    $('#uploadPriceModal').modal('hide');
-                    showToast(response.success || 'Price data uploaded successfully!', 'success');
-                    table.setData(); // Reload table data
-                },
-                error: function(xhr) {
-                    const errorMsg = xhr.responseJSON?.error || 'Error uploading file';
-                    showToast(errorMsg, 'error');
-                }
-            });
         });
 
         // Update selected count display

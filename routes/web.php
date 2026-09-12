@@ -3716,7 +3716,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/macys-save-sprice-tabulator', [\App\Http\Controllers\MarketPlace\MacyController::class, 'saveSpriceTabulator'])->name('macys.save.sprice.tabulator');
     Route::post('/macys-save-sprice-batch', [\App\Http\Controllers\MarketPlace\MacyController::class, 'saveSpriceUpdates'])->name('macys.save.sprice.batch');
     Route::post('/macys-push-price', [\App\Http\Controllers\MarketPlace\MacyController::class, 'pushPriceTabulator'])->name('macys.push.price');
-    Route::post('/macys-upload-price', [\App\Http\Controllers\MarketPlace\MacyController::class, 'uploadPriceData'])->name('macys.upload.price');
     Route::get('/macys-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\MacyController::class, 'getTabulatorColumnVisibility'])->name('macys.pricing.column.get');
     Route::post('/macys-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\MacyController::class, 'setTabulatorColumnVisibility'])->name('macys.pricing.column.set');
     Route::get('/macy-lmp-data', [\App\Http\Controllers\MarketPlace\MacyController::class, 'getMacyLmpData'])->name('macy.lmp.data');

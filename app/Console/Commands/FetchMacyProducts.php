@@ -366,8 +366,8 @@ class FetchMacyProducts extends Command
     }
 
     /**
-     * OF21 — pull Macy MCM offer prices into macy_products + macys_price_data.
-     * /macys-pricing reads macys_price_data; Connect catalog prices often differ from the live listed price.
+     * OF21 — pull Macy MCM offer prices into macy_products (listed price for /macys-pricing).
+     * Also refreshes macys_price_data as an offer cache. Connect catalog prices are not used.
      */
     private function syncMacyPricesFromMcm(): void
     {
@@ -386,6 +386,7 @@ class FetchMacyProducts extends Command
         $max = 100;
         $totalUpdated = 0;
         $page = 1;
+        $seenNormSkus = [];
 
         try {
             do {
@@ -439,6 +440,11 @@ class FetchMacyProducts extends Command
                     $sku = trim((string) ($offer['shop_sku'] ?? ''));
                     if ($sku === '') {
                         continue;
+                    }
+
+                    $normSku = $this->normalizeMacyOfferSku($sku);
+                    if ($normSku !== '') {
+                        $seenNormSkus[$normSku] = true;
                     }
 
                     $price = $this->extractMcmOfferPrice($offer);
@@ -549,11 +555,52 @@ class FetchMacyProducts extends Command
                 $hasMore = $fetched >= $max && ($totalCount === 0 || $offset < $totalCount);
             } while ($hasMore);
 
+            $this->clearMacyProductsPriceNotInMcm(array_keys($seenNormSkus));
             $this->info("Macy MCM price sync complete. Updated: {$totalUpdated}");
         } catch (\Throwable $e) {
             $this->error('Macy MCM price sync error: '.$e->getMessage());
             Log::error('Macy MCM price sync error', ['error' => $e->getMessage()]);
         }
+    }
+
+    private function normalizeMacyOfferSku(string $sku): string
+    {
+        $sku = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', $sku);
+
+        return strtoupper(trim(preg_replace('/\s+/u', ' ', $sku) ?? ''));
+    }
+
+    /**
+     * After a full MCM pull, drop leftover Connect catalog prices so they are not treated as listed.
+     *
+     * @param  list<string>  $mcmNormSkus
+     */
+    private function clearMacyProductsPriceNotInMcm(array $mcmNormSkus): void
+    {
+        $keep = array_fill_keys(array_filter($mcmNormSkus), true);
+        if ($keep === []) {
+            return;
+        }
+
+        $cleared = 0;
+        MacyProduct::query()->select('id', 'sku', 'price')->orderBy('id')->chunkById(200, function ($rows) use ($keep, &$cleared) {
+            $ids = [];
+            foreach ($rows as $row) {
+                $norm = $this->normalizeMacyOfferSku((string) $row->sku);
+                if ($norm === '' || isset($keep[$norm])) {
+                    continue;
+                }
+                if ((float) $row->price > 0) {
+                    $ids[] = $row->id;
+                }
+            }
+            if ($ids !== []) {
+                MacyProduct::query()->whereIn('id', $ids)->update(['price' => 0]);
+                $cleared += count($ids);
+            }
+        });
+
+        $this->info("Cleared Connect-only macy_products.price on {$cleared} SKUs not in MCM.");
     }
 
     /**

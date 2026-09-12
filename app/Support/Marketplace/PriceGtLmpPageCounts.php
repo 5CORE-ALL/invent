@@ -11,8 +11,8 @@ use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
 use App\Models\EbaySkuCompetitor;
 use App\Models\GoogleSkuCompetitor;
+use App\Models\MacyProduct;
 use App\Models\MacySkuCompetitor;
-use App\Models\MacysPriceData;
 use App\Models\ProductMaster;
 use App\Models\ReverbProduct;
 use App\Models\ReverbSkuCompetitor;
@@ -479,10 +479,10 @@ class PriceGtLmpPageCounts
      */
     private static function countMacys(array $ctx): int
     {
-        $sheet = [];
-        if (class_exists(MacysPriceData::class)) {
-            foreach (MacysPriceData::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'price']) as $row) {
-                $sheet[strtoupper((string) $row->sku)] = $row;
+        $products = [];
+        if (class_exists(MacyProduct::class)) {
+            foreach (MacyProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'price']) as $row) {
+                $products[strtoupper((string) $row->sku)] = $row;
             }
         }
         $details = collect();
@@ -500,7 +500,7 @@ class PriceGtLmpPageCounts
             if (! (self::invFor($ctx, (string) $sku) > 0)) {
                 continue;
             }
-            $resolved = MacyController::resolveListedPrice(null, $sheet[strtoupper((string) $sku)] ?? null);
+            $resolved = MacyController::resolveListedPrice($products[strtoupper((string) $sku)] ?? null);
             $price = (float) ($resolved['price'] ?? 0);
             $lmp = self::macyOrReverbLmp((string) $sku, $details, $ctx['groups'], MacySkuCompetitor::class);
             if ($price > 0 && $lmp > 0 && $price > $lmp) {
