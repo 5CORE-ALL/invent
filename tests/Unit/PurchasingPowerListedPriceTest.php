@@ -63,6 +63,53 @@ class PurchasingPowerListedPriceTest extends TestCase
         $this->assertFalse(PurchasingPowerController::productInLatestMcm(null, $freshAfter));
     }
 
+    public function test_zero_stock_legacy_row_is_not_live(): void
+    {
+        $ghost = new PurchasingPowerProduct();
+        $ghost->price = 47.49;
+        $ghost->stock = 0;
+
+        $this->assertFalse(PurchasingPowerController::productIsLiveOffer($ghost));
+        $out = PurchasingPowerController::resolveListedPrice($ghost, false);
+        $this->assertFalse($out['listed']);
+        $this->assertSame(0.0, $out['price']);
+    }
+
+    public function test_in_stock_legacy_row_is_live(): void
+    {
+        $row = new PurchasingPowerProduct();
+        $row->price = 19.99;
+        $row->stock = 4;
+
+        $this->assertTrue(PurchasingPowerController::productIsLiveOffer($row));
+    }
+
+    public function test_active_sold_out_offer_is_still_listed(): void
+    {
+        $row = new PurchasingPowerProduct();
+        $row->price = 19.99;
+        $row->stock = 0;
+        $row->listing_status = 'active';
+
+        $this->assertTrue(PurchasingPowerController::productIsLiveOffer($row));
+    }
+
+    public function test_inactive_status_is_not_live_even_with_stock(): void
+    {
+        $row = new PurchasingPowerProduct();
+        $row->price = 123.99;
+        $row->stock = 5;
+        $row->listing_status = 'inactive';
+
+        $this->assertFalse(PurchasingPowerController::productIsLiveOffer($row));
+        $out = PurchasingPowerController::resolveListedPrice(
+            $row,
+            PurchasingPowerController::productIsLiveOffer($row)
+        );
+        $this->assertFalse($out['listed']);
+        $this->assertSame(0.0, $out['price']);
+    }
+
     public function test_listing_inactive_flag(): void
     {
         $this->assertTrue(PurchasingPowerController::isListingMarkedInactive((object) [

@@ -63,8 +63,14 @@ class PurchasingPowerController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
+        $normalizeSku = static function ($value) {
+            $v = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', (string) $value);
+
+            return strtoupper(preg_replace('/\s+/u', ' ', trim($v)) ?? '');
+        };
+
         $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $ppMetrics    = PurchasingPowerProduct::whereIn('sku', $skus)->get()->keyBy(fn ($i) => strtoupper((string) $i->sku));
+        $ppMetrics    = PurchasingPowerProduct::whereIn('sku', $skus)->get()->keyBy(fn ($i) => $normalizeSku($i->sku));
         $dataViews    = PurchasingPowerDataView::whereIn('sku', $skus)->pluck('value', 'sku');
         $amazonData   = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(fn($i) => strtoupper($i->sku));
 
@@ -75,8 +81,6 @@ class PurchasingPowerController extends Controller
                 ->mapWithKeys(fn ($item) => [strtolower((string) $item->sku) => $item])
                 ->all();
         }
-        $ppFreshAfter = self::latestMcmFreshAfter();
-
         // Sales qty from uploaded purchasing_power_sales (excluding Canceled)
         // Match by offer_sku (= product_masters.sku), NOT product_sku (which is Mirakl internal numeric ID)
         $salesQty = PurchasingPowerSale::whereNotIn('status', ['Canceled', 'canceled'])
@@ -88,11 +92,6 @@ class PurchasingPowerController extends Controller
         $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.65;
 
         // STD PRC — amazon_data_view.STANDARD_PRICE (same source as /faire-pricing Rule)
-        $normalizeSku = static function ($value) {
-            $v = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', (string) $value);
-
-            return strtoupper(preg_replace('/\s+/u', ' ', trim($v)) ?? '');
-        };
         $amazonStandardPrices = AmazonDataView::all()
             ->keyBy(fn ($r) => $normalizeSku($r->sku))
             ->map(function ($r) {
@@ -111,7 +110,7 @@ class PurchasingPowerController extends Controller
             $parent  = $pm->parent;
 
             $shopify   = $shopifyData->get($pm->sku);
-            $ppMetric  = $ppMetrics[$sku] ?? $ppMetrics[strtoupper((string) $pm->sku)] ?? null;
+            $ppMetric  = $ppMetrics[$normalizeSku($pm->sku)] ?? $ppMetrics[$sku] ?? null;
             $amazon    = $amazonData[strtoupper($pm->sku)] ?? null;
             $row = [];
             $row['Parent']      = $parent;
@@ -129,7 +128,7 @@ class PurchasingPowerController extends Controller
             );
             $resolvedPrice = self::resolveListedPrice(
                 $ppMetric,
-                self::productInLatestMcm($ppMetric, $ppFreshAfter),
+                self::productIsLiveOffer($ppMetric),
                 $listingInactive
             );
             $row['PP Price'] = $resolvedPrice['price'];
@@ -320,6 +319,28 @@ class PurchasingPowerController extends Controller
         return $product->updated_at->gte($freshAfter);
     }
 
+    /**
+     * Live listed offer — not a leftover Connect/OF21 row.
+     * listing_status=active (from OF21) wins. Legacy rows with 0 stock are not listed;
+     * those are the SKUs MCM rejects with "No existing offer".
+     */
+    public static function productIsLiveOffer(?PurchasingPowerProduct $product): bool
+    {
+        if (! $product) {
+            return false;
+        }
+
+        $status = strtolower(trim((string) ($product->listing_status ?? '')));
+        if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)) {
+            return false;
+        }
+        if ($status === 'active') {
+            return (float) ($product->price ?? 0) > 0;
+        }
+
+        return (float) ($product->price ?? 0) > 0 && (int) ($product->stock ?? 0) > 0;
+    }
+
     public static function isListingMarkedInactive($listingStatus): bool
     {
         if (! $listingStatus) {
@@ -364,7 +385,7 @@ class PurchasingPowerController extends Controller
             ->first();
         $resolved = self::resolveListedPrice(
             $product,
-            self::productInLatestMcm($product),
+            self::productIsLiveOffer($product),
             false
         );
         if (! $resolved['listed']) {

@@ -16,5 +16,6 @@ class PurchasingPowerProduct extends Model
         'm_l30',
         'price',
         'stock',
+        'listing_status',
     ];
 }

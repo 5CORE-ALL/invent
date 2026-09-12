@@ -1535,7 +1535,6 @@ class CvrMasterController extends Controller
 
             $ppProducts = collect();
             $ppSalesQty = collect();
-            $ppFreshAfter = null;
             try {
                 $ppProducts = \App\Models\PurchasingPowerProduct::whereIn('sku', $skus)
                     ->get()
@@ -1544,7 +1543,6 @@ class CvrMasterController extends Controller
                     ->selectRaw('UPPER(offer_sku) as sku_upper, SUM(quantity) as total_qty')
                     ->groupBy('sku_upper')
                     ->pluck('total_qty', 'sku_upper');
-                $ppFreshAfter = PurchasingPowerController::latestMcmFreshAfter();
                 Log::info('CVR Master - Purchasing Power Data fetched', [
                     'pp_products'  => $ppProducts->count(),
                     'pp_sales'     => $ppSalesQty->count(),
@@ -2247,7 +2245,7 @@ class CvrMasterController extends Controller
                 $ppProduct = $ppProducts->get($ppSkuKey);
                 $ppResolved = PurchasingPowerController::resolveListedPrice(
                     $ppProduct,
-                    PurchasingPowerController::productInLatestMcm($ppProduct, $ppFreshAfter)
+                    PurchasingPowerController::productIsLiveOffer($ppProduct)
                 );
                 $ppPrice = $ppResolved['price'];
                 $ppSaleRow = $ppSalesQty->get($ppSkuKey);

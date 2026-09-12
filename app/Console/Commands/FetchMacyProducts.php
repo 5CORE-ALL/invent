@@ -643,7 +643,11 @@ class FetchMacyProducts extends Command
                 }
             }
             if ($ids !== []) {
-                PurchasingPowerProduct::query()->whereIn('id', $ids)->update(['price' => 0]);
+                $payload = ['price' => 0];
+                if (Schema::hasColumn('purchasing_power_products', 'listing_status')) {
+                    $payload['listing_status'] = 'inactive';
+                }
+                PurchasingPowerProduct::query()->whereIn('id', $ids)->update($payload);
                 $cleared += count($ids);
             }
         });
@@ -735,7 +739,7 @@ class FetchMacyProducts extends Command
 
                     $activated = array_key_exists('active', $offer)
                         ? (bool) $offer['active']
-                        : true;
+                        : false;
                     $seenNormSkus[$this->normalizeMacyOfferSku($sku)] = true;
 
                     $updates[] = [
@@ -744,26 +748,42 @@ class FetchMacyProducts extends Command
                         'stock' => isset($offer['quantity']) && is_numeric($offer['quantity'])
                             ? (int) $offer['quantity']
                             : 0,
+                        'listing_status' => $activated ? 'active' : 'inactive',
                     ];
                 }
 
                 if (! empty($updates)) {
                     $now = now()->toDateTimeString();
+                    $hasListingStatus = Schema::hasColumn('purchasing_power_products', 'listing_status');
                     foreach (array_chunk($updates, 50) as $chunk) {
                         $values = [];
                         $bindings = [];
                         foreach ($chunk as $update) {
-                            $values[] = '(?, ?, ?, 0, ?, ?)';
-                            $bindings[] = $update['sku'];
-                            $bindings[] = $update['price'];
-                            $bindings[] = $update['stock'];
-                            $bindings[] = $now;
-                            $bindings[] = $now;
+                            if ($hasListingStatus) {
+                                $values[] = '(?, ?, ?, 0, ?, ?, ?)';
+                                $bindings[] = $update['sku'];
+                                $bindings[] = $update['price'];
+                                $bindings[] = $update['stock'];
+                                $bindings[] = $update['listing_status'];
+                                $bindings[] = $now;
+                                $bindings[] = $now;
+                            } else {
+                                $values[] = '(?, ?, ?, 0, ?, ?)';
+                                $bindings[] = $update['sku'];
+                                $bindings[] = $update['price'];
+                                $bindings[] = $update['stock'];
+                                $bindings[] = $now;
+                                $bindings[] = $now;
+                            }
                         }
 
-                        $sql = 'INSERT INTO purchasing_power_products (sku, price, stock, m_l30, created_at, updated_at) VALUES '
-                            .implode(', ', $values)
-                            .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), updated_at = VALUES(updated_at)';
+                        $sql = $hasListingStatus
+                            ? 'INSERT INTO purchasing_power_products (sku, price, stock, m_l30, listing_status, created_at, updated_at) VALUES '
+                                .implode(', ', $values)
+                                .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), listing_status = VALUES(listing_status), updated_at = VALUES(updated_at)'
+                            : 'INSERT INTO purchasing_power_products (sku, price, stock, m_l30, created_at, updated_at) VALUES '
+                                .implode(', ', $values)
+                                .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), updated_at = VALUES(updated_at)';
 
                         DB::statement($sql, $bindings);
                         $totalUpdated += count($chunk);
