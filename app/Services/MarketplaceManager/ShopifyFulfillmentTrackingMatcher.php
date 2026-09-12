@@ -130,6 +130,23 @@ class ShopifyFulfillmentTrackingMatcher
                 if (! $this->fulfillmentMatchesSku($fulfillment, $sku, $orderLines)) {
                     continue;
                 }
+                if (
+                    $expectedSlug !== ''
+                    && app(MarketplaceTrackingOwnership::class)->isWrongFor(
+                        $number,
+                        $expectedSlug,
+                        $matchedOrderId,
+                        $shopifyOrderId
+                    )
+                ) {
+                    Log::info($logContext.': tracking belongs to another marketplace order — skipped', [
+                        'shopify_order_id' => $shopifyOrderId,
+                        'wanted' => $matchedOrderId,
+                        'expected_slug' => $expectedSlug,
+                        'tracking' => $number,
+                    ]);
+                    continue;
+                }
 
                 $url = $this->trackingUrlFromFulfillment($fulfillment);
 
@@ -537,6 +554,41 @@ class ShopifyFulfillmentTrackingMatcher
         }
 
         return '';
+    }
+
+    /**
+     * Channel order id from Shopify tags/notes (shein-GSU1…, amazon-113-…).
+     *
+     * @param  array<string, mixed>  $order
+     */
+    public function channelOrderIdFromOrder(array $order): string
+    {
+        $hay = trim((string) ($order['tags'] ?? '')).' '.trim((string) ($order['note'] ?? ''));
+        $slug = $this->primaryMarketplaceSlug($order);
+        if ($slug !== '' && preg_match('/(?:^|[\s,])'.preg_quote($slug, '/').'[-_]([^\s,]+)/i', $hay, $m)) {
+            return trim((string) $m[1]);
+        }
+        if (preg_match('/(\d{3}-\d{7}-\d{7})/', $hay, $m)) {
+            return $m[1];
+        }
+        if (preg_match('/\b(GSU[A-Z0-9]+)\b/i', $hay, $m)) {
+            return $m[1];
+        }
+
+        return '';
+    }
+
+    public function normalizeTracking(string $tracking): string
+    {
+        return strtoupper(preg_replace('/[\s\-]/', '', trim($tracking)) ?? trim($tracking));
+    }
+
+    public function trackingNumbersEqual(string $left, string $right): bool
+    {
+        $a = $this->normalizeTracking($left);
+        $b = $this->normalizeTracking($right);
+
+        return $a !== '' && $a === $b;
     }
 
     /**

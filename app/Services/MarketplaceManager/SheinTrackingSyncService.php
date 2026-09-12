@@ -69,25 +69,65 @@ class SheinTrackingSyncService
         }
 
         $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
-        if (empty($shopifyFulfillment['tracking'])) {
-            return [
-                'success' => false,
-                'skipped' => true,
-                'message' => $shopifyFulfillment['error']
-                    ?: 'No tracking number on Shopify yet. Buy/download a shipping label in Shopify first.',
-                'shopify_tracking' => null,
-                'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
-            ];
-        }
-
-        $shopifyTracking = (string) $shopifyFulfillment['tracking'];
+        $shopifyTracking = trim((string) ($shopifyFulfillment['tracking'] ?? ''));
         $shopifyCarrier = (string) ($shopifyFulfillment['carrier'] ?? '');
+        $ownership = app(MarketplaceTrackingOwnership::class);
+        $trackingIsWrong = $shopifyTracking !== ''
+            && $ownership->isWrongFor($shopifyTracking, 'shein', $orderId, $shopifyOrderId);
 
         $sheinShipment = $this->resolveSheinShipment($orderId, $line);
         $sheinTracking = trim((string) ($sheinShipment['tracking'] ?? ''));
         $sheinCarrier = trim((string) ($sheinShipment['service'] ?? ''));
+        $sheinTrackingIsWrong = $sheinTracking !== ''
+            && $ownership->isWrongFor($sheinTracking, 'shein', $orderId, $shopifyOrderId);
 
-        if ($sheinTracking !== '' && $this->trackingEquals($sheinTracking, $shopifyTracking)) {
+        if ($shopifyTracking === '' || $trackingIsWrong || $sheinTrackingIsWrong) {
+            $replaced = app(VeeqoShopifyFulfillmentService::class)->fulfillShopifyFromLabels(
+                $shopifyOrderId,
+                $this->shopifyConfig(),
+                [$orderId],
+                null,
+                $sku,
+                [$orderId],
+                'shein'
+            );
+            $fixed = trim((string) ($replaced['tracking'] ?? ''));
+            if (
+                $fixed !== ''
+                && ! empty($replaced['success'])
+                && ! $ownership->isWrongFor($fixed, 'shein', $orderId, $shopifyOrderId)
+            ) {
+                Log::info('SheinTrackingSyncService: replaced wrong-channel tracking', [
+                    'order_id' => $orderId,
+                    'shopify_order_id' => $shopifyOrderId,
+                    'previous' => $shopifyTracking !== '' ? $shopifyTracking : null,
+                    'tracking' => $fixed,
+                    'action' => $replaced['action'] ?? null,
+                ]);
+                $shopifyTracking = $fixed;
+                $shopifyCarrier = (string) ($replaced['carrier'] ?? $shopifyCarrier);
+                $trackingIsWrong = false;
+            } elseif ($shopifyTracking === '' || $trackingIsWrong) {
+                return [
+                    'success' => false,
+                    'skipped' => true,
+                    'action' => 'tracking_not_found',
+                    'message' => $shopifyTracking === ''
+                        ? ((string) ($shopifyFulfillment['error'] ?? '')
+                            ?: 'No tracking number on Shopify yet. Buy the label in Veeqo or 4Seller/GOFO, then try again.')
+                        : 'Shopify has another order\'s tracking — waiting for this Shein order\'s own label.',
+                    'shopify_tracking' => $shopifyTracking !== '' ? $shopifyTracking : null,
+                    'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
+                    'shein_tracking' => $sheinTracking !== '' ? $sheinTracking : null,
+                ];
+            }
+        }
+
+        if (
+            $sheinTracking !== ''
+            && $this->trackingEquals($sheinTracking, $shopifyTracking)
+            && ! $ownership->isWrongFor($shopifyTracking, 'shein', $orderId, $shopifyOrderId)
+        ) {
             return [
                 'success' => true,
                 'skipped' => true,
@@ -162,7 +202,16 @@ class SheinTrackingSyncService
                 }
                 $after = $this->resolveSheinShipment($orderId, $line);
                 $afterTracking = trim((string) ($after['tracking'] ?? ''));
-                if ($afterTracking !== '' && $this->trackingEquals($afterTracking, $shopifyTracking)) {
+                if (
+                    $afterTracking !== ''
+                    && $this->trackingEquals($afterTracking, $shopifyTracking)
+                    && ! app(MarketplaceTrackingOwnership::class)->isWrongFor(
+                        $afterTracking,
+                        'shein',
+                        $orderId,
+                        $shopifyOrderId
+                    )
+                ) {
                     return [
                         'success' => true,
                         'skipped' => true,
@@ -243,7 +292,13 @@ class SheinTrackingSyncService
             if ($ref === '' || isset($unique[$ref])) {
                 continue;
             }
-            if ($this->isClosedSheinStatus((string) ($row->status ?? ''))) {
+            if ($this->isCancelledSheinStatus((string) ($row->status ?? ''))) {
+                continue;
+            }
+            if (
+                $this->isShippedSheinStatus((string) ($row->status ?? ''))
+                && ! $this->sheinOrderIsRecent($row, 21)
+            ) {
                 continue;
             }
             $unique[$ref] = $row;
@@ -289,23 +344,38 @@ class SheinTrackingSyncService
 
     protected function isClosedSheinStatus(string $status): bool
     {
+        return $this->isShippedSheinStatus($status) || $this->isCancelledSheinStatus($status);
+    }
+
+    protected function isCancelledSheinStatus(string $status): bool
+    {
         $status = strtolower(trim($status));
-        if ($status === '') {
-            return false;
-        }
+
+        return in_array($status, ['refund', '6', 'cancelled', 'canceled'], true);
+    }
+
+    protected function isShippedSheinStatus(string $status): bool
+    {
+        $status = strtolower(trim($status));
 
         return in_array($status, [
             'shipped',
             '4',
             'received',
             '5',
-            'refund',
-            '6',
             'to be collected by shein',
             '7',
-            'cancelled',
-            'canceled',
         ], true);
+    }
+
+    protected function sheinOrderIsRecent(SheinOrderMetric $row, int $days): bool
+    {
+        $date = $row->order_date;
+        if ($date instanceof \DateTimeInterface) {
+            return $date >= now()->subDays(max(1, $days));
+        }
+
+        return true;
     }
 
     protected function resolveLineSku(SheinOrderMetric $line): string
