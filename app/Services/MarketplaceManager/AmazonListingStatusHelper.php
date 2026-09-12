@@ -453,6 +453,35 @@ final class AmazonListingStatusHelper
     }
 
     /**
+     * Amazon products Active/Inactive must follow Seller Central / the listings
+     * report. Datasheet and link-map JSON default to Active when a SKU is only
+     * Active in CP Master — that is not an Amazon-live offer.
+     */
+    public static function resolveMarketplacePortalState(
+        string $reportState,
+        string $datasheetStatus = '',
+        string $jsonState = '',
+        ?int $reportQty = null
+    ): string {
+        if ($reportQty !== null && $reportQty > 0) {
+            return 'active';
+        }
+
+        $reportState = self::normalizePortalStatus($reportState);
+        if ($reportState === 'active' || $reportState === 'inactive') {
+            return $reportState;
+        }
+
+        $sheetState = self::normalizePortalStatus($datasheetStatus);
+        $jsonState = self::normalizePortalStatus($jsonState);
+        if ($sheetState === 'inactive' || $jsonState === 'inactive') {
+            return 'inactive';
+        }
+
+        return 'inactive';
+    }
+
+    /**
      * Linked when row exists with sku and meaningful listing data.
      */
     public static function isLinked(?AmazonListingStatus $row, ?string $shopifySku = null): bool
@@ -632,15 +661,22 @@ final class AmazonListingStatusHelper
                     continue;
                 }
 
+                $meta = self::metaFromListingsRawRow($raw);
+                $listingStatus = self::resolveMarketplacePortalState(
+                    (string) ($meta['state'] ?? 'other'),
+                    '',
+                    '',
+                    $meta['quantity'] ?? null
+                );
                 $status = new AmazonListingStatus([
                     'sku' => $sku,
                     'value' => [
                         'asin' => $asin,
                         'buyer_link' => 'https://www.amazon.com/dp/'.$asin,
-                        'listed' => 'Listed',
-                        'listing_status' => 'active',
+                        'listed' => $listingStatus === 'active' ? 'Listed' : 'Inactive',
+                        'listing_status' => $listingStatus,
                         'price' => $raw->your_price ?? null,
-                        'quantity' => isset($raw->quantity) ? (int) $raw->quantity : null,
+                        'quantity' => $meta['quantity'] ?? (isset($raw->quantity) ? (int) $raw->quantity : null),
                         'title' => $raw->item_name ?? null,
                         'image' => $raw->thumbnail_image ?? null,
                     ],

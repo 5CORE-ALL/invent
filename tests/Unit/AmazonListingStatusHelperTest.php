@@ -207,4 +207,30 @@ class AmazonListingStatusHelperTest extends TestCase
 
         $this->assertSame(['CLOSED-ONLY'], $keep);
     }
+
+    public function test_cp_master_or_sheet_active_is_not_amazon_active(): void
+    {
+        $this->assertSame('inactive', AmazonListingStatusHelper::resolveMarketplacePortalState(
+            'other',
+            'ACTIVE',
+            'active'
+        ));
+        $this->assertSame('inactive', AmazonListingStatusHelper::resolveMarketplacePortalState(
+            'inactive',
+            'ACTIVE',
+            'active'
+        ));
+        $this->assertSame('active', AmazonListingStatusHelper::resolveMarketplacePortalState(
+            'active',
+            'INACTIVE',
+            'inactive',
+            145
+        ));
+        $this->assertSame('active', AmazonListingStatusHelper::resolveMarketplacePortalState(
+            'other',
+            '',
+            '',
+            28
+        ));
+    }
 }

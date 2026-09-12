@@ -281,8 +281,6 @@ class AmazonLinkMapSyncService
         $status = strtolower(trim((string) ($meta['status'] ?? '')));
         if ($status !== '') {
             $value['listing_status'] = in_array($status, ['buyable', 'discoverable'], true) ? 'active' : $status;
-        } else {
-            $value['listing_status'] = $value['listing_status'] ?? 'active';
         }
         if (! empty($meta['title'])) {
             $value['title'] = $meta['title'];
