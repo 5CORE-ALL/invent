@@ -1717,7 +1717,7 @@
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary || (rowData.Parent && String(rowData.Parent).startsWith('PARENT'))) return '';
                         if (!isMacysListed(rowData)) {
-                            return '<span style="color: #6c757d;">-</span>';
+                            return '<span style="color: #6c757d;">0</span>';
                         }
                         const value = parseFloat(cell.getValue() || 0);
                         const amazonPrice = parseFloat(rowData['A Price']) || 0;
