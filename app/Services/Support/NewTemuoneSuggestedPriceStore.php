@@ -31,6 +31,12 @@ class NewTemuoneSuggestedPriceStore
 
     public const KEY_LMP_ALERT = 'NTO_LMP_ALERT';
 
+    public const KEY_PUSHED_BASE = 'NTO_PUSHED_BASE';
+
+    public const KEY_PUSHED_AT = 'NTO_PUSHED_AT';
+
+    public const KEY_PUSH_STATUS = 'NTO_PUSH_STATUS';
+
     /** @var array<string, TemuDataView> */
     private array $views = [];
 
@@ -108,13 +114,35 @@ class NewTemuoneSuggestedPriceStore
         $fp = $this->fingerprint($inputs, $dilRules, $cvrAdj);
         $saved = $this->savedValue($sku);
         if ($this->isReusable($saved, $fp)) {
-            return $this->hydrateSaved($saved);
+            return $this->withPushMeta($this->hydrateSaved($saved), $saved);
         }
 
         $computed = $this->compute($inputs, $dilRules, $cvrAdj);
         $this->queueWrite($sku, $computed, $fp);
 
-        return $computed;
+        return $this->withPushMeta($computed, $saved);
+    }
+
+    /**
+     * Stamp New Temu One push only. Does not write Temu 1/2/3 SPRICE.
+     */
+    public static function markPushed(string $sku, float $base, float $full = 0.0): void
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! ($base > 0)) {
+            return;
+        }
+        $view = TemuDataView::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+            ->first()
+            ?? new TemuDataView(['sku' => $sku]);
+        $value = is_array($view->value) ? $view->value : [];
+        $value[self::KEY_PUSHED_BASE] = round($base, 2);
+        $value[self::KEY_PUSHED_AT] = now()->toDateTimeString();
+        $value[self::KEY_PUSH_STATUS] = 'pushed';
+        $view->sku = $view->sku ?: $sku;
+        $view->value = $value;
+        $view->save();
     }
 
     public function flush(): void
@@ -308,6 +336,35 @@ class NewTemuoneSuggestedPriceStore
             'capped' => (bool) ($saved[self::KEY_CAPPED] ?? false),
             'use_saved' => $sprice > 0 && $sgroi !== null,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array<string, mixed>  $saved
+     * @return array<string, mixed>
+     */
+    private function withPushMeta(array $row, array $saved): array
+    {
+        $sBase = (float) ($row['s_base'] ?? 0);
+        $sprice = (float) ($row['sprice'] ?? 0);
+        $pushedBase = is_numeric($saved[self::KEY_PUSHED_BASE] ?? null)
+            ? round((float) $saved[self::KEY_PUSHED_BASE], 2)
+            : 0.0;
+        if (! ($pushedBase > 0) && is_numeric($saved['SPRICE_PUSHED_VALUE'] ?? null)) {
+            $full = round((float) $saved['SPRICE_PUSHED_VALUE'], 2);
+            if ($full > 0) {
+                $pushedBase = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($full), 2);
+            }
+        }
+        $matched = $pushedBase > 0 && $sBase > 0 && abs($pushedBase - $sBase) < 0.015;
+        if (! $matched && $sprice > 0 && is_numeric($saved['SPRICE_PUSHED_VALUE'] ?? null)) {
+            $matched = abs(round((float) $saved['SPRICE_PUSHED_VALUE'], 2) - round($sprice, 2)) < 0.015;
+        }
+        $row['pushed_base'] = $pushedBase > 0 ? $pushedBase : null;
+        $row['pushed_at'] = $saved[self::KEY_PUSHED_AT] ?? $saved['SPRICE_PUSHED_AT'] ?? null;
+        $row['push_status'] = $matched ? 'pushed' : null;
+
+        return $row;
     }
 
     /**

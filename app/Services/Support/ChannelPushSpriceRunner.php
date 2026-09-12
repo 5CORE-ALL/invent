@@ -266,11 +266,13 @@ class ChannelPushSpriceRunner
                 $stamp = (float) $price;
                 if ($this->channel === 'newtemuone') {
                     $full = \App\Services\TemuShopifySalesService::computeFullTemuPrice($stamp);
-                    if ($full > 0) {
-                        $stamp = $full;
-                    }
+                    NewTemuoneSuggestedPriceStore::markPushed($sku, $stamp, $full);
+                    // Do not confirmAfterPush: that writes Temu 1 SPRICE and
+                    // temu_metrics.base_price. Live base stays on the API pull
+                    // until Temu finishes assessing the new price.
+                } else {
+                    ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, $stamp);
                 }
-                ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, $stamp);
             } catch (\Throwable $e) {
                 $ok = false;
                 $error = $e->getMessage();
@@ -418,6 +420,7 @@ class ChannelPushSpriceRunner
             $temuReq = Request::create('/temu/push-price', 'POST', [
                 'sku' => $sku,
                 'price' => $pushPrice,
+                'skip_local_base' => 1,
             ]);
 
             return app(TemuController::class)->pushTemuPrice($temuReq, app(TemuApiService::class));

@@ -4404,7 +4404,11 @@ class TemuController extends Controller
                 ], 400);
             }
 
-            $this->persistPushedTemuListingBase($sku, $price, false);
+            // New Temu One: Temu does not accept the new base instantly (seller
+            // center "Being assessed"). Keep temu_metrics.base_price on the API pull.
+            if (! $request->boolean('skip_local_base')) {
+                $this->persistPushedTemuListingBase($sku, $price, false);
+            }
 
             return response()->json([
                 'success' => true,
