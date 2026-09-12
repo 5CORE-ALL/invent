@@ -56,12 +56,6 @@
                         <option value="more" selected>More than 0</option>
                     </select>
 
-                    <select id="nrl-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="all">All Status</option>
-                        <option value="REQ" selected>REQ Only</option>
-                        <option value="NR">NR Only</option>
-                    </select>
-
                     <div class="d-flex flex-column gap-1" style="width: auto;" title="CVR = PP L30 ÷ OV L30">
                         <select id="gpft-filter" class="form-select form-select-sm" style="width: auto;">
                             <option value="all">GPFT%</option>
@@ -82,20 +76,6 @@
                             <option value="13plus">13%+</option>
                         </select>
                     </div>
-
-                    {{-- Sold dropdown (mirrors Amazon tabulator + /doba + /shopify-b2c + /macys).
-                         Backed by `PP L30`:
-                           all  → no filter
-                           sold → PP L30 > 0
-                           zero → PP L30 = 0
-                         Single source of truth — #zero-sold-count-badge / #more-sold-count-badge
-                         click handlers just toggle this dropdown so badges + dropdown stay synced. --}}
-                    <select id="sold-filter" class="form-select form-select-sm" style="width: auto;"
-                            title="Filter by PP L30 sold quantity">
-                        <option value="all">Sold</option>
-                        <option value="sold">Sold &gt; 0</option>
-                        <option value="zero">0 Sold</option>
-                    </select>
 
                     <select id="roi-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="all">ROI%</option>
@@ -126,88 +106,28 @@
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
-                    <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-copy"></i> Sugg Amz Prc
-                    </button>
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-arrow-down"></i> Decrease Mode
-                    </button>
-                    <button id="increase-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-arrow-up"></i> Increase Mode
-                    </button>
-                    <button id="same-price-btn" class="btn btn-sm btn-info" title="Apply ONE price (entered in the box) to every selected SKU">
-                        <i class="fas fa-equals"></i> Same Price Mode
-                    </button>
                     <button type="button" id="pp-rule-btn" class="btn btn-sm btn-outline-dark"
                         title="Price rules: Dil %, PP sold qty, Discount % → SPRICE = (STD × (1−Disc%)) − Ship">
                         <i class="fas fa-sliders-h"></i> Rule
                     </button>
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'purchasing_power'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'purchasing_power'])
-
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100)) / margin   (Ship excluded for Purchasing Power; margin = $ppPercentage / 100) --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
-                        id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100)) / {{ $ppPercentage }}% on every selected row (Ship not used)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100)) / {{ $ppPercentage }}% for every selected row (Ship not used)">
-                            <i class="fas fa-calculator"></i> Apply S PRC
-                        </button>
-                    </div>
-
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = LP / (margin − GPFT%/100). Ship excluded. Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = LP / ({{ $ppPercentage }}% − Target GPFT%/100) on every selected row (Ship not used)">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Purchasing Power take-home margin ({{ $ppPercentage }}%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = LP / ({{ $ppPercentage }}% − Target GPFT%/100) for every selected row (Ship not used)">
-                            <i class="fas fa-calculator"></i> Apply S PRC
-                        </button>
-                    </div>
                 </div>
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary ({{ $ppPercentage }}% Margin)</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color:black;font-weight:bold;">Total PFT: $0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color:black;font-weight:bold;display:none;">Total PFT: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color:black;font-weight:bold;">Total Sales: $0</span>
-                        {{-- PFT $ and GPFT % (weighted) — these match the /all-marketplace-master
-                             Purchasing Power row exactly. PFT = Σ Profit (dollars), GPFT % =
-                             (Σ Profit ÷ Σ Sales L30) × 100 — weighted by sales (the standard
-                             accounting margin used across the channel master and sales pages). --}}
-                        <span class="badge fs-6 p-2" id="pft-badge"
-                              style="background:#198754;color:#fff;font-weight:bold;"
-                              title="Sum of per-row Profit dollars across visible rows (matches /all-marketplace-master Total PFT)">PFT: $0</span>
                         <span class="badge fs-6 p-2" id="gpft-pct-badge"
                               style="background:#6f42c1;color:#fff;font-weight:bold;"
                               title="Weighted Gross Profit %: (Σ Profit ÷ Σ Sales L30) × 100. Matches /all-marketplace-master Gprofit% formula and /purchasing-power-sales GPFT % (rev) badge.">GPFT: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color:white;font-weight:bold;" title="Weighted GROI% = (Σ Profit ÷ Σ COGS) × 100.">GROI: 0%</span>
-                        <span class="badge fs-6 p-2" id="ads-percent-badge" style="background-color:#d63384;color:white;font-weight:bold;" title="Purchasing Power has no ads — Ads%/TACOS is always 0% (same as /all-marketplace-master).">Ads: 0%</span>
-                        <span class="badge fs-6 p-2" id="npft-percent-badge" style="background-color:#0f766e;color:white;font-weight:bold;" title="NPFT% = GPFT% (Purchasing Power has no ads — same as /all-marketplace-master N PFT).">NPFT: 0%</span>
-                        <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color:#6f42c1;color:white;font-weight:bold;" title="NROI% = GROI% (Purchasing Power has no ads — same as /all-marketplace-master N ROI).">NROI: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color:black;font-weight:bold;">Avg Price: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color:black;font-weight:bold;">Total INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color:black;font-weight:bold;">Total PP L30: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="total-pp-stock-badge" style="color:white;font-weight:bold;">PP Stock: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color:white;font-weight:bold;cursor:pointer;" title="Click to filter 0 sold">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color:#28a745;color:white;font-weight:bold;cursor:pointer;">&gt; 0 Sold</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color:black;font-weight:bold;">DIL%: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color:black;font-weight:bold;">COGS: $0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color:black;font-weight:bold;display:none;">DIL%: 0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color:black;font-weight:bold;display:none;">COGS: $0</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color:white;font-weight:bold;cursor:pointer;">&lt; Amz</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color:#28a745;color:white;font-weight:bold;cursor:pointer;">&gt; Amz</span>
                         <span class="badge fs-6 p-2" id="pp-blue-triangle-badge"
@@ -228,16 +148,6 @@
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display:none;">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="fw-bold"></span>
-                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
-                        <span id="discount-type-select-wrap">
-                        <select id="discount-type-select" class="form-select form-select-sm" style="width:120px;">
-                            <option value="percentage">Percentage</option>
-                            <option value="value">Value ($)</option>
-                        </select>
-                        </span>
-                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
-                            placeholder="Enter %" step="0.01" style="width:140px;">
-                        <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                         <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
                         </button>
@@ -249,35 +159,6 @@
                         <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
                     </div>
                     <div id="pp-table" style="flex:1;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit Links Modal -->
-    <div class="modal fade" id="editLinksModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit Links</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" id="editLinksSku">
-                    <p class="mb-3"><strong>SKU:</strong> <span id="editLinksSkuDisplay"></span></p>
-                    <div class="mb-3">
-                        <label for="editSellerLink" class="form-label">S Link (Seller)</label>
-                        <input type="url" class="form-control" id="editSellerLink" placeholder="https://...">
-                    </div>
-                    <div class="mb-3">
-                        <label for="editBuyerLink" class="form-label">B Link (Buyer)</label>
-                        <input type="url" class="form-control" id="editBuyerLink" placeholder="https://...">
-                    </div>
-                    <div id="editLinksError" class="text-danger small" style="display:none;"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="saveLinksBtn">Save</button>
                 </div>
             </div>
         </div>
@@ -342,10 +223,8 @@
     const COLUMN_VIS_KEY = "pp_tabulator_column_visibility";
     let table = null;
     let allTableData = [];
-    let decreaseModeActive = false;
-    let increaseModeActive = false;
-    let samePriceModeActive = false;
     let selectedSkus = new Set();
+    const PP_MARGIN = {{ $ppPercentage }} / 100;
 
     // ---- Price Rule (same logic as Faire; separate modal/table + storage) ----
     const PP_PRICE_RULES_KEY = 'pp_price_rules_v1';
@@ -628,97 +507,7 @@
         toast.addEventListener('hidden.bs.toast', () => toast.remove());
     }
 
-    // Mode button visual resets — keep each in their idle styling.
-    function resetDecreaseBtn() {
-        $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning')
-            .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
-    }
-    function resetIncreaseBtn() {
-        $('#increase-btn').removeClass('btn-danger').addClass('btn-success')
-            .html('<i class="fas fa-arrow-up"></i> Increase Mode');
-    }
-    function resetSamePriceBtn() {
-        $('#same-price-btn').removeClass('btn-danger').addClass('btn-info')
-            .html('<i class="fas fa-equals"></i> Same Price Mode');
-    }
-    // Swap the discount-input panel between %/$ and Same Price modes.
-    function syncDiscountInputUi() {
-        const $input = $('#discount-percentage-input');
-        if (samePriceModeActive) {
-            $('#discount-type-select-wrap').hide();
-            $('#discount-input-label').removeClass('d-none');
-            $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
-            $('#apply-discount-btn').text('Apply Same Price');
-        } else {
-            $('#discount-type-select-wrap').show();
-            $('#discount-input-label').addClass('d-none');
-            const t = $('#discount-type-select').val();
-            $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
-            $('#apply-discount-btn').text('Apply');
-        }
-    }
-
     $(document).ready(function() {
-
-        $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
-
-        $('#decrease-btn').on('click', function() {
-            decreaseModeActive = !decreaseModeActive;
-            increaseModeActive = false;
-            samePriceModeActive = false;
-            const selectColumn = table.getColumn('_select');
-
-            resetIncreaseBtn();
-            resetSamePriceBtn();
-            if (decreaseModeActive) {
-                $(this).removeClass('btn-warning').addClass('btn-danger')
-                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
-                selectColumn.show();
-            } else {
-                resetDecreaseBtn();
-                selectColumn.hide(); selectedSkus.clear(); updateSelectedCount();
-            }
-            syncDiscountInputUi();
-        });
-
-        $('#increase-btn').on('click', function() {
-            increaseModeActive = !increaseModeActive;
-            decreaseModeActive = false;
-            samePriceModeActive = false;
-            const selectColumn = table.getColumn('_select');
-
-            resetDecreaseBtn();
-            resetSamePriceBtn();
-            if (increaseModeActive) {
-                $(this).removeClass('btn-success').addClass('btn-danger')
-                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                selectColumn.show();
-            } else {
-                resetIncreaseBtn();
-                selectColumn.hide(); selectedSkus.clear(); updateSelectedCount();
-            }
-            syncDiscountInputUi();
-        });
-
-        // Same Price Mode — entered price applies to ALL selected SKUs.
-        $('#same-price-btn').on('click', function() {
-            samePriceModeActive = !samePriceModeActive;
-            decreaseModeActive = false;
-            increaseModeActive = false;
-            const selectColumn = table.getColumn('_select');
-
-            resetDecreaseBtn();
-            resetIncreaseBtn();
-            if (samePriceModeActive) {
-                $(this).removeClass('btn-info').addClass('btn-danger')
-                    .html('<i class="fas fa-equals"></i> Same Price ON');
-                selectColumn.show();
-            } else {
-                resetSamePriceBtn();
-                selectColumn.hide(); selectedSkus.clear(); updateSelectedCount();
-            }
-            syncDiscountInputUi();
-        });
 
         $(document).on('change', '#select-all-checkbox', function() {
             const isChecked = $(this).prop('checked');
@@ -735,152 +524,9 @@
             updateSelectedCount(); updateSelectAllCheckbox();
         });
 
-        $('#apply-discount-btn').on('click', function() { applyDiscount(); });
-        $('#discount-percentage-input').on('keypress', function(e) { if (e.which === 13) applyDiscount(); });
-        $('#sugg-amz-prc-btn').on('click', function() { applySuggestAmazonPrice(); });
         $('#clear-sprice-btn').on('click', function() { clearSpriceForSelected(); });
 
-        /*
-         * Target ROI% / Target GPFT% bulk apply (Purchasing Power, margin = $ppPercentage / 100)
-         * --------------------------------------------------------------------------------------
-         * Ship is intentionally excluded from all Purchasing Power formulas.
-         * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered target:
-         *     SROI%  = ((sprice * margin − lp) / lp)     * 100
-         *           → sprice = (lp * (1 + ROI%/100)) / margin
-         *     SGPFT% = ((sprice * margin − lp) / sprice) * 100
-         *           → sprice = lp / (margin − GPFT%/100)
-         * Optimistic SGPFT / SPFT / SROI are written client-side, then the existing
-         * bulk /pp-save-sprice-batch endpoint reconciles them server-side. Rounding
-         * is plain 2-decimal — no .99 / .49 retail snapping — because snapping would
-         * shift the achieved SROI / SGPFT off the user-typed target.
-         */
-        const PP_MARGIN = {{ $ppPercentage }} / 100;
-
-        $('#apply-target-roi-btn').on('click', function () {
-            const rawInput = $('#target-roi-input').val();
-            const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                showToast('Please enter a Target ROI%', 'error');
-                return;
-            }
-            if (!isFinite(targetRoiPct)) {
-                showToast('Target ROI% must be a number', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                const selectColumn = table && table.getColumn ? table.getColumn('_select') : null;
-                if (selectColumn) selectColumn.show();
-                showToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const roiMultiplier = 1 + (targetRoiPct / 100);
-            const updates = [];
-            let updatedCount = 0;
-            let skippedNoLp = 0;
-
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                if (!rows.length) return;
-                const row = rows[0];
-                const rowData = row.getData();
-                if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return;
-
-                const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-
-                const candidate = (lp * roiMultiplier) / PP_MARGIN;
-                const newSprice = +candidate.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * PP_MARGIN - lp) / newSprice) * 10000) / 100 : 0;
-                const sroi  = lp > 0       ? Math.round(((newSprice * PP_MARGIN - lp) / lp)     * 10000) / 100 : 0;
-
-                row.update({ SPRICE: newSprice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
-                updates.push({ sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (updates.length === 0) {
-                showToast('No selected rows have a usable LP > 0', 'warning');
-                return;
-            }
-
-            saveSpriceUpdates(updates);
-            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-            showToast(`Target ROI ${targetRoiPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
-        });
-
-        $('#apply-target-gpft-btn').on('click', function () {
-            const rawInput = $('#target-gpft-input').val();
-            const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                showToast('Please enter a Target GPFT%', 'error');
-                return;
-            }
-            if (!isFinite(targetGpftPct)) {
-                showToast('Target GPFT% must be a number', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                const selectColumn = table && table.getColumn ? table.getColumn('_select') : null;
-                if (selectColumn) selectColumn.show();
-                showToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const denom = PP_MARGIN - (targetGpftPct / 100);
-            if (denom <= 0) {
-                showToast(`Target GPFT% ${targetGpftPct}% is too high — must be < ${(PP_MARGIN * 100).toFixed(0)}% (Purchasing Power take-home).`, 'error');
-                return;
-            }
-
-            const updates = [];
-            let updatedCount = 0;
-            let skippedNoLp = 0;
-
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                if (!rows.length) return;
-                const row = rows[0];
-                const rowData = row.getData();
-                if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return;
-
-                const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-
-                const candidate = lp / denom;
-                const newSprice = +candidate.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * PP_MARGIN - lp) / newSprice) * 10000) / 100 : 0;
-                const sroi  = lp > 0       ? Math.round(((newSprice * PP_MARGIN - lp) / lp)     * 10000) / 100 : 0;
-
-                row.update({ SPRICE: newSprice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
-                updates.push({ sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (updates.length === 0) {
-                showToast('No selected rows have a usable LP > 0', 'warning');
-                return;
-            }
-
-            saveSpriceUpdates(updates);
-            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-            showToast(`Target GPFT ${targetGpftPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
-        });
-
-        $('#target-roi-input').on('keypress', function(e) {
-            if (e.which === 13) $('#apply-target-roi-btn').click();
-        });
-        $('#target-gpft-input').on('keypress', function(e) {
-            if (e.which === 13) $('#apply-target-gpft-btn').click();
-        });
-
-        // Sold filter is now owned by the #sold-filter dropdown (mirrors Amazon tabulator).
+        let soldFilter = 'all';
         let lessAmzFilterActive = false, moreAmzFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
@@ -1047,16 +693,12 @@
             });
         }
 
-        // Sold badges just toggle the dropdown so the dropdown stays the single source of
-        // truth. Clicking the same badge twice clears the filter (toggle semantics preserved).
         $('#zero-sold-count-badge').on('click', function() {
-            const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
-            $('#sold-filter').val(next);
+            soldFilter = soldFilter === 'zero' ? 'all' : 'zero';
             applyFilters();
         });
         $('#more-sold-count-badge').on('click', function() {
-            const next = $('#sold-filter').val() === 'sold' ? 'all' : 'sold';
-            $('#sold-filter').val(next);
+            soldFilter = soldFilter === 'sold' ? 'all' : 'sold';
             applyFilters();
         });
         $('#less-amz-badge').on('click', function() { lessAmzFilterActive = !lessAmzFilterActive; moreAmzFilterActive = false; applyFilters(); });
@@ -1079,87 +721,6 @@
                 return +price.toFixed(2);
             }
             return Math.ceil(price) - 0.01; 
-        }
-
-        function applyDiscount() {
-            const discountType  = $('#discount-type-select').val();
-            const discountValue = parseFloat($('#discount-percentage-input').val());
-
-            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
-                showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
-                return;
-            }
-            if (isNaN(discountValue) || discountValue <= 0) {
-                showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Enter a valid value', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) { showToast('Select at least one SKU', 'error'); return; }
-
-            let updatedCount = 0;
-            const updates = [];
-
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                if (!rows.length) return;
-                const row = rows[0], rowData = row.getData();
-                const currentPrice = parseFloat(rowData['PP Price']) || 0;
-                // Same Price mode applies even when PP Price is empty;
-                // %/$ modes still need a positive PP Price to compute against.
-                if (!samePriceModeActive && currentPrice <= 0) return;
-
-                let newSprice;
-                if (samePriceModeActive) {
-                    newSprice = Math.max(0.99, discountValue);
-                } else if (discountType === 'percentage') {
-                    newSprice = decreaseModeActive ? currentPrice * (1 - discountValue / 100) : currentPrice * (1 + discountValue / 100);
-                } else {
-                    newSprice = decreaseModeActive ? currentPrice - discountValue : currentPrice + discountValue;
-                }
-                newSprice = Math.max(0.99, roundToRetailPrice(newSprice));
-
-                const percentage = {{ $ppPercentage }} / 100;
-                const lp   = parseFloat(rowData['LP_productmaster']) || 0;
-                // Ship excluded from Purchasing Power formulas
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp) / newSprice) * 10000) / 100 : 0;
-                const sroi  = lp > 0    ? Math.round(((newSprice * percentage - lp) / lp) * 10000) / 100 : 0;
-
-                row.update({ SPRICE: newSprice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
-                updates.push({ sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (updates.length) saveSpriceUpdates(updates);
-            const action = samePriceModeActive ? 'Same Price' : (decreaseModeActive ? 'Decrease' : 'Increase');
-            showToast(`${action} applied to ${updatedCount} SKU(s)`, 'success');
-            $('#discount-percentage-input').val('');
-        }
-
-        function applySuggestAmazonPrice() {
-            if (selectedSkus.size === 0) { showToast('Select SKUs first', 'error'); return; }
-            let updatedCount = 0, noAmzCount = 0;
-            const updates = [];
-            const percentage = {{ $ppPercentage }} / 100;
-
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                if (!rows.length) { noAmzCount++; return; }
-                const row = rows[0], rowData = row.getData();
-                const amazonPrice = parseFloat(rowData['A Price']);
-                if (!amazonPrice || amazonPrice <= 0) { noAmzCount++; return; }
-
-                const lp   = parseFloat(rowData['LP_productmaster']) || 0;
-                // Ship excluded from Purchasing Power formulas
-                const sgpft = Math.round(((amazonPrice * percentage - lp) / amazonPrice) * 10000) / 100;
-                const sroi  = lp > 0 ? Math.round(((amazonPrice * percentage - lp) / lp) * 10000) / 100 : 0;
-                row.update({ SPRICE: amazonPrice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
-                updates.push({ sku, sprice: amazonPrice });
-                updatedCount++;
-            });
-
-            if (updates.length) saveSpriceUpdates(updates);
-            let msg = `Amz price applied to ${updatedCount} SKU(s)`;
-            if (noAmzCount) msg += ` (${noAmzCount} had no Amz price)`;
-            showToast(msg, updatedCount > 0 ? 'success' : 'warning');
         }
 
         function saveSpriceUpdates(updates, opts) {
@@ -1292,7 +853,6 @@
             },
             columns: [
                 { title: 'Parent', field: 'Parent', headerFilter: 'input', headerFilterPlaceholder: 'Search Parent...', cssClass: 'text-primary', tooltip: true, frozen: true, width: 150, visible: false },
-                (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                 {
                     title: 'Image', field: 'image_path', headerSort: false, width: 80,
                     formatter: function(cell) {
@@ -1306,31 +866,6 @@
                     formatter: function(cell) {
                         const sku = cell.getValue();
                         return `<span>${sku}</span><i class="fa fa-copy text-secondary copy-sku-btn" style="cursor:pointer;margin-left:8px;font-size:14px;" data-sku="${sku}" title="Copy SKU"></i>`;
-                    }
-                },
-                {
-                    title: 'Links', field: 'links_column', frozen: true, width: 55, hozAlign: 'center', headerSort: false, visible: true,
-                    tooltip: 'Double-click to add / edit links',
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData();
-                        const buyerLink = d['B Link'] || '';
-                        const sellerLink = d['S Link'] || '';
-                        let html = '<div style="display:flex;flex-direction:column;gap:4px;align-items:center;">';
-                        if (sellerLink) {
-                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> S</a>`;
-                        }
-                        if (buyerLink) {
-                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size:12px;text-decoration:none;"><i class="fa fa-link"></i> B</a>`;
-                        }
-                        if (!sellerLink && !buyerLink) {
-                            html += '<span class="text-muted" style="font-size:12px;">-</span>';
-                        }
-                        html += '</div>';
-                        return html;
-                    },
-                    cellDblClick: function(e, cell) {
-                        e.stopPropagation();
-                        openEditLinksModal(cell.getRow());
                     }
                 },
                 { title: 'INV',  field: 'INV',  hozAlign: 'center', width: 50, sorter: 'number' },
@@ -1473,7 +1008,7 @@
                 },
                 {
                     title: "<input type='checkbox' id='select-all-checkbox'>",
-                    field: '_select', hozAlign: 'center', headerSort: false, width: 40, visible: false,
+                    field: '_select', hozAlign: 'center', headerSort: false, width: 40, visible: true,
                     formatter: function(cell) {
                         const sku = cell.getRow().getData()['(Child) sku'];
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${selectedSkus.has(sku) ? 'checked' : ''}>`;
@@ -1665,50 +1200,6 @@
             });
         });
 
-        // Open Edit Links modal
-        let editLinksRow = null;
-        function openEditLinksModal(row) {
-            if (!row) return;
-            editLinksRow = row;
-            const d = row.getData();
-            $('#editLinksSku').val(d['(Child) sku']);
-            $('#editLinksSkuDisplay').text(d['(Child) sku']);
-            $('#editSellerLink').val(d['S Link'] || '');
-            $('#editBuyerLink').val(d['B Link'] || '');
-            $('#editLinksError').hide().text('');
-            new bootstrap.Modal(document.getElementById('editLinksModal')).show();
-        }
-
-        // Save links
-        $(document).on('click', '#saveLinksBtn', function() {
-            const sku = $('#editLinksSku').val();
-            const sellerLink = $('#editSellerLink').val().trim();
-            const buyerLink = $('#editBuyerLink').val().trim();
-            const $err = $('#editLinksError');
-            $err.hide().text('');
-
-            const $btn = $(this).prop('disabled', true);
-            $.ajax({
-                url: '{{ url("/pp-update-links") }}',
-                method: 'POST',
-                data: { sku, seller_link: sellerLink, buyer_link: buyerLink, _token: '{{ csrf_token() }}' },
-                success: function(res) {
-                    if (editLinksRow) {
-                        editLinksRow.update({ 'S Link': res.seller_link || '', 'B Link': res.buyer_link || '' })
-                            .then(function() { editLinksRow.reformat(); })
-                            .catch(function() { editLinksRow.reformat(); });
-                    }
-                    showToast(`${sku}: links saved`, 'success');
-                    bootstrap.Modal.getInstance(document.getElementById('editLinksModal'))?.hide();
-                },
-                error: function(xhr) {
-                    const msg = xhr.responseJSON?.message || 'Failed to save links.';
-                    $err.text(msg).show();
-                },
-                complete: function() { $btn.prop('disabled', false); }
-            });
-        });
-
         table.on('cellEdited', function(cell) {
             const field = cell.getField();
             const row = cell.getRow();
@@ -1770,7 +1261,6 @@
                 return;
             }
             const inv   = $('#inventory-filter').val();
-            const nrl   = $('#nrl-filter').val();
             const gpft  = $('#gpft-filter').val();
             const cvrF  = $('#cvr-filter').val();
             const dil   = $('#dil-filter').val();
@@ -1779,9 +1269,6 @@
 
             if (inv === 'zero') table.addFilter('INV', '=', 0);
             else if (inv === 'more') table.addFilter('INV', '>', 0);
-
-            if (nrl === 'REQ') table.addFilter('nr_req', '=', 'REQ');
-            else if (nrl === 'NR') table.addFilter('nr_req', '=', 'NR');
 
             if (gpft !== 'all') {
                 if (gpft === 'negative') table.addFilter('GPFT%', '<', 0);
@@ -1827,7 +1314,6 @@
                 });
             }
 
-            const soldFilter = $('#sold-filter').val();
             if (soldFilter === 'zero') table.addFilter('PP L30', '=', 0);
             else if (soldFilter === 'sold') table.addFilter('PP L30', '>', 0);
             if (lessAmzFilterActive) table.addFilter(d => { const mc = parseFloat(d['PP Price']) || 0, amz = parseFloat(d['A Price']) || 0; return amz > 0 && mc > 0 && mc < amz; });
@@ -1903,24 +1389,17 @@
             applyFilters();
         });
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #roi-filter, #sold-filter').on('change', function() { applyFilters(); });
+        $('#inventory-filter, #gpft-filter, #cvr-filter, #dil-filter, #roi-filter').on('change', function() { applyFilters(); });
 
         function updateSummary() {
             const data = table.getData('active').filter(r => !(r.Parent && r.Parent.startsWith('PARENT')));
-            let totalPft = 0, totalSales = 0, totalPrice = 0, priceCount = 0;
-            let totalInv = 0, totalL30 = 0, zeroSold = 0, totalDil = 0, dilCount = 0;
+            let totalPft = 0, totalSales = 0, zeroSold = 0, totalDil = 0, dilCount = 0;
             let totalCogs = 0;
-            let totalPpStock = 0;
 
             data.forEach(row => {
                 totalPft   += parseFloat(row.Profit) || 0;
                 totalSales += parseFloat(row['Sales L30']) || 0;
 
-                const price = parseFloat(row['PP Price']) || 0, inv = parseFloat(row.INV) || 0;
-                if (price > 0) { totalPrice += price; priceCount++; }
-
-                totalInv  += inv;
-                totalL30  += parseFloat(row['PP L30']) || 0;
                 if ((parseFloat(row['PP L30']) || 0) === 0) zeroSold++;
 
                 const dil = parseFloat(row['PP Dil%']) || 0;
@@ -1928,11 +1407,8 @@
 
                 const lp = parseFloat(row.LP_productmaster) || 0, l30 = parseFloat(row['PP L30']) || 0;
                 totalCogs += lp * l30;
-
-                totalPpStock += parseFloat(row['PP INV']) || 0;
             });
 
-            const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
             const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
             // Weighted ROI % = (Σ Profit ÷ Σ COGS) × 100.
             // Matches /all-marketplace-master's G ROI cell exactly (same formula
@@ -1945,26 +1421,17 @@
 
             $('#total-pft-amt-badge').text(`Total PFT: $${Math.round(totalPft).toLocaleString()}`);
             $('#total-sales-amt-badge').text(`Total Sales: $${Math.round(totalSales).toLocaleString()}`);
-            $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
             // PFT $ (sum of Profit) and GPFT % weighted by sales — same shape as
             // /all-marketplace-master's Total PFT + Gprofit% cells and the
             // /purchasing-power-sales page badges. Weighted GPFT respects sales
             // volume per SKU (industry-standard margin), unlike a simple per-row
             // average that lets low-sales SKUs swing the % unfairly.
             const gpftPctWeighted = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
-            $('#pft-badge').text(`PFT: $${Math.round(totalPft).toLocaleString()}`);
             $('#gpft-pct-badge').text(`GPFT: ${gpftPctWeighted.toFixed(1)}%`);
-            $('#total-inv-badge').text(`Total INV: ${totalInv.toLocaleString()}`);
-            $('#total-l30-badge').text(`Total PP L30: ${totalL30.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSold}`);
             $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
             $('#roi-percent-badge').text(`GROI: ${roiPctWeighted.toFixed(1)}%`);
-            // Purchasing Power has no ads — Ads%=0, NPFT=GPFT, NROI=GROI (same as /all-marketplace-master).
-            $('#ads-percent-badge').text('Ads: 0%');
-            $('#npft-percent-badge').text('NPFT: ' + gpftPctWeighted.toFixed(1) + '%');
-            $('#nroi-percent-badge').text('NROI: ' + roiPctWeighted.toFixed(1) + '%');
-            $('#total-pp-stock-badge').text(`PP Stock: ${totalPpStock.toLocaleString()}`);
             if (window.PriceGtLmpBadge && table) {
                 PriceGtLmpBadge.update('#purchasingpower-price-gt-lmp-badge', table.getData(), 'purchasingpower', 'PP Price');
                 if (window.PriceLt80LmpBadge) {
