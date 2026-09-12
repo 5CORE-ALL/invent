@@ -298,7 +298,7 @@ class MacysApiService
                 })
                 ->get(['sku', 'offer_sku', 'activated']);
             foreach ($sheetRows as $row) {
-                if (isset($row->activated) && ! filter_var($row->activated, FILTER_VALIDATE_BOOLEAN)) {
+                if (! filter_var($row->activated, FILTER_VALIDATE_BOOLEAN)) {
                     continue;
                 }
                 $offer = trim((string) ($row->offer_sku ?: $row->sku));
@@ -312,32 +312,7 @@ class MacysApiService
                 }
             }
 
-            $missing = array_diff_key($wanted, $found);
-            if ($missing !== []) {
-                $missingUppers = array_keys($missing);
-                $missingPlaceholders = implode(',', array_fill(0, count($missingUppers), '?'));
-                $productRows = \App\Models\MacyProduct::query()
-                    ->whereRaw("UPPER(TRIM(sku)) IN ({$missingPlaceholders})", $missingUppers)
-                    ->get(array_values(array_filter([
-                        'sku',
-                        'price',
-                        Schema::hasColumn('macy_products', 'listing_status') ? 'listing_status' : null,
-                    ])));
-                foreach ($productRows as $row) {
-                    $status = strtolower(trim((string) ($row->listing_status ?? '')));
-                    if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished'], true)) {
-                        continue;
-                    }
-                    if ((float) ($row->price ?? 0) <= 0) {
-                        continue;
-                    }
-                    $offer = trim((string) $row->sku);
-                    $key = strtoupper($offer);
-                    if ($offer !== '' && isset($wanted[$key]) && ! isset($found[$key])) {
-                        $found[$key] = $offer;
-                    }
-                }
-            }
+            // Do not fall back to macy_products — leftover Connect prices are not live MCM offers.
         } catch (\Throwable) {
             // ignore — missing tables / query errors mean "not listed"
         }

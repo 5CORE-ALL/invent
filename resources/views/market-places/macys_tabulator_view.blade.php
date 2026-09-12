@@ -815,7 +815,9 @@
                 };
                 if (ok && live > 0) {
                     patch.SPRICE_PUSHED_VALUE = live;
-                    patch['MC Price'] = live;
+                    if (isMacysListed(row.getData() || {})) {
+                        patch['MC Price'] = live;
+                    }
                 }
                 try { row.update(patch); } catch (e) { /* ignore */ }
                 try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }

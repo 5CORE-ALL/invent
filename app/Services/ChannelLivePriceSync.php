@@ -167,6 +167,10 @@ class ChannelLivePriceSync
             $value = $base;
         }
 
+        if (in_array($channel, ['macys', 'macy'], true) && ! self::macysOfferIsActive($sku)) {
+            return;
+        }
+
         foreach (self::writeTargets($channel) as $target) {
             try {
                 self::updateTarget($target, $sku, $value);
@@ -379,6 +383,26 @@ class ChannelLivePriceSync
             ],
             default => [],
         };
+    }
+
+    private static function macysOfferIsActive(string $sku): bool
+    {
+        $sku = strtoupper(trim($sku));
+        if ($sku === '') {
+            return false;
+        }
+        try {
+            $row = MacysPriceData::query()
+                ->where(function ($q) use ($sku) {
+                    $q->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+                        ->orWhereRaw('UPPER(TRIM(offer_sku)) = ?', [$sku]);
+                })
+                ->first(['activated']);
+
+            return $row !== null && filter_var($row->activated, FILTER_VALIDATE_BOOLEAN);
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**

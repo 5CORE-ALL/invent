@@ -190,8 +190,18 @@ class MacyController extends Controller
             // MC L30 / MC INV / MC Price from macy_products (MCM OF21 overlay).
             // Inactive MCM offers still have a seller price — do not show it as listed.
             if ($macysMetric) {
-                if (array_key_exists($pmSkuNorm, $activatedByNorm)) {
-                    $macysMetric->activated = $activatedByNorm[$pmSkuNorm];
+                $compact = ShopifySku::compactSkuForLookup((string) $pm->sku);
+                $inMcm = array_key_exists($pmSkuNorm, $activatedByNorm)
+                    || ($compact !== '' && array_key_exists($compact, $activatedByNorm));
+                if ($inMcm) {
+                    $macysMetric->activated = (bool) (
+                        $activatedByNorm[$pmSkuNorm]
+                        ?? $activatedByNorm[$compact]
+                        ?? false
+                    );
+                } else {
+                    // Leftover Connect price with no MCM offer (e.g. GS EL HYBRID).
+                    $macysMetric->activated = false;
                 }
                 if (self::isListingMarkedInactive($listingStatus)) {
                     $macysMetric->activated = false;
@@ -504,17 +514,22 @@ class MacyController extends Controller
     {
         $out = [];
         try {
-            $rows = MacysPriceData::query()
-                ->where(function ($q) use ($skus) {
-                    $q->whereIn('sku', $skus)->orWhereIn('offer_sku', $skus);
-                })
-                ->get(['sku', 'offer_sku', 'activated']);
+            $rows = MacysPriceData::query()->get(['sku', 'offer_sku', 'activated']);
             foreach ($rows as $row) {
                 $active = (bool) $row->activated;
                 foreach ([(string) $row->sku, (string) $row->offer_sku] as $sku) {
-                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                    if ($norm !== '') {
-                        $out[$norm] = $active;
+                    foreach ([
+                        ShopifySku::normalizeSkuForShopifyLookup($sku),
+                        ShopifySku::compactSkuForLookup($sku),
+                    ] as $key) {
+                        if ($key === '') {
+                            continue;
+                        }
+                        if ($active) {
+                            $out[$key] = true;
+                        } elseif (! array_key_exists($key, $out)) {
+                            $out[$key] = false;
+                        }
                     }
                 }
             }
