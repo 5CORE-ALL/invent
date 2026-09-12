@@ -223,6 +223,7 @@ use App\Http\Controllers\MarketPlace\Shopifyb2cLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cZeroController;
 use App\Http\Controllers\MarketPlace\TemuController;
 use App\Http\Controllers\MarketPlace\Temu3Controller;
+use App\Http\Controllers\MarketPlace\NewTemuoneController;
 use App\Http\Controllers\MarketPlace\TemuLowVisibilityController;
 use App\Http\Controllers\MarketPlace\TemuZeroController;
 use App\Http\Controllers\MarketPlace\TiktokShopController;
@@ -4880,6 +4881,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-analytics/import', [TemuController::class, 'importTemuAnalytics'])->name('temu.analytics.import');
     Route::get('/temu-analytics/export', [TemuController::class, 'exportTemuAnalytics'])->name('temu.analytics.export');
     Route::get('/temu-analytics/sample', [TemuController::class, 'downloadSample'])->name('temu.analytics.sample');
+
+    // New Temu One — slim BestBuy-style tabulator (SKU, Links, INV, OV L30, Dil)
+    Route::get('/new-temuone', [NewTemuoneController::class, 'index'])->name('newtemuone.index');
+    Route::get('/new-temuone-data-json', [NewTemuoneController::class, 'dataJson'])->name('newtemuone.data.json');
+    Route::post('/new-temuone-save-links', [NewTemuoneController::class, 'saveLinks'])->name('newtemuone.save.links');
 
     // Temu Tabulator View
     Route::get('/temu-tabulator', [TemuController::class, 'temuTabulatorView'])->name('temu.tabulator');

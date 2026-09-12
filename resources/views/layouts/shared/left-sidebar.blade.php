@@ -1807,6 +1807,9 @@
                                         <a href="{{ route('listing.temu') }}">Listing Temu</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('newtemuone.index') }}">New Temu One</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('temu1.data') }}">Temu Analytics</a>
                                     </li>
                                     <li>
