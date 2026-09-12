@@ -224,6 +224,7 @@ use App\Http\Controllers\MarketPlace\Shopifyb2cZeroController;
 use App\Http\Controllers\MarketPlace\TemuController;
 use App\Http\Controllers\MarketPlace\Temu3Controller;
 use App\Http\Controllers\MarketPlace\NewTemuoneController;
+use App\Http\Controllers\MarketPlace\NewTemutwoController;
 use App\Http\Controllers\MarketPlace\TemuLowVisibilityController;
 use App\Http\Controllers\MarketPlace\TemuZeroController;
 use App\Http\Controllers\MarketPlace\TiktokShopController;
@@ -4887,6 +4888,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/new-temuone-data-json', [NewTemuoneController::class, 'dataJson'])->name('newtemuone.data.json');
     Route::post('/new-temuone-save-links', [NewTemuoneController::class, 'saveLinks'])->name('newtemuone.save.links');
 
+    Route::get('/new-temu2', [NewTemutwoController::class, 'index'])->name('newtemutwo.index');
+    Route::get('/new-temu2-data-json', [NewTemutwoController::class, 'dataJson'])->name('newtemutwo.data.json');
+    Route::post('/new-temu2-save-links', [NewTemutwoController::class, 'saveLinks'])->name('newtemutwo.save.links');
+
     // Temu Tabulator View
     Route::get('/temu-tabulator', [TemuController::class, 'temuTabulatorView'])->name('temu.tabulator');
     Route::post('/temu-column-visibility', [TemuController::class, 'saveTemuColumnVisibility']);
@@ -4943,7 +4948,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu-decrease-data', [TemuController::class, 'getTemuDecreaseData']);
     Route::get('/temu-decrease-data-l7', [TemuController::class, 'getTemuDecreaseDataL7'])->name('temu.decrease.l7');
     // Temu 2 pricing (temu2_orders API; no ads / Amazon / eBay)
-    Route::get('/temu1-data', [TemuController::class, 'temu1DataView'])->name('temu1.data');
     Route::get('/temu2-decrease', [TemuController::class, 'temu2DecreaseView'])->name('temu2.decrease');
     Route::get('/temu2-decrease-data', [TemuController::class, 'getTemu2DecreaseData']);
     Route::get('/temu2-decrease-data-l7', [TemuController::class, 'getTemu2DecreaseDataL7'])->name('temu2.decrease.l7');

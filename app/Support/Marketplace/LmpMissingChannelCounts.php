@@ -138,7 +138,7 @@ class LmpMissingChannelCounts
         ],
         'temu' => [
             'label' => 'Temu',
-            'url' => '/temu1-data',
+            'url' => '/new-temuone',
             'aliases' => ['temu'],
             'sku_table' => 'product_master',
             'sku_col' => 'sku',

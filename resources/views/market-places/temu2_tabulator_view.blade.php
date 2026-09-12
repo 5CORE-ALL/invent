@@ -118,6 +118,9 @@
                     <a href="{{ route('temu2.decrease') }}" class="btn btn-sm btn-outline-primary" title="View Temu 2 pricing (DIL%, CVR, orders from temu2_orders)">
                         <i class="fa fa-chart-line"></i> Temu Analytics
                     </a>
+                    <a href="{{ route('newtemutwo.index') }}" class="btn btn-sm btn-outline-primary" title="New Temu Two — same methods as New Temu One, Temu 2 listings">
+                        <i class="fa fa-chart-line"></i> New Temu Two
+                    </a>
                 </div>
 
                 <!-- Summary Stats (same badges as Temu) -->

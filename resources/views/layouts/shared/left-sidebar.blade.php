@@ -1810,9 +1810,6 @@
                                         <a href="{{ route('newtemuone.index') }}">New Temu One</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('temu1.data') }}">Temu Analytics</a>
-                                    </li>
-                                    <li>
                                         <a href="{{ route('temu.ads') }}">Temu Ads (API)</a>
                                     </li>
                                     <li>
@@ -1835,6 +1832,9 @@
                                     </li>
                                     <li>
                                         <a href="{{ url('temu2-decrease') }}">Temu 2 - Analytics</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('newtemutwo.index') }}">New Temu Two</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('temu2.ads') }}">Temu 2 Ads</a>

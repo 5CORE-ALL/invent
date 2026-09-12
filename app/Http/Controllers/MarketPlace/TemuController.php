@@ -2273,16 +2273,6 @@ class TemuController extends Controller
     }
 
     /**
-     * Temu Analytics — same UI as /temu2-decrease, fed by Temu 1 decrease data.
-     */
-    public function temu1DataView()
-    {
-        $temuMargin = TemuShopifySalesService::temuMarginDecimal();
-
-        return view('market-places.temu1_data', compact('temuMargin'));
-    }
-
-    /**
      * Get Temu badge daily history for the history table (JSON).
      * For "today" we use live sales summary (same as badge) so chart and badge match.
      */
@@ -4468,7 +4458,11 @@ class TemuController extends Controller
                 ], 400);
             }
 
-            $this->persistPushedTemuListingBase($sku, $price, true);
+            // New Temu Two: Temu does not accept the new base instantly.
+            // Keep temu2_metrics.base_price on the API pull.
+            if (! $request->boolean('skip_local_base')) {
+                $this->persistPushedTemuListingBase($sku, $price, true);
+            }
 
             return response()->json([
                 'success' => true,

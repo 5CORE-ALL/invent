@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'New Temu One', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'New Temu Two', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -11,7 +11,7 @@
         }
 
         /* Vertical column headers — scoped to this grid only so LMP / other modals stay horizontal */
-        #new-temuone-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+        #new-temu2-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
             text-orientation: mixed;
             white-space: nowrap;
@@ -24,11 +24,11 @@
             font-weight: 600;
         }
 
-        #new-temuone-table.tabulator .tabulator-header .tabulator-col {
+        #new-temu2-table.tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
         }
 
-        #new-temuone-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+        #new-temu2-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
         }
 
@@ -129,18 +129,18 @@
             margin-left: 3px;
             cursor: help;
         }
-        #newtemuone-cvr-vs-cpn-btn {
+        #newtemutwo-cvr-vs-cpn-btn {
             background: #20c997;
             border-color: #20c997;
             color: #fff;
         }
-        #newtemuone-cvr-vs-cpn-btn:hover,
-        #newtemuone-cvr-vs-cpn-btn:focus {
+        #newtemutwo-cvr-vs-cpn-btn:hover,
+        #newtemutwo-cvr-vs-cpn-btn:focus {
             background: #1aa179;
             border-color: #1aa179;
             color: #fff;
         }
-        #newtemuone-cvr-cpn-table .newtemuone-cvr-cpn-input {
+        #newtemutwo-cvr-cpn-table .newtemutwo-cvr-cpn-input {
             max-width: 90px;
             margin-left: auto;
             text-align: right;
@@ -415,8 +415,8 @@
             font-size: 12px;
             line-height: 1;
         }
-        #new-temuone-table.tabulator .tabulator-header .tabulator-col[tabulator-field="_select"] .tabulator-col-title,
-        #new-temuone-table.tabulator .tabulator-header .tabulator-col[tabulator-field="_push"] .tabulator-col-title {
+        #new-temu2-table.tabulator .tabulator-header .tabulator-col[tabulator-field="_select"] .tabulator-col-title,
+        #new-temu2-table.tabulator .tabulator-header .tabulator-col[tabulator-field="_push"] .tabulator-col-title {
             writing-mode: horizontal-tb;
             text-orientation: mixed;
             transform: none;
@@ -425,15 +425,15 @@
     </style>
     @push('page-title-after')
         <div class="nto-reload-push-cluster" id="nto-reload-push-cluster">
-            <label class="nto-reload-push-switch{{ !empty($newtemuonePageReloadPushEnabled) ? '' : ' is-off' }}"
+            <label class="nto-reload-push-switch{{ !empty($newtemutwoPageReloadPushEnabled) ? '' : ' is-off' }}"
                 id="nto-reload-push-wrap"
                 title="When ON, this page queues S Base Prc for blue-triangle SKUs only (S PRC ≠ Temu Price) on load and when you flip the switch. When OFF, nothing auto-pushes. Progress shows in the bar.">
                 <span class="nto-reload-push-text">
                     Push on reload
-                    <span class="nto-reload-push-state" id="nto-reload-push-label">{{ !empty($newtemuonePageReloadPushEnabled) ? 'On' : 'Off' }}</span>
+                    <span class="nto-reload-push-state" id="nto-reload-push-label">{{ !empty($newtemutwoPageReloadPushEnabled) ? 'On' : 'Off' }}</span>
                 </span>
                 <input type="checkbox" role="switch" id="nto-reload-push-switch"
-                    {{ !empty($newtemuonePageReloadPushEnabled) ? 'checked' : '' }}>
+                    {{ !empty($newtemutwoPageReloadPushEnabled) ? 'checked' : '' }}>
             </label>
             <div id="nto-reload-push-progress" class="nto-reload-push-progress"
                 aria-live="polite" title="Blue-triangle S Base Prc push progress">
@@ -456,8 +456,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'New Temu One',
-        'sub_title' => 'New Temu One',
+        'page_title' => 'New Temu Two',
+        'sub_title' => 'New Temu Two',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -522,7 +522,7 @@
                         'ebaySprcDilZeroSoldUsesMinGroi' => true,
                         'ebaySprcDilClampToNearest' => true,
                     ])
-                    <button type="button" class="btn btn-sm" id="newtemuone-cvr-vs-cpn-btn"
+                    <button type="button" class="btn btn-sm" id="newtemutwo-cvr-vs-cpn-btn"
                         title="Map CVR% slabs to CPN%. CPN% live-fills when a slab changes (no coupon push).">
                         CVR%
                     </button>
@@ -566,7 +566,7 @@
                         </ul>
                     </div>
                 </div>
-                <div id="newtemuone-badge-row" class="d-flex flex-wrap gap-1 mt-2" role="group" aria-label="Summary metrics">
+                <div id="newtemutwo-badge-row" class="d-flex flex-wrap gap-1 mt-2" role="group" aria-label="Summary metrics">
                     <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
                         style="color: white; font-weight: bold;"
                         title="Number of rows currently shown after filters">Rows: 0</span>
@@ -598,27 +598,27 @@
                     @endphp
                     <span class="badge fs-6 p-2" id="ads-percent-badge"
                         style="background-color: {{ $adsColor }}; color: white; font-weight: bold;"
-                        title="Ads% = L30 Ad Spend ${{ number_format((float) ($temuAds['spend'] ?? 0), 2) }} ÷ L30 Sales ${{ number_format((float) ($temuAds['sales'] ?? 0), 2) }} × 100. Same source as the /channel-master Temu row: spend from temu_ads_api_reports, sales from temu_orders ({{ $temuAds['window'] ?? 'L30' }}).">Ads: {{ number_format($adsPct, 1) }}%<a
-                            href="/temu/ads" target="_blank" rel="noopener noreferrer"
-                            style="color: white; margin-left: 4px;" title="Open Temu ads page"
+                        title="Ads% = L30 Ad Spend ${{ number_format((float) ($temuAds['spend'] ?? 0), 2) }} ÷ L30 Sales ${{ number_format((float) ($temuAds['sales'] ?? 0), 2) }} × 100. Same source as the /channel-master Temu 2 row: spend from temu2_campaign_reports, sales from temu2_orders ({{ $temuAds['window'] ?? 'L30' }}).">Ads: {{ number_format($adsPct, 1) }}%<a
+                            href="/temu2/ads" target="_blank" rel="noopener noreferrer"
+                            style="color: white; margin-left: 4px;" title="Open Temu 2 ads page"
                             onclick="event.stopPropagation();"><i class="fas fa-arrow-up-right-from-square"></i></a></span>
-                    <span class="badge fs-6 p-2" id="newtemuone-missing-lmp-badge"
+                    <span class="badge fs-6 p-2" id="newtemutwo-missing-lmp-badge"
                         style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                         title="M LMP: SKUs with INV &gt; 0 and no LMP. Green = none missing. Click to filter.">M LMP: 0</span>
                     @include('partials.price-gt-lmp-badge', [
-                        'pglBadgeId' => 'newtemuone-price-gt-lmp-badge',
+                        'pglBadgeId' => 'newtemutwo-price-gt-lmp-badge',
                         'pglChannelKey' => '',
                         'pglPriceField' => 'temu_price',
                     ])
                     @include('partials.price-lt80-lmp-badge', [
-                        'pltBadgeId' => 'newtemuone-price-lt80-lmp-badge',
+                        'pltBadgeId' => 'newtemutwo-price-lt80-lmp-badge',
                         'pltChannelKey' => '',
                         'pltPriceField' => 'temu_price',
                     ])
-                    <span class="badge fs-6 p-2" id="newtemuone-blue-triangle-badge"
+                    <span class="badge fs-6 p-2" id="newtemutwo-blue-triangle-badge"
                         style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                         title="Blue triangle: S PRC ≠ T Price. Click to filter."><i class="fas fa-exclamation-triangle"></i> 0</span>
-                    <span class="badge fs-6 p-2" id="newtemuone-lmp-cap-badge"
+                    <span class="badge fs-6 p-2" id="newtemutwo-lmp-cap-badge"
                         style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                         title="S PRC capped at LMP. Click to filter.">LMP cap 0</span>
                     <span class="badge fs-6 p-2" id="temu-amz-cap-badge"
@@ -632,12 +632,12 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
-                <div id="new-temuone-table-wrapper" style="height: calc(100vh - 160px); display: flex; flex-direction: column;">
+                <div id="new-temu2-table-wrapper" style="height: calc(100vh - 160px); display: flex; flex-direction: column;">
                     <div class="px-2 py-1 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
                         <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                         <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
                     </div>
-                    <div id="new-temuone-table" style="flex: 1;"></div>
+                    <div id="new-temu2-table" style="flex: 1;"></div>
                 </div>
             </div>
         </div>
@@ -747,20 +747,20 @@
                         (no marketplace coupon).
                     </p>
                     <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-0" id="newtemuone-cvr-cpn-table">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="newtemutwo-cvr-cpn-table">
                             <thead class="table-light">
                                 <tr>
                                     <th style="width:55%;">CVR%</th>
                                     <th style="width:45%;" class="text-end">CPN %</th>
                                 </tr>
                             </thead>
-                            <tbody id="newtemuone-cvr-cpn-tbody"></tbody>
+                            <tbody id="newtemutwo-cvr-cpn-tbody"></tbody>
                         </table>
                     </div>
-                    <div class="small text-muted mt-2" id="newtemuone-cvr-cpn-status"></div>
+                    <div class="small text-muted mt-2" id="newtemutwo-cvr-cpn-status"></div>
                 </div>
                 <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-primary" id="newtemuone-cvr-cpn-save-btn"
+                    <button type="button" class="btn btn-sm btn-primary" id="newtemutwo-cvr-cpn-save-btn"
                         title="Save CVR→CPN slab values. The CPN column updates from these slabs.">
                         <i class="fas fa-save me-1"></i>Save Rule
                     </button>
@@ -806,7 +806,7 @@
             <div class="modal-content">
                 <div class="modal-header bg-success text-white">
                     <h5 class="modal-title" id="uploadViewDataModalLabel">
-                        <i class="fa fa-eye me-2"></i>Upload Temu View Data
+                        <i class="fa fa-eye me-2"></i>Upload Temu 2 View Data
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -823,7 +823,7 @@
                             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                         </div>
                     @endif
-                    <form id="uploadViewDataForm" action="{{ route('temu.viewdata.upload') }}" method="POST" enctype="multipart/form-data">
+                    <form id="uploadViewDataForm" action="{{ route('temu2.viewdata.upload') }}" method="POST" enctype="multipart/form-data">
                         @csrf
                         @if(isset($errors) && $errors->any())
                             <div class="alert alert-danger py-2">{{ $errors->first() }}</div>
@@ -834,14 +834,14 @@
                             </label>
                             <input type="file" class="form-control" id="viewDataFile" name="files[]" accept=".xlsx,.xls,.csv,.tsv,.txt" multiple>
                             <div class="form-text">
-                                Select multiple Seller Center daily exports. Writes to <code>temu_view_data</code>.
+                                Select multiple Seller Center daily exports. Writes to <code>temu2_view_data</code>.
                             </div>
                             <div id="viewDataFileList" class="small mt-2"></div>
                             <div id="viewDataUploadStatus" class="alert py-2 px-3 mb-0 mt-2" style="display:none;"></div>
                         </div>
                         <div class="alert alert-warning">
-                            First batch replaces existing rows in <code>temu_view_data</code>. Extra files merge.
-                            <a href="{{ route('temu.viewdata.sample') }}" class="alert-link">
+                            First batch replaces existing rows in <code>temu2_view_data</code>. Extra files merge.
+                            <a href="{{ route('temu2.viewdata.sample') }}" class="alert-link">
                                 <i class="fa fa-download"></i> Download Sample File
                             </a>
                         </div>
@@ -1377,7 +1377,7 @@
         return isFinite(n) && n >= 0 ? n : 0;
     }
 
-    /** INV = 0 or CVR = 0 → 0. Same as /temu1-data. */
+    /** INV = 0 or CVR = 0 → 0. Same as New Temu One. */
     function temuCpnForRow(row) {
         if (!row || row.is_parent_summary) return 0;
         const inv = parseFloat(row.INV != null ? row.INV : row.inventory) || 0;
@@ -1387,14 +1387,14 @@
     }
 
     function temuRenderCvrCpnModalTable() {
-        const $tb = $('#newtemuone-cvr-cpn-tbody').empty();
+        const $tb = $('#newtemutwo-cvr-cpn-tbody').empty();
         temuCvrCpnRules.forEach(function(r, idx) {
             const cpn = isFinite(Number(r.cpn)) ? Number(r.cpn) : 0;
             $tb.append(
                 '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
                 + '<td>' + String(r.label || r.key) + '</td>'
                 + '<td class="text-end">'
-                + '<input type="number" class="form-control form-control-sm newtemuone-cvr-cpn-input" '
+                + '<input type="number" class="form-control form-control-sm newtemutwo-cvr-cpn-input" '
                 + 'min="0" step="0.1" value="' + cpn + '" data-idx="' + idx + '">'
                 + '</td></tr>'
             );
@@ -1402,9 +1402,9 @@
     }
 
     function temuReadCvrCpnRulesFromModal() {
-        $('#newtemuone-cvr-cpn-tbody tr').each(function() {
+        $('#newtemutwo-cvr-cpn-tbody tr').each(function() {
             const key = String($(this).attr('data-key') || '');
-            const val = parseFloat($(this).find('.newtemuone-cvr-cpn-input').val());
+            const val = parseFloat($(this).find('.newtemutwo-cvr-cpn-input').val());
             const rule = temuCvrCpnRules.find(function(r) { return r.key === key; });
             if (!rule) return;
             rule.cpn = (isFinite(val) && val >= 0) ? val : 0;
@@ -1415,7 +1415,7 @@
     }
 
     function temuCascadeCvrCpnFromInput(inputEl) {
-        const $inputs = $('#newtemuone-cvr-cpn-tbody .newtemuone-cvr-cpn-input');
+        const $inputs = $('#newtemutwo-cvr-cpn-tbody .newtemutwo-cvr-cpn-input');
         const start = $inputs.index(inputEl);
         if (start < 0) return;
         const startVal = parseFloat($(inputEl).val());
@@ -1444,7 +1444,7 @@
     }
 
     function temuLoadCvrCpnRules() {
-        $('#newtemuone-cvr-cpn-status').text('Loading…');
+        $('#newtemutwo-cvr-cpn-status').text('Loading…');
         return $.ajax({
             url: TEMU_CVR_CPN_URL,
             method: 'GET',
@@ -1454,21 +1454,21 @@
                 temuApplyCvrCpnRules(res.rules);
             }
             temuRenderCvrCpnModalTable();
-            $('#newtemuone-cvr-cpn-status').text(res && res.is_default
+            $('#newtemutwo-cvr-cpn-status').text(res && res.is_default
                 ? 'Using first-time defaults (0.01–1% → 9 … > 7% → 0, no 0% slab). Save Rule to store.'
-                : 'Loaded saved CVR → CPN slabs (same as /temu1-data).');
+                : 'Loaded saved CVR → CPN slabs (same as New Temu One).');
             if (table) {
                 try { table.redraw(true); } catch (e) { /* ignore */ }
             }
         }).fail(function() {
             temuRenderCvrCpnModalTable();
-            $('#newtemuone-cvr-cpn-status').text('Could not load saved rules — showing defaults.');
+            $('#newtemutwo-cvr-cpn-status').text('Could not load saved rules — showing defaults.');
         });
     }
 
     function temuSaveCvrCpnRules() {
         const rules = temuReadCvrCpnRulesFromModal();
-        const $btn = $('#newtemuone-cvr-cpn-save-btn');
+        const $btn = $('#newtemutwo-cvr-cpn-save-btn');
         const html = $btn.html();
         $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
         return $.ajax({
@@ -1486,13 +1486,13 @@
                 temuApplyCvrCpnRules(res.rules);
             }
             temuRenderCvrCpnModalTable();
-            $('#newtemuone-cvr-cpn-status').text('Saved.');
+            $('#newtemutwo-cvr-cpn-status').text('Saved.');
             showToast('CVR → CPN rules saved', 'success');
             if (table) {
                 try { table.redraw(true); } catch (e) { /* ignore */ }
             }
         }).fail(function() {
-            $('#newtemuone-cvr-cpn-status').text('Save failed. Slabs still apply on this page.');
+            $('#newtemutwo-cvr-cpn-status').text('Save failed. Slabs still apply on this page.');
             showToast('Could not save CVR → CPN rules', 'error');
         }).always(function() {
             $btn.prop('disabled', false).html(html);
@@ -1782,7 +1782,7 @@
         lmpSaveTimer = setTimeout(saveLmpEntriesNow, 400);
     }
 
-    function openNewTemuoneEditLinksModal(row) {
+    function openNewTemutwoEditLinksModal(row) {
         newTemuoneEditLinksRow = row;
         const d = row.getData();
         const sku = d['(Child) sku'] || d.sku || '';
@@ -1876,10 +1876,10 @@
     }
     window.temuHasBlueTriangle = temuHasBlueTriangle;
 
-    const NTO_PUSH_SPRICE_URL = '/channel-push-sprice/newtemuone';
-    const NTO_PUSH_SPRICE_LIVE = @json(!empty($newtemuonePushSpriceLive));
+    const NTO_PUSH_SPRICE_URL = '/channel-push-sprice/newtemutwo';
+    const NTO_PUSH_SPRICE_LIVE = @json(!empty($newtemutwoPushSpriceLive));
     const NTO_PUSH_SPRICE_CHUNK = 200;
-    let ntoPageReloadPushEnabled = @json(!empty($newtemuonePageReloadPushEnabled));
+    let ntoPageReloadPushEnabled = @json(!empty($newtemutwoPageReloadPushEnabled));
     let ntoPushSpricePollTimer = null;
     let ntoPushSpriceExpecting = false;
     let ntoPushSpriceLastToastKey = '';
@@ -1902,7 +1902,7 @@
         ntoPageReloadPushEnabled = !!enabled;
         syncNtoReloadPushSwitchUi();
         return $.ajax({
-            url: '/channel-promo-pricing/newtemuone/page-reload-push',
+            url: '/channel-promo-pricing/newtemutwo/page-reload-push',
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': ntoPushCsrf(), 'Accept': 'application/json' },
             data: { _token: ntoPushCsrf(), enabled: enabled ? 1 : 0 },
@@ -2317,11 +2317,11 @@
         const pairs = [
             ['#zero-sold-count-badge', zeroSoldFilterActive],
             ['#more-sold-count-badge', moreSoldFilterActive],
-            ['#newtemuone-blue-triangle-badge', blueTriangleFilterActive],
-            ['#newtemuone-lmp-cap-badge', lmpCapFilterActive],
+            ['#newtemutwo-blue-triangle-badge', blueTriangleFilterActive],
+            ['#newtemutwo-lmp-cap-badge', lmpCapFilterActive],
             ['#temu-amz-cap-badge', amzCapFilterActive],
             ['#temu-eb-cap-badge', ebCapFilterActive],
-            ['#newtemuone-missing-lmp-badge', missingLmpFilterActive]
+            ['#newtemutwo-missing-lmp-badge', missingLmpFilterActive]
         ];
         pairs.forEach(function(p) {
             $(p[0]).css('box-shadow', p[1] ? '0 0 0 3px rgba(13,110,253,0.55)' : 'none');
@@ -2329,12 +2329,12 @@
         // These two paint their own active state (yellow outline) via the shared modules.
         if (window.PriceGtLmpBadge) {
             PriceGtLmpBadge.setOutline(
-                document.getElementById('newtemuone-price-gt-lmp-badge'), priceGtLmpFilterActive
+                document.getElementById('newtemutwo-price-gt-lmp-badge'), priceGtLmpFilterActive
             );
         }
         if (window.PriceLt80LmpBadge) {
             PriceLt80LmpBadge.setOutline(
-                document.getElementById('newtemuone-price-lt80-lmp-badge'), priceLt80LmpFilterActive
+                document.getElementById('newtemutwo-price-lt80-lmp-badge'), priceLt80LmpFilterActive
             );
         }
     }
@@ -2399,10 +2399,10 @@
         $('#avg-cvr-badge').text('CVR: ' + cvr.toFixed(1) + '%');
         $('#avg-gpft-badge').text('GPFT: ' + Math.round(gpftPct) + '%');
         $('#avg-groi-badge').text('GROI: ' + Math.round(groiPct) + '%');
-        $('#newtemuone-blue-triangle-badge').html(
+        $('#newtemutwo-blue-triangle-badge').html(
             '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangle.toLocaleString()
         );
-        $('#newtemuone-lmp-cap-badge').text('LMP cap ' + lmpCapped.toLocaleString());
+        $('#newtemutwo-lmp-cap-badge').text('LMP cap ' + lmpCapped.toLocaleString());
         $('#temu-amz-cap-badge').text('Amz ' + amzCap.toLocaleString());
         $('#temu-eb-cap-badge').text('EB ' + ebCap.toLocaleString());
 
@@ -2410,17 +2410,17 @@
         const allRows = table.getData();
         if (window.PriceGtLmpBadge) {
             PriceGtLmpBadge.update(
-                '#newtemuone-price-gt-lmp-badge', allRows, '', 'temu_price', temuBadgeLmpValue
+                '#newtemutwo-price-gt-lmp-badge', allRows, '', 'temu_price', temuBadgeLmpValue
             );
         }
         if (window.PriceLt80LmpBadge) {
-            PriceLt80LmpBadge.update('#newtemuone-price-lt80-lmp-badge', allRows, '', 'temu_price');
+            PriceLt80LmpBadge.update('#newtemutwo-price-lt80-lmp-badge', allRows, '', 'temu_price');
         }
         let missingLmp = 0;
         (allRows || []).forEach(function(row) {
             if (temuIsMissingLmp(row)) missingLmp++;
         });
-        const missingEl = $('#newtemuone-missing-lmp-badge');
+        const missingEl = $('#newtemutwo-missing-lmp-badge');
         missingEl.text('M LMP: ' + missingLmp.toLocaleString());
         missingEl.css({
             'background-color': missingLmp === 0 ? '#28a745' : '#dc3545',
@@ -2556,8 +2556,8 @@
         updateSummary();
     }
 
-    // Same hide/show + persist as /temu1-data, stored under this page's channel.
-    const TABULATOR_COLUMN_CHANNEL = 'newtemuone';
+    // Same hide/show + persist as /temu1-data, stored under this page's channel (newtemu2).
+    const TABULATOR_COLUMN_CHANNEL = 'newtemutwo';
     const TABULATOR_COLUMN_VISIBILITY_URL = '{{ url("/tabulator-column-visibility") }}';
     const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'advertisement', 'others'];
     const COL_VIS_CATEGORY_LABELS = {
@@ -2783,8 +2783,8 @@
     }
 
     $(document).ready(function() {
-        table = new Tabulator('#new-temuone-table', {
-            ajaxURL: '{{ route("newtemuone.data.json") }}',
+        table = new Tabulator('#new-temu2-table', {
+            ajaxURL: '{{ route("newtemutwo.data.json") }}',
             ajaxSorting: false,
             layout: 'fitData',
             layoutColumnsOnNewData: true,
@@ -2899,7 +2899,7 @@
                         return html;
                     },
                     cellDblClick: function(e, cell) {
-                        openNewTemuoneEditLinksModal(cell.getRow());
+                        openNewTemutwoEditLinksModal(cell.getRow());
                     }
                 },
                 {
@@ -2955,7 +2955,7 @@
                     hozAlign: 'center',
                     width: 60,
                     sorter: 'number',
-                    headerTooltip: 'Same as /temu1-data Views: SUM(temu_view_data.product_clicks) by Goods ID; Ads API fallback when the sheet has no row'
+                    headerTooltip: 'Same as New Temu One Views: SUM(temu2_view_data.product_clicks) by Goods ID; Ads API fallback when the sheet has no row'
                 },
                 {
                     title: 'CVR',
@@ -2963,7 +2963,7 @@
                     hozAlign: 'center',
                     width: 78,
                     sorter: 'number',
-                    headerTooltip: 'CVR = (Temu L30 / Views) × 100 — same as /temu1-data. Arrow compares CVR 30 against CVR 60 (prior 30 days), the same up/down rule as the Amazon tabulator. Down + CVR < 7% subtracts 10 from the Sprc Dil Target GROI; Up + CVR > 10% adds 10.',
+                    headerTooltip: 'CVR = (Temu L30 / Views) × 100 — same as New Temu One. Arrow compares CVR 30 against CVR 60 (prior 30 days), the same up/down rule as the Amazon tabulator. Down + CVR < 7% subtracts 10 from the Sprc Dil Target GROI; Up + CVR > 10% adds 10.',
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
                         const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
@@ -3133,7 +3133,7 @@
                     sorter: function(a, b, aRow, bRow) {
                         return temuCpnForRow(aRow.getData()) - temuCpnForRow(bRow.getData());
                     },
-                    headerTooltip: 'Live from CVR → CPN slabs (0.01–1% → 9 … > 7% → 0). No 0% CVR slab. INV = 0 or CVR = 0 → 0. Same rule as /temu1-data. Not a marketplace coupon.',
+                    headerTooltip: 'Live from CVR → CPN slabs (0.01–1% → 9 … > 7% → 0). No 0% CVR slab. INV = 0 or CVR = 0 → 0. Same rule as New Temu One. Not a marketplace coupon.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         if (row.is_parent_summary) return '';
@@ -3524,7 +3524,7 @@
                 listId: 'viewDataFileList',
                 statusId: 'viewDataUploadStatus',
                 onSuccess: function() {
-                    if (table) table.setData('{{ route("newtemuone.data.json") }}');
+                    if (table) table.setData('{{ route("newtemutwo.data.json") }}');
                 }
             });
         }
@@ -3542,16 +3542,16 @@
             }
         } catch (e) {}
         @endif
-        $('#newtemuone-cvr-vs-cpn-btn').on('click', function(e) {
+        $('#newtemutwo-cvr-vs-cpn-btn').on('click', function(e) {
             e.preventDefault();
             temuRenderCvrCpnModalTable();
             bootstrap.Modal.getOrCreateInstance(document.getElementById('newTemuoneCvrVsCpnModal')).show();
         });
-        $('#newtemuone-cvr-cpn-save-btn').on('click', function(e) {
+        $('#newtemutwo-cvr-cpn-save-btn').on('click', function(e) {
             e.preventDefault();
             temuSaveCvrCpnRules();
         });
-        $(document).on('input change', '#newtemuone-cvr-cpn-tbody .newtemuone-cvr-cpn-input', function() {
+        $(document).on('input change', '#newtemutwo-cvr-cpn-tbody .newtemutwo-cvr-cpn-input', function() {
             temuCascadeCvrCpnFromInput(this);
         });
 
@@ -3559,13 +3559,13 @@
         const badgeFilters = [
             ['#zero-sold-count-badge', 'zeroSold'],
             ['#more-sold-count-badge', 'moreSold'],
-            ['#newtemuone-blue-triangle-badge', 'blueTriangle'],
-            ['#newtemuone-lmp-cap-badge', 'lmpCap'],
+            ['#newtemutwo-blue-triangle-badge', 'blueTriangle'],
+            ['#newtemutwo-lmp-cap-badge', 'lmpCap'],
             ['#temu-amz-cap-badge', 'amzCap'],
             ['#temu-eb-cap-badge', 'ebCap'],
-            ['#newtemuone-price-gt-lmp-badge', 'priceGtLmp'],
-            ['#newtemuone-price-lt80-lmp-badge', 'priceLt80Lmp'],
-            ['#newtemuone-missing-lmp-badge', 'missingLmp']
+            ['#newtemutwo-price-gt-lmp-badge', 'priceGtLmp'],
+            ['#newtemutwo-price-lt80-lmp-badge', 'priceLt80Lmp'],
+            ['#newtemutwo-missing-lmp-badge', 'missingLmp']
         ];
         badgeFilters.forEach(function(pair) {
             $(document).on('click', pair[0], function(e) {
@@ -3626,7 +3626,7 @@
             $btn.prop('disabled', true).text('Saving...');
 
             $.ajax({
-                url: '{{ route("newtemuone.save.links") }}',
+                url: '{{ route("newtemutwo.save.links") }}',
                 method: 'POST',
                 data: {
                     sku: sku,

@@ -270,6 +270,11 @@ class ChannelPushSpriceRunner
                     // Do not confirmAfterPush: that writes Temu 1 SPRICE and
                     // temu_metrics.base_price. Live base stays on the API pull
                     // until Temu finishes assessing the new price.
+                } elseif ($this->channel === 'newtemutwo') {
+                    $full = \App\Services\TemuShopifySalesService::computeFullTemuPrice($stamp);
+                    NewTemutwoSuggestedPriceStore::markPushed($sku, $stamp, $full);
+                    // Do not confirmAfterPush: that writes Temu 2 SPRICE and
+                    // temu2_metrics.base_price. Live base stays on the API pull.
                 } else {
                     ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, $stamp);
                 }
@@ -424,6 +429,16 @@ class ChannelPushSpriceRunner
             ]);
 
             return app(TemuController::class)->pushTemuPrice($temuReq, app(TemuApiService::class));
+        }
+
+        if ($this->channel === 'newtemutwo') {
+            $temuReq = Request::create('/temu2/push-price', 'POST', [
+                'sku' => $sku,
+                'price' => $pushPrice,
+                'skip_local_base' => 1,
+            ]);
+
+            return app(TemuController::class)->pushTemu2Price($temuReq, app(Temu2ApiService::class));
         }
 
         if (in_array($this->channel, ['temu', 'temu2', 'temu3'], true)) {

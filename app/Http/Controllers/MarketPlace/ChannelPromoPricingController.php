@@ -40,7 +40,7 @@ class ChannelPromoPricingController extends Controller
         'ebay1', 'ebay2', 'ebay2op', 'ebay3',
         'shopify_b2c', 'shopify_b2b', 'reverb',
         'macys', 'macy', 'bestbuy', 'walmart', 'wayfair',
-        'temu', 'temu2', 'temu3', 'newtemuone', 'doba', 'doba_withoutship',
+        'temu', 'temu2', 'temu3', 'newtemuone', 'newtemutwo', 'doba', 'doba_withoutship',
         'tiktok', 'tiktok2', 'topdawg', 'purchasing_power',
         'aliexpress', 'shein', 'newegg', 'faire', 'pls',
         'mercari_wship', 'mercari_woship', 'fb_marketplace',
@@ -288,11 +288,11 @@ class ChannelPromoPricingController extends Controller
                 ->where('channel_name', $channel.'_page_reload_push')
                 ->first();
         } catch (\Throwable) {
-            return ! in_array($channel, ['amazon', 'newtemuone'], true);
+            return ! in_array($channel, ['amazon', 'newtemuone', 'newtemutwo'], true);
         }
         $vis = is_array($row?->visibility) ? $row->visibility : null;
         if (! is_array($vis) || ! array_key_exists('enabled', $vis)) {
-            return ! in_array($channel, ['amazon', 'newtemuone'], true);
+            return ! in_array($channel, ['amazon', 'newtemuone', 'newtemutwo'], true);
         }
 
         return filter_var($vis['enabled'], FILTER_VALIDATE_BOOLEAN);
