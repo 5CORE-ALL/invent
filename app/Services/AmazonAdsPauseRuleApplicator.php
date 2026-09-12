@@ -127,6 +127,63 @@ class AmazonAdsPauseRuleApplicator
     }
 
     /**
+     * Pause campaigns this job previously turned back on, except an explicit keep list.
+     *
+     * @param  list<string>  $keepNames
+     * @return array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>, kept: int}
+     */
+    public function pauseReactivatedExceptNames(array $keepNames, bool $dryRun = false): array
+    {
+        $stats = [
+            'paused' => 0,
+            'enabled' => 0,
+            'unchanged' => 0,
+            'skipped' => 0,
+            'failed' => 0,
+            'errors' => [],
+            'kept' => 0,
+        ];
+        $keep = [];
+        foreach ($keepNames as $name) {
+            $key = AmazonAdsPauseRule::normalizeCampaignName((string) $name);
+            if ($key !== '') {
+                $keep[$key] = true;
+            }
+        }
+        $byChannel = ['sp' => [], 'sb' => []];
+        $stateIds = [];
+        foreach (AmazonAdsPauseRuleState::query()->whereNotNull('reactivated_at')->get() as $row) {
+            $key = AmazonAdsPauseRule::normalizeCampaignName((string) ($row->campaign_name ?? ''));
+            if (isset($keep[$key])) {
+                $stats['kept']++;
+                continue;
+            }
+            $ch = in_array($row->channel, ['sp', 'sb'], true) ? $row->channel : 'sp';
+            $byChannel[$ch][] = (string) $row->campaign_id;
+            $stateIds[] = $row->id;
+        }
+        if ($dryRun) {
+            $stats['paused'] = count($byChannel['sp']) + count($byChannel['sb']);
+
+            return $stats;
+        }
+        foreach ($byChannel as $channel => $ids) {
+            $chunk = $this->pauseCampaigns($channel, $ids);
+            $stats['paused'] += (int) ($chunk['paused'] ?? 0);
+            $stats['failed'] += (int) ($chunk['failed'] ?? 0);
+            $stats['skipped'] += (int) ($chunk['skipped'] ?? 0);
+            foreach ($chunk['errors'] ?? [] as $err) {
+                $stats['errors'][] = $err;
+            }
+        }
+        if ($stateIds !== []) {
+            AmazonAdsPauseRuleState::query()->whereIn('id', $stateIds)->update(['reactivated_at' => null]);
+        }
+
+        return $stats;
+    }
+
+    /**
      * Turn named campaigns back on (PAUSED → ENABLED) even if they were leftover rule pauses.
      *
      * @param  list<string>  $campaignNames
@@ -491,11 +548,15 @@ class AmazonAdsPauseRuleApplicator
             ->get($cols);
 
         $seen = [];
-        $stamped = [];
+        $stampedAt = [];
         foreach ($rows as $row) {
             $cid = trim((string) ($row->campaign_id ?? ''));
-            if ($cid !== '' && trim((string) ($row->pink_dil_paused_at ?? '')) !== '') {
-                $stamped[$cid] = true;
+            $pink = trim((string) ($row->pink_dil_paused_at ?? ''));
+            if ($cid === '' || $pink === '') {
+                continue;
+            }
+            if (! isset($stampedAt[$cid]) || $pink > $stampedAt[$cid]) {
+                $stampedAt[$cid] = $pink;
             }
         }
         $out = [];
@@ -511,7 +572,7 @@ class AmazonAdsPauseRuleApplicator
                 'campaignName' => trim((string) ($row->campaignName ?? '')),
                 'campaignStatus' => $status,
                 'acos' => AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow($row->toArray()),
-                'was_rule_paused' => isset($stamped[$cid]),
+                'paused_at' => $stampedAt[$cid] ?? null,
             ];
         }
 
@@ -538,7 +599,7 @@ class AmazonAdsPauseRuleApplicator
         $pauseIds = [];
         $enableIds = [];
         $this->trackRuleState = true;
-        $openPauses = AmazonAdsPauseRuleState::openPauseCampaignIds($channel);
+        $openPauseAt = AmazonAdsPauseRuleState::openPauseAtByCampaignId($channel);
         foreach ($rows as $row) {
             $status = $row['campaignStatus'];
             if ($status === 'ARCHIVED') {
@@ -557,7 +618,7 @@ class AmazonAdsPauseRuleApplicator
             $desired = $decision['status'];
             $this->namesByCid[$row['campaign_id']] = (string) $row['campaignName'];
             $this->reasonsByCid[$row['campaign_id']] = (string) ($decision['reason'] ?? AmazonAdsPauseRule::fallbackPauseReason());
-            $wasRulePaused = ! empty($row['was_rule_paused']) || isset($openPauses[$row['campaign_id']]);
+            $pausedAt = $row['paused_at'] ?? ($openPauseAt[$row['campaign_id']] ?? null);
             if ($desired === AmazonAdsPauseRule::ACTION_PAUSED) {
                 if ($status === AmazonAdsPauseRule::ACTION_PAUSED) {
                     AmazonAdsPauseRuleState::recordPause(
@@ -572,7 +633,7 @@ class AmazonAdsPauseRuleApplicator
                 $pauseIds[] = $row['campaign_id'];
                 continue;
             }
-            if (AmazonAdsPauseRule::shouldAutoEnable($decision, $status, $wasRulePaused)) {
+            if (AmazonAdsPauseRule::shouldAutoEnable($decision, $status, $pausedAt)) {
                 $sku = (string) ($m['sku'] ?? '');
                 if ($sku !== '' && FbaInventoryService::blocksEnableForFbaSuffixZeroFbaInv($sku)) {
                     $stats['skipped']++;

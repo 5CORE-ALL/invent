@@ -22,6 +22,12 @@ final class AmazonAdsPauseRule
 
     public const ACTION_ENABLED = 'ENABLED';
 
+    /** Only turn back on Pause Rule pauses from this window. */
+    public const REACTIVATE_WITHIN_DAYS = 31;
+
+    /** pink_dil_paused_at before this is the old pink-DIL cron, not Pause Rule. */
+    public const PAUSE_RULE_STARTED_AT = '2026-08-26 00:00:00';
+
     /**
      * @return array{
      *     pricing: list<array{from: float, to: float, action: string, label: string}>,
@@ -340,11 +346,12 @@ final class AmazonAdsPauseRule
     }
 
     /**
-     * Re-enable a campaign the Pause Rule previously paused once Dil% / Price no longer say PAUSED.
+     * Re-enable only when the Pause Rule paused this campaign in the last month
+     * and Dil% / Price no longer say PAUSED. Older pink-DIL / manual pauses stay off.
      */
-    public static function shouldAutoEnable(array $decision, string $status, bool $wasRulePaused): bool
+    public static function shouldAutoEnable(array $decision, string $status, mixed $pausedAt, ?\DateTimeImmutable $now = null): bool
     {
-        if (! $wasRulePaused) {
+        if (! self::isRecentPauseRuleStamp($pausedAt, $now)) {
             return false;
         }
         $st = strtoupper(trim($status));
@@ -353,6 +360,40 @@ final class AmazonAdsPauseRule
         }
 
         return ($decision['status'] ?? '') !== self::ACTION_PAUSED;
+    }
+
+    public static function isRecentPauseRuleStamp(mixed $pausedAt, ?\DateTimeImmutable $now = null): bool
+    {
+        $at = self::parseStamp($pausedAt);
+        if ($at === null) {
+            return false;
+        }
+        $now = $now ?? new \DateTimeImmutable('now');
+        $monthAgo = $now->modify('-'.self::REACTIVATE_WITHIN_DAYS.' days');
+        $ruleStart = new \DateTimeImmutable(self::PAUSE_RULE_STARTED_AT);
+        $cutoff = $monthAgo > $ruleStart ? $monthAgo : $ruleStart;
+
+        return $at >= $cutoff;
+    }
+
+    public static function parseStamp(mixed $pausedAt): ?\DateTimeImmutable
+    {
+        if ($pausedAt instanceof \DateTimeImmutable) {
+            return $pausedAt;
+        }
+        if ($pausedAt instanceof \DateTimeInterface) {
+            return \DateTimeImmutable::createFromInterface($pausedAt);
+        }
+        $raw = trim((string) $pausedAt);
+        if ($raw === '' || $raw === '0') {
+            return null;
+        }
+        $ts = strtotime($raw);
+        if ($ts === false) {
+            return null;
+        }
+
+        return (new \DateTimeImmutable('@'.$ts))->setTimezone(new \DateTimeZone(date_default_timezone_get() ?: 'UTC'));
     }
 
     public static function fallbackPauseReason(): string

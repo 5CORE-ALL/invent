@@ -108,11 +108,18 @@ class AmazonAdsPauseRuleReviewsBandsTest extends TestCase
             'hits' => ['PR Dil% 100% ≥ 100%'],
         ];
 
-        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', true));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', false));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'ENABLED', true));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($pause, 'PAUSED', true));
-        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable(['status' => ''], 'PAUSED', true));
+        $now = new \DateTimeImmutable('2026-09-12 18:00:00');
+        $recent = '2026-08-27 13:09:13';
+        $oldPinkDil = '2026-02-25 12:40:51';
+
+        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', null, $now));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $oldPinkDil, $now));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'ENABLED', $recent, $now));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($pause, 'PAUSED', $recent, $now));
+        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable(['status' => ''], 'PAUSED', $recent, $now));
+        $this->assertFalse(AmazonAdsPauseRule::isRecentPauseRuleStamp($oldPinkDil, $now));
+        $this->assertTrue(AmazonAdsPauseRule::isRecentPauseRuleStamp($recent, $now));
     }
 
     public function test_active_again_display_uses_pause_reason_on_hover(): void

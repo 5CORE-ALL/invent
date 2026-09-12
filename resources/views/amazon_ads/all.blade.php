@@ -795,7 +795,9 @@
                         Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv) and pauses the <strong>campaign</strong>.
                         Price uses the <strong>price</strong> column (including grey LMP) and pauses the <strong>campaign</strong>.
                         Reviews uses each advertised SKU’s star rating and pauses only that <strong>product ad</strong> (campaign stays on).
-                        Save (with auto-pause on) applies matching pauses on Amazon now. Campaigns this rule previously paused are turned back on when Dil% / Price no longer match — those rows show <strong>Active Again</strong> (hover for the original pause reason). The job also runs daily at 18:25 IST.
+                        Save (with auto-pause on) applies matching pauses on Amazon now.
+                        Only campaigns this Pause Rule paused in the last 31 days are turned back on when Dil% / Price no longer match — those rows show <strong>Active Again</strong> (hover for the original pause reason).
+                        Older pauses (old pink DIL, manual, or older than a month) stay off. The job also runs daily at 18:25 IST.
                     </p>
                     <div class="form-check mb-1">
                         <input class="form-check-input" type="checkbox" id="amazonAdsPrDilEnabled" checked>

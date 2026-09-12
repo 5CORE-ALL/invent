@@ -51,25 +51,28 @@ class AmazonAdsPauseRuleState extends Model
     }
 
     /**
-     * @return array<string, true>
+     * Open Pause Rule pauses: campaign_id => paused_at (Y-m-d H:i:s).
+     *
+     * @return array<string, string>
      */
-    public static function openPauseCampaignIds(string $channel): array
+    public static function openPauseAtByCampaignId(string $channel): array
     {
         self::ensureTable();
-        $ids = [];
+        $out = [];
         foreach (self::query()
             ->where('channel', $channel)
             ->whereNotNull('paused_at')
             ->whereNull('reactivated_at')
-            ->pluck('campaign_id') as $id
+            ->get(['campaign_id', 'paused_at']) as $row
         ) {
-            $cid = trim((string) $id);
-            if ($cid !== '') {
-                $ids[$cid] = true;
+            $cid = trim((string) $row->campaign_id);
+            if ($cid === '' || $row->paused_at === null) {
+                continue;
             }
+            $out[$cid] = $row->paused_at->format('Y-m-d H:i:s');
         }
 
-        return $ids;
+        return $out;
     }
 
     /**
@@ -111,12 +114,13 @@ class AmazonAdsPauseRuleState extends Model
             return;
         }
         $reason = trim($reason) !== '' ? trim($reason) : AmazonAdsPauseRule::fallbackPauseReason();
+        $existing = self::query()->where('channel', $channel)->where('campaign_id', $cid)->first();
         self::query()->updateOrCreate(
             ['channel' => $channel, 'campaign_id' => $cid],
             [
-                'campaign_name' => $campaignName !== '' ? $campaignName : null,
+                'campaign_name' => $campaignName !== '' ? $campaignName : ($existing?->campaign_name),
                 'paused_reason' => $reason,
-                'paused_at' => now(),
+                'paused_at' => $existing?->paused_at ?? now(),
                 'reactivated_at' => null,
             ]
         );
