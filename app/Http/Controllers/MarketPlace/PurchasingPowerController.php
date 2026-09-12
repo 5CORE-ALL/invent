@@ -70,7 +70,8 @@ class PurchasingPowerController extends Controller
         };
 
         $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $ppMetrics    = PurchasingPowerProduct::whereIn('sku', $skus)->get()->keyBy(fn ($i) => $normalizeSku($i->sku));
+        $ppFreshAfter = self::latestMcmFreshAfter();
+        $ppMetrics    = self::indexProductsByNormalizedSku(PurchasingPowerProduct::query()->get());
         $dataViews    = PurchasingPowerDataView::whereIn('sku', $skus)->pluck('value', 'sku');
         $amazonData   = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(fn($i) => strtoupper($i->sku));
 
@@ -128,7 +129,7 @@ class PurchasingPowerController extends Controller
             );
             $resolvedPrice = self::resolveListedPrice(
                 $ppMetric,
-                self::productIsLiveOffer($ppMetric),
+                self::productIsLiveOffer($ppMetric, $ppFreshAfter),
                 $listingInactive
             );
             $row['PP Price'] = $resolvedPrice['price'];
@@ -319,12 +320,91 @@ class PurchasingPowerController extends Controller
         return $product->updated_at->gte($freshAfter);
     }
 
+    public static function normalizeOfferSku(string $value): string
+    {
+        $v = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', $value);
+
+        return strtoupper(preg_replace('/\s+/u', ' ', trim($v)) ?? '');
+    }
+
+    /**
+     * One product per normalized SKU. Prefer a live OF21 row over a leftover
+     * Connect duplicate (nbsp vs space).
+     *
+     * @param  iterable<PurchasingPowerProduct>  $products
+     * @return array<string, PurchasingPowerProduct>
+     */
+    public static function indexProductsByNormalizedSku(iterable $products): array
+    {
+        $grouped = [];
+        foreach ($products as $product) {
+            $norm = self::normalizeOfferSku((string) $product->sku);
+            if ($norm === '') {
+                continue;
+            }
+            $grouped[$norm][] = $product;
+        }
+
+        $freshAfter = self::latestMcmFreshAfter();
+        $out = [];
+        foreach ($grouped as $norm => $rows) {
+            $preferred = self::preferredProduct($rows, $freshAfter);
+            if ($preferred) {
+                $out[$norm] = $preferred;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<PurchasingPowerProduct>  $rows
+     */
+    public static function preferredProduct(array $rows, ?Carbon $freshAfter = null): ?PurchasingPowerProduct
+    {
+        if ($rows === []) {
+            return null;
+        }
+
+        $live = [];
+        foreach ($rows as $row) {
+            if (self::productIsLiveOffer($row, $freshAfter)) {
+                $live[] = $row;
+            }
+        }
+
+        $pool = $live !== [] ? $live : $rows;
+        usort($pool, static function (PurchasingPowerProduct $a, PurchasingPowerProduct $b): int {
+            return ($b->updated_at?->timestamp ?? 0) <=> ($a->updated_at?->timestamp ?? 0);
+        });
+
+        return $pool[0] ?? null;
+    }
+
+    public static function findProductBySku(string $sku): ?PurchasingPowerProduct
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $norm = self::normalizeOfferSku($sku);
+        $matches = [];
+        foreach (PurchasingPowerProduct::query()->get() as $product) {
+            if (self::normalizeOfferSku((string) $product->sku) === $norm) {
+                $matches[] = $product;
+            }
+        }
+
+        return self::preferredProduct($matches, self::latestMcmFreshAfter());
+    }
+
     /**
      * Live listed offer — not a leftover Connect/OF21 row.
-     * listing_status=active (from OF21) wins. Legacy rows with 0 stock are not listed;
-     * those are the SKUs MCM rejects with "No existing offer".
+     * listing_status=active only counts when the row was written by the latest
+     * OF21 pull. Stale leftovers (nbsp SKU, old updated_at) stay hidden.
      */
-    public static function productIsLiveOffer(?PurchasingPowerProduct $product): bool
+    public static function productIsLiveOffer(?PurchasingPowerProduct $product, ?Carbon $freshAfter = null): bool
     {
         if (! $product) {
             return false;
@@ -334,11 +414,20 @@ class PurchasingPowerController extends Controller
         if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)) {
             return false;
         }
-        if ($status === 'active') {
-            return (float) ($product->price ?? 0) > 0;
+        if ((float) ($product->price ?? 0) <= 0) {
+            return false;
         }
 
-        return (float) ($product->price ?? 0) > 0 && (int) ($product->stock ?? 0) > 0;
+        $inLatestPull = true;
+        if ($freshAfter && $product->updated_at) {
+            $inLatestPull = $product->updated_at->gte($freshAfter);
+        }
+
+        if ($status === 'active') {
+            return $inLatestPull;
+        }
+
+        return $inLatestPull && (int) ($product->stock ?? 0) > 0;
     }
 
     public static function isListingMarkedInactive($listingStatus): bool
@@ -380,12 +469,10 @@ class PurchasingPowerController extends Controller
             return 'Inactive listing — price push skipped';
         }
 
-        $product = PurchasingPowerProduct::query()
-            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
-            ->first();
+        $product = self::findProductBySku($sku);
         $resolved = self::resolveListedPrice(
             $product,
-            self::productIsLiveOffer($product),
+            self::productIsLiveOffer($product, self::latestMcmFreshAfter()),
             false
         );
         if (! $resolved['listed']) {

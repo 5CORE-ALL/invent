@@ -1535,10 +1535,12 @@ class CvrMasterController extends Controller
 
             $ppProducts = collect();
             $ppSalesQty = collect();
+            $ppFreshAfter = null;
             try {
-                $ppProducts = \App\Models\PurchasingPowerProduct::whereIn('sku', $skus)
-                    ->get()
-                    ->keyBy(fn ($i) => strtoupper((string) $i->sku));
+                $ppProducts = collect(PurchasingPowerController::indexProductsByNormalizedSku(
+                    \App\Models\PurchasingPowerProduct::query()->get()
+                ));
+                $ppFreshAfter = PurchasingPowerController::latestMcmFreshAfter();
                 $ppSalesQty = \App\Models\PurchasingPowerSale::whereNotIn('status', ['Canceled', 'canceled'])
                     ->selectRaw('UPPER(offer_sku) as sku_upper, SUM(quantity) as total_qty')
                     ->groupBy('sku_upper')
@@ -2241,14 +2243,15 @@ class CvrMasterController extends Controller
 
                 // === PURCHASING POWER (same as /purchasing-power-pricing) ===
                 // Listed price only from live PP MCM OF21. Leftover / Macy sheet = 0.
-                $ppSkuKey = strtoupper((string) $sku);
+                $ppSkuKey = PurchasingPowerController::normalizeOfferSku((string) $sku);
                 $ppProduct = $ppProducts->get($ppSkuKey);
                 $ppResolved = PurchasingPowerController::resolveListedPrice(
                     $ppProduct,
-                    PurchasingPowerController::productIsLiveOffer($ppProduct)
+                    PurchasingPowerController::productIsLiveOffer($ppProduct, $ppFreshAfter)
                 );
                 $ppPrice = $ppResolved['price'];
-                $ppSaleRow = $ppSalesQty->get($ppSkuKey);
+                $ppSaleRow = $ppSalesQty->get($ppSkuKey)
+                    ?? $ppSalesQty->get(strtoupper((string) $sku));
                 $ppL30 = $ppSaleRow !== null
                     ? intval($ppSaleRow)
                     : ($ppProduct ? intval($ppProduct->m_l30 ?? 0) : 0);

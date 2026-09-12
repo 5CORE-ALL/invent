@@ -90,8 +90,44 @@ class PurchasingPowerListedPriceTest extends TestCase
         $row->price = 19.99;
         $row->stock = 0;
         $row->listing_status = 'active';
+        $row->updated_at = Carbon::now()->subMinutes(2);
 
-        $this->assertTrue(PurchasingPowerController::productIsLiveOffer($row));
+        $this->assertTrue(PurchasingPowerController::productIsLiveOffer(
+            $row,
+            Carbon::now()->subMinutes(15)
+        ));
+    }
+
+    public function test_stale_active_nbsp_leftover_is_not_live(): void
+    {
+        $ghost = new PurchasingPowerProduct();
+        $ghost->sku = "DS CH\u{00A0}YLW\u{00A0}REST-LVR";
+        $ghost->price = 93.99;
+        $ghost->stock = 24;
+        $ghost->listing_status = 'active';
+        $ghost->updated_at = Carbon::parse('2026-09-12 16:49:53');
+
+        $this->assertFalse(PurchasingPowerController::productIsLiveOffer(
+            $ghost,
+            Carbon::parse('2026-09-13 05:20:00')->subMinutes(15)
+        ));
+        $out = PurchasingPowerController::resolveListedPrice(
+            $ghost,
+            PurchasingPowerController::productIsLiveOffer(
+                $ghost,
+                Carbon::parse('2026-09-13 05:20:00')->subMinutes(15)
+            )
+        );
+        $this->assertFalse($out['listed']);
+        $this->assertSame(0.0, $out['price']);
+    }
+
+    public function test_normalize_offer_sku_collapses_nbsp(): void
+    {
+        $this->assertSame(
+            'DS CH YLW REST-LVR',
+            PurchasingPowerController::normalizeOfferSku("DS CH\u{00A0}YLW\u{00A0}REST-LVR")
+        );
     }
 
     public function test_inactive_status_is_not_live_even_with_stock(): void

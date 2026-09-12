@@ -622,23 +622,36 @@ class FetchMacyProducts extends Command
 
     /**
      * @param  list<string>  $mcmNormSkus
+     * @param  list<string>  $mcmExactSkus
      */
-    private function clearPurchasingPowerProductsPriceNotInMcm(array $mcmNormSkus): void
+    private function clearPurchasingPowerProductsPriceNotInMcm(array $mcmNormSkus, array $mcmExactSkus = []): void
     {
-        $keep = array_fill_keys(array_filter($mcmNormSkus), true);
-        if ($keep === []) {
+        $keepNorm = array_fill_keys(array_filter($mcmNormSkus), true);
+        $keepExact = array_fill_keys(array_filter($mcmExactSkus), true);
+        if ($keepNorm === [] && $keepExact === []) {
             return;
         }
 
         $cleared = 0;
-        PurchasingPowerProduct::query()->select('id', 'sku', 'price')->orderBy('id')->chunkById(200, function ($rows) use ($keep, &$cleared) {
+        $cols = ['id', 'sku', 'price'];
+        if (Schema::hasColumn('purchasing_power_products', 'listing_status')) {
+            $cols[] = 'listing_status';
+        }
+        PurchasingPowerProduct::query()->select($cols)->orderBy('id')->chunkById(200, function ($rows) use ($keepNorm, $keepExact, &$cleared) {
             $ids = [];
             foreach ($rows as $row) {
-                $norm = $this->normalizeMacyOfferSku((string) $row->sku);
-                if ($norm === '' || isset($keep[$norm])) {
+                $exact = trim((string) $row->sku);
+                $norm = $this->normalizeMacyOfferSku($exact);
+                if ($norm === '') {
                     continue;
                 }
-                if ((float) $row->price > 0) {
+                $kept = $keepExact !== []
+                    ? isset($keepExact[$exact])
+                    : isset($keepNorm[$norm]);
+                if ($kept) {
+                    continue;
+                }
+                if ((float) $row->price > 0 || (string) ($row->listing_status ?? '') === 'active') {
                     $ids[] = $row->id;
                 }
             }
@@ -677,6 +690,7 @@ class FetchMacyProducts extends Command
         $totalUpdated = 0;
         $page = 1;
         $seenNormSkus = [];
+        $seenExactSkus = [];
 
         try {
             do {
@@ -741,6 +755,7 @@ class FetchMacyProducts extends Command
                         ? (bool) $offer['active']
                         : false;
                     $seenNormSkus[$this->normalizeMacyOfferSku($sku)] = true;
+                    $seenExactSkus[$sku] = true;
 
                     $updates[] = [
                         'sku' => $sku,
@@ -801,7 +816,7 @@ class FetchMacyProducts extends Command
                 $hasMore = $fetched >= $max && ($totalCount === 0 || $offset < $totalCount);
             } while ($hasMore);
 
-            $this->clearPurchasingPowerProductsPriceNotInMcm(array_keys($seenNormSkus));
+            $this->clearPurchasingPowerProductsPriceNotInMcm(array_keys($seenNormSkus), array_keys($seenExactSkus));
             $this->info("Purchasing Power MCM price sync complete. Updated: {$totalUpdated}");
             \App\Support\PurchasingPowerRuleSpriceApply::dispatch();
         } catch (\Throwable $e) {
