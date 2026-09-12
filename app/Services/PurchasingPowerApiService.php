@@ -349,8 +349,10 @@ class PurchasingPowerApiService extends BestBuyApiService
             ];
         }
 
-        // Confirm offer exists (OF21) before pricing import
-        $offerSku = $this->resolveMcmOfferSku($sku, $apiKey, $baseUrl);
+        // One exact OF21 lookup. Do not spray SKU variants or fall back to leftover
+        // purchasing_power_products — that path submitted PRI01 for unlisted SKUs
+        // and waited ~20–40s each just to get "No existing offer".
+        $offerSku = $this->resolveLiveMcmOfferSkuExact($sku, $apiKey, $baseUrl);
         if ($offerSku === null) {
             return [
                 'success' => false,
@@ -484,13 +486,66 @@ class PurchasingPowerApiService extends BestBuyApiService
     }
 
     /**
-     * @return array<string, mixed>
+     * Single OF21 GET for this shop SKU. No candidate spray, no 429 15s backoff loop.
      */
+    protected function resolveLiveMcmOfferSkuExact(string $sku, string $apiKey, string $baseUrl): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $params = [
+            'sku' => $sku,
+            'max' => 5,
+        ];
+        $shopId = config('services.purchasingpower.shop_id');
+        if ($shopId !== null && $shopId !== '') {
+            $params['shop_id'] = (int) $shopId;
+        }
+
+        try {
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => $apiKey,
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(12)
+                ->get($baseUrl.'/api/offers', $params);
+        } catch (\Throwable $e) {
+            Log::warning('Purchasing Power OF21 exact lookup failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        foreach ($response->json('offers') ?? [] as $offer) {
+            if (! is_array($offer)) {
+                continue;
+            }
+            $shopSku = trim((string) ($offer['shop_sku'] ?? ''));
+            $productSku = trim((string) ($offer['product_sku'] ?? ''));
+            foreach ([$shopSku, $productSku] as $value) {
+                if ($value !== '' && strcasecmp($value, $sku) === 0) {
+                    return $shopSku !== '' ? $shopSku : $value;
+                }
+            }
+        }
+
+        return null;
+    }
+
     protected function waitForPricingImport(string $importId, string $apiKey, string $baseUrl): array
     {
-        for ($i = 0; $i < 15; $i++) {
+        for ($i = 0; $i < 10; $i++) {
             if ($i > 0) {
-                usleep(1500000);
+                usleep(400000);
             }
             try {
                 $response = Http::withoutVerifying()

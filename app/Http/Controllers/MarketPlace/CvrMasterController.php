@@ -1535,7 +1535,7 @@ class CvrMasterController extends Controller
 
             $ppProducts = collect();
             $ppSalesQty = collect();
-            $ppOfferSheetBySku = collect();
+            $ppFreshAfter = null;
             try {
                 $ppProducts = \App\Models\PurchasingPowerProduct::whereIn('sku', $skus)
                     ->get()
@@ -1544,20 +1544,7 @@ class CvrMasterController extends Controller
                     ->selectRaw('UPPER(offer_sku) as sku_upper, SUM(quantity) as total_qty')
                     ->groupBy('sku_upper')
                     ->pluck('total_qty', 'sku_upper');
-                // Fallback price only (same as /purchasing-power-pricing) — not preferred over MCM
-                $ppSkuUpper = array_values(array_unique(array_map(
-                    static fn ($s) => strtoupper((string) $s),
-                    $skus
-                )));
-                $ppOfferSheetBySku = MacysPriceData::query()
-                    ->where(function ($q) use ($ppSkuUpper) {
-                        $q->whereIn(DB::raw('UPPER(sku)'), $ppSkuUpper)
-                            ->orWhereIn(DB::raw('UPPER(offer_sku)'), $ppSkuUpper);
-                    })
-                    ->get()
-                    ->keyBy(function ($item) {
-                        return strtoupper(trim((string) ($item->offer_sku ?: $item->sku)));
-                    });
+                $ppFreshAfter = PurchasingPowerController::latestMcmFreshAfter();
                 Log::info('CVR Master - Purchasing Power Data fetched', [
                     'pp_products'  => $ppProducts->count(),
                     'pp_sales'     => $ppSalesQty->count(),
@@ -2255,21 +2242,14 @@ class CvrMasterController extends Controller
                 $aePFT      = $aeGPFT; // No ads for AliExpress
 
                 // === PURCHASING POWER (same as /purchasing-power-pricing) ===
-                // Price: MCM OF21 → purchasing_power_products; fallback macys_price_data
-                // GPFT/ROI: (price × margin − LP) / price|LP — ship excluded; Ads% = 0
+                // Listed price only from live PP MCM OF21. Leftover / Macy sheet = 0.
                 $ppSkuKey = strtoupper((string) $sku);
                 $ppProduct = $ppProducts->get($ppSkuKey);
-                $ppOfferSheet = $ppOfferSheetBySku->get($ppSkuKey);
-                $mcmPrice = ($ppProduct && $ppProduct->price !== null && $ppProduct->price !== '')
-                    ? floatval($ppProduct->price)
-                    : 0.0;
-                if ($mcmPrice > 0) {
-                    $ppPrice = $mcmPrice;
-                } elseif ($ppOfferSheet && floatval($ppOfferSheet->price ?? 0) > 0) {
-                    $ppPrice = floatval($ppOfferSheet->price);
-                } else {
-                    $ppPrice = $ppProduct ? floatval($ppProduct->price ?? 0) : 0;
-                }
+                $ppResolved = PurchasingPowerController::resolveListedPrice(
+                    $ppProduct,
+                    PurchasingPowerController::productInLatestMcm($ppProduct, $ppFreshAfter)
+                );
+                $ppPrice = $ppResolved['price'];
                 $ppSaleRow = $ppSalesQty->get($ppSkuKey);
                 $ppL30 = $ppSaleRow !== null
                     ? intval($ppSaleRow)

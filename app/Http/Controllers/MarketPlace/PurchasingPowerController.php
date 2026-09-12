@@ -5,20 +5,21 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
-use App\Models\MacysPriceData;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\PurchasingPowerDataView;
+use App\Models\PurchasingPowerListingStatus;
 use App\Models\PurchasingPowerProduct;
 use App\Models\PurchasingPowerSale;
 use App\Models\ShopifySku;
+use Carbon\Carbon;
 use App\Services\ChannelPromoPricingService;
 use App\Services\PurchasingPowerApiService;
 use App\Support\MacysAmazonPriceCap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class PurchasingPowerController extends Controller
 {
@@ -67,19 +68,14 @@ class PurchasingPowerController extends Controller
         $dataViews    = PurchasingPowerDataView::whereIn('sku', $skus)->pluck('value', 'sku');
         $amazonData   = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(fn($i) => strtoupper($i->sku));
 
-        // Fallback only: Macy offers export (macys_price_data) — NOT the PP listed price.
-        // Correct PP listed price/qty come from MCM OF21 → purchasing_power_products.
-        $offerSheetBySku = MacysPriceData::query()
-            ->where(function ($q) use ($skus) {
-                $upper = array_values(array_unique(array_map(static fn ($s) => strtoupper((string) $s), $skus)));
-                $q->whereIn(DB::raw('UPPER(sku)'), $upper)
-                    ->orWhereIn(DB::raw('UPPER(offer_sku)'), $upper);
-            })
-            ->get()
-            ->keyBy(function ($item) {
-                $key = strtoupper(trim((string) ($item->offer_sku ?: $item->sku)));
-                return $key;
-            });
+        $listingStatusData = [];
+        if (Schema::hasTable('purchasing_power_listing_statuses')) {
+            $listingStatusData = PurchasingPowerListingStatus::whereIn('sku', $skus)
+                ->get()
+                ->mapWithKeys(fn ($item) => [strtolower((string) $item->sku) => $item])
+                ->all();
+        }
+        $ppFreshAfter = self::latestMcmFreshAfter();
 
         // Sales qty from uploaded purchasing_power_sales (excluding Canceled)
         // Match by offer_sku (= product_masters.sku), NOT product_sku (which is Mirakl internal numeric ID)
@@ -117,8 +113,6 @@ class PurchasingPowerController extends Controller
             $shopify   = $shopifyData->get($pm->sku);
             $ppMetric  = $ppMetrics[$sku] ?? $ppMetrics[strtoupper((string) $pm->sku)] ?? null;
             $amazon    = $amazonData[strtoupper($pm->sku)] ?? null;
-            $offerSheet = $offerSheetBySku[$sku] ?? null;
-
             $row = [];
             $row['Parent']      = $parent;
             $row['(Child) sku'] = $pm->sku;
@@ -128,39 +122,27 @@ class PurchasingPowerController extends Controller
 
             $row['PP L30']   = $salesQty[strtoupper($pm->sku)] ?? $ppMetric->m_l30 ?? 0;
 
-            // Prc / PP Stock: Purchasing Power MCM OF21 listed price
-            // (purchasingpowerus-prod.mirakl.net /api/offers → purchasing_power_products).
-            // Do not prefer macys_price_data — that is Macy's sheet and shows wrong Prc (e.g. $20.38 vs $12.99).
-            $mcmPrice = ($ppMetric && $ppMetric->price !== null && $ppMetric->price !== '')
-                ? round((float) $ppMetric->price, 2)
-                : null;
+            // Listed price is only a live PP MCM offer. Leftover product rows and
+            // macys_price_data (Macy sheet) are not listed — show 0.
+            $listingInactive = self::isListingMarkedInactive(
+                $listingStatusData[strtolower((string) $pm->sku)] ?? null
+            );
+            $resolvedPrice = self::resolveListedPrice(
+                $ppMetric,
+                self::productInLatestMcm($ppMetric, $ppFreshAfter),
+                $listingInactive
+            );
+            $row['PP Price'] = $resolvedPrice['price'];
+            $row['PP Price Source'] = $resolvedPrice['source'];
+            $row['is_missing_pp'] = $resolvedPrice['missing'];
+
             $mcmStock = $ppMetric && $ppMetric->stock !== null
                 ? (int) $ppMetric->stock
                 : null;
-
-            if ($mcmPrice !== null && $mcmPrice > 0) {
-                $row['PP Price'] = $mcmPrice;
-                $row['PP Price Source'] = 'PP MCM OF21 → purchasing_power_products.price';
-            } elseif ($offerSheet && floatval($offerSheet->price ?? 0) > 0) {
-                $row['PP Price'] = round(floatval($offerSheet->price), 2);
-                $row['PP Price Source'] = 'Fallback: macys_price_data (Macy offers sheet)';
-            } else {
-                $row['PP Price'] = round(floatval($ppMetric->price ?? 0), 2);
-                $row['PP Price Source'] = $ppMetric
-                    ? 'PP MCM OF21 → purchasing_power_products.price'
-                    : 'none';
-            }
-
-            if ($mcmStock !== null) {
-                $row['PP INV'] = $mcmStock;
-                $row['PP Stock Source'] = 'PP MCM OF21 → purchasing_power_products.stock';
-            } elseif ($offerSheet && $offerSheet->quantity !== null) {
-                $row['PP INV'] = (int) $offerSheet->quantity;
-                $row['PP Stock Source'] = 'Fallback: macys_price_data.quantity (Macy offers sheet)';
-            } else {
-                $row['PP INV'] = 0;
-                $row['PP Stock Source'] = 'none';
-            }
+            $row['PP INV'] = $resolvedPrice['listed'] && $mcmStock !== null ? $mcmStock : 0;
+            $row['PP Stock Source'] = $resolvedPrice['listed'] && $mcmStock !== null
+                ? 'PP MCM OF21 → purchasing_power_products.stock'
+                : 'none';
 
             $row['A Price'] = $amazon ? floatval($amazon->price ?? 0) : null;
 
@@ -268,6 +250,91 @@ class PurchasingPowerController extends Controller
             'data'    => $result,
             'status'  => 200,
         ]);
+    }
+
+    /**
+     * @return array{listed: bool, price: float, source: string, missing: bool}
+     */
+    public static function resolveListedPrice($product, bool $inLatestMcm = true, bool $listingInactive = false): array
+    {
+        if ($listingInactive || ! $inLatestMcm) {
+            return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
+        }
+
+        if (is_object($product) && isset($product->activated)
+            && ! filter_var($product->activated, FILTER_VALIDATE_BOOLEAN)) {
+            return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
+        }
+
+        if (is_object($product)) {
+            $status = strtolower(trim((string) ($product->listing_status ?? '')));
+            if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)) {
+                return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
+            }
+        }
+
+        $price = null;
+        if (is_object($product)) {
+            $raw = $product->price ?? null;
+            if ($raw !== null && $raw !== '') {
+                $price = floatval($raw);
+            }
+        } elseif (is_numeric($product)) {
+            $price = floatval($product);
+        }
+
+        if ($price === null || $price <= 0) {
+            return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
+        }
+
+        return [
+            'listed' => true,
+            'price' => $price,
+            'source' => 'PP MCM OF21 → purchasing_power_products.price',
+            'missing' => false,
+        ];
+    }
+
+    public static function latestMcmFreshAfter(): ?Carbon
+    {
+        $last = PurchasingPowerProduct::query()->max('updated_at');
+        if (! $last) {
+            return null;
+        }
+
+        return Carbon::parse($last)->subMinutes(15);
+    }
+
+    public static function productInLatestMcm(?PurchasingPowerProduct $product, ?Carbon $freshAfter = null): bool
+    {
+        if (! $product) {
+            return false;
+        }
+        $freshAfter = $freshAfter ?? self::latestMcmFreshAfter();
+        if (! $freshAfter || ! $product->updated_at) {
+            return false;
+        }
+
+        return $product->updated_at->gte($freshAfter);
+    }
+
+    public static function isListingMarkedInactive($listingStatus): bool
+    {
+        if (! $listingStatus) {
+            return false;
+        }
+        $value = is_object($listingStatus)
+            ? ($listingStatus->value ?? null)
+            : $listingStatus;
+        if (is_string($value)) {
+            $value = json_decode($value, true);
+        }
+        if (! is_array($value)) {
+            return false;
+        }
+        $flag = strtolower(trim((string) ($value['live_inactive'] ?? '')));
+
+        return in_array($flag, ['inactive', 'offline', 'ended', 'disabled'], true);
     }
 
     public function updateNrReq(Request $request)

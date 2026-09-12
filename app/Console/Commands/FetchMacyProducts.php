@@ -621,6 +621,37 @@ class FetchMacyProducts extends Command
     }
 
     /**
+     * @param  list<string>  $mcmNormSkus
+     */
+    private function clearPurchasingPowerProductsPriceNotInMcm(array $mcmNormSkus): void
+    {
+        $keep = array_fill_keys(array_filter($mcmNormSkus), true);
+        if ($keep === []) {
+            return;
+        }
+
+        $cleared = 0;
+        PurchasingPowerProduct::query()->select('id', 'sku', 'price')->orderBy('id')->chunkById(200, function ($rows) use ($keep, &$cleared) {
+            $ids = [];
+            foreach ($rows as $row) {
+                $norm = $this->normalizeMacyOfferSku((string) $row->sku);
+                if ($norm === '' || isset($keep[$norm])) {
+                    continue;
+                }
+                if ((float) $row->price > 0) {
+                    $ids[] = $row->id;
+                }
+            }
+            if ($ids !== []) {
+                PurchasingPowerProduct::query()->whereIn('id', $ids)->update(['price' => 0]);
+                $cleared += count($ids);
+            }
+        });
+
+        $this->info("Cleared leftover purchasing_power_products.price on {$cleared} SKUs not in MCM.");
+    }
+
+    /**
      * OF21 — pull Purchasing Power MCM offer prices into purchasing_power_products.
      * Seller portal listed price lives here; Mirakl Connect catalog prices can differ.
      */
@@ -641,6 +672,7 @@ class FetchMacyProducts extends Command
         $max = 100;
         $totalUpdated = 0;
         $page = 1;
+        $seenNormSkus = [];
 
         try {
             do {
@@ -701,9 +733,14 @@ class FetchMacyProducts extends Command
                         continue;
                     }
 
+                    $activated = array_key_exists('active', $offer)
+                        ? (bool) $offer['active']
+                        : true;
+                    $seenNormSkus[$this->normalizeMacyOfferSku($sku)] = true;
+
                     $updates[] = [
                         'sku' => $sku,
-                        'price' => $price,
+                        'price' => $activated ? $price : 0,
                         'stock' => isset($offer['quantity']) && is_numeric($offer['quantity'])
                             ? (int) $offer['quantity']
                             : 0,
@@ -744,6 +781,7 @@ class FetchMacyProducts extends Command
                 $hasMore = $fetched >= $max && ($totalCount === 0 || $offset < $totalCount);
             } while ($hasMore);
 
+            $this->clearPurchasingPowerProductsPriceNotInMcm(array_keys($seenNormSkus));
             $this->info("Purchasing Power MCM price sync complete. Updated: {$totalUpdated}");
             \App\Support\PurchasingPowerRuleSpriceApply::dispatch();
         } catch (\Throwable $e) {

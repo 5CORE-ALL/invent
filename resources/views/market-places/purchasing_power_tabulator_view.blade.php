@@ -536,6 +536,13 @@
         function ppIsParentRow(d) {
             return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
         }
+        function isPpListed(rowData) {
+            if (!rowData || ppIsParentRow(rowData)) return false;
+            if (typeof rowData.is_missing_pp !== 'undefined') {
+                return !rowData.is_missing_pp;
+            }
+            return (parseFloat(rowData['PP Price']) || 0) > 0;
+        }
         function ppPushPriceValue(d) {
             let p = ppDisplayedSprice(d);
             if (typeof chPromoFinalSpriceToSave === 'function' && p > 0) {
@@ -571,7 +578,7 @@
                     SPRICE_STATUS: ok ? 'pushed' : 'error',
                     push_status: ok ? 'pushed' : 'error',
                 };
-                if (ok && live > 0) {
+                if (ok && live > 0 && isPpListed(row.getData() || {})) {
                     patch.SPRICE_PUSHED_VALUE = live;
                     patch['PP Price'] = live;
                 }
@@ -677,7 +684,7 @@
             return shown > 0 && Math.abs(shown - amz) <= 0.015;
         }
         function ppHasBlueTriangle(data) {
-            if (ppIsParentRow(data)) return false;
+            if (ppIsParentRow(data) || !isPpListed(data)) return false;
             const sprice = ppRowSpriceForAlert(data);
             const price = parseFloat(data && data['PP Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
@@ -822,7 +829,7 @@
                     if (response.spft_percent  !== undefined) patch.SPFT = response.spft_percent;
                     if (response.sroi_percent  !== undefined) patch.SROI = response.sroi_percent;
                     if (response.sgpft_percent !== undefined) patch.SGPFT = response.sgpft_percent;
-                    if (status === 'pushed' && Number(sprice) > 0) {
+                    if (status === 'pushed' && Number(sprice) > 0 && isPpListed(row.getData() || {})) {
                         patch.SPRICE_PUSHED_VALUE = Number(sprice);
                         patch['PP Price'] = Number(sprice);
                     }
@@ -930,6 +937,10 @@
                     headerTooltip: 'Purchasing Power listed price from MCM OF21 (purchasing_power_products). Hover a cell for its source.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
+                        if (ppIsParentRow(d)) return '';
+                        if (!isPpListed(d)) {
+                            return '<span style="color:#6c757d;">0</span>';
+                        }
                         const v = parseFloat(cell.getValue() || 0);
                         const amz = parseFloat(d['A Price']) || 0;
                         const source = d['PP Price Source'] || 'unknown';
@@ -1076,7 +1087,7 @@
                             ? '<span class="pp-sprice-amz-lbl" title="S PRC raised to Amazon $'
                                 + Number(amz).toFixed(2) + '">Amz</span>'
                             : '';
-                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                        const blueTri = (isPpListed(d) && live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
