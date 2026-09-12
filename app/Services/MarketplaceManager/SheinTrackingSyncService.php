@@ -59,7 +59,16 @@ class SheinTrackingSyncService
             ];
         }
 
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, (string) ($line->sku ?? ''));
+        $sku = $this->resolveLineSku($line);
+        if ($sku === '') {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => 'Shein SKU missing — tracking is not attached without the full order id + SKU.',
+            ];
+        }
+
+        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
         if (empty($shopifyFulfillment['tracking'])) {
             return [
                 'success' => false,
@@ -107,7 +116,7 @@ class SheinTrackingSyncService
 
         $shipCarrier = $this->resolveShipCarrier($shopifyCarrier, $sheinCarrier);
         $shipService = $this->resolveShipService($shopifyCarrier, $sheinCarrier);
-        $items = $this->buildShipItems($orderId, trim((string) ($line->sku ?? '')));
+        $items = $this->buildShipItems($orderId, $sku);
 
         if ($items === []) {
             // Refresh order detail so goodsId is available from Shein, then retry once.
@@ -116,7 +125,7 @@ class SheinTrackingSyncService
             } catch (\Throwable $e) {
                 // ignore
             }
-            $items = $this->buildShipItems($orderId, trim((string) ($line->sku ?? '')));
+            $items = $this->buildShipItems($orderId, $sku);
         }
 
         if ($items === []) {
@@ -223,14 +232,18 @@ class SheinTrackingSyncService
         $rows = SheinOrderMetric::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
-            ->orderBy('id')
-            ->limit($limit * 12)
-            ->get(['id', 'order_id', 'shopify_order_id', 'status']);
+            ->orderByDesc('order_date')
+            ->orderByDesc('id')
+            ->limit($limit * 40)
+            ->get(['id', 'order_id', 'shopify_order_id', 'status', 'sku', 'order_date']);
 
         $unique = [];
         foreach ($rows as $row) {
             $ref = trim((string) $row->order_id);
             if ($ref === '' || isset($unique[$ref])) {
+                continue;
+            }
+            if ($this->isClosedSheinStatus((string) ($row->status ?? ''))) {
                 continue;
             }
             $unique[$ref] = $row;
@@ -272,6 +285,58 @@ class SheinTrackingSyncService
         $settings ??= MarketplaceSyncSettings::getFor('shein');
 
         return (bool) ($settings['order']['push_tracking_to_shein'] ?? true);
+    }
+
+    protected function isClosedSheinStatus(string $status): bool
+    {
+        $status = strtolower(trim($status));
+        if ($status === '') {
+            return false;
+        }
+
+        return in_array($status, [
+            'shipped',
+            '4',
+            'received',
+            '5',
+            'refund',
+            '6',
+            'to be collected by shein',
+            '7',
+            'cancelled',
+            'canceled',
+        ], true);
+    }
+
+    protected function resolveLineSku(SheinOrderMetric $line): string
+    {
+        $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
+        $sku = $matcher->normalizeSku((string) ($line->sku ?? ''));
+        if ($sku !== '' && ! in_array($sku, ['__ORDER__', '__UNKNOWN__'], true)) {
+            return $sku;
+        }
+
+        $orderId = trim((string) ($line->order_id ?? ''));
+        if ($orderId === '') {
+            return '';
+        }
+
+        $skus = [];
+        $rows = SheinOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->orderBy('id')
+            ->get(['sku']);
+        foreach ($rows as $row) {
+            $candidate = $matcher->normalizeSku((string) ($row->sku ?? ''));
+            if ($candidate === '' || in_array($candidate, ['__ORDER__', '__UNKNOWN__'], true)) {
+                continue;
+            }
+            if (! in_array($candidate, $skus, true)) {
+                $skus[] = $candidate;
+            }
+        }
+
+        return count($skus) === 1 ? $skus[0] : '';
     }
 
     /**

@@ -65,6 +65,7 @@ class ShopifyFulfillmentTrackingMatcher
 
             return $empty;
         }
+        $expectedSlug = $this->slugFromOrderIds($orderIds);
 
         try {
             $order = $this->fetchShopifyOrder($storeUrl, $token, $shopifyOrderId);
@@ -87,9 +88,33 @@ class ShopifyFulfillmentTrackingMatcher
                 return $empty;
             }
 
+            $primarySlug = $this->primaryMarketplaceSlug($order);
+            if ($expectedSlug !== '' && $primarySlug !== '' && $primarySlug !== $expectedSlug) {
+                $empty['error'] = 'Shopify order belongs to '.$primarySlug
+                    .' — will not attach that tracking to '.$expectedSlug.'.';
+                Log::info($logContext.': marketplace slug mismatch — tracking skipped', [
+                    'shopify_order_id' => $shopifyOrderId,
+                    'wanted' => $orderIds,
+                    'expected_slug' => $expectedSlug,
+                    'primary_slug' => $primarySlug,
+                    'tags' => $order['tags'] ?? null,
+                ]);
+
+                return $empty;
+            }
+
             $orderLines = is_array($order['line_items'] ?? null) ? $order['line_items'] : [];
+            if ($sku === '') {
+                $sku = $this->normalizeSku((string) ($this->firstOrderLineSku($orderLines) ?? ''));
+                if ($sku === '' || ! $this->isSingleSkuOrder($orderLines)) {
+                    $empty['matched_order_id'] = $matchedOrderId;
+                    $empty['error'] = 'Marketplace SKU missing — tracking not attached.';
+
+                    return $empty;
+                }
+            }
+
             $fulfillments = $this->fulfillmentsForOrder($storeUrl, $token, $shopifyOrderId, $order);
-            $tracked = [];
             foreach ($fulfillments as $fulfillment) {
                 if (! is_array($fulfillment)) {
                     continue;
@@ -102,11 +127,7 @@ class ShopifyFulfillmentTrackingMatcher
                 if ($number === null) {
                     continue;
                 }
-                $tracked[] = $fulfillment;
-                if ($sku !== '' && ! $this->fulfillmentMatchesSku($fulfillment, $sku, $orderLines)) {
-                    continue;
-                }
-                if ($sku === '' && ! $this->isSingleLineTrackedOrder($orderLines, $tracked)) {
+                if (! $this->fulfillmentMatchesSku($fulfillment, $sku, $orderLines)) {
                     continue;
                 }
 
@@ -117,31 +138,13 @@ class ShopifyFulfillmentTrackingMatcher
                     'carrier' => $this->carrierFromFulfillment($fulfillment),
                     'tracking_url' => $url,
                     'matched_order_id' => $matchedOrderId,
-                    'matched_sku' => $sku !== '' ? $sku : $this->firstOrderLineSku($orderLines),
-                    'error' => null,
-                ];
-            }
-
-            // Linked Shopify copy already contains the marketplace order id.
-            // Variant-only imports omit SKU on lines — still take the single label.
-            if ($tracked !== [] && $this->isSingleLineTrackedOrder($orderLines, $tracked)) {
-                $fulfillment = $tracked[0];
-                $number = $this->trackingFromFulfillment($fulfillment);
-
-                return [
-                    'tracking' => $number,
-                    'carrier' => $this->carrierFromFulfillment($fulfillment),
-                    'tracking_url' => $this->trackingUrlFromFulfillment($fulfillment),
-                    'matched_order_id' => $matchedOrderId,
-                    'matched_sku' => $sku !== '' ? $sku : $this->firstOrderLineSku($orderLines),
+                    'matched_sku' => $sku,
                     'error' => null,
                 ];
             }
 
             $empty['matched_order_id'] = $matchedOrderId;
-            $empty['error'] = $sku === ''
-                ? 'Marketplace SKU missing — tracking not attached.'
-                : 'No Shopify fulfillment tracking for this full order id + SKU.';
+            $empty['error'] = 'No Shopify fulfillment tracking for this full order id + SKU.';
 
             return $empty;
         } catch (\Throwable $e) {
@@ -443,20 +446,11 @@ class ShopifyFulfillmentTrackingMatcher
         }
 
         // Shopify often omits nested SKUs on FO-created fulfillments.
+        // Only then may we use the order line SKU — never a different channel's SKU.
         if ($this->fulfillmentLinesLackSkus($lines) && $this->orderHasSku(['line_items' => $orderLines], $sku)) {
             if (count($orderLines) === 1 || $lines === []) {
                 return true;
             }
-        }
-
-        // Single-SKU Shopify copy: accept the label even when the fulfillment
-        // line SKU is a slightly different catalog form than the marketplace SKU.
-        if (
-            count($orderLines) === 1
-            && $this->trackingFromFulfillment($fulfillment) !== null
-            && ($sku === '' || $this->orderHasSku(['line_items' => $orderLines], $sku) || $this->fulfillmentLinesLackSkus($lines))
-        ) {
-            return true;
         }
 
         return false;
@@ -464,24 +458,85 @@ class ShopifyFulfillmentTrackingMatcher
 
     /**
      * @param  list<array<string, mixed>>  $orderLines
-     * @param  list<array<string, mixed>>  $tracked
      */
-    protected function isSingleLineTrackedOrder(array $orderLines, array $tracked): bool
+    public function isSingleSkuOrder(array $orderLines): bool
     {
-        if ($tracked === []) {
-            return false;
-        }
-        $lineCount = 0;
+        $skus = [];
         foreach ($orderLines as $line) {
-            if (is_array($line)) {
-                $lineCount++;
+            if (! is_array($line)) {
+                continue;
+            }
+            $sku = $this->normalizeSku((string) ($line['sku'] ?? ''));
+            if ($sku === '' || in_array($sku, ['__ORDER__', '__UNKNOWN__'], true)) {
+                continue;
+            }
+            if (! in_array($sku, $skus, true)) {
+                $skus[] = $sku;
             }
         }
-        if ($lineCount > 1 && count($tracked) > 1) {
-            return false;
+
+        return count($skus) === 1;
+    }
+
+    /**
+     * @param  list<string>  $orderIds
+     */
+    public function slugFromOrderIds(array $orderIds): string
+    {
+        foreach ($orderIds as $id) {
+            $slug = $this->slugFromOrderId((string) $id);
+            if ($slug !== '') {
+                return $slug;
+            }
         }
 
-        return $lineCount <= 1 || count($tracked) === 1;
+        return '';
+    }
+
+    public function slugFromOrderId(string $orderId): string
+    {
+        $id = trim($orderId);
+        if ($id === '') {
+            return '';
+        }
+        if (preg_match('/^\d{3}-\d{7}-\d{7}$/', $id)) {
+            return 'amazon';
+        }
+        if (preg_match('/^GSU[A-Z0-9]+$/i', $id)) {
+            return 'shein';
+        }
+        if (preg_match('/^PO-\d/i', $id)) {
+            return 'temu';
+        }
+        if (preg_match('/^BBY\d{2}-/i', $id)) {
+            return 'bestbuy';
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     */
+    public function primaryMarketplaceSlug(array $order): string
+    {
+        $hay = trim((string) ($order['tags'] ?? '')).' '.trim((string) ($order['note'] ?? ''));
+        $slugs = MarketplaceManagerRegistry::slugs();
+        usort($slugs, static fn ($a, $b) => strlen((string) $b) <=> strlen((string) $a));
+        foreach ($slugs as $slug) {
+            $slug = strtolower((string) $slug);
+            if ($slug === '') {
+                continue;
+            }
+            if (preg_match('/(?:^|[\s,])'.preg_quote($slug, '/').'[-_][^\s,]+/i', $hay)) {
+                return $slug;
+            }
+        }
+        if (preg_match('/\d{3}-\d{7}-\d{7}/', $hay)) {
+            return 'amazon';
+        }
+
+        return '';
     }
 
     /**
