@@ -105,4 +105,44 @@ class AmazonListingStatusHelperTest extends TestCase
 
         $this->assertSame(['ONLY-CLOSED'], $sets['inactive']);
     }
+
+    public function test_closed_fba_leftover_alone_is_not_inactive_listing(): void
+    {
+        $sets = AmazonListingStatusHelper::classifyReportSkus([
+            ['sku' => '1/4M-3/8M Camera Screw 5Pcs', 'live' => false, 'ignore' => true],
+        ]);
+
+        $this->assertSame([], $sets['inactive']);
+    }
+
+    public function test_closed_fba_row_is_detected_from_report(): void
+    {
+        $row = (object) [
+            'quantity' => 0,
+            'raw_data' => [
+                'status' => 'Inactive',
+                'fulfillment-channel' => 'AMAZON',
+                'seller-sku' => '1/4M-3/8M Camera Screw 5Pcs',
+            ],
+        ];
+
+        $this->assertTrue(AmazonListingStatusHelper::reportRowIsClosedFba($row));
+        $this->assertFalse(AmazonListingStatusHelper::reportRowIsLive($row));
+    }
+
+    public function test_fbm_row_with_qty_is_live(): void
+    {
+        $row = (object) [
+            'quantity' => 145,
+            'raw_data' => [
+                'status' => 'Active',
+                'fulfillment-channel' => 'DEFAULT',
+                'quantity' => '145',
+                'seller-sku' => '1/4M-3/8M Camera Screw 5Pcs',
+            ],
+        ];
+
+        $this->assertFalse(AmazonListingStatusHelper::reportRowIsClosedFba($row));
+        $this->assertTrue(AmazonListingStatusHelper::reportRowIsLive($row));
+    }
 }

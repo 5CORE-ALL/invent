@@ -191,19 +191,60 @@ final class AmazonListingStatusHelper
             }
         }
 
+        $channel = '';
+        foreach (['fulfillment-channel', 'fulfillment_channel', 'Fulfilment-channel'] as $key) {
+            $candidate = strtoupper(trim((string) ($raw[$key] ?? '')));
+            if ($candidate !== '') {
+                $channel = $candidate;
+                break;
+            }
+        }
+        $fulfillment = '';
+        if (in_array($channel, ['AMAZON', 'AFN', 'FBA'], true)) {
+            $fulfillment = 'fba';
+        } elseif (in_array($channel, ['DEFAULT', 'MFN', 'FBM', 'MERCHANT'], true)) {
+            $fulfillment = 'fbm';
+        }
+
         return [
             'quantity' => $quantity,
             'state' => $status !== '' ? self::normalizePortalStatus($status) : 'other',
+            'fulfillment' => $fulfillment,
         ];
     }
 
     /**
-     * GET_MERCHANT_LISTINGS_ALL_DATA rows are live unless the report says Inactive.
-     * Missing status must not hide a Seller Central Active listing.
+     * Closed FBA leftovers (and inactive rows with no FBM channel) are not
+     * Seller Central "Inactive Listing". The same SKU is often still Active FBM.
+     */
+    public static function reportRowIsClosedFba(object $row): bool
+    {
+        $meta = self::metaFromListingsRawRow($row);
+        if (($meta['state'] ?? '') !== 'inactive') {
+            return false;
+        }
+        if (($meta['fulfillment'] ?? '') === 'fbm') {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Live unless this row is a closed offer with no stock.
+     * Qty > 0 means Seller Central still has an available offer.
      */
     public static function reportRowIsLive(object $row): bool
     {
-        return self::metaFromListingsRawRow($row)['state'] !== 'inactive';
+        if (self::reportRowIsClosedFba($row)) {
+            return false;
+        }
+        $meta = self::metaFromListingsRawRow($row);
+        if (($meta['quantity'] ?? null) !== null && (int) $meta['quantity'] > 0) {
+            return true;
+        }
+
+        return ($meta['state'] ?? '') !== 'inactive';
     }
 
     /**
@@ -238,7 +279,7 @@ final class AmazonListingStatusHelper
      * One seller SKU can have an Active FBM offer and a Closed FBA offer.
      * If any report row is live, the SKU is not Inactive Listing.
      *
-     * @param  list<array{sku: string, live: bool}>  $rows
+     * @param  list<array{sku: string, live: bool, ignore?: bool}>  $rows
      * @return array{active: array<string, true>, inactive: list<string>}
      */
     public static function classifyReportSkus(array $rows): array
@@ -247,7 +288,7 @@ final class AmazonListingStatusHelper
         $deadByKey = [];
         foreach ($rows as $row) {
             $sku = trim((string) ($row['sku'] ?? ''));
-            if ($sku === '') {
+            if ($sku === '' || ! empty($row['ignore'])) {
                 continue;
             }
             $key = strtoupper($sku);

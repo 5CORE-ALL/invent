@@ -468,6 +468,7 @@ final class MarketplacePortalInactiveCount
                     $classified[] = [
                         'sku' => $sku,
                         'live' => AmazonListingStatusHelper::reportRowIsLive($row),
+                        'ignore' => AmazonListingStatusHelper::reportRowIsClosedFba($row),
                     ];
                 }
             });

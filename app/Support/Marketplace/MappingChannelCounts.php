@@ -27,11 +27,11 @@ class MappingChannelCounts
 
     public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v1';
 
-    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v16';
+    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v17';
 
-    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v16';
+    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v17';
 
-    public const INACTIVE_CP_TOTAL_CACHE_KEY = 'inactive_listings_cp_total_v16';
+    public const INACTIVE_CP_TOTAL_CACHE_KEY = 'inactive_listings_cp_total_v17';
 
     public const LINKED_MISMATCH_TOTAL_CACHE_KEY = 'linked_mismatch_sku_total_v2';
 
@@ -241,6 +241,9 @@ class MappingChannelCounts
             Cache::forget('inactive_listings_total_v15');
             Cache::forget('inactive_listings_master_rows_v15');
             Cache::forget('inactive_listings_cp_total_v15');
+            Cache::forget('inactive_listings_total_v16');
+            Cache::forget('inactive_listings_master_rows_v16');
+            Cache::forget('inactive_listings_cp_total_v16');
         } catch (\Throwable $e) {
             // ignore
         }
