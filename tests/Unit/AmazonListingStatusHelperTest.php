@@ -170,4 +170,41 @@ class AmazonListingStatusHelperTest extends TestCase
         $this->assertFalse(AmazonListingStatusHelper::reportRowIsClosedFba($row));
         $this->assertTrue(AmazonListingStatusHelper::reportRowIsLive($row));
     }
+
+    public function test_seller_central_buyable_with_qty_is_live(): void
+    {
+        $state = AmazonListingStatusHelper::sellerCentralListingState([
+            'summaries' => [['status' => ['BUYABLE', 'DISCOVERABLE']]],
+            'fulfillmentAvailability' => [['quantity' => 145]],
+        ], 200);
+
+        $this->assertSame('live', $state);
+    }
+
+    public function test_seller_central_inactive_zero_qty_stays_inactive(): void
+    {
+        $state = AmazonListingStatusHelper::sellerCentralListingState([
+            'summaries' => [['status' => ['INACTIVE']]],
+            'fulfillmentAvailability' => [['quantity' => 0]],
+        ], 200);
+
+        $this->assertSame('inactive', $state);
+    }
+
+    public function test_seller_central_missing_or_unknown_is_not_inactive_listing(): void
+    {
+        $this->assertSame('missing', AmazonListingStatusHelper::sellerCentralListingState(null, 404));
+        $this->assertSame('unknown', AmazonListingStatusHelper::sellerCentralListingState(null, 500));
+
+        $keep = AmazonListingStatusHelper::keepSellerCentralInactiveSkus(
+            ['1/4M-3/8M Camera Screw 5Pcs', 'A-54', 'CLOSED-ONLY'],
+            [
+                '1/4M-3/8M Camera Screw 5Pcs' => 'live',
+                'A-54' => 'unknown',
+                'CLOSED-ONLY' => 'inactive',
+            ]
+        );
+
+        $this->assertSame(['CLOSED-ONLY'], $keep);
+    }
 }

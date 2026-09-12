@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use App\Models\ShopifySku;
 use App\Models\TopDawgProduct;
+use App\Services\AmazonSpApiService;
 use App\Services\TopDawgApiService;
 
 /**
@@ -412,15 +413,30 @@ final class MarketplacePortalInactiveCount
     }
 
     /**
-     * Amazon Inactive Listing uses Seller Central GET_MERCHANT_LISTINGS_ALL_DATA
-     * only. Datasheet INACTIVE and listing-manager live_inactive are not used —
-     * those mark live / out-of-stock offers as Inactive.
+     * Amazon Inactive Listing starts from GET_MERCHANT_LISTINGS_ALL_DATA, then
+     * drops any SKU Seller Central still shows as live. The listings report is
+     * often stale (Closed FBA leftover / old Inactive) while FBM is Active.
      *
      * @return list<string>
      */
     protected static function amazonSkus(): array
     {
-        return self::amazonReportSkuSets()['inactive'];
+        $candidates = self::amazonReportSkuSets()['inactive'];
+        if ($candidates === []) {
+            return [];
+        }
+
+        try {
+            $states = app(AmazonSpApiService::class)->sellerCentralListingStates($candidates);
+        } catch (\Throwable $e) {
+            Log::warning('MarketplacePortalInactiveCount: Amazon Seller Central check failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+
+        return AmazonListingStatusHelper::keepSellerCentralInactiveSkus($candidates, $states);
     }
 
     /**

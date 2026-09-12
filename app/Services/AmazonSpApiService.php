@@ -7,6 +7,7 @@ use GuzzleHttp\Psr7\Request;
 use Aws\Signature\SignatureV4;
 use Aws\Credentials\Credentials;
 use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonListingRaw;
 use App\Models\ProductStockMapping;
+use App\Services\MarketplaceManager\AmazonListingStatusHelper;
 use App\Services\Support\AplusContentDocumentParser;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\VideoMasterMarketplaceMethods;
@@ -6147,6 +6149,105 @@ class AmazonSpApiService
             'title' => $hit['title'] ?? null,
             'quantity' => $hit['quantity'] ?? null,
         ];
+    }
+
+    protected static function sellerCentralStateCacheKey(string $sku): string
+    {
+        return 'mm.amazon.sc_listing_state.v1.'.strtoupper($sku);
+    }
+
+    /**
+     * Current Seller Central listing state for Inactive Listing candidates.
+     * Cached 12h so the channel page does not re-hit Listings Items on every refresh.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, 'live'|'inactive'|'missing'|'unknown'>
+     */
+    public function sellerCentralListingStates(array $skus): array
+    {
+        $out = [];
+        $need = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $cached = Cache::get(self::sellerCentralStateCacheKey($sku));
+            if (is_string($cached) && in_array($cached, ['live', 'inactive', 'missing', 'unknown'], true)) {
+                $out[$sku] = $cached;
+
+                continue;
+            }
+            $need[] = $sku;
+        }
+        if ($need === []) {
+            return $out;
+        }
+
+        $need = array_values(array_unique($need));
+        if (! $this->isConfigured()) {
+            foreach ($need as $sku) {
+                $out[$sku] = 'unknown';
+            }
+
+            return $out;
+        }
+
+        $token = $this->getAccessToken();
+        $sellerId = (string) config('services.amazon_sp.seller_id');
+        if (! $token || $sellerId === '') {
+            foreach ($need as $sku) {
+                $out[$sku] = 'unknown';
+            }
+
+            return $out;
+        }
+
+        $marketplaceId = (string) ($this->marketplaceId ?: 'ATVPDKIKX0DER');
+        foreach (array_chunk($need, 5) as $chunk) {
+            try {
+                $responses = Http::pool(function (Pool $pool) use ($chunk, $token, $sellerId, $marketplaceId) {
+                    foreach ($chunk as $i => $sku) {
+                        $url = $this->endpoint.'/listings/2021-08-01/items/'.$sellerId.'/'.rawurlencode($sku)
+                            .'?marketplaceIds='.rawurlencode($marketplaceId)
+                            .'&includedData='.rawurlencode('summaries,fulfillmentAvailability');
+                        $pool->as((string) $i)
+                            ->withoutVerifying()
+                            ->timeout(12)
+                            ->withHeaders([
+                                'x-amz-access-token' => $token,
+                                'Content-Type' => 'application/json',
+                            ])
+                            ->get($url);
+                    }
+                });
+            } catch (\Throwable $e) {
+                Log::warning('Amazon SP-API listing state pool failed', [
+                    'error' => $e->getMessage(),
+                ]);
+                foreach ($chunk as $sku) {
+                    $out[$sku] = 'unknown';
+                }
+
+                continue;
+            }
+
+            foreach ($chunk as $i => $sku) {
+                $response = $responses[(string) $i] ?? null;
+                $state = 'unknown';
+                if ($response instanceof Response) {
+                    $body = $response->json();
+                    $state = AmazonListingStatusHelper::sellerCentralListingState(
+                        is_array($body) ? $body : null,
+                        $response->status()
+                    );
+                }
+                Cache::put(self::sellerCentralStateCacheKey($sku), $state, now()->addHours(12));
+                $out[$sku] = $state;
+            }
+        }
+
+        return $out;
     }
 
     /**

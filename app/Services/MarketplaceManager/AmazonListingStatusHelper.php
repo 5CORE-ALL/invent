@@ -356,6 +356,103 @@ final class AmazonListingStatusHelper
     }
 
     /**
+     * SP-API listings-item qty from fulfillmentAvailability (any offer > 0 is live).
+     *
+     * @param  array<string, mixed>  $body
+     */
+    public static function quantityFromListingsItemBody(array $body): ?int
+    {
+        $qty = null;
+        $rows = $body['fulfillmentAvailability'] ?? [];
+        if (! is_array($rows)) {
+            return null;
+        }
+        foreach ($rows as $row) {
+            if (! is_array($row) || ! isset($row['quantity']) || ! is_numeric($row['quantity'])) {
+                continue;
+            }
+            $value = (int) $row['quantity'];
+            $qty = $qty === null ? $value : max($qty, $value);
+        }
+
+        return $qty;
+    }
+
+    /**
+     * Live Seller Central offer vs a closed/inactive listing.
+     *
+     * @param  string|list<mixed>|null  $status
+     * @return 'live'|'inactive'
+     */
+    public static function sellerCentralStateFromApi(string|array|null $status, ?int $qty): string
+    {
+        if ($qty !== null && $qty > 0) {
+            return 'live';
+        }
+
+        $statuses = is_array($status) ? $status : [$status];
+        $sawInactive = false;
+        foreach ($statuses as $one) {
+            $one = trim((string) $one);
+            if ($one === '') {
+                continue;
+            }
+            $normalized = self::normalizePortalStatus($one);
+            if ($normalized === 'active') {
+                return 'live';
+            }
+            if ($normalized === 'inactive') {
+                $sawInactive = true;
+            }
+        }
+
+        return $sawInactive ? 'inactive' : 'live';
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $body
+     * @return 'live'|'inactive'|'missing'|'unknown'
+     */
+    public static function sellerCentralListingState(?array $body, int $httpStatus): string
+    {
+        if ($httpStatus === 404) {
+            return 'missing';
+        }
+        if ($httpStatus < 200 || $httpStatus >= 300 || ! is_array($body) || ! empty($body['errors'])) {
+            return 'unknown';
+        }
+
+        $summary = is_array($body['summaries'][0] ?? null) ? $body['summaries'][0] : [];
+        $statusList = $summary['status'] ?? [];
+
+        return self::sellerCentralStateFromApi($statusList, self::quantityFromListingsItemBody($body));
+    }
+
+    /**
+     * GET_MERCHANT_LISTINGS_ALL_DATA Inactive is only a candidate list.
+     * Keep a SKU on Inactive Listing only when Seller Central still says inactive.
+     *
+     * @param  list<string>  $candidates
+     * @param  array<string, string>  $states
+     * @return list<string>
+     */
+    public static function keepSellerCentralInactiveSkus(array $candidates, array $states): array
+    {
+        $keep = [];
+        foreach ($candidates as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            if (($states[$sku] ?? 'unknown') === 'inactive') {
+                $keep[] = $sku;
+            }
+        }
+
+        return $keep;
+    }
+
+    /**
      * Linked when row exists with sku and meaningful listing data.
      */
     public static function isLinked(?AmazonListingStatus $row, ?string $shopifySku = null): bool
