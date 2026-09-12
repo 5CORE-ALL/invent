@@ -96,6 +96,10 @@ class MovementAnalysisController extends Controller
             $valuesJson = json_decode($item->Values ?? '{}', true);
             $item->lp = $valuesJson['lp'] ?? null;
 
+            $inv = (float) ($item->INV ?? 0);
+            $l30 = (float) ($item->L30 ?? 0);
+            $item->dil = ($inv > 0) ? round(($l30 / $inv) * 100, 2) : 0;
+
             return $item;
         })->values();
 
