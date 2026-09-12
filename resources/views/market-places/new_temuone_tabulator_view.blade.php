@@ -478,6 +478,44 @@
                         <option value="green">Green (25-50%)</option>
                         <option value="pink">Pink (50%+)</option>
                     </select>
+                    <select id="cvr-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;"
+                        title="Filter by CVR% = (Temu L30 / Views) × 100. Same slabs as /temu1-data.">
+                        <option value="all">CVR%</option>
+                        <option value="0-0">0%</option>
+                        <option value="0-3">0-3%</option>
+                        <option value="3-7">3-7%</option>
+                        <option value="7-13">7-13%</option>
+                        <option value="13plus">13%+</option>
+                    </select>
+                    <select id="gpft-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;"
+                        title="Filter by GPFT% = Gpft ÷ T Price. Same slabs as /temu1-data.">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40plus">Above 40%</option>
+                    </select>
+                    <select id="groi-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;"
+                        title="Filter by GROI% = Gpft ÷ LP. Same slabs as /temu1-data ROI%.">
+                        <option value="all">GROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="gt125">125%+</option>
+                    </select>
+                    <select id="cvr-trend-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;"
+                        title="Compare CVR 30 (Temu L30 / Views) with CVR 60. ±0.1pp is treated as equal.">
+                        <option value="all">CVR trend</option>
+                        <option value="l60_gt_l30">CVR60 &gt; CVR30</option>
+                        <option value="l30_gt_l60">CVR30 &gt; CVR60</option>
+                        <option value="equal">CVR60 = CVR30</option>
+                    </select>
                     @include('partials.ebay-sprc-dil', [
                         'ebaySprcDilPart' => 'buttons',
                         'ebaySprcDilChannel' => 'temu',
@@ -564,6 +602,9 @@
                             href="/temu/ads" target="_blank" rel="noopener noreferrer"
                             style="color: white; margin-left: 4px;" title="Open Temu ads page"
                             onclick="event.stopPropagation();"><i class="fas fa-arrow-up-right-from-square"></i></a></span>
+                    <span class="badge fs-6 p-2" id="newtemuone-missing-lmp-badge"
+                        style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
+                        title="M LMP: SKUs with INV &gt; 0 and no LMP. Green = none missing. Click to filter.">M LMP: 0</span>
                     @include('partials.price-gt-lmp-badge', [
                         'pglBadgeId' => 'newtemuone-price-gt-lmp-badge',
                         'pglChannelKey' => '',
@@ -1759,10 +1800,42 @@
     let moreSoldFilterActive = false;
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
+    let missingLmpFilterActive = false;
 
     // Same LMP basis /temu2-decrease passes in: lmp is the recovery price, lmp_raw the landed one.
     function temuBadgeLmpValue(row) {
         return parseFloat(row && (row.lmp_price || row.lmp || row.LMP)) || 0;
+    }
+
+    function temuLmpEntryIgnored(entry) {
+        if (!entry) return false;
+        const v = entry.ignored;
+        if (v === true || v === 1 || v === '1') return true;
+        if (typeof v === 'string') {
+            return ['true', 'yes', 'on'].indexOf(v.toLowerCase().trim()) !== -1;
+        }
+        return false;
+    }
+
+    function temuHasLmp(row) {
+        if (!row || row.is_parent_summary) return false;
+        if (Array.isArray(row.lmp_entries) && row.lmp_entries.length) {
+            for (let i = 0; i < row.lmp_entries.length; i++) {
+                const e = row.lmp_entries[i] || {};
+                if (temuLmpEntryIgnored(e)) continue;
+                const p = parseFloat(e.total_price != null ? e.total_price : (e.price != null ? e.price : e.lmp));
+                if (isFinite(p) && p > 0) return true;
+            }
+            return false;
+        }
+        const raw = parseFloat(row.lmp_raw != null ? row.lmp_raw : (row.lmp_price != null ? row.lmp_price : row.lmp));
+        return isFinite(raw) && raw > 0;
+    }
+
+    function temuIsMissingLmp(row) {
+        if (!row || row.is_parent_summary) return false;
+        if (!((parseFloat(row.INV) || 0) > 0)) return false;
+        return !temuHasLmp(row);
     }
 
     function temuHasPriceGtLmp(row) {
@@ -2247,7 +2320,8 @@
             ['#newtemuone-blue-triangle-badge', blueTriangleFilterActive],
             ['#newtemuone-lmp-cap-badge', lmpCapFilterActive],
             ['#temu-amz-cap-badge', amzCapFilterActive],
-            ['#temu-eb-cap-badge', ebCapFilterActive]
+            ['#temu-eb-cap-badge', ebCapFilterActive],
+            ['#newtemuone-missing-lmp-badge', missingLmpFilterActive]
         ];
         pairs.forEach(function(p) {
             $(p[0]).css('box-shadow', p[1] ? '0 0 0 3px rgba(13,110,253,0.55)' : 'none');
@@ -2342,6 +2416,17 @@
         if (window.PriceLt80LmpBadge) {
             PriceLt80LmpBadge.update('#newtemuone-price-lt80-lmp-badge', allRows, '', 'temu_price');
         }
+        let missingLmp = 0;
+        (allRows || []).forEach(function(row) {
+            if (temuIsMissingLmp(row)) missingLmp++;
+        });
+        const missingEl = $('#newtemuone-missing-lmp-badge');
+        missingEl.text('M LMP: ' + missingLmp.toLocaleString());
+        missingEl.css({
+            'background-color': missingLmp === 0 ? '#28a745' : '#dc3545',
+            color: '#fff',
+            'font-weight': '700'
+        });
         syncBadgeOutlines();
     }
     window.updateSummary = updateSummary;
@@ -2351,6 +2436,10 @@
 
         const inventoryFilter = $('#inventory-filter').val();
         const dilFilter = $('#dil-filter').val();
+        const cvrFilter = $('#cvr-filter').val();
+        const gpftFilter = $('#gpft-filter').val();
+        const groiFilter = $('#groi-filter').val();
+        const cvrTrendFilter = $('#cvr-trend-filter').val();
         const skuSearch = $('#sku-search').val() || '';
         const parentSearch = $('#parent-search').val() || '';
 
@@ -2382,6 +2471,56 @@
             });
         }
 
+        if (cvrFilter && cvrFilter !== 'all') {
+            table.addFilter(function(data) {
+                const cvrRounded = Math.round((parseFloat(data.cvr_percent != null ? data.cvr_percent : data.cvr_30) || 0) * 100) / 100;
+                if (cvrFilter === '0-0') return cvrRounded === 0;
+                if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
+                if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
+                if (cvrFilter === '13plus') return cvrRounded > 13;
+                return true;
+            });
+        }
+
+        if (gpftFilter && gpftFilter !== 'all') {
+            table.addFilter(function(data) {
+                const gpft = (typeof temuGpftPercent === 'function') ? temuGpftPercent(data) : null;
+                const n = (gpft == null || !isFinite(gpft)) ? 0 : gpft;
+                if (gpftFilter === 'negative') return n < 0;
+                if (gpftFilter === '0-10') return n >= 0 && n < 10;
+                if (gpftFilter === '10-20') return n >= 10 && n < 20;
+                if (gpftFilter === '20-30') return n >= 20 && n < 30;
+                if (gpftFilter === '30-40') return n >= 30 && n < 40;
+                if (gpftFilter === '40plus') return n >= 40;
+                return true;
+            });
+        }
+
+        if (groiFilter && groiFilter !== 'all') {
+            table.addFilter(function(data) {
+                const groi = (typeof temuGroiPercent === 'function') ? temuGroiPercent(data) : null;
+                const n = (groi == null || !isFinite(groi)) ? 0 : groi;
+                if (groiFilter === 'lt40') return n < 40;
+                if (groiFilter === '40-75') return n >= 40 && n < 75;
+                if (groiFilter === '75-125') return n >= 75 && n < 125;
+                if (groiFilter === 'gt125') return n >= 125;
+                return true;
+            });
+        }
+
+        if (cvrTrendFilter && cvrTrendFilter !== 'all') {
+            table.addFilter(function(data) {
+                const cvr30 = parseFloat(data.cvr_30 != null ? data.cvr_30 : data.cvr_percent) || 0;
+                const cvr60 = parseFloat(data.cvr_60) || 0;
+                const tol = (typeof TEMU_CVR_TREND_TOL === 'number') ? TEMU_CVR_TREND_TOL : 0.1;
+                if (cvrTrendFilter === 'l60_gt_l30') return cvr60 > cvr30 + tol;
+                if (cvrTrendFilter === 'l30_gt_l60') return cvr30 > cvr60 + tol;
+                if (cvrTrendFilter === 'equal') return Math.abs(cvr30 - cvr60) <= tol;
+                return true;
+            });
+        }
+
         if (zeroSoldFilterActive) {
             table.addFilter(function(data) {
                 return (parseFloat(data.INV) || 0) > 0 && (parseInt(data.temu_l30, 10) || 0) === 0;
@@ -2409,6 +2548,9 @@
         }
         if (priceLt80LmpFilterActive) {
             table.addFilter(function(data) { return temuHasPriceLt80Lmp(data); });
+        }
+        if (missingLmpFilterActive) {
+            table.addFilter(function(data) { return temuIsMissingLmp(data); });
         }
 
         updateSummary();
@@ -3321,7 +3463,7 @@
         });
 
         $('#sku-search, #parent-search').on('keyup', applyFilters);
-        $('#inventory-filter, #dil-filter').on('change', applyFilters);
+        $('#inventory-filter, #dil-filter, #cvr-filter, #gpft-filter, #groi-filter, #cvr-trend-filter').on('change', applyFilters);
 
         temuLoadCvrCpnRules();
 
@@ -3422,7 +3564,8 @@
             ['#temu-amz-cap-badge', 'amzCap'],
             ['#temu-eb-cap-badge', 'ebCap'],
             ['#newtemuone-price-gt-lmp-badge', 'priceGtLmp'],
-            ['#newtemuone-price-lt80-lmp-badge', 'priceLt80Lmp']
+            ['#newtemuone-price-lt80-lmp-badge', 'priceLt80Lmp'],
+            ['#newtemuone-missing-lmp-badge', 'missingLmp']
         ];
         badgeFilters.forEach(function(pair) {
             $(document).on('click', pair[0], function(e) {
@@ -3437,7 +3580,8 @@
                     amzCap: false,
                     ebCap: false,
                     priceGtLmp: false,
-                    priceLt80Lmp: false
+                    priceLt80Lmp: false,
+                    missingLmp: false
                 };
                 const current = {
                     zeroSold: zeroSoldFilterActive,
@@ -3447,7 +3591,8 @@
                     amzCap: amzCapFilterActive,
                     ebCap: ebCapFilterActive,
                     priceGtLmp: priceGtLmpFilterActive,
-                    priceLt80Lmp: priceLt80LmpFilterActive
+                    priceLt80Lmp: priceLt80LmpFilterActive,
+                    missingLmp: missingLmpFilterActive
                 };
                 next[want] = !current[want];
                 zeroSoldFilterActive = next.zeroSold;
@@ -3458,6 +3603,7 @@
                 ebCapFilterActive = next.ebCap;
                 priceGtLmpFilterActive = next.priceGtLmp;
                 priceLt80LmpFilterActive = next.priceLt80Lmp;
+                missingLmpFilterActive = next.missingLmp;
                 applyFilters();
             });
         });

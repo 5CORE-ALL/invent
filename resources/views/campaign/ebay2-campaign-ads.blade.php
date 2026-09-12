@@ -598,7 +598,9 @@ $(document).ready(function () {
                         return '<span style="color:#0d6efd; background:#cfe2ff; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600;">📢 In Campaign</span>';
                     }
                     const v = cell.getValue();
-                    if (!v) return '<span class="text-muted">—</span>';
+                    if (!v) {
+                        return '<span style="color:#198754; background:#d1f5e0; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600;">⭐ Eligible</span>';
+                    }
                     const map = {
                         'RECOMMENDED':        { color: '#198754', bg: '#d1f5e0', label: '⭐ Eligible' },
                         'OPTIONAL':           { color: '#856404', bg: '#fff3cd', label: '⚡ Optional' },

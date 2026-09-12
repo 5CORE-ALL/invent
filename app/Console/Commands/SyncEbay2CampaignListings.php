@@ -272,6 +272,14 @@ class SyncEbay2CampaignListings extends Command
             } catch (\Exception $e) {
                 $this->warn('⚠ Skipping eligible-listings step (apicentral.ebay2_metrics not accessible): ' . $e->getMessage());
             }
+
+            // apicentral.ebay2_metrics can lag / miss listings that already live in
+            // ebay_2_metrics (the /ebay2/campaign-ads join source). Those Eligible
+            // listings never appear on the page and cannot be enrolled.
+            $localInserted = $this->insertEligibleFromLocalMetrics($token);
+            if ($localInserted > 0) {
+                $this->info("✅ Eligible listings from ebay_2_metrics inserted/updated: {$localInserted}");
+            }
         }
 
         // ── Step 3: Fetch suggested_bid for all listings (batch 20 per API call) ──
@@ -400,6 +408,100 @@ class SyncEbay2CampaignListings extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
         return 0;
+    }
+
+    /**
+     * Insert Eligible / recommended listings that exist in ebay_2_metrics but
+     * are still missing from ebay2_campaign_ads (apicentral gap).
+     */
+    private function insertEligibleFromLocalMetrics(string $token): int
+    {
+        $existingLookup = array_fill_keys(
+            DB::table('ebay2_campaign_ads')->pluck('listing_id')->map(fn ($id) => (string) $id)->all(),
+            true
+        );
+
+        $metrics = DB::table('ebay_2_metrics')
+            ->whereNotNull('item_id')
+            ->where('item_id', '!=', '')
+            ->whereRaw("UPPER(TRIM(COALESCE(listing_status, ''))) = 'ACTIVE'")
+            ->select('item_id', 'sku', 'ebay_price')
+            ->orderBy('id')
+            ->get()
+            ->groupBy(fn ($m) => (string) $m->item_id)
+            ->map(function ($rows) {
+                return $rows->first(fn ($r) => stripos((string) $r->sku, 'PARENT') === 0) ?? $rows->first();
+            })
+            ->filter(fn ($m) => ! isset($existingLookup[(string) $m->item_id]))
+            ->values();
+
+        if ($metrics->isEmpty()) {
+            return 0;
+        }
+
+        $this->info('🔍 ebay_2_metrics fallback: '.$metrics->count().' ACTIVE listing(s) missing from campaign ads.');
+
+        $inserted = 0;
+        foreach ($metrics->chunk(20) as $chunk) {
+            $ids = $chunk->pluck('item_id')->map(fn ($id) => (string) $id)->values()->all();
+            try {
+                $resp = Http::withToken($token)
+                    ->withHeaders([
+                        'X-EBAY-C-MARKETPLACE-ID' => 'EBAY-US',
+                        'Content-Type' => 'application/json',
+                    ])
+                    ->post('https://api.ebay.com/sell/recommendation/v1/find?filter=recommendationTypes:{AD}&limit=20',
+                        ['listingIds' => $ids]);
+
+                foreach ($resp->json()['listingRecommendations'] ?? [] as $rec) {
+                    $lid = (string) ($rec['listingId'] ?? '');
+                    if ($lid === '') {
+                        continue;
+                    }
+                    $promoteStatus = $rec['marketing']['ad']['promoteWithAd'] ?? null;
+                    $bidPercs = $rec['marketing']['ad']['bidPercentages'] ?? [];
+                    $suggestedBid = null;
+                    foreach ($bidPercs as $b) {
+                        if (($b['basis'] ?? '') === 'ITEM' && isset($b['value'])) {
+                            $suggestedBid = (float) $b['value'];
+                            break;
+                        }
+                    }
+                    if ($suggestedBid === null) {
+                        foreach ($bidPercs as $b) {
+                            if (($b['basis'] ?? '') === 'TRENDING' && isset($b['value'])) {
+                                $suggestedBid = (float) $b['value'];
+                                break;
+                            }
+                        }
+                    }
+                    $metric = $chunk->first(fn ($m) => (string) $m->item_id === $lid);
+                    DB::table('ebay2_campaign_ads')->updateOrInsert(
+                        ['listing_id' => $lid, 'campaign_id' => null],
+                        [
+                            'campaign_name' => null,
+                            'funding_strategy' => null,
+                            'campaign_status' => null,
+                            'ad_id' => null,
+                            'sku' => $metric->sku ?? null,
+                            'bid_percentage' => null,
+                            'suggested_bid' => $suggestedBid,
+                            'price' => $metric->ebay_price ?? null,
+                            'promote_with_ad' => $promoteStatus,
+                            'updated_at' => now(),
+                            'created_at' => now(),
+                        ]
+                    );
+                    $inserted++;
+                    $this->line("  → listing_id={$lid} | sku=".($metric->sku ?? '')." | promote={$promoteStatus} | es_bid={$suggestedBid}%");
+                }
+            } catch (\Exception $e) {
+                $this->warn('  ⚠ ebay_2_metrics eligible fetch error: '.$e->getMessage());
+            }
+            usleep(200000);
+        }
+
+        return $inserted;
     }
 
     private function fetchAllCampaigns(string $token): array

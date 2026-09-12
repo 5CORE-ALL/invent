@@ -11,6 +11,7 @@ use App\Support\EbayCampaignReportRollup;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -775,12 +776,135 @@ class Ebay2CampaignAdsController extends Controller
         return $this->missingAdsCountFor('ebay2_campaign_ads', 'ebay_2_metrics');
     }
 
+    /**
+     * Eligible listings live in ebay_2_metrics but were never inserted into
+     * ebay2_campaign_ads (apicentral.ebay2_metrics gap). Searching then filtering
+     * Eligible (RECOMMENDED) returns an empty grid. Backfill matching ACTIVE
+     * listings from the Recommendation API so they show and can be enrolled.
+     */
+    private function backfillMissingEligibleForSearch($search): void
+    {
+        $search = trim((string) $search);
+        if ($search === '') {
+            return;
+        }
+
+        $metrics = DB::table('ebay_2_metrics')
+            ->whereNotNull('item_id')
+            ->where('item_id', '!=', '')
+            ->whereRaw("UPPER(TRIM(COALESCE(listing_status, ''))) = 'ACTIVE'")
+            ->where(function ($q) use ($search) {
+                $q->where('sku', 'like', '%'.$search.'%')
+                    ->orWhere('item_id', 'like', '%'.$search.'%');
+            })
+            ->select('item_id', 'sku', 'ebay_price')
+            ->get();
+
+        if ($metrics->isEmpty()) {
+            return;
+        }
+
+        $byListing = $metrics->groupBy(fn ($m) => (string) $m->item_id)->map(function ($rows) {
+            return $rows->first(fn ($r) => stripos((string) $r->sku, 'PARENT') === 0) ?? $rows->first();
+        });
+
+        $listingIds = $byListing->keys()->values();
+        $existing = DB::table('ebay2_campaign_ads')
+            ->whereIn('listing_id', $listingIds)
+            ->pluck('listing_id')
+            ->map(fn ($id) => (string) $id)
+            ->flip();
+
+        $missing = $byListing->filter(fn ($m, $id) => ! $existing->has((string) $id));
+        if ($missing->isEmpty()) {
+            return;
+        }
+
+        try {
+            $token = (new \App\Services\Ebay2ApiService())->generateBearerToken();
+        } catch (\Exception $e) {
+            foreach ($missing as $lid => $metric) {
+                $this->insertEligibleCampaignAdRow((string) $lid, $metric, null, null);
+            }
+            return;
+        }
+
+        foreach ($missing->chunk(20) as $chunk) {
+            $ids = $chunk->keys()->map(fn ($id) => (string) $id)->values()->all();
+            try {
+                $resp = Http::withToken($token)
+                    ->withHeaders([
+                        'X-EBAY-C-MARKETPLACE-ID' => 'EBAY-US',
+                        'Content-Type' => 'application/json',
+                    ])
+                    ->post('https://api.ebay.com/sell/recommendation/v1/find?filter=recommendationTypes:{AD}&limit=20',
+                        ['listingIds' => $ids]);
+
+                $recs = collect($resp->json()['listingRecommendations'] ?? [])->keyBy(fn ($r) => (string) ($r['listingId'] ?? ''));
+                foreach ($chunk as $lid => $metric) {
+                    $lid = (string) $lid;
+                    $rec = $recs->get($lid);
+                    $promote = $rec['marketing']['ad']['promoteWithAd'] ?? null;
+                    $suggestedBid = null;
+                    foreach ($rec['marketing']['ad']['bidPercentages'] ?? [] as $b) {
+                        if (($b['basis'] ?? '') === 'ITEM' && isset($b['value'])) {
+                            $suggestedBid = (float) $b['value'];
+                            break;
+                        }
+                    }
+                    if ($suggestedBid === null) {
+                        foreach ($rec['marketing']['ad']['bidPercentages'] ?? [] as $b) {
+                            if (($b['basis'] ?? '') === 'TRENDING' && isset($b['value'])) {
+                                $suggestedBid = (float) $b['value'];
+                                break;
+                            }
+                        }
+                    }
+                    $this->insertEligibleCampaignAdRow($lid, $metric, $promote, $suggestedBid);
+                }
+            } catch (\Exception $e) {
+                foreach ($chunk as $lid => $metric) {
+                    $this->insertEligibleCampaignAdRow((string) $lid, $metric, null, null);
+                }
+            }
+        }
+    }
+
+    private function insertEligibleCampaignAdRow(string $listingId, object $metric, ?string $promote, $suggestedBid): void
+    {
+        DB::table('ebay2_campaign_ads')->updateOrInsert(
+            ['listing_id' => $listingId, 'campaign_id' => null],
+            [
+                'campaign_name' => null,
+                'funding_strategy' => null,
+                'campaign_status' => null,
+                'ad_id' => null,
+                'sku' => $metric->sku ?? null,
+                'bid_percentage' => null,
+                'suggested_bid' => $suggestedBid,
+                'price' => $metric->ebay_price ?? null,
+                'promote_with_ad' => $promote,
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]
+        );
+    }
+
     public function getData(Request $request)
     {
         EbayCampaignEndedListingRemap::remapEndedRows('ebay2_campaign_ads', Ebay2Metric::class);
+        $this->backfillMissingEligibleForSearch($request->input('search'));
 
         $query = DB::table('ebay2_campaign_ads as ca')
-            ->leftJoin('ebay_2_metrics as em', 'em.item_id', '=', 'ca.listing_id')
+            ->leftJoin('ebay_2_metrics as em', function ($join) {
+                $join->on('em.item_id', '=', 'ca.listing_id')
+                    ->whereRaw("em.id = (
+                        SELECT em2.id FROM ebay_2_metrics em2
+                        WHERE em2.item_id = ca.listing_id
+                        ORDER BY CASE WHEN UPPER(TRIM(em2.sku)) LIKE 'PARENT%' THEN 0 ELSE 1 END, em2.id
+                        LIMIT 1
+                    )");
+            })
             ->select(
                 'ca.*',
                 // Use SKU from ebay_2_metrics if matched, fallback to listing_id
@@ -810,6 +934,20 @@ class Ebay2CampaignAdsController extends Controller
                     $q->whereNull('ca.promote_with_ad')
                       ->orWhere('ca.promote_with_ad', '');
                 });
+            } elseif ($promote === 'RECOMMENDED') {
+                // Seller Hub Eligible. Also include ACTIVE listings with no campaign
+                // whose promote status was never synced (apicentral gap).
+                $query->where(function ($q) {
+                    $q->where('ca.promote_with_ad', 'RECOMMENDED')
+                        ->orWhere(function ($q2) {
+                            $q2->whereNull('ca.campaign_id')
+                                ->where(function ($q3) {
+                                    $q3->whereNull('ca.promote_with_ad')
+                                        ->orWhere('ca.promote_with_ad', '');
+                                })
+                                ->whereRaw("UPPER(TRIM(COALESCE(em.listing_status, 'ACTIVE'))) = 'ACTIVE'");
+                        });
+                });
             } else {
                 $query->where('ca.promote_with_ad', $promote);
             }
@@ -818,8 +956,15 @@ class Ebay2CampaignAdsController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('em.sku', 'like', "%{$search}%")
+                  ->orWhere('ca.sku', 'like', "%{$search}%")
                   ->orWhere('ca.listing_id', 'like', "%{$search}%")
-                  ->orWhere('ca.campaign_name', 'like', "%{$search}%");
+                  ->orWhere('ca.campaign_name', 'like', "%{$search}%")
+                  ->orWhereExists(function ($q2) use ($search) {
+                      $q2->selectRaw('1')
+                          ->from('ebay_2_metrics as ems')
+                          ->whereColumn('ems.item_id', 'ca.listing_id')
+                          ->where('ems.sku', 'like', "%{$search}%");
+                  });
             });
         }
 
