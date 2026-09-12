@@ -77,7 +77,7 @@ class AmazonListingPublishService
             $existingSku = $sku;
         }
 
-        $offer = $this->completeUsListing($existingSku, $details, $title, $qty, $asin);
+        $offer = $this->completeUsListing($existingSku, $details, $title, $qty, $images, $asin);
         if (! ($offer['success'] ?? false)) {
             return $offer;
         }
@@ -191,12 +191,13 @@ class AmazonListingPublishService
     }
 
     /**
-     * After Amazon assigns an ASIN, submit only the US offer (price, qty, handling).
+     * After Amazon assigns an ASIN, send item/package size plus the US offer.
      *
      * @param  array<string, mixed>  $details
+     * @param  list<string>  $images
      * @return array{success: bool, message: string, skus?: list<string>}
      */
-    private function completeUsListing(string $sku, array $details, string $title, ?int $qty, string $asin): array
+    private function completeUsListing(string $sku, array $details, string $title, ?int $qty, array $images, string $asin): array
     {
         $productType = trim((string) ($details['product_type'] ?? $details['category'] ?? $details['primary_category_id'] ?? ''));
         if ($productType === '' || preg_match('/^\d+$/', $productType)) {
@@ -207,7 +208,14 @@ class AmazonListingPublishService
             ];
         }
 
-        $attributes = self::usOfferAttributes($sku, $details, $qty, $asin);
+        $attributes = $this->usListingAttributes($sku, $details, $title, $qty, $images);
+        $asin = trim($asin);
+        if ($asin !== '') {
+            $attributes['merchant_suggested_asin'] = [[
+                'value' => $asin,
+                'marketplace_id' => 'ATVPDKIKX0DER',
+            ]];
+        }
         if (! isset($attributes['purchasable_offer'])) {
             return [
                 'success' => false,
@@ -216,14 +224,30 @@ class AmazonListingPublishService
             ];
         }
 
-        $result = $this->api->putListingsItem($sku, $productType, $attributes, 'LISTING_OFFER_ONLY');
-        $result['skus'] = [$sku];
-        if (! ($result['success'] ?? false)) {
-            $result['message'] = trim((string) ($result['message'] ?? ''))
-                ?: ('Amazon did not accept the US offer for '.$sku.'.');
+        $listing = $this->api->putListingsItem($sku, $productType, $attributes, 'LISTING');
+        if ($listing['success'] ?? false) {
+            $listing['skus'] = [$sku];
+
+            return $listing;
         }
 
-        return $result;
+        $this->api->putListingsItem($sku, $productType, self::sizeAttributesFromDetails($details) + (
+            $asin !== '' ? ['merchant_suggested_asin' => $attributes['merchant_suggested_asin']] : []
+        ), 'LISTING_PRODUCT_ONLY');
+
+        $offer = $this->api->putListingsItem($sku, $productType, self::usOfferAttributes($sku, $details, $qty, $asin), 'LISTING_OFFER_ONLY');
+        $offer['skus'] = [$sku];
+        if ($offer['success'] ?? false) {
+            return $offer;
+        }
+
+        $listing['skus'] = [$sku];
+        $listing['message'] = trim(implode(' ', array_filter([
+            trim((string) ($listing['message'] ?? '')),
+            trim((string) ($offer['message'] ?? '')),
+        ]))) ?: ('Amazon did not accept the US offer for '.$sku.'.');
+
+        return $listing;
     }
 
     /**
@@ -283,12 +307,10 @@ class AmazonListingPublishService
                 'marketplace_id' => $mp,
             ]];
         }
-        if ($shippingGroup !== '') {
-            $attributes['merchant_shipping_group'] = [[
-                'value' => $shippingGroup,
-                'marketplace_id' => $mp,
-            ]];
-        }
+        $attributes['merchant_shipping_group'] = [[
+            'value' => $shippingGroup !== '' ? $shippingGroup : 'legacy-template-id',
+            'marketplace_id' => $mp,
+        ]];
 
         return $attributes;
     }
@@ -329,7 +351,7 @@ class AmazonListingPublishService
         }
 
         try {
-            return (string) Cache::remember('lm.amazon.default_shipping_group', 3600, static function (): string {
+            $fromDb = (string) Cache::remember('lm.amazon.default_shipping_group', 3600, static function (): string {
                 if (! Schema::hasTable('amazon_listings_raw')) {
                     return '';
                 }
@@ -345,9 +367,68 @@ class AmazonListingPublishService
 
                 return trim((string) $row);
             });
+            if ($fromDb !== '') {
+                return $fromDb;
+            }
         } catch (\Throwable) {
-            return '';
+            // Amazon's default migrated template.
         }
+
+        return 'legacy-template-id';
+    }
+
+    /**
+     * Amazon requires item size in addition to package size. The app only stores package Dim/Wt.
+     *
+     * @param  array<string, mixed>  $details
+     * @return array<string, mixed>
+     */
+    public static function sizeAttributesFromDetails(array $details): array
+    {
+        $length = (float) ($details['item_length'] ?? $details['package_length'] ?? 0);
+        $width = (float) ($details['item_width'] ?? $details['package_width'] ?? 0);
+        $height = (float) ($details['item_height'] ?? $details['package_height'] ?? 0);
+        $lb = (float) ($details['item_weight_lb'] ?? $details['package_weight_lb'] ?? 0);
+        $oz = (float) ($details['item_weight_oz'] ?? $details['package_weight_oz'] ?? 0);
+        $weightLb = $lb + ($oz / 16);
+        if ($weightLb <= 0) {
+            $weightLb = (float) ($details['item_weight'] ?? 0);
+        }
+
+        return self::sizeAttributes($length, $width, $height, $weightLb);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function sizeAttributes(float $length, float $width, float $height, float $weightLb, string $mp = 'ATVPDKIKX0DER'): array
+    {
+        $attributes = [];
+        if ($length > 0 && $width > 0 && $height > 0) {
+            $box = [[
+                'length' => ['value' => $length, 'unit' => 'inches'],
+                'width' => ['value' => $width, 'unit' => 'inches'],
+                'height' => ['value' => $height, 'unit' => 'inches'],
+                'marketplace_id' => $mp,
+            ]];
+            $attributes['item_package_dimensions'] = $box;
+            $attributes['item_length_width_height'] = $box;
+            $attributes['item_dimensions'] = $box;
+            $attributes['item_display_dimensions'] = $box;
+        }
+        if ($weightLb > 0) {
+            $weight = [[
+                'value' => round($weightLb, 3),
+                'unit' => 'pounds',
+                'marketplace_id' => $mp,
+            ]];
+            $attributes['item_package_weight'] = $weight;
+            $attributes['item_weight'] = $weight;
+            $attributes['item_display_weight'] = $weight;
+            $attributes['website_shipping_weight'] = $weight;
+        }
+
+        return $attributes;
     }
 
     /**
@@ -372,12 +453,6 @@ class AmazonListingPublishService
         $origin = ListingManagerAmazonHydrator::amazonCountryOfOrigin((string) ($details['country_of_origin'] ?? ''));
         $dgr = ListingManagerAmazonHydrator::amazonDangerousGoods((string) ($details['dangerous_goods_regulations'] ?? ''));
         $bullets = $this->bulletPointsFromDetails($details, $title);
-        $length = (float) ($details['package_length'] ?? 0);
-        $width = (float) ($details['package_width'] ?? 0);
-        $height = (float) ($details['package_height'] ?? 0);
-        $lb = (float) ($details['package_weight_lb'] ?? 0);
-        $oz = (float) ($details['package_weight_oz'] ?? 0);
-        $weightLb = $lb + ($oz / 16);
 
         $attr = static function (mixed $value) use ($mp): array {
             return [['value' => $value, 'marketplace_id' => $mp]];
@@ -411,21 +486,7 @@ class AmazonListingPublishService
             ]],
         ];
 
-        if ($length > 0 && $width > 0 && $height > 0) {
-            $attributes['item_package_dimensions'] = [[
-                'length' => ['value' => $length, 'unit' => 'inches'],
-                'width' => ['value' => $width, 'unit' => 'inches'],
-                'height' => ['value' => $height, 'unit' => 'inches'],
-                'marketplace_id' => $mp,
-            ]];
-        }
-        if ($weightLb > 0) {
-            $attributes['item_package_weight'] = [[
-                'value' => round($weightLb, 3),
-                'unit' => 'pounds',
-                'marketplace_id' => $mp,
-            ]];
-        }
+        $attributes = array_merge($attributes, self::sizeAttributesFromDetails($details));
         if ($price > 0) {
             $attributes['purchasable_offer'] = [[
                 'marketplace_id' => $mp,
@@ -438,12 +499,10 @@ class AmazonListingPublishService
             ]];
         }
         $shippingGroup = self::shippingGroup($details);
-        if ($shippingGroup !== '') {
-            $attributes['merchant_shipping_group'] = [[
-                'value' => $shippingGroup,
-                'marketplace_id' => $mp,
-            ]];
-        }
+        $attributes['merchant_shipping_group'] = [[
+            'value' => $shippingGroup !== '' ? $shippingGroup : 'legacy-template-id',
+            'marketplace_id' => $mp,
+        ]];
         if ($listPrice > 0) {
             $attributes['list_price'] = [[
                 'currency' => 'USD',
