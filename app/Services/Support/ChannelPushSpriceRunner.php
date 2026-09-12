@@ -263,7 +263,14 @@ class ChannelPushSpriceRunner
                         $live = $pulled;
                     }
                 }
-                ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, (float) $price);
+                $stamp = (float) $price;
+                if ($this->channel === 'newtemuone') {
+                    $full = \App\Services\TemuShopifySalesService::computeFullTemuPrice($stamp);
+                    if ($full > 0) {
+                        $stamp = $full;
+                    }
+                }
+                ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, $stamp);
             } catch (\Throwable $e) {
                 $ok = false;
                 $error = $e->getMessage();
@@ -407,7 +414,16 @@ class ChannelPushSpriceRunner
             return app(NeweggPricingController::class)->pushPriceToNewegg($neweggReq, app(NeweggApiService::class));
         }
 
-        if (in_array($this->channel, ['temu', 'temu2', 'temu3', 'newtemuone'], true)) {
+        if ($this->channel === 'newtemuone') {
+            $temuReq = Request::create('/temu/push-price', 'POST', [
+                'sku' => $sku,
+                'price' => $pushPrice,
+            ]);
+
+            return app(TemuController::class)->pushTemuPrice($temuReq, app(TemuApiService::class));
+        }
+
+        if (in_array($this->channel, ['temu', 'temu2', 'temu3'], true)) {
             $base = \App\Services\TemuShopifySalesService::computePushBaseFromSprice($price);
             if ($base !== null && $base > 0) {
                 $pushPrice = $base;

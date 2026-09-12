@@ -321,12 +321,36 @@
             cursor: pointer;
         }
         .nto-reload-push-progress.is-busy .nto-reload-push-progress-cancel { display: inline-block; }
+        .nto-push-single-btn {
+            border: none;
+            background: none;
+            color: #0d6efd;
+            cursor: pointer;
+            padding: 0 2px;
+            line-height: 1;
+            font-size: 11px;
+        }
+        .nto-push-single-btn:hover,
+        .nto-push-single-btn:focus {
+            color: #0a58ca;
+        }
+        .nto-push-single-btn:disabled,
+        .nto-push-single-btn.is-busy {
+            color: #6c757d;
+            cursor: wait;
+        }
+        .tabulator .tabulator-header .tabulator-col[tabulator-field="_select"] .tabulator-col-title {
+            writing-mode: horizontal-tb;
+            text-orientation: mixed;
+            transform: none;
+            height: auto;
+        }
     </style>
     @push('page-title-after')
         <div class="nto-reload-push-cluster" id="nto-reload-push-cluster">
             <label class="nto-reload-push-switch{{ !empty($newtemuonePageReloadPushEnabled) ? '' : ' is-off' }}"
                 id="nto-reload-push-wrap"
-                title="When ON, this page queues S PRC for blue-triangle SKUs only (S PRC ≠ T Price) on load and when you flip the switch. When OFF, nothing auto-pushes. Progress shows in the bar.">
+                title="When ON, this page queues S Base Prc for blue-triangle SKUs only (S PRC ≠ Temu Price) on load and when you flip the switch. When OFF, nothing auto-pushes. Progress shows in the bar.">
                 <span class="nto-reload-push-text">
                     Push on reload
                     <span class="nto-reload-push-state" id="nto-reload-push-label">{{ !empty($newtemuonePageReloadPushEnabled) ? 'On' : 'Off' }}</span>
@@ -335,7 +359,7 @@
                     {{ !empty($newtemuonePageReloadPushEnabled) ? 'checked' : '' }}>
             </label>
             <div id="nto-reload-push-progress" class="nto-reload-push-progress"
-                aria-live="polite" title="Blue-triangle S PRC push progress">
+                aria-live="polite" title="Blue-triangle S Base Prc push progress">
                 <div class="nto-reload-push-progress-track">
                     <span id="nto-reload-push-progress-bar"></span>
                 </div>
@@ -1708,6 +1732,35 @@
             }, 8000);
         }
     }
+    function ntoRowSku(d) {
+        return String((d && (d['(Child) sku'] || d.SKU || d.sku)) || '').trim();
+    }
+    function ntoRowSBase(d) {
+        if (!d || d.is_parent_summary) return 0;
+        const sku = ntoRowSku(d);
+        if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return 0;
+        const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : 0;
+        return typeof temuSBaseFromSprice === 'function' ? temuSBaseFromSprice(sprice) : 0;
+    }
+    function collectNtoPushItemsFromRows(rows) {
+        const seen = {};
+        const items = [];
+        (rows || []).forEach(function(d) {
+            if (!d) return;
+            const sku = ntoRowSku(d);
+            const key = sku.toUpperCase();
+            if (!sku || seen[key] || key.indexOf('PARENT') === 0) return;
+            const base = ntoRowSBase(d);
+            if (!(base > 0)) return;
+            seen[key] = true;
+            items.push({ sku: sku, price: base });
+        });
+        return items;
+    }
+    function collectNtoSelectedPushItems() {
+        if (typeof table === 'undefined' || !table || typeof table.getSelectedData !== 'function') return [];
+        return collectNtoPushItemsFromRows(table.getSelectedData() || []);
+    }
     function collectNtoReloadPushItems() {
         const seen = {};
         const items = [];
@@ -1717,10 +1770,11 @@
             const key = sku.toUpperCase();
             if (!sku || seen[key] || key.indexOf('PARENT') === 0) return;
             if (!temuHasBlueTriangle(d)) return;
-            const price = temuDisplayedSprice(d);
-            if (!(price > 0)) return;
+            const sprice = temuDisplayedSprice(d);
+            const base = temuSBaseFromSprice(sprice);
+            if (!(base > 0)) return;
             seen[key] = true;
-            items.push({ sku: sku, price: price });
+            items.push({ sku: sku, price: base });
         }
         if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
             table.getRows().forEach(function(row) {
@@ -1763,7 +1817,7 @@
                 if (toastKey !== ntoPushSpriceLastToastKey && (Number(resp.total) || 0) > 0) {
                     ntoPushSpriceLastToastKey = toastKey;
                     showToast(
-                        resp.message || ('S PRC: ' + (resp.ok_count || 0) + ' ok'),
+                        resp.message || ('S Base Prc: ' + (resp.ok_count || 0) + ' ok'),
                         (Number(resp.fail_count) || 0) && !(Number(resp.ok_count) || 0) ? 'error' : 'success'
                     );
                 }
@@ -1820,7 +1874,7 @@
         opts = opts || {};
         if (!NTO_PUSH_SPRICE_LIVE) {
             if (!opts.silent) {
-                showToast('Live S PRC push is disabled on this environment', 'error');
+                showToast('Live S Base Prc push is disabled on this environment', 'error');
             }
             return;
         }
@@ -1885,7 +1939,7 @@
                 .done(function() {
                     showToast(
                         on
-                            ? 'Push on reload on — blue-triangle SKUs (S PRC ≠ T Price) will queue here and on refresh.'
+                            ? 'Push on reload on — blue-triangle SKUs will queue S Base Prc (S PRC ≠ Temu Price).'
                             : 'Push on reload off — nothing auto-pushes.',
                         'success'
                     );
@@ -1902,6 +1956,51 @@
         $('#nto-reload-push-progress-cancel').off('click.ntoReload').on('click.ntoReload', function(e) {
             e.preventDefault();
             cancelNtoPushSpriceJob();
+        });
+        $(document).off('click.ntoSinglePush', '.nto-push-single-btn').on('click.ntoSinglePush', '.nto-push-single-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $btn = $(this).closest('.nto-push-single-btn');
+            if ($btn.prop('disabled') || $btn.hasClass('is-busy')) return;
+            const selected = collectNtoSelectedPushItems();
+            if (selected.length) {
+                $btn.addClass('is-busy').prop('disabled', true)
+                    .html('<i class="fas fa-spinner fa-spin"></i>');
+                queueNtoPushSpriceItems(selected);
+                showToast('Queued S Base Prc for ' + selected.length + ' selected SKU(s)', 'success');
+                setTimeout(function() {
+                    $btn.removeClass('is-busy').prop('disabled', false)
+                        .html('<i class="fas fa-upload"></i>');
+                }, 1200);
+                return;
+            }
+            const sku = String($btn.attr('data-sku') || '').trim();
+            if (!sku) return;
+            let rowData = null;
+            if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
+                table.getRows().some(function(row) {
+                    const d = row.getData();
+                    if (ntoRowSku(d).toUpperCase() === sku.toUpperCase()) {
+                        rowData = d;
+                        return true;
+                    }
+                    return false;
+                });
+            }
+            const base = rowData ? ntoRowSBase(rowData) : (parseFloat($btn.attr('data-price')) || 0);
+            if (!(base > 0)) {
+                showToast('No S Base Prc to push for ' + sku, 'error');
+                return;
+            }
+            $btn.addClass('is-busy').prop('disabled', true)
+                .attr('title', 'Queuing S Base Prc $' + base.toFixed(2) + '…')
+                .html('<i class="fas fa-spinner fa-spin"></i>');
+            queueNtoPushSpriceItems([{ sku: sku, price: base }]);
+            setTimeout(function() {
+                $btn.removeClass('is-busy').prop('disabled', false)
+                    .attr('title', 'Push S Base Prc $' + base.toFixed(2) + ' to Temu')
+                    .html('<i class="fas fa-upload"></i>');
+            }, 1200);
         });
         if (NTO_PUSH_SPRICE_LIVE) {
             $.ajax({
@@ -2124,7 +2223,7 @@
             return 'advertisement';
         }
         if (
-            /^(\(child\) sku|links_column|inv|inventory|l30|temu_l30|views|dil%)$/i.test(f) ||
+            /^(_select|\(child\) sku|links_column|inv|inventory|l30|temu_l30|views|dil%)$/i.test(f) ||
             /\b(sku|links|inv|stock|ovl|dil|temu\s*l\d+|views)\b/i.test(tl)
         ) {
             return 'basics';
@@ -2290,7 +2389,7 @@
         if (!table) return;
         const cols = table.getColumns().filter(function(col) {
             const def = col.getDefinition();
-            return def.field && col.isVisible() && alwaysHiddenColumns.indexOf(def.field) === -1;
+            return def.field && def.field !== '_select' && col.isVisible() && alwaysHiddenColumns.indexOf(def.field) === -1;
         });
         const headers = cols.map(function(col) {
             const def = col.getDefinition();
@@ -2343,11 +2442,29 @@
                     }
                 }
             },
+            selectableRows: true,
+            selectableRowsCheck: function(row) {
+                const d = row.getData();
+                const sku = ntoRowSku(d);
+                return !!(sku && !d.is_parent_summary && sku.toUpperCase().indexOf('PARENT') !== 0);
+            },
             initialSort: [{
                 column: 'temu_l30',
                 dir: 'desc'
             }],
             columns: [
+                {
+                    title: '',
+                    field: '_select',
+                    formatter: 'rowSelection',
+                    titleFormatter: 'rowSelection',
+                    titleFormatterParams: { rowRange: 'active' },
+                    hozAlign: 'center',
+                    headerSort: false,
+                    frozen: true,
+                    width: 36,
+                    headerTooltip: 'Select SKUs, then click any upload icon to push S Base Prc for all checked rows'
+                },
                 {
                     title: 'SKU',
                     field: '(Child) sku',
@@ -2775,21 +2892,28 @@
                     title: 'S Base Prc',
                     field: 's_base_price',
                     hozAlign: 'center',
-                    width: 70,
+                    width: 96,
                     sorter: 'number',
-                    headerTooltip: 'Base Price equivalent of S PRC: S PRC inverted through the T Price rule (÷ 1.1364, less $2.99 when S PRC included it)',
+                    headerTooltip: 'Base Price equivalent of S PRC: S PRC inverted through the T Price rule (÷ 1.1364, less $2.99 when S PRC included it). Upload icon pushes this row, or every checked row if you selected checkboxes.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = typeof temuDisplayedSprice === 'function'
                             ? temuDisplayedSprice(rowData)
                             : (parseFloat(rowData.sprice) || 0);
-                        const sBase = temuSBaseFromSprice(sprice);
+                        const sBase = ntoRowSBase(rowData);
                         if (!(sBase > 0)) {
                             return '<span style="color: #6c757d;">—</span>';
                         }
+                        const sku = ntoRowSku(rowData);
                         const tip = 'S Base Prc from S PRC $' + sprice.toFixed(2)
                             + ' → $' + sBase.toFixed(2);
-                        return '<span style="font-weight: 600;" title="' + tip + '">$' + sBase.toFixed(2) + '</span>';
+                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
+                            + '<span style="font-weight: 600;" title="' + tip.replace(/"/g, '&quot;') + '">$' + sBase.toFixed(2) + '</span>'
+                            + '<button type="button" class="nto-push-single-btn" data-sku="'
+                            + String(sku).replace(/"/g, '&quot;') + '" data-price="' + sBase + '"'
+                            + ' title="Push S Base Prc $' + sBase.toFixed(2) + ' — or all checked SKUs">'
+                            + '<i class="fas fa-upload"></i></button>'
+                            + '</span>';
                     }
                 },
                 {
