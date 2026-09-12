@@ -6157,6 +6157,23 @@ class AmazonSpApiService
     }
 
     /**
+     * @return 'live'|'inactive'|'missing'|'unknown'|null
+     */
+    public static function cachedSellerCentralState(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+        $cached = Cache::get(self::sellerCentralStateCacheKey($sku));
+        if (is_string($cached) && in_array($cached, ['live', 'inactive', 'missing', 'unknown'], true)) {
+            return $cached;
+        }
+
+        return null;
+    }
+
+    /**
      * Current Seller Central listing state for Inactive Listing candidates.
      * Cached 12h so the channel page does not re-hit Listings Items on every refresh.
      *

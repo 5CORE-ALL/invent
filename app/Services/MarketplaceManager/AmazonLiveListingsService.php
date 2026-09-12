@@ -4,17 +4,19 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\AmazonListingStatus;
 use App\Models\ProductStockMapping;
+use App\Services\AmazonSpApiService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
  * Live listing helpers for Amazon listings UI (Reverb/Temu parity).
- * Active / Inactive come from Amazon seller status (amazon_datsheets + listing JSON), not qty.
+ * Active / Inactive come from Seller Central / the listings report, not CP Master.
  */
 class AmazonLiveListingsService
 {
-    private const CACHE_KEY = 'mm.amazon.live_listings.v3';
+    public const CACHE_KEY = 'mm.amazon.live_listings.v4';
 
     /** @var array<string, array{quantity: int|null, state: string}>|null */
     private ?array $listingsRawMetaMemo = null;
@@ -22,6 +24,7 @@ class AmazonLiveListingsService
     public function clearCache(): void
     {
         Cache::forget(self::CACHE_KEY);
+        Cache::forget('mm.amazon.live_listings.v3');
         Cache::forget('mm.amazon.live_listings.v2');
         Cache::forget('mm.amazon.live_listings.v1');
     }
@@ -38,7 +41,7 @@ class AmazonLiveListingsService
             }
         }
 
-        $rows = $this->fetchFromLocal();
+        $rows = $this->applySellerCentralOverlay($this->fetchFromLocal(), $forceRefresh);
         if ($this->rowsHavePortalStatus($rows)) {
             Cache::put(self::CACHE_KEY, $rows, now()->addHours(6));
         } else {
@@ -63,7 +66,10 @@ class AmazonLiveListingsService
             return null;
         }
 
-        return MarketplacePortalInactiveCount::applyToLiveRows('amazon', $cached);
+        return MarketplacePortalInactiveCount::applyToLiveRows(
+            'amazon',
+            $this->applySellerCentralOverlay($cached, false)
+        );
     }
 
     /**
@@ -196,10 +202,11 @@ class AmazonLiveListingsService
                         $asin = strtoupper(trim((string) ($row->asin1 ?? '')));
                         $ds = $datasheet[$key] ?? null;
                         $report = $reportMeta[$key] ?? AmazonListingStatusHelper::metaFromListingsRawRow($row);
-                        $state = $this->resolvePortalState(
+                        $state = AmazonListingStatusHelper::resolveMarketplacePortalState(
+                            (string) ($report['state'] ?? 'other'),
                             (string) ($ds['status'] ?? ''),
                             '',
-                            (string) ($report['state'] ?? 'other')
+                            isset($report['quantity']) ? $report['quantity'] : null
                         );
                         if ($state !== 'active' && $state !== 'inactive') {
                             continue;
@@ -227,10 +234,14 @@ class AmazonLiveListingsService
                 continue;
             }
             $report = $reportMeta[$key] ?? null;
-            $state = $this->resolvePortalState(
+            if ($report === null) {
+                continue;
+            }
+            $state = AmazonListingStatusHelper::resolveMarketplacePortalState(
+                (string) ($report['state'] ?? 'other'),
                 (string) ($ds['status'] ?? ''),
                 '',
-                (string) ($report['state'] ?? 'other')
+                isset($report['quantity']) ? $report['quantity'] : null
             );
             if ($state !== 'inactive' && $state !== 'active') {
                 continue;
@@ -281,12 +292,13 @@ class AmazonLiveListingsService
             $inventory = (int) $value['quantity'];
         }
 
-        $jsonState = $this->normalizeAmazonPortalStatus(AmazonListingStatusHelper::resolveListingState($row));
+        $jsonState = AmazonListingStatusHelper::resolveListingState($row);
         $ds = $datasheet[$upper] ?? null;
-        $state = $this->resolvePortalState(
+        $state = AmazonListingStatusHelper::resolveMarketplacePortalState(
+            (string) ($report['state'] ?? 'other'),
             (string) ($ds['status'] ?? ''),
             $jsonState,
-            (string) ($report['state'] ?? 'other')
+            is_array($report) && isset($report['quantity']) ? $report['quantity'] : null
         );
 
         $title = $ds['title'] ?? (isset($value['title']) ? (string) $value['title'] : null);
@@ -398,24 +410,66 @@ class AmazonLiveListingsService
     }
 
     /**
-     * Merchant listings report status wins (Seller Central). Datasheet INACTIVE
-     * from SP-API OUT_OF_STOCK must not hide a live Active report row.
+     * Overlay cached Seller Central status. On Refresh live, re-check locally
+     * inactive SKUs so a stale Closed FBA report row cannot hide an Active FBM offer.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
      */
-    protected function resolvePortalState(string $datasheetStatus, string $jsonState, string $reportState): string
+    protected function applySellerCentralOverlay(array $rows, bool $fetchInactive): array
     {
-        $reportState = $this->normalizeAmazonPortalStatus($reportState);
-        if ($reportState === 'active' || $reportState === 'inactive') {
-            return $reportState;
+        if ($fetchInactive) {
+            $need = [];
+            $reportMeta = $this->listingsRawMetaBySku();
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $sku = trim((string) ($row['sku'] ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+                if (! isset($reportMeta[strtoupper($sku)])) {
+                    continue;
+                }
+                if (MarketplacePortalStatusTabs::bucket((string) ($row['state'] ?? '')) === 'inactive') {
+                    $need[] = $sku;
+                }
+            }
+            if ($need !== []) {
+                try {
+                    app(AmazonSpApiService::class)->sellerCentralListingStates($need);
+                } catch (\Throwable $e) {
+                    Log::warning('AmazonLiveListingsService: Seller Central overlay failed', [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
 
-        $dsState = $this->normalizeAmazonPortalStatus($datasheetStatus);
-        if ($dsState !== 'other') {
-            return $dsState;
+        foreach ($rows as $i => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $sc = AmazonSpApiService::cachedSellerCentralState($sku);
+            if ($sc === 'live') {
+                $rows[$i]['state'] = 'active';
+                $rows[$i]['inactive_reason'] = null;
+            } elseif ($sc === 'inactive' || $sc === 'missing') {
+                $rows[$i]['state'] = 'inactive';
+                if (empty($rows[$i]['inactive_reason'])) {
+                    $rows[$i]['inactive_reason'] = $sc === 'missing'
+                        ? 'Not active on Amazon'
+                        : 'Inactive on Amazon';
+                }
+            }
         }
 
-        $jsonState = $this->normalizeAmazonPortalStatus($jsonState);
-
-        return $jsonState !== '' ? $jsonState : 'other';
+        return $rows;
     }
 
     /**

@@ -103,6 +103,12 @@ final class MarketplacePortalInactiveCount
             return self::$activeMemo[$mmChannel];
         }
 
+        if ($mmChannel === 'amazon') {
+            self::$activeMemo[$mmChannel] = self::amazonActiveReportSkuKeys();
+
+            return self::$activeMemo[$mmChannel];
+        }
+
         $keys = [];
         foreach (self::portalActiveKeys($mmChannel) as $key => $_) {
             $keys[$key] = true;
@@ -112,11 +118,6 @@ final class MarketplacePortalInactiveCount
         }
         foreach (self::liveCacheActiveKeys($mmChannel) as $key => $_) {
             $keys[$key] = true;
-        }
-        if ($mmChannel === 'amazon') {
-            foreach (self::amazonActiveReportSkuKeys() as $key => $_) {
-                $keys[$key] = true;
-            }
         }
 
         self::$activeMemo[$mmChannel] = $keys;
@@ -274,7 +275,7 @@ final class MarketplacePortalInactiveCount
             'ebay3' => 'mm.ebay3.live_listings.v3',
             'temu' => 'mm.temu.live_listings.v2',
             'temu2' => 'mm.temu2.live_listings.v4',
-            'amazon' => 'mm.amazon.live_listings.v3',
+            'amazon' => AmazonLiveListingsService::CACHE_KEY,
             'reverb' => ReverbLiveListingsService::CACHE_KEY,
             'shein' => SheinLiveListingsService::CACHE_KEY,
             'topdawg' => 'mm.topdawg.live_listings.v1',
@@ -1043,7 +1044,10 @@ final class MarketplacePortalInactiveCount
                 continue;
             }
             $liveBucket = MarketplacePortalStatusTabs::bucket((string) ($row['state'] ?? ''));
-            if ($liveBucket === 'active' || $liveBucket === 'inactive') {
+            if ($liveBucket === 'inactive') {
+                continue;
+            }
+            if ($liveBucket === 'active' && $mmChannel !== 'amazon') {
                 continue;
             }
             $rows[$i]['state'] = 'inactive';
