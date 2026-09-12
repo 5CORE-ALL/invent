@@ -182,12 +182,56 @@ final class AmazonListingStatusHelper
             $quantity = (int) $row->quantity;
         }
 
-        $status = trim((string) ($raw['status'] ?? $raw['Status'] ?? ''));
+        $status = '';
+        foreach (['status', 'Status', 'item-status', 'listing-status', 'listing_status'] as $key) {
+            $candidate = trim((string) ($raw[$key] ?? ''));
+            if ($candidate !== '') {
+                $status = $candidate;
+                break;
+            }
+        }
 
         return [
             'quantity' => $quantity,
             'state' => $status !== '' ? self::normalizePortalStatus($status) : 'other',
         ];
+    }
+
+    /**
+     * GET_MERCHANT_LISTINGS_ALL_DATA rows are live unless the report says Inactive.
+     * Missing status must not hide a Seller Central Active listing.
+     */
+    public static function reportRowIsLive(object $row): bool
+    {
+        return self::metaFromListingsRawRow($row)['state'] !== 'inactive';
+    }
+
+    /**
+     * @param  array<string, true>  $keys
+     */
+    public static function rememberSkuLookupKeys(array &$keys, string $sku): void
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return;
+        }
+        $keys[strtoupper($sku)] = true;
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '') {
+            $keys[$norm] = true;
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        if ($compact !== '') {
+            $keys[strtoupper($compact)] = true;
+        }
+        $base = trim((string) preg_replace('/\s+(FBA|FBM)$/i', '', $sku));
+        if ($base !== '' && strcasecmp($base, $sku) !== 0) {
+            $keys[strtoupper($base)] = true;
+            $baseNorm = ShopifySku::normalizeSkuForShopifyLookup($base);
+            if ($baseNorm !== '') {
+                $keys[$baseNorm] = true;
+            }
+        }
     }
 
     /**

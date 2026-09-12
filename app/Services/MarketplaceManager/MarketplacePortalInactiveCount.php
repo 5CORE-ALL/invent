@@ -25,6 +25,9 @@ final class MarketplacePortalInactiveCount
     /** @var array<string, list<string>> */
     private static array $sheetMemo = [];
 
+    /** @var array{active: array<string, true>, inactive: list<string>}|null */
+    private static ?array $amazonReportMemo = null;
+
     private static ?float $syncDeadline = null;
 
     public static bool $portalSyncIncomplete = false;
@@ -409,32 +412,41 @@ final class MarketplacePortalInactiveCount
     }
 
     /**
-     * Datasheet INACTIVE includes SP-API OUT_OF_STOCK. Drop SKUs that the
-     * merchant listings report still marks Active (live, including qty 0).
+     * Amazon Inactive Listing uses Seller Central GET_MERCHANT_LISTINGS_ALL_DATA
+     * only. Datasheet INACTIVE and listing-manager live_inactive are not used —
+     * those mark live / out-of-stock offers as Inactive.
      *
      * @return list<string>
      */
     protected static function amazonSkus(): array
     {
-        $inactive = self::fromPortalAndJson('amazon_datsheets', 'listing_status', ['amazon_listing_statuses']);
-        $liveOnReport = self::amazonActiveReportSkuKeys();
-        if ($liveOnReport === []) {
-            return $inactive;
-        }
-
-        return array_values(array_filter(
-            $inactive,
-            static fn (string $sku) => ! isset($liveOnReport[strtoupper(trim($sku))])
-        ));
+        return self::amazonReportSkuSets()['inactive'];
     }
 
     /**
-     * @return array<string, true> UPPER(sku) => true
+     * @return array<string, true> UPPER/normalized sku => true
      */
     protected static function amazonActiveReportSkuKeys(): array
     {
+        return self::amazonReportSkuSets()['active'];
+    }
+
+    /**
+     * @return array{active: array<string, true>, inactive: list<string>}
+     */
+    protected static function amazonReportSkuSets(): array
+    {
+        if (self::$amazonReportMemo !== null) {
+            return self::$amazonReportMemo;
+        }
+
+        $active = [];
+        $inactive = [];
+        $seen = [];
         if (! Schema::hasTable('amazon_listings_raw') || ! Schema::hasColumn('amazon_listings_raw', 'seller_sku')) {
-            return [];
+            self::$amazonReportMemo = ['active' => $active, 'inactive' => $inactive];
+
+            return self::$amazonReportMemo;
         }
 
         $cols = ['id', 'seller_sku'];
@@ -444,26 +456,38 @@ final class MarketplacePortalInactiveCount
             }
         }
 
-        $out = [];
         DB::table('amazon_listings_raw')
             ->whereNotNull('seller_sku')
             ->where('seller_sku', '!=', '')
             ->select($cols)
             ->orderBy('id')
-            ->chunkById(1000, function ($chunk) use (&$out) {
+            ->chunkById(1000, function ($chunk) use (&$active, &$inactive, &$seen) {
                 foreach ($chunk as $row) {
                     $sku = trim((string) ($row->seller_sku ?? ''));
                     if ($sku === '') {
                         continue;
                     }
-                    $meta = AmazonListingStatusHelper::metaFromListingsRawRow($row);
-                    if (($meta['state'] ?? '') === 'active') {
-                        $out[strtoupper($sku)] = true;
+                    $key = strtoupper($sku);
+                    $live = AmazonListingStatusHelper::reportRowIsLive($row);
+                    if ($live) {
+                        $seen[$key] = 'active';
+                        AmazonListingStatusHelper::rememberSkuLookupKeys($active, $sku);
+                        continue;
                     }
+                    if (($seen[$key] ?? '') === 'active') {
+                        continue;
+                    }
+                    $seen[$key] = 'inactive';
+                    $inactive[$key] = $sku;
                 }
             });
 
-        return $out;
+        self::$amazonReportMemo = [
+            'active' => $active,
+            'inactive' => array_values($inactive),
+        ];
+
+        return self::$amazonReportMemo;
     }
 
     /**

@@ -64,4 +64,24 @@ class AmazonListingStatusHelperTest extends TestCase
         $this->assertSame(12, $meta['quantity']);
         $this->assertSame('inactive', $meta['state']);
     }
+
+    public function test_report_row_without_status_is_still_live(): void
+    {
+        $row = (object) [
+            'quantity' => 8,
+            'raw_data' => ['seller-sku' => 'A-54', 'quantity' => '8'],
+        ];
+
+        $this->assertTrue(AmazonListingStatusHelper::reportRowIsLive($row));
+    }
+
+    public function test_report_row_inactive_status_is_not_live(): void
+    {
+        $row = (object) [
+            'quantity' => 0,
+            'raw_data' => ['status' => 'Inactive', 'seller-sku' => 'A-54'],
+        ];
+
+        $this->assertFalse(AmazonListingStatusHelper::reportRowIsLive($row));
+    }
 }
