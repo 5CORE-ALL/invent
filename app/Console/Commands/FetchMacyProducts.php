@@ -23,7 +23,8 @@ class FetchMacyProducts extends Command
      */
     protected $signature = 'app:fetch-macy-products
                             {--pp-mcm-only : Only sync Purchasing Power prices from MCM OF21}
-                            {--macy-mcm-only : Only sync Macy listed prices from MCM OF21}';
+                            {--macy-mcm-only : Only sync Macy listed prices from MCM OF21}
+                            {--bestbuy-mcm-only : Only sync Best Buy listed prices from MCM OF21}';
 
     /**
      * The console command description.
@@ -327,6 +328,12 @@ class FetchMacyProducts extends Command
             DB::connection()->disconnect();
             return self::SUCCESS;
         }
+
+        if ($this->option('bestbuy-mcm-only')) {
+            $this->syncBestBuyPricesFromMcm();
+            DB::connection()->disconnect();
+            return self::SUCCESS;
+        }
         
         $token = $this->getAccessToken();
         if (!$token) return;
@@ -345,6 +352,7 @@ class FetchMacyProducts extends Command
         
         // Fetch and store BestBuy products with channel-specific pricing
         $this->fetchChannelProducts($token, 'bestbuyusa', "Best Buy USA", $skuSales);
+        $this->syncBestBuyPricesFromMcm();
 
         // Close DB connection between channels
         DB::connection()->disconnect();
@@ -826,6 +834,209 @@ class FetchMacyProducts extends Command
     }
 
     /**
+     * @param  list<string>  $mcmNormSkus
+     * @param  list<string>  $mcmExactSkus
+     */
+    private function clearBestBuyProductsPriceNotInMcm(array $mcmNormSkus, array $mcmExactSkus = []): void
+    {
+        $keepNorm = array_fill_keys(array_filter($mcmNormSkus), true);
+        $keepExact = array_fill_keys(array_filter($mcmExactSkus), true);
+        if ($keepNorm === [] && $keepExact === []) {
+            return;
+        }
+
+        $cleared = 0;
+        $cols = ['id', 'sku', 'price'];
+        if (Schema::hasColumn('bestbuy_usa_products', 'listing_status')) {
+            $cols[] = 'listing_status';
+        }
+        BestbuyUsaProduct::query()->select($cols)->orderBy('id')->chunkById(200, function ($rows) use ($keepNorm, $keepExact, &$cleared) {
+            $ids = [];
+            foreach ($rows as $row) {
+                $exact = trim((string) $row->sku);
+                $norm = $this->normalizeMacyOfferSku($exact);
+                if ($norm === '') {
+                    continue;
+                }
+                $kept = $keepExact !== []
+                    ? isset($keepExact[$exact])
+                    : isset($keepNorm[$norm]);
+                if ($kept) {
+                    continue;
+                }
+                if ((float) $row->price > 0 || (string) ($row->listing_status ?? '') === 'active') {
+                    $ids[] = $row->id;
+                }
+            }
+            if ($ids !== []) {
+                $payload = ['price' => 0];
+                if (Schema::hasColumn('bestbuy_usa_products', 'listing_status')) {
+                    $payload['listing_status'] = 'inactive';
+                }
+                BestbuyUsaProduct::query()->whereIn('id', $ids)->update($payload);
+                $cleared += count($ids);
+            }
+        });
+
+        $this->info("Cleared leftover bestbuy_usa_products.price on {$cleared} SKUs not in MCM.");
+    }
+
+    /**
+     * OF21 — pull Best Buy MCM offer prices into bestbuy_usa_products.
+     * Seller portal listed price lives here; Connect catalog / uploaded sheet are not listed.
+     */
+    private function syncBestBuyPricesFromMcm(): void
+    {
+        $apiKey = trim((string) config('services.bestbuy.mcm_api_key', ''));
+        $baseUrl = rtrim((string) config('services.bestbuy.mcm_base_url', ''), '/');
+
+        if ($apiKey === '' || $baseUrl === '') {
+            $this->warn('Best Buy MCM API key not set (BESTBUY_MCM_API_KEY); skipping MCM price sync.');
+            return;
+        }
+
+        $this->info('Syncing Best Buy prices from MCM offers (OF21)...');
+
+        $shopId = config('services.bestbuy.shop_id');
+        $offset = 0;
+        $max = 100;
+        $totalUpdated = 0;
+        $page = 1;
+        $seenNormSkus = [];
+        $seenExactSkus = [];
+
+        try {
+            do {
+                $params = [
+                    'max' => $max,
+                    'offset' => $offset,
+                ];
+                if ($shopId !== null && $shopId !== '') {
+                    $params['shop_id'] = (int) $shopId;
+                }
+
+                $response = null;
+                for ($attempt = 1; $attempt <= 5; $attempt++) {
+                    $response = Http::withoutVerifying()
+                        ->withHeaders([
+                            'Authorization' => $apiKey,
+                            'Accept' => 'application/json',
+                        ])
+                        ->timeout(60)
+                        ->get($baseUrl.'/api/offers', $params);
+
+                    if ($response->status() !== 429) {
+                        break;
+                    }
+
+                    $sleepSec = min(30, 3 * $attempt);
+                    $this->warn("Best Buy MCM rate limited (429); sleeping {$sleepSec}s then retry {$attempt}/5...");
+                    sleep($sleepSec);
+                }
+
+                if (! $response || ! $response->successful()) {
+                    $status = $response ? $response->status() : 0;
+                    $body = $response ? substr($response->body(), 0, 300) : 'no response';
+                    $this->error('Best Buy MCM OF21 failed: HTTP '.$status.' '.$body);
+                    Log::error('Best Buy MCM OF21 failed', [
+                        'status' => $status,
+                        'body' => $response ? substr($response->body(), 0, 1000) : null,
+                    ]);
+                    return;
+                }
+
+                $offers = $response->json('offers') ?? [];
+                $totalCount = (int) ($response->json('total_count') ?? 0);
+                $updates = [];
+
+                foreach ($offers as $offer) {
+                    if (! is_array($offer)) {
+                        continue;
+                    }
+
+                    $sku = trim((string) ($offer['shop_sku'] ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+
+                    $price = $this->extractMcmOfferPrice($offer);
+                    if ($price === null) {
+                        continue;
+                    }
+
+                    $activated = array_key_exists('active', $offer)
+                        ? (bool) $offer['active']
+                        : false;
+                    $seenNormSkus[$this->normalizeMacyOfferSku($sku)] = true;
+                    $seenExactSkus[$sku] = true;
+
+                    $updates[] = [
+                        'sku' => $sku,
+                        'price' => $activated ? $price : 0,
+                        'stock' => isset($offer['quantity']) && is_numeric($offer['quantity'])
+                            ? (int) $offer['quantity']
+                            : 0,
+                        'listing_status' => $activated ? 'active' : 'inactive',
+                    ];
+                }
+
+                if (! empty($updates)) {
+                    $now = now()->toDateTimeString();
+                    $hasListingStatus = Schema::hasColumn('bestbuy_usa_products', 'listing_status');
+                    foreach (array_chunk($updates, 50) as $chunk) {
+                        $values = [];
+                        $bindings = [];
+                        foreach ($chunk as $update) {
+                            if ($hasListingStatus) {
+                                $values[] = '(?, ?, ?, 0, ?, ?, ?)';
+                                $bindings[] = $update['sku'];
+                                $bindings[] = $update['price'];
+                                $bindings[] = $update['stock'];
+                                $bindings[] = $update['listing_status'];
+                                $bindings[] = $now;
+                                $bindings[] = $now;
+                            } else {
+                                $values[] = '(?, ?, ?, 0, ?, ?)';
+                                $bindings[] = $update['sku'];
+                                $bindings[] = $update['price'];
+                                $bindings[] = $update['stock'];
+                                $bindings[] = $now;
+                                $bindings[] = $now;
+                            }
+                        }
+
+                        $sql = $hasListingStatus
+                            ? 'INSERT INTO bestbuy_usa_products (sku, price, stock, m_l30, listing_status, created_at, updated_at) VALUES '
+                                .implode(', ', $values)
+                                .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), listing_status = VALUES(listing_status), updated_at = VALUES(updated_at)'
+                            : 'INSERT INTO bestbuy_usa_products (sku, price, stock, m_l30, created_at, updated_at) VALUES '
+                                .implode(', ', $values)
+                                .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), updated_at = VALUES(updated_at)';
+
+                        DB::statement($sql, $bindings);
+                        $totalUpdated += count($chunk);
+                    }
+                }
+
+                $fetched = count($offers);
+                $this->info("Best Buy MCM offers page {$page}: processed {$fetched} (updated {$totalUpdated}, total_count={$totalCount})");
+                $offset += $max;
+                $page++;
+                unset($offers, $updates);
+                sleep(1);
+
+                $hasMore = $fetched >= $max && ($totalCount === 0 || $offset < $totalCount);
+            } while ($hasMore);
+
+            $this->clearBestBuyProductsPriceNotInMcm(array_keys($seenNormSkus), array_keys($seenExactSkus));
+            $this->info("Best Buy MCM price sync complete. Updated: {$totalUpdated}");
+        } catch (\Throwable $e) {
+            $this->error('Best Buy MCM price sync error: '.$e->getMessage());
+            Log::error('Best Buy MCM price sync error', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * @param  array<string, mixed>  $offer
      */
     private function extractMcmOfferPrice(array $offer): ?float
@@ -967,7 +1178,7 @@ class FetchMacyProducts extends Command
                         
                         if ($hasListingStatus) {
                             // Macy listed price comes from MCM OF21, not Connect catalog.
-                            $priceUpdate = $tableName === 'macy_products'
+                            $priceUpdate = in_array($tableName, ['macy_products', 'bestbuy_usa_products'], true)
                                 ? 'price = price'
                                 : 'price = COALESCE(VALUES(price), price)';
                             $sql = "INSERT INTO {$tableName} (sku, price, stock, m_l30, listing_status, created_at, updated_at) VALUES "

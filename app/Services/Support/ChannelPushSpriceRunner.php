@@ -242,6 +242,12 @@ class ChannelPushSpriceRunner
                         throw new \RuntimeException($block);
                     }
                 }
+                if ($this->channel === 'bestbuy') {
+                    $block = \App\Http\Controllers\MarketPlace\BestBuyPricingController::pricePushBlockReason($sku);
+                    if ($block !== null) {
+                        throw new \RuntimeException($block);
+                    }
+                }
                 if (in_array($this->channel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true)) {
                     $floored = MacysAmazonPriceCap::capForSku($sku, $price);
                     if ($floored > 0 && abs($floored - $price) >= 0.005) {

@@ -1008,19 +1008,14 @@ class CvrMasterController extends Controller
             $bestbuyMarketplace = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
             $bestbuyPercentage = $bestbuyMarketplace ? ($bestbuyMarketplace->percentage / 100) : 0.80;
             
-            // Fetch BestBuy product + uploaded sheet (same as /bestbuy-pricing)
-            // Sheet SKUs are stored UPPERCASE — key by upper so mixed-case PM SKUs match.
-            $bestbuyProducts = BestbuyUsaProduct::whereIn('sku', $skus)->get()->keyBy('sku');
-            $bestbuyPriceData = BestbuyPriceData::whereIn('sku', array_values(array_unique(array_merge(
-                    $skus,
-                    array_map('strtoupper', $skus)
-                ))))
-                ->get()
-                ->keyBy(fn ($item) => strtoupper((string) $item->sku));
+            // Fetch BestBuy products (same as /bestbuy-pricing: live MCM OF21 only)
+            $bestbuyProducts = collect(BestBuyPricingController::indexProductsByNormalizedSku(
+                BestbuyUsaProduct::query()->get()
+            ));
+            $bbFreshAfter = BestBuyPricingController::latestMcmFreshAfter();
 
             Log::info('CVR Master - BestBuy Data fetched', [
                 'bestbuy_products' => $bestbuyProducts->count(),
-                'bestbuy_price_data' => $bestbuyPriceData->count(),
                 'bestbuy_percentage' => $bestbuyPercentage * 100 . '%'
             ]);
 
@@ -1992,12 +1987,12 @@ class CvrMasterController extends Controller
                     : 0;
                 $tiktok2PFT = $tiktok2GPFT; // Ads applied later like Amazon / channel Ads%
 
-                // BestBuy — same as /bestbuy-pricing BB Price: sheet first, else product
-                $bestbuyProduct = $bestbuyProducts->get($sku);
-                $bestbuyPriceItem = $bestbuyPriceData->get(strtoupper((string) $sku));
-                $bbPrice = $bestbuyPriceItem
-                    ? floatval($bestbuyPriceItem->price ?? 0)
-                    : ($bestbuyProduct ? floatval($bestbuyProduct->price ?? 0) : 0);
+                // BestBuy — same as /bestbuy-pricing: live MCM OF21 only
+                $bestbuyProduct = $bestbuyProducts->get(BestBuyPricingController::normalizeOfferSku((string) $sku));
+                $bbPrice = BestBuyPricingController::resolveListedPrice(
+                    $bestbuyProduct,
+                    BestBuyPricingController::productIsLiveOffer($bestbuyProduct, $bbFreshAfter)
+                )['price'];
 
                 // GPFT% = ((price × percentage − ship − lp) / price) × 100
                 $bbGPFT = $bbPrice > 0
@@ -4882,20 +4877,18 @@ class CvrMasterController extends Controller
 
             // NOTE: Macy is added earlier as 'MACY' with enhanced suggested data (line ~1500)
 
-            // BestBuy — same sources/formulas as /bestbuy-pricing:
-            // BB Price = bestbuy_price_data (sheet, UPPER sku) if present, else bestbuy_usa_products.price
+            // BestBuy — same as /bestbuy-pricing: live MCM OF21 only. Sheet / leftover = 0.
             $bbSkuUpper = strtoupper(trim((string) $fullSku));
-            $bestbuyProduct = BestbuyUsaProduct::where('sku', $fullSku)->first()
-                ?? BestbuyUsaProduct::whereRaw('UPPER(TRIM(sku)) = ?', [$bbSkuUpper])->first();
-            $bestbuySheetRow = BestbuyPriceData::where('sku', $bbSkuUpper)->first()
-                ?? BestbuyPriceData::whereRaw('UPPER(TRIM(sku)) = ?', [$bbSkuUpper])->first();
+            $bestbuyProduct = $bestbuyProducts->get(BestBuyPricingController::normalizeOfferSku((string) $fullSku));
+            $bestbuyResolved = BestBuyPricingController::resolveListedPrice(
+                $bestbuyProduct,
+                BestBuyPricingController::productIsLiveOffer($bestbuyProduct, $bbFreshAfter ?? null)
+            );
 
             $bestbuyMarketplace = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
             $bestbuyMargin = $bestbuyMarketplace ? ((float) $bestbuyMarketplace->percentage / 100) : 0.80;
 
-            $bestbuyPrice = $bestbuySheetRow
-                ? floatval($bestbuySheetRow->price ?? 0)
-                : ($bestbuyProduct ? floatval($bestbuyProduct->price ?? 0) : 0);
+            $bestbuyPrice = $bestbuyResolved['price'];
             $bestbuyL30 = $bestbuyProduct ? intval($bestbuyProduct->m_l30 ?? 0) : 0;
             $bestbuyGPFT = $bestbuyPrice > 0
                 ? round((($bestbuyPrice * $bestbuyMargin - $lp - $shipBb) / $bestbuyPrice) * 100, 2)
@@ -8719,6 +8712,10 @@ class CvrMasterController extends Controller
     {
         $applied = MacysAmazonPriceCap::applyForSku((string) $sku, (float) $price);
         $price = (float) $applied['price'];
+        $block = BestBuyPricingController::pricePushBlockReason((string) $sku);
+        if ($block !== null) {
+            return response()->json(['success' => false, 'message' => $block], 400);
+        }
         try {
             $result = app(BestBuyApiService::class)->updatePrice($sku, $price);
             if (!empty($result['success'])) {

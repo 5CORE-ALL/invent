@@ -3451,6 +3451,12 @@
             if (!d) return true;
             // eBay matches Amazon: 0 Sold Dil prices still LMP-cap when SGROI at LMP ≥ 20%.
             if (chPromoIsEbayChannel()) return true;
+            // Best Buy: always LMP-cap (including 0 Sold). Amz floor must not skip this.
+            if (typeof chPromoIsBestbuyPromoChannel === 'function'
+                ? chPromoIsBestbuyPromoChannel()
+                : CHANNEL_PROMO_CHANNEL === 'bestbuy') {
+                return true;
+            }
             // 0 Sold (AL30 = 0): keep Target GROI% S PRC — do not cap at LMP.
             return !(typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(d));
         }

@@ -12,6 +12,7 @@
   S PRC = A Price (do not keep a lower Dil/Std price). Out of box + sold uses Std Prc, then the same A Price floor.
   Purchasing Power / Best Buy: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
+  Best Buy also caps S PRC at LMP (including 0 Sold) after the A Price floor.
   Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
   Dil slab edits and table load recalculate display only.
   Save and Apply deletes old S PRC (saves 0), then writes the new Dil S PRC.
@@ -1022,6 +1023,14 @@
                     sprc = amz;
                 }
             }
+            let lmpCapped = false;
+            if (ebayDgIsBestbuy()) {
+                const lmp = ebayDgRowLmp(d);
+                if (lmp > 0 && sprc + 0.0001 >= lmp) {
+                    sprc = ebayDgRound2(lmp);
+                    lmpCapped = true;
+                }
+            }
             if (ebayDgIsAliexpress() && ebayDilGroiAliexpressStopBlocks(d, sprc)) {
                 return null;
             }
@@ -1037,6 +1046,7 @@
                 amzApplied: amzApplied,
                 zeroSoldMin: zeroSoldMin,
                 clamped: clamped,
+                lmpCapped: lmpCapped,
             };
         }
         function ebayDilGroiTipText(meta, opts) {
@@ -1060,7 +1070,7 @@
                     : ('CVR Down < ' + cfg.down_lt + '%');
                 tip += ' ' + sign + meta.cvrAdj + ' (' + why + ') → ' + meta.groi + '%';
             }
-            return tip + ' → $' + Number(meta.sprc).toFixed(2);
+            return tip + (meta.lmpCapped ? ' → LMP $' : ' → $') + Number(meta.sprc).toFixed(2);
         }
         function ebaySprcDilForRow(d) {
             const meta = ebayDilGroiMetaForRow(d);

@@ -354,6 +354,13 @@ class DilRuleSpriceApplyService
             }
         }
 
+        if ($this->channel === 'bestbuy') {
+            $lmp = (float) ($row['lmp'] ?? 0);
+            if ($lmp > 0 && $sprice + 0.0001 >= $lmp) {
+                $sprice = round($lmp, 2);
+            }
+        }
+
         return [
             'sprice' => $sprice,
             'groi' => $groi,

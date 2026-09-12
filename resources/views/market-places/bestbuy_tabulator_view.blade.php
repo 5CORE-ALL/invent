@@ -476,6 +476,14 @@
     let blueTriangleFilterActive = false;
     let amzCapFilterActive = false;
 
+    function isBbListed(rowData) {
+        if (!rowData || isBestbuyParentRow(rowData)) return false;
+        if (rowData.is_bb_inactive === true) return false;
+        if (typeof rowData.is_missing_bb !== 'undefined') {
+            return !rowData.is_missing_bb;
+        }
+        return (parseFloat(rowData['BB Price']) || 0) > 0;
+    }
     function isBestbuyParentRow(row) {
         if (!row) return false;
         if (row.is_parent_summary || row.is_parent) return true;
@@ -514,13 +522,14 @@
         }
         if (!(value > 0)) value = parseFloat(data.SPRICE) || 0;
         if (!(value > 0)) return 0;
+        value = bestbuyApplyAmzFloor(data, value);
         if (typeof chPromoCapSpriceToLmp === 'function') {
             value = Number(chPromoCapSpriceToLmp(data, value)) || value;
         } else if (window.SpriceLmpCap) {
             const cap = SpriceLmpCap.apply(data, value);
             if (cap && cap.shown > 0) value = cap.shown;
         }
-        return bestbuyApplyAmzFloor(data, value);
+        return value;
     }
     function bestbuyRowSpriceForAlert(data) {
         return bestbuyDisplayedSprice(data);
@@ -535,7 +544,7 @@
         return shown > 0 && Math.abs(shown - amz) <= 0.015;
     }
     function bestbuyHasBlueTriangle(data) {
-        if (isBestbuyParentRow(data)) return false;
+        if (isBestbuyParentRow(data) || !isBbListed(data)) return false;
         const sprice = bestbuyRowSpriceForAlert(data);
         const price = parseFloat(data && data['BB Price']) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
@@ -1918,10 +1927,14 @@
                     field: "BB Price",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Red triangle = Price > LMP (INV > 0). Click the red triangle badge to filter.",
+                    headerTooltip: "Best Buy listed price from MCM OF21 (bestbuy_usa_products). Leftover Connect/sheet prices show 0.",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
+                        if (isBestbuyParentRow(rowData)) return '';
+                        if (!isBbListed(rowData)) {
+                            return '<span style="color:#6c757d;">0</span>';
+                        }
+                        const value = parseFloat(cell.getValue() || 0);
                         const amazonPrice = parseFloat(rowData['A Price']) || 0;
                         
                         if (value === 0) {
@@ -2240,7 +2253,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (BB L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin. If that S PRC < A Price, S PRC = A Price.",
+                    headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (BB L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin. If that S PRC < A Price, S PRC = A Price, then cap at LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isBestbuyParentRow === 'function' && isBestbuyParentRow(rowData)) return '';
@@ -2255,6 +2268,9 @@
                         if (meta.amzApplied) {
                             tip += ' → A Price $' + Number(meta.sprc).toFixed(2);
                         }
+                        if (meta.lmpCapped) {
+                            tip += ' → LMP $' + Number(meta.sprc).toFixed(2);
+                        }
                         return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                             + Number(dilShown).toFixed(2) + '</span>';
                     },
@@ -2264,7 +2280,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. S PRC from Sprc Dil. Dil-matching Target GROI when BB L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. If that price < A Price, S PRC = A Price. Blue triangle = S PRC ≠ BB Price. Red text = S PRC ≥ LMP.",
+                    headerTooltip: "Not editable. S PRC from Sprc Dil. Dil-matching Target GROI when BB L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. If that price < A Price, S PRC = A Price, then cap at LMP. Blue triangle = S PRC ≠ BB Price. Red text = S PRC ≥ LMP.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {

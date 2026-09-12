@@ -18,9 +18,11 @@ use App\Models\AmazonDataView;
 use App\Models\LmpCompetitorHistory;
 use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Services\BestBuyApiService;
 use App\Support\MacysAmazonPriceCap;
 use App\Support\ProductMasterShipBb;
@@ -87,12 +89,8 @@ class BestBuyPricingController extends Controller
         $this->lmpSkuGroupService->prepareForSkus($skus);
 
         $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $bestbuyMetrics = BestbuyUsaProduct::whereIn('sku', $skus)->get()->keyBy('sku');
-        $priceDataCollection = BestbuyPriceData::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->get(['sku', 'price'])
-            ->keyBy(fn ($item) => strtoupper((string) $item->sku));
+        $bbFreshAfter = self::latestMcmFreshAfter();
+        $bestbuyMetrics = self::indexProductsByNormalizedSku(BestbuyUsaProduct::query()->get());
 
         $lmpDetailsLookup = collect();
         try {
@@ -116,11 +114,11 @@ class BestBuyPricingController extends Controller
                 continue;
             }
 
-            $priceData = $priceDataCollection[strtoupper($sku)] ?? null;
-            $bestbuyMetric = $bestbuyMetrics[$pm->sku] ?? $bestbuyMetrics->get($sku);
-            $price = $priceData
-                ? (float) ($priceData->price ?? 0)
-                : (float) ($bestbuyMetric->price ?? 0);
+            $bestbuyMetric = $bestbuyMetrics[self::normalizeOfferSku($sku)] ?? null;
+            $price = (float) (self::resolveListedPrice(
+                $bestbuyMetric,
+                self::productIsLiveOffer($bestbuyMetric, $bbFreshAfter)
+            )['price'] ?? 0);
             if (! ($price > 0)) {
                 continue;
             }
@@ -191,20 +189,8 @@ class BestBuyPricingController extends Controller
         // 3. Related Models
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-        $bestbuyMetrics = BestbuyUsaProduct::whereIn('sku', $skus)
-            ->get()
-            ->keyBy('sku');
-
-        // Fetch price data from BestbuyPriceData table
-        // Key by UPPERCASE sku because uploadPriceData() stores SKUs uppercased,
-        // while ProductMaster keeps original casing. Without this, mixed-case
-        // SKUs (e.g. "SS ECO 1PK BLK WoB") fail the lookup and fall back to
-        // the stale BestbuyUsaProduct price instead of the uploaded price.
-        $priceDataCollection = BestbuyPriceData::whereIn('sku', $skus)
-            ->get()
-            ->keyBy(function ($item) {
-                return strtoupper($item->sku);
-            });
+        $bbFreshAfter = self::latestMcmFreshAfter();
+        $bestbuyMetrics = self::indexProductsByNormalizedSku(BestbuyUsaProduct::query()->get());
 
         // Fetch Amazon pricing data
         $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -243,9 +229,8 @@ class BestBuyPricingController extends Controller
             $parent = $pm->parent;
 
             $shopify = $shopifyData->get($pm->sku);
-            $bestbuyMetric = $bestbuyMetrics[$pm->sku] ?? null;
+            $bestbuyMetric = $bestbuyMetrics[self::normalizeOfferSku((string) $pm->sku)] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
-            $priceData = $priceDataCollection[strtoupper($pm->sku)] ?? null;
             $amazon = $amazonData[$pm->sku] ?? null;
 
             $row = [];
@@ -256,13 +241,22 @@ class BestBuyPricingController extends Controller
             $row["INV"] = $shopify->inv ?? 0;
             $row["L30"] = $shopify->quantity ?? 0;
 
-            // Price: uploaded sheet first; if SKU not on sheet → bestbuy_usa_products.price (same as Tiendamia).
-            $row["BB L30"] = $bestbuyMetric->m_l30 ?? 0;
-            $row["BB Price"] = $priceData
-                ? floatval($priceData->price ?? 0)
-                : floatval($bestbuyMetric->price ?? 0);
-            $row["BB INV"] = $bestbuyMetric->stock ?? 0; // Marketplace inventory/stock for mapping
-            $row["Price Source"] = $priceData ? 'sheet' : (floatval($row["BB Price"]) > 0 ? 'product' : '');
+            // Listed price is only a live Best Buy MCM offer. Leftover Connect /
+            // uploaded-sheet prices are not listed — show 0.
+            $listingInactive = self::isListingMarkedInactive($listingStatus);
+            $resolvedPrice = self::resolveListedPrice(
+                $bestbuyMetric,
+                self::productIsLiveOffer($bestbuyMetric, $bbFreshAfter),
+                $listingInactive
+            );
+            $row["BB L30"] = $bestbuyMetric ? ($bestbuyMetric->m_l30 ?? 0) : 0;
+            $row["BB Price"] = $resolvedPrice['price'];
+            $row["BB INV"] = $resolvedPrice['listed'] && $bestbuyMetric && $bestbuyMetric->stock !== null
+                ? (int) $bestbuyMetric->stock
+                : 0;
+            $row["Price Source"] = $resolvedPrice['source'];
+            $row["is_missing_bb"] = $resolvedPrice['missing'];
+            $row["is_bb_inactive"] = $listingInactive;
             
             // Amazon Price
             $row["A Price"] = $amazon ? floatval($amazon->price ?? 0) : 0;
@@ -475,6 +469,208 @@ class BestBuyPricingController extends Controller
             "data" => $result,
             "status" => 200,
         ]);
+    }
+
+    /**
+     * @return array{listed: bool, price: float, source: string, missing: bool}
+     */
+    public static function resolveListedPrice($product, bool $inLatestMcm = true, bool $listingInactive = false): array
+    {
+        if ($listingInactive || ! $inLatestMcm) {
+            return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
+        }
+
+        if (is_object($product)) {
+            $status = strtolower(trim((string) ($product->listing_status ?? '')));
+            if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)) {
+                return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
+            }
+        }
+
+        $price = null;
+        if (is_object($product)) {
+            $raw = $product->price ?? null;
+            if ($raw !== null && $raw !== '') {
+                $price = floatval($raw);
+            }
+        } elseif (is_numeric($product)) {
+            $price = floatval($product);
+        }
+
+        if ($price === null || $price <= 0) {
+            return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
+        }
+
+        return [
+            'listed' => true,
+            'price' => $price,
+            'source' => 'BB MCM OF21 → bestbuy_usa_products.price',
+            'missing' => false,
+        ];
+    }
+
+    public static function latestMcmFreshAfter(): ?Carbon
+    {
+        $last = BestbuyUsaProduct::query()->max('updated_at');
+        if (! $last) {
+            return null;
+        }
+
+        return Carbon::parse($last)->subMinutes(15);
+    }
+
+    public static function normalizeOfferSku(string $value): string
+    {
+        $v = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', $value);
+
+        return strtoupper(preg_replace('/\s+/u', ' ', trim($v)) ?? '');
+    }
+
+    /**
+     * @param  iterable<BestbuyUsaProduct>  $products
+     * @return array<string, BestbuyUsaProduct>
+     */
+    public static function indexProductsByNormalizedSku(iterable $products): array
+    {
+        $grouped = [];
+        foreach ($products as $product) {
+            $norm = self::normalizeOfferSku((string) $product->sku);
+            if ($norm === '') {
+                continue;
+            }
+            $grouped[$norm][] = $product;
+        }
+
+        $freshAfter = self::latestMcmFreshAfter();
+        $out = [];
+        foreach ($grouped as $norm => $rows) {
+            $preferred = self::preferredProduct($rows, $freshAfter);
+            if ($preferred) {
+                $out[$norm] = $preferred;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<BestbuyUsaProduct>  $rows
+     */
+    public static function preferredProduct(array $rows, ?Carbon $freshAfter = null): ?BestbuyUsaProduct
+    {
+        if ($rows === []) {
+            return null;
+        }
+
+        $live = [];
+        foreach ($rows as $row) {
+            if (self::productIsLiveOffer($row, $freshAfter)) {
+                $live[] = $row;
+            }
+        }
+
+        $pool = $live !== [] ? $live : $rows;
+        usort($pool, static function (BestbuyUsaProduct $a, BestbuyUsaProduct $b): int {
+            return ($b->updated_at?->timestamp ?? 0) <=> ($a->updated_at?->timestamp ?? 0);
+        });
+
+        return $pool[0] ?? null;
+    }
+
+    public static function findProductBySku(string $sku): ?BestbuyUsaProduct
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $norm = self::normalizeOfferSku($sku);
+        $matches = [];
+        foreach (BestbuyUsaProduct::query()->get() as $product) {
+            if (self::normalizeOfferSku((string) $product->sku) === $norm) {
+                $matches[] = $product;
+            }
+        }
+
+        return self::preferredProduct($matches, self::latestMcmFreshAfter());
+    }
+
+    /**
+     * listing_status=active only counts when the row was written by the latest OF21 pull.
+     */
+    public static function productIsLiveOffer(?BestbuyUsaProduct $product, ?Carbon $freshAfter = null): bool
+    {
+        if (! $product) {
+            return false;
+        }
+
+        $status = strtolower(trim((string) ($product->listing_status ?? '')));
+        if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)) {
+            return false;
+        }
+        if ((float) ($product->price ?? 0) <= 0) {
+            return false;
+        }
+
+        $inLatestPull = true;
+        if ($freshAfter && $product->updated_at) {
+            $inLatestPull = $product->updated_at->gte($freshAfter);
+        }
+
+        if ($status === 'active') {
+            return $inLatestPull;
+        }
+
+        return $inLatestPull && (int) ($product->stock ?? 0) > 0;
+    }
+
+    public static function isListingMarkedInactive($listingStatus): bool
+    {
+        if (! $listingStatus) {
+            return false;
+        }
+        $value = is_object($listingStatus)
+            ? ($listingStatus->value ?? null)
+            : $listingStatus;
+        if (is_string($value)) {
+            $value = json_decode($value, true);
+        }
+        if (! is_array($value)) {
+            return false;
+        }
+        $flag = strtolower(trim((string) ($value['live_inactive'] ?? '')));
+
+        return in_array($flag, ['inactive', 'offline', 'ended', 'disabled'], true);
+    }
+
+    public static function pricePushBlockReason(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return 'SKU required';
+        }
+
+        $listing = null;
+        if (Schema::hasTable('bestbuy_usa_listing_statuses')) {
+            $listing = BestbuyUSAListingStatus::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->first();
+        }
+        if (self::isListingMarkedInactive($listing)) {
+            return 'Inactive listing — price push skipped';
+        }
+
+        $product = self::findProductBySku($sku);
+        $resolved = self::resolveListedPrice(
+            $product,
+            self::productIsLiveOffer($product, self::latestMcmFreshAfter()),
+            false
+        );
+        if (! $resolved['listed']) {
+            return 'SKU is not listed on Best Buy MCM — price push skipped';
+        }
+
+        return null;
     }
 
     public function saveNrToDatabase(Request $request)
@@ -1000,6 +1196,11 @@ class BestBuyPricingController extends Controller
         $sprice = MacysAmazonPriceCap::capForSku($sku, $sprice);
         if ($sprice <= 0) {
             return ['success' => false, 'message' => 'Skipping push for non-positive price'];
+        }
+
+        $block = self::pricePushBlockReason($sku);
+        if ($block !== null) {
+            return ['success' => false, 'message' => $block];
         }
 
         try {
