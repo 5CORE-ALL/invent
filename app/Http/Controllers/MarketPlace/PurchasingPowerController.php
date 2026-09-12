@@ -14,6 +14,7 @@ use App\Models\PurchasingPowerSale;
 use App\Models\ShopifySku;
 use App\Services\ChannelPromoPricingService;
 use App\Services\PurchasingPowerApiService;
+use App\Support\MacysAmazonPriceCap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -763,13 +764,21 @@ class PurchasingPowerController extends Controller
             return response()->json(['success' => false, 'message' => 'SKU and price required'], 422);
         }
 
-        $result = $this->pushPriceToPurchasingPower($sku, (float) $price);
+        $applied = MacysAmazonPriceCap::applyForSku($sku, (float) $price);
+        $price = (float) $applied['price'];
+        $result = $this->pushPriceToPurchasingPower($sku, $price);
+        $message = (string) ($result['message'] ?? '');
+        if (($result['success'] ?? false) && ($applied['capped'] ?? false)) {
+            $message = trim($message.' (raised to Amazon $'.number_format($price, 2).')');
+        }
 
         return response()->json([
             'success' => (bool) ($result['success'] ?? false),
-            'message' => (string) ($result['message'] ?? ''),
+            'message' => $message,
             'status_code' => $result['status_code'] ?? null,
-            'price' => (float) $price,
+            'price' => $price,
+            'amazon_price' => $applied['amazon_price'] ?? null,
+            'capped' => (bool) ($applied['capped'] ?? false),
             'push_status' => (($result['success'] ?? false) === true) ? 'pushed' : 'error',
         ], ($result['success'] ?? false) ? 200 : 422);
     }

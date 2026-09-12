@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AmazonDatasheet;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\MacysPriceData;
 use App\Models\MarketplacePercentage;
@@ -11,15 +12,17 @@ use App\Models\PurchasingPowerProduct;
 use App\Models\PurchasingPowerSale;
 use App\Models\ShopifySku;
 use App\Support\AmazonDilGroiRule;
+use App\Support\MacysAmazonPriceCap;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
- * Wipe stale SPRICE, write Sprc Dil, then push listed price via MCM PRI01.
+ * Wipe stale SPRICE, write Sprc Dil (A Price floor), then push listed price via MCM PRI01.
  * Dil = (OV L30 / INV) × 100. Ship is excluded.
  * 0 Sold (PP L30 = 0) uses min Target GROI. Sold + out of box has no Dil SPRICE.
+ * If that Dil / min-ROI price is below A Price, SPRICE = A Price.
  */
 class PurchasingPowerRuleSpriceApplyService
 {
@@ -189,7 +192,10 @@ class PurchasingPowerRuleSpriceApplyService
             return null;
         }
 
-        return ['sprice' => $raw];
+        $amz = round((float) ($row['amz'] ?? 0), 2);
+        $sprice = ($amz > 0 && $raw < $amz) ? $amz : $raw;
+
+        return ['sprice' => round($sprice, 2)];
     }
 
     /**
@@ -266,6 +272,14 @@ class PurchasingPowerRuleSpriceApplyService
             }
         }
 
+        $amzBySku = [];
+        if (Schema::hasTable('amazon_datsheets')) {
+            $amzBySku = AmazonDatasheet::query()
+                ->whereIn('sku', $lookup)
+                ->get(['sku', 'price'])
+                ->keyBy(static fn ($r) => strtoupper(trim((string) $r->sku)));
+        }
+
         $out = [];
         foreach ($skus as $sku) {
             $master = $masters[$sku] ?? null;
@@ -310,6 +324,7 @@ class PurchasingPowerRuleSpriceApplyService
                 'pp_l30' => $ppL30,
                 'pp_price' => $ppPrice,
                 'lp' => $lp,
+                'amz' => isset($amzBySku[$sku]) ? (float) ($amzBySku[$sku]->price ?? 0) : 0.0,
                 'listed' => $pp !== null,
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
             ];
@@ -374,6 +389,7 @@ class PurchasingPowerRuleSpriceApplyService
 
     protected function pushPrice(string $sku, float $sprice): bool
     {
+        $sprice = MacysAmazonPriceCap::capForSku($sku, $sprice);
         try {
             $result = $this->ppApi->updatePrice($sku, $sprice);
             if (($result['success'] ?? false) === true) {

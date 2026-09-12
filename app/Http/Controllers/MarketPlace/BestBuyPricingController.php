@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\BestBuyApiService;
+use App\Support\MacysAmazonPriceCap;
 use App\Support\ProductMasterShipBb;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use App\Models\AmazonChannelSummary;
@@ -812,6 +813,9 @@ class BestBuyPricingController extends Controller
             foreach ($updates as $update) {
                 $sku = strtoupper(trim($update['sku'] ?? ''));
                 $sprice = floatval($update['sprice'] ?? 0);
+                if ($sprice > 0) {
+                    $sprice = MacysAmazonPriceCap::capForSku($sku, $sprice);
+                }
                 
                 if (empty($sku)) {
                     $errors[] = "Invalid SKU";
@@ -993,6 +997,7 @@ class BestBuyPricingController extends Controller
      */
     private function pushPriceToBestBuy(string $sku, float $sprice): array
     {
+        $sprice = MacysAmazonPriceCap::capForSku($sku, $sprice);
         if ($sprice <= 0) {
             return ['success' => false, 'message' => 'Skipping push for non-positive price'];
         }

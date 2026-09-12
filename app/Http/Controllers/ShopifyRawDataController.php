@@ -57,7 +57,7 @@ class ShopifyRawDataController extends Controller
      * Skips rows whose source_name or tags match any excluded marketplace,
      * and skips rows whose SKU contains "XYZ".
      */
-    private function applyExclusions($query)
+    public static function applyDirectExclusions($query)
     {
         foreach (self::EXCLUDE_SOURCES as $term) {
             $query->whereRaw('LOWER(COALESCE(source_name,"")) NOT LIKE ?', ['%' . strtolower($term) . '%'])
@@ -67,6 +67,11 @@ class ShopifyRawDataController extends Controller
         $query->where('sku', 'NOT LIKE', '%XYZ%');
 
         return $query;
+    }
+
+    private function applyExclusions($query)
+    {
+        return self::applyDirectExclusions($query);
     }
 
     private function baseQuery(Carbon $dateFrom, Carbon $dateTo, bool $withExclusions = true)

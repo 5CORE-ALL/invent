@@ -8736,13 +8736,22 @@ class CvrMasterController extends Controller
      */
     private function pushToBestBuy($sku, $price)
     {
+        $applied = MacysAmazonPriceCap::applyForSku((string) $sku, (float) $price);
+        $price = (float) $applied['price'];
         try {
             $result = app(BestBuyApiService::class)->updatePrice($sku, $price);
             if (!empty($result['success'])) {
                 $this->savePricePushStatus($sku, 'bestbuy', 'pushed', $price);
+                $message = $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to BestBuy for SKU: $sku");
+                if ($applied['capped']) {
+                    $message .= ' (raised to Amazon $' . number_format($price, 2) . ')';
+                }
                 return response()->json([
                     'success' => true,
-                    'message' => $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to BestBuy for SKU: $sku"),
+                    'message' => $message,
+                    'price' => $price,
+                    'capped' => $applied['capped'],
+                    'amazon_price' => $applied['amazon_price'],
                     'result' => $result,
                 ]);
             }
@@ -8750,6 +8759,9 @@ class CvrMasterController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $result['message'] ?? 'Failed to push price to BestBuy',
+                'price' => $price,
+                'capped' => $applied['capped'],
+                'amazon_price' => $applied['amazon_price'],
             ], 400);
         } catch (\Exception $e) {
             $this->savePricePushStatus($sku, 'bestbuy', 'error', $price);
@@ -8808,13 +8820,22 @@ class CvrMasterController extends Controller
      */
     private function pushToPurchasingPower($sku, $price)
     {
+        $applied = MacysAmazonPriceCap::applyForSku((string) $sku, (float) $price);
+        $price = (float) $applied['price'];
         try {
             $result = app(PurchasingPowerApiService::class)->updatePrice($sku, $price);
             if (!empty($result['success'])) {
                 $this->savePricePushStatus($sku, 'ppower', 'pushed', $price);
+                $message = $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to PPower for SKU: $sku");
+                if ($applied['capped']) {
+                    $message .= ' (raised to Amazon $' . number_format($price, 2) . ')';
+                }
                 return response()->json([
                     'success' => true,
-                    'message' => $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to PPower for SKU: $sku"),
+                    'message' => $message,
+                    'price' => $price,
+                    'capped' => $applied['capped'],
+                    'amazon_price' => $applied['amazon_price'],
                     'result' => $result,
                 ]);
             }
@@ -8822,6 +8843,9 @@ class CvrMasterController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $result['message'] ?? 'Failed to push price to Purchasing Power',
+                'price' => $price,
+                'capped' => $applied['capped'],
+                'amazon_price' => $applied['amazon_price'],
             ], 400);
         } catch (\Exception $e) {
             $this->savePricePushStatus($sku, 'ppower', 'error', $price);

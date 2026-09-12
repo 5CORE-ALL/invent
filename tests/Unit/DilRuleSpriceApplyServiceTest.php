@@ -171,6 +171,40 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
     }
 
+    public function test_bestbuy_raises_to_amz_floor(): void
+    {
+        $out = $this->compute('bestbuy', [
+            'inv' => 10,
+            'dil' => 3,
+            'ov_l30' => 2,
+            'cvr' => 8,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 0,
+            'amz_price' => 45,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(45.0, $out['sprice'], 0.01);
+    }
+
+    public function test_bestbuy_keeps_dil_when_at_or_above_amz(): void
+    {
+        $out = $this->compute('bestbuy', [
+            'inv' => 10,
+            'dil' => 3,
+            'ov_l30' => 2,
+            'cvr' => 8,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 0,
+            'amz_price' => 30,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(37.50, $out['sprice'], 0.01);
+    }
+
     public function test_newegg_raises_to_amz_floor(): void
     {
         $out = $this->compute('newegg', [

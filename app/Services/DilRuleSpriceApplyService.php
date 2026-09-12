@@ -61,7 +61,7 @@ use Throwable;
  * Temu 2/3 and AliExpress). Temu 1 0 Sold uses temu_orders L30 (same as
  * /temu1-data), not temu_metrics.quantity_purchased_l30. Dil stays Shopify
  * OV L30. CVR overlay where the page uses it, ship excluded on
- * Wayfair / Faire / TopDawg / FB, Newegg Amz floor, LMP cap at SGROI ≥ 20%.
+ * Wayfair / Faire / TopDawg / FB, Newegg / Best Buy Amz floor, LMP cap at SGROI ≥ 20%.
  * AliExpress only: SKU Dil; out of slab → Std then LMP if Std > LMP; Stop < N% skips.
  */
 class DilRuleSpriceApplyService
@@ -1142,6 +1142,7 @@ class DilRuleSpriceApplyService
                 'view' => BestbuyUSADataView::class,
                 'price' => 'price',
                 'l30' => 'm_l30',
+                'amz_floor' => true,
             ],
             'aliexpress' => [
                 'metric' => AliexpressMetric::class,

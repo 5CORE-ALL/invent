@@ -22,6 +22,14 @@
         .tabulator .tabulator-header .tabulator-col { height: 80px !important; }
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title { padding-right: 0px !important; }
         .tabulator-paginator label { margin-right: 5px; }
+        .pp-sprice-amz-lbl {
+            color: #fd7e14;
+            font-weight: 800;
+            font-size: 10px;
+            line-height: 1;
+            margin-left: 3px;
+            cursor: help;
+        }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'purchasing_power'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'purchasing_power'])
     </style>
@@ -206,6 +214,10 @@
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        <span class="badge fs-6 p-2" id="pp-amz-cap-badge"
+                            style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Amz: Dil S PRC was below A Price and was raised to Amz. Click to filter. Click again to clear."
+                            aria-label="S PRC raised to Amazon">Amz 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'purchasingpower-price-gt-lmp-badge', 'pglChannelKey' => 'purchasingpower', 'pglPriceField' => 'PP Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'purchasingpower-price-lt80-lmp-badge', 'pltChannelKey' => 'purchasingpower', 'pltPriceField' => 'PP Price'])
                     </div>
@@ -873,17 +885,15 @@
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
         let blueTriangleFilterActive = false;
+        let amzCapFilterActive = false;
 
         function ppIsParentRow(d) {
             return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
         }
         function ppPushPriceValue(d) {
-            let p = ppRowSpriceForAlert(d);
+            let p = ppDisplayedSprice(d);
             if (typeof chPromoFinalSpriceToSave === 'function' && p > 0) {
                 p = Number(chPromoFinalSpriceToSave(d, p)) || p;
-            } else if (window.SpriceLmpCap && p > 0) {
-                const cap = SpriceLmpCap.apply(d, p);
-                if (cap && cap.shown > 0) p = cap.shown;
             }
             return Math.round((Number(p) || 0) * 100) / 100;
         }
@@ -968,13 +978,57 @@
                 showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Purchasing Power price push failed', 'error');
             });
         }
-        function ppRowSpriceForAlert(data) {
-            let sprice = parseFloat(data && data.SPRICE) || 0;
-            if (typeof chPromoLiveSprice === 'function' && !ppIsParentRow(data)) {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) sprice = calc;
+        function ppAmazonPrice(data) {
+            return Math.round((Number(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0) * 100) / 100;
+        }
+        function ppApplyAmzFloor(data, sprice) {
+            const s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
+            const amz = ppAmazonPrice(data);
+            if (s > 0 && amz > 0 && s < amz - 0.0001) return amz;
+            return s > 0 ? s : 0;
+        }
+        function ppUncappedDil(data) {
+            if (data && !ppIsParentRow(data) && typeof ebayDilGroiMetaForRow === 'function') {
+                const meta = ebayDilGroiMetaForRow(data);
+                const raw = Number(meta && meta.rawSprc);
+                if (raw > 0) return Math.round(raw * 100) / 100;
             }
-            return sprice;
+            if (typeof ebaySprcDilForRow === 'function' && data && !ppIsParentRow(data)) {
+                const dil = Number(ebaySprcDilForRow(data));
+                if (dil > 0) return Math.round(dil * 100) / 100;
+            }
+            return 0;
+        }
+        function ppDisplayedSprice(data) {
+            if (!data || ppIsParentRow(data)) return 0;
+            let value = 0;
+            if (typeof ebaySprcDilForRow === 'function') {
+                value = Number(ebaySprcDilForRow(data)) || 0;
+            }
+            if (!(value > 0) && typeof chPromoLiveSprice === 'function') {
+                value = Number(chPromoLiveSprice(data)) || 0;
+            }
+            if (!(value > 0)) value = parseFloat(data.SPRICE) || 0;
+            if (!(value > 0)) return 0;
+            if (typeof chPromoCapSpriceToLmp === 'function') {
+                value = Number(chPromoCapSpriceToLmp(data, value)) || value;
+            } else if (window.SpriceLmpCap) {
+                const cap = SpriceLmpCap.apply(data, value);
+                if (cap && cap.shown > 0) value = cap.shown;
+            }
+            return ppApplyAmzFloor(data, value);
+        }
+        window.ppDisplayedSprice = ppDisplayedSprice;
+        function ppRowSpriceForAlert(data) {
+            return ppDisplayedSprice(data);
+        }
+        function ppHasAmzCap(data) {
+            if (ppIsParentRow(data)) return false;
+            const discounted = ppUncappedDil(data);
+            const amz = ppAmazonPrice(data);
+            if (!(discounted > 0) || !(amz > 0) || discounted >= amz - 0.0001) return false;
+            const shown = ppDisplayedSprice(data);
+            return shown > 0 && Math.abs(shown - amz) <= 0.015;
         }
         function ppHasBlueTriangle(data) {
             if (ppIsParentRow(data)) return false;
@@ -986,6 +1040,10 @@
             $('#pp-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+            $('#pp-amz-cap-badge').css({
+                outline: amzCapFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: amzCapFilterActive ? '2px' : ''
             });
         }
 
@@ -1435,34 +1493,34 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: 'S PRC from Dil → Target GROI% slabs. 0 Sold (PP L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100)) / margin. Ship not used.',
+                    headerTooltip: 'S PRC from Dil → Target GROI% slabs. 0 Sold (PP L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100)) / margin. Ship not used. If that S PRC < A Price, S PRC = A Price.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (ppIsParentRow(rowData)) return '';
                         if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                         const meta = ebayDilGroiMetaForRow(rowData);
                         if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                        const dilShown = (meta.rawSprc > 0) ? meta.rawSprc : meta.sprc;
+                        let tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                             + ' → ' + meta.label
                             + ' → GROI ' + meta.groi + '%'
-                            + ' → $' + meta.sprc.toFixed(2);
+                            + ' → $' + Number(dilShown).toFixed(2);
+                        if (meta.amzApplied) {
+                            tip += ' → A Price $' + Number(meta.sprc).toFixed(2);
+                        }
                         return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + meta.sprc.toFixed(2) + '</span>';
+                            + Number(dilShown).toFixed(2) + '</span>';
                     },
                     width: 78
                 },
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center',
-                    editable: false, sorter: 'number', width: 92,
-                    headerTooltip: 'S PRC from Sprc Dil. Dil-matching Target GROI when PP L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
+                    editable: false, sorter: 'number', width: 110,
+                    headerTooltip: 'S PRC from Sprc Dil. Dil-matching Target GROI when PP L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). If that price < A Price, S PRC = A Price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';
-                        let value = parseFloat(cell.getValue() || 0);
-                        if (typeof chPromoLiveSprice === 'function') {
-                            const calc = chPromoLiveSprice(d);
-                            if (calc > 0) value = calc;
-                        }
+                        let value = ppDisplayedSprice(d);
                         let bg = '';
                         if (d.SPRICE_STATUS === 'pushed') bg = 'background-color:#fff3cd;';
                         else if (d.SPRICE_STATUS === 'applied') bg = 'background-color:#d4edda;';
@@ -1472,18 +1530,22 @@
                         const live = parseFloat(d['PP Price']) || 0;
                         const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
                         const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
-                        if (cap && cap.shown > 0) value = cap.shown;
                         const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                         const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         const formatted = '$' + value.toFixed(2);
                         const priceHtml = overLmp
                             ? `<span style="color:#dc3545;font-weight:600;${bg}padding:2px 6px;border-radius:3px;">${formatted}</span>`
                             : `<span style="font-weight:600;${bg}padding:2px 6px;border-radius:3px;">${formatted}</span>`;
+                        const amz = ppAmazonPrice(d);
+                        const amzLbl = ppHasAmzCap(d)
+                            ? '<span class="pp-sprice-amz-lbl" title="S PRC raised to Amazon $'
+                                + Number(amz).toFixed(2) + '">Amz</span>'
+                            : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
                     }
                 },
                 {
@@ -1492,7 +1554,7 @@
                     hozAlign: 'center',
                     headerSort: true,
                     width: 52,
-                    headerTooltip: 'Price push status. Double tick = pushed to Purchasing Power. Cross = failed. Click to push or retry.',
+                    headerTooltip: 'Price push status. Double tick = pushed to Purchasing Power. Cross = failed. Click to push or retry. If S PRC is below A Price, push uses A Price.',
                     sorter: function(a, b, aRow, bRow) {
                         const rank = function(d) {
                             const status = String((d && (d.push_status || d.SPRICE_STATUS)) || '');
@@ -1785,6 +1847,11 @@
                     return ppHasBlueTriangle(data);
                 });
             }
+            if (amzCapFilterActive) {
+                table.addFilter(function(data) {
+                    return ppHasAmzCap(data);
+                });
+            }
 
             updateSummary();
         }
@@ -1795,7 +1862,10 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
-                    if (on) blueTriangleFilterActive = false;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        amzCapFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
@@ -1806,7 +1876,10 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                    if (on) blueTriangleFilterActive = false;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        amzCapFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
@@ -1816,6 +1889,16 @@
             if (blueTriangleFilterActive) {
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
+                amzCapFilterActive = false;
+            }
+            applyFilters();
+        });
+        $('#pp-amz-cap-badge').on('click', function() {
+            amzCapFilterActive = !amzCapFilterActive;
+            if (amzCapFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+                blueTriangleFilterActive = false;
             }
             applyFilters();
         });
@@ -1889,12 +1972,15 @@
                 }
             }
             let blueTriangleCount = 0;
+            let amzCapCount = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (ppHasBlueTriangle(row)) blueTriangleCount++;
+                if (ppHasAmzCap(row)) amzCapCount++;
             });
             $('#pp-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
+            $('#pp-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
             if (typeof syncPpTriangleBadgeState === 'function') syncPpTriangleBadgeState();
         }
 

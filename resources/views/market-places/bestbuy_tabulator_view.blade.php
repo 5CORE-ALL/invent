@@ -80,6 +80,14 @@
             margin-left: 4px;
             cursor: help;
         }
+        .bestbuy-sprice-amz-lbl {
+            color: #fd7e14;
+            font-weight: 800;
+            font-size: 10px;
+            line-height: 1;
+            margin-left: 3px;
+            cursor: help;
+        }
     </style>
 @endsection
 
@@ -110,6 +118,10 @@
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ BB Price. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        <span class="badge fs-6 p-2" id="bestbuy-amz-cap-badge"
+                            style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Amz: Dil S PRC was below A Price and was raised to Amz. Click to filter. Click again to clear."
+                            aria-label="S PRC raised to Amazon">Amz 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz</span>
@@ -462,6 +474,7 @@
     let selectedSkus = new Set();
     let priceGtLmpFilterActive = false;
     let blueTriangleFilterActive = false;
+    let amzCapFilterActive = false;
 
     function isBestbuyParentRow(row) {
         if (!row) return false;
@@ -469,18 +482,58 @@
         if (row.Parent && String(row.Parent).startsWith('PARENT')) return true;
         return false;
     }
-    function bestbuyDisplayedSprice(data) {
-        let sprice = parseFloat(data && data.SPRICE) || 0;
-        if (typeof chPromoLiveSprice === 'function' && !isBestbuyParentRow(data)) {
-            const calc = chPromoLiveSprice(data);
-            if (calc > 0) sprice = calc;
+    function bestbuyAmazonPrice(data) {
+        return Math.round((Number(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0) * 100) / 100;
+    }
+    function bestbuyApplyAmzFloor(data, sprice) {
+        const s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
+        const amz = bestbuyAmazonPrice(data);
+        if (s > 0 && amz > 0 && s < amz - 0.0001) return amz;
+        return s > 0 ? s : 0;
+    }
+    function bestbuyUncappedDil(data) {
+        if (data && !isBestbuyParentRow(data) && typeof ebayDilGroiMetaForRow === 'function') {
+            const meta = ebayDilGroiMetaForRow(data);
+            const raw = Number(meta && meta.rawSprc);
+            if (raw > 0) return Math.round(raw * 100) / 100;
         }
-        return sprice;
+        if (typeof ebaySprcDilForRow === 'function' && data && !isBestbuyParentRow(data)) {
+            const dil = Number(ebaySprcDilForRow(data));
+            if (dil > 0) return Math.round(dil * 100) / 100;
+        }
+        return 0;
+    }
+    function bestbuyDisplayedSprice(data) {
+        if (!data || isBestbuyParentRow(data)) return 0;
+        let value = 0;
+        if (typeof ebaySprcDilForRow === 'function') {
+            value = Number(ebaySprcDilForRow(data)) || 0;
+        }
+        if (!(value > 0) && typeof chPromoLiveSprice === 'function') {
+            value = Number(chPromoLiveSprice(data)) || 0;
+        }
+        if (!(value > 0)) value = parseFloat(data.SPRICE) || 0;
+        if (!(value > 0)) return 0;
+        if (typeof chPromoCapSpriceToLmp === 'function') {
+            value = Number(chPromoCapSpriceToLmp(data, value)) || value;
+        } else if (window.SpriceLmpCap) {
+            const cap = SpriceLmpCap.apply(data, value);
+            if (cap && cap.shown > 0) value = cap.shown;
+        }
+        return bestbuyApplyAmzFloor(data, value);
     }
     function bestbuyRowSpriceForAlert(data) {
         return bestbuyDisplayedSprice(data);
     }
     window.bestbuyDisplayedSprice = bestbuyDisplayedSprice;
+    function bestbuyHasAmzCap(data) {
+        if (isBestbuyParentRow(data)) return false;
+        const discounted = bestbuyUncappedDil(data);
+        const amz = bestbuyAmazonPrice(data);
+        if (!(discounted > 0) || !(amz > 0) || discounted >= amz - 0.0001) return false;
+        const shown = bestbuyDisplayedSprice(data);
+        return shown > 0 && Math.abs(shown - amz) <= 0.015;
+    }
     function bestbuyHasBlueTriangle(data) {
         if (isBestbuyParentRow(data)) return false;
         const sprice = bestbuyRowSpriceForAlert(data);
@@ -491,6 +544,10 @@
         $('#bestbuy-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
             outlineOffset: blueTriangleFilterActive ? '2px' : ''
+        });
+        $('#bestbuy-amz-cap-badge').css({
+            outline: amzCapFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: amzCapFilterActive ? '2px' : ''
         });
     }
 
@@ -2183,19 +2240,23 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (BB L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                    headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (BB L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin. If that S PRC < A Price, S PRC = A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isBestbuyParentRow === 'function' && isBestbuyParentRow(rowData)) return '';
                         if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                         const meta = ebayDilGroiMetaForRow(rowData);
                         if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                        const dilShown = (meta.rawSprc > 0) ? meta.rawSprc : meta.sprc;
+                        let tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                             + ' → ' + meta.label
                             + ' → GROI ' + meta.groi + '%'
-                            + ' → $' + meta.sprc.toFixed(2);
+                            + ' → $' + Number(dilShown).toFixed(2);
+                        if (meta.amzApplied) {
+                            tip += ' → A Price $' + Number(meta.sprc).toFixed(2);
+                        }
                         return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + meta.sprc.toFixed(2) + '</span>';
+                            + Number(dilShown).toFixed(2) + '</span>';
                     },
                     width: 78
                 },
@@ -2203,17 +2264,13 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. S PRC from Sprc Dil. Dil-matching Target GROI when BB L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ BB Price. Red text = S PRC ≥ LMP.",
+                    headerTooltip: "Not editable. S PRC from Sprc Dil. Dil-matching Target GROI when BB L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. If that price < A Price, S PRC = A Price. Blue triangle = S PRC ≠ BB Price. Red text = S PRC ≥ LMP.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isBestbuyParentRow(rowData)) return '';
-                        let value = parseFloat(cell.getValue() || 0);
-                        if (typeof chPromoLiveSprice === 'function') {
-                            const calc = chPromoLiveSprice(rowData);
-                            if (calc > 0) value = calc;
-                        }
+                        let value = bestbuyDisplayedSprice(rowData);
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData['BB Price']) || 0;
@@ -2227,20 +2284,24 @@
 
                         if (!(value > 0)) return '';
                         const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                        if (cap && cap.shown > 0) value = cap.shown;
                         const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                         const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         const formatted = '$' + value.toFixed(2);
                         const priceHtml = overLmp
                             ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
                             : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
+                        const amz = bestbuyAmazonPrice(rowData);
+                        const amzLbl = bestbuyHasAmzCap(rowData)
+                            ? '<span class="bestbuy-sprice-amz-lbl" title="S PRC raised to Amazon $'
+                                + Number(amz).toFixed(2) + '">Amz</span>'
+                            : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ BB Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
                     },
-                    width: 96
+                    width: 110
                 },
                 {
                     title: "SROI",
@@ -2540,6 +2601,11 @@
                     return bestbuyHasBlueTriangle(data);
                 });
             }
+            if (amzCapFilterActive) {
+                table.addFilter(function(data) {
+                    return bestbuyHasAmzCap(data);
+                });
+            }
 
             updateSummary();
         }
@@ -2550,7 +2616,10 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
-                    if (on) blueTriangleFilterActive = false;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        amzCapFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
@@ -2564,6 +2633,18 @@
             blueTriangleFilterActive = !blueTriangleFilterActive;
             if (blueTriangleFilterActive) {
                 priceGtLmpFilterActive = false;
+                amzCapFilterActive = false;
+                if (window.PriceGtLmpBadge) {
+                    PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), false);
+                }
+            }
+            applyFilters();
+        });
+        $('#bestbuy-amz-cap-badge').on('click', function() {
+            amzCapFilterActive = !amzCapFilterActive;
+            if (amzCapFilterActive) {
+                priceGtLmpFilterActive = false;
+                blueTriangleFilterActive = false;
                 if (window.PriceGtLmpBadge) {
                     PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), false);
                 }
@@ -2654,12 +2735,15 @@
                 PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), priceGtLmpFilterActive);
             }
             let blueTriangleCount = 0;
+            let amzCapCount = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (bestbuyHasBlueTriangle(row)) blueTriangleCount++;
+                if (bestbuyHasAmzCap(row)) amzCapCount++;
             });
             $('#bestbuy-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
+            $('#bestbuy-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
             if (typeof syncBestbuyTriangleBadgeState === 'function') syncBestbuyTriangleBadgeState();
             $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
             $('#missing-badge').text(`Miss: ${missingCount}`);

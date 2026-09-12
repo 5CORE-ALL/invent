@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\ShopifyRawDataController;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -11,60 +12,67 @@ class GenerateMovementAnalysis extends Command
 {
     protected $signature = 'movement:generate';
 
-    protected $description = 'Generate and insert movement_analysis data from shopify_order_items';
+    protected $description = 'Generate movement_analysis from /shopify sales (shopify_raw_orders)';
 
     public function handle()
     {
         try {
-            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
-                DB::connection('apicentral')->getPdo();
-                $this->info("✓ Database connections OK");
-                // Immediately disconnect after check to prevent connection buildup
+                $this->info("✓ Database connection OK");
                 DB::connection()->disconnect();
-                DB::connection('apicentral')->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
             }
 
-            $now = Carbon::now();
+            if (! Schema::hasTable('shopify_raw_orders')) {
+                $this->error('✗ shopify_raw_orders table missing.');
+                return 1;
+            }
 
-            // Use last 12 months of order data (inclusive of current month) so we get May, Jun, Jul, Aug, Sep, Oct etc.
+            // Same Pacific calendar as /shopify; last 12 months inclusive of current month.
+            $now = Carbon::now('America/Los_Angeles');
             $startDate = $now->copy()->subMonths(11)->startOfMonth();
             $endDate = $now->copy()->endOfMonth();
+            $start = $startDate->toDateString();
+            $end = $endDate->toDateString();
 
-            $orderData = DB::connection('apicentral')->table('shopify_order_items')
+            $orderQuery = DB::table('shopify_raw_orders')
                 ->selectRaw('
                     DATE_FORMAT(order_date, "%b") as month,
                     sku,
                     SUM(quantity) as total_qty
                 ')
-                ->whereBetween('order_date', [$startDate, $endDate])
+                ->whereBetween('order_date', [$start, $end])
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '');
+            ShopifyRawDataController::applyDirectExclusions($orderQuery);
+            $orderData = $orderQuery
                 ->groupBy('month', 'sku')
                 ->orderBy('sku')
                 ->get();
 
-            // SKU-wise order count per (year, month) for sku_monthly_orders table
-            $monthlyOrderData = DB::connection('apicentral')->table('shopify_order_items')
+            $monthlyOrderQuery = DB::table('shopify_raw_orders')
                 ->selectRaw('
                     sku,
                     YEAR(order_date) as year,
                     MONTH(order_date) as month,
                     SUM(quantity) as order_count
                 ')
-                ->whereBetween('order_date', [$startDate, $endDate])
+                ->whereBetween('order_date', [$start, $end])
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '');
+            ShopifyRawDataController::applyDirectExclusions($monthlyOrderQuery);
+            $monthlyOrderData = $monthlyOrderQuery
                 ->groupBy('sku', 'year', 'month')
                 ->orderBy('sku')
                 ->orderBy('year')
                 ->orderBy('month')
                 ->get();
-            
-            DB::connection('apicentral')->disconnect();
 
             if ($orderData->isEmpty()) {
-                $this->warn('⚠️ No data found in shopify_order_items for the given range.');
+                $this->warn('⚠️ No data found in shopify_raw_orders for the given range.');
                 DB::connection()->disconnect();
                 return 0;
             }
@@ -96,39 +104,63 @@ class GenerateMovementAnalysis extends Command
                 return 0;
             }
 
-            // Process in chunks to avoid too many connections
+            $this->restoreAutoIncrement('movement_analysis');
+            if (Schema::hasTable('sku_monthly_orders')) {
+                $this->restoreAutoIncrement('sku_monthly_orders');
+            }
+
+            $movementNeedsId = $this->needsExplicitId('movement_analysis');
+            $nextMovementId = $movementNeedsId
+                ? ((int) DB::table('movement_analysis')->max('id') + 1)
+                : null;
+
             $chunks = array_chunk($grouped, 100, true);
             foreach ($chunks as $chunk) {
                 foreach ($chunk as $sku => $months) {
-                    DB::table('movement_analysis')->updateOrInsert(
-                        ['sku' => $sku],
-                        [
-                            'months' => json_encode($months),
-                            'updated_at' => now(),
-                            'created_at' => now(),
-                        ]
-                    );
+                    $values = [
+                        'months' => json_encode($months),
+                        'updated_at' => now(),
+                    ];
+                    $updated = DB::table('movement_analysis')->where('sku', $sku)->update($values);
+                    if ($updated === 0 && ! DB::table('movement_analysis')->where('sku', $sku)->exists()) {
+                        $values['sku'] = $sku;
+                        $values['created_at'] = now();
+                        if ($movementNeedsId) {
+                            $values['id'] = $nextMovementId++;
+                        }
+                        DB::table('movement_analysis')->insert($values);
+                    }
                 }
-                DB::connection()->disconnect();
             }
 
             // Populate sku_monthly_orders: one row per (sku, year, month) with order count
             if (Schema::hasTable('sku_monthly_orders') && $monthlyOrderData->isNotEmpty()) {
+                $skuNeedsId = $this->needsExplicitId('sku_monthly_orders');
+                $nextSkuId = $skuNeedsId
+                    ? ((int) DB::table('sku_monthly_orders')->max('id') + 1)
+                    : null;
+
                 foreach ($monthlyOrderData as $row) {
                     $sku = $row->sku ?? '';
                     if (empty($sku)) continue;
                     $sku = strtoupper(trim($sku));
-                    DB::table('sku_monthly_orders')->updateOrInsert(
-                        [
-                            'sku' => $sku,
-                            'year' => (int) $row->year,
-                            'month' => (int) $row->month,
-                        ],
-                        [
-                            'order_count' => (int) ($row->order_count ?? 0),
-                            'updated_at' => now(),
-                        ]
-                    );
+                    $keys = [
+                        'sku' => $sku,
+                        'year' => (int) $row->year,
+                        'month' => (int) $row->month,
+                    ];
+                    $values = [
+                        'order_count' => (int) ($row->order_count ?? 0),
+                        'updated_at' => now(),
+                    ];
+                    $updated = DB::table('sku_monthly_orders')->where($keys)->update($values);
+                    if ($updated === 0 && ! DB::table('sku_monthly_orders')->where($keys)->exists()) {
+                        $values = array_merge($keys, $values, ['created_at' => now()]);
+                        if ($skuNeedsId) {
+                            $values['id'] = $nextSkuId++;
+                        }
+                        DB::table('sku_monthly_orders')->insert($values);
+                    }
                 }
                 $this->info('✅ sku_monthly_orders updated: ' . $monthlyOrderData->count() . ' rows.');
             }
@@ -141,11 +173,49 @@ class GenerateMovementAnalysis extends Command
             return 1;
         } finally {
             DB::connection()->disconnect();
-            try {
-                DB::connection('apicentral')->disconnect();
-            } catch (\Exception $e) {
-                // Ignore disconnect errors
+        }
+    }
+
+    private function restoreAutoIncrement(string $table): void
+    {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'id')) {
+            return;
+        }
+
+        try {
+            $col = collect(DB::select('SHOW COLUMNS FROM '.$table.' WHERE Field = ?', ['id']))->first();
+            $extra = strtolower((string) ($col->Extra ?? ''));
+            if (str_contains($extra, 'auto_increment')) {
+                return;
             }
+
+            $type = strtoupper((string) ($col->Type ?? 'bigint unsigned'));
+            if (! str_contains(strtolower($type), 'int')) {
+                $type = 'BIGINT UNSIGNED';
+            }
+
+            $next = (int) DB::table($table)->max('id') + 1;
+            DB::statement("ALTER TABLE `{$table}` MODIFY `id` {$type} NOT NULL AUTO_INCREMENT");
+            DB::statement("ALTER TABLE `{$table}` AUTO_INCREMENT = {$next}");
+            $this->info("Restored AUTO_INCREMENT on {$table}.id (next = {$next}).");
+        } catch (\Throwable $e) {
+            $this->warn("Could not restore AUTO_INCREMENT on {$table}.id: ".$e->getMessage());
+        }
+    }
+
+    private function needsExplicitId(string $table): bool
+    {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'id')) {
+            return false;
+        }
+
+        try {
+            $col = collect(DB::select('SHOW COLUMNS FROM '.$table.' WHERE Field = ?', ['id']))->first();
+            $extra = strtolower((string) ($col->Extra ?? ''));
+
+            return ! str_contains($extra, 'auto_increment');
+        } catch (\Throwable $e) {
+            return true;
         }
     }
 }

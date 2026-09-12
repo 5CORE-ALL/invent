@@ -5,7 +5,7 @@ namespace App\Support;
 use App\Models\AmazonDatasheet;
 
 /**
- * Macys live price push must not go below the Amazon datasheet price (A Price).
+ * Macys / Purchasing Power / Best Buy live price push must not go below the Amazon datasheet price (A Price).
  * Dil / rule SPRICE is kept when it is at or above A Price.
  */
 class MacysAmazonPriceCap

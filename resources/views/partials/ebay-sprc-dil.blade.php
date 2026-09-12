@@ -8,6 +8,8 @@
   eBay 1–3 CVR overlay is level-only (CVR < Down → −10 GROI; CVR > Up → +10 GROI). Temu 1–2 also use the overlay; Reverb / Faire / TikTok / Shopify B2C are level-only.
   Macys: Dil-matching when Dil is in a slab. If Dil is out of box and 0 Sold, use min Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price (do not keep Std Prc).
+  Purchasing Power / Best Buy: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
+  If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
   Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
   Dil slab edits and table load recalculate display only.
   Save and Apply deletes old S PRC (saves 0), then writes the new Dil S PRC.
@@ -21,6 +23,7 @@
     $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'macys', 'macy', 'temu2', 'temu3', 'aliexpress'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
+    $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'mercari_wship', 'mercari_woship'], true);
     $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship'], true);
     $ebaySprcDilSoldLabel = match ($ebaySprcDilChannel) {
@@ -207,7 +210,7 @@
                         title="{{ !empty($ebaySprcDilIsMacys)
                             ? 'Dil-matching slab, or min GROI when Dil is out of box and 0 Sold. If that S PRC < A Price, use A Price.'
                             : ($ebaySprcDilZeroSoldUsesMinGroi
-                            ? 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR overlay (editable, with Count) adjusts Target GROI.' : '').' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.'
+                            ? 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR overlay (editable, with Count) adjusts Target GROI.' : '').' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.'.(!empty($ebaySprcDilUsesAmzFloor) ? ' If that S PRC < A Price, use A Price.' : '')
                             : 'Dil slabs → Target GROI%.'.(!empty($ebaySprcDilCvrGroiAdj) ? ' CVR overlay (editable, with Count) adjusts Target GROI.' : '').' Every INV > 0 SKU uses the Dil-matching slab.') }}">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
@@ -265,6 +268,13 @@
                         <li>
                             <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table:
                             apply that Adj GROI to the Target GROI (Count updates as you edit).
+                        </li>
+                        @endif
+                        @if(!empty($ebaySprcDilUsesAmzFloor))
+                        <li>
+                            <strong>When</strong> that Dil / min-ROI S PRC is <strong>below A Price</strong>:
+                            do not keep the slab price — S PRC uses <strong>A Price</strong>.
+                            If it is at or above A Price, keep the Dil / min-ROI price.
                         </li>
                         @endif
                         <li>
@@ -425,6 +435,9 @@
         }
         function ebayDgIsPurchasingPower() {
             return EBAY_DIL_GROI_CHANNEL === 'purchasing_power';
+        }
+        function ebayDgUsesAmzFloor() {
+            return ebayDgIsMacys() || ebayDgIsPurchasingPower() || ebayDgIsBestbuy();
         }
         function ebayDgIsWayfair() {
             return EBAY_DIL_GROI_CHANNEL === 'wayfair';
@@ -979,7 +992,7 @@
                     amzApplied = floored > rawSprc + 0.001;
                     sprc = ebayDgRound2(floored);
                 }
-            } else if (ebayDgIsMacys()) {
+            } else if (ebayDgUsesAmzFloor()) {
                 const amz = (typeof chPromoAmazonPrice === 'function')
                     ? ebayDgRound2(chPromoAmazonPrice(d))
                     : ebayDgRound2(d && (d['A Price'] != null ? d['A Price'] : (d.a_price || d.amazon_price)));

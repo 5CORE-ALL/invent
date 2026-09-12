@@ -3607,12 +3607,14 @@
         window.chPromoFinalSpriceToSave = chPromoFinalSpriceToSave;
         window.chPromoWipeSpriceRow = chPromoWipeSpriceRow;
         window.chPromoBatchClearThenSave = chPromoBatchClearThenSave;
-        /** Shopify B2C + Newegg + Macys: if S PRC is below A Price, raise it to Amz. Above Amz is kept. */
+        /** Shopify B2C + Newegg + Macys + Purchasing Power + Best Buy: if S PRC is below A Price, raise it to Amz. Above Amz is kept. */
         function chPromoUsesAmzSpriceFloor() {
             return CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
                 || CHANNEL_PROMO_CHANNEL === 'newegg'
                 || CHANNEL_PROMO_CHANNEL === 'macys'
-                || CHANNEL_PROMO_CHANNEL === 'macy';
+                || CHANNEL_PROMO_CHANNEL === 'macy'
+                || CHANNEL_PROMO_CHANNEL === 'purchasing_power'
+                || CHANNEL_PROMO_CHANNEL === 'bestbuy';
         }
         function chPromoFloorShopifySpriceToAmz(d, sprice) {
             if (!chPromoUsesAmzSpriceFloor()) return chPromoRound2(sprice);
@@ -9122,7 +9124,7 @@
                 'macysDisplayedSprice', 'shopifyB2cShownSprice', 'fbMpDisplayedSprice',
                 'temuDisplayedSprice', 'frPushSprice', 'bestbuyDisplayedSprice',
                 'wayfairRowSpriceForAlert', 'reverbRowSpriceForAlert',
-                'tdDisplayedSprice', 'ppPushPriceValue', 'ttDisplayedSprice',
+                'tdDisplayedSprice', 'ppDisplayedSprice', 'ppPushPriceValue', 'ttDisplayedSprice',
                 'dobaDisplayedSprice'
             ];
             for (let i = 0; i < names.length; i++) {
