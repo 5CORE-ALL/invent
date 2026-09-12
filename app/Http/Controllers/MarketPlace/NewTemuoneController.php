@@ -382,6 +382,7 @@ class NewTemuoneController extends Controller
 
                 $result[] = [
                     'Parent' => $pm->parent,
+                    'parent' => $pm->parent,
                     'sku' => $sku,
                     '(Child) sku' => $sku,
                     'INV' => $inv,

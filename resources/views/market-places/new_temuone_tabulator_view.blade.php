@@ -10,8 +10,8 @@
             display: none !important;
         }
 
-        /* Vertical column headers (same as /bestbuy-pricing) */
-        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+        /* Vertical column headers — scoped to this grid only so LMP / other modals stay horizontal */
+        #new-temuone-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
             text-orientation: mixed;
             white-space: nowrap;
@@ -24,11 +24,11 @@
             font-weight: 600;
         }
 
-        .tabulator .tabulator-header .tabulator-col {
+        #new-temuone-table.tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
         }
 
-        .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+        #new-temuone-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
         }
 
@@ -40,12 +40,78 @@
             line-height: 1;
             vertical-align: middle;
         }
+        #lmpModal #lmpListTable,
+        #lmpModal #lmpListTable th,
+        #lmpModal #lmpListTable td,
+        #lmpModal #lmpListTable .badge,
+        #lmpModal #lmpListTable .form-control,
+        #lmpModal h6 {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            height: auto !important;
+            min-height: 0 !important;
+        }
+        #lmpModal #lmpListTable {
+            width: 100%;
+            table-layout: auto;
+        }
+        #lmpModal #lmpListTable th,
+        #lmpModal #lmpListTable td {
+            display: table-cell !important;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        #lmpModal #lmpListTable thead th {
+            font-size: 13px;
+            font-weight: 600;
+        }
+        #lmpModal #lmpListTable .lmp-price,
+        #lmpModal #lmpListTable .lmp-delivery {
+            width: 5.5rem;
+            max-width: 100%;
+            display: inline-block;
+        }
+        #lmpModal #lmpListTable .lmp-link {
+            flex: 1 1 auto;
+            min-width: 8rem;
+            max-width: none;
+        }
+        #lmpModal #lmpListTable .lmp-cell-flex {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        #lmpModal input[type=number] {
+            -moz-appearance: textfield;
+        }
+        #lmpModal input[type=number]::-webkit-inner-spin-button,
+        #lmpModal input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
         #lmpModal tr.lmp-lowest-row,
         #lmpModal tr.lmp-lowest-row > td {
             background-color: #d1ecf1 !important;
         }
-        #lmpModal tr.lmp-ignored-row {
-            opacity: 0.55;
+        #lmpModal tr.lmp-ignored-row,
+        #lmpModal tr.lmp-ignored-row > td {
+            opacity: 0.7;
+            background: #f1f3f5 !important;
+        }
+        #lmpModal tr.lmp-ignored-row td {
+            text-decoration: line-through;
+            text-decoration-color: #adb5bd;
+        }
+        #lmpModal tr.lmp-ignored-row td:last-child,
+        #lmpModal tr.lmp-ignored-row .lmp-ignore-cb {
+            text-decoration: none;
+        }
+        #lmpModal .lmp-ignore-cb {
+            cursor: pointer;
+            width: 1.1em;
+            height: 1.1em;
         }
 
         .toast-container {
@@ -339,7 +405,8 @@
             color: #6c757d;
             cursor: wait;
         }
-        .tabulator .tabulator-header .tabulator-col[tabulator-field="_select"] .tabulator-col-title {
+        #new-temuone-table.tabulator .tabulator-header .tabulator-col[tabulator-field="_select"] .tabulator-col-title,
+        #new-temuone-table.tabulator .tabulator-header .tabulator-col[tabulator-field="_parent_expand"] .tabulator-col-title {
             writing-mode: horizontal-tb;
             text-orientation: mixed;
             transform: none;
@@ -554,7 +621,7 @@
     </div>
 
     <div class="modal fade" id="lmpModal" tabindex="-1" aria-labelledby="lmpModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title" id="lmpModalLabel"><i class="fas fa-link me-2"></i>LMP for <span id="lmpModalSku"></span></h5>
@@ -743,6 +810,7 @@
 @section('script-bottom')
 <script>
     let table = null;
+    let allTableData = [];
     let newTemuoneEditLinksRow = null;
 
     function chPromoRound2(n) {
@@ -820,11 +888,11 @@
     function chPromoInv(d) {
         return Number(d && (d.INV != null ? d.INV : d.inventory)) || 0;
     }
-    /** Same Dil% as the Dil column: Temu L30 ÷ INV. */
+    /** Same Dil% as the Dil column and PHP sprc Dil: OV L30 ÷ INV. */
     function chPromoDil(d) {
         const inv = chPromoInv(d);
         if (!(inv > 0)) return 0;
-        const l30 = Number(d && (d.temu_l30 != null ? d.temu_l30 : d.L30)) || 0;
+        const l30 = Number(d && (d.L30 != null ? d.L30 : d.ovl30)) || 0;
         return (l30 / inv) * 100;
     }
     function chPromoListingDil(d) {
@@ -868,7 +936,7 @@
     }
 
     /**
-     * Discounted Price = Sprc Dil (Temu L30 Dil → Target GROI).
+     * Discounted Price = Sprc Dil (OV L30 Dil → Target GROI).
      * If Dil is missing or over the last slab (no match), Amazon-style fallback:
      * STD (T Price). Cap compute then takes min(eBay, Amazon, LMP) when cheaper.
      */
@@ -1425,12 +1493,16 @@
     function appendLmpTableRow(tbody, price, delivery, link, ignored, sourceSku) {
         const tr = $('<tr class="lmp-entry-row">' +
             '<td class="lmp-num text-center align-middle"></td>' +
-            '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-price border-0 bg-transparent" style="max-width:100px" placeholder="Price"> <span class="lmp-lowest-badge"></span></td>' +
-            '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-delivery border-0 bg-transparent" style="max-width:90px" placeholder="0.00"></td>' +
+            '<td class="align-middle"><div class="lmp-cell-flex">' +
+            '<input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-price border-0 bg-transparent" placeholder="Price">' +
+            '<span class="lmp-lowest-badge"></span></div></td>' +
+            '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-delivery border-0 bg-transparent" placeholder="0.00"></td>' +
             '<td class="align-middle text-center"><span class="lmp-price-d text-muted">—</span></td>' +
-            '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:200px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener"><i class="fas fa-external-link-alt"></i></a></td>' +
+            '<td class="align-middle"><div class="lmp-cell-flex">' +
+            '<input type="text" class="form-control form-control-sm lmp-link border-0 bg-transparent" placeholder="https://...">' +
+            '<a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></div></td>' +
             '<td class="align-middle text-center"><input type="checkbox" class="form-check-input lmp-ignore-cb" title="Ignore for L1"></td>' +
-            '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row"><i class="fas fa-trash-alt"></i></button></td></tr>');
+            '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
         tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
         tr.find('.lmp-delivery').val(delivery !== '' && delivery != null ? delivery : '');
         tr.find('.lmp-link').val(link || '');
@@ -2133,6 +2205,10 @@
 
     function applyFilters() {
         if (!table) return;
+        if (window.ParentExpand && ParentExpand.isExpanded()) {
+            ParentExpand.beforeFilters(function() { applyFilters(); });
+            return;
+        }
 
         const inventoryFilter = $('#inventory-filter').val();
         const dilFilter = $('#dil-filter').val();
@@ -2223,8 +2299,8 @@
             return 'advertisement';
         }
         if (
-            /^(_select|\(child\) sku|links_column|inv|inventory|l30|temu_l30|views|dil%)$/i.test(f) ||
-            /\b(sku|links|inv|stock|ovl|dil|temu\s*l\d+|views)\b/i.test(tl)
+            /^(_select|_parent_expand|parent|\(child\) sku|links_column|inv|inventory|l30|temu_l30|views|dil%)$/i.test(f) ||
+            /\b(sku|links|inv|stock|ovl|dil|temu\s*l\d+|views|parent)\b/i.test(tl)
         ) {
             return 'basics';
         }
@@ -2389,7 +2465,7 @@
         if (!table) return;
         const cols = table.getColumns().filter(function(col) {
             const def = col.getDefinition();
-            return def.field && def.field !== '_select' && col.isVisible() && alwaysHiddenColumns.indexOf(def.field) === -1;
+            return def.field && def.field !== '_select' && def.field !== '_parent_expand' && col.isVisible() && alwaysHiddenColumns.indexOf(def.field) === -1;
         });
         const headers = cols.map(function(col) {
             const def = col.getDefinition();
@@ -2448,10 +2524,20 @@
                 const sku = ntoRowSku(d);
                 return !!(sku && !d.is_parent_summary && sku.toUpperCase().indexOf('PARENT') !== 0);
             },
-            initialSort: [{
-                column: 'temu_l30',
-                dir: 'desc'
-            }],
+            initialSort: [
+                { column: 'Parent', dir: 'asc' },
+                { column: '(Child) sku', dir: 'asc' }
+            ],
+            ajaxResponse: function(url, params, response) {
+                const rows = Array.isArray(response) ? response : [];
+                rows.forEach(function(r) {
+                    if (!r) return;
+                    if (r.Parent && !r.parent) r.parent = r.Parent;
+                });
+                allTableData = rows;
+                if (window.ParentExpand) ParentExpand.captureDataset(rows);
+                return rows;
+            },
             columns: [
                 {
                     title: '',
@@ -2466,6 +2552,45 @@
                     headerTooltip: 'Select SKUs, then click any upload icon to push S Base Prc for all checked rows'
                 },
                 {
+                    title: 'Parent',
+                    field: 'Parent',
+                    headerFilter: 'input',
+                    headerFilterPlaceholder: 'Search Parent...',
+                    frozen: true,
+                    width: 130,
+                    tooltip: true,
+                    formatter: function(cell) {
+                        const value = String(cell.getValue() || '').replace(/^PARENT\s+/i, '').trim();
+                        return value || '';
+                    }
+                },
+                {
+                    title: 'P',
+                    field: '_parent_expand',
+                    headerSort: false,
+                    hozAlign: 'center',
+                    frozen: true,
+                    width: 36,
+                    download: false,
+                    headerTooltip: 'Show this parent family, SKU low to high',
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        const parent = String(d.Parent || d.parent || '').replace(/^PARENT\s+/i, '').trim();
+                        const icon = (window.ParentExpand && typeof ParentExpand.yellowSvg === 'function')
+                            ? ParentExpand.yellowSvg()
+                            : '';
+                        if (!parent) {
+                            return '<span class="pm-parent-sku-dot no-parent">' + icon + '</span>';
+                        }
+                        const esc = parent.replace(/"/g, '&quot;');
+                        const expanded = window.ParentExpand && typeof ParentExpand.getExpandedKey === 'function'
+                            && String(ParentExpand.getExpandedKey() || '').toUpperCase() === parent.toUpperCase();
+                        return '<span class="pm-parent-sku-dot pm-parent-expand-btn' + (expanded ? ' is-expanded' : '')
+                            + '" data-parent="' + esc + '" title="Show all SKUs for parent: ' + esc + '">'
+                            + icon + '</span>';
+                    }
+                },
+                {
                     title: 'SKU',
                     field: '(Child) sku',
                     headerFilter: 'input',
@@ -2473,13 +2598,14 @@
                     cssClass: 'text-primary fw-bold',
                     tooltip: true,
                     frozen: true,
-                    width: 250,
+                    width: 220,
                     formatter: function(cell) {
                         const sku = cell.getValue() || '';
-                        return `<span>${sku}</span><i class="fa fa-copy text-secondary copy-sku-btn"
-                                   style="cursor: pointer; margin-left: 8px; font-size: 14px;"
-                                   data-sku="${sku}"
-                                   title="Copy SKU"></i>`;
+                        if (!sku) return '';
+                        const esc = String(sku).replace(/"/g, '&quot;');
+                        return sku + ' <button type="button" class="btn btn-sm ms-1 copy-sku-btn" data-sku="' + esc
+                            + '" title="Copy SKU" style="border:none;background:none;color:#87CEEB;padding:2px 6px;">'
+                            + '<i class="fa fa-info-circle"></i></button>';
                     }
                 },
                 {
@@ -2564,40 +2690,20 @@
                     }
                 },
                 {
-                    title: 'CPN',
-                    field: 'cpn_pct',
-                    accessorDownload: function(value, data) { return temuCpnForRow(data); },
-                    hozAlign: 'center',
-                    width: 55,
-                    sorter: function(a, b, aRow, bRow) {
-                        return temuCpnForRow(aRow.getData()) - temuCpnForRow(bRow.getData());
-                    },
-                    headerTooltip: 'Live from CVR → CPN slabs (0.01–1% → 9 … > 7% → 0). No 0% CVR slab. INV = 0 or CVR = 0 → 0. Same rule as /temu1-data. Not a marketplace coupon.',
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData() || {};
-                        if (row.is_parent_summary) return '';
-                        const cpn = temuCpnForRow(row);
-                        const cvr = parseFloat(row.cvr_percent != null ? row.cvr_percent : row.cvr_30) || 0;
-                        const tip = 'CVR ' + (cvr > 3.5 ? Math.round(cvr) : cvr.toFixed(1)) + '% → CPN ' + cpn + '%';
-                        if (!(cpn > 0)) {
-                            return '<span style="color: #6c757d;" title="' + tip + '">—</span>';
-                        }
-                        return '<span style="color: #198754; font-weight: 700;" title="' + tip + '">' + cpn + '%</span>';
-                    }
-                },
-                {
                     title: 'Dil',
                     field: 'Dil%',
                     hozAlign: 'center',
                     sorter: 'number',
+                    headerTooltip: 'Dil% = OV L30 ÷ INV. Same Dil Sprc Dil uses for the Target GROI slab.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const INV = parseFloat(rowData.INV) || 0;
-                        const OVL30 = parseFloat(rowData['L30']) || 0;
+                        const dil = typeof chPromoDil === 'function'
+                            ? chPromoDil(rowData)
+                            : (INV > 0 ? ((parseFloat(rowData.L30) || 0) / INV) * 100 : 0);
 
                         if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
 
-                        const dil = (OVL30 / INV) * 100;
                         let color = '';
 
                         if (dil < 25) color = '#dc3545';
@@ -2759,6 +2865,28 @@
                     }
                 },
                 {
+                    title: 'CPN',
+                    field: 'cpn_pct',
+                    accessorDownload: function(value, data) { return temuCpnForRow(data); },
+                    hozAlign: 'center',
+                    width: 55,
+                    sorter: function(a, b, aRow, bRow) {
+                        return temuCpnForRow(aRow.getData()) - temuCpnForRow(bRow.getData());
+                    },
+                    headerTooltip: 'Live from CVR → CPN slabs (0.01–1% → 9 … > 7% → 0). No 0% CVR slab. INV = 0 or CVR = 0 → 0. Same rule as /temu1-data. Not a marketplace coupon.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        if (row.is_parent_summary) return '';
+                        const cpn = temuCpnForRow(row);
+                        const cvr = parseFloat(row.cvr_percent != null ? row.cvr_percent : row.cvr_30) || 0;
+                        const tip = 'CVR ' + (cvr > 3.5 ? Math.round(cvr) : cvr.toFixed(1)) + '% → CPN ' + cpn + '%';
+                        if (!(cpn > 0)) {
+                            return '<span style="color: #6c757d;" title="' + tip + '">—</span>';
+                        }
+                        return '<span style="color: #198754; font-weight: 700;" title="' + tip + '">' + cpn + '%</span>';
+                    }
+                },
+                {
                     title: 'LMP',
                     field: 'lmp_raw',
                     hozAlign: 'center',
@@ -2854,7 +2982,7 @@
                     hozAlign: 'center',
                     width: 88,
                     sorter: 'number',
-                    headerTooltip: 'Sprc Dil from Temu L30 Dil → Target GROI. Dil below the first From or above the last To uses the nearest slab (0 Sold and high Dil). Then the lowest of eBay, Amazon, and LMP.',
+                    headerTooltip: 'Sprc Dil from Dil (OV L30 ÷ INV) → Target GROI. Dil below the first From or above the last To uses the nearest slab (0 Sold and high Dil). Then the lowest of eBay, Amazon, and LMP.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const model = typeof temuSpriceCellModel === 'function'
@@ -3014,6 +3142,34 @@
                 }
             ]
         });
+
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'Parent',
+                skuField: '(Child) sku',
+                getTable: function() { return table; },
+                getDataset: function() { return allTableData; },
+                setDataset: function(rows) { allTableData = rows; },
+                onAfterExpand: function() {
+                    if (table && typeof table.setSort === 'function') {
+                        table.setSort([
+                            { column: '(Child) sku', dir: 'asc' }
+                        ]);
+                    }
+                    if (typeof updateSummary === 'function') updateSummary();
+                },
+                onCollapse: function() {
+                    if (typeof applyFilters === 'function') applyFilters();
+                    if (table && typeof table.setSort === 'function') {
+                        table.setSort([
+                            { column: 'Parent', dir: 'asc' },
+                            { column: '(Child) sku', dir: 'asc' }
+                        ]);
+                    }
+                }
+            });
+            ParentExpand.bind();
+        }
 
         table.on('tableBuilt', function() {
             applyColumnVisibilityFromServer();
