@@ -68,7 +68,7 @@
         .ma-dil-pie-legend {
             flex: 1 1 auto;
             min-width: 0;
-            max-height: 240px;
+            max-height: 180px;
             overflow-y: auto;
         }
         .ma-dil-pie-row {
@@ -89,8 +89,8 @@
             flex: 0 0 8px;
         }
         .ma-dil-pie-name { flex: 1 1 auto; font-weight: 600; color: #334155; }
-        .ma-dil-pie-count { font-weight: 700; min-width: 24px; text-align: right; }
-        .ma-dil-pie-pct { color: #64748b; min-width: 24px; text-align: right; }
+        .ma-dil-pie-count { font-weight: 700; min-width: 48px; text-align: right; }
+        .ma-dil-pie-pct { color: #64748b; min-width: 36px; text-align: right; }
         .ma-dil-hist-dot {
             width: 8px;
             height: 8px;
@@ -102,17 +102,56 @@
             box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
         }
         .ma-dil-hist-dot:hover { transform: scale(1.35); }
-        .ma-dil-hist-wrap {
-            display: none;
-            margin: 0 0 14px;
-            padding: 6px 8px 4px;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            background: #fff;
-            max-width: 560px;
+        #maDilHistModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
         }
-        .ma-dil-hist-wrap.is-open { display: block; }
-        .ma-dil-hist-canvas-wrap { height: 160px; }
+        #maDilHistModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #maDilHistModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
+        .ma-dil-hist-body {
+            height: 28vh;
+            min-height: 200px;
+            display: flex;
+            align-items: stretch;
+        }
+        .ma-dil-hist-canvas-wrap {
+            flex: 1;
+            min-width: 0;
+            position: relative;
+        }
+        .ma-dil-hist-ref {
+            width: 100px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border-left: 1px solid #e9ecef;
+            background: #f8f9fa;
+            border-radius: 0 4px 4px 0;
+            text-align: center;
+        }
+        .ma-dil-hist-ref .ma-dil-hist-ref-label {
+            font-size: 8px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 1px;
+        }
+        .ma-dil-hist-ref .ma-dil-hist-ref-val {
+            font-size: 13px;
+            font-weight: 700;
+        }
         .ma-dil-pie-canvas-wrap canvas,
         .ma-dil-hist-canvas-wrap canvas {
             width: 100% !important;
@@ -162,17 +201,13 @@
                         </div>
                         <div class="ma-dil-pie-legend" id="ma-dil-legend"></div>
                     </div>
-                </div>
-                <div class="ma-dil-hist-wrap" id="ma-dil-hist-wrap">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <span class="small fw-semibold" id="ma-dil-hist-title">Dil history</span>
-                        <button type="button" class="btn-close" id="ma-dil-hist-close" aria-label="Close history" style="font-size:10px;"></button>
-                    </div>
-                    <div class="ma-dil-hist-canvas-wrap">
-                        <canvas id="ma-dil-hist"></canvas>
+                    <div class="ma-dil-pie-wrap">
+                        <div class="ma-dil-pie-canvas-wrap">
+                            <canvas id="ma-dil-amz-pie"></canvas>
+                        </div>
+                        <div class="ma-dil-pie-legend" id="ma-dil-amz-legend"></div>
                     </div>
                 </div>
-
                 <div id="movement-tabulator"></div>
             </div>
         </div>
@@ -209,6 +244,41 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade p-0" id="maDilHistModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog shadow-none m-0 mx-0">
+        <div class="modal-content" style="overflow:hidden;">
+            <div class="modal-header bg-info text-white py-1 px-3">
+                <h6 class="modal-title mb-0" style="font-size:13px;">
+                    <i class="fas fa-chart-area me-1"></i>
+                    <span id="ma-dil-hist-title">Dil history</span>
+                </h6>
+                <button type="button" class="btn-close btn-close-white" style="font-size:10px;" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-2">
+                <div class="ma-dil-hist-body">
+                    <div class="ma-dil-hist-canvas-wrap">
+                        <canvas id="ma-dil-hist"></canvas>
+                    </div>
+                    <div class="ma-dil-hist-ref">
+                        <div>
+                            <div class="ma-dil-hist-ref-label" style="color:#dc3545;">Highest</div>
+                            <div class="ma-dil-hist-ref-val" id="ma-dil-hist-highest" style="color:#dc3545;">-</div>
+                        </div>
+                        <div style="border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;">
+                            <div class="ma-dil-hist-ref-label" style="color:#6c757d;">Median</div>
+                            <div class="ma-dil-hist-ref-val" id="ma-dil-hist-median" style="color:#6c757d;">-</div>
+                        </div>
+                        <div>
+                            <div class="ma-dil-hist-ref-label" style="color:#198754;">Lowest</div>
+                            <div class="ma-dil-hist-ref-val" id="ma-dil-hist-lowest" style="color:#198754;">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 @endsection
 
 @section('script')
@@ -220,55 +290,64 @@
     let table;
     let monthlyChart;
     let maDilPieChart = null;
+    let maDilAmzPieChart = null;
     let maDilHistChart = null;
     let maDilLiveCounts = {};
+    let maDilLiveAmzValues = {};
     let maDilActiveBand = null;
     let maSnapshotHistory = true;
     const MA_DIL_HIST_KEY = 'movement_analysis_dil_hist';
-    const MA_DIL_SLAB_COLORS = [
-        '#6f42c1', '#3b82f6', '#14b8a6', '#22c55e', '#84cc16',
-        '#eab308', '#f59e0b', '#ea580c', '#dc3545', '#e83e8c',
-        '#7c3aed',
-    ];
+    const MA_DIL_AMZ_HIST_KEY = 'movement_analysis_dil_amz_hist';
     const MA_DIL_SLABS = [
-        { key: '0-5', label: '0–5%', min: 0, max: 5 },
-        { key: '5-10', label: '5–10%', min: 5, max: 10 },
-        { key: '10-15', label: '10–15%', min: 10, max: 15 },
-        { key: '15-20', label: '15–20%', min: 15, max: 20 },
-        { key: '20-25', label: '20–25%', min: 20, max: 25 },
-        { key: '25-30', label: '25–30%', min: 25, max: 30 },
-        { key: '30-35', label: '30–35%', min: 30, max: 35 },
-        { key: '35-40', label: '35–40%', min: 35, max: 40 },
-        { key: '40-45', label: '40–45%', min: 40, max: 45 },
-        { key: '45-50', label: '45–50%', min: 45, max: 50 },
-        { key: '50+', label: '≥50%', min: 50, max: Infinity },
-    ].map(function(s, i) {
-        return Object.assign({}, s, { color: MA_DIL_SLAB_COLORS[i % MA_DIL_SLAB_COLORS.length] });
-    });
+        { key: '0', label: '0%', min: 0, max: 0.1, color: '#dc3545' },
+        { key: '0.1-25', label: '0–25%', min: 0.1, max: 25, color: '#ffc107' },
+        { key: '25-50', label: '25–50%', min: 25, max: 50, color: '#28a745' },
+        { key: '50-100', label: '50–100%', min: 50, max: 100, color: '#e83e8c' },
+        { key: 'gt-100', label: '>100%', min: 100, max: Infinity, color: '#4e0dab' },
+    ];
 
     function maIsParentRow(row) {
         return String((row && row.sku) || '').toUpperCase().startsWith('PARENT ');
     }
+    function maRowInv(row) {
+        return parseFloat(row && row.INV) || 0;
+    }
+    function maRowAmzValue(row) {
+        const stored = parseFloat(row && row.amz_value);
+        if (isFinite(stored) && stored > 0) return stored;
+        const inv = maRowInv(row);
+        const price = parseFloat(row && row.amz_price) || 0;
+        return inv > 0 ? inv * price : 0;
+    }
+    function maMoneyCompact(n) {
+        const v = Math.round(Number(n) || 0);
+        const abs = Math.abs(v);
+        if (abs >= 1000000) return '$' + (v / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+        if (abs >= 1000) return '$' + Math.round(v / 1000) + 'K';
+        return '$' + v.toLocaleString('en-US');
+    }
     function maRowDil(row) {
         if (!row || maIsParentRow(row)) return 0;
+        const inv = maRowInv(row);
+        if (inv <= 0) return 0;
         const stored = parseFloat(row.dil);
         if (isFinite(stored)) return stored;
-        const inv = parseFloat(row.INV) || 0;
         const l30 = parseFloat(row.L30) || 0;
-        return inv > 0 ? (l30 / inv) * 100 : 0;
+        return (l30 / inv) * 100;
     }
     function maDilColorStyle(dil) {
-        if (!(dil > 0)) return 'color:#6c757d;font-weight:700;';
-        if (dil < 25) return 'color:#a00211;font-weight:700;';
+        if (!(dil > 0)) return 'color:#dc3545;font-weight:700;';
+        if (dil <= 25) return 'color:#d39e00;font-weight:700;';
         if (dil < 50) return 'color:#28a745;font-weight:700;';
-        return 'color:#e83e8c;font-weight:700;';
+        if (dil <= 100) return 'color:#e83e8c;font-weight:700;';
+        return 'color:#4e0dab;font-weight:700;';
     }
     function maDilSlabFor(dil) {
-        for (let i = 0; i < MA_DIL_SLABS.length; i++) {
-            const s = MA_DIL_SLABS[i];
-            const last = i === MA_DIL_SLABS.length - 1;
-            if (dil >= s.min && (last ? dil >= s.min : dil < s.max)) return s;
-        }
+        const n = Number(dil) || 0;
+        if (n > 100) return MA_DIL_SLABS[4];
+        if (n >= 50) return MA_DIL_SLABS[3];
+        if (n > 25) return MA_DIL_SLABS[2];
+        if (n >= 0.1) return MA_DIL_SLABS[1];
         return MA_DIL_SLABS[0];
     }
     function maTodayKey() {
@@ -278,20 +357,20 @@
             return new Date().toISOString().slice(0, 10);
         }
     }
-    function maSnapDilHistory(counts) {
+    function maSnapDilHistory(storeKey, counts) {
         try {
             const today = maTodayKey();
             let hist = {};
-            try { hist = JSON.parse(localStorage.getItem(MA_DIL_HIST_KEY) || '{}') || {}; } catch (e) { hist = {}; }
+            try { hist = JSON.parse(localStorage.getItem(storeKey) || '{}') || {}; } catch (e) { hist = {}; }
             hist[today] = counts;
             const keys = Object.keys(hist).sort();
             while (keys.length > 90) delete hist[keys.shift()];
-            localStorage.setItem(MA_DIL_HIST_KEY, JSON.stringify(hist));
+            localStorage.setItem(storeKey, JSON.stringify(hist));
         } catch (e) { /* ignore */ }
     }
-    function maLocalDilHistory() {
+    function maLocalDilHistory(storeKey) {
         try {
-            const hist = JSON.parse(localStorage.getItem(MA_DIL_HIST_KEY) || '{}') || {};
+            const hist = JSON.parse(localStorage.getItem(storeKey || MA_DIL_HIST_KEY) || '{}') || {};
             return Object.keys(hist).sort().map(function(date) {
                 return Object.assign({ date: date, label: date.slice(5) }, hist[date] || {});
             });
@@ -304,21 +383,37 @@
         MA_DIL_SLABS.forEach(function(s) { counts[s.key] = 0; });
         (rows || []).forEach(function(row) {
             if (maIsParentRow(row)) return;
+            if (maRowInv(row) <= 0) return;
             const slab = maDilSlabFor(maRowDil(row));
             counts[slab.key] = (counts[slab.key] || 0) + 1;
         });
         return counts;
     }
-    function maHistDotHtml(key, color, label) {
-        return '<button type="button" class="ma-dil-hist-dot" data-band="' + String(key).replace(/"/g, '&quot;') + '" '
+    function maCollectDilAmzValues(rows) {
+        const values = {};
+        MA_DIL_SLABS.forEach(function(s) { values[s.key] = 0; });
+        (rows || []).forEach(function(row) {
+            if (maIsParentRow(row)) return;
+            if (maRowInv(row) <= 0) return;
+            const slab = maDilSlabFor(maRowDil(row));
+            values[slab.key] = (values[slab.key] || 0) + maRowAmzValue(row);
+        });
+        return values;
+    }
+    function maHistDotHtml(key, color, label, chart) {
+        return '<button type="button" class="ma-dil-hist-dot" data-chart="' + String(chart || 'count').replace(/"/g, '&quot;') + '" '
+            + 'data-band="' + String(key).replace(/"/g, '&quot;') + '" '
             + 'style="background:' + color + ';" title="' + String(label).replace(/"/g, '&quot;') + ' daily history"></button>';
     }
-    function maDilLegendHtml(counts) {
+    function maDilLegendHtml(title, counts, chart, money) {
         const total = MA_DIL_SLABS.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
+        const fmt = money
+            ? function(n) { return maMoneyCompact(n); }
+            : function(n) { return String(Math.round(Number(n) || 0)); };
         return '<div class="ma-dil-pie-row" style="color:#94a3b8;font-size:10px;font-weight:600;">'
             + '<span class="ma-dil-pie-swatch" style="visibility:hidden;"></span>'
-            + '<span class="ma-dil-pie-name">Dil</span>'
-            + '<span class="ma-dil-pie-count">count</span>'
+            + '<span class="ma-dil-pie-name">' + title + '</span>'
+            + '<span class="ma-dil-pie-count">' + (money ? '$' : 'count') + '</span>'
             + '<span class="ma-dil-pie-pct">of total</span>'
             + '<span class="ma-dil-hist-dot" style="visibility:hidden;"></span>'
             + '</div>'
@@ -329,11 +424,18 @@
                 return '<div class="ma-dil-pie-row is-filterable' + active + '" data-band="' + s.key + '">'
                     + '<span class="ma-dil-pie-swatch" style="background:' + s.color + ';"></span>'
                     + '<span class="ma-dil-pie-name">' + s.label + '</span>'
-                    + '<span class="ma-dil-pie-count">' + n + '</span>'
-                    + '<span class="ma-dil-pie-pct" title="' + pct + ' of total">' + pct + '</span>'
-                    + maHistDotHtml(s.key, s.color, s.label)
+                    + '<span class="ma-dil-pie-count">' + fmt(n) + '</span>'
+                    + '<span class="ma-dil-pie-pct" title="' + pct + '% of total">' + pct + '%</span>'
+                    + maHistDotHtml(s.key, s.color, s.label, chart)
                     + '</div>';
-            }).join('');
+            }).join('')
+            + '<div class="ma-dil-pie-row" style="border-top:1px dashed #cbd5e1;margin-top:2px;padding-top:3px;">'
+            + '<span class="ma-dil-pie-swatch" style="visibility:hidden;"></span>'
+            + '<span class="ma-dil-pie-name">Total</span>'
+            + '<span class="ma-dil-pie-count">' + fmt(total) + '</span>'
+            + '<span class="ma-dil-pie-pct">100%</span>'
+            + '<span class="ma-dil-hist-dot" style="visibility:hidden;"></span>'
+            + '</div>';
     }
     function maDrawDilPie(counts) {
         const canvas = document.getElementById('ma-dil-pie');
@@ -364,7 +466,7 @@
                             label: function(ctx) {
                                 const n = Number(ctx.raw) || 0;
                                 const pct = total > 0 ? Math.round((n / total) * 100) : 0;
-                                return ' ' + n + '  ·  ' + pct + ' of total';
+                                return ' ' + n + '  ·  ' + pct + '% of total';
                             },
                         },
                     },
@@ -381,13 +483,70 @@
             },
         });
     }
+    function maDrawDilAmzPie(values) {
+        const canvas = document.getElementById('ma-dil-amz-pie');
+        if (!canvas || typeof Chart === 'undefined') return;
+        const total = MA_DIL_SLABS.reduce(function(sum, s) { return sum + (values[s.key] || 0); }, 0);
+        if (maDilAmzPieChart) {
+            maDilAmzPieChart.destroy();
+            maDilAmzPieChart = null;
+        }
+        maDilAmzPieChart = new Chart(canvas.getContext('2d'), {
+            type: 'pie',
+            data: {
+                labels: MA_DIL_SLABS.map(function(s) { return s.label; }),
+                datasets: [{
+                    data: MA_DIL_SLABS.map(function(s) { return values[s.key] || 0; }),
+                    backgroundColor: MA_DIL_SLABS.map(function(s) { return s.color; }),
+                    borderColor: '#fff',
+                    borderWidth: 1,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                const n = Number(ctx.raw) || 0;
+                                const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                                return ' ' + maMoneyCompact(n) + '  ·  ' + pct + '% of total';
+                            },
+                        },
+                    },
+                },
+                onClick: function(_evt, els) {
+                    if (!els || !els.length) {
+                        maSetDilBandFilter(null);
+                        return;
+                    }
+                    const idx = els[0].index;
+                    const slab = MA_DIL_SLABS[idx];
+                    if (slab) maSetDilBandFilter(slab.key);
+                },
+            },
+        });
+    }
+    function maRefreshDilLegends() {
+        const countLegend = document.getElementById('ma-dil-legend');
+        if (countLegend) countLegend.innerHTML = maDilLegendHtml('Dil', maDilLiveCounts, 'count', false);
+        const amzLegend = document.getElementById('ma-dil-amz-legend');
+        if (amzLegend) amzLegend.innerHTML = maDilLegendHtml('Amz $', maDilLiveAmzValues, 'amz', true);
+    }
     function maRenderDilPie(rows, snapshot) {
         const counts = maCollectDilCounts(rows);
+        const amzValues = maCollectDilAmzValues(rows);
         maDilLiveCounts = counts;
-        if (snapshot) maSnapDilHistory(counts);
-        const legend = document.getElementById('ma-dil-legend');
-        if (legend) legend.innerHTML = maDilLegendHtml(counts);
+        maDilLiveAmzValues = amzValues;
+        if (snapshot) {
+            maSnapDilHistory(MA_DIL_HIST_KEY, counts);
+            maSnapDilHistory(MA_DIL_AMZ_HIST_KEY, amzValues);
+        }
+        maRefreshDilLegends();
         maDrawDilPie(counts);
+        maDrawDilAmzPie(amzValues);
     }
     function maApplyStackedFilters() {
         if (!table) return;
@@ -402,6 +561,7 @@
         if (maDilActiveBand) {
             filters.push(function(data) {
                 if (maIsParentRow(data)) return false;
+                if (maRowInv(data) <= 0) return false;
                 return maDilSlabFor(maRowDil(data)).key === maDilActiveBand;
             });
         }
@@ -414,17 +574,51 @@
     function maSetDilBandFilter(band) {
         maDilActiveBand = (band && maDilActiveBand === band) ? null : (band || null);
         maApplyStackedFilters();
-        const legend = document.getElementById('ma-dil-legend');
-        if (legend) legend.innerHTML = maDilLegendHtml(maDilLiveCounts);
+        maRefreshDilLegends();
     }
-    function maDrawDilHist(band) {
+    function maDilHistDotColors(values) {
+        const gray = '#6c757d';
+        const green = '#28a745';
+        const red = '#dc3545';
+        return values.map(function(v, i) {
+            if (i === 0) return gray;
+            const prev = values[i - 1];
+            if (Math.abs(v - prev) <= 0.01) return gray;
+            return v > prev ? green : red;
+        });
+    }
+    let maDilHistBand = null;
+    let maDilHistKind = 'count';
+    function maDrawDilHist(band, kind) {
+        maDilHistBand = band;
+        maDilHistKind = kind === 'amz' ? 'amz' : 'count';
         const spec = MA_DIL_SLABS.find(function(s) { return s.key === band; })
             || { key: band, label: band, color: '#6f42c1' };
-        $('#ma-dil-hist-title').text('Dil ' + spec.label + ' count');
-        $('#ma-dil-hist-wrap').addClass('is-open');
-        const rows = maLocalDilHistory().slice();
+        $('#ma-dil-hist-title').text(
+            maDilHistKind === 'amz'
+                ? ('Dil ' + spec.label + ' Amz $')
+                : ('Dil ' + spec.label + ' count')
+        );
+        const modalEl = document.getElementById('maDilHistModal');
+        if (modalEl && $(modalEl).hasClass('show')) {
+            maPaintDilHistChart(band);
+            return;
+        }
+        if (modalEl && window.bootstrap && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        } else {
+            $('#maDilHistModal').modal('show');
+        }
+    }
+    function maPaintDilHistChart(band) {
+        band = band || maDilHistBand;
+        if (!band) return;
+        const money = maDilHistKind === 'amz';
+        const live = money ? maDilLiveAmzValues : maDilLiveCounts;
+        const storeKey = money ? MA_DIL_AMZ_HIST_KEY : MA_DIL_HIST_KEY;
+        const rows = maLocalDilHistory(storeKey).slice();
         const today = maTodayKey();
-        const rec = Object.assign({ date: today, label: today.slice(5) }, maDilLiveCounts);
+        const rec = Object.assign({ date: today, label: today.slice(5) }, live);
         const last = rows[rows.length - 1];
         if (last && last.date === today) Object.assign(last, rec);
         else rows.push(rec);
@@ -434,30 +628,159 @@
             maDilHistChart.destroy();
             maDilHistChart = null;
         }
+        const labels = rows.map(function(r) { return r.label || r.date; });
+        const values = rows.map(function(r) { return Number(r[band]) || 0; });
+        const fmtVal = money
+            ? function(v) { return maMoneyCompact(v); }
+            : function(v) { return Math.round(Number(v) || 0).toLocaleString('en-US'); };
+        const dataMin = values.length ? Math.min.apply(null, values) : 0;
+        const dataMax = values.length ? Math.max.apply(null, values) : 0;
+        const sorted = values.slice().sort(function(a, b) { return a - b; });
+        const mid = Math.floor(sorted.length / 2);
+        const median = !sorted.length ? 0
+            : (sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2);
+        const range = dataMax - dataMin || 1;
+        const yPad = Math.max(range * 0.28, Math.abs(dataMax) * 0.08, range * 0.1);
+        const yMin = Math.max(0, dataMin - range * 0.12);
+        const yMax = dataMax + yPad;
+        const dotColors = maDilHistDotColors(values);
+        const labelColors = dotColors.slice();
+        const refGray = '#6c757d';
+        let maxIdx = 0;
+        let minIdx = 0;
+        values.forEach(function(v, i) {
+            if (v >= values[maxIdx]) maxIdx = i;
+            if (v <= values[minIdx]) minIdx = i;
+        });
+        const highestEl = document.getElementById('ma-dil-hist-highest');
+        const medianEl = document.getElementById('ma-dil-hist-median');
+        const lowestEl = document.getElementById('ma-dil-hist-lowest');
+        if (highestEl) {
+            highestEl.textContent = fmtVal(dataMax);
+            highestEl.style.color = dotColors[maxIdx] || refGray;
+        }
+        if (medianEl) {
+            medianEl.textContent = fmtVal(median);
+            medianEl.style.color = refGray;
+        }
+        if (lowestEl) {
+            lowestEl.textContent = fmtVal(dataMin);
+            lowestEl.style.color = dotColors[minIdx] || refGray;
+        }
+        const medianLinePlugin = {
+            id: 'maDilMedianLine',
+            afterDraw: function(chart) {
+                const yScale = chart.scales.y;
+                const xScale = chart.scales.x;
+                const ctx = chart.ctx;
+                const yPixel = yScale.getPixelForValue(median);
+                ctx.save();
+                ctx.setLineDash([6, 4]);
+                ctx.strokeStyle = '#6c757d';
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(xScale.left, yPixel);
+                ctx.lineTo(xScale.right, yPixel);
+                ctx.stroke();
+                ctx.restore();
+            },
+        };
+        const valueLabelsPlugin = {
+            id: 'maDilValueLabels',
+            afterDraw: function(chart) {
+                const dataset = chart.data.datasets[0];
+                const meta = chart.getDatasetMeta(0);
+                const ctx = chart.ctx;
+                const lastIdx = meta.data.length - 1;
+                const anchors = [];
+                ctx.save();
+                ctx.font = 'bold 10px Inter, system-ui, sans-serif';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                meta.data.forEach(function(point, i) {
+                    const val = dataset.data[i];
+                    let offsetY = (i % 2 === 0) ? -12 : -26;
+                    if (i === lastIdx) offsetY = (lastIdx % 2 === 0) ? -26 : -12;
+                    if (anchors.length) {
+                        const prev = anchors[anchors.length - 1];
+                        if (Math.abs(point.x - prev.x) < 36 && Math.abs((point.y + offsetY) - prev.y) < 14) {
+                            offsetY = (offsetY === -12) ? -28 : -12;
+                        }
+                    }
+                    anchors.push({ x: point.x, y: point.y + offsetY });
+                    ctx.save();
+                    ctx.fillStyle = labelColors[i];
+                    ctx.translate(point.x, point.y + offsetY);
+                    ctx.rotate(-Math.PI / 5);
+                    ctx.fillText(fmtVal(val), 2, 0);
+                    ctx.restore();
+                });
+                ctx.restore();
+            },
+        };
         maDilHistChart = new Chart(canvas.getContext('2d'), {
             type: 'line',
             data: {
-                labels: rows.map(function(r) { return r.label || r.date; }),
+                labels: labels,
                 datasets: [{
-                    data: rows.map(function(r) { return Number(r[band]) || 0; }),
-                    borderColor: spec.color,
-                    backgroundColor: spec.color + '22',
+                    data: values,
+                    backgroundColor: 'rgba(108,117,125,0.08)',
+                    borderColor: '#adb5bd',
+                    borderWidth: 1.5,
                     fill: true,
                     tension: 0.3,
-                    borderWidth: 1.5,
                     pointRadius: 3,
                     pointHoverRadius: 5,
-                    pointBackgroundColor: spec.color,
-                    pointBorderColor: spec.color,
+                    pointBackgroundColor: dotColors,
+                    pointBorderColor: dotColors,
+                    pointBorderWidth: 1.5,
                 }],
             },
+            plugins: [medianLinePlugin, valueLabelsPlugin],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                clip: false,
+                layout: { padding: { top: 44, left: 4, right: 22, bottom: 8 } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        titleFont: { size: 10 },
+                        bodyFont: { size: 10 },
+                        padding: 6,
+                        callbacks: {
+                            label: function(context) {
+                                const idx = context.dataIndex;
+                                const parts = ['Value: ' + fmtVal(context.raw)];
+                                if (idx > 0) {
+                                    const diff = context.raw - values[idx - 1];
+                                    const arrow = diff < 0 ? '▼' : (diff > 0 ? '▲' : '▬');
+                                    parts.push('vs Yesterday: ' + arrow + ' ' + fmtVal(Math.abs(diff)));
+                                }
+                                return parts;
+                            },
+                        },
+                    },
+                },
                 scales: {
-                    y: { beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 } },
-                    x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } },
+                    y: {
+                        min: yMin,
+                        max: yMax,
+                        ticks: {
+                            font: { size: 9 },
+                            precision: 0,
+                            callback: function(value) { return fmtVal(value); },
+                        },
+                    },
+                    x: {
+                        ticks: {
+                            maxRotation: 60,
+                            minRotation: 60,
+                            autoSkip: false,
+                            maxTicksLimit: Math.max(labels.length, 31),
+                            font: { size: 8 },
+                        },
+                    },
                 },
             },
         });
@@ -508,7 +831,7 @@
                     hozAlign: "center",
                     sorter: "number",
                     width: 70,
-                    headerTooltip: "OV L30 ÷ INV. Red <25% · Green 25–50% · Pink 50%+.",
+                    headerTooltip: "OV L30 ÷ INV. 0% red · 0–25% yellow · 25–50% green · 50–100% pink · >100% purple.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         if (maIsParentRow(row)) return '';
@@ -647,18 +970,19 @@
             maApplyStackedFilters();
         });
 
-        $(document).on('click', '#ma-dil-legend .ma-dil-hist-dot', function (e) {
+        $(document).on('click', '#ma-dil-legend .ma-dil-hist-dot, #ma-dil-amz-legend .ma-dil-hist-dot', function (e) {
             e.preventDefault();
             e.stopPropagation();
             const band = $(this).data('band');
-            if (band) maDrawDilHist(String(band));
+            const kind = $(this).data('chart');
+            if (band) maDrawDilHist(String(band), kind);
         });
-        $(document).on('click', '#ma-dil-legend .ma-dil-pie-row.is-filterable', function (e) {
+        $(document).on('click', '#ma-dil-legend .ma-dil-pie-row.is-filterable, #ma-dil-amz-legend .ma-dil-pie-row.is-filterable', function (e) {
             if ($(e.target).closest('.ma-dil-hist-dot').length) return;
             maSetDilBandFilter(String($(this).data('band') || ''));
         });
-        $('#ma-dil-hist-close').on('click', function () {
-            $('#ma-dil-hist-wrap').removeClass('is-open');
+        $('#maDilHistModal').on('shown.bs.modal', function () {
+            maPaintDilHistChart(maDilHistBand);
         });
 
         // Playback controls (if needed)

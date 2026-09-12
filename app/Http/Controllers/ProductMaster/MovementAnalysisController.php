@@ -4,6 +4,7 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
+use App\Models\AmazonDataView;
 use App\Models\MovementAnalysis;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -62,7 +63,43 @@ class MovementAnalysisController extends Controller
             return $item->parent . '||' . $item->sku;
         });
 
-        $processedData = $filteredData->map(function ($item) use ($productData, $shopifyData, $movementData) {
+        $amzPriceBySku = [];
+        try {
+            foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+                $val = is_array($adv->value)
+                    ? $adv->value
+                    : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                $std = $val['STANDARD_PRICE'] ?? $val['standard_price'] ?? $val['AMAZON_PRICE'] ?? $val['amazon_price'] ?? $val['price'] ?? null;
+                if (! is_numeric($std) || (float) $std <= 0) {
+                    continue;
+                }
+                $k = strtoupper(trim((string) $adv->sku));
+                if ($k === '') {
+                    continue;
+                }
+                $amzPriceBySku[$k] = (float) $std;
+                $amzPriceBySku[str_replace(' ', '', $k)] = (float) $std;
+            }
+        } catch (\Throwable $e) {
+            // ignore missing amazon_data_view
+        }
+        try {
+            foreach (DB::table('amazon_datsheets')->whereIn('sku', $skus)->whereNotNull('price')->get(['sku', 'price']) as $ar) {
+                $k = strtoupper(trim((string) ($ar->sku ?? '')));
+                if ($k === '' || isset($amzPriceBySku[$k])) {
+                    continue;
+                }
+                if (! is_numeric($ar->price) || (float) $ar->price <= 0) {
+                    continue;
+                }
+                $amzPriceBySku[$k] = (float) $ar->price;
+                $amzPriceBySku[str_replace(' ', '', $k)] = (float) $ar->price;
+            }
+        } catch (\Throwable $e) {
+            // ignore missing amazon_datsheets
+        }
+
+        $processedData = $filteredData->map(function ($item) use ($productData, $shopifyData, $movementData, $amzPriceBySku) {
             $childSku = trim($item->sku ?? '');
             $parent = trim($productData[$childSku]->parent ?? '');
             $key = $parent . '||' . $childSku;
@@ -99,6 +136,9 @@ class MovementAnalysisController extends Controller
             $inv = (float) ($item->INV ?? 0);
             $l30 = (float) ($item->L30 ?? 0);
             $item->dil = ($inv > 0) ? round(($l30 / $inv) * 100, 2) : 0;
+            $skuKey = strtoupper($childSku);
+            $item->amz_price = $amzPriceBySku[$skuKey] ?? $amzPriceBySku[str_replace(' ', '', $skuKey)] ?? 0;
+            $item->amz_value = round($inv * (float) $item->amz_price, 2);
 
             return $item;
         })->values();
