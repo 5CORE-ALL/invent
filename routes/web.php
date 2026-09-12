@@ -4947,6 +4947,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/temu-decrease-data', [TemuController::class, 'getTemuDecreaseData']);
     Route::get('/temu-decrease-data-l7', [TemuController::class, 'getTemuDecreaseDataL7'])->name('temu.decrease.l7');
+    Route::get('/temu1-data', [TemuController::class, 'temu1DataView'])->name('temu1.data');
     // Temu 2 pricing (temu2_orders API; no ads / Amazon / eBay)
     Route::get('/temu2-decrease', [TemuController::class, 'temu2DecreaseView'])->name('temu2.decrease');
     Route::get('/temu2-decrease-data', [TemuController::class, 'getTemu2DecreaseData']);

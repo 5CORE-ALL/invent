@@ -2273,6 +2273,14 @@ class TemuController extends Controller
     }
 
     /**
+     * Old /temu1-data page. The view and save keys were replaced by New Temu One.
+     */
+    public function temu1DataView()
+    {
+        return redirect()->route('newtemuone.index');
+    }
+
+    /**
      * Get Temu badge daily history for the history table (JSON).
      * For "today" we use live sales summary (same as badge) so chart and badge match.
      */
