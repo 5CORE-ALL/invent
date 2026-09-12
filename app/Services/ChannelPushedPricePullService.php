@@ -67,6 +67,10 @@ class ChannelPushedPricePullService
             return $this->pullDoba($skus, $channel);
         }
 
+        if (in_array($channel, ['macys', 'macy'], true)) {
+            return $this->pullMacys($skus);
+        }
+
         return array_map(static fn ($sku) => [
             'success' => false,
             'sku' => $sku,
@@ -197,6 +201,62 @@ class ChannelPushedPricePullService
                 'sprice' => null,
                 'message' => 'Pulled Temu base $'.number_format($live, 2),
             ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Live Macy listed price via MCM OF21 (same source as /macys-pricing MC Price).
+     *
+     * @param  list<string>  $skus
+     * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string}>
+     */
+    private function pullMacys(array $skus): array
+    {
+        $api = app(MacysApiService::class);
+        $out = [];
+        foreach ($skus as $i => $sku) {
+            try {
+                $live = $api->pullLiveListedPrice($sku);
+                $price = is_array($live) ? (float) ($live['price'] ?? 0) : 0.0;
+                if (! ($price > 0)) {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $sku,
+                        'marketplace' => 'macys',
+                        'price' => null,
+                        'sprice' => null,
+                        'message' => 'Live Macy MCM price not returned',
+                    ];
+                } else {
+                    $out[] = [
+                        'success' => true,
+                        'sku' => $sku,
+                        'marketplace' => 'macys',
+                        'price' => $price,
+                        'sprice' => null,
+                        'message' => 'Pulled Macy Price $'.number_format($price, 2),
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Channel pushed-price Macy pull failed', [
+                    'sku' => $sku,
+                    'error' => $e->getMessage(),
+                ]);
+                $out[] = [
+                    'success' => false,
+                    'sku' => $sku,
+                    'marketplace' => 'macys',
+                    'price' => null,
+                    'sprice' => null,
+                    'message' => $e->getMessage(),
+                ];
+            }
+
+            if ($i < count($skus) - 1) {
+                usleep(150000);
+            }
         }
 
         return $out;

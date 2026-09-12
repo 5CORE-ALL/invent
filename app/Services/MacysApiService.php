@@ -371,6 +371,132 @@ class MacysApiService
     }
 
     /**
+     * OF21 — pull the live listed price for one SKU and write macy_products / macys_price_data.
+     *
+     * @return array{price: float, stock: int, shop_sku: string}|null
+     */
+    public function pullLiveListedPrice(string $sku): ?array
+    {
+        $sku = trim($sku);
+        $apiKey = $this->miraklMcmApiKey();
+        $baseUrl = rtrim((string) config('services.macy.mcm_base_url', 'https://macysus-prod.mirakl.net'), '/');
+        if ($sku === '' || $apiKey === null || $apiKey === '' || $baseUrl === '') {
+            return null;
+        }
+
+        $offerSku = $this->resolveMcmOfferSkuFromOffersApi($sku, $apiKey, $baseUrl);
+        if ($offerSku === null || $offerSku === '') {
+            $offerSku = $sku;
+        }
+
+        $params = ['shop_sku' => $offerSku, 'max' => 20];
+        $shopId = config('services.macy.shop_id');
+        if ($shopId !== null && $shopId !== '') {
+            $params['shop_id'] = (int) $shopId;
+        }
+
+        $response = $this->miraklMcmGetOffers($apiKey, $baseUrl, $params);
+        if ($response !== null && $response->status() === 404 && isset($params['shop_id'])) {
+            unset($params['shop_id']);
+            $response = $this->miraklMcmGetOffers($apiKey, $baseUrl, $params);
+        }
+        if ($response === null || ! $response->successful()) {
+            $params = ['sku' => $offerSku, 'max' => 20];
+            if ($shopId !== null && $shopId !== '') {
+                $params['shop_id'] = (int) $shopId;
+            }
+            $response = $this->miraklMcmGetOffers($apiKey, $baseUrl, $params);
+        }
+        if ($response === null || ! $response->successful()) {
+            return null;
+        }
+
+        $wanted = strtoupper(trim($offerSku));
+        $skuU = strtoupper(trim($sku));
+        $match = null;
+        foreach ($response->json('offers') ?? [] as $offer) {
+            if (! is_array($offer)) {
+                continue;
+            }
+            $shop = strtoupper(trim((string) ($offer['shop_sku'] ?? '')));
+            $product = strtoupper(trim((string) ($offer['product_sku'] ?? '')));
+            if ($shop === $wanted || $shop === $skuU || $product === $wanted || $product === $skuU) {
+                $match = $offer;
+                break;
+            }
+        }
+        if ($match === null) {
+            $first = $response->json('offers.0');
+            $match = is_array($first) ? $first : null;
+        }
+        if ($match === null) {
+            return null;
+        }
+
+        $price = $this->extractPulledMcmOfferPrice($match);
+        if ($price === null || ! ($price > 0)) {
+            return null;
+        }
+
+        $liveSku = trim((string) ($match['shop_sku'] ?? $offerSku));
+        $stock = isset($match['quantity']) && is_numeric($match['quantity'])
+            ? (int) $match['quantity']
+            : 0;
+
+        try {
+            if (Schema::hasTable('macy_products')) {
+                \App\Models\MacyProduct::query()
+                    ->where(function ($q) use ($liveSku, $sku) {
+                        $q->where('sku', $liveSku)->orWhere('sku', $sku);
+                    })
+                    ->update(['price' => $price, 'stock' => $stock]);
+            }
+            if (Schema::hasTable('macys_price_data')) {
+                \App\Models\MacysPriceData::query()
+                    ->where(function ($q) use ($liveSku, $sku) {
+                        $q->where('sku', $liveSku)
+                            ->orWhere('sku', $sku)
+                            ->orWhere('offer_sku', $liveSku)
+                            ->orWhere('offer_sku', $sku);
+                    })
+                    ->update(['price' => $price, 'original_price' => $price]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Macy local price sync after OF21 pull failed', [
+                'sku' => $sku,
+                'offer_sku' => $liveSku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return [
+            'price' => $price,
+            'stock' => $stock,
+            'shop_sku' => $liveSku !== '' ? $liveSku : $sku,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $offer
+     */
+    private function extractPulledMcmOfferPrice(array $offer): ?float
+    {
+        foreach ([
+            data_get($offer, 'applicable_pricing.price'),
+            data_get($offer, 'price'),
+            data_get($offer, 'all_prices.0.price'),
+            data_get($offer, 'discount.discount_price'),
+            data_get($offer, 'discount.origin_price'),
+        ] as $value) {
+            if ($value !== null && $value !== '' && is_numeric($value)) {
+                return round((float) $value, 2);
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Update long marketing copy / bullets (Mirakl product attributes). No truncation.
      *
      * @return array{success:bool,message:string,response?:mixed}

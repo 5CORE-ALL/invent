@@ -256,8 +256,13 @@ class ChannelPushSpriceRunner
                     ? ($payload['ebay_price'] ?? $payload['price'] ?? $price)
                     : $price;
                 $ok = true;
-                if (in_array($this->channel, ['tiktok', 'tiktok2', 'doba', 'doba_withoutship'], true)
-                    && (! is_numeric($live) || abs((float) $live - (float) $price) >= 0.05)) {
+                $shouldPullLive = in_array($this->channel, ['tiktok', 'tiktok2', 'doba', 'doba_withoutship', 'macys', 'macy'], true)
+                    && (
+                        in_array($this->channel, ['macys', 'macy'], true)
+                        || ! is_numeric($live)
+                        || abs((float) $live - (float) $price) >= 0.05
+                    );
+                if ($shouldPullLive) {
                     $pulled = $this->pullLivePriceAfterPush($sku, (float) $price);
                     if ($pulled > 0) {
                         $live = $pulled;
