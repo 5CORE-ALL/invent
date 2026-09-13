@@ -735,38 +735,6 @@
                     <button id="bulk-mode-btn" class="btn btn-sm btn-primary flex-shrink-0 text-nowrap" title="Toggle bulk price editing — reveal checkboxes, then choose Decrease / Increase / Same Price">
                         <i class="fas fa-sliders-h"></i> Bulk Mode
                     </button>
-                    <button type="button" id="clear-sprice-toolbar-btn" class="btn btn-sm btn-danger flex-shrink-0 text-nowrap clear-sprice-btn"
-                        title="Clear SPRICE for selected SKUs (turn on Bulk Mode to select)">
-                        <i class="fas fa-eraser"></i> Clear SPRICE
-                    </button>
-
-                    {{-- Amazon-style: selection count + Bulk Push Prices (visible when SKUs selected) --}}
-                    <span class="badge bg-primary fs-6 p-2 flex-shrink-0" id="reverb-selected-rows-count" style="display: none;">
-                        0 selected
-                    </span>
-                    <div class="dropdown d-inline-block flex-shrink-0" id="reverb-bulk-actions-container" style="display: none;">
-                        <button class="btn btn-sm btn-warning dropdown-toggle" type="button"
-                            id="reverbBulkActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false"
-                            title="Bulk push SPRICE to Reverb">
-                            <i class="fas fa-upload"></i> Bulk Push
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="reverbBulkActionsDropdown" style="min-width: 220px;">
-                            <li class="px-3 py-2">
-                                <div style="font-weight: 600; margin-bottom: 8px; color: #495057;">
-                                    <i class="fas fa-upload"></i> Bulk Push Prices
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" value="reverb" id="bulkPushReverb" checked disabled>
-                                    <label class="form-check-label" for="bulkPushReverb" style="color: #e85d04; font-weight: 500;">
-                                        Reverb
-                                    </label>
-                                </div>
-                                <button class="btn btn-sm btn-primary w-100" id="execute-bulk-push-reverb" type="button">
-                                    <i class="fas fa-paper-plane"></i> Push Selected
-                                </button>
-                            </li>
-                        </ul>
-                    </div>
 
                     {{-- Sprc Dil (Amazon Dil-matching) + CVR vs CPN --}}
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'reverb'])
@@ -858,12 +826,6 @@
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                         <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
                             <i class="fas fa-copy"></i> Sugg Amz Prc
-                        </button>
-                        <button id="clear-sprice-btn" type="button" class="btn btn-danger btn-sm clear-sprice-btn">
-                            <i class="fas fa-eraser"></i> Clear SPRICE
-                        </button>
-                        <button id="bulk-push-reverb-btn" class="btn btn-warning btn-sm" title="Bulk push SPRICE to Reverb for selected SKUs">
-                            <i class="fas fa-upload"></i> Bulk Push Prices
                         </button>
                     </div>
                 </div>
@@ -1979,11 +1941,6 @@
             applySuggestAmazonPrice();
         });
 
-        // Clear SPRICE — toolbar + bulk-bar buttons
-        $(document).on('click', '.clear-sprice-btn', function() {
-            clearSpriceForSelected();
-        });
-
         // Sold badges just toggle the #sold-filter dropdown so the dropdown stays the
         // single source of truth for the Sold filter (mirrors Amazon tabulator behavior).
         // Clicking the same badge twice clears the filter (toggle semantics preserved).
@@ -2140,14 +2097,6 @@
             $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
             // Keep the bulk panel visible whenever Bulk Price Mode is on (even with 0 selected).
             $('#discount-input-container').toggle(bulkModeActive || count > 0);
-            // Amazon-style toolbar: show count + Bulk Push when any SKU is selected
-            if (count > 0) {
-                $('#reverb-selected-rows-count').text(count + ' selected').show();
-                $('#reverb-bulk-actions-container').show();
-            } else {
-                $('#reverb-selected-rows-count').hide();
-                $('#reverb-bulk-actions-container').hide();
-            }
         }
 
         // Update select all checkbox state
@@ -2563,73 +2512,6 @@
                         errorMessage += ': ' + xhr.responseJSON.error;
                     }
                     showToast(errorMessage, 'error');
-                }
-            });
-        }
-
-        // Clear SPRICE for selected SKUs (dedicated endpoint — unsets keys, never stores 0)
-        function clearSpriceForSelected() {
-            if (selectedSkus.size === 0) {
-                showToast('Please select SKUs first (turn on Bulk Mode)', 'error');
-                return;
-            }
-
-            if (!confirm(`Are you sure you want to clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) {
-                return;
-            }
-
-            const updates = [];
-            table.getRows().forEach(row => {
-                const rowData = row.getData();
-                const sku = rowData['(Child) sku'];
-                if (sku && selectedSkus.has(sku)) {
-                    updates.push({ sku: sku });
-                }
-            });
-
-            if (updates.length === 0) {
-                showToast('No SPRICE values to clear for selected SKUs', 'warning');
-                return;
-            }
-
-            $('.clear-sprice-btn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Clearing...');
-
-            $.ajax({
-                url: '/reverb-clear-sprice',
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                },
-                data: { updates: updates },
-                success: function(response) {
-                    table.getRows().forEach(row => {
-                        const rowData = row.getData();
-                        const sku = rowData['(Child) sku'];
-                        if (sku && selectedSkus.has(sku)) {
-                            row.update(Object.assign({
-                                SPRICE: 0,
-                                has_custom_sprice: false,
-                                SPRICE_STATUS: null,
-                                SPRICE_STATUS_UPDATED_AT: null,
-                                SPRICE_PUSHED_VALUE: null,
-                                SPRICE_PUSHED_BY: null,
-                                ZERO_SOLD_PRC_APPLIED: false,
-                                ZERO_SOLD_PRC_GROI: null
-                            }, reverbSpriceMetricPatch(0, rowData)));
-                        }
-                    });
-                    const n = (response && response.cleared_count != null) ? response.cleared_count : updates.length;
-                    showToast((response && response.message) ? response.message : `SPRICE cleared for ${n} SKU(s)`, 'success');
-                },
-                error: function(xhr) {
-                    console.error('Failed to clear SPRICE:', xhr.status, xhr.responseJSON || xhr.responseText);
-                    const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
-                        ? (xhr.responseJSON.error || xhr.responseJSON.message)
-                        : 'Failed to clear SPRICE data';
-                    showToast(msg, 'error');
-                },
-                complete: function() {
-                    $('.clear-sprice-btn').prop('disabled', false).html('<i class="fas fa-eraser"></i> Clear SPRICE');
                 }
             });
         }
@@ -4463,74 +4345,6 @@
             if (typeof updateSummary === 'function') updateSummary();
         }
         window.queueReverbPushSprice = queueReverbPushSprice;
-
-        // Bulk Push Prices for selected SKUs (Amazon-style — toolbar + Bulk Mode bar)
-        async function executeBulkPushReverb($triggerBtn) {
-            if (selectedSkus.size === 0) {
-                showToast('Select at least one SKU first (turn on Bulk Mode)', 'error');
-                return;
-            }
-
-            const jobs = [];
-            selectedSkus.forEach(function(sku) {
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                if (!rows.length) return;
-                const row = rows[0];
-                const price = Number(reverbRowSpriceForAlert(row.getData())) || parseFloat(row.getData().SPRICE || 0);
-                if (!price || price <= 0) return;
-                jobs.push({ row: row, sku: sku, price: +price.toFixed(2) });
-            });
-
-            if (jobs.length === 0) {
-                showToast('No selected SKUs have SPRICE > 0 to push', 'warning');
-                return;
-            }
-
-            if (!confirm('Push ' + jobs.length + ' price(s) to Reverb?')) {
-                return;
-            }
-
-            const $btn = ($triggerBtn && $triggerBtn.length) ? $triggerBtn : $('#bulk-push-reverb-btn');
-            const $dropdownBtn = $('#reverbBulkActionsDropdown');
-            const originalBtnHtml = $btn.html();
-            const originalDropHtml = $dropdownBtn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
-            $dropdownBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
-            $('#execute-bulk-push-reverb').prop('disabled', true);
-
-            let okCount = 0;
-            let failCount = 0;
-            const concurrency = 5;
-            let idx = 0;
-            async function runNext() {
-                if (idx >= jobs.length) return;
-                const job = jobs[idx++];
-                const result = await pushReverbPriceForRow(job.row, job.sku, job.price);
-                if (result.ok) okCount++; else failCount++;
-                await runNext();
-            }
-            await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, function() { return runNext(); }));
-
-            $btn.prop('disabled', false).html(originalBtnHtml || '<i class="fas fa-upload"></i> Bulk Push Prices');
-            $dropdownBtn.prop('disabled', false).html(originalDropHtml || '<i class="fas fa-upload"></i> Bulk Push');
-            $('#execute-bulk-push-reverb').prop('disabled', false);
-
-            if (failCount === 0) {
-                showToast('Pushed ' + okCount + ' price(s) to Reverb', 'success');
-            } else {
-                showToast('Pushed ' + okCount + ', failed ' + failCount, failCount === jobs.length ? 'error' : 'warning');
-            }
-            updateSummary();
-        }
-
-        $('#bulk-push-reverb-btn').on('click', function() {
-            executeBulkPushReverb($(this));
-        });
-        $(document).on('click', '#execute-bulk-push-reverb', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            executeBulkPushReverb($(this));
-        });
 
         // Apply filters
         function applyFilters() {
