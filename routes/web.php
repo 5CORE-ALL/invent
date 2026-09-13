@@ -3695,6 +3695,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/bestbuy-save-links', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'saveLinks'])->name('bestbuy.save.links');
     // Single route handles both batch {updates:[...]} and single {sku,sprice} payloads
     Route::post('/bestbuy-save-sprice', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'saveSpriceUpdates'])->name('bestbuy.save.sprice');
+    Route::post('/bestbuy-push-price', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'pushPriceTabulator'])->name('bestbuy.push.price');
     Route::post('/bestbuy-update-listed-live', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'updateListedLive'])->name('bestbuy.update.listed.live');
     Route::get('/bestbuy-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'getColumnVisibility'])->name('bestbuy.pricing.column.get');
     Route::post('/bestbuy-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'setColumnVisibility'])->name('bestbuy.pricing.column.set');

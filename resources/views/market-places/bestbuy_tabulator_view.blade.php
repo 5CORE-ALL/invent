@@ -484,6 +484,104 @@
         }
         return (parseFloat(rowData['BB Price']) || 0) > 0;
     }
+    function isBbInactive(rowData) {
+        if (!rowData) return false;
+        if (rowData.is_bb_inactive === true) return true;
+        const flag = String(rowData.live_inactive || rowData.listing_status || '').toLowerCase();
+        return ['inactive', 'offline', 'ended', 'disabled'].indexOf(flag) !== -1;
+    }
+    function bestbuyPushPriceValue(d) {
+        let p = bestbuyDisplayedSprice(d);
+        if (typeof chPromoFinalSpriceToSave === 'function' && p > 0) {
+            p = Number(chPromoFinalSpriceToSave(d, p)) || p;
+        }
+        return Math.round((Number(p) || 0) * 100) / 100;
+    }
+    function bestbuyFindRowBySku(sku) {
+        const want = String(sku || '').trim().toUpperCase();
+        if (!want || typeof table === 'undefined' || !table) return null;
+        try {
+            const exact = table.searchRows('(Child) sku', '=', sku);
+            if (exact && exact.length) return exact[0];
+        } catch (e) { /* ignore */ }
+        let found = null;
+        try {
+            (table.getRows() || []).forEach(function(row) {
+                if (found) return;
+                const d = row.getData() || {};
+                if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) found = row;
+            });
+        } catch (e) { /* ignore */ }
+        return found;
+    }
+    function bestbuyApplyPushResults(results) {
+        (results || []).forEach(function(r) {
+            if (!r || !r.sku) return;
+            const row = bestbuyFindRowBySku(r.sku);
+            if (!row) return;
+            const ok = !!r.success;
+            const live = Number(r.price) || 0;
+            const patch = {
+                SPRICE_STATUS: ok ? 'pushed' : 'error',
+                push_status: ok ? 'pushed' : 'error',
+            };
+            if (ok && live > 0 && isBbListed(row.getData() || {})) {
+                patch.SPRICE_PUSHED_VALUE = live;
+                patch['BB Price'] = live;
+            }
+            try { row.update(patch); } catch (e) { /* ignore */ }
+            try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
+        });
+        if (typeof updateSummary === 'function') updateSummary();
+    }
+    function bestbuyPushPriceForRow(row) {
+        if (!row || typeof row.getData !== 'function') return;
+        const d = row.getData() || {};
+        if (isBestbuyParentRow(d)) return;
+        const sku = String(d['(Child) sku'] || '').trim();
+        const price = bestbuyPushPriceValue(d);
+        const status = String(d.push_status || d.SPRICE_STATUS || '');
+        if (!sku || !(price > 0)) {
+            showToast('Set a valid SPRICE before pushing', 'error');
+            return;
+        }
+        if (isBbInactive(d) || !isBbListed(d)) {
+            showToast('Inactive / not listed — skip push', 'warning');
+            return;
+        }
+        if (status === 'pushing' || status === 'processing' || status === 'queued') return;
+        try { row.update({ SPRICE_STATUS: 'queued', push_status: 'queued' }); } catch (e) { /* ignore */ }
+        if (typeof enqueueChannelPushSpriceAfterSave === 'function'
+            && typeof chPushSpriceAutoPushAllowed === 'function'
+            && chPushSpriceAutoPushAllowed()) {
+            enqueueChannelPushSpriceAfterSave(sku, price, row, { force: true });
+            return;
+        }
+        $.ajax({
+            url: '/bestbuy-push-price',
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                'Accept': 'application/json'
+            },
+            data: { sku: sku, price: price }
+        }).done(function(resp) {
+            bestbuyApplyPushResults([{
+                sku: sku,
+                success: !!(resp && resp.success),
+                price: (resp && resp.price != null) ? resp.price : price,
+                message: (resp && resp.message) || ''
+            }]);
+            if (resp && resp.success) {
+                showToast(sku + ': price pushed', 'success');
+            } else {
+                showToast((resp && resp.message) || 'Best Buy price push failed', 'error');
+            }
+        }).fail(function(xhr) {
+            bestbuyApplyPushResults([{ sku: sku, success: false, price: price }]);
+            showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Best Buy price push failed', 'error');
+        });
+    }
     function isBestbuyParentRow(row) {
         if (!row) return false;
         if (row.is_parent_summary || row.is_parent) return true;
@@ -1106,14 +1204,21 @@
                             } else if (pushOk > 0) {
                                 showToast(`BestBuy price push successful for ${pushOk} SKU(s)`, 'success');
                             }
-                            if (pushOk > 0 && pushFail === 0 && typeof table !== 'undefined' && table) {
+                            if (typeof table !== 'undefined' && table) {
                                 (updates || []).forEach(function(u) {
                                     const price = Number(u && u.sprice);
                                     if (!u || !u.sku || !(price > 0)) return;
                                     const rows = table.searchRows('(Child) sku', '=', u.sku);
-                                    if (rows && rows[0]) {
-                                        try { rows[0].update({ 'BB Price': price }); } catch (e) { /* ignore */ }
+                                    if (!rows || !rows[0]) return;
+                                    const patch = {
+                                        SPRICE_STATUS: pushFail > 0 ? 'error' : (pushOk > 0 ? 'pushed' : 'error'),
+                                        push_status: pushFail > 0 ? 'error' : (pushOk > 0 ? 'pushed' : 'error'),
+                                    };
+                                    if (pushOk > 0 && pushFail === 0) {
+                                        patch['BB Price'] = price;
+                                        patch.SPRICE_PUSHED_VALUE = price;
                                     }
+                                    try { rows[0].update(patch); } catch (e) { /* ignore */ }
                                 });
                             }
                         }
@@ -2318,6 +2423,75 @@
                         return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
                     },
                     width: 110
+                },
+                {
+                    title: 'Push',
+                    field: 'push_status',
+                    hozAlign: 'center',
+                    headerSort: true,
+                    width: 52,
+                    headerTooltip: 'Price push status. Double tick = pushed to Best Buy. Cross = failed or not listed. Click to push or retry. If S PRC is below A Price, push uses A Price.',
+                    sorter: function(a, b, aRow, bRow) {
+                        const rank = function(d) {
+                            const status = String((d && (d.push_status || d.SPRICE_STATUS)) || '');
+                            if (status === 'pushed') return 4;
+                            if (status === 'queued' || status === 'pushing' || status === 'processing') return 3;
+                            if (status === 'error' || status === 'failed') return 2;
+                            return bestbuyPushPriceValue(d) > 0 ? 1 : 0;
+                        };
+                        return rank(aRow.getData()) - rank(bRow.getData());
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isBestbuyParentRow(rowData)) return '';
+                        const sku = String(rowData['(Child) sku'] || '');
+                        const price = bestbuyPushPriceValue(rowData);
+                        if (!sku || !(price > 0)) return '';
+                        const status = String(rowData.push_status || rowData.SPRICE_STATUS || '');
+                        const pushedValue = rowData.SPRICE_PUSHED_VALUE;
+                        const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT || '';
+                        const pushedBy = rowData.SPRICE_PUSHED_BY || '';
+                        let icon = '<i class="fas fa-upload"></i>';
+                        let color = '#0d6efd';
+                        let tip = 'Push $' + price.toFixed(2) + ' to Best Buy';
+                        if (isBbInactive(rowData) || !isBbListed(rowData)) {
+                            icon = '<i class="fa-solid fa-x"></i>';
+                            color = '#dc3545';
+                            tip = 'Not listed — cannot push';
+                        } else if (status === 'pushing' || status === 'processing' || status === 'queued') {
+                            icon = '<i class="fas fa-spinner fa-spin"></i>';
+                            color = '#ffc107';
+                            tip = 'Pushing to Best Buy…';
+                        } else if (status === 'pushed') {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            color = '#28a745';
+                            tip = 'Pushed to Best Buy';
+                        } else if (status === 'error' || status === 'failed') {
+                            icon = '<i class="fa-solid fa-x"></i>';
+                            color = '#dc3545';
+                            tip = 'Push failed — click to retry';
+                        }
+                        if (pushedValue != null && pushedValue !== '') {
+                            tip += ' | Last $' + (parseFloat(pushedValue) || 0).toFixed(2);
+                        }
+                        if (updatedAt) tip += ' | ' + updatedAt;
+                        if (pushedBy) tip += ' | by ' + pushedBy;
+                        return '<button type="button" class="bb-push-single-btn" data-sku="'
+                            + sku.replace(/"/g, '&quot;') + '" data-price="' + price.toFixed(2)
+                            + '" data-status="' + status.replace(/"/g, '&quot;')
+                            + '" title="' + String(tip).replace(/"/g, '&quot;')
+                            + '" style="border:none;background:none;color:' + color
+                            + ';padding:0;cursor:pointer;font-size:16px;">' + icon + '</button>';
+                    },
+                    cellClick: function(e, cell) {
+                        const t = e.target;
+                        if (!t || typeof t.closest !== 'function') return;
+                        const btn = t.closest('.bb-push-single-btn');
+                        if (!btn) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        bestbuyPushPriceForRow(cell.getRow());
+                    }
                 },
                 {
                     title: "SROI",

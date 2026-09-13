@@ -358,6 +358,7 @@ class BestBuyPricingController extends Controller
             $savedSprice = null;
             $savedStatus = null;
             $hasSavedSprice = false;
+            $raw = null;
             if (isset($dataViews[$pm->sku])) {
                 $raw = $dataViews[$pm->sku];
                 if (!is_array($raw)) {
@@ -385,6 +386,14 @@ class BestBuyPricingController extends Controller
                 $row['has_custom_sprice'] = false;
                 $row['SPRICE_STATUS'] = $savedStatus;
             }
+            $row['push_status'] = $row['SPRICE_STATUS'];
+            $row['SPRICE_PUSHED_VALUE'] = (is_array($raw ?? null) && isset($raw['SPRICE_PUSHED_VALUE']))
+                ? floatval($raw['SPRICE_PUSHED_VALUE'])
+                : null;
+            $row['SPRICE_STATUS_UPDATED_AT'] = is_array($raw ?? null)
+                ? ($raw['SPRICE_STATUS_UPDATED_AT'] ?? $raw['SPRICE_PUSHED_AT'] ?? null)
+                : null;
+            $row['SPRICE_PUSHED_BY'] = is_array($raw ?? null) ? ($raw['SPRICE_PUSHED_BY'] ?? null) : null;
 
             // Calculate SGPFT based on SPRICE
             $sprice = $row['SPRICE'] ?? 0;
@@ -1191,28 +1200,104 @@ class BestBuyPricingController extends Controller
         }
     }
 
+    public function pushPriceTabulator(Request $request)
+    {
+        $sku = strtoupper(trim((string) $request->input('sku', '')));
+        $price = $request->input('price', $request->input('sprice'));
+        if ($sku === '' || ! is_numeric($price) || (float) $price <= 0) {
+            return response()->json(['success' => false, 'message' => 'SKU and price required'], 422);
+        }
+
+        $applied = MacysAmazonPriceCap::applyForSku($sku, (float) $price);
+        $price = (float) $applied['price'];
+        $result = $this->pushPriceToBestBuy($sku, $price);
+        $message = (string) ($result['message'] ?? '');
+        if (($result['success'] ?? false) && ($applied['capped'] ?? false)) {
+            $message = trim($message.' (raised to Amazon $'.number_format($price, 2).')');
+        }
+
+        return response()->json([
+            'success' => (bool) ($result['success'] ?? false),
+            'message' => $message,
+            'status_code' => $result['status_code'] ?? null,
+            'price' => $price,
+            'amazon_price' => $applied['amazon_price'] ?? null,
+            'capped' => (bool) ($applied['capped'] ?? false),
+            'push_status' => (($result['success'] ?? false) === true) ? 'pushed' : 'error',
+        ], ($result['success'] ?? false) ? 200 : 422);
+    }
+
     /**
      * Push saved SPRICE to Best Buy marketplace API.
      *
-     * @return array{success:bool,message:string}
+     * @return array{success:bool,message:string,status_code?:int|null,skipped?:bool}
      */
     private function pushPriceToBestBuy(string $sku, float $sprice): array
     {
-        $sprice = MacysAmazonPriceCap::capForSku($sku, $sprice);
+        $applied = MacysAmazonPriceCap::applyForSku($sku, $sprice);
+        $sprice = (float) $applied['price'];
         if ($sprice <= 0) {
             return ['success' => false, 'message' => 'Skipping push for non-positive price'];
         }
 
         $block = self::pricePushBlockReason($sku);
         if ($block !== null) {
-            return ['success' => false, 'message' => $block];
+            return ['success' => false, 'message' => $block, 'skipped' => true, 'status_code' => 422];
         }
 
         try {
-            return app(BestBuyApiService::class)->updatePrice($sku, $sprice);
+            $result = app(BestBuyApiService::class)->updatePrice($sku, $sprice);
+            $this->persistBestBuyPushStatus(
+                $sku,
+                (($result['success'] ?? false) === true) ? 'pushed' : 'error',
+                $sprice
+            );
+            $result['price'] = $sprice;
+            $result['capped'] = (bool) ($applied['capped'] ?? false);
+            $result['amazon_price'] = $applied['amazon_price'] ?? null;
+
+            return $result;
         } catch (\Throwable $e) {
+            $this->persistBestBuyPushStatus($sku, 'error', $sprice);
             Log::error('Best Buy price push call failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private function persistBestBuyPushStatus(string $sku, string $status, ?float $price = null): void
+    {
+        try {
+            $skuKey = strtoupper(trim($sku));
+            $dataView = BestbuyUSADataView::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuKey])
+                ->first()
+                ?: BestbuyUSADataView::firstOrNew(['sku' => $skuKey]);
+            $existing = is_array($dataView->value)
+                ? $dataView->value
+                : (json_decode((string) ($dataView->value ?? ''), true) ?: []);
+            if (! is_array($existing)) {
+                $existing = [];
+            }
+            $existing['SPRICE_STATUS'] = $status;
+            $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            $existing['SPRICE_PUSHED_AT'] = now()->toDateTimeString();
+            if ($price !== null) {
+                $existing['SPRICE_PUSHED_VALUE'] = round((float) $price, 2);
+            }
+            if (auth()->check()) {
+                $existing['SPRICE_PUSHED_BY'] = auth()->user()->name ?? auth()->user()->email;
+                $existing['SPRICE_PUSHED_BY_ID'] = auth()->id();
+            }
+            $dataView->sku = $dataView->sku ?: $skuKey;
+            $dataView->value = $existing;
+            $dataView->save();
+        } catch (\Throwable $e) {
+            Log::warning('Best Buy persist push status failed', [
+                'sku' => $sku,
+                'status' => $status,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
