@@ -24,7 +24,8 @@ class FetchMacyProducts extends Command
     protected $signature = 'app:fetch-macy-products
                             {--pp-mcm-only : Only sync Purchasing Power prices from MCM OF21}
                             {--macy-mcm-only : Only sync Macy listed prices from MCM OF21}
-                            {--bestbuy-mcm-only : Only sync Best Buy listed prices from MCM OF21}';
+                            {--bestbuy-mcm-only : Only sync Best Buy listed prices from MCM OF21}
+                            {--bestbuy-mcm-offset=0 : Resume Best Buy OF21 at this offer offset}';
 
     /**
      * The console command description.
@@ -882,6 +883,34 @@ class FetchMacyProducts extends Command
     }
 
     /**
+     * @param  array<string, int|string>  $params
+     * @return \Illuminate\Http\Client\Response|null  null = exhausted 429 retries
+     */
+    private function fetchBestBuyMcmOffers(string $baseUrl, string $apiKey, array $params)
+    {
+        $response = null;
+        for ($attempt = 1; $attempt <= 8; $attempt++) {
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => $apiKey,
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(60)
+                ->get($baseUrl.'/api/offers', $params);
+
+            if ($response->status() !== 429) {
+                return $response;
+            }
+
+            $sleepSec = min(90, 10 * $attempt);
+            $this->warn("Best Buy MCM rate limited (429); sleeping {$sleepSec}s then retry {$attempt}/8...");
+            sleep($sleepSec);
+        }
+
+        return null;
+    }
+
+    /**
      * OF21 — pull Best Buy MCM offer prices into bestbuy_usa_products.
      * Seller portal listed price lives here; Connect catalog / uploaded sheet are not listed.
      */
@@ -898,12 +927,18 @@ class FetchMacyProducts extends Command
         $this->info('Syncing Best Buy prices from MCM offers (OF21)...');
 
         $shopId = config('services.bestbuy.shop_id');
-        $offset = 0;
-        $max = 100;
+        $startOffset = max(0, (int) $this->option('bestbuy-mcm-offset'));
+        $offset = $startOffset;
+        $max = 50;
         $totalUpdated = 0;
-        $page = 1;
+        $page = (int) floor($offset / $max) + 1;
         $seenNormSkus = [];
         $seenExactSkus = [];
+        $rateLimitRounds = 0;
+
+        if ($startOffset > 0) {
+            $this->warn("Resuming Best Buy OF21 at offset {$startOffset}. Leftover clear is skipped until a full 0-offset run finishes.");
+        }
 
         try {
             do {
@@ -915,33 +950,29 @@ class FetchMacyProducts extends Command
                     $params['shop_id'] = (int) $shopId;
                 }
 
-                $response = null;
-                for ($attempt = 1; $attempt <= 5; $attempt++) {
-                    $response = Http::withoutVerifying()
-                        ->withHeaders([
-                            'Authorization' => $apiKey,
-                            'Accept' => 'application/json',
-                        ])
-                        ->timeout(60)
-                        ->get($baseUrl.'/api/offers', $params);
-
-                    if ($response->status() !== 429) {
-                        break;
+                $response = $this->fetchBestBuyMcmOffers($baseUrl, $apiKey, $params);
+                if ($response === null) {
+                    $rateLimitRounds++;
+                    if ($rateLimitRounds >= 4) {
+                        $this->error("Best Buy MCM still 429 at offset {$offset}. Resume with: php artisan app:fetch-macy-products --bestbuy-mcm-only --bestbuy-mcm-offset={$offset}");
+                        return;
                     }
-
-                    $sleepSec = min(30, 3 * $attempt);
-                    $this->warn("Best Buy MCM rate limited (429); sleeping {$sleepSec}s then retry {$attempt}/5...");
-                    sleep($sleepSec);
+                    $this->warn("Best Buy MCM 429 at offset {$offset}; waiting 90s then retrying this page ({$rateLimitRounds}/4)...");
+                    sleep(90);
+                    continue;
                 }
+                $rateLimitRounds = 0;
 
-                if (! $response || ! $response->successful()) {
-                    $status = $response ? $response->status() : 0;
-                    $body = $response ? substr($response->body(), 0, 300) : 'no response';
+                if (! $response->successful()) {
+                    $status = $response->status();
+                    $body = substr($response->body(), 0, 300);
                     $this->error('Best Buy MCM OF21 failed: HTTP '.$status.' '.$body);
                     Log::error('Best Buy MCM OF21 failed', [
                         'status' => $status,
-                        'body' => $response ? substr($response->body(), 0, 1000) : null,
+                        'body' => substr($response->body(), 0, 1000),
+                        'offset' => $offset,
                     ]);
+                    $this->warn("Resume with: php artisan app:fetch-macy-products --bestbuy-mcm-only --bestbuy-mcm-offset={$offset}");
                     return;
                 }
 
@@ -1023,12 +1054,16 @@ class FetchMacyProducts extends Command
                 $offset += $max;
                 $page++;
                 unset($offers, $updates);
-                sleep(1);
+                sleep(4);
 
                 $hasMore = $fetched >= $max && ($totalCount === 0 || $offset < $totalCount);
             } while ($hasMore);
 
-            $this->clearBestBuyProductsPriceNotInMcm(array_keys($seenNormSkus), array_keys($seenExactSkus));
+            if ($startOffset === 0) {
+                $this->clearBestBuyProductsPriceNotInMcm(array_keys($seenNormSkus), array_keys($seenExactSkus));
+            } else {
+                $this->warn('Skipped leftover clear because this was a resumed OF21 run.');
+            }
             $this->info("Best Buy MCM price sync complete. Updated: {$totalUpdated}");
         } catch (\Throwable $e) {
             $this->error('Best Buy MCM price sync error: '.$e->getMessage());
