@@ -50,13 +50,13 @@ class BestBuyListedPriceTest extends TestCase
         $this->assertFalse($out['missing']);
     }
 
-    public function test_zero_stock_legacy_row_is_not_live(): void
+    public function test_zero_stock_legacy_row_stays_listed_before_of21(): void
     {
-        $ghost = new BestbuyUsaProduct();
-        $ghost->price = 47.49;
-        $ghost->stock = 0;
+        $row = new BestbuyUsaProduct();
+        $row->price = 47.49;
+        $row->stock = 0;
 
-        $this->assertFalse(BestBuyPricingController::productIsLiveOffer($ghost));
+        $this->assertTrue(BestBuyPricingController::productIsLiveOffer($row));
     }
 
     public function test_in_stock_legacy_row_is_live(): void

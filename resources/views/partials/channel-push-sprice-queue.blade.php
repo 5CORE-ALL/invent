@@ -826,6 +826,8 @@
                     const row = (item.row && typeof item.row.getData === 'function')
                         ? item.row
                         : chPushSpriceFindRowBySku(sku);
+                    const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
+                    if (chPushSpriceRowBlocked(d)) return;
                     chPushClientQ.push({ sku: sku, price: price, row: row });
                     n++;
                 });
@@ -979,7 +981,9 @@
                 const flag = String(d.live_inactive || d.listing_status || '').toLowerCase();
                 if (['inactive', 'offline', 'ended', 'disabled'].indexOf(flag) !== -1) return true;
                 if (d.is_pp_inactive === true || d.is_missing_pp === true) return true;
+                if (d.is_bb_inactive === true || d.is_missing_bb === true) return true;
                 if (typeof isPpListed === 'function' && CH_PUSH_SPRICE_CHANNEL === 'purchasing_power' && !isPpListed(d)) return true;
+                if (typeof isBbListed === 'function' && CH_PUSH_SPRICE_CHANNEL === 'bestbuy' && !isBbListed(d)) return true;
                 if (typeof isMacysListed === 'function' && (CH_PUSH_SPRICE_CHANNEL === 'macys' || CH_PUSH_SPRICE_CHANNEL === 'macy') && !isMacysListed(d)) return true;
                 if (d.is_missing_macy === true) return true;
                 return false;

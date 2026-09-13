@@ -597,6 +597,7 @@ class BestBuyPricingController extends Controller
 
     /**
      * listing_status=active only counts when the row was written by the latest OF21 pull.
+     * Until OF21 tags a row, a Connect price > 0 stays visible (sold-out stock=0 included).
      */
     public static function productIsLiveOffer(?BestbuyUsaProduct $product, ?Carbon $freshAfter = null): bool
     {
@@ -610,6 +611,10 @@ class BestBuyPricingController extends Controller
         }
         if ((float) ($product->price ?? 0) <= 0) {
             return false;
+        }
+
+        if ($status === '') {
+            return true;
         }
 
         $inLatestPull = true;
