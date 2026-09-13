@@ -773,30 +773,6 @@
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb'])
 
                     <div class="btn-group flex-shrink-0">
-                        <button type="button" class="btn btn-sm" id="reverb-zero-sold-prc-rule-btn"
-                            title="Apply 0 Sold Dil% → Target GROI% → S PRC on selected (or visible) 0 Sold rows">
-                            <i class="fas fa-sliders-h"></i> 0 Sold Prc Rule
-                        </button>
-                        <button type="button" class="btn btn-sm dropdown-toggle dropdown-toggle-split"
-                            data-bs-toggle="dropdown" aria-expanded="false"
-                            title="Edit Dil% → Target GROI% rules">
-                            <span class="visually-hidden">0 Sold Prc options</span>
-                        </button>
-                        <ul class="dropdown-menu">
-                            <li>
-                                <a class="dropdown-item" href="#" id="reverb-zero-sold-prc-rules-modal-btn">
-                                    <i class="fas fa-sliders-h me-1"></i> Dil vs Target GROI…
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item" href="#" id="reverb-zero-sold-prc-apply-now-btn">
-                                    <i class="fas fa-magic me-1"></i> Apply 0 Sold Prc
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div class="btn-group flex-shrink-0">
                         <button type="button" class="btn btn-sm dropdown-toggle" id="reverb-s-bump-menu-btn"
                             data-bs-toggle="dropdown" aria-expanded="false"
                             title="Sold vs Bump model — suggest S Bump% from RV L30 sold">
@@ -1029,45 +1005,6 @@
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'reverb'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'reverb'])
-
-    <div class="modal fade" id="reverbZeroSoldPrcModal" tabindex="-1" aria-labelledby="reverbZeroSoldPrcModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-md">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title fs-6" id="reverbZeroSoldPrcModalLabel">
-                        <i class="fas fa-sliders-h me-1"></i> 0 Sold Prc Rule
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body py-2">
-                    <p class="small text-muted mb-2">
-                        Rules for <strong>0 Sold</strong> only (<strong>RV L30 = 0</strong>), by Dil%
-                        (OV L30 ÷ INV). Last column is <strong>Target GROI%</strong>.
-                        <strong>Apply</strong> sets <strong>S PRC</strong> so SROI matches that GROI:
-                        <code>S PRC = (LP × (1 + GROI%/100) + Ship) / margin</code>.
-                    </p>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-0" id="reverb-zero-sold-prc-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width:55%;">Dil%</th>
-                                    <th style="width:45%;" class="text-end">Target GROI%</th>
-                                </tr>
-                            </thead>
-                            <tbody id="reverb-zero-sold-prc-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div class="small text-muted mt-2" id="reverb-zero-sold-prc-status"></div>
-                </div>
-                <div class="modal-footer py-2 flex-wrap gap-1">
-                    <button type="button" class="btn btn-sm btn-primary" id="reverb-zero-sold-prc-apply-btn"
-                        title="Save Dil→GROI rules, then suggest S PRC on 0 Sold rows — selected if checked, otherwise all visible">
-                        Apply
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <div class="modal fade" id="reverbDilVsSBumpModal" tabindex="-1" aria-labelledby="reverbDilVsSBumpModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-md">
@@ -2552,264 +2489,6 @@
                 showToast('S Bump apply failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'), 'error');
             } finally {
                 $btn.prop('disabled', false).html(html);
-            }
-        }
-
-        const REVERB_ZERO_SOLD_PRC_DEFAULTS = [
-            { key: '0-10', label: '0–10%', groi: 40 },
-            { key: '10-20', label: '10–20%', groi: 35 },
-            { key: '20-30', label: '20–30%', groi: 30 },
-            { key: '30-40', label: '30–40%', groi: 25 },
-            { key: '40-50', label: '40–50%', groi: 20 },
-            { key: '50-60', label: '50–60%', groi: 15 },
-            { key: '60-70', label: '60–70%', groi: 12 },
-            { key: '70-80', label: '70–80%', groi: 10 },
-            { key: '80-90', label: '80–90%', groi: 8 },
-            { key: '90-100', label: '90–100%', groi: 5 },
-            { key: 'gt-100', label: '> 100%', groi: 0 },
-        ];
-        let reverbZeroSoldPrcRules = REVERB_ZERO_SOLD_PRC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
-
-        function reverbRowLp(d) {
-            const lp = parseFloat(d && (d.LP_productmaster != null ? d.LP_productmaster : d.LP));
-            return (isFinite(lp) && lp > 0) ? lp : 0;
-        }
-        function reverbRowInv(d) {
-            if (typeof chPromoInv === 'function') return chPromoInv(d);
-            return parseFloat(d && d.INV) || 0;
-        }
-        function reverbRowSold(d) {
-            if (typeof chPromoReverbSoldQty === 'function') return chPromoReverbSoldQty(d);
-            return parseFloat(d && d['RV L30']) || 0;
-        }
-        function reverbDilPct(d) {
-            // Same as the Dil column: OV L30 ÷ INV × 100 (do not use stored RV Dil% ratio).
-            const inv = reverbRowInv(d);
-            const ovL30 = parseFloat(d && (d.L30 != null ? d.L30 : d['L30'])) || 0;
-            if (inv <= 0) return 0;
-            return (ovL30 / inv) * 100;
-        }
-        function reverbZeroSoldDilSlabKey(dil) {
-            const n = Number(dil);
-            if (!isFinite(n) || n < 0) return '0-10';
-            if (n > 100) return 'gt-100';
-            const bucket = Math.min(9, Math.floor(n / 10));
-            const lo = bucket * 10;
-            return lo + '-' + (lo + 10);
-        }
-        function reverbGroiForZeroSoldDil(dil) {
-            const key = reverbZeroSoldDilSlabKey(dil);
-            const rule = reverbZeroSoldPrcRules.find(function(r) { return r.key === key; });
-            const n = rule ? Number(rule.groi) : 0;
-            return isFinite(n) ? n : 0;
-        }
-        function reverbSpriceFromTargetGroi(rowData, groiPct) {
-            const lp = reverbRowLp(rowData);
-            if (lp <= 0) return 0;
-            const ship = parseFloat(rowData && (rowData.Ship_productmaster != null && rowData.Ship_productmaster !== ''
-                ? rowData.Ship_productmaster : rowData.Ship)) || 0;
-            const margin = reverbTakeRate(rowData);
-            if (!(margin > 0)) return 0;
-            const groi = isFinite(Number(groiPct)) ? Number(groiPct) : 0;
-            const targetRound = Math.round(groi);
-            let price = (lp * (1 + groi / 100) + ship) / margin;
-            if (!(isFinite(price) && price > 0)) return 0;
-            price = Math.round(price * 100) / 100;
-            const metricRow = Object.assign({}, rowData, {
-                LP_productmaster: lp,
-                Ship_productmaster: ship
-            });
-            const shownGroi = function(p) {
-                const m = reverbComputePriceMetrics(p, metricRow);
-                return (m.groi == null || !isFinite(m.groi)) ? null : Math.round(m.groi);
-            };
-            if (shownGroi(price) === targetRound) return price;
-            for (let delta = 1; delta <= 20; delta++) {
-                for (let sign = 1; sign >= -1; sign -= 2) {
-                    const p = Math.round((price + sign * delta * 0.01) * 100) / 100;
-                    if (p <= 0) continue;
-                    if (shownGroi(p) === targetRound) return p;
-                }
-            }
-            return price;
-        }
-        function reverbZeroSoldPrcSroiTitle(d, currentGroi) {
-            const sold = reverbRowSold(d);
-            const inv = reverbRowInv(d);
-            const lp = reverbRowLp(d);
-            const dil = reverbDilPct(d);
-            const target = reverbGroiForZeroSoldDil(dil);
-            const sprice = parseFloat(d && d.SPRICE) || 0;
-            const rulePrice = reverbSpriceFromTargetGroi(d, target);
-            const shown = (currentGroi == null || !isFinite(currentGroi)) ? null : Math.round(currentGroi);
-            const prmt = Math.max(0, Number(d && (d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied)) || 0);
-            if (sold > 0) {
-                return 'SGROI is from SPRICE. 0 Sold Prc Rule does not apply (RV L30 > 0).';
-            }
-            if (!(inv > 0) || !(lp > 0)) {
-                return '0 Sold Prc Rule needs RV L30 = 0, INV > 0, and LP > 0.';
-            }
-            if (shown === Math.round(target)) {
-                return '0 Sold Prc Rule: Dil ' + dil.toFixed(1) + '% → Target SGROI ' + Math.round(target) + '%.';
-            }
-            return '0 Sold Prc Rule: Dil ' + dil.toFixed(1) + '% (0–10% slab → ' + Math.round(target)
-                + '% SGROI) needs SPRICE $' + rulePrice.toFixed(2)
-                + '. Current ' + shown + '% is from SPRICE $' + sprice.toFixed(2)
-                + (prmt > 0 ? (' = Std × (1 − ' + prmt + '% PRMT)') : ' (PRMT/Std discount)')
-                + ', not the GROI price. Click 0 Sold Prc Rule to apply.';
-        }
-        function renderReverbZeroSoldPrcModalTable() {
-            const $tb = $('#reverb-zero-sold-prc-tbody').empty();
-            reverbZeroSoldPrcRules.forEach(function(r, idx) {
-                const groi = isFinite(Number(r.groi)) ? Number(r.groi) : 0;
-                $tb.append(
-                    '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
-                    + '<td>' + String(r.label || r.key) + '</td>'
-                    + '<td class="text-end">'
-                    + '<input type="number" class="form-control form-control-sm reverb-zero-sold-groi-input" '
-                    + 'step="0.1" value="' + groi + '" data-idx="' + idx + '" title="Target GROI% for this Dil slab">'
-                    + '</td></tr>'
-                );
-            });
-        }
-        function readReverbZeroSoldPrcRulesFromModal() {
-            $('#reverb-zero-sold-prc-tbody tr').each(function() {
-                const key = String($(this).attr('data-key') || '');
-                const val = parseFloat($(this).find('.reverb-zero-sold-groi-input').val());
-                const rule = reverbZeroSoldPrcRules.find(function(r) { return r.key === key; });
-                if (!rule) return;
-                rule.groi = isFinite(val) ? val : 0;
-            });
-            return reverbZeroSoldPrcRules.map(function(r) {
-                return { key: r.key, label: r.label, groi: Number(r.groi) || 0 };
-            });
-        }
-        async function loadReverbZeroSoldPrcRules() {
-            $('#reverb-zero-sold-prc-status').text('Loading…');
-            try {
-                const res = await $.ajax({
-                    url: '/channel-promo-pricing/reverb/zero-sold-prc',
-                    method: 'GET',
-                    dataType: 'json',
-                });
-                if (res && Array.isArray(res.rules) && res.rules.length) {
-                    reverbZeroSoldPrcRules = res.rules.map(function(r) { return Object.assign({}, r); });
-                }
-                renderReverbZeroSoldPrcModalTable();
-                $('#reverb-zero-sold-prc-status').text(res && res.is_default
-                    ? 'Using first-time defaults. Apply to save & suggest S PRC on 0 Sold rows.'
-                    : 'Saved 0 Sold Prc rules loaded.');
-            } catch (e) {
-                renderReverbZeroSoldPrcModalTable();
-                $('#reverb-zero-sold-prc-status').text('Could not load saved rules — showing defaults.');
-            }
-        }
-        async function saveReverbZeroSoldPrcRules() {
-            const rules = readReverbZeroSoldPrcRulesFromModal();
-            await $.ajax({
-                url: '/channel-promo-pricing/reverb/zero-sold-prc',
-                method: 'POST',
-                dataType: 'json',
-                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
-                data: { rules: rules, _token: csrfToken() },
-            });
-            reverbZeroSoldPrcRules = rules.map(function(r) { return Object.assign({}, r); });
-        }
-        function collectReverbZeroSoldPrcTargets() {
-            const collected = collectReverbSBumpTargets();
-            const zeroSold = collected.targets.filter(function(job) {
-                const d = (job.row && job.row.getData()) || job.d || {};
-                const sold = reverbRowSold(d);
-                const inv = reverbRowInv(d);
-                const lp = reverbRowLp(d);
-                return sold <= 0 && inv > 0 && lp > 0;
-            });
-            return { targets: zeroSold, label: collected.label, selectedCount: collected.targets.length };
-        }
-        function applyReverbZeroSoldPrcToTargets(targets, label) {
-            if (!targets.length) {
-                showToast('No 0 Sold rows (RV L30 = 0, INV > 0, LP > 0) to price', 'error');
-                return 0;
-            }
-            const updates = [];
-            let filled = 0;
-            let skipped = 0;
-            targets.forEach(function(job) {
-                const d = (job.row && job.row.getData()) || job.d || {};
-                const sku = String(d['(Child) sku'] || d.sku || '').trim();
-                if (!sku) {
-                    skipped++;
-                    return;
-                }
-                const groi = reverbGroiForZeroSoldDil(reverbDilPct(d));
-                const newSprice = reverbSpriceFromTargetGroi(d, groi);
-                if (!isFinite(newSprice) || newSprice <= 0) {
-                    skipped++;
-                    return;
-                }
-                try {
-                    if (job.row) {
-                        job.row.update(Object.assign({
-                            SPRICE: newSprice,
-                            has_custom_sprice: true,
-                            SPRICE_STATUS: 'applied',
-                            SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString(),
-                            ZERO_SOLD_PRC_APPLIED: true,
-                            ZERO_SOLD_PRC_GROI: groi
-                        }, reverbSpriceMetricPatch(newSprice, d)));
-                        if (typeof job.row.reformat === 'function') job.row.reformat();
-                    }
-                } catch (e) { /* ignore */ }
-                updates.push({ sku: sku, sprice: newSprice, status: 'applied', zero_sold_prc: 1, groi: groi });
-                filled++;
-            });
-            if (updates.length) {
-                saveSpriceUpdates(updates);
-            }
-            const note = skipped > 0 ? ' (' + skipped + ' skipped)' : '';
-            showToast('0 Sold Prc Rule (' + label + '): S PRC from Dil→Target SGROI → ' + filled + ' row(s)' + note, filled ? 'success' : 'warning');
-            return filled;
-        }
-        async function saveAndApplyReverbZeroSoldPrc(opts) {
-            opts = opts || {};
-            const $toolbar = $('#reverb-zero-sold-prc-rule-btn');
-            const $modalBtn = $('#reverb-zero-sold-prc-apply-btn');
-            const $busy = opts.fromToolbar ? $toolbar : $modalBtn;
-            const html = $busy.html();
-            $busy.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
-            try {
-                if (opts.fromToolbar) {
-                    await loadReverbZeroSoldPrcRules();
-                } else {
-                    if (!$('#reverb-zero-sold-prc-tbody tr').length) {
-                        await loadReverbZeroSoldPrcRules();
-                    }
-                    await saveReverbZeroSoldPrcRules();
-                }
-                const collected = collectReverbZeroSoldPrcTargets();
-                const targets = collected.targets;
-                const label = collected.label;
-                if (!targets.length) {
-                    if (collected.selectedCount > 0) {
-                        showToast('Selected rows are not 0 Sold (need RV L30 = 0, INV > 0, LP > 0)', 'error');
-                    } else {
-                        showToast('No 0 Sold rows (RV L30 = 0, INV > 0, LP > 0) to price', 'error');
-                    }
-                    return;
-                }
-                if (label === 'all visible' && !opts.skipConfirm) {
-                    if (!confirm('No rows selected — apply 0 Sold Prc rules to all ' + targets.length + ' visible 0 Sold row(s)?')) {
-                        return;
-                    }
-                }
-                applyReverbZeroSoldPrcToTargets(targets, label);
-                if (!opts.fromToolbar) {
-                    $('#reverbZeroSoldPrcModal').modal('hide');
-                }
-            } catch (xhr) {
-                showToast('0 Sold Prc apply failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'), 'error');
-            } finally {
-                $busy.prop('disabled', false).html(html);
             }
         }
 
@@ -4317,7 +3996,7 @@
                     title: "Sroi",
                     field: "SROI",
                     hozAlign: "center",
-                    headerTooltip: "SGROI from SPRICE. 0 Sold Prc Rule Dil 0–10% → 40% SGROI (hover a cell for the row reason).",
+                    headerTooltip: "SGROI from SPRICE.",
                     sorter: function(a, b, aRow, bRow) {
                         const aVal = reverbComputeSroi(aRow.getData());
                         const bVal = reverbComputeSroi(bRow.getData());
@@ -4328,11 +4007,7 @@
                         const d = cell.getRow().getData();
                         const percent = reverbComputeSroi(d);
                         if (percent === null || !isFinite(percent)) return '';
-                        const tip = (typeof reverbZeroSoldPrcSroiTitle === 'function')
-                            ? reverbZeroSoldPrcSroiTitle(d, percent)
-                            : '';
-                        const title = tip ? (' title="' + escapeHtmlAttr(tip) + '"') : '';
-                        return `<span${title} style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
+                        return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -4637,23 +4312,6 @@
             navigator.clipboard.writeText(sku).then(() => {
                 showToast(`Copied: ${sku}`, 'success');
             });
-        });
-
-        $('#reverb-zero-sold-prc-rule-btn').on('click', function(e) {
-            e.preventDefault();
-            saveAndApplyReverbZeroSoldPrc({ fromToolbar: true });
-        });
-        $('#reverb-zero-sold-prc-apply-now-btn').on('click', function(e) {
-            e.preventDefault();
-            saveAndApplyReverbZeroSoldPrc({ fromToolbar: true });
-        });
-        $('#reverb-zero-sold-prc-rules-modal-btn').on('click', function(e) {
-            e.preventDefault();
-            loadReverbZeroSoldPrcRules();
-            $('#reverbZeroSoldPrcModal').modal('show');
-        });
-        $('#reverb-zero-sold-prc-apply-btn').on('click', function() {
-            saveAndApplyReverbZeroSoldPrc();
         });
 
         $('#reverb-dil-vs-s-bump-btn').on('click', function(e) {

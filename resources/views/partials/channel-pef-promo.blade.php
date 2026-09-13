@@ -4228,6 +4228,7 @@
                 ? d.zero_sold_prmt : d._zero_sold_prmt_applied)) || 0);
         }
         function chPromoKeepZeroSoldPrcSprice(d) {
+            if (CHANNEL_PROMO_CHANNEL === 'reverb') return false;
             return !!(d && (d.ZERO_SOLD_PRC_APPLIED === true || d.ZERO_SOLD_PRC_APPLIED === 1
                 || d.ZERO_SOLD_PRC_APPLIED === '1' || d.ZERO_SOLD_PRC_APPLIED === 'true'));
         }
