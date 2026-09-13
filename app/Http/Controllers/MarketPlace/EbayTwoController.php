@@ -28,6 +28,7 @@ use App\Services\ChannelPromoPricingService;
 use App\Services\PefEbayPricePullService;
 use App\Services\LmpSkuGroupService;
 use App\Support\Marketplace\EbayListingEnded;
+use App\Services\MarketplaceManager\EbayPortalListingStatusSync;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -175,6 +176,16 @@ class EbayTwoController extends Controller
             'demo' => $demo,
             'ebayTwoPercentage' => $percentage
         ]);
+    }
+
+    /**
+     * Yellow-badge ended SKUs: if the SKU is live again on a new item_id, pull that listing.
+     */
+    public function pullEndedListings(EbayPortalListingStatusSync $sync)
+    {
+        $result = $sync->pullRelistedEnded(2);
+
+        return response()->json($result, ($result['ok'] ?? false) ? 200 : 422);
     }
 
     public function getViewEbayData(Request $request)

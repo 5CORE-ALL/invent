@@ -5,7 +5,9 @@ namespace App\Services\MarketplaceManager;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
+use App\Models\ShopifySku;
 use App\Services\Ebay2ApiService;
+use App\Support\Marketplace\EbayListingEnded;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -143,6 +145,22 @@ class EbayPortalListingStatusSync
                         $payload['item_id'] = $data['item_id'];
                     }
 
+                    if ($hasItemId && ! empty($data['item_id'])) {
+                        $existingByItem = $model::query()
+                            ->where('item_id', $data['item_id'])
+                            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                            ->first();
+                        if ($existingByItem) {
+                            $existingByItem->fill($payload);
+                            $existingByItem->save();
+                            continue;
+                        }
+                        if (($data['status'] ?? '') === 'ACTIVE') {
+                            $model::query()->create(array_merge(['sku' => $sku], $payload));
+                            continue;
+                        }
+                    }
+
                     $existing = $model::query()
                         ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
                         ->first();
@@ -277,10 +295,7 @@ class EbayPortalListingStatusSync
             return;
         }
         $key = strtoupper($sku);
-        if (isset($allListings[$key])) {
-            return;
-        }
-        $allListings[$key] = [
+        $incoming = [
             'sku' => $sku,
             'status' => $status,
             'title' => $item['title'] ?? null,
@@ -288,6 +303,139 @@ class EbayPortalListingStatusSync
             'ebay_link' => $item['ebay_link'] ?? null,
             'reason' => $reason,
         ];
+        if (isset($allListings[$key])) {
+            // Relist: same SKU can be Unsold (old item_id) and Active (new item_id).
+            if (self::shouldReplaceRemembered((string) ($allListings[$key]['status'] ?? ''), $status)) {
+                $allListings[$key] = $incoming;
+            }
+
+            return;
+        }
+        $allListings[$key] = $incoming;
+    }
+
+    public static function shouldReplaceRemembered(string $currentStatus, string $incomingStatus): bool
+    {
+        return strtoupper($incomingStatus) === 'ACTIVE'
+            && strtoupper($currentStatus) !== 'ACTIVE';
+    }
+
+    /**
+     * Yellow-badge / ended SKUs: if GetMyeBaySelling Active has a new item_id, pull it.
+     *
+     * @return array{ok: bool, checked: int, pulled: int, error?: string}
+     */
+    public function pullRelistedEnded(int $store): array
+    {
+        $store = in_array($store, [1, 2, 3], true) ? $store : 1;
+        $token = $this->accessToken($store);
+        if (! $token) {
+            return ['ok' => false, 'checked' => 0, 'pulled' => 0, 'error' => 'No eBay access token'];
+        }
+
+        $this->ensureListingStatusColumn($store);
+        $model = $this->modelClass($store);
+        $table = $this->table($store);
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'listing_status')) {
+            return ['ok' => false, 'checked' => 0, 'pulled' => 0, 'error' => $table.' missing listing_status'];
+        }
+
+        $active = $this->fetchListingsByStatus($token, 'Active');
+        if (! ($active['ok'] ?? false)) {
+            return ['ok' => false, 'checked' => 0, 'pulled' => 0, 'error' => 'Active list fetch failed'];
+        }
+
+        $bySku = [];
+        foreach ($active['items'] as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            foreach ($this->skuLookupKeys($sku) as $key) {
+                $bySku[$key] = $item;
+            }
+        }
+
+        $endedGroups = $model::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where('sku', 'NOT LIKE', '%PARENT%')
+            ->orderBy('id')
+            ->get()
+            ->groupBy(fn ($m) => strtoupper(trim((string) $m->sku)))
+            ->filter(function ($group) {
+                $live = EbayListingEnded::preferLiveMetric($group);
+
+                return $live && EbayListingEnded::isEnded($live->listing_status ?? null);
+            });
+
+        $hasReason = Schema::hasColumn($table, 'inactive_reason');
+        $hasTitle = Schema::hasColumn($table, 'ebay_title');
+        $hasLink = Schema::hasColumn($table, 'ebay_link');
+        $pulled = 0;
+
+        foreach ($endedGroups as $group) {
+            $live = EbayListingEnded::preferLiveMetric($group);
+            if (! $live) {
+                continue;
+            }
+            $sku = trim((string) $live->sku);
+            $item = null;
+            foreach ($this->skuLookupKeys($sku) as $key) {
+                if (isset($bySku[$key])) {
+                    $item = $bySku[$key];
+                    break;
+                }
+            }
+            $newId = trim((string) ($item['item_id'] ?? ''));
+            if ($newId === '') {
+                continue;
+            }
+            $oldId = trim((string) ($live->item_id ?? ''));
+            $payload = [
+                'listing_status' => 'ACTIVE',
+            ];
+            if ($hasReason) {
+                $payload['inactive_reason'] = null;
+            }
+            if ($hasTitle && ! empty($item['title'])) {
+                $payload['ebay_title'] = $item['title'];
+            }
+            if ($hasLink && ! empty($item['ebay_link'])) {
+                $payload['ebay_link'] = $item['ebay_link'];
+            }
+
+            if ($oldId !== '' && $newId === $oldId) {
+                $live->fill($payload);
+                $live->save();
+                $pulled++;
+                continue;
+            }
+
+            $model::query()->updateOrCreate(
+                ['item_id' => $newId, 'sku' => $sku],
+                $payload
+            );
+            $pulled++;
+        }
+
+        return [
+            'ok' => true,
+            'checked' => $endedGroups->count(),
+            'pulled' => $pulled,
+        ];
+    }
+
+    /** @return list<string> */
+    protected function skuLookupKeys(string $sku): array
+    {
+        $keys = [
+            strtoupper(trim($sku)),
+            ShopifySku::normalizeSkuForShopifyLookup($sku),
+            ShopifySku::compactSkuForLookup($sku),
+        ];
+
+        return array_values(array_unique(array_filter($keys)));
     }
 
     /**

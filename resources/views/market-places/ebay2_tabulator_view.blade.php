@@ -624,7 +624,7 @@
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay2-ended-listing-badge"
                             style="background-color:#ffc107;color:#212529;font-weight:700;cursor:pointer;"
-                            title="Ended listing">
+                            title="Inactive / ended listings. Click to filter. Relisted SKUs with a new item ID are pulled automatically.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay2-red-triangle-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
@@ -1606,6 +1606,41 @@
             const raw = String(data.listing_status || '').trim().toUpperCase();
             return raw === 'ENDED' || raw === 'INACTIVE' || raw === 'UNSOLD'
                 || raw === 'COMPLETED' || raw === 'SOLD';
+        }
+        let ebay2EndedPullInFlight = false;
+        let ebay2EndedPullDone = false;
+        function ebay2PullEndedListings(force) {
+            if (ebay2EndedPullInFlight) return;
+            if (!force && ebay2EndedPullDone) return;
+            ebay2EndedPullInFlight = true;
+            const $badge = $('#ebay2-ended-listing-badge');
+            const prevHtml = $badge.html();
+            $badge.css('opacity', 0.7);
+            $.ajax({
+                url: '/ebay2-pull-ended-listings',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Accept': 'application/json'
+                },
+                data: { _token: $('meta[name="csrf-token"]').attr('content') }
+            }).done(function(res) {
+                ebay2EndedPullDone = true;
+                const n = (res && res.pulled) ? parseInt(res.pulled, 10) : 0;
+                if (n > 0 && table && typeof table.replaceData === 'function') {
+                    table.replaceData('/ebay2-data?_=' + Date.now());
+                    if (typeof showToast === 'function') {
+                        showToast('Pulled ' + n + ' relisted SKU(s) with a new item ID', 'success');
+                    }
+                }
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Could not pull relisted ended listings';
+                if (typeof showToast === 'function') showToast(msg, 'error');
+            }).always(function() {
+                ebay2EndedPullInFlight = false;
+                $badge.css('opacity', 1);
+                if (!$badge.html()) $badge.html(prevHtml);
+            });
         }
         function ebay2HasRedTriangle(data) {
             if (isEbay2TabulatorParentRow(data)) return false;
@@ -2750,6 +2785,7 @@
                     lmpMissingFilterActive = false;
                     priceLt80LmpFilterActive = false;
                     $('#view-mode-filter').val('sku');
+                    if (typeof ebay2PullEndedListings === 'function') ebay2PullEndedListings(true);
                 }
                 applyFilters();
             });
@@ -3128,7 +3164,9 @@
                         }
                     });
                     console.log('Total eBay L30 from API:', totalL30, '(excluding', parentCount, 'PARENT rows)');
-                    
+                    setTimeout(function() {
+                        if (typeof ebay2PullEndedListings === 'function') ebay2PullEndedListings();
+                    }, 400);
                     return response.data || [];
                 },
                 ajaxSorting: false,

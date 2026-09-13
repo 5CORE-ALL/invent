@@ -4747,6 +4747,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Listing Audit ebay2
     Route::get('/ebay2-tabulator-view', [EbayTwoController::class, 'ebay2TabulatorView'])->name('ebay2.tabulator.view');
+    Route::post('/ebay2-pull-ended-listings', [EbayTwoController::class, 'pullEndedListings'])->name('ebay2.pull.ended');
     Route::post('/ebay2/save-links', [EbayTwoController::class, 'saveLinks'])->name('ebay2.save.links');
     Route::get('/ebay2op-tabulator-view', [EbayTwoController::class, 'ebay2opTabulatorView'])->name('ebay2op.tabulator.view');
     Route::get('/ebay2-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2.data');
