@@ -607,7 +607,6 @@
                         <span class="badge flex-shrink-0" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with RV L30 &gt; 0 (same as Amz Sold &gt;0 on A_L30)">&gt; 0 Sold: 0</span>
                         <span class="badge bg-danger flex-shrink-0" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
                         <span class="badge flex-shrink-0" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
-                        <span class="badge bg-danger flex-shrink-0" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing listings (REQ + INV&gt;0 + RV Price = 0)">M L: 0</span>
                         <span class="badge flex-shrink-0" id="reverb-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
@@ -1971,81 +1970,25 @@
             applyFilters();
         });
 
-        // Missing L badge filter (also opened from all-marketplace-master ?badge=)
-        let missingFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
 
         function clearReverbBadgeFilters() {
-            missingFilterActive = false;
             blueTriangleFilterActive = false;
             // Sold filter lives on the #sold-filter dropdown now — reset it here too so
             // this helper still fully clears any active Sold-style filter.
             $('#sold-filter').val('all');
         }
 
-        function syncReverbBadgeFilterStyles() {
-            $('#missing-count-badge').toggleClass('active-filter', missingFilterActive);
-        }
-
-        // Columns hidden while the "Missing L" badge filter is active
-        const missingHiddenColumnFields = [
-            'RV Price',
-            'GPFT%', 'ROI%', 'NPFT', 'NROI', 'SPRICE', 'SGPFT', 'SROI', 'SNPFT', 'SNROI',
-            'prmt_pct', 'cpn_pct',
-            'RV L30', 'reverb_daily_qty', 'reverb_daily_qty_x_subtotal', 'reverb_daily_qty_x_amount', 'R Stock',
-            'Views', 'CVR',
-            'L30', 'RV Dil%', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
-        ];
-
-        // Remember each column's visibility before the filter hid it, so we can restore it
-        let missingColumnPrevVisibility = null;
-
-        function applyMissingColumnVisibility() {
-            if (!table) return;
-            if (missingFilterActive) {
-                if (!missingColumnPrevVisibility) {
-                    missingColumnPrevVisibility = {};
-                    missingHiddenColumnFields.forEach(function(field) {
-                        const col = table.getColumn(field);
-                        if (col) missingColumnPrevVisibility[field] = col.isVisible();
-                    });
-                }
-                missingHiddenColumnFields.forEach(function(field) {
-                    const col = table.getColumn(field);
-                    if (col) col.hide();
-                });
-            } else if (missingColumnPrevVisibility) {
-                missingHiddenColumnFields.forEach(function(field) {
-                    const col = table.getColumn(field);
-                    if (!col) return;
-                    if (missingColumnPrevVisibility[field]) col.show();
-                    else col.hide();
-                });
-                missingColumnPrevVisibility = null;
-            }
-            buildColumnDropdown();
-        }
-
         function applyReverbUrlBadgeFilter() {
             const badge = (new URLSearchParams(window.location.search).get('badge') || '').toLowerCase();
             if (badge && table) {
                 clearReverbBadgeFilters();
-                if (badge === 'missing') missingFilterActive = true;
-                else if (badge === 'zero_sold') $('#sold-filter').val('zero');
+                if (badge === 'zero_sold') $('#sold-filter').val('zero');
                 else if (badge === 'more_sold') $('#sold-filter').val('sold');
-                syncReverbBadgeFilterStyles();
-                applyMissingColumnVisibility();
             }
             applyFilters();
         }
-
-        $('#missing-count-badge').on('click', function() {
-            missingFilterActive = !missingFilterActive;
-            syncReverbBadgeFilterStyles();
-            applyMissingColumnVisibility();
-            applyFilters();
-        });
 
         // ========== MANUAL DROPDOWN FUNCTIONALITY (Walmart-style) ==========
         // Initialize dropdown functionality
@@ -3186,9 +3129,6 @@
             ajaxURL: "/reverb-data-json",
             ajaxSorting: false,
             ajaxResponse: function(url, params, response) {
-                if (response && response.map_miss_summary) {
-                    applyMapMissSummary(response.map_miss_summary);
-                }
                 if (response && Array.isArray(response.data)) {
                     allTableData = response.data;
                     if (window.ParentExpand) ParentExpand.captureDataset(response.data);
@@ -4480,16 +4420,6 @@
                 });
             }
 
-            // Missing filter - show SKUs missing in Reverb (REQ items with INV > 0 only)
-            if (missingFilterActive) {
-                table.addFilter(function(data) {
-                    const missing = data['Missing'] || '';
-                    const inv = parseFloat(data['INV']) || 0;
-                    const nrReq = data['nr_req'] || 'REQ';
-                    return missing === 'M' && nrReq === 'REQ' && inv > 0;
-                });
-            }
-
             if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                 table.addFilter(function(data) {
                     return PriceGtLmpBadge.hasRedTriangle(data, 'RV Price');
@@ -4585,11 +4515,6 @@
                 ? rows.map(r => r.getData())
                 : (table.getData('active') || []);
             return data.filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
-        }
-
-        function applyMapMissSummary(summary) {
-            if (!summary) return;
-            $('#missing-count-badge').text('M L: ' + (parseInt(summary.miss, 10) || 0).toLocaleString());
         }
 
         // Update summary badges
