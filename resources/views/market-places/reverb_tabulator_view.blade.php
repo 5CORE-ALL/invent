@@ -301,18 +301,8 @@
             color: #fff;
         }
         #reverb-apply-std-price-btn:disabled { opacity: 0.65; }
-        #reverb-apply-bump-btn {
-            background: #fd7e14;
-            border-color: #fd7e14;
-            color: #fff;
-        }
-        #reverb-apply-bump-btn:hover,
-        #reverb-apply-bump-btn:focus {
-            background: #e8590c;
-            border-color: #d9480f;
-            color: #fff;
-        }
-        #reverb-apply-bump-btn:disabled { opacity: 0.65; }
+        #reverb-apply-bump-btn.dropdown-item:disabled,
+        #reverb-apply-bump-btn.disabled { opacity: 0.65; pointer-events: none; }
         .reverb-push-bump-btn .fa-spinner,
         .reverb-push-std-btn .fa-spinner {
             display: inline-block !important;
@@ -596,13 +586,12 @@
                         <span class="badge bg-dark flex-shrink-0" id="rd-daily-overview-badge" style="font-weight: bold;" title="Total units: SUM(quantity) across all reverb_daily_data order rows">Orders: —</span>
                         <span class="badge bg-info flex-shrink-0" id="gpft-list-badge" style="color: black; font-weight: bold;" title="Weighted GPFT% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×RV Price) — same method as /temu-decrease, using normal ship">GPFT: 0%</span>
                         <span class="badge flex-shrink-0" id="rd-ads-percent-badge" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Reverb Ads% (Bump fees ÷ L30 Sales) — from /all-marketplace-master (same source Amz Ads badge uses)">Ads: {{ isset($reverbAdsPercent) ? round((float) $reverbAdsPercent, 1) . '%' : 'N/A' }}</span>
-                        <span class="badge bg-info flex-shrink-0" id="npft-badge" style="color: black; font-weight: bold;" title="PFT% = GPFT% − Ads% (same as /amazon-tabulator-view)">PFT: 0%</span>
+                        <span class="badge bg-info flex-shrink-0" id="npft-badge" style="color: black; font-weight: bold;" title="NPFT% = GPFT% − Ads% (same as /amazon-tabulator-view)">NPFT: 0%</span>
                         <span class="badge flex-shrink-0" id="groi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Weighted GROI% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×LP) — same method as /temu-decrease, using normal ship">GROI: 0%</span>
                         <span class="badge flex-shrink-0" id="nroi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = (Total PFT − Ad Spend) ÷ COGS × 100; Ad Spend = Ads% × Sales (same as /amazon-tabulator-view)">NROI: 0%</span>
                         <span class="badge flex-shrink-0" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of bump impressions ÷ 100 for currently filtered rows (Reverb GET /listings/{id}/bump → bump_v2_stats.impressions)">Views: 0</span>
-                        <span class="badge flex-shrink-0" id="avg-views-badge" style="background-color: #0dcaf0; color: #111; font-weight: bold;" title="Average (bump impressions ÷ 100) per SKU for currently filtered rows">Avg Views: 0</span>
                         <span class="badge flex-shrink-0" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Σ(RV L30) ÷ Σ(Views÷100) × 100">CVR: 0%</span>
-                        <span class="badge flex-shrink-0" id="rd-qty-sum-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Sum of RD Qty column (reverb_daily_qty) for currently filtered rows">RD Qty: 0</span>
+                        <span class="badge flex-shrink-0" id="rd-qty-sum-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Sum of Qty for currently filtered rows">Qty: 0</span>
                         <span class="badge bg-danger flex-shrink-0" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with RV L30 = 0 (same as Amz 0 Sold on A_L30)">0 Sold: 0</span>
                         <span class="badge flex-shrink-0" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with RV L30 &gt; 0 (same as Amz Sold &gt;0 on A_L30)">&gt; 0 Sold: 0</span>
                         <span class="badge bg-danger flex-shrink-0" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
@@ -731,10 +720,6 @@
                         <i class="fas fa-file-excel"></i>
                     </button>
 
-                    <button id="bulk-mode-btn" class="btn btn-sm btn-primary flex-shrink-0 text-nowrap" title="Toggle bulk price editing — reveal checkboxes, then choose Decrease / Increase / Same Price">
-                        <i class="fas fa-sliders-h"></i> Bulk Mode
-                    </button>
-
                     {{-- Sprc Dil (Amazon Dil-matching) + CVR vs CPN --}}
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'reverb'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb'])
@@ -742,7 +727,7 @@
                     <div class="btn-group flex-shrink-0">
                         <button type="button" class="btn btn-sm dropdown-toggle" id="reverb-s-bump-menu-btn"
                             data-bs-toggle="dropdown" aria-expanded="false"
-                            title="Sold vs Bump model — suggest S Bump% from RV L30 sold">
+                            title="Sold vs Bump rules, fill S Bump%, or push S Bump% to the live Reverb bid">
                             <i class="fas fa-sliders-h"></i> S Bump
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="reverb-s-bump-menu-btn">
@@ -756,46 +741,13 @@
                                     <i class="fas fa-magic me-1" style="color:#fd7e14;"></i> Apply S Bump
                                 </a>
                             </li>
+                            <li>
+                                <a class="dropdown-item" href="#" id="reverb-apply-bump-btn"
+                                    title="Queue Reverb Bump bid at S Bump%. Selected SKUs if checked; otherwise all visible whose S Bump% differs from live Bump%.">
+                                    <i class="fas fa-upload me-1" style="color:#fd7e14;"></i> Apply Bump
+                                </a>
+                            </li>
                         </ul>
-                    </div>
-
-                    <button type="button" class="btn btn-sm flex-shrink-0" id="reverb-apply-bump-btn"
-                        title="Queue Reverb Bump bid at S Bump%. Selected SKUs if checked; otherwise all visible whose S Bump% differs from live Bump%.">
-                        <i class="fas fa-upload"></i> Apply Bump
-                    </button>
-
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = row.percentage, default 0.85) --}}
-                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light flex-shrink-0"
-                        id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (back-solves so SROI column equals the target)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            &#127919; ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 60px;"
-                            title="Target ROI% applied to all selected rows when you click Apply">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light flex-shrink-0"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            &#127919; GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 60px;"
-                            title="Target GPFT% applied to all selected rows when you click Apply. Must be less than the Reverb take-home margin (typically < 85%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / (margin − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
                     </div>
 
                     <input type="text" id="parent-search" class="form-control form-control-sm flex-shrink-0" placeholder="Search Parent..." style="max-width: 160px;">
@@ -804,30 +756,6 @@
 
             </div>
             <div class="card-body" style="padding: 0;">
-                <!-- Discount Input Box (shown when SKUs are selected) - ->
-                <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span id="selected-skus-count" class="fw-bold"></span>
-                        <select id="bulk-op-select" class="form-select form-select-sm" style="width: 150px;" title="Choose how the entered value is applied to selected SKUs">
-                            <option value="decrease">&#8595; Decrease</option>
-                            <option value="increase">&#8593; Increase</option>
-                            <option value="same">&#61; Same Price</option>
-                        </select>
-                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
-                        <span id="discount-type-select-wrap">
-                        <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
-                            <option value="percentage">Percentage</option>
-                            <option value="value">Value ($)</option>
-                        </select>
-                        </span>
-                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
-                            placeholder="Enter %" step="0.01" style="width: 140px;">
-                        <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
-                        <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
-                            <i class="fas fa-copy"></i> Sugg Amz Prc
-                        </button>
-                    </div>
-                </div>
                 <div id="reverb-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <!-- Table body -->
                     <div id="reverb-table" style="flex: 1;"></div>
@@ -1081,9 +1009,6 @@
     // Used for PFT% = GPFT% − Ads%, SNPFT = SGPFT − Ads%, and NROI/SNROI.
     const REVERB_CHANNEL_ADS_PCT = {{ isset($reverbAdsPercent) ? (float) $reverbAdsPercent : 0 }};
     let reverbAdsPct = REVERB_CHANNEL_ADS_PCT;
-    let decreaseModeActive = false;
-    let increaseModeActive = false;
-    let samePriceModeActive = false;
     let selectedSkus = new Set();
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'reverb'])
@@ -1433,41 +1358,6 @@
         toast.addEventListener('hidden.bs.toast', () => toast.remove());
     }
 
-    // Bulk mode active state (single merged button).
-    let bulkModeActive = false;
-
-    // Reflect the chosen operation (decrease / increase / same) onto the legacy
-    // mode flags so applyDiscount() and Target ROI/GPFT keep working unchanged.
-    function applyBulkOpSelection() {
-        const op = $('#bulk-op-select').val();
-        decreaseModeActive = bulkModeActive && op === 'decrease';
-        increaseModeActive = bulkModeActive && op === 'increase';
-        samePriceModeActive = bulkModeActive && op === 'same';
-        syncDiscountInputUi();
-    }
-
-    function resetBulkModeBtn() {
-        $('#bulk-mode-btn').removeClass('btn-danger').addClass('btn-primary')
-            .html('<i class="fas fa-sliders-h"></i> Bulk Mode');
-    }
-
-    // Swap the discount-input panel between %/$ and Same Price modes.
-    function syncDiscountInputUi() {
-        const $input = $('#discount-percentage-input');
-        if (samePriceModeActive) {
-            $('#discount-type-select-wrap').hide();
-            $('#discount-input-label').removeClass('d-none');
-            $input.attr('placeholder', 'Enter price (e.g. 19.99)').attr('step', '0.01');
-            $('#apply-discount-btn').text('Apply Same Price');
-        } else {
-            $('#discount-type-select-wrap').show();
-            $('#discount-input-label').addClass('d-none');
-            const t = $('#discount-type-select').val();
-            $input.attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
-            $('#apply-discount-btn').text('Apply');
-        }
-    }
-
     let skuMetricsChart = null;
     let currentSku = null;
     let currentSkuChartMetric = 'views';
@@ -1724,222 +1614,6 @@
             if (currentSku) loadSkuMetricsData(currentSku, daysNum || 0, currentSkuChartMetric);
         });
 
-        $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
-        $('#bulk-op-select').on('change', function() { applyBulkOpSelection(); });
-
-        // Bulk Price Mode Toggle — reveals checkboxes; operation chosen via #bulk-op-select.
-        $('#bulk-mode-btn').on('click', function() {
-            bulkModeActive = !bulkModeActive;
-            const selectColumn = table.getColumn('_select');
-
-            if (bulkModeActive) {
-                $(this).removeClass('btn-primary').addClass('btn-danger')
-                    .html('<i class="fas fa-sliders-h"></i> Bulk Mode ON');
-                selectColumn.show();
-                $('#discount-input-container').show();
-                applyBulkOpSelection();
-            } else {
-                resetBulkModeBtn();
-                selectColumn.hide();
-                selectedSkus.clear();
-                updateSelectedCount();
-                applyBulkOpSelection();
-            }
-            syncDiscountInputUi();
-        });
-
-        // Select all checkbox handler
-        $(document).on('change', '#select-all-checkbox', function() {
-            const isChecked = $(this).prop('checked');
-            const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
-            
-            filteredData.forEach(row => {
-                if (isChecked) {
-                    selectedSkus.add(row['(Child) sku']);
-                } else {
-                    selectedSkus.delete(row['(Child) sku']);
-                }
-            });
-            
-            $('.sku-select-checkbox').each(function() {
-                const sku = $(this).data('sku');
-                $(this).prop('checked', selectedSkus.has(sku));
-            });
-            
-            updateSelectedCount();
-        });
-
-        // Individual checkbox handler
-        $(document).on('change', '.sku-select-checkbox', function() {
-            const sku = $(this).data('sku');
-            if ($(this).prop('checked')) {
-                selectedSkus.add(sku);
-            } else {
-                selectedSkus.delete(sku);
-            }
-            updateSelectedCount();
-            updateSelectAllCheckbox();
-        });
-
-        // Apply discount button
-        $('#apply-discount-btn').on('click', function() {
-            applyDiscount();
-        });
-
-        // Apply discount on Enter key
-        $('#discount-percentage-input').on('keypress', function(e) {
-            if (e.which === 13) {
-                applyDiscount();
-            }
-        });
-
-        /*
-         * Target ROI% bulk apply (Reverb, margin = row.percentage || 0.85)
-         * ----------------------------------------------------------------
-         * For every selected row with a usable LP, back-solve the sale price so
-         * the resulting SROI column matches Target ROI%:
-         *     SROI = ((sprice * margin − ship − lp) / lp) * 100
-         *   → sprice = (lp * (1 + ROI%/100) + ship) / margin
-         * Optimistic SGPFT/SPFT/SROI are written client-side, then the existing
-         * bulk /reverb-save-sprice endpoint reconciles them server-side.
-         */
-        $('#apply-target-roi-btn').on('click', function () {
-            const rawInput = $('#target-roi-input').val();
-            const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                showToast('Please enter a Target ROI%', 'error');
-                return;
-            }
-            if (!isFinite(targetRoiPct)) {
-                showToast('Target ROI% must be a number', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                showToast('Please select at least one SKU first (turn on Bulk Price Mode to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const roiMultiplier = 1 + (targetRoiPct / 100);
-            const updates = [];
-            let updatedCount = 0;
-            let skippedNoLp = 0;
-
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                if (rows.length === 0) return;
-                const row = rows[0];
-                const rowData = row.getData();
-                const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                const marginRaw = parseFloat(rowData['percentage']);
-                const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
-                const candidate = (lp * roiMultiplier + ship) / margin;
-                const newSprice = +candidate.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                row.update(Object.assign({
-                    SPRICE: newSprice,
-                    has_custom_sprice: true
-                }, reverbSpriceMetricPatch(newSprice, rowData)));
-                updates.push({ sku: sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (updates.length === 0) {
-                showToast('No selected rows have a usable LP > 0', 'warning');
-                return;
-            }
-
-            saveSpriceUpdates(updates);
-            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-            showToast(`Target ROI ${targetRoiPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
-        });
-
-        /*
-         * Target GPFT% bulk apply (Reverb)
-         * --------------------------------
-         * Back-solves so SGPFT = Target GPFT%:
-         *     SGPFT = ((sprice * margin − ship − lp) / sprice) * 100
-         *   → sprice = (lp + ship) / (margin − GPFT%/100)
-         * Constraint: (margin − target/100) must be > 0 (target < margin*100).
-         */
-        $('#apply-target-gpft-btn').on('click', function () {
-            const rawInput = $('#target-gpft-input').val();
-            const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                showToast('Please enter a Target GPFT%', 'error');
-                return;
-            }
-            if (!isFinite(targetGpftPct)) {
-                showToast('Target GPFT% must be a number', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                showToast('Please select at least one SKU first (turn on Bulk Price Mode to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const targetFraction = targetGpftPct / 100;
-            const updates = [];
-            let updatedCount = 0;
-            let skippedNoLp = 0;
-            const skippedHighGpft = [];
-
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                if (rows.length === 0) return;
-                const row = rows[0];
-                const rowData = row.getData();
-                const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                const marginRaw = parseFloat(rowData['percentage']);
-                const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
-                const denom = margin - targetFraction;
-                if (denom <= 0) { skippedHighGpft.push(sku); return; }
-                const candidate = (lp + ship) / denom;
-                const newSprice = +candidate.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                row.update(Object.assign({
-                    SPRICE: newSprice,
-                    has_custom_sprice: true
-                }, reverbSpriceMetricPatch(newSprice, rowData)));
-                updates.push({ sku: sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (updates.length === 0) {
-                if (skippedHighGpft.length > 0) {
-                    showToast(`Target GPFT% ${targetGpftPct}% is too high — must be less than each row's take-home margin (typically < 85%).`, 'error');
-                } else {
-                    showToast('No selected rows have a usable LP > 0', 'warning');
-                }
-                return;
-            }
-
-            saveSpriceUpdates(updates);
-            let note = '';
-            if (skippedNoLp > 0)        note += ` (${skippedNoLp} skipped — no LP)`;
-            if (skippedHighGpft.length) note += ` (${skippedHighGpft.length} skipped — target ≥ margin)`;
-            showToast(`Target GPFT ${targetGpftPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
-        });
-
-        $('#target-roi-input').on('keypress', function(e) {
-            if (e.which === 13) $('#apply-target-roi-btn').click();
-        });
-        $('#target-gpft-input').on('keypress', function(e) {
-            if (e.which === 13) $('#apply-target-gpft-btn').click();
-        });
-
-        // Sugg Amz Prc button
-        $('#sugg-amz-prc-btn').on('click', function() {
-            applySuggestAmazonPrice();
-        });
-
         // Sold badges just toggle the #sold-filter dropdown so the dropdown stays the
         // single source of truth for the Sold filter (mirrors Amazon tabulator behavior).
         // Clicking the same badge twice clears the filter (toggle semantics preserved).
@@ -2033,180 +1707,6 @@
         $(document).on('click', function() {
             $('.manual-dropdown-container').removeClass('show');
         });
-
-        // Update selected count display
-        function updateSelectedCount() {
-            const count = selectedSkus.size;
-            $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
-            // Keep the bulk panel visible whenever Bulk Price Mode is on (even with 0 selected).
-            $('#discount-input-container').toggle(bulkModeActive || count > 0);
-        }
-
-        // Update select all checkbox state
-        function updateSelectAllCheckbox() {
-            if (!table) return;
-            
-            const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
-            
-            if (filteredData.length === 0) {
-                $('#select-all-checkbox').prop('checked', false);
-                return;
-            }
-            
-            const filteredSkus = new Set(filteredData.map(row => row['(Child) sku']).filter(sku => sku));
-            const allFilteredSelected = filteredSkus.size > 0 && 
-                [...filteredSkus].every(sku => selectedSkus.has(sku));
-            
-            $('#select-all-checkbox').prop('checked', allFilteredSelected);
-        }
-
-        // Custom price rounding function to round to .99 endings
-        function roundToRetailPrice(price) {
-            if (price < 20.99) {
-                return +price.toFixed(2);
-            }
-            // Round to the nearest dollar and subtract 0.01 to make it .99
-            const roundedDollar = Math.ceil(price);
-            return roundedDollar - 0.01;
-        }
-
-        // Apply discount / same-price to selected SKUs (based on RV Price for %/$).
-        function applyDiscount() {
-            const discountType = $('#discount-type-select').val();
-            const discountValue = parseFloat($('#discount-percentage-input').val());
-
-            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
-                showToast('Turn on Bulk Price Mode first', 'error');
-                return;
-            }
-            if (isNaN(discountValue) || discountValue <= 0) {
-                showToast(samePriceModeActive ? 'Please enter a price (e.g. 19.99)' : 'Please enter a valid value', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                showToast('Please select at least one SKU', 'error');
-                return;
-            }
-
-            let updatedCount = 0;
-            const updates = []; // Store updates for backend saving
-
-            // Loop through selected SKUs
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows("(Child) sku", "=", sku);
-
-                if (rows.length > 0) {
-                    const row = rows[0];
-                    const rowData = row.getData();
-                    const currentPrice = parseFloat(rowData['RV Price']) || 0;
-
-                    // Same Price mode applies even when RV Price is empty;
-                    // %/$ modes still require a positive RV Price to compute against.
-                    if (samePriceModeActive || currentPrice > 0) {
-                        let newSprice;
-
-                        if (samePriceModeActive) {
-                            newSprice = Math.max(0.99, discountValue);
-                        } else if (discountType === 'percentage') {
-                            if (increaseModeActive) {
-                                newSprice = currentPrice * (1 + discountValue / 100);
-                            } else {
-                                newSprice = currentPrice * (1 - discountValue / 100);
-                            }
-                        } else {
-                            if (increaseModeActive) {
-                                newSprice = currentPrice + discountValue;
-                            } else {
-                                newSprice = currentPrice - discountValue;
-                            }
-                        }
-
-                        // Apply retail price rounding (round to .99 endings)
-                        newSprice = roundToRetailPrice(newSprice);
-
-                        // Ensure minimum price
-                        newSprice = Math.max(0.99, newSprice);
-
-                        row.update(Object.assign({
-                            SPRICE: newSprice,
-                            has_custom_sprice: true
-                        }, reverbSpriceMetricPatch(newSprice, rowData)));
-
-                        // Store update for backend saving
-                        updates.push({
-                            sku: sku,
-                            sprice: newSprice
-                        });
-
-                        updatedCount++;
-                    }
-                }
-            });
-
-            // Save to backend if there are updates
-            if (updates.length > 0) {
-                saveSpriceUpdates(updates);
-            }
-
-            const action = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
-            const suffix = samePriceModeActive ? '' : ' based on RV Price';
-            showToast(`${action} applied to ${updatedCount} SKU(s)${suffix}`, 'success');
-            $('#discount-percentage-input').val('');
-        }
-
-        // Apply Amazon suggested price
-        function applySuggestAmazonPrice() {
-            if (selectedSkus.size === 0) {
-                showToast('Please select SKUs first', 'error');
-                return;
-            }
-
-            let updatedCount = 0;
-            let noAmazonPriceCount = 0;
-            const updates = []; // Store updates for backend saving
-
-            // Loop through selected SKUs
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows("(Child) sku", "=", sku);
-                
-                if (rows.length > 0) {
-                    const row = rows[0];
-                    const rowData = row.getData();
-                    const amazonPrice = parseFloat(rowData['A Price']);
-                    
-                    if (amazonPrice && amazonPrice > 0) {
-                        row.update(Object.assign({
-                            SPRICE: amazonPrice,
-                            has_custom_sprice: true
-                        }, reverbSpriceMetricPatch(amazonPrice, rowData)));
-                        
-                        // Store update for backend saving
-                        updates.push({
-                            sku: sku,
-                            sprice: amazonPrice
-                        });
-                        
-                        updatedCount++;
-                    } else {
-                        noAmazonPriceCount++;
-                    }
-                } else {
-                    noAmazonPriceCount++;
-                }
-            });
-            
-            // Save to backend if there are updates
-            if (updates.length > 0) {
-                saveSpriceUpdates(updates);
-            }
-            
-            let message = `Amz price applied to ${updatedCount} SKU(s)`;
-            if (noAmazonPriceCount > 0) {
-                message += ` (${noAmazonPriceCount} SKU(s) had no Amz price or not found)`;
-            }
-            
-            showToast(message, updatedCount > 0 ? 'success' : 'warning');
-        }
 
         const REVERB_DIL_S_BUMP_DEFAULTS = [
             { key: '0', label: '0', bump: 10 },
@@ -3292,7 +2792,7 @@
                     sorter: "number"
                 },
                 {
-                    title: "RD Qty",
+                    title: "Qty",
                     field: "reverb_daily_qty",
                     hozAlign: "center",
                     width: 72,
@@ -3639,7 +3139,7 @@
                     width: 50
                 },
                 {
-                    title: "PFT %",
+                    title: "NPFT",
                     field: "NPFT",
                     hozAlign: "center",
                     sorter: function(a, b, aRow, bRow) {
@@ -3723,20 +3223,6 @@
                         return `$${value.toFixed(2)}`;
                     },
                     width: 60
-                },
-                 {
-                    title: "<input type='checkbox' id='select-all-checkbox'>",
-                    field: "_select",
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 40,
-                    visible: false,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sku = rowData['(Child) sku'];
-                        const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                        return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
-                    }
                 },
                 ...(typeof reverbChannelPromoColumns === 'function' ? reverbChannelPromoColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
@@ -4598,15 +4084,13 @@
                 ? ((totalProfitLive - adSpendEst) / totalLpSold) * 100
                 : (groiPct - adsPct);
             $('#rd-ads-percent-badge').text('Ads: ' + adsPct.toFixed(1) + '%');
-            $('#npft-badge').text(`PFT: ${Math.round(pftPct)}%`);
+            $('#npft-badge').text(`NPFT: ${Math.round(pftPct)}%`);
             $('#nroi-badge').text(`NROI: ${Math.round(nroiPct)}%`);
             // Σ(RV L30) ÷ Σ(Views already ÷ 100) × 100
             const overallCvr = totalViewsRaw > 0 ? (totalRvL30 / totalViewsRaw) * 100 : 0;
-            const avgViews = data.length > 0 ? totalViewsRaw / data.length : 0;
             $('#total-views-badge').text(`Views: ${Math.round(totalViewsRaw).toLocaleString()}`);
-            $('#avg-views-badge').text(`Avg Views: ${Math.round(avgViews).toLocaleString()}`);
             $('#avg-cvr-badge').text(`CVR: ${overallCvr.toFixed(1)}%`);
-            $('#rd-qty-sum-badge').text(`RD Qty: ${totalRdQty.toLocaleString()}`);
+            $('#rd-qty-sum-badge').text(`Qty: ${totalRdQty.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
@@ -5078,9 +4562,12 @@
                     reverbPushBumpUpdateRow(t.row, { PUSH_BUMP_STATUS: 'processing', push_bump: 'processing' });
                 } catch (e) { /* ignore */ }
             });
-            const $btn = $('#reverb-apply-bump-btn');
-            const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Queuing…');
+            const $menuBtn = $('#reverb-s-bump-menu-btn');
+            const $item = $('#reverb-apply-bump-btn');
+            const menuHtml = $menuBtn.html();
+            const itemHtml = $item.html();
+            $menuBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Queuing…');
+            $item.addClass('disabled').attr('aria-disabled', 'true').html('<i class="fas fa-spinner fa-spin"></i> Queuing…');
             $.ajax({
                 url: REVERB_PUSH_BUMP_QUEUE_URL,
                 method: 'POST',
@@ -5098,7 +4585,8 @@
                     reverbPushBumpUpdateRow(t.row, { PUSH_BUMP_STATUS: 'error', push_bump: 'error' });
                 });
             }).always(function() {
-                $btn.prop('disabled', false).html(html);
+                $menuBtn.prop('disabled', false).html(menuHtml);
+                $item.removeClass('disabled').removeAttr('aria-disabled').html(itemHtml);
             });
         }
         window.queueReverbPushBump = queueReverbPushBump;
