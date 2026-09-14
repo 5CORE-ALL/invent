@@ -2,8 +2,9 @@
   Sprc Dil — Dil → Target NROI slabs on every Dil tabulator (Ads%=0 → same $ as GROI).
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / AliExpress / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
-  AliExpress only: Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
+  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
+  AliExpress: AL30 = 0 uses min Target NROI (same as other 0 Sold pages). AL30 > 0 uses the Dil-matching slab;
+  Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
   eBay 1–3 / Shein: Dil below the first slab or above the last slab uses the nearest slab (Dil 0 and fast-seller Dil > last To).
   Temu 1 / New Temu One / New Temu Two: Temu L30 = 0 uses the minimum Target GROI (not the Dil-matching slab). Dil is still OV L30 ÷ INV. New Temu Two uses Temu 2 L30 and the same Temu Dil store.
   eBay 1–3 CVR overlay is level-only (CVR < Down → −10 GROI; CVR > Up → +10 GROI). Temu 1–2 also use the overlay; Reverb / Faire / TikTok / Shopify B2C / Shein are level-only. Shein applies the overlay only when the SKU has views.
@@ -24,7 +25,7 @@
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
-        ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'aliexpress', 'shein'], true);
+        ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'shein'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein'], true);
@@ -299,6 +300,13 @@
                             S PRC uses <strong>Std Prc</strong>. If Std Prc is below A Price, S PRC = A Price.
                         </li>
                         @endif
+                        @if($ebaySprcDilChannel === 'aliexpress')
+                        <li>
+                            <strong>When</strong> {{ $ebaySprcDilSoldLabel }} &gt; 0 and Dil is above the last To:
+                            S PRC = <strong>Std Prc</strong>. If Std &gt; LMP, S PRC = <strong>LMP</strong>.
+                            If that price’s SGROI is below <strong>Stop &lt; N%</strong>, skip (no S PRC).
+                        </li>
+                        @endif
                         <li>
                             <strong>When</strong> a price is calculated (slab match or 0 Sold min {{ $ebaySprcDilTargetLabel }}):
                             it auto-applies to <strong>S PRC</strong> and is <strong>queued for Push Prc</strong>
@@ -317,17 +325,6 @@
                             <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
                             use that slab’s Target {{ $ebaySprcDilTargetLabel }} (first match; last slab includes the To value).
                         </li>
-                        @if($ebaySprcDilChannel === 'aliexpress')
-                        <li>
-                            <strong>When</strong> Dil is below the first From (0 Sold Dil 0, INV &gt; 0):
-                            use the <strong>first slab</strong> Target {{ $ebaySprcDilTargetLabel }} (do not skip).
-                        </li>
-                        <li>
-                            <strong>When</strong> Dil is above the last To (INV &gt; 0):
-                            S PRC = <strong>Std Prc</strong>. If Std &gt; LMP, S PRC = <strong>LMP</strong>.
-                            If that price’s SGROI is below <strong>Stop &lt; N%</strong>, skip (no S PRC).
-                        </li>
-                        @endif
                         @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'shein'], true))
                         <li>
                             <strong>When</strong> Dil is below the first From or above the last To (INV &gt; 0):
@@ -694,7 +691,7 @@
             if (!ebayDgIsAliexpress() || !ebayDilGroiAliexpressStopOn()) return false;
             return ebayDilGroiAliexpressSgroiAt(d, price) < ebayDilGroiAliexpressStopMin();
         }
-        /** AliExpress: Dil outside slabs → Std Prc, then LMP if Std > LMP. Stop < N% skips. */
+        /** AliExpress: AL30 > 0 and Dil outside slabs → Std Prc, then LMP if Std > LMP. Stop < N% skips. */
         function ebayDilGroiAliexpressOutOfSlabMeta(d, dil) {
             const std = ebayDgStdPrice(d);
             if (!(std > 0)) return null;
@@ -1073,7 +1070,7 @@
                 const minSlab = ebayDilGroiMinSlab();
                 if (!minSlab) return null;
                 groi = minSlab.groi;
-                label = '0 Sold · min GROI ' + minSlab.groi + '% from ' + minSlab.label;
+                label = '0 Sold · min ' + (ebayDilTargetsNroi() ? 'NROI' : 'GROI') + ' ' + minSlab.groi + '% from ' + minSlab.label;
                 key = minSlab.key || 'zero-sold-min';
                 zeroSoldMin = true;
             } else if (rule) {
@@ -1088,15 +1085,7 @@
                 key = minSlab.key || 'zero-sold-min';
                 zeroSoldMin = true;
             } else if (ebayDgIsAliexpress()) {
-                const list = ebayDilGroiCurrentList();
-                if (list.length && isFinite(dil) && dil < list[0].min) {
-                    groi = list[0].groi;
-                    label = list[0].label;
-                    key = list[0].key;
-                    clamped = true;
-                } else {
-                    return ebayDilGroiAliexpressOutOfSlabMeta(d, dil);
-                }
+                return ebayDilGroiAliexpressOutOfSlabMeta(d, dil);
             } else {
                 return null;
             }

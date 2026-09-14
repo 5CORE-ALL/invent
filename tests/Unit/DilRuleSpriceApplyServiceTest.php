@@ -365,7 +365,26 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(40.00, $up['sprice'], 0.01);
     }
 
-    public function test_aliexpress_dil_zero_uses_first_slab(): void
+    public function test_aliexpress_sold_uses_dil_slab(): void
+    {
+        $out = $this->compute('aliexpress', [
+            'inv' => 9,
+            'dil' => 22,
+            'al30' => 2,
+            'lp' => 10,
+            'ship' => 6,
+            'lmp' => 40,
+            'std_price' => 36.99,
+        ]);
+
+        $this->assertNotNull($out);
+        // AL30 > 0 → 20–25 slab NROI 70. No LMP cap (28.75 < 40).
+        // (10*1.70 + 6) / 0.80 = 28.75
+        $this->assertEqualsWithDelta(28.75, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(70.0, $out['groi'], 0.01);
+    }
+
+    public function test_aliexpress_zero_sold_uses_min_nroi_not_std(): void
     {
         $out = $this->compute('aliexpress', [
             'inv' => 10,
@@ -378,29 +397,58 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         ]);
 
         $this->assertNotNull($out);
-        // Dil 0 is below first From 0.1 → first slab GROI 50, not Std $99.
+        // AL30 = 0 → min Target NROI 50, not Std $99.
         // (20 × 1.50) / 0.80 = 37.50
         $this->assertEqualsWithDelta(37.50, $out['sprice'], 0.01);
         $this->assertEqualsWithDelta(50.0, $out['groi'], 0.01);
     }
 
-    public function test_aliexpress_zero_sold_uses_dil_slab_not_min_groi(): void
+    public function test_aliexpress_zero_sold_uses_min_nroi_not_dil_slab(): void
+    {
+        $rules = [
+            AmazonDilGroiRule::make(0.1, 5.0, 40),
+            AmazonDilGroiRule::make(5.0, 25.0, 80),
+        ];
+        $out = DilRuleSpriceApplyService::for('aliexpress')->computeTarget(
+            [
+                'inv' => 9,
+                'dil' => 22,
+                'ov_l30' => 2,
+                'al30' => 0,
+                'lp' => 10,
+                'ship' => 6,
+                'lmp' => 40,
+                'std_price' => 36.99,
+            ],
+            $rules,
+            AmazonDilGroiRule::defaultCvrAdj(),
+            0.80
+        );
+
+        $this->assertNotNull($out);
+        // min Target NROI is 40, not the Dil 22 / 80 slab. No LMP cap on 0 Sold.
+        // (10*1.40 + 6) / 0.80 = 20.00
+        $this->assertEqualsWithDelta(20.00, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
+    }
+
+    public function test_aliexpress_zero_sold_high_dil_uses_min_nroi_not_std(): void
     {
         $out = $this->compute('aliexpress', [
-            'inv' => 9,
-            'dil' => 22,
-            'ov_l30' => 2,
+            'inv' => 10,
+            'dil' => 55,
             'al30' => 0,
             'lp' => 10,
             'ship' => 6,
-            'lmp' => 40,
-            'std_price' => 36.99,
+            'lmp' => 15,
+            'std_price' => 19.99,
         ]);
 
         $this->assertNotNull($out);
-        // 20–25 slab GROI 70; 0 Sold Dil does not LMP-cap: (10*1.70 + 6) / 0.80 = 28.75
-        $this->assertEqualsWithDelta(28.75, $out['sprice'], 0.01);
-        $this->assertEqualsWithDelta(70.0, $out['groi'], 0.01);
+        // AL30 = 0 even when Dil is above last To: min NROI 50, not Std, and no LMP cap.
+        // (10*1.50 + 6) / 0.80 = 21.25
+        $this->assertEqualsWithDelta(21.25, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(50.0, $out['groi'], 0.01);
     }
 
     public function test_aliexpress_out_of_slab_uses_std_then_lmp_cap(): void
@@ -408,7 +456,7 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $std = $this->compute('aliexpress', [
             'inv' => 10,
             'dil' => 55,
-            'al30' => 0,
+            'al30' => 3,
             'lp' => 10,
             'ship' => 6,
             'lmp' => 23.08,
@@ -420,7 +468,7 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $capped = $this->compute('aliexpress', [
             'inv' => 10,
             'dil' => 80,
-            'al30' => 0,
+            'al30' => 3,
             'lp' => 5,
             'ship' => 1,
             'lmp' => 12,
@@ -437,6 +485,7 @@ class DilRuleSpriceApplyServiceTest extends TestCase
             $this->assertNull($this->compute('aliexpress', [
                 'inv' => 10,
                 'dil' => 80,
+                'al30' => 2,
                 'lp' => 20,
                 'ship' => 10,
                 'lmp' => 0,
@@ -452,6 +501,7 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertNull($this->compute('aliexpress', [
             'inv' => 10,
             'dil' => 80,
+            'al30' => 2,
             'lp' => 10,
             'ship' => 0,
             'std_price' => 0,
