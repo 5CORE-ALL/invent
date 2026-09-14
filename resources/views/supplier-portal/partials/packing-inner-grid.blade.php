@@ -111,6 +111,9 @@
     .sp-pi-table th { position: sticky; top: 0; background: #141414; color: #fff; text-align: left; padding: 8px; font-weight: 600; white-space: nowrap; }
     .sp-pi-table td { border-bottom: 1px solid #f0f0f0; padding: 6px 8px; vertical-align: top; }
     .sp-pi-table tbody tr:hover { background: #fffaf8; }
+    .sp-pi-table tbody tr.sp-pi-parent,
+    .sp-pi-table tbody tr.sp-pi-parent:nth-child(even) { background: #fffef2; }
+    .sp-pi-table tbody tr.sp-pi-parent:hover { background: #fdf3a8; }
     .sp-pi-empty { color: #888; padding: 16px !important; }
     .sp-pi-table textarea, .sp-pi-table input.sp-pi-cell { width: 100%; min-width: 90px; border: 1px solid #ddd; border-radius: 4px; padding: 4px 6px; font: inherit; }
     .sp-pi-table input.sp-pi-num { min-width: 72px; max-width: 92px; }
@@ -315,7 +318,7 @@
                             '<button type="button" class="sp-pi-del" data-id="' + esc(row.id) + '" data-sku="' + esc(row.SKU) + '" data-parent="' + esc(row.Parent || '') + '">Delete</button></td>';
                     }
                 }
-                return '<tr data-sku="' + esc(row.SKU) + '">' +
+                return '<tr data-sku="' + esc(row.SKU) + '"' + (isParentSku(row.SKU) ? ' class="sp-pi-parent"' : '') + '>' +
                     '<td>' + esc(row.Parent || '—') + '</td>' +
                     '<td>' + esc(row.SKU) + '</td>' +
                     '<td>' + esc(row.status || '—') + '</td>' +
