@@ -3804,6 +3804,9 @@ PROMPT;
 
             $normalizedSku = $row['SKU'];
             $shopifyData = $shopifySkus[$normalizedSku] ?? null;
+            $row['ctn_instructions'] = isset($values['ctn_instructions'])
+                ? mb_substr(trim((string) $values['ctn_instructions']), 0, 100)
+                : '';
             $row['shopify_inv'] = ($shopifyData && $shopifyData->inv !== null) ? (float) $shopifyData->inv : 0;
             $shopifyImage = $shopifyData ? ($shopifyData->image_src ?? null) : null;
             $localImage = isset($values['image_path']) && $values['image_path'] ? $values['image_path'] : null;

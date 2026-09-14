@@ -66,6 +66,13 @@
             padding: 28px;
         }
         .sp-preview img { max-width: 100%; max-height: 620px; object-fit: contain; }
+        .sp-preview-inner { text-align: center; }
+        .sp-file-code {
+            margin-top: 12px;
+            font-weight: 700;
+            letter-spacing: .04em;
+            color: var(--sp-red);
+        }
         .sp-pdf {
             width: 110px;
             height: 140px;
@@ -86,6 +93,9 @@
             margin-bottom: 6px;
         }
         .sp-info h1 { margin: 0 0 8px; font-size: 26px; }
+        .sp-product-row { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 10px; font-size: 14px; }
+        .sp-product-row span { color: var(--sp-muted); }
+        .sp-product-row strong { color: var(--sp-ink); }
         .sp-meta { color: var(--sp-muted); font-size: 14px; margin-bottom: 18px; }
         .sp-actions { display: flex; flex-wrap: wrap; gap: 10px; }
         .sp-btn {
@@ -128,15 +138,28 @@
         </a>
         <article class="sp-detail">
             <div class="sp-preview">
-                @if($asset->isImage())
-                    <img src="{{ $asset->publicUrl() }}" alt="{{ $asset->title }}">
-                @else
-                    <div class="sp-pdf">{{ $asset->extensionLabel() }}</div>
-                @endif
+                <div class="sp-preview-inner">
+                    @if($asset->isImage())
+                        <img src="{{ $asset->publicUrl() }}" alt="{{ $asset->title }}">
+                    @else
+                        <div class="sp-pdf">{{ $asset->extensionLabel() }}</div>
+                    @endif
+                    <div class="sp-file-code">{{ $asset->codeLabel($fileNumber ?? null) }}</div>
+                </div>
             </div>
             <div class="sp-info">
                 <div class="sp-cat">{{ $categoryLabel }}</div>
                 <h1>{{ $asset->title }}</h1>
+                @if(trim((string) ($asset->parent ?? '')) !== '' || trim((string) ($asset->sku ?? '')) !== '')
+                    <div class="sp-product-row">
+                        @if(trim((string) ($asset->parent ?? '')) !== '')
+                            <div><span>Parent</span> <strong>{{ $asset->parent }}</strong></div>
+                        @endif
+                        @if(trim((string) ($asset->sku ?? '')) !== '')
+                            <div><span>SKU</span> <strong>{{ $asset->sku }}</strong></div>
+                        @endif
+                    </div>
+                @endif
                 <div class="sp-meta">{{ $asset->file_name }} · {{ $asset->extensionLabel() }} · {{ $asset->sizeLabel() }}</div>
                 <div class="sp-actions">
                     <a class="sp-btn sp-btn-red" href="{{ route('supplier-portal.download', $asset) }}">

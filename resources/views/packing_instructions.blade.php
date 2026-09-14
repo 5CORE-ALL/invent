@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Packing Inner Design', 'mode' => $mode ?? '', 'demo' => $demo ?? '', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Packing Carton', 'mode' => $mode ?? '', 'demo' => $demo ?? '', 'sidenav' => 'condensed'])
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
@@ -44,14 +44,15 @@
         }
 
         #packing-tabulator .tabulator-header {
-            background: linear-gradient(135deg, #0d9488 0%, #0f766e 55%, #115e59 100%);
-            color: #fff;
+            background: #f3f4f6;
+            color: #000;
             font-weight: 600;
-            border-bottom: 2px solid #0f766e;
+            border-bottom: 2px solid #d1d5db;
         }
 
         #packing-tabulator .tabulator-header .tabulator-col {
-            border-right: 1px solid rgba(255, 255, 255, 0.22);
+            color: #000;
+            border-right: 1px solid #d1d5db;
             height: 76px !important;
             min-height: 76px !important;
         }
@@ -82,10 +83,10 @@
             font-size: 11px;
             font-weight: 600;
             line-height: 1.15;
-            color: #f0fdfa;
+            color: #000;
             padding: 0;
             margin: 0 auto;
-            text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+            text-shadow: none;
         }
 
         #packing-tabulator .tabulator-header .tabulator-col.pi-tabulator-cb-header .tabulator-col-title,
@@ -544,7 +545,7 @@
     @endphp
 
     @include('layouts.shared.page-title', [
-        'page_title' => 'Packing Inner Design',
+        'page_title' => 'Packing Carton',
         'sub_title' => 'Product packing notes per SKU',
     ])
 
@@ -555,7 +556,7 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body py-2">
-                    <h4 class="mb-1 fs-5">Packing Inner Design</h4>
+                    <h4 class="mb-1 fs-5">Packing Carton</h4>
                     <p class="text-muted small mb-2">Parent summary rows use a light blue band with a rule under each group (like the inventory grid). <strong>Drag column edges</strong> to resize spacing; <strong>drag headers</strong> to reorder columns. Packing text and links live in product Values JSON.</p>
                     <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
                         <button type="button" class="btn btn-sm btn-primary" id="addPackingBtn">
@@ -571,6 +572,9 @@
                             <span class="badge bg-primary">Parents <span id="pi-summary-parent">(0)</span></span>
                             <span class="badge bg-success">SKUs <span id="pi-summary-sku">(0)</span></span>
                             @foreach ($__piFields as $fkey => $flabel)
+                                @if ($fkey === 'packing_instructions')
+                                    <span class="badge bg-secondary">ctn pkg <span id="pi-summary-ctn_instructions">(0)</span></span>
+                                @endif
                                 <span class="badge bg-secondary">{{ $flabel }} <span id="pi-summary-{{ $fkey }}">(0)</span></span>
                             @endforeach
                         </div>
@@ -636,6 +640,16 @@
                                     </div>
                                 </div>
                                 @foreach ($__piFields as $fkey => $flabel)
+                                    @if ($fkey === 'packing_instructions')
+                                        <div style="min-width: 6.5rem; max-width: 9rem;">
+                                            <label class="form-label small mb-0 text-secondary" for="filterCtnPkg">ctn pkg <span id="ctn_instructionsMissingCount" class="text-danger fw-bold">(0)</span></label>
+                                            <select id="filterCtnPkg" class="form-select form-select-sm">
+                                                <option value="all">All</option>
+                                                <option value="missing">Missing</option>
+                                                <option value="has">Has data</option>
+                                            </select>
+                                        </div>
+                                    @endif
                                     <div style="min-width: 6.5rem; max-width: 9rem;">
                                         <label class="form-label small mb-0 text-secondary" for="{{ $__piFilterIds[$fkey] }}">{{ $flabel }} <span id="{{ $fkey }}MissingCount" class="text-danger fw-bold">(0)</span></label>
                                         <select id="{{ $__piFilterIds[$fkey] }}" class="form-select form-select-sm">
@@ -743,6 +757,15 @@
                                             <button type="button" class="btn btn-sm btn-outline-danger d-none" id="pi_cdr_remove_btn">Remove file</button>
                                         </div>
                                     </div>
+                                @elseif ($fkey === 'packing_instructions')
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="add_ctn_instructions">ctn pkg <span class="text-muted small fw-normal">(from /dim-wt-master-ctn, max 100)</span></label>
+                                        <input type="text" class="form-control" id="add_ctn_instructions" name="ctn_instructions" maxlength="100" placeholder="Optional ctn pkg" autocomplete="off">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="add_{{ $fkey }}">{{ $flabel }}</label>
+                                        <textarea class="form-control" id="add_{{ $fkey }}" name="{{ $fkey }}" rows="3" placeholder="Design / handling notes"></textarea>
+                                    </div>
                                 @elseif ($fkey === 'packing_fragile')
                                     <div class="col-md-6">
                                         <label class="form-label" for="add_{{ $fkey }}">{{ $flabel }}</label>
@@ -755,11 +778,7 @@
                                 @else
                                     <div class="col-md-6">
                                         <label class="form-label" for="add_{{ $fkey }}">{{ $flabel }}</label>
-                                        @if ($fkey === 'packing_instructions')
-                                            <textarea class="form-control" id="add_{{ $fkey }}" name="{{ $fkey }}" rows="3" placeholder="Design / handling notes"></textarea>
-                                        @else
-                                            <input type="text" class="form-control" id="add_{{ $fkey }}" name="{{ $fkey }}" placeholder="" autocomplete="off">
-                                        @endif
+                                        <input type="text" class="form-control" id="add_{{ $fkey }}" name="{{ $fkey }}" placeholder="" autocomplete="off">
                                     </div>
                                 @endif
                             @endforeach
@@ -895,7 +914,7 @@
             }
 
             function packingInstructionsHaystack(item) {
-                return PACKING_FIELD_KEYS.map(k => packingFieldRaw(item, k).toLowerCase()).join(' ');
+                return PACKING_FIELD_KEYS.concat(['ctn_instructions']).map(k => packingFieldRaw(item, k).toLowerCase()).join(' ');
             }
 
             function piRowHasParentKeyword(item) {
@@ -913,9 +932,15 @@
 
             function formatPackingCellHtml(item, key) {
                 if (piRowHasParentKeyword(item)) {
-                    return '<span class="text-muted user-select-none">—</span>';
+                    return '<span class="text-muted user-select-none">' + (key === 'ctn_instructions' ? '--' : '—') + '</span>';
                 }
                 const raw = packingFieldRaw(item, key);
+                if (key === 'ctn_instructions') {
+                    const has = raw !== '';
+                    const color = has ? '#28a745' : '#dc3545';
+                    const title = has ? raw : 'No instructions available';
+                    return '<button type="button" class="btn btn-link p-0 pi-ctn-pkg-btn" data-ctn="' + escapeAttr(raw || 'No instructions available') + '" title="' + escapeAttr(title) + '"><i class="fas fa-search" style="color:' + color + ';font-size:14px;"></i></button>';
+                }
                 if (!raw) {
                     return '-';
                 }
@@ -1173,6 +1198,20 @@
                 ];
 
                 PACKING_FIELD_KEYS.forEach(function(fk) {
+                    if (fk === 'packing_instructions') {
+                        cols.push({
+                            title: 'ctn pkg',
+                            field: 'ctn_instructions',
+                            headerSort: false,
+                            hozAlign: 'center',
+                            minWidth: 56,
+                            widthGrow: 0,
+                            cssClass: 'pi-packing-field-col',
+                            formatter: function(cell) {
+                                return formatPackingCellHtml(cell.getRow().getData(), 'ctn_instructions');
+                            }
+                        });
+                    }
                     const label = @json($__piFields)[fk] || fk;
                     const isInstructions = fk === 'packing_instructions';
                     const isCdr = fk === 'packing_cdr_path';
@@ -1313,14 +1352,14 @@
                 const parentSet = new Set();
                 let skuCount = 0;
                 const missingByKey = {};
-                PACKING_FIELD_KEYS.forEach(k => { missingByKey[k] = 0; });
+                PACKING_FIELD_KEYS.concat(['ctn_instructions']).forEach(k => { missingByKey[k] = 0; });
 
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
                         skuCount++;
                     }
-                    PACKING_FIELD_KEYS.forEach(k => {
+                    PACKING_FIELD_KEYS.concat(['ctn_instructions']).forEach(k => {
                         if (isMissingPackingField(item, k)) missingByKey[k]++;
                     });
                 });
@@ -1333,7 +1372,7 @@
                 setText('piSkuCount', skuCount);
                 setText('pi-summary-parent', parentSet.size);
                 setText('pi-summary-sku', skuCount);
-                PACKING_FIELD_KEYS.forEach(k => {
+                PACKING_FIELD_KEYS.concat(['ctn_instructions']).forEach(k => {
                     setText(k + 'MissingCount', missingByKey[k]);
                     const sumEl = document.getElementById('pi-summary-' + k);
                     if (sumEl) sumEl.textContent = '(' + missingByKey[k] + ')';
@@ -1376,11 +1415,12 @@
                         packing_units_ctn: 'filterPackingUnitsCtn',
                         packing_fragile: 'filterPackingFragile',
                         packing_seal_method: 'filterPackingSeal',
+                        ctn_instructions: 'filterCtnPkg',
                         packing_instructions: 'filterPackingInstructions',
                         packing_sheet_url: 'filterPackingSheetUrl',
                         packing_cdr_path: 'filterPackingCdr'
                     };
-                    for (const k of PACKING_FIELD_KEYS) {
+                    for (const k of PACKING_FIELD_KEYS.concat(['ctn_instructions'])) {
                         const sel = document.getElementById(filterMap[k]);
                         if (!sel) continue;
                         const v = sel.value;
@@ -1415,14 +1455,14 @@
                         if (t) t.setAttribute('aria-expanded', 'false');
                     });
                     refreshPiStatusFilterUI();
-                    ['filterPackingBoxSpec', 'filterPackingUnitsCtn', 'filterPackingFragile', 'filterPackingSeal', 'filterPackingInstructions', 'filterPackingSheetUrl', 'filterPackingCdr'].forEach(fid => {
+                    ['filterPackingBoxSpec', 'filterPackingUnitsCtn', 'filterPackingFragile', 'filterPackingSeal', 'filterCtnPkg', 'filterPackingInstructions', 'filterPackingSheetUrl', 'filterPackingCdr'].forEach(fid => {
                         const el = document.getElementById(fid);
                         if (el) el.value = 'all';
                     });
                     applyFilters();
                 });
 
-                ['filterPackingBoxSpec', 'filterPackingUnitsCtn', 'filterPackingFragile', 'filterPackingSeal', 'filterPackingInstructions', 'filterPackingSheetUrl', 'filterPackingCdr'].forEach(fid => {
+                ['filterPackingBoxSpec', 'filterPackingUnitsCtn', 'filterPackingFragile', 'filterPackingSeal', 'filterCtnPkg', 'filterPackingInstructions', 'filterPackingSheetUrl', 'filterPackingCdr'].forEach(fid => {
                     const el = document.getElementById(fid);
                     if (el) el.addEventListener('change', applyFilters);
                 });
@@ -1565,6 +1605,8 @@
                     const v = packingFieldRaw(item, k);
                     el.value = v;
                 });
+                const ctnEl = document.getElementById('add_ctn_instructions');
+                if (ctnEl) ctnEl.value = packingFieldRaw(item, 'ctn_instructions').slice(0, 100);
                 refreshPiCdrModalUi({});
             }
 
@@ -1695,6 +1737,29 @@
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok || data.success === false) {
                         throw new Error(data.message || 'Save failed');
+                    }
+                    const ctnEl = document.getElementById('add_ctn_instructions');
+                    const ctnVal = ctnEl ? String(ctnEl.value || '').trim().slice(0, 100) : '';
+                    const productId = (data.data && data.data.id)
+                        || (findPackingRowBySku(sku) && findPackingRowBySku(sku).id);
+                    const parent = (data.data && data.data.parent)
+                        || (findPackingRowBySku(sku) && findPackingRowBySku(sku).Parent)
+                        || '';
+                    if (productId) {
+                        const ctnRes = await fetch('/dim-wt-master/update', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                            body: JSON.stringify({
+                                product_id: parseInt(productId, 10),
+                                sku: sku,
+                                parent: parent,
+                                ctn_instructions: ctnVal.length ? ctnVal : null
+                            })
+                        });
+                        const ctnData = await ctnRes.json().catch(() => ({}));
+                        if (!ctnRes.ok || ctnData.success === false) {
+                            throw new Error(ctnData.message || 'Packing saved, but ctn pkg could not be saved');
+                        }
                     }
                     showToast('success', data.message || 'Saved.');
                     bootstrap.Modal.getInstance(document.getElementById('addPackingModal'))?.hide();
@@ -1967,14 +2032,18 @@
 
             function setupExcelExport() {
                 document.getElementById('downloadPackingExcel').addEventListener('click', function() {
-                    const columns = ['Parent', 'SKU', 'Status', 'INV', 'Photos'].concat(PACKING_FIELD_KEYS);
+                    const columns = ['Parent', 'SKU', 'Status', 'INV', 'Photos'];
+                    PACKING_FIELD_KEYS.forEach(function(k) {
+                        if (k === 'packing_instructions') columns.push('ctn_instructions');
+                        columns.push(k);
+                    });
                     const btn = this;
                     btn.disabled = true;
                     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> …';
                     setTimeout(() => {
                         try {
                             const dataToExport = filteredData.length ? filteredData : tableData;
-                            const wsData = [columns];
+                            const wsData = [columns.map(function(c) { return c === 'ctn_instructions' ? 'ctn pkg' : c; })];
                             dataToExport.forEach(item => {
                                 const row = [];
                                 columns.forEach(col => {
@@ -2022,6 +2091,12 @@
                         e.preventDefault();
                         const sku = photosBtn.getAttribute('data-sku');
                         if (sku) openPackingImagesModal(sku);
+                        return;
+                    }
+                    const ctnBtn = e.target.closest('.pi-ctn-pkg-btn');
+                    if (ctnBtn && this.contains(ctnBtn)) {
+                        e.preventDefault();
+                        showPiFieldTextPopup('ctn pkg', ctnBtn.getAttribute('data-ctn') || '', e.clientX, e.clientY);
                         return;
                     }
                     const editBtn = e.target.closest('.edit-btn');

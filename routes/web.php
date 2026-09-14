@@ -371,18 +371,31 @@ Route::controller(GoogleYoutubeAdsCampaignsController::class)->group(function ()
     Route::post('/google/shopping/youtube-ads/pause-script/callback', 'pauseScriptCallback')->name('google.youtube.ads.campaigns.pause.script.callback');
 });
 
+// Barcode Image — public read-only catalog (no login; any viewer, including non-5core emails).
+Route::get('/barcode-image', [MastersBarcodeController::class, 'publicIndex'])->name('barcode.image');
+Route::get('/barcode-image-data', [MastersBarcodeController::class, 'getData'])->name('barcode.image.data');
+
 // Supplier Portal — public (no login). Share /supplier-portal with suppliers.
 Route::get('/supplier-portal', [\App\Http\Controllers\SupplierPortalController::class, 'index'])->name('supplier-portal.index');
 Route::get('/supplier-portal/file/{asset}', [\App\Http\Controllers\SupplierPortalController::class, 'show'])->name('supplier-portal.show');
 Route::get('/supplier-portal/download/{asset}', [\App\Http\Controllers\SupplierPortalController::class, 'download'])->name('supplier-portal.download');
+Route::get('/supplier-portal/packing-data', [\App\Http\Controllers\SupplierPortalController::class, 'packingData'])->name('supplier-portal.packing-data');
+Route::get('/supplier-portal/dim-wt-data', [\App\Http\Controllers\SupplierPortalController::class, 'dimWtData'])->name('supplier-portal.dim-wt-data');
 
 Route::middleware(['auth'])->prefix('supplier-portal/manage')->name('supplier-portal.admin.')->group(function () {
     Route::get('/', [\App\Http\Controllers\SupplierPortalAdminController::class, 'index'])->name('index');
+    Route::get('/products/search', [\App\Http\Controllers\SupplierPortalAdminController::class, 'searchProducts'])->name('products.search');
+    Route::get('/packing-data', [\App\Http\Controllers\SupplierPortalAdminController::class, 'packingData'])->name('packing-data');
+    Route::get('/dim-wt-data', [\App\Http\Controllers\SupplierPortalAdminController::class, 'dimWtData'])->name('dim-wt-data');
     Route::post('/settings', [\App\Http\Controllers\SupplierPortalAdminController::class, 'updateSettings'])->name('settings');
+    Route::post('/headers', [\App\Http\Controllers\SupplierPortalAdminController::class, 'storeHeaders'])->name('headers');
     Route::delete('/hero', [\App\Http\Controllers\SupplierPortalAdminController::class, 'destroyHero'])->name('hero.destroy');
     Route::post('/assets', [\App\Http\Controllers\SupplierPortalAdminController::class, 'storeAsset'])->name('assets.store');
     Route::put('/assets/{asset}', [\App\Http\Controllers\SupplierPortalAdminController::class, 'updateAsset'])->name('assets.update');
     Route::delete('/assets/{asset}', [\App\Http\Controllers\SupplierPortalAdminController::class, 'destroyAsset'])->name('assets.destroy');
+    Route::post('/sku-files', [\App\Http\Controllers\SupplierPortalAdminController::class, 'storeSkuFile'])->name('sku-files.store');
+    Route::delete('/sku-files/{asset}', [\App\Http\Controllers\SupplierPortalAdminController::class, 'destroySkuFile'])->name('sku-files.destroy');
+    Route::delete('/sku-files', [\App\Http\Controllers\SupplierPortalAdminController::class, 'destroySkuFiles'])->name('sku-files.destroy-sku');
 });
 
 Route::get('/supplier-portal/{category}', [\App\Http\Controllers\SupplierPortalController::class, 'section'])->name('supplier-portal.section');

@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 class SupplierPortalAsset extends Model
@@ -11,7 +13,7 @@ class SupplierPortalAsset extends Model
         'brand_assets' => 'Brand Assets',
         'inner_box_designs' => 'Inner Box Designs',
         'inner_box_cover' => 'Inner Box Cover',
-        'master_carton_designs' => 'Master Carton Designs',
+        'master_carton_designs' => 'Carton Designs',
         'assembly_designs' => 'Assembly Designs',
         'operations_manual' => 'Operations Manual',
         'dos_and_donts' => "Do's & Don'ts",
@@ -34,11 +36,21 @@ class SupplierPortalAsset extends Model
         'dos_and_donts' => 'ri-error-warning-line',
     ];
 
+    public const CATEGORY_PREFIXES = [
+        'brand_assets' => 'BA',
+        'inner_box_designs' => 'IBD',
+        'inner_box_cover' => 'IBC',
+        'master_carton_designs' => 'MCD',
+        'assembly_designs' => 'AD',
+        'operations_manual' => 'OM',
+        'dos_and_donts' => 'DD',
+    ];
+
     public const CATEGORY_HINTS = [
         'brand_assets' => 'Logos, icons, brand files',
         'inner_box_designs' => 'Inner box artwork and dielines',
         'inner_box_cover' => 'Inner box cover artwork',
-        'master_carton_designs' => 'Master carton artwork and dielines',
+        'master_carton_designs' => 'Carton artwork and dielines',
         'assembly_designs' => 'Assembly drawings and build files',
         'operations_manual' => 'User and operations manuals',
         'dos_and_donts' => 'Do and do not guidelines',
@@ -57,17 +69,82 @@ class SupplierPortalAsset extends Model
         return self::LEGACY_CATEGORY_SLUGS[$category] ?? null;
     }
 
+    public static function prefixFor(string $category): string
+    {
+        $key = self::resolveCategoryKey($category) ?? strtolower(trim($category));
+
+        return self::CATEGORY_PREFIXES[$key] ?? 'SP';
+    }
+
+    public static function nextSortOrder(string $category): int
+    {
+        $key = self::resolveCategoryKey($category) ?? $category;
+        $max = (int) self::query()
+            ->where(function ($q) use ($key) {
+                $q->where('category', $key);
+                foreach (self::LEGACY_CATEGORY_SLUGS as $legacy => $mapped) {
+                    if ($mapped === $key) {
+                        $q->orWhere('category', $legacy);
+                    }
+                }
+            })
+            ->max('sort_order');
+
+        return max(0, $max) + 1;
+    }
+
+    public function codeLabel(?int $number = null): string
+    {
+        $n = $number ?? max(1, (int) $this->sort_order);
+
+        return self::prefixFor((string) $this->category).'-'.str_pad((string) $n, 2, '0', STR_PAD_LEFT);
+    }
+
+    public static function ensureSkuParentColumns(): void
+    {
+        if (! Schema::hasTable('supplier_portal_assets')) {
+            return;
+        }
+        if (! Schema::hasColumn('supplier_portal_assets', 'sku')) {
+            Schema::table('supplier_portal_assets', function (Blueprint $table) {
+                $table->string('sku', 120)->nullable()->index();
+            });
+        }
+        if (! Schema::hasColumn('supplier_portal_assets', 'parent')) {
+            Schema::table('supplier_portal_assets', function (Blueprint $table) {
+                $table->string('parent', 120)->nullable()->index();
+            });
+        }
+    }
+
     protected $table = 'supplier_portal_assets';
 
     protected $fillable = [
         'category',
         'title',
+        'sku',
+        'parent',
         'file_name',
         'file_path',
         'mime',
         'file_size',
         'sort_order',
     ];
+
+    public function productMeta(): string
+    {
+        $parts = [];
+        $parent = trim((string) ($this->parent ?? ''));
+        $sku = trim((string) ($this->sku ?? ''));
+        if ($parent !== '') {
+            $parts[] = $parent;
+        }
+        if ($sku !== '') {
+            $parts[] = $sku;
+        }
+
+        return implode(' · ', $parts);
+    }
 
     public function publicUrl(): string
     {
