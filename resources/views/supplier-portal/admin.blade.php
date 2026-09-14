@@ -101,6 +101,7 @@
                             <tr>
                                 <th>Preview</th>
                                 <th>Title</th>
+                                <th>Category</th>
                                 <th>File</th>
                                 <th>Sort</th>
                                 <th></th>
@@ -117,17 +118,25 @@
                                         @endif
                                     </td>
                                     <td>
-                                        <form method="post" action="{{ route('supplier-portal.admin.assets.update', $asset) }}" class="d-flex gap-2">
+                                        <form id="sp-asset-{{ $asset->id }}" method="post" action="{{ route('supplier-portal.admin.assets.update', $asset) }}">
                                             @csrf
                                             @method('PUT')
-                                            <input class="form-control form-control-sm" name="title" value="{{ $asset->title }}">
-                                            <input class="form-control form-control-sm" style="width:80px" type="number" name="sort_order" value="{{ $asset->sort_order }}">
-                                            <button class="btn btn-sm btn-outline-secondary" type="submit">Save</button>
                                         </form>
+                                        <input class="form-control form-control-sm" form="sp-asset-{{ $asset->id }}" name="title" value="{{ $asset->title }}" required>
+                                    </td>
+                                    <td style="min-width:200px">
+                                        <select class="form-select form-select-sm" form="sp-asset-{{ $asset->id }}" name="category" required>
+                                            @foreach($categories as $optionKey => $optionLabel)
+                                                <option value="{{ $optionKey }}" @selected((\App\Models\SupplierPortalAsset::resolveCategoryKey((string) $asset->category) ?? $asset->category) === $optionKey)>{{ $optionLabel }}</option>
+                                            @endforeach
+                                        </select>
                                     </td>
                                     <td class="text-muted small">{{ $asset->file_name }} · {{ $asset->sizeLabel() }}</td>
-                                    <td>{{ $asset->sort_order }}</td>
+                                    <td>
+                                        <input class="form-control form-control-sm" form="sp-asset-{{ $asset->id }}" style="width:80px" type="number" name="sort_order" value="{{ $asset->sort_order }}" min="0">
+                                    </td>
                                     <td class="text-end">
+                                        <button class="btn btn-sm btn-outline-secondary" form="sp-asset-{{ $asset->id }}" type="submit">Save</button>
                                         <a class="btn btn-sm btn-outline-dark" href="{{ route('supplier-portal.download', $asset) }}">Download</a>
                                         <form method="post" action="{{ route('supplier-portal.admin.assets.destroy', $asset) }}" class="d-inline" onsubmit="return confirm('Remove this file from the supplier page?');">
                                             @csrf
@@ -137,7 +146,7 @@
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="5" class="text-muted">No files in this section yet.</td></tr>
+                                <tr><td colspan="6" class="text-muted">No files in this section yet.</td></tr>
                             @endforelse
                         </tbody>
                     </table>

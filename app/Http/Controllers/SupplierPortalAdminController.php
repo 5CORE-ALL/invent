@@ -17,11 +17,18 @@ class SupplierPortalAdminController extends Controller
         $settings = SupplierPortalSetting::current();
         $grouped = [];
         foreach (array_keys(SupplierPortalAsset::CATEGORIES) as $key) {
-            $grouped[$key] = SupplierPortalAsset::query()
-                ->where('category', $key)
-                ->orderBy('sort_order')
-                ->orderBy('id')
-                ->get();
+            $grouped[$key] = collect();
+        }
+        $assets = SupplierPortalAsset::query()
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+        foreach ($assets as $asset) {
+            $key = SupplierPortalAsset::resolveCategoryKey((string) $asset->category);
+            if ($key === null || ! isset($grouped[$key])) {
+                continue;
+            }
+            $grouped[$key]->push($asset);
         }
 
         return view('supplier-portal.admin', [
@@ -144,10 +151,12 @@ class SupplierPortalAdminController extends Controller
     {
         $data = $request->validate([
             'title' => ['required', 'string', 'max:160'],
+            'category' => ['required', 'in:'.implode(',', array_keys(SupplierPortalAsset::CATEGORIES))],
             'sort_order' => ['nullable', 'integer', 'min:0', 'max:9999'],
         ]);
         $asset->update([
             'title' => $data['title'],
+            'category' => $data['category'],
             'sort_order' => (int) ($data['sort_order'] ?? 0),
         ]);
 

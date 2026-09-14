@@ -373,6 +373,7 @@ Route::controller(GoogleYoutubeAdsCampaignsController::class)->group(function ()
 
 // Supplier Portal — public (no login). Share /supplier-portal with suppliers.
 Route::get('/supplier-portal', [\App\Http\Controllers\SupplierPortalController::class, 'index'])->name('supplier-portal.index');
+Route::get('/supplier-portal/file/{asset}', [\App\Http\Controllers\SupplierPortalController::class, 'show'])->name('supplier-portal.show');
 Route::get('/supplier-portal/download/{asset}', [\App\Http\Controllers\SupplierPortalController::class, 'download'])->name('supplier-portal.download');
 
 Route::middleware(['auth'])->prefix('supplier-portal/manage')->name('supplier-portal.admin.')->group(function () {

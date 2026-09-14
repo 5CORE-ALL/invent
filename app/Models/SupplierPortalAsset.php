@@ -8,11 +8,54 @@ use Illuminate\Support\Facades\Storage;
 class SupplierPortalAsset extends Model
 {
     public const CATEGORIES = [
-        'logos' => 'Brand Assets / Logos',
-        'packaging' => 'Packaging Designs',
-        'marketing' => 'Marketing Materials',
-        'documents' => 'Guidelines & Documents',
+        'brand_assets' => 'Brand Assets',
+        'inner_box_designs' => 'Inner Box Designs',
+        'inner_box_cover' => 'Inner Box Cover',
+        'master_carton_designs' => 'Master Carton Designs',
+        'assembly_designs' => 'Assembly Designs',
+        'operations_manual' => 'Operations Manual',
+        'dos_and_donts' => "Do's & Don'ts",
     ];
+
+    public const LEGACY_CATEGORY_SLUGS = [
+        'logos' => 'brand_assets',
+        'packaging' => 'inner_box_designs',
+        'marketing' => 'brand_assets',
+        'documents' => 'brand_assets',
+    ];
+
+    public const CATEGORY_ICONS = [
+        'brand_assets' => 'ri-palette-line',
+        'inner_box_designs' => 'ri-box-3-line',
+        'inner_box_cover' => 'ri-inbox-archive-line',
+        'master_carton_designs' => 'ri-stack-line',
+        'assembly_designs' => 'ri-tools-line',
+        'operations_manual' => 'ri-book-2-line',
+        'dos_and_donts' => 'ri-error-warning-line',
+    ];
+
+    public const CATEGORY_HINTS = [
+        'brand_assets' => 'Logos, icons, brand files',
+        'inner_box_designs' => 'Inner box artwork and dielines',
+        'inner_box_cover' => 'Inner box cover artwork',
+        'master_carton_designs' => 'Master carton artwork and dielines',
+        'assembly_designs' => 'Assembly drawings and build files',
+        'operations_manual' => 'User and operations manuals',
+        'dos_and_donts' => 'Do and do not guidelines',
+    ];
+
+    public static function resolveCategoryKey(string $category): ?string
+    {
+        $category = strtolower(trim($category));
+        if ($category === '') {
+            return null;
+        }
+        if (isset(self::CATEGORIES[$category])) {
+            return $category;
+        }
+
+        return self::LEGACY_CATEGORY_SLUGS[$category] ?? null;
+    }
 
     protected $table = 'supplier_portal_assets';
 

@@ -29,8 +29,8 @@ class SupplierPortalController extends Controller
 
     public function section(string $category)
     {
-        $category = strtolower(trim($category));
-        if (! isset(SupplierPortalAsset::CATEGORIES[$category])) {
+        $category = SupplierPortalAsset::resolveCategoryKey($category);
+        if ($category === null) {
             abort(404);
         }
 
@@ -42,6 +42,26 @@ class SupplierPortalController extends Controller
             'grouped' => $grouped,
             'section' => $category,
             'title' => SupplierPortalAsset::CATEGORIES[$category].' — '.$settings->company_name,
+        ]);
+    }
+
+    public function show(SupplierPortalAsset $asset)
+    {
+        if (! Schema::hasTable('supplier_portal_assets')) {
+            abort(503, 'Supplier Portal is not ready yet.');
+        }
+
+        $settings = SupplierPortalSetting::current();
+        $categoryKey = SupplierPortalAsset::resolveCategoryKey((string) $asset->category)
+            ?? (string) $asset->category;
+        $categoryLabel = SupplierPortalAsset::CATEGORIES[$categoryKey] ?? 'Files';
+
+        return view('supplier-portal.show', [
+            'settings' => $settings,
+            'asset' => $asset,
+            'categoryKey' => $categoryKey,
+            'categoryLabel' => $categoryLabel,
+            'title' => $asset->title.' — '.$settings->company_name,
         ]);
     }
 
@@ -65,12 +85,18 @@ class SupplierPortalController extends Controller
         $all = SupplierPortalAsset::query()
             ->orderBy('sort_order')
             ->orderBy('id')
-            ->get()
-            ->groupBy('category');
+            ->get();
 
         $out = [];
         foreach (array_keys(SupplierPortalAsset::CATEGORIES) as $key) {
-            $out[$key] = $all->get($key, collect());
+            $out[$key] = collect();
+        }
+        foreach ($all as $asset) {
+            $key = SupplierPortalAsset::resolveCategoryKey((string) $asset->category);
+            if ($key === null || ! isset($out[$key])) {
+                continue;
+            }
+            $out[$key]->push($asset);
         }
 
         return $out;
