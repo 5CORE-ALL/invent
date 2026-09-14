@@ -356,6 +356,7 @@
                             <span class="badge bg-secondary fs-6 p-2" id="ae-avg-roi-badge" style="font-weight:700;color:#fff;" title="Same as /shein-tabulator ROI%: Σ PFT / Σ (LP × qty)">GROI: 0%</span>
                             <span class="badge bg-info fs-6 p-2" id="ae-total-views-badge" style="font-weight:700;color:#111;" title="Σ Shein API page views (shein_metrics.views). Same total as /all-marketplace-master Shein views.">Views: 0</span>
                             <span class="badge bg-danger fs-6 p-2" id="ae-avg-cvr-badge" style="font-weight:700;" title="CVR = Σ Sh L30 ÷ Σ Views × 100. Same formula as /all-marketplace-master Shein CVR.">CVR: 0%</span>
+                            @include('partials.analytics-dil-badge', ['dilChannel' => 'shein'])
                             <span class="badge bg-success fs-6 p-2 d-none" id="ae-total-pft-badge" style="font-weight:700;color:#111;" aria-hidden="true">PFT: $0</span>
                             <span class="badge bg-secondary fs-6 p-2" id="ae-total-sku-badge" style="font-weight:700;">SKU: 0</span>
                             <span class="badge bg-warning fs-6 p-2 d-none" id="ae-avg-dil-badge" style="font-weight:700;color:#111;" aria-hidden="true">DIL%: 0%</span>

@@ -127,6 +127,7 @@
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color:white;font-weight:bold;cursor:pointer;" title="Click to filter 0 sold">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color:#28a745;color:white;font-weight:bold;cursor:pointer;">&gt; 0 Sold</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color:black;font-weight:bold;display:none;">DIL%: 0%</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'purchasingpower'])
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color:black;font-weight:bold;display:none;">COGS: $0</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color:white;font-weight:bold;cursor:pointer;">&lt; Amz</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color:#28a745;color:white;font-weight:bold;cursor:pointer;">&gt; Amz</span>

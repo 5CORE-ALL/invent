@@ -2546,6 +2546,22 @@ class EbayTwoController extends Controller
     }
 
     /**
+     * PARENT aggregate rows (SKU starts with PARENT / is_parent_row).
+     * Do not use Parent === "PARENT …" — child SKUs store that as the family name.
+     */
+    private function isEbay2TabulatorParentRow(mixed $row): bool
+    {
+        $sku = (string) (data_get($row, '(Child) sku') ?? data_get($row, 'sku') ?? '');
+        if (stripos($sku, 'PARENT') !== false) {
+            return true;
+        }
+
+        return ((bool) data_get($row, 'is_parent_row'))
+            || ((bool) data_get($row, 'is_parent_summary'))
+            || ((bool) data_get($row, 'is_parent'));
+    }
+
+    /**
      * Auto-save daily eBay 2 summary snapshot (channel-wise)
      * Matches JavaScript updateSummary() logic exactly
      */
@@ -2641,18 +2657,32 @@ class EbayTwoController extends Controller
                 // Weighted price
                 $totalWeightedPrice += $ebayPrice * $ebayL30;
                 $totalL30 += $ebayL30;
-                
-                // Views — same scope as ebay2-tabulator Views badge / all-marketplace-master
-                // column: rows with E Stock > 0 (live listing traffic).
-                $ebayStockForViews = floatval($row->{'E Stock'} ?? ($row->{'eBay Stock'} ?? 0));
-                if ($ebayStockForViews > 0) {
-                    $totalViews += floatval($row->views ?? 0);
+            }
+
+            // Views / listing CVR — same scope as the live Views + CVR badges and
+            // /all-marketplace-master EbayTwo: child rows with E Stock > 0.
+            // Do NOT use INV>0+REQ (drops live OOS-in-Shopify listings) and do NOT
+            // include PARENT aggregates (those already sum child views — ~2×).
+            $totalViews = 0;
+            $listingEbayL30 = 0.0;
+            $totalOvL30 = 0.0;
+            $totalInv = 0.0;
+            foreach ($products as $row) {
+                if ($this->isEbay2TabulatorParentRow($row)) {
+                    continue;
+                }
+                $totalOvL30 += (float) (data_get($row, 'L30') ?? 0);
+                $totalInv += (float) (data_get($row, 'INV') ?? 0);
+                $eStock = (float) (data_get($row, 'E Stock') ?? data_get($row, 'eBay Stock') ?? 0);
+                if ($eStock > 0) {
+                    $totalViews += (float) (data_get($row, 'views') ?? 0);
+                    $listingEbayL30 += (float) (data_get($row, 'eBay L30') ?? 0);
                 }
             }
             
             // Calculate averages and percentages (EXACT JavaScript logic)
             $avgPrice = $totalL30 > 0 ? $totalWeightedPrice / $totalL30 : 0;
-            $avgCVR = $totalViews > 0 ? ($totalL30 / $totalViews * 100) : 0;
+            $avgCVR = $totalViews > 0 ? ($listingEbayL30 / $totalViews * 100) : 0;
             $tacosPercent = $totalSalesAmt > 0 ? (($totalPmtSpendL30 / $totalSalesAmt) * 100) : 0;
             $groiPercent = $totalLpAmt > 0 ? (($totalPftAmt / $totalLpAmt) * 100) : 0;
             $avgGpft = $totalSalesAmt > 0 ? (($totalPftAmt / $totalSalesAmt) * 100) : 0; // GPFT = (PFT/Sales)*100
@@ -2682,7 +2712,11 @@ class EbayTwoController extends Controller
                 // Inventory
                 'total_fba_inv' => round($totalFbaInv, 2),
                 'total_ebay_l30' => round($totalFbaL30, 2),
+                'total_ebay_listing_l30' => round($listingEbayL30, 2),
                 'total_views' => $totalViews,
+                'total_ov_l30' => round($totalOvL30, 2),
+                'total_inv' => round($totalInv, 2),
+                'dil_ov_percent' => $totalInv > 0 ? round(($totalOvL30 / $totalInv) * 100, 2) : 0.0,
                 
                 // Calculated Percentages
                 'tcos_percent' => round($tacosPercent, 2),
@@ -2714,13 +2748,15 @@ class EbayTwoController extends Controller
                 ],
                 [
                     'summary_data' => $summaryData,
-                    'notes' => 'Auto-saved daily snapshot (INV > 0, REQ only)',
+                    'notes' => 'Auto-saved daily snapshot (views/CVR: E Stock > 0, no PARENT)',
                 ]
             );
             
             Log::info("Daily eBay2 summary snapshot saved for {$today}", [
                 'sku_count' => $totalSkuCount,
                 'sold_count' => $moreSoldCount,
+                'total_views' => $totalViews,
+                'listing_cvr' => round($avgCVR, 2),
             ]);
             
         } catch (\Exception $e) {

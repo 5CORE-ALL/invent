@@ -145,6 +145,7 @@
                             style="color: white; font-weight: bold;"
                             title="Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">Temu Full Price Sales: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'temu2'])
                     </div>
                 </div>
             </div>

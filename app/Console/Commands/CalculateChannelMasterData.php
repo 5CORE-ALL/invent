@@ -321,7 +321,7 @@ class CalculateChannelMasterData extends Command
      */
     private function stabilizeChannelViews(string $channelKey, float $candidateViews, float $candidateQty): float
     {
-        if (in_array($channelKey, ['temu', 'temu2', 'temutwo', 'temu3', 'temuthree'], true)) {
+        if (in_array($channelKey, ['temu', 'temu2', 'temutwo', 'temu3', 'temuthree', 'ebaytwo', 'ebay2'], true)) {
             return $candidateViews;
         }
 

@@ -638,6 +638,7 @@
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): weighted from each channel's listing CVR × views (same as the CVR column). Falls back to Qty ÷ Views when a channel has no listing CVR.">
                             <span class="summary-trend-dot none" data-metric="cvr" title="Rolling history"></span>CVR: <span id="cvr-pct-badge">0.00%</span>
                         </span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'allmarketplace'])
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="pft" style="color: black; font-weight: bold; cursor:pointer;" title="Net profit $ = sum(rolling Sales×Gprofit% − Ad spend); same as Sales × (G% − Ad Spend/Sales) per channel">
                             <span class="summary-trend-dot none" data-metric="pft" title="Rolling history"></span>NPFT: <span id="total-pft">$0</span>
                         </span>
@@ -2887,7 +2888,7 @@
                     {
                         title: "views",
                         field: "Total Views",
-                        headerTooltip: "Listing/Map traffic. Reverb views are ÷ 100 (then CVR uses that scaled total).",
+                        headerTooltip: "Listing/Map traffic. eBay 2 = /ebay2-tabulator-view Views (child rows, E Stock &gt; 0, PARENT excluded). Reverb views are ÷ 100 (then CVR uses that scaled total).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
@@ -2918,7 +2919,7 @@
                     {
                         title: "CVR",
                         field: "CVR",
-                        headerTooltip: "Per channel: Qty ÷ Total Views — units-based (matches /temu-decrease). Reverb Views are ÷ 100 first, then CVR is recalculated. Total Views come from listing/Map snapshots (traffic to offers), not the same as ad clicks. Compare to &quot;AD CVR&quot; (ad sold ÷ clicks).",
+                        headerTooltip: "Per channel: server CVR when present (eBay 2 = eBay L30 ÷ Views, same as /ebay2-tabulator-view CVR). Else Qty ÷ Total Views. Reverb Views are ÷ 100 first. Compare to &quot;AD CVR&quot; (ad sold ÷ clicks).",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
                             // Prefer server-provided CVR (Temu / Temu 2 / Temu 3 use temu_l30 ÷ product_clicks

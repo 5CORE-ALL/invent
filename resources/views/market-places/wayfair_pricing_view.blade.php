@@ -88,6 +88,7 @@
                         <span class="badge bg-info fs-6 p-2" id="wf-total-views-badge" style="color:black;font-weight:700;" title="Σ OV L30 (views) across filtered SKUs.">Views: 0</span>
                         <span class="badge fs-6 p-2" id="wf-total-fqty-badge" style="background-color:#20c997;color:black;font-weight:700;" title="Total units sold (Σ al30).">Qty: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="wf-avg-cvr-badge" style="color:black;font-weight:700;" title="CVR = (Σ sold ÷ Σ OV L30) × 100.">CVR: 0%</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'wayfair'])
                         <span class="badge bg-secondary fs-6 p-2" id="wf-missing-badge" style="color:white;font-weight:700;cursor:pointer;" title="Click to filter ML — Missing Listing (not NR, INV &gt; 0, no uploaded Wayfair price)">ML: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'wayfair-price-gt-lmp-badge', 'pglChannelKey' => 'wayfair', 'pglPriceField' => 'price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'wayfair-price-lt80-lmp-badge', 'pltChannelKey' => 'wayfair', 'pltPriceField' => 'price'])

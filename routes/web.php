@@ -4760,6 +4760,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay2-listing-variation-verify/pull-listings', [Ebay2ListingVariationVerifyController::class, 'pullListings'])->name('ebay2.listing.variation.verify.pull');
 
     // Listing Audit ebay2
+    Route::get('/analytics/dil-badge-chart-data', [\App\Http\Controllers\MarketPlace\AnalyticsDilBadgeController::class, 'chart'])->name('analytics.dil.badge.chart');
+    Route::get('/analytics/dil-badge-prev-day', [\App\Http\Controllers\MarketPlace\AnalyticsDilBadgeController::class, 'prevDay'])->name('analytics.dil.badge.prev');
+    Route::post('/analytics/dil-badge-snapshot', [\App\Http\Controllers\MarketPlace\AnalyticsDilBadgeController::class, 'snapshot'])->name('analytics.dil.badge.snapshot');
+
     Route::get('/ebay2-tabulator-view', [EbayTwoController::class, 'ebay2TabulatorView'])->name('ebay2.tabulator.view');
     Route::post('/ebay2-pull-ended-listings', [EbayTwoController::class, 'pullEndedListings'])->name('ebay2.pull.ended');
     Route::post('/ebay2/save-links', [EbayTwoController::class, 'saveLinks'])->name('ebay2.save.links');
@@ -5602,6 +5606,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay-one/save-sprice', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay-one.save-sprice');
     Route::get('/ebay-one/sbid-slab-rule', [EbayController::class, 'getSbidSlabRule'])->name('ebay-one.sbid-slab-rule.get');
     Route::post('/ebay-one/sbid-slab-rule', [EbayController::class, 'saveSbidSlabRule'])->name('ebay-one.sbid-slab-rule.save');
+    Route::get('/ebay-one/sbid-slab-count-history', [EbayController::class, 'getSbidSlabCountHistory'])->name('ebay-one.sbid-slab-count-history');
+    Route::post('/ebay-one/sbid-slab-count-snapshot', [EbayController::class, 'saveSbidSlabCountSnapshot'])->name('ebay-one.sbid-slab-count-snapshot');
     Route::post('/ebay-clear-sprice', [EbayController::class, 'clearEbaySprice']);
     Route::post('/ebay/save-sprice', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
 

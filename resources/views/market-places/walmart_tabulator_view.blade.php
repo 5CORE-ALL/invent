@@ -193,6 +193,7 @@
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="avg-pft" style="color: black; font-weight: bold;">AVG PFT: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'walmart'])
                         
                         <!-- Walmart Metrics -->
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total Walmart INV: 0</span>

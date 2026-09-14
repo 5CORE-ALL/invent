@@ -1708,6 +1708,7 @@
                             <span class="badge bg-danger fs-5 p-2" id="red-margin-count-summary" style="color: white; font-weight: bold;">RED MARGIN: 0</span>
                             <span class="badge bg-warning fs-5 p-2" id="nra-count-summary" style="color: black; font-weight: bold;">NRA: 0</span>
                             <span class="badge bg-secondary fs-5 p-2" id="nrl-count-summary" style="color: white; font-weight: bold;">NRL: 0</span>
+                            @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay'])
                         </div>
                     </div>
                 </div>

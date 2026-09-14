@@ -350,6 +350,7 @@
                               class="badge text-center"
                               style="background-color: #b02a37; color: white !important; font-weight:700; cursor: pointer; flex:1 1 0; min-width:90px; font-size:14px; padding:8px 10px;"
                               title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'dobawithoutship'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'dobawithoutship-price-gt-lmp-badge', 'pglChannelKey' => 'dobawithoutship', 'pglPriceField' => 'self_pick_price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'dobawithoutship-price-lt80-lmp-badge', 'pltChannelKey' => 'dobawithoutship', 'pltPriceField' => 'self_pick_price'])
                         <span id="doba_withoutship-blue-triangle-badge"

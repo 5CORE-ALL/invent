@@ -157,6 +157,7 @@
                             style="color: white; font-weight: bold;"
                             title="L30 Sales = Σ Price × Qty — Price = R Price × 1.136">L30 Sales: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;" title="Sum of COGS">COGS: $0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'temu3'])
                     </div>
                 </div>
             </div>

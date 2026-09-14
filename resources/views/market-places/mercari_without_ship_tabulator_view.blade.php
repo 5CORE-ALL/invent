@@ -214,6 +214,7 @@
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="revenue-badge" style="color: #000; font-weight: bold;" title="Total sales (Price × L30 sold)">Revenue: $0.00</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'mercariwoship'])
                     </div>
                 </div>
 

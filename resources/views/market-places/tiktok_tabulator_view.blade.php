@@ -647,6 +647,7 @@
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" data-metric="sold_count"
                             style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
                             title="Click to filter">&gt; 0 Sold: 0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => (str_contains($tiktokPageTitle ?? '', 'TikTok 2') || (($tiktokPricingClientConfig['summaryChannel'] ?? '') === 'tiktok2')) ? 'tiktok2' : 'tiktok'])
                         <span class="badge fs-6 p-2 tt-badge-chart" data-metric="avg_roi"
                             id="roi-percent-badge" style="background-color:#6c757d;color:#fff;font-weight:bold;cursor:pointer;"
                             title="GROI% = Σ PFT ÷ Σ COGS. Red &lt;60%, gray 60–90%, green ≥90%. Click for daily trend.">GROI%: 0%</span>

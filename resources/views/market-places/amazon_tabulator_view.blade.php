@@ -841,6 +841,7 @@
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Views: 0</span>
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="total_l30_orders" data-live-value="{{ (int) ($amazonUnitsSoldL30 ?? 0) }}" id="total-qty-sold-badge" style="background-color: #20c997; color: black; font-weight: bold; cursor:pointer;" title="Total Amz units sold in the last 30 days from real Amz orders (Pacific, through yesterday) — same source as /amazon/daily-sales. Click for trend."><span class="summary-trend-dot none" data-metric="total_l30_orders" title="Rolling history"></span>Qty: {{ number_format((int) ($amazonUnitsSoldL30 ?? 0)) }}</span>
                         <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>CVR: 0%</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'amazon'])
 
                         <!-- Sold Filter Badges (badge click = filter; dot click = rolling history) -->
                         <span class="badge bg-success fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="all" data-metric="sold_count" data-live-value="0" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Click dot for trend">

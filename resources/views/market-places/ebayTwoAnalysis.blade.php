@@ -1610,6 +1610,7 @@
                             <span class="badge bg-danger fs-5 p-2" id="red-margin-count-summary" style="color: white; font-weight: bold;">RED MARGIN: 0</span>
                             <span class="badge bg-secondary fs-5 p-2" id="nrl-count-summary" style="color: white; font-weight: bold;">NRL: 0</span>
                             <span class="badge bg-success fs-5 p-2" id="req-count-summary" style="color: white; font-weight: bold;">REQ: 0</span>
+                            @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay2'])
                         </div>
                     </div>
                 </div>

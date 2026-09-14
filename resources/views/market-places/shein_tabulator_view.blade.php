@@ -93,6 +93,7 @@
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-commission-badge" style="color: white; font-weight: bold;">Commission: $0.00</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'shein'])
                     </div>
                     <h6 class="mb-2 mt-3">L60 Statistics</h6>
                     <div class="d-flex flex-wrap gap-2">

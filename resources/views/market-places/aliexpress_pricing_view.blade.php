@@ -219,6 +219,7 @@
                             <span class="badge bg-success fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-cvr-badge"
                                 data-metric="cvr" style="color:#111;font-weight:700;cursor:pointer;"
                                 title="CVR = Σ outputOrder ÷ Σ L30 page views × 100 (API)">CVR: 0%</span>
+                            @include('partials.analytics-dil-badge', ['dilChannel' => 'aliexpress'])
 
                             <span class="badge bg-success fs-6 p-2 ae-hover-chart ae-filter-badge" id="ae-sold-pct-badge"
                                 data-metric="more_sold" data-filter="more_sold"

@@ -225,6 +225,7 @@
                         <span class="badge bg-danger text-center" id="missing-badge"
                               style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
                               title="REQ + INV&gt;0 + V Price=0">Missing L: 0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'vinted'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'vinted-price-gt-lmp-badge', 'pglChannelKey' => 'vinted', 'pglPriceField' => 'V Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'vinted-price-lt80-lmp-badge', 'pltChannelKey' => 'vinted', 'pltPriceField' => 'V Price'])
                         <span class="badge fs-6 p-2" id="vinted-blue-triangle-badge"

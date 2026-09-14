@@ -226,6 +226,7 @@
                             title="Weighted GROI% = Σ Profit / Σ COGS × 100">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
                             style="color: black; font-weight: bold;">Prc: $0.00</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'pls'])
                         <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter Missing L (INV&gt;0, not listed on PLS)">M L: 0</span>

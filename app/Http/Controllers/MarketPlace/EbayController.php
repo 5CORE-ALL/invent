@@ -468,6 +468,123 @@ class EbayController extends Controller
     }
 
     /**
+     * Daily View VS SBID slab SKU counts (Pacific calendar day).
+     * Stored under ebay_sbid_rules.key = ebay1_sbid_slab_count_hist.
+     */
+    public function saveSbidSlabCountSnapshot(Request $request)
+    {
+        $counts = $request->input('counts', []);
+        if (! is_array($counts)) {
+            return response()->json(['error' => 'Invalid counts'], 422);
+        }
+
+        $clean = [];
+        foreach ($counts as $band => $n) {
+            $band = trim((string) $band);
+            if ($band === '') {
+                continue;
+            }
+            $clean[$band] = (int) $n;
+        }
+
+        $today = now('America/Los_Angeles')->toDateString();
+        $hist = $this->ebay1SbidSlabCountHist();
+        $existingToday = is_array($hist[$today] ?? null) ? $hist[$today] : [];
+        if (array_sum($clean) <= 0 && array_sum($existingToday) > 0) {
+            return response()->json(['success' => true, 'date' => $today, 'skipped' => true]);
+        }
+        $hist[$today] = $clean;
+        $this->persistEbay1SbidSlabCountHist($hist);
+
+        return response()->json(['success' => true, 'date' => $today]);
+    }
+
+    /**
+     * History series for one View VS SBID slab, or the full daily map when band is empty.
+     */
+    public function getSbidSlabCountHistory(Request $request)
+    {
+        $band = trim((string) $request->input('band', ''));
+        $days = (int) $request->input('days', 30);
+        $hist = $this->ebay1SbidSlabCountHist();
+        $today = now('America/Los_Angeles')->toDateString();
+        $from = $days > 0
+            ? now('America/Los_Angeles')->subDays(max(0, $days - 1))->toDateString()
+            : null;
+
+        if ($band === '' || $request->boolean('all')) {
+            $filtered = [];
+            foreach ($hist as $date => $counts) {
+                if (! is_string($date) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                    continue;
+                }
+                if ($from && $date < $from) {
+                    continue;
+                }
+                if ($date > $today) {
+                    continue;
+                }
+                $filtered[$date] = is_array($counts) ? $counts : [];
+            }
+
+            return response()->json(['success' => true, 'history' => $filtered]);
+        }
+
+        $data = [];
+        foreach ($hist as $date => $counts) {
+            if (! is_string($date) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                continue;
+            }
+            if ($from && $date < $from) {
+                continue;
+            }
+            if ($date > $today) {
+                continue;
+            }
+            if (! is_array($counts) || ! array_key_exists($band, $counts)) {
+                continue;
+            }
+            $data[] = [
+                'date' => Carbon::parse($date . ' 12:00:00', 'America/Los_Angeles')->format('M d'),
+                'full_date' => $date,
+                'value' => (float) $counts[$band],
+            ];
+        }
+
+        return response()->json(['success' => true, 'data' => $data, 'band' => $band]);
+    }
+
+    /**
+     * @return array<string, array<string, int>>
+     */
+    private function ebay1SbidSlabCountHist(): array
+    {
+        $row = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slab_count_hist')->first();
+        $hist = $row ? json_decode($row->rule, true) : [];
+
+        return is_array($hist) ? $hist : [];
+    }
+
+    /**
+     * @param  array<string, array<string, int>>  $hist
+     */
+    private function persistEbay1SbidSlabCountHist(array $hist): void
+    {
+        ksort($hist);
+        $cutoff = now('America/Los_Angeles')->subDays(180)->toDateString();
+        foreach (array_keys($hist) as $date) {
+            if (! is_string($date) || $date < $cutoff) {
+                unset($hist[$date]);
+            }
+        }
+
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => 'ebay1_sbid_slab_count_hist'],
+            ['rule' => json_encode($hist), 'updated_at' => now()]
+        );
+    }
+
+    /**
      * Default View VS SBID slabs: 0–100, 101–200, … 901–1000, then >1000.
      *
      * @return array<int, array<string, mixed>>

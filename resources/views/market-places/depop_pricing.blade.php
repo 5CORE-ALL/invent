@@ -59,6 +59,7 @@
                     <span class="badge bg-primary badge-pricing-stat" id="stat-total">SKUs: 0</span>
                     <span class="badge bg-success badge-pricing-stat" id="stat-priced">With Price: 0</span>
                     <span class="badge bg-info text-dark badge-pricing-stat" id="stat-l30">With L30: 0</span>
+                    @include('partials.analytics-dil-badge', ['dilChannel' => 'depop'])
                     @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'depop-price-gt-lmp-badge', 'pglChannelKey' => 'depop', 'pglPriceField' => 'price'])
                     @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'depop-price-lt80-lmp-badge', 'pltChannelKey' => 'depop', 'pltPriceField' => 'price'])
                     <span class="badge fs-6 p-2" id="depop-blue-triangle-badge"

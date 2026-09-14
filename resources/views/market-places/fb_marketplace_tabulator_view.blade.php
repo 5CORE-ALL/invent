@@ -237,6 +237,7 @@
                         <span class="badge fs-6 p-2" id="avg-cvr-badge"
                             style="background-color: #b91c1c; color: #fff; font-weight: bold;"
                             title="CVR = Σ FB L30 sold ÷ Σ views">CVR: 0%</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'fbmarketplace'])
                         <span class="badge bg-secondary fs-6 p-2" id="missing-l-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: Price = 0 and NR/REQ = REQ">Missing L: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'fbmarketplace-price-gt-lmp-badge', 'pglChannelKey' => 'fbmarketplace', 'pglPriceField' => 'price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'fbmarketplace-price-lt80-lmp-badge', 'pltChannelKey' => 'fbmarketplace', 'pltPriceField' => 'price'])

@@ -49,6 +49,7 @@ use App\Support\Marketplace\ChannelMasterInventoryGuard;
 use App\Support\Marketplace\ChannelMasterViewsGuard;
 use App\Support\Marketplace\ChannelMetricDotPair;
 use App\Support\Marketplace\ChartDatePad;
+use App\Support\Marketplace\EbayListingEnded;
 use App\Support\Marketplace\EbayTwoListingCounts;
 use App\Services\Support\ChannelTodaySalesService;
 use App\Services\Support\YesterdayMarketplaceMetricsService;
@@ -1724,12 +1725,13 @@ class ChannelMasterController extends Controller
                 continue;
             }
 
-            $snap ??= $this->getEbayTwoListingCvrFromTabulatorSnapshot();
+            $snap ??= $this->computeEbayTwoListingViewsFromMetrics()
+                ?? $this->getEbayTwoListingCvrFromTabulatorSnapshot();
             if ($snap === null) {
                 break;
             }
 
-            $row['Total Views'] = $snap['total_views'];
+            $row['Total Views'] = (int) round((float) $snap['total_views']);
             $row['CVR'] = $snap['cvr_pct'];
             $this->syncLiveMapMissViewsToChannelHistory('ebaytwo', $name, [
                 'map' => (int) ($row['Map'] ?? 0),
@@ -1744,6 +1746,80 @@ class ChannelMasterController extends Controller
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * PARENT aggregate rows on /ebay2-tabulator-view.
+     * Child SKUs store Parent = "PARENT GSTOOL I" — that is the family name, not a parent row.
+     */
+    private function isEbay2TabulatorParentRow(mixed $row): bool
+    {
+        if (! is_array($row) && ! is_object($row)) {
+            return false;
+        }
+        $sku = (string) (data_get($row, '(Child) sku') ?? data_get($row, 'sku') ?? '');
+        if (stripos($sku, 'PARENT') !== false) {
+            return true;
+        }
+
+        return ((bool) data_get($row, 'is_parent_row'))
+            || ((bool) data_get($row, 'is_parent_summary'))
+            || ((bool) data_get($row, 'is_parent'));
+    }
+
+    /**
+     * Same Views / CVR 30 scope as /ebay2-tabulator-view badges:
+     * one live ebay_2_metrics row per SKU, E Stock > 0, PARENT SKUs excluded.
+     *
+     * @return array{total_views: float, cvr_pct: float}|null
+     */
+    private function computeEbayTwoListingViewsFromMetrics(): ?array
+    {
+        try {
+            if (! Schema::hasTable('ebay_2_metrics')) {
+                return null;
+            }
+
+            $cols = ['id', 'sku', 'views', 'ebay_l30', 'ebay_stock', 'item_id'];
+            if (Schema::hasColumn('ebay_2_metrics', 'listing_status')) {
+                $cols[] = 'listing_status';
+            }
+
+            $metrics = Ebay2Metric::query()
+                ->select($cols)
+                ->orderBy('id')
+                ->get()
+                ->groupBy(fn ($m) => ShopifySku::normalizeSkuForShopifyLookup((string) ($m->sku ?? '')))
+                ->map(fn ($group) => EbayListingEnded::preferLiveMetric($group))
+                ->filter();
+
+            $views = 0.0;
+            $ebayL30 = 0.0;
+            foreach ($metrics as $metric) {
+                $sku = (string) ($metric->sku ?? '');
+                if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                    continue;
+                }
+                if ((float) ($metric->ebay_stock ?? 0) <= 0) {
+                    continue;
+                }
+                $views += (float) ($metric->views ?? 0);
+                $ebayL30 += (float) ($metric->ebay_l30 ?? 0);
+            }
+
+            if ($views <= 0) {
+                return null;
+            }
+
+            return [
+                'total_views' => $views,
+                'cvr_pct' => round(($ebayL30 / $views) * 100, 2),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('computeEbayTwoListingViewsFromMetrics failed: '.$e->getMessage());
+
+            return null;
+        }
     }
 
     /**
@@ -1763,13 +1839,13 @@ class ChannelMasterController extends Controller
 
         $sd = is_array($row->summary_data) ? $row->summary_data : [];
         $views = (float) ($sd['total_views'] ?? 0);
-        $ebayL30 = (float) ($sd['total_ebay_l30'] ?? 0);
+        $ebayL30 = (float) ($sd['total_ebay_listing_l30'] ?? $sd['total_ebay_l30'] ?? 0);
         $cvr = array_key_exists('cvr_percent', $sd) && $sd['cvr_percent'] !== null && $sd['cvr_percent'] !== ''
             ? round((float) $sd['cvr_percent'], 2)
             : ($views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0.0);
 
         return [
-            'total_views' => ChannelMasterViewsGuard::stabilize('ebaytwo', $views),
+            'total_views' => $views,
             'cvr_pct' => $cvr,
         ];
     }
@@ -1801,7 +1877,7 @@ class ChannelMasterController extends Controller
                 $date = Carbon::parse($acs->snapshot_date)->toDateString();
                 $sd = is_array($acs->summary_data) ? $acs->summary_data : [];
                 $views = (float) ($sd['total_views'] ?? 0);
-                $qty = (float) ($sd['total_ebay_l30'] ?? 0);
+                $qty = (float) ($sd['total_ebay_listing_l30'] ?? $sd['total_ebay_l30'] ?? 0);
                 $cvr = array_key_exists('cvr_percent', $sd) && $sd['cvr_percent'] !== null && $sd['cvr_percent'] !== ''
                     ? round((float) $sd['cvr_percent'], 2)
                     : ($views > 0 ? round(($qty / $views) * 100, 2) : null);
@@ -2044,6 +2120,121 @@ class ChannelMasterController extends Controller
             Log::warning('Fast-path Temu overlay failed: '.$e->getMessage());
         }
 
+        try {
+            $rows = $this->overlayLiveEbayTwoListingCvrOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path EbayTwo views overlay failed: '.$e->getMessage());
+        }
+
+        // Last: Pacific yesterday Y Sales including $0/NYS so stale calculated
+        // yesterday_sales cannot stay on the grid after a quiet day.
+        $rows = $this->overlayLivePacificYSalesOnChannelRows($rows);
+
+        return $rows;
+    }
+
+    /**
+     * Live Pacific-yesterday Y Sales keyed by lookup / snapshot key.
+     *
+     * @return array<string, callable(): (?float)>
+     */
+    private function livePacificYSalesComputers(): array
+    {
+        $yesterday = Carbon::yesterday('America/Los_Angeles')->toDateString();
+
+        return [
+            'amazon' => fn () => $this->realPacificDayYSales('amazon', $yesterday),
+            'temu' => fn () => $this->computeTemuYSalesLikeAmazon(false),
+            'temu2' => fn () => $this->computeTemuYSalesLikeAmazon(true),
+            'temu3' => fn () => $this->computeTemu3YSalesLikeAmazon(),
+            'temuthree' => fn () => $this->computeTemu3YSalesLikeAmazon(),
+            'ebay' => fn () => $this->computeEbayYSalesLikeAmazon(1),
+            'ebaytwo' => fn () => $this->computeEbayYSalesLikeAmazon(2),
+            'ebaythree' => fn () => $this->computeEbayYSalesLikeAmazon(3),
+            'shopify' => fn () => $this->computeShopifyDirectYSalesLikeAmazon(),
+            'shopifyb2c' => fn () => $this->computeShopifyB2xYSalesLikeAmazon(false),
+            'shopifyb2b' => fn () => $this->computeShopifyB2xYSalesLikeAmazon(true),
+            'fbmarketplace' => fn () => $this->computeFbMarketplaceYSalesLikeAmazon(),
+            'tiktokshop' => fn () => $this->computeTiktokShopYSalesFromOrders(),
+            'tiktok2' => fn () => $this->computeTiktokTwoYSalesLikeAmazon(),
+            'tiktokshop2' => fn () => $this->computeTiktokTwoYSalesLikeAmazon(),
+            'aliexpress' => fn () => $this->computeAliexpressYSalesLikeAmazon(),
+            'faire' => fn () => $this->computeFaireYSalesLikeAmazon(),
+            'mercariwship' => fn () => $this->computeMercariYSalesLikeAmazon(true),
+            'mercariwoship' => fn () => $this->computeMercariYSalesLikeAmazon(false),
+            'topdawg' => fn () => $this->computeTopDawgYSalesLikeAmazon(),
+            'shein' => fn () => $this->computeSheinYSalesLikeAmazon(),
+            'depop' => fn () => $this->computeDepopYSalesLikeAmazon(),
+            'vinted' => fn () => $this->computeVintedYSalesLikeAmazon(),
+            'wayfair' => fn () => $this->computeWayfairYSalesLikeAmazon(),
+            'reverb' => fn () => $this->computeReverbYSalesLikeAmazon(),
+            'doba' => fn () => $this->computeDobaYSalesLikeAmazon(),
+            'bestbuyusa' => fn () => $this->computeBestBuyUsaYSalesLikeAmazon(),
+            'macys' => fn () => $this->computeMiraklYSalesLikeAmazon("Macy's, Inc."),
+            'macysinc' => fn () => $this->computeMiraklYSalesLikeAmazon("Macy's, Inc."),
+            'purchasingpower' => fn () => $this->computePurchasingPowerYSalesLikeAmazon(),
+            'newegg' => fn () => $this->computeNeweggYSalesLikeAmazon(),
+        ];
+    }
+
+    /**
+     * @return array<string, float|null>
+     */
+    private function livePacificYSalesByLookupKey(): array
+    {
+        $out = [];
+        foreach ($this->livePacificYSalesComputers() as $key => $fn) {
+            try {
+                $out[$key] = $fn();
+            } catch (\Throwable $e) {
+                Log::warning('Live Pacific Y Sales failed for '.$key.': '.$e->getMessage());
+                $out[$key] = null;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Replace every channel's Y Sales with Pacific yesterday (including $0).
+     */
+    private function overlayLivePacificYSalesOnChannelRows(array $rows): array
+    {
+        $computers = $this->livePacificYSalesComputers();
+        $needed = [];
+        foreach ($rows as $row) {
+            $name = (string) ($row['Channel '] ?? $row['Channel'] ?? '');
+            $raw = $this->allMarketplaceYSalesLookupKey($name);
+            $snap = $this->allMarketplaceSnapshotKey($name);
+            if (isset($computers[$raw])) {
+                $needed[$raw] = $computers[$raw];
+            }
+            if (isset($computers[$snap])) {
+                $needed[$snap] = $computers[$snap];
+            }
+        }
+
+        $values = [];
+        foreach ($needed as $key => $fn) {
+            try {
+                $values[$key] = $fn();
+            } catch (\Throwable $e) {
+                Log::warning('Live Pacific Y Sales failed for '.$key.': '.$e->getMessage());
+            }
+        }
+
+        foreach ($rows as &$row) {
+            $name = (string) ($row['Channel '] ?? $row['Channel'] ?? '');
+            $raw = $this->allMarketplaceYSalesLookupKey($name);
+            $snap = $this->allMarketplaceSnapshotKey($name);
+            $value = $values[$raw] ?? $values[$snap] ?? null;
+            if ($value === null) {
+                continue;
+            }
+            $this->applyLiveYSalesAllowZero($row, $value);
+        }
+        unset($row);
+
         return $rows;
     }
 
@@ -2263,6 +2454,17 @@ class ChannelMasterController extends Controller
         $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channelKey)));
 
         return in_array($key, ['temu', 'temu2', 'temutwo', 'temu3', 'temuthree'], true);
+    }
+
+    /** Full listing scan (ebay2 tabulator / ebay_2_metrics) — do not carry a stale 2× PARENT sum. */
+    private function listingViewsSkipStabilize(string $channelKey): bool
+    {
+        if ($this->temuViewsSkipStabilize($channelKey)) {
+            return true;
+        }
+        $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channelKey)));
+
+        return in_array($key, ['ebaytwo', 'ebay2'], true);
     }
 
     /**
@@ -3974,7 +4176,7 @@ class ChannelMasterController extends Controller
                 $latest = \App\Models\ChannelMasterSummary::whereIn('channel', $lookupKeys)
                     ->orderByDesc('snapshot_date')
                     ->first();
-                if ($this->temuViewsSkipStabilize($channelKey)) {
+                if ($this->listingViewsSkipStabilize($channelKey)) {
                     $seed = $latest
                         ? \App\Models\ChannelMasterSummary::decodeSummaryData($latest->summary_data ?? [])
                         : [];
@@ -4005,7 +4207,7 @@ class ChannelMasterController extends Controller
             $summary['nmap_count'] = (int) ($counts['nmap'] ?? $summary['nmap_count'] ?? 0);
             $qtyForViews = (float) ($summary['total_quantity'] ?? $summary['l30_orders'] ?? 0);
             $liveViews = (float) ($counts['total_views'] ?? 0);
-            $summary['total_views'] = $this->temuViewsSkipStabilize($channelKey)
+            $summary['total_views'] = $this->listingViewsSkipStabilize($channelKey)
                 ? $liveViews
                 : ChannelMasterViewsGuard::stabilize($channelKey, $liveViews, $qtyForViews, $today);
             if (array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null) {
@@ -4019,7 +4221,7 @@ class ChannelMasterController extends Controller
             unset($summary['seeded_from_snapshot']);
 
             $existing->summary_data = $summary;
-            if ($createdToday || $this->temuViewsSkipStabilize($channelKey)
+            if ($createdToday || $this->listingViewsSkipStabilize($channelKey)
                 || stripos((string) $existing->notes, 'Listing') !== false
                 || stripos((string) $existing->notes, 'Merged') !== false) {
                 $existing->notes = 'Auto-saved channel master snapshot';
@@ -6697,43 +6899,9 @@ class ChannelMasterController extends Controller
             $sales[$this->allMarketplaceYSalesLookupKey($name)] = (float) ($row->yesterday_sales ?? 0);
         }
 
-        $live = [
-            'amazon' => function () {
-                $yesterdayPacific = Carbon::now('America/Los_Angeles')->startOfDay()->subDay();
-
-                return AmazonOrder::productSalesByOrderDate(
-                    $yesterdayPacific->copy()->startOfDay()->utc(),
-                    $yesterdayPacific->copy()->endOfDay()->utc()
-                );
-            },
-            'temu' => fn () => $this->computeTemuYSalesLikeAmazon(false),
-            'temu2' => fn () => $this->computeTemuYSalesLikeAmazon(true),
-            'temu3' => fn () => $this->computeTemu3YSalesLikeAmazon(),
-            'temuthree' => fn () => $this->computeTemu3YSalesLikeAmazon(),
-            'ebay' => fn () => $this->computeEbayYSalesLikeAmazon(1),
-            'ebaytwo' => fn () => $this->computeEbayYSalesLikeAmazon(2),
-            'ebaythree' => fn () => $this->computeEbayYSalesLikeAmazon(3),
-            'purchasingpower' => fn () => $this->computePurchasingPowerYSalesLikeAmazon(),
-            'shopify' => fn () => $this->computeShopifyDirectYSalesLikeAmazon(),
-            'shopifyb2c' => fn () => $this->computeShopifyB2xYSalesLikeAmazon(false),
-            'shopifyb2b' => fn () => $this->computeShopifyB2xYSalesLikeAmazon(true),
-            'fbmarketplace' => fn () => $this->computeFbMarketplaceYSalesLikeAmazon(),
-            'tiktok2' => fn () => $this->computeTiktokTwoYSalesLikeAmazon(),
-            'aliexpress' => fn () => $this->computeAliexpressYSalesLikeAmazon(),
-            'faire' => fn () => $this->computeFaireYSalesLikeAmazon(),
-            'mercariwship' => fn () => $this->computeMercariYSalesLikeAmazon(true),
-            'mercariwoship' => fn () => $this->computeMercariYSalesLikeAmazon(false),
-            'topdawg' => fn () => $this->computeTopDawgYSalesLikeAmazon(),
-        ];
-
-        foreach ($live as $key => $fn) {
-            try {
-                $value = $fn();
-                if ($value !== null) {
-                    $sales[$key] = (float) $value;
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Displayed AMM Y Sales failed for '.$key.': '.$e->getMessage());
+        foreach ($this->livePacificYSalesByLookupKey() as $key => $value) {
+            if ($value !== null) {
+                $sales[$key] = (float) $value;
             }
         }
 
@@ -8614,8 +8782,7 @@ class ChannelMasterController extends Controller
 
     /**
      * Shein Y Sales from shein_daily_data (same GMV as /shein-tabulator).
-     * Prefer Pacific yesterday; if that day is empty (gap / timezone slip),
-     * use the latest complete Pacific day before yesterday that has sales.
+     * Pacific yesterday only — do not walk back to the last sale day.
      */
     private function computeSheinYSalesLikeAmazon(): ?float
     {
@@ -8628,25 +8795,8 @@ class ChannelMasterController extends Controller
         }
 
         [$yStart, $yEnd] = $this->pacificYesterdayBounds();
-        $sum = $this->sumSheinDailyDataRevenue($yStart, $yEnd);
-        if ($sum > 0) {
-            return $sum;
-        }
 
-        $cursor = Carbon::yesterday('America/Los_Angeles')->subDay();
-        $floor = $cursor->copy()->subDays(13);
-        while ($cursor->gte($floor)) {
-            $sum = $this->sumSheinDailyDataRevenue(
-                $cursor->copy()->startOfDay(),
-                $cursor->copy()->endOfDay()
-            );
-            if ($sum > 0) {
-                return $sum;
-            }
-            $cursor->subDay();
-        }
-
-        return 0.0;
+        return $this->sumSheinDailyDataRevenue($yStart, $yEnd);
     }
 
     /**
@@ -8698,7 +8848,7 @@ class ChannelMasterController extends Controller
      * sync with the Shopify orders dashboard. Identification mirrors the shopify-orders page:
      * source_name / tags containing "purchasing power".
      *
-     * Revenue = price × quantity for the Pacific calendar day before the latest order_date.
+     * Revenue = price × quantity for Pacific calendar yesterday.
      */
     private function computePurchasingPowerYSalesLikeAmazon(): ?float
     {
@@ -8709,17 +8859,7 @@ class ChannelMasterController extends Controller
               ->orWhere('tags', 'LIKE', '%PurchasingPower%');
         };
 
-        $latestRaw = DB::connection('apicentral')->table('shopify_order_items')
-            ->where($ppWhere)
-            ->whereNotNull('order_date')
-            ->max('order_date');
-        if (!$latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-        $yEndPacific   = $latestPacific->copy()->subDay()->endOfDay();
+        [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
         $sum = (float) DB::connection('apicentral')->table('shopify_order_items')
             ->where($ppWhere)
@@ -10371,10 +10511,7 @@ class ChannelMasterController extends Controller
                     continue;
                 }
 
-                $parent = trim((string) ($row['Parent'] ?? ''));
-                $isParentSummary = (($row['is_parent_summary'] ?? false) === true)
-                    || ($parent !== '' && stripos($parent, 'PARENT') === 0);
-                if ($isParentSummary) {
+                if ($this->isEbay2TabulatorParentRow($row)) {
                     continue;
                 }
 
@@ -10387,7 +10524,7 @@ class ChannelMasterController extends Controller
                 $isReq = ($nrReq === 'REQ');
 
                 // Views + listing CVR: same scope as /ebay2-tabulator-view Views / CVR 30
-                // (E Stock > 0). Do not require REQ — the tabulator badges do not.
+                // (E Stock > 0, no PARENT). Do not require REQ — the tabulator badges do not.
                 if ($eStock > 0) {
                     $views += (float) ($row['views'] ?? 0);
                     $ebayL30 += (float) ($row['eBay L30'] ?? $row['ebay_l30'] ?? 0);
@@ -10422,7 +10559,6 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            $stableViews = ChannelMasterViewsGuard::stabilize('ebaytwo', (float) $views);
             $cvrPct = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0.0;
             $this->backfillEbayTwoListingCvrHistory();
 
@@ -10431,7 +10567,7 @@ class ChannelMasterController extends Controller
                 // Missing L from /listing-ebaytwo (DataView NRL + ebay_2_metrics.item_id)
                 'miss' => EbayTwoListingCounts::missingL(),
                 'nmap' => $nmap,
-                'total_views' => $stableViews,
+                'total_views' => $views,
                 // Same numerator/denominator as /ebay2-tabulator-view CVR 30 (eBay L30 ÷ views).
                 'cvr_pct' => $cvrPct,
             ];
@@ -16728,6 +16864,20 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => $chartData]);
             }
 
+            if (! $isAll && $metric === 'y_sales' && $channel === 'shein' && ! $useDailyWindow && ! $useL7Window) {
+                $chartData = $this->buildSheinLiveDailyYSalesChart($days);
+                $chartData = ChartDatePad::fillGapsThroughYesterday($chartData, $days);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
             if (! $isAll && $metric === 'l30_sales' && $channel === 'depop') {
                 $chartData = $this->buildDepopLiveRollingSalesChart($days, 30);
                 $chartData = $this->pinChartSeriesLastToTable(
@@ -17408,7 +17558,7 @@ class ChannelMasterController extends Controller
     private function fastAllMarketplaceYSalesChartFromSnapshots(int $days, mixed $badgeValue = null): array
     {
         $days = $days > 0 ? $days : 30;
-        $cacheKey = 'amm_all_y_sales_chart_v3_d'.$days;
+        $cacheKey = 'amm_all_y_sales_chart_v4_d'.$days;
         $cached = \Cache::get($cacheKey);
         if (is_array($cached) && $cached !== []) {
             return $this->pinAllYSalesChartLastPoint($cached, $badgeValue);
@@ -17447,11 +17597,17 @@ class ChannelMasterController extends Controller
         }
 
         ksort($byDateChannel);
+        $liveStart = Carbon::now($tz)->subDays($days + 1)->startOfDay();
+        $liveEnd = Carbon::yesterday($tz)->endOfDay();
+        $faireByDay = $this->faireDailySalesByDate($liveStart, $liveEnd);
+        $sheinByDay = $this->sheinDailySalesByDate($liveStart, $liveEnd);
         foreach ($byDateChannel as $asOf => $channels) {
             $liveAmazon = $this->realPacificDayYSales('amazon', $asOf);
             if ($liveAmazon !== null) {
                 $byDateChannel[$asOf]['amazon'] = $liveAmazon;
             }
+            $byDateChannel[$asOf]['faire'] = (float) (($faireByDay[$asOf]['sales'] ?? 0));
+            $byDateChannel[$asOf]['shein'] = (float) (($sheinByDay[$asOf]['sales'] ?? 0));
         }
         $out = [];
         foreach ($byDateChannel as $asOf => $channels) {
@@ -18655,6 +18811,16 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
+            if ($channel === 'shein') {
+                $day = Carbon::parse($ymd, 'America/Los_Angeles');
+                self::$pacificDayYSalesCache[$key] = $this->sumSheinDailyDataRevenue(
+                    $day->copy()->startOfDay(),
+                    $day->copy()->endOfDay()
+                );
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
             if ($channel === 'fbmarketplace' || $channel === 'facebookmarketplace') {
                 $day = FacebookMarketplaceController::dailySalesByPacificDate($ymd, $ymd);
                 self::$pacificDayYSalesCache[$key] = (float) ($day[$ymd]['sales'] ?? 0);
@@ -18683,7 +18849,7 @@ class ChannelMasterController extends Controller
     private function overlayLiveYSalesOnChart(string $channel, array $chartData): array
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
-        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace', 'faire'], true) || $chartData === []) {
+        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace', 'faire', 'shein'], true) || $chartData === []) {
             return $chartData;
         }
 
@@ -18730,7 +18896,7 @@ class ChannelMasterController extends Controller
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
         $tz = 'America/Los_Angeles';
-        $lookback = in_array($channel, ['temu2', 'depop'], true) ? 14 : 1;
+        $lookback = in_array($channel, ['temu2', 'depop', 'faire', 'shein'], true) ? 14 : 1;
         $lookupKeys = $this->allMarketplaceSnapshotLookupKeys($channel);
 
         for ($offset = 0; $offset <= $lookback; $offset++) {
@@ -19540,6 +19706,9 @@ class ChannelMasterController extends Controller
         if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'faire') {
             return $this->buildFaireLiveDailyYSalesChart($span);
         }
+        if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'shein') {
+            return $this->buildSheinLiveDailyYSalesChart($span);
+        }
         $startDate = now($tz)->subDays($span + 1)->toDateString();
         $want = $isAll ? null : $this->allMarketplaceSnapshotKey($channel);
 
@@ -19660,6 +19829,63 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Shein daily GMV from shein_daily_data (same rules as /shein-tabulator).
+     *
+     * @return array<string, array{sales: float}>
+     */
+    private function sheinDailySalesByDate(Carbon $start, Carbon $end): array
+    {
+        $out = [];
+        if (! Schema::hasTable('shein_daily_data')) {
+            return $out;
+        }
+
+        $cursor = $start->copy()->startOfDay();
+        $last = $end->copy()->startOfDay();
+        while ($cursor->lte($last)) {
+            $out[$cursor->toDateString()] = ['sales' => 0.0];
+            $cursor->addDay();
+        }
+
+        foreach (
+            DB::table('shein_daily_data')
+                ->where('order_processed_on', '>=', $start)
+                ->where('order_processed_on', '<=', $end)
+                ->cursor() as $row
+        ) {
+            $orderNum = trim((string) ($row->order_number ?? ''));
+            $sellerSku = trim((string) ($row->seller_sku ?? ''));
+            if ($orderNum === '' && $sellerSku === '') {
+                continue;
+            }
+            $orderStatus = strtolower((string) ($row->order_status ?? ''));
+            if (str_contains($orderStatus, 'refund')
+                || str_contains($orderStatus, 'return')
+                || str_contains($orderStatus, 'cancel')
+                || str_contains($orderStatus, 'closed')
+                || str_contains($orderStatus, 'exchange')) {
+                continue;
+            }
+            try {
+                $d = Carbon::parse((string) ($row->order_processed_on), 'America/Los_Angeles')->toDateString();
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if (! isset($out[$d])) {
+                continue;
+            }
+            $quantity = max(1, (int) ($row->quantity ?? 0));
+            $out[$d]['sales'] += (float) ($row->product_price ?? 0) * $quantity;
+        }
+
+        foreach ($out as $d => $cell) {
+            $out[$d]['sales'] = round((float) ($cell['sales'] ?? 0), 2);
+        }
+
+        return $out;
+    }
+
+    /**
      * Faire Y Sales chart: one Pacific calendar day each. Days with no orders are $0
      * so the last wholesale invoice is not copied forward.
      *
@@ -19672,6 +19898,34 @@ class ChannelMasterController extends Controller
         $span = $days > 0 ? $days : 7;
         $start = $end->copy()->subDays($span - 1);
         $byDate = $this->faireDailySalesByDate($start->copy()->startOfDay(), $end->copy()->endOfDay());
+
+        $out = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $ymd = $cursor->toDateString();
+            $cell = $byDate[$ymd] ?? ['sales' => 0];
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round((float) ($cell['sales'] ?? 0), 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * Shein Y Sales chart: one Pacific calendar day each. Gap days are $0.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildSheinLiveDailyYSalesChart(int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = now($tz)->subDay()->startOfDay();
+        $span = $days > 0 ? $days : 7;
+        $start = $end->copy()->subDays($span - 1);
+        $byDate = $this->sheinDailySalesByDate($start->copy()->startOfDay(), $end->copy()->endOfDay());
 
         $out = [];
         $cursor = $start->copy();
@@ -20569,7 +20823,7 @@ class ChannelMasterController extends Controller
                     'l60_orders' => floatval($row['L60 Orders'] ?? 0),
                     'l30_orders' => floatval($row['L30 Orders'] ?? 0),
                     'total_quantity' => floatval($totalQuantity), // Total quantity (units sold) from marketplace_daily_metrics
-                    'total_views' => $this->temuViewsSkipStabilize($channelName)
+                    'total_views' => $this->listingViewsSkipStabilize($channelName)
                         ? floatval($row['Total Views'] ?? 0)
                         : ChannelMasterViewsGuard::stabilize(
                             $channelName,
@@ -20665,6 +20919,7 @@ class ChannelMasterController extends Controller
             $this->healClosedChannelYSalesSnapshot('temu3');
             $this->healClosedChannelYSalesSnapshot('depop');
             $this->healClosedChannelYSalesSnapshot('faire');
+            $this->healClosedChannelYSalesSnapshot('shein');
 
             foreach ([0, 1, 7] as $dotWindow) {
                 \Cache::forget($this->channelMetricDotTrendsCacheKey($dotWindow));

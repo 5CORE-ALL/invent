@@ -379,6 +379,7 @@ class NewTemuoneController extends Controller
                     ? ($sRPrice * TemuShopifySalesService::DECREASE_TAKEHOME) - $temuShip - $lp
                     : 0.0;
                 $sgpftPercent = ($sRPrice > 0 && $sprice > 0) ? round(($spftDollars / $sprice) * 100, 2) : 0.0;
+                $sroiPercent = ($sRPrice > 0 && $lp > 0) ? round(($spftDollars / $lp) * 100, 2) : 0.0;
                 $sgroiPercent = $suggested['sgroi'];
 
                 // NPFT = Gpft − (T Price × Ads%); SNPFT = SPFT − (S PRC × Ads%).
@@ -431,6 +432,7 @@ class NewTemuoneController extends Controller
                     'profit_percent' => $gpftPercent,
                     'roi_percent' => $groiPercent,
                     'sgpft_percent' => $sgpftPercent,
+                    'sroi_percent' => $sroiPercent,
                     'sgroi_percent' => $sgroiPercent,
                     'nto_use_saved' => (bool) ($suggested['use_saved'] ?? false),
                     'nto_capped' => (bool) ($suggested['capped'] ?? false),

@@ -540,6 +540,7 @@
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
                         <span class="badge fs-6 p-2" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of L30 product page views (sessions)">Views: 0</span>
                         <span class="badge fs-6 p-2" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Qty ÷ Views">CVR: 0%</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'shopifyb2b'])
                         <span class="badge bg-info fs-6 p-2" id="total-b2b-l30-badge" style="color: black; font-weight: bold;">B2B L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 = 0">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="shopifyb2b-blue-triangle-badge"

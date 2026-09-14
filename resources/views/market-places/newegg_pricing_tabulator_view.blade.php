@@ -143,6 +143,7 @@
                             style="color: black; font-weight: bold;">L30: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge"
                             style="color: black; font-weight: bold;" title="Σ uploaded Page Views (fallback Sessions)">Views: 0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'newegg'])
                         <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge"
                             style="color: black; font-weight: bold;" title="CVR = Σ L30 ÷ Σ Views × 100">CVR: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge"

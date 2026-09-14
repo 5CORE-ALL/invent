@@ -132,6 +132,7 @@
                             style="background-color: #17a2b8; color: white; font-weight: bold;"
                             title="L60 Sales = Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">L60 Sales: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'temu'])
                     </div>
                 </div>
             </div>

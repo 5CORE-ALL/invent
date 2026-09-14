@@ -91,6 +91,7 @@
                         <span class="badge fs-6 p-2" id="l60-sales-badge" style="background-color: #667eea; color: white; font-weight: bold;" title="L60 sales from AliExpress API">L60 Sales: $0</span>
                         <span class="badge fs-6 p-2" id="l60-orders-badge" style="background-color: #f5576c; color: white; font-weight: bold;" title="L60 orders from AliExpress API">L60 Orders: 0</span>
                         <span class="badge fs-6 p-2" id="l60-quantity-badge" style="background-color: #00b4d8; color: white; font-weight: bold;" title="L60 units from AliExpress API">L60 Qty: 0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'aliexpress'])
                     </div>
                 </div>
             </div>

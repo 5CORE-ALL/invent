@@ -94,6 +94,7 @@
                             title="NROI% = ROI% (Reverb Ads% is Bump — not cut from net; same as /all-marketplace-master N ROI)"
                             style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'reverb'])
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">COGS: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-fees-badge" style="color: white; font-weight: bold;">T Fees: $0</span>

@@ -601,6 +601,7 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: white; font-weight: bold;">CVR: 0.00%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay2op'])
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">E Stock: 0</span>
                     </div>
                 </div>

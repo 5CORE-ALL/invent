@@ -112,6 +112,7 @@
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold; display: none;">Price: $0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">BB L30: 0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'bestbuy'])
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'bestbuy-price-gt-lmp-badge', 'pglChannelKey' => 'bestbuy', 'pglPriceField' => 'BB Price'])
                         <span class="badge fs-6 p-2" id="bestbuy-blue-triangle-badge"

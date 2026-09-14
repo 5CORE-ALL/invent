@@ -589,6 +589,7 @@
                     <span class="badge bg-info fs-6 p-2" id="total-views-badge"
                         style="color: black; font-weight: bold;"
                         title="Σ Views of the rows shown">Views: 0</span>
+                    @include('partials.analytics-dil-badge', ['dilChannel' => 'temu'])
                     <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge"
                         style="color: white; font-weight: bold;"
                         title="CVR = (Σ Temu L30 ÷ Σ Views) × 100">CVR: 0%</span>
@@ -1220,6 +1221,14 @@
         return (spft / sprice) * 100;
     }
 
+    /** SROI% = live SPFT ÷ LP (not the Dil/CVR SGROI target). */
+    function temuSroiPercent(row) {
+        const spft = temuSpftDollars(row);
+        const lp = parseFloat(row && row.lp) || 0;
+        if (spft == null || !(lp > 0)) return null;
+        return (spft / lp) * 100;
+    }
+
     function temuSgroiFromRule(row) {
         if (ntoRowUsesSaved(row) && !row.nto_capped) {
             return ntoSavedSgroi(row);
@@ -1726,10 +1735,12 @@
                 next.s_r_price = temuSRPriceFromSprice(cap.sprice) || null;
                 const merged = Object.assign({}, d, next);
                 const sgpft = temuSgpftPercent(merged);
+                const sroi = temuSroiPercent(merged);
                 const sgroi = temuSgroiPercent(merged);
                 const snpft = temuSnpftPercent(merged);
                 const snroi = temuSnroiPercent(merged);
                 next.sgpft_percent = sgpft != null ? +sgpft.toFixed(2) : null;
+                next.sroi_percent = sroi != null ? +sroi.toFixed(2) : null;
                 next.sgroi_percent = sgroi != null ? +sgroi.toFixed(2) : null;
                 next.snpft_percent = snpft != null ? +snpft.toFixed(2) : null;
                 next.snroi_percent = snroi != null ? +snroi.toFixed(2) : null;
@@ -2590,7 +2601,7 @@
             return 'basics';
         }
         if (
-            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
+            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
             /\b(cvr|cpn|price|prc|gpft|npft|groi|nroi|lmp|sprc\s*dil|s\s*prc|sgpft|sgroi|snpft|snroi)\b/i.test(tl)
         ) {
             return 'pricing';
@@ -3354,28 +3365,27 @@
                     }
                 },
                 {
-                    title: 'SGPFT',
-                    field: 'sgpft_percent',
+                    title: 'SROI%',
+                    field: 'sroi_percent',
                     hozAlign: 'center',
                     width: 60,
                     sorter: 'number',
-                    headerTooltip: 'SGPFT% = SPFT ÷ S PRC. SPFT = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as Sprc Dil / /temu2-decrease.',
+                    headerTooltip: 'SROI% = SPFT ÷ LP. Live ROI at S PRC: (S R Prc × 0.95 − Temu Ship − LP) / LP.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
-                        const value = temuSgpftPercent(row);
+                        const value = temuSroiPercent(row);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
                         const spft = temuSpftDollars(row);
-                        const tip = 'SPFT $' + spft.toFixed(2)
-                            + ' ÷ S PRC $' + temuDisplayedSprice(row).toFixed(2)
-                            + ' (0.95 take-home)';
-                        return temuPercentCell(value, 'pft', tip);
+                        const tip = 'SPFT $' + (spft != null ? spft.toFixed(2) : '—')
+                            + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2);
+                        return temuPercentCell(value, 'roi', tip);
                     }
                 },
                 {
-                    title: 'SGROI',
+                    title: 'SGROI%',
                     field: 'sgroi_percent',
                     hozAlign: 'center',
-                    width: 60,
+                    width: 65,
                     sorter: 'number',
                     headerTooltip: 'SGROI% is the saved Dil + CVR Target GROI (Dil 100 + CVR 10 = 110 exactly). Recalculated only when Dil, CVR, or a pricing input changes. If S PRC was capped to eBay / Amazon / LMP, it shows the actual SPFT ÷ LP instead.',
                     formatter: function(cell) {
@@ -3397,10 +3407,46 @@
                     }
                 },
                 {
-                    title: 'SNPFT',
+                    title: 'SGPFT%',
+                    field: 'sgpft_percent',
+                    hozAlign: 'center',
+                    width: 65,
+                    sorter: 'number',
+                    headerTooltip: 'SGPFT% = SPFT ÷ S PRC. SPFT = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as Sprc Dil / /temu2-decrease.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const value = temuSgpftPercent(row);
+                        if (value == null) return '<span style="color: #6c757d;">—</span>';
+                        const spft = temuSpftDollars(row);
+                        const tip = 'SPFT $' + spft.toFixed(2)
+                            + ' ÷ S PRC $' + temuDisplayedSprice(row).toFixed(2)
+                            + ' (0.95 take-home)';
+                        return temuPercentCell(value, 'pft', tip);
+                    }
+                },
+                {
+                    title: 'SGNROI%',
+                    field: 'snroi_percent',
+                    hozAlign: 'center',
+                    width: 70,
+                    sorter: 'number',
+                    headerTooltip: 'SGNROI% = SNPFT ÷ LP. SNPFT = SPFT − (S PRC × Ads%). Same formula as /temu2-decrease.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const value = temuSnroiPercent(row);
+                        if (value == null) return '<span style="color: #6c757d;">—</span>';
+                        const snpft = temuSnpftDollars(row);
+                        const tip = 'SNPFT $' + snpft.toFixed(2)
+                            + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
+                            + ' (Ads ' + temuAdsPercentForNet().toFixed(2) + '%)';
+                        return temuPercentCell(value, 'roi', tip);
+                    }
+                },
+                {
+                    title: 'SNPFT%',
                     field: 'snpft_percent',
                     hozAlign: 'center',
-                    width: 60,
+                    width: 65,
                     sorter: 'number',
                     headerTooltip: 'SNPFT% = SNPFT ÷ S PRC. SNPFT = SPFT − (S PRC × Ads%). Same formula as /temu2-decrease.',
                     formatter: function(cell) {
@@ -3413,24 +3459,6 @@
                             + ' ÷ S PRC $' + sprice.toFixed(2)
                             + ' (Ads ' + temuAdsPercentForNet().toFixed(2) + '%)';
                         return temuPercentCell(value, 'pft', tip);
-                    }
-                },
-                {
-                    title: 'SNROI',
-                    field: 'snroi_percent',
-                    hozAlign: 'center',
-                    width: 60,
-                    sorter: 'number',
-                    headerTooltip: 'SNROI% = SNPFT ÷ LP. SNPFT = SPFT − (S PRC × Ads%). Same formula as /temu2-decrease.',
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const value = temuSnroiPercent(row);
-                        if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const snpft = temuSnpftDollars(row);
-                        const tip = 'SNPFT $' + snpft.toFixed(2)
-                            + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
-                            + ' (Ads ' + temuAdsPercentForNet().toFixed(2) + '%)';
-                        return temuPercentCell(value, 'roi', tip);
                     }
                 }
             ]

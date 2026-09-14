@@ -73,6 +73,7 @@
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'topdawg'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'topdawg-price-gt-lmp-badge', 'pglChannelKey' => 'topdawg', 'pglPriceField' => 'TD Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'topdawg-price-lt80-lmp-badge', 'pltChannelKey' => 'topdawg', 'pltPriceField' => 'TD Price'])
                     </div>

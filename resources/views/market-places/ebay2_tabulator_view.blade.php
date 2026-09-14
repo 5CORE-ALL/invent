@@ -617,7 +617,9 @@
                         <span class="badge bg-danger" id="avg-cvr-badge"
                               style="color: white; font-weight: bold;"
                               title="CVR = (Σ eBay L30 / Σ Views) × 100 for rows with E Stock > 0 — same formula as the CVR 30 column and the EbayTwo CVR cell on /all-marketplace-master.">CVR: 0%</span>
-                        <span class="badge bg-info" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-info" id="total-views-badge" style="color: black; font-weight: bold;"
+                              title="Σ listing views for child rows with E Stock &gt; 0 (PARENT rows excluded). Same scope as CVR and /all-marketplace-master EbayTwo Views.">Views: 0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay2'])
                         <span class="badge fs-6 p-2" id="ebay2-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
@@ -1577,6 +1579,15 @@
             // and blanked the LMP column (avg of "children" that never matched).
             const sku = String(data['(Child) sku'] || data.SKU || data.sku || '').toUpperCase();
             return sku.indexOf('PARENT') !== -1;
+        }
+        /** Child rows with E Stock > 0 — Views / CVR / L7 badges (ignore table filters). */
+        function ebay2ListingViewsScopeRows() {
+            const source = (allTableData && allTableData.length)
+                ? allTableData
+                : (table && typeof table.getData === 'function' ? table.getData() : []);
+            return source.filter(function(row) {
+                return !isEbay2TabulatorParentRow(row) && (parseFloat(row['E Stock'] || 0) || 0) > 0;
+            });
         }
         /** Slice the full dataset for ALL / Parents / SKU so PARENT rows cannot leak through SKU view. */
         function ebay2RowsForViewMode(viewMode, rows) {
@@ -4831,22 +4842,24 @@
                 });
                 const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
 
-                // Calculate views, CVR, and average L7 views (E Stock > 0)
+                // Views / CVR / L7: full child dataset, E Stock > 0. Do not use
+                // filtered/parent rows — INV>0 or ALL view was dropping OOS-Shopify
+                // listings or double-counting PARENT aggregates.
                 let totalViews = 0;
                 let totalL7Views = 0;
                 let l7Count = 0;
-                data.forEach(row => {
-                    if (parseFloat(row['E Stock'] || 0) > 0) {
-                        totalViews += parseFloat(row.views || 0);
-                        totalL7Views += parseFloat(row.l7_views || 0);
-                        l7Count++;
-                    }
+                let listingL30 = 0;
+                ebay2ListingViewsScopeRows().forEach(row => {
+                    totalViews += parseFloat(row.views || 0);
+                    totalL7Views += parseFloat(row.l7_views || 0);
+                    listingL30 += parseFloat(row['eBay L30'] || 0);
+                    l7Count++;
                 });
                 // Listing CVR = (Σ eBay L30 / Σ views) × 100 for E Stock > 0.
                 // Same formula as the CVR 30 column and /all-marketplace-master EbayTwo CVR.
                 // S Qty (orders-API units) stays on the Qty badge — mixing that numerator
                 // with listing views understated CVR (~1% vs ~5%).
-                const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
+                const avgCVR = totalViews > 0 ? (listingL30 / totalViews * 100) : 0;
                 const avgL7Views = l7Count > 0 ? (totalL7Views / l7Count) : 0;
                 const prevAvgL7Views = avgL7ViewsGlobal;
                 avgL7ViewsGlobal = avgL7Views;
@@ -4872,6 +4885,15 @@
                 $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
                 $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+                let dilOvL30 = 0, dilInv = 0;
+                (allTableData || []).forEach(function(row) {
+                    if (typeof isEbay2TabulatorParentRow === 'function' && isEbay2TabulatorParentRow(row)) return;
+                    dilOvL30 += parseFloat(row['L30'] || 0) || 0;
+                    dilInv += parseFloat(row['INV'] || 0) || 0;
+                });
+                if (window.AnalyticsDilBadge) {
+                    AnalyticsDilBadge.set(dilInv > 0 ? (dilOvL30 / dilInv) * 100 : 0, dilOvL30, dilInv);
+                }
                 $('#avg-l7-views-badge').text('L7: ' + avgL7Views.toFixed(1));
 
                 let blueTriangleCount = 0;

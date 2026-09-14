@@ -542,6 +542,30 @@
         #summary-stats .summary-trend-dot.flat,
         #summary-stats .summary-trend-dot.none { background: #9ca3af; }
 
+        #sbid-slab-rule-table .sbid-slab-count-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        #sbid-slab-rule-table .sbid-count-hist-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            flex: 0 0 8px;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+            background: #9ca3af;
+        }
+        #sbid-slab-rule-table .sbid-count-hist-dot.up { background: #22c55e; }
+        #sbid-slab-rule-table .sbid-count-hist-dot.down { background: #ef4444; }
+        #sbid-slab-rule-table .sbid-count-hist-dot.flat,
+        #sbid-slab-rule-table .sbid-count-hist-dot.none { background: #9ca3af; }
+        #sbid-slab-rule-table .sbid-count-hist-dot:hover { transform: scale(1.35); }
+
         .manual-dropdown-container {
             position: relative;
             display: inline-block;
@@ -601,6 +625,7 @@
             padding-left: 0 !important;
             padding-right: 0 !important;
         }
+        #ebay1MetricChartModal.modal { z-index: 10800; }
         #skuMetricsModal .modal-dialog,
         #ebay1MetricChartModal .modal-dialog {
             width: 100% !important;
@@ -859,6 +884,7 @@
                             data-metric="total_views" data-live-value="0"
                             style="color: black; font-weight: bold; cursor: pointer;"
                             title="Views. Click dot for rolling history.">Views: 0<span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span></span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay'])
                         <span class="badge fs-6 p-2" id="ebay1-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
@@ -1211,8 +1237,8 @@
                                 <tr>
                                     <th rowspan="2" style="width:34px;" class="text-center align-middle">#</th>
                                     <th colspan="2" class="text-center">For L7 Views</th>
-                                    <th rowspan="2" style="width:72px;" class="align-middle text-center"
-                                        title="SKU rows whose L7 Views fall in this slab (first matching slab wins)">Count</th>
+                                    <th rowspan="2" style="width:92px;" class="align-middle text-center"
+                                        title="SKU rows whose L7 Views fall in this slab (first matching slab wins). Click the history dot for the daily graph.">Count</th>
                                     <th rowspan="2" style="width:100px;" class="align-middle text-center">S Bid (%)</th>
                                     <th rowspan="2" style="width:44px;" class="align-middle"></th>
                                 </tr>
@@ -1543,9 +1569,14 @@
         let ebay1ChartAjax = null;
         let ebay1ChartDays = 30;
         let ebay1ChartMetricKey = '';
-        /** 'badge' = channel summary series; 'sku' = per-SKU L30/L7 views history */
+        /** 'badge' = channel summary series; 'sku' = per-SKU L30/L7 views; 'sbid' = View VS SBID Count */
         let ebay1ChartMode = 'badge';
         let ebay1ChartSku = '';
+        let ebay1ChartSbidBand = '';
+        let ebay1ChartSbidLabel = '';
+        let ebay1ChartSbidLive = null;
+        const ebay1SbidCountHistUrl = @json(url('/ebay-one/sbid-slab-count-history'));
+        const ebay1SbidCountSnapUrl = @json(url('/ebay-one/sbid-slab-count-snapshot'));
         const ebay1SkuViewMetricLabels = {
             views: 'L30 View',
             l7_views: 'L7 View',
@@ -1735,11 +1766,79 @@
 
         function openEbay1ChartModal() {
             const modalEl = document.getElementById('ebay1MetricChartModal');
+            if (!modalEl) return;
+            if (modalEl.parentElement !== document.body) {
+                document.body.appendChild(modalEl);
+            }
+            modalEl.style.zIndex = '10800';
             if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
             } else {
                 $(modalEl).modal('show');
             }
+            setTimeout(function() {
+                const backs = document.querySelectorAll('.modal-backdrop');
+                if (backs.length) {
+                    backs[backs.length - 1].style.zIndex = '10790';
+                }
+            }, 0);
+        }
+
+        function showEbay1SbidCountChart(band, label, liveCount) {
+            if (!band) return;
+            ebay1ChartMode = 'sbid';
+            ebay1ChartSku = '';
+            ebay1ChartSbidBand = String(band);
+            ebay1ChartSbidLabel = label || band;
+            ebay1ChartSbidLive = isFinite(Number(liveCount)) ? Number(liveCount) : null;
+            ebay1ChartMetricKey = 'sbid_count';
+            ebay1ChartDays = 30;
+            $('#ebay1ChartRangeSelect').val('30');
+            $('#ebay1ChartModalTitle').text('eBay 1 — View VS SBID Count — ' + ebay1ChartSbidLabel + ' Rolling History');
+            openEbay1ChartModal();
+            loadEbay1MetricChart();
+        }
+
+        function ebay1LocalSbidSeries(band) {
+            try {
+                const hist = JSON.parse(localStorage.getItem('ebay1_sbid_slab_count_hist') || '{}') || {};
+                return Object.keys(hist).sort().filter(function(k) {
+                    return /^\d{4}-\d{2}-\d{2}$/.test(k) && hist[k] && hist[k][band] != null;
+                }).map(function(k) {
+                    return {
+                        date: ebay1ChartDateLabel(k),
+                        full_date: k,
+                        value: Number(hist[k][band])
+                    };
+                });
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function ebay1MergeSbidSeries(serverRows, band) {
+            const byDate = {};
+            ebay1LocalSbidSeries(band).forEach(function(r) { byDate[r.full_date] = r; });
+            (serverRows || []).forEach(function(r) {
+                if (r && r.full_date) byDate[r.full_date] = r;
+            });
+            return Object.keys(byDate).sort().map(function(k) { return byDate[k]; });
+        }
+
+        function ebay1OverlayLiveSbidCount(mapped, live) {
+            const rows = ebay1FillEveryDate(Array.isArray(mapped) ? mapped : []);
+            if (!isFinite(live)) return rows;
+            const asOf = ebay1TodayPtDate();
+            const asOfLabel = ebay1ChartDateLabel(asOf);
+            const last = rows.length ? rows[rows.length - 1] : null;
+            if (last && (last.full_date === asOf || last.date === asOfLabel)) {
+                last.value = live;
+                last.full_date = asOf;
+                last.date = asOfLabel;
+            } else {
+                rows.push({ date: asOfLabel, full_date: asOf, value: live });
+            }
+            return rows;
         }
 
         function showEbay1MetricChart(metricKey) {
@@ -1775,6 +1874,50 @@
             $('#ebay1ChartNoData').hide();
             $('#ebay1ChartContainer').hide();
             $('#ebay1ChartLoading').show();
+
+            if (ebay1ChartMode === 'sbid') {
+                const days = ebay1ChartDays > 0 ? ebay1ChartDays : 0;
+                $('#ebay1ChartNoDataMsg').text('No daily snapshots yet. Open this page on separate days to build View VS SBID Count history.');
+                ebay1ChartAjax = $.ajax({
+                    url: ebay1SbidCountHistUrl,
+                    method: 'GET',
+                    data: { band: ebay1ChartSbidBand, days: days },
+                    success: function(resp) {
+                        ebay1ChartAjax = null;
+                        $('#ebay1ChartLoading').hide();
+                        const rows = (resp && resp.success && Array.isArray(resp.data)) ? resp.data : [];
+                        const mapped = (rows || []).filter(function(d) {
+                            return d && d.full_date && d.value != null && isFinite(Number(d.value));
+                        }).map(function(d) {
+                            return {
+                                date: d.date || ebay1ChartDateLabel(d.full_date),
+                                full_date: d.full_date,
+                                value: Number(d.value)
+                            };
+                        });
+                        const series = ebay1OverlayLiveSbidCount(ebay1MergeSbidSeries(mapped, ebay1ChartSbidBand), ebay1ChartSbidLive);
+                        if (series.length) {
+                            $('#ebay1ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+                            renderEbay1MetricChart(series);
+                        } else {
+                            $('#ebay1ChartNoData').show();
+                        }
+                    },
+                    error: function(xhr, status) {
+                        ebay1ChartAjax = null;
+                        if (status === 'abort') return;
+                        $('#ebay1ChartLoading').hide();
+                        const series = ebay1OverlayLiveSbidCount(ebay1MergeSbidSeries([], ebay1ChartSbidBand), ebay1ChartSbidLive);
+                        if (series.length) {
+                            $('#ebay1ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+                            renderEbay1MetricChart(series);
+                        } else {
+                            $('#ebay1ChartNoData').show();
+                        }
+                    }
+                });
+                return;
+            }
 
             if (ebay1ChartMode === 'sku') {
                 const days = ebay1ChartDays > 0 ? ebay1ChartDays : 90;
@@ -6246,6 +6389,9 @@
                 productUniqueParents = parents.slice(0);
                 updateCalcValues();
                 if (typeof updateSummary === 'function') updateSummary();
+                if (typeof window.ebay1RefreshSbidSlabCounts === 'function') {
+                    window.ebay1RefreshSbidSlabCounts();
+                }
                 // Refresh checkboxes to reflect selectedSkus set (matching Amazon approach)
                 setTimeout(function() {
                     $('.sku-select-checkbox').each(function() {
@@ -7516,6 +7662,133 @@
                 return counts;
             }
 
+            const SBID_COUNT_LS = 'ebay1_sbid_slab_count_hist';
+            let ebay1SbidServerHist = {};
+            let ebay1SbidSnapTimer = null;
+
+            function sbidEscAttr(v) {
+                return String(v == null ? '' : v)
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/</g, '&lt;');
+            }
+
+            function sbidSlabBandKey(rule) {
+                const min = rule && rule.l7_views_min;
+                const max = rule && rule.l7_views_max;
+                const a = (min === null || min === undefined || min === '' || isNaN(min)) ? '' : String(min);
+                const b = (max === null || max === undefined || max === '' || isNaN(max)) ? '' : String(max);
+                return a + '-' + b;
+            }
+
+            function sbidSlabBandLabel(rule) {
+                if (rule && rule.label) return String(rule.label);
+                const min = rule && rule.l7_views_min;
+                const max = rule && rule.l7_views_max;
+                const a = (min === null || min === undefined || min === '' || isNaN(min)) ? '' : String(min);
+                const b = (max === null || max === undefined || max === '' || isNaN(max)) ? '' : String(max);
+                if (a && b) return a + '–' + b;
+                if (a && !b) return '>' + (Number(a) - 1);
+                if (!a && b) return '≤' + b;
+                return 'Slab';
+            }
+
+            function sbidTodayKey() {
+                return (typeof ebay1TodayPtDate === 'function')
+                    ? ebay1TodayPtDate()
+                    : new Date().toISOString().slice(0, 10);
+            }
+
+            function sbidReadLocalHist() {
+                try {
+                    const hist = JSON.parse(localStorage.getItem(SBID_COUNT_LS) || '{}') || {};
+                    return (hist && typeof hist === 'object') ? hist : {};
+                } catch (e) {
+                    return {};
+                }
+            }
+
+            function sbidWriteLocalHist(hist) {
+                try { localStorage.setItem(SBID_COUNT_LS, JSON.stringify(hist || {})); } catch (e) { /* ignore */ }
+            }
+
+            function sbidMergedHist() {
+                const merged = Object.assign({}, ebay1SbidServerHist || {}, sbidReadLocalHist());
+                return merged;
+            }
+
+            function sbidPrevCount(band) {
+                const hist = sbidMergedHist();
+                const today = sbidTodayKey();
+                const keys = Object.keys(hist).filter(function(k) {
+                    return /^\d{4}-\d{2}-\d{2}$/.test(k) && k < today && hist[k] && hist[k][band] != null;
+                }).sort();
+                if (!keys.length) return null;
+                const n = Number(hist[keys[keys.length - 1]][band]);
+                return isFinite(n) ? n : null;
+            }
+
+            function sbidCountTrend(curr, prev) {
+                if (!isFinite(curr) || prev == null || !isFinite(prev)) return 'none';
+                if (curr > prev) return 'up';
+                if (curr < prev) return 'down';
+                return 'flat';
+            }
+
+            function sbidCollectCountMap(rules, slabCounts) {
+                const map = {};
+                (rules || []).forEach(function(rule, i) {
+                    map[sbidSlabBandKey(rule)] = slabCounts[i] || 0;
+                });
+                return map;
+            }
+
+            function sbidPersistCounts(counts) {
+                if (!counts || !Object.keys(counts).length) return;
+                const today = sbidTodayKey();
+                const local = sbidReadLocalHist();
+                local[today] = Object.assign({}, local[today] || {}, counts);
+                const keys = Object.keys(local).sort();
+                while (keys.length > 180) delete local[keys.shift()];
+                sbidWriteLocalHist(local);
+                clearTimeout(ebay1SbidSnapTimer);
+                ebay1SbidSnapTimer = setTimeout(function() {
+                    $.ajax({
+                        url: ebay1SbidCountSnapUrl,
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json'
+                        },
+                        contentType: 'application/json',
+                        data: JSON.stringify({ counts: counts }),
+                        success: function(resp) {
+                            if (resp && resp.date) {
+                                ebay1SbidServerHist[resp.date] = Object.assign({}, ebay1SbidServerHist[resp.date] || {}, counts);
+                            }
+                        }
+                    });
+                }, 400);
+            }
+
+            function loadSbidCountHist(done) {
+                $.ajax({
+                    url: ebay1SbidCountHistUrl,
+                    method: 'GET',
+                    data: { all: 1, days: 0 },
+                    success: function(resp) {
+                        if (resp && resp.success && resp.history && typeof resp.history === 'object') {
+                            ebay1SbidServerHist = resp.history;
+                        }
+                        if (typeof done === 'function') done();
+                    },
+                    error: function() {
+                        if (typeof done === 'function') done();
+                    }
+                });
+            }
+
             function renderSbidSlabRules(rules) {
                 const tbody = document.getElementById('sbid-slab-rules-body');
                 if (!tbody) return;
@@ -7527,14 +7800,30 @@
                 }
                 autofillSbidSlabMins(rules);
                 const slabCounts = countRowsBySlab(rules);
+                if (getSbidSlabSkuRows().length) {
+                    sbidPersistCounts(sbidCollectCountMap(rules, slabCounts));
+                }
                 rules.forEach(function(rule, i) {
                     const tr = document.createElement('tr');
                     tr.setAttribute('data-idx', i);
                     const count = slabCounts[i] || 0;
+                    const band = sbidSlabBandKey(rule);
+                    const label = sbidSlabBandLabel(rule);
+                    const trend = sbidCountTrend(count, sbidPrevCount(band));
                     tr.innerHTML = `
                         <td class="text-center text-muted small">${i + 1}</td>
                         ${rangeInputs(rule, 'l7_views', i)}
-                        <td class="text-center fw-semibold" title="SKU rows in this slab">${count}</td>
+                        <td class="text-center fw-semibold sbid-slab-count-td"
+                            title="SKU rows in this slab. Click the history dot for the daily graph.">
+                            <span class="sbid-slab-count-wrap">
+                                ${count}
+                                <button type="button" class="sbid-count-hist-dot ${trend}"
+                                    data-band="${sbidEscAttr(band)}"
+                                    data-label="${sbidEscAttr(label)}"
+                                    data-count="${count}"
+                                    title="Click for rolling history"></button>
+                            </span>
+                        </td>
                         <td><input type="number" step="0.1" min="0" class="form-control form-control-sm text-end fw-semibold"
                                    value="${numAttr(rule.sbid)}" data-field="sbid"
                                    ${i === 0 ? 'title="Changing this sets following rows to −1 each, minimum 2%"' : ''}
@@ -7598,14 +7887,32 @@
                     dataType: 'json',
                     success: function(data) {
                         currentSbidSlabRules = (data && Array.isArray(data.rules)) ? data.rules : [];
-                        renderSbidSlabRules(currentSbidSlabRules);
-                        if (table) table.redraw(true);
+                        loadSbidCountHist(function() {
+                            renderSbidSlabRules(currentSbidSlabRules);
+                            if (table) table.redraw(true);
+                        });
                     },
                     error: function(xhr) {
                         console.error('[Sbid Rule] load failed', xhr.status, xhr.responseText);
                     }
                 });
             }
+
+            window.ebay1RefreshSbidSlabCounts = function() {
+                if (!currentSbidSlabRules || !currentSbidSlabRules.length) return;
+                renderSbidSlabRules(currentSbidSlabRules);
+            };
+
+            $(document).on('click', '#sbid-slab-rules-body .sbid-count-hist-dot', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const band = this.getAttribute('data-band') || '';
+                const label = this.getAttribute('data-label') || band;
+                const live = parseFloat(this.getAttribute('data-count'));
+                if (typeof showEbay1SbidCountChart === 'function') {
+                    showEbay1SbidCountChart(band, label, live);
+                }
+            });
 
             const applyUrl = @json(url('/ebay/campaign-ads/push-sbid-slabs'));
             let ebay1SbidAutopushTimer = null;

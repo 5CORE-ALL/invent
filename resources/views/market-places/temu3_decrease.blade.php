@@ -596,6 +596,7 @@
                         <span class="badge bg-info fs-6 p-2 temu-badge-history" id="total-views-badge"
                             data-badge-metric="total_views" data-badge-label="Views"
                             style="color: black; font-weight: bold; cursor: pointer;">Views: 0</span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'temu3'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'temu3-price-gt-lmp-badge', 'pglChannelKey' => 'temu3', 'pglPriceField' => 'temu_price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'temu3-price-lt80-lmp-badge', 'pltChannelKey' => 'temu3', 'pltPriceField' => 'temu_price'])
                         <span class="badge fs-6 p-2" id="temu2-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Price.">
