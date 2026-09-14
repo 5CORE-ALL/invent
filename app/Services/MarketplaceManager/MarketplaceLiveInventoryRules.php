@@ -12,8 +12,10 @@ use App\Models\MarketplaceSyncSettings;
  *    Draft MAY receive inventory updates but MUST stay draft (never publish/live).
  * 3. Linked + live / sold-out (sold / out_of_stock / ended) / draft MAY update from live Shopify.
  * 4. UI ALWAYS shows live Shopify inventory for listed SKUs.
- * 5. If live Shopify qty is 0 (or missing), marketplace qty MUST be 0.
- *    Never push 1 (or any positive) when Shopify is 0. min_quantity is ignored forever.
+ * 5. If Shopify stock is 0 on live Admin AND on shopify_skus (CP Master Inv),
+ *    marketplace qty MUST be 0. Never invent stock via min_quantity.
+ *    If live Admin missed the SKU or returned 0 while shopify_skus has stock,
+ *    push shopify_skus — that is the Inv column users see.
  */
 final class MarketplaceLiveInventoryRules
 {
@@ -153,6 +155,33 @@ final class MarketplaceLiveInventoryRules
     }
 
     /**
+     * Merge shopify_skus (CP Master Inv) onto a live Admin API qty map.
+     * Scheduled sync restores stock when live is missing or 0.
+     * Exact/mismatch mode uses shopify_skus as the only qty.
+     *
+     * @param  array<string, int>  $liveQty
+     * @param  array<string, int>  $listingsQty
+     * @return array<string, int>
+     */
+    public static function mergeLiveAndListingsQty(array $liveQty, array $listingsQty, bool $exact = false): array
+    {
+        foreach ($listingsQty as $key => $qty) {
+            $qty = (int) $qty;
+            if ($exact) {
+                $liveQty[$key] = $qty;
+
+                continue;
+            }
+            $current = $liveQty[$key] ?? $liveQty[strtoupper((string) $key)] ?? null;
+            if ($current === null || (int) $current <= 0) {
+                $liveQty[$key] = $qty;
+            }
+        }
+
+        return $liveQty;
+    }
+
+    /**
      * Overlay listings-page Shopify qty (shopify_skus) onto an API qty map.
      *
      * @param  array<string, int>  $shopifyQty
@@ -161,11 +190,23 @@ final class MarketplaceLiveInventoryRules
      */
     public static function overlayListingsShopifyQty(array $shopifyQty, array $skus): array
     {
-        foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus) as $key => $qty) {
-            $shopifyQty[$key] = (int) $qty;
-        }
+        return self::applyListingsShopifyQtyForPush($shopifyQty, $skus, true);
+    }
 
-        return $shopifyQty;
+    /**
+     * Always apply CP Master / shopify_skus stock when live Shopify missed or returned 0.
+     *
+     * @param  array<string, int>  $shopifyQty
+     * @param  list<string>  $skus
+     * @return array<string, int>
+     */
+    public static function applyListingsShopifyQtyForPush(array $shopifyQty, array $skus, bool $exact = false): array
+    {
+        return self::mergeLiveAndListingsQty(
+            $shopifyQty,
+            MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus),
+            $exact
+        );
     }
 
     /**

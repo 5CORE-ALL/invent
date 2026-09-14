@@ -66,11 +66,11 @@ class FaireInventorySyncService
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
 
-        if ($exactShopifyQty) {
-            foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($fetchSkus) as $key => $qty) {
-                $shopifyQty[$key] = (int) $qty;
-            }
-        }
+        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
+            $shopifyQty,
+            $fetchSkus,
+            $exactShopifyQty
+        );
 
         // Match Faire rows by normalized SKU, but do not also push hyphen
         // aliases (ND-58) when the exact requested SKU (ND 58) is already mapped.

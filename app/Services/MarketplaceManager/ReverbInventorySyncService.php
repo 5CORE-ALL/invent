@@ -90,9 +90,11 @@ class ReverbInventorySyncService
             $skus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
-        if ($exactShopifyQty) {
-            $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $skus);
-        }
+        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
+            $shopifyQty,
+            $skus,
+            $exactShopifyQty
+        );
 
         $inventoryRows = [];
         $skipped = 0;

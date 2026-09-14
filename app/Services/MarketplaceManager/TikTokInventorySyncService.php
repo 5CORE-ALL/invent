@@ -42,9 +42,11 @@ class TikTokInventorySyncService
         }
 
         $shopifyQty = $this->shopifyQtyForPush($skus, $shopifyConfig);
-        if ($exactShopifyQty) {
-            $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $skus);
-        }
+        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
+            $shopifyQty,
+            $skus,
+            $exactShopifyQty
+        );
         $metrics = $this->metricsForSkus($skus);
         $liveMpQty = $this->liveMarketplaceQtyMap($metrics->pluck('sku')->all());
 

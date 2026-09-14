@@ -68,6 +68,13 @@ final class MarketplaceListingStockResolver
             return null;
         }
 
+        // CP Master Inv is shopify_skus.inv. Prefer it when it has stock so a
+        // stale/zero available_to_sell does not zero marketplace listings.
+        $inv = $row->inv ?? null;
+        if ($inv !== null && $inv !== '' && is_numeric($inv) && (int) $inv > 0) {
+            return (int) $inv;
+        }
+
         foreach (['available_to_sell', 'inv', 'on_hand'] as $col) {
             $raw = $row->{$col} ?? null;
             if ($raw === null || $raw === '') {
