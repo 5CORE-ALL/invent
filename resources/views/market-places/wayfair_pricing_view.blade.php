@@ -611,6 +611,27 @@
             return Number.isFinite(m) && m > 0 ? m : 0.95;
         }
 
+        /** Live S GPFT / SNROI from displayed S PRC. Dil paint used to write 96%/0% when LP_productmaster was missing. */
+        function wayfairLiveSpriceMetrics(d) {
+            const margin = wayfairMarginFromRow(d);
+            const lpRaw = d && (d.lp != null && d.lp !== '' && d.lp !== '-' ? d.lp : d.LP_productmaster);
+            const lp = parseFloat(lpRaw) || 0;
+            let sprice = 0;
+            if (typeof wayfairRowSpriceForAlert === 'function') {
+                sprice = Number(wayfairRowSpriceForAlert(d)) || 0;
+            } else if (typeof chPromoTableSprice === 'function') {
+                sprice = Number(chPromoTableSprice(d)) || 0;
+            }
+            if (!(sprice > 0)) {
+                sprice = parseFloat(d && (d.sprice != null ? d.sprice : d.SPRICE)) || 0;
+            }
+            const profit = sprice * margin - lp;
+            return {
+                sgpft: sprice > 0 ? Math.round((profit / sprice) * 100) : 0,
+                sroi: lp > 0 ? Math.round((profit / lp) * 100) : 0
+            };
+        }
+
         function wfRoundToRetailPrice(price) {
             return Math.ceil(price) - 0.01;
         }
@@ -1636,11 +1657,14 @@
                         }
                     },
                     {
-                        title: 'S GPFT', field: 'sgpft', sorter: 'number', hozAlign: 'right',
+                        title: 'S GPFT', field: 'sgpft', hozAlign: 'right',
+                        sorter: function(a, b, aRow, bRow) {
+                            return wayfairLiveSpriceMetrics(aRow.getData()).sgpft - wayfairLiveSpriceMetrics(bRow.getData()).sgpft;
+                        },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = parseFloat(cell.getValue());
+                            const v = wayfairLiveSpriceMetrics(d).sgpft;
                             if (isNaN(v) || v === 0) return '0%';
                             // Same bands as Amazon GPFT % / S GPFT
                             let color = v < 10 ? '#a00211' : v < 20 ? '#3591dc' : v < 30 ? '#ffc107' : v < 50 ? '#28a745' : '#e83e8c';
@@ -1648,24 +1672,30 @@
                         }
                     },
                     {
-                        title: 'SNPFT', field: 'snpft', sorter: 'number', hozAlign: 'right',
+                        title: 'SNPFT', field: 'snpft', hozAlign: 'right',
+                        sorter: function(a, b, aRow, bRow) {
+                            return wayfairLiveSpriceMetrics(aRow.getData()).sgpft - wayfairLiveSpriceMetrics(bRow.getData()).sgpft;
+                        },
                         formatter: function(cell) {
                             // Wayfair has no ads — SNPFT = SGPFT
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = parseFloat(d.sgpft);
+                            const v = wayfairLiveSpriceMetrics(d).sgpft;
                             if (isNaN(v) || v === 0) return '0%';
                             let color = v < 10 ? '#a00211' : v < 20 ? '#3591dc' : v < 30 ? '#ffc107' : v < 50 ? '#28a745' : '#e83e8c';
                             return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
                         }
                     },
                     {
-                        title: 'SNROI', field: 'sroi', sorter: 'number', hozAlign: 'right',
+                        title: 'SNROI', field: 'sroi', hozAlign: 'right',
+                        sorter: function(a, b, aRow, bRow) {
+                            return wayfairLiveSpriceMetrics(aRow.getData()).sroi - wayfairLiveSpriceMetrics(bRow.getData()).sroi;
+                        },
                         formatter: function(cell) {
                             // Wayfair has no ads — SNROI = gross SROI (no Ads% cut)
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = parseFloat(cell.getValue());
+                            const v = wayfairLiveSpriceMetrics(d).sroi;
                             if (isNaN(v) || v === 0) return '<span style="font-weight:700;">0%</span>';
                             // Same bands as Amazon GROI% / SNROI
                             let color;

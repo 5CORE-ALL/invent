@@ -1044,6 +1044,7 @@ class DilRuleSpriceApplyService
         $existing['has_custom_sprice'] = true;
         $existing['SGPFT'] = $sgpft;
         $existing['SGROI'] = $sgroi;
+        $existing['SROI'] = $sgroi;
         $existing['SPRICE_STATUS'] = 'applied';
         $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
 

@@ -995,13 +995,41 @@
                             : 0.80)));
             return margin > 1 ? (margin / 100) : margin;
         }
+        /** Wayfair / Faire use `lp`; Amazon / eBay / TikTok use `LP_productmaster`. */
+        function ebayDgLp(d) {
+            if (typeof chPromoLp === 'function') {
+                const n = Number(chPromoLp(d));
+                if (isFinite(n) && n > 0) return n;
+            }
+            const raw = d && (
+                d.LP_productmaster != null && d.LP_productmaster !== '' ? d.LP_productmaster
+                    : (d.LP != null && d.LP !== '' ? d.LP : d.lp)
+            );
+            const n = parseFloat(raw);
+            return (isFinite(n) && n > 0) ? n : 0;
+        }
+        function ebayDgShip(d) {
+            if (ebayDgExcludeShip()) return 0;
+            if (typeof chPromoShipCost === 'function') {
+                const n = Number(chPromoShipCost(d));
+                if (isFinite(n) && n >= 0) return n;
+            }
+            const raw = d && (
+                d.Ship_productmaster != null && d.Ship_productmaster !== '' ? d.Ship_productmaster
+                    : (d.Ship != null ? d.Ship : d.ship)
+            );
+            const n = parseFloat(raw);
+            return (isFinite(n) && n > 0) ? n : 0;
+        }
         function ebaySpriceFromGroi(d, groi) {
             if (ebayDgIsDobaWithoutship()) {
                 const copied = ebayDgDobaTabulatorSPick(d);
                 if (copied > 0) return copied;
-                const lp = parseFloat(d && d.LP_productmaster) || 0;
+                const lp = ebayDgLp(d);
                 if (!(lp > 0)) return 0;
-                const ship = parseFloat(d && d.Ship_productmaster) || 0;
+                const ship = typeof chPromoShipCost === 'function'
+                    ? Number(chPromoShipCost(d)) || 0
+                    : (parseFloat(d && (d.Ship_productmaster != null ? d.Ship_productmaster : d.ship)) || 0);
                 const margin = (typeof CHANNEL_PROMO_TAKEHOME === 'number' && CHANNEL_PROMO_TAKEHOME > 0)
                     ? CHANNEL_PROMO_TAKEHOME
                     : 0.95;
@@ -1012,9 +1040,9 @@
             }
             const ads = ebayDilTargetsNroi() ? ebayDilAdsPct() : 0;
             if (ads > 0) {
-                const lp = parseFloat(d && d.LP_productmaster) || 0;
+                const lp = ebayDgLp(d);
                 if (!(lp > 0)) return 0;
-                const ship = ebayDgExcludeShip() ? 0 : (parseFloat(d && d.Ship_productmaster) || 0);
+                const ship = ebayDgShip(d);
                 const margin = ebayDilTakehomeMargin(d);
                 const denom = margin - (ads / 100);
                 if (!(denom > 0)) return 0;
@@ -1025,9 +1053,9 @@
                 const p = chPromoSpriceFromTargetRoi(d, groi);
                 return p > 0 ? p : 0;
             }
-            const lp = parseFloat(d && d.LP_productmaster) || 0;
+            const lp = ebayDgLp(d);
             if (!(lp > 0)) return 0;
-            const ship = ebayDgExcludeShip() ? 0 : (parseFloat(d && d.Ship_productmaster) || 0);
+            const ship = ebayDgShip(d);
             const margin = ebayDilTakehomeMargin(d);
             const denom = margin - (ads / 100);
             if (!(denom > 0)) return 0;
@@ -1773,14 +1801,15 @@
             }
         }
         function ebayTiktokMetricsPatch(d, sprice) {
-            const margin = Number(d && d.percentage)
+            const margin = ebayDilTakehomeMargin(d)
+                || Number(d && d.percentage)
                 || (typeof CHANNEL_PROMO_TAKEHOME === 'number' && CHANNEL_PROMO_TAKEHOME > 0
                     ? CHANNEL_PROMO_TAKEHOME
                     : ((typeof DEFAULT_TIKTOK_MARGIN_FACTOR === 'number' && DEFAULT_TIKTOK_MARGIN_FACTOR > 0)
                         ? DEFAULT_TIKTOK_MARGIN_FACTOR
                         : 0.8));
-            const lp = Number(d && d.LP_productmaster) || 0;
-            const ship = ebayDgExcludeShip() ? 0 : (Number(d && d.Ship_productmaster) || 0);
+            const lp = ebayDgLp(d);
+            const ship = ebayDgShip(d);
             const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 10000) / 100 : 0;
             const sroi = lp > 0 ? Math.round(((sprice * margin - lp - ship) / lp) * 10000) / 100 : 0;
             const patch = { SGPFT: sgpft, SPFT: sgpft, SROI: sroi, sgpft: sgpft, sroi: sroi, spft: sgpft };
