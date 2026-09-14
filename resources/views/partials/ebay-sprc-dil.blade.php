@@ -1,5 +1,6 @@
 {{--
-  Sprc Dil — Dil → Target GROI slabs (Amazon / eBay 1–3 use Target NROI).
+  Sprc Dil — Dil → Target NROI slabs on every page that includes this blade.
+  Ads% = 0 (no Ads on the page) → NROI = GROI and NPFT = GPFT.
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
   Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / AliExpress / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
@@ -54,7 +55,7 @@
         'mercari_wship', 'mercari_woship' => 'L30',
         default => 'E L30',
     };
-    $ebaySprcDilTargetNroi = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true);
+    $ebaySprcDilTargetNroi = true;
     $ebaySprcDilTargetLabel = $ebaySprcDilTargetNroi ? 'NROI' : 'GROI';
     $ebaySprcDilPageLabel = match ($ebaySprcDilChannel) {
         'temu' => 'Temu',
@@ -300,10 +301,18 @@
                         </li>
                         @endif
                         <li>
-                            <strong>When</strong> a price is calculated (slab match or 0 Sold min GROI):
+                            <strong>When</strong> a price is calculated (slab match or 0 Sold min {{ $ebaySprcDilTargetLabel }}):
                             it auto-applies to <strong>S PRC</strong> and is <strong>queued for Push Prc</strong>
                             (page close OK).
                         </li>
+                        @if(!empty($ebaySprcDilTargetNroi))
+                        <li>
+                            <strong>When</strong> S PRC is calculated:
+                            set it so <strong>SNROI = Target NROI</strong>
+                            using channel Ads%:
+                            <code>(LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100)</code>.
+                        </li>
+                        @endif
 @else
                         <li>
                             <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
@@ -967,22 +976,37 @@
             return !!EBAY_DIL_TARGET_NROI;
         }
         function ebayDilAdsPct() {
-            if (!ebayDilTargetsNroi()) return 0;
-            const read = function(getter) {
+            if (typeof shopifyChannelAdsPct === 'function') {
                 try {
-                    const n = parseFloat(getter());
-                    return (isFinite(n) && n > 0) ? n : 0;
-                } catch (e) {
-                    return 0;
-                }
-            };
-            if (EBAY_DIL_GROI_CHANNEL === 'ebay2') {
-                return read(function() { return EBAY2_CHANNEL_ADS_PCT; });
+                    const n = parseFloat(shopifyChannelAdsPct());
+                    if (isFinite(n) && n > 0) return n;
+                } catch (e) { /* ignore */ }
             }
-            if (EBAY_DIL_GROI_CHANNEL === 'ebay3') {
-                return read(function() { return EBAY3_CHANNEL_ADS_PCT; });
+            const getters = [
+                function() { return EBAY_CHANNEL_ADS_PCT; },
+                function() { return EBAY2_CHANNEL_ADS_PCT; },
+                function() { return EBAY3_CHANNEL_ADS_PCT; },
+                function() { return AMAZON_CHANNEL_ADS_PCT; },
+                function() { return SHOPIFY_DIRECT_TCOS_PCT; },
+                function() { return CHANNEL_ADS_PCT; },
+            ];
+            for (let i = 0; i < getters.length; i++) {
+                try {
+                    const n = parseFloat(getters[i]());
+                    if (isFinite(n) && n > 0) return n;
+                } catch (e) { /* undeclared / TDZ */ }
             }
-            return read(function() { return EBAY_CHANNEL_ADS_PCT; });
+            return 0;
+        }
+        function ebayDilUsesSpecialSprice() {
+            if (typeof ebayDgIsDobaWithoutship === 'function' && ebayDgIsDobaWithoutship()) return true;
+            if (EBAY_DIL_GROI_CHANNEL === 'temu' || EBAY_DIL_GROI_CHANNEL === 'temu2' || EBAY_DIL_GROI_CHANNEL === 'temu3') {
+                return true;
+            }
+            try {
+                if (typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel()) return true;
+            } catch (e) { /* ignore */ }
+            return false;
         }
         function ebayDilTakehomeMargin(d) {
             if (typeof chPromoTakehomeMargin === 'function') {
@@ -1000,7 +1024,7 @@
             return margin > 1 ? (margin / 100) : margin;
         }
         function ebaySpriceFromGroi(d, groi) {
-            if (ebayDilTargetsNroi()) {
+            if (ebayDilTargetsNroi() && !ebayDilUsesSpecialSprice()) {
                 const lp = parseFloat(d && d.LP_productmaster) || 0;
                 if (!(lp > 0)) return 0;
                 const ship = ebayDgExcludeShip() ? 0 : (parseFloat(d && d.Ship_productmaster) || 0);
@@ -2189,5 +2213,7 @@
             });
             Promise.resolve(loadEbayDilGroiRules()).catch(function() { /* defaults */ });
             bindEbaySprcDilAutofill();
+            if (typeof ebayDilBindNetColumns === 'function') ebayDilBindNetColumns();
         });
+        @include('partials.sprc-dil-nroi-npft')
 @endif

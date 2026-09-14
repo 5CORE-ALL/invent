@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\MarketPlace\ChannelPromoPricingController;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
@@ -18,6 +19,7 @@ use Throwable;
 
 /**
  * Page-less Sprc Dil → S PRC (same as /shopify-b2c-pricing), then raise to A Price when below Amz.
+ * Dil slabs are Target NROI (Ads% = Shopify TCOS / page Ads badge).
  * CVR Disc is the fallback when Dil does not match and B2C L30 > 0.
  * Writes shopifyb2c_data_view SPRICE + PEF_CPN_PCT even if /shopify-b2c-pricing is closed.
  */
@@ -44,8 +46,10 @@ class ShopifyB2cRuleSpriceApplyService
         if (! ($margin > 0)) {
             $margin = 0.95;
         }
+        $adsPct = $this->channelAdsPercent();
 
-        $this->log($logger, 'Loaded Dil slabs='.count($dilRules).' CVR slabs='.count($cvrRules));
+        $this->log($logger, 'Loaded Dil slabs='.count($dilRules).' CVR slabs='.count($cvrRules)
+            .' ads%='.$adsPct.' target=NROI');
 
         $stats = [
             'candidates' => 0,
@@ -87,6 +91,7 @@ class ShopifyB2cRuleSpriceApplyService
                     $zeroRules,
                     $zeroMinRoi,
                     $margin,
+                    $adsPct,
                     $dryRun,
                     $limit,
                     $logger,
@@ -105,7 +110,7 @@ class ShopifyB2cRuleSpriceApplyService
                             return false;
                         }
                         try {
-                            $computed = $this->computeTarget($row, $cvrRules, $zeroRules, $zeroMinRoi, $margin, $dilRules, $cvrAdj);
+                            $computed = $this->computeTarget($row, $cvrRules, $zeroRules, $zeroMinRoi, $margin, $dilRules, $cvrAdj, $adsPct);
                             if ($computed === null) {
                                 $stats['skipped']++;
                                 continue;
@@ -258,7 +263,7 @@ class ShopifyB2cRuleSpriceApplyService
      * @param  array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}|null  $cvrAdj
      * @return array{sprice:float,prmt:float,cpn:float,amz_sugg:bool}|null
      */
-    protected function computeTarget(array $row, array $cvrRules, array $zeroRules, float $zeroMinRoi, float $margin, array $dilRules = [], ?array $cvrAdj = null): ?array
+    protected function computeTarget(array $row, array $cvrRules, array $zeroRules, float $zeroMinRoi, float $margin, array $dilRules = [], ?array $cvrAdj = null, float $adsPct = 0.0): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         $dil = (float) ($row['dil'] ?? 0);
@@ -276,12 +281,13 @@ class ShopifyB2cRuleSpriceApplyService
         } else {
             $lp = (float) ($row['lp'] ?? 0);
             $ship = (float) ($row['ship'] ?? 0);
-            $groi = $zeroSold
+            $target = $zeroSold
                 ? AmazonDilGroiRule::minTarget($dilRules)
                 : AmazonDilGroiRule::groiForDil($dil, $dilRules);
-            if ($groi !== null && $lp > 0 && $margin > 0) {
-                $groi = AmazonDilGroiRule::adjustGroiForCvrLevel($groi, $cvr, $cvrAdj);
-                $sprice = round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
+            if ($target !== null && $lp > 0 && $margin > 0) {
+                $target = AmazonDilGroiRule::adjustGroiForCvrLevel($target, $cvr, $cvrAdj);
+                $raw = AmazonDilGroiRule::suggestedPrice($lp, $ship, $target, $adsPct, $margin);
+                $sprice = ($raw !== null && $raw >= 0.01) ? round($raw, 2) : 0.0;
             } elseif (! $zeroSold) {
                 $std = (float) ($row['std'] ?? 0);
                 if (! ($std > 0)) {
@@ -306,6 +312,20 @@ class ShopifyB2cRuleSpriceApplyService
             'cpn' => round($cpn, 2),
             'amz_sugg' => $amzSugg,
         ];
+    }
+
+    /** Shopify TCOS / Ads% — same source as the /shopify-b2c-pricing Ads badge. */
+    public function channelAdsPercent(): float
+    {
+        try {
+            $snap = Cache::remember('shopify_direct_l30_snapshot_v1', 90, function () {
+                return app(ChannelMasterController::class)->getShopifyDirectL30Snapshot();
+            });
+
+            return max(0.0, (float) ($snap['tcos_pct'] ?? 0));
+        } catch (Throwable $e) {
+            return 0.0;
+        }
     }
 
     /**

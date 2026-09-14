@@ -19,7 +19,7 @@ class ShopifyB2cRuleSpriceApplyCommand extends Command
         {--dry-run : Compute S PRC but do not write shopifyb2c_data_view}
         {--limit= : Max SKUs (for testing)}';
 
-    protected $description = 'Shopify B2C: apply Sprc Dil + Amz floor (CVR Disc fallback) and save S PRC (page not required).';
+    protected $description = 'Shopify B2C: apply Sprc Dil (Dil→NROI) + Amz floor (CVR Disc fallback) and save S PRC (page not required).';
 
     protected string $monitorJobName = 'Shopify B2C Rule S PRC Apply';
 

@@ -1397,8 +1397,8 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * Dil slabs → target %. Amazon + eBay 1 / 2 / 3 use Target NROI
-     * (stored groi/nroi). Other channels still use Target GROI.
+     * Dil slabs → target %. All Sprc Dil pages use Target NROI
+     * (stored groi/nroi). Ads% = 0 → same dollars as GROI.
      */
     public function dilGroiRules(Request $request, string $channel): JsonResponse
     {
@@ -1835,10 +1835,10 @@ class ChannelPromoPricingController extends Controller
         return $rules;
     }
 
-    /** Amazon + eBay 1 / 2 / 3 Sprc Dil slabs are Target NROI%. Other channels stay GROI. */
+    /** Every Sprc Dil page stores slabs as Target NROI% (Ads% = 0 → same $ as GROI). */
     private function dilTargetMetric(string $channel): string
     {
-        return in_array($channel, ['amazon', 'ebay1', 'ebay2', 'ebay3'], true) ? 'nroi' : 'groi';
+        return 'nroi';
     }
 
     private function normalizeRulesChannel(string $channel): ?string

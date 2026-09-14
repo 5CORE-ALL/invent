@@ -57,7 +57,7 @@ use Throwable;
  * Page-less Sprc Dil → S PRC for Dil tabulator pages that do not have
  * their own nightly save cron (eBay / Amazon / Shopify B2C / Macys / PP do).
  *
- * Same cell math as ebay-sprc-dil: listing Dil, 0-sold min GROI (except
+ * Same cell math as ebay-sprc-dil: listing Dil, Target NROI (Ads%=0 → GROI), 0-sold min (except
  * Temu 2/3, AliExpress, and Shein). Temu 1 0 Sold uses temu_orders L30 (same as
  * /temu1-data), not temu_metrics.quantity_purchased_l30. Dil stays Shopify
  * OV L30. CVR overlay where the page uses it, ship excluded on
@@ -381,7 +381,9 @@ class DilRuleSpriceApplyService
             return TemuShopifySalesService::spriceFromTargetSgroi($lp, $ship, $groi, 0.0);
         }
 
-        return round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
+        $price = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi, 0.0, $margin);
+
+        return $price !== null ? $price : round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
     }
 
     /**
@@ -409,7 +411,8 @@ class DilRuleSpriceApplyService
 
         if ($rule !== null) {
             $groi = (float) $rule['groi'];
-            $raw = round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
+            $raw = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi, 0.0, $margin);
+            $raw = $raw !== null ? $raw : round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
             if (! is_finite($raw) || $raw < 0.01) {
                 return null;
             }
