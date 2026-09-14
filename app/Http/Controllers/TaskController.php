@@ -2212,12 +2212,7 @@ class TaskController extends Controller
         $this->mergeEmptyReferenceLink($request);
         $request->merge(['report' => trim((string) $request->input('report', ''))]);
 
-        $form = null;
-        if ($task->automate_task_id && Schema::hasTable('automate_task_checklist_forms')) {
-            $form = AutomateTaskChecklistForm::query()
-                ->where('automate_task_id', $task->automate_task_id)
-                ->first();
-        }
+        $form = $this->checklistFormForTask($task);
         $questions = ($form && is_array($form->questions)) ? $form->questions : [];
         $hasChecklist = $form && count($questions) > 0;
 
@@ -2227,10 +2222,203 @@ class TaskController extends Controller
                 'reference_link' => 'nullable|url|max:2048',
                 'atc' => 'required|integer|min:1|digits_between:1,10',
             ]);
+        } else {
+            $validated = $request->validate([
+                'report' => 'nullable|string',
+                'reference_link' => 'nullable|url|max:2048',
+                'atc' => 'required|integer|min:1|digits_between:1,10',
+            ]);
+        }
 
-            $normalized = $this->normalizeChecklistAnswers($questions, $validated['checklist_answers']);
+        $result = $this->markTaskAsDone($task, $validated, true);
+        if (! empty($result['error']) && $result['error'] instanceof JsonResponse) {
+            return $result['error'];
+        }
+        if (empty($result['ok'])) {
+            return response()->json([
+                'message' => $result['skip'] ?? 'Could not complete the task.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Task completed successfully!',
+            'archived' => false,
+            'used_checklist' => ! empty($result['used_checklist']),
+            'task' => $task->fresh(),
+        ]);
+    }
+
+    /**
+     * Mark every selected task Done (same ATC / optional reference / checklist as the modal).
+     */
+    public function bulkComplete(Request $request): JsonResponse
+    {
+        $this->mergeEmptyReferenceLink($request);
+        $request->merge(['report' => trim((string) $request->input('report', ''))]);
+
+        $taskIdsInput = $request->input('task_ids', []);
+        if (! is_array($taskIdsInput)) {
+            $taskIdsInput = [];
+        }
+        $taskIds = array_values(array_unique(array_filter(array_map('intval', $taskIdsInput), function ($id) {
+            return $id > 0;
+        })));
+        $request->merge(['task_ids' => $taskIds]);
+
+        $validated = $request->validate([
+            'task_ids' => 'required|array|min:1',
+            'task_ids.*' => 'integer|exists:tasks,id',
+            'reference_link' => 'nullable|url|max:2048',
+            'atc' => 'required|integer|min:1|digits_between:1,10',
+            'report' => 'nullable|string',
+            'checklist_answers' => 'nullable|array',
+        ]);
+
+        $user = Auth::user();
+        $tasks = Task::whereIn('id', $validated['task_ids'])->get()->keyBy('id');
+
+        $completed = 0;
+        $usedChecklist = 0;
+        $skippedUnauthorized = 0;
+        $skippedDone = 0;
+        $skippedChecklist = 0;
+        $skippedFailed = 0;
+
+        foreach ($validated['task_ids'] as $id) {
+            $task = $tasks->get($id);
+            if (! $task) {
+                $skippedFailed++;
+                continue;
+            }
+            if (! $user->can('updateStatus', $task)) {
+                $skippedUnauthorized++;
+                continue;
+            }
+
+            try {
+                $result = $this->markTaskAsDone($task, $validated, false);
+            } catch (\Throwable $e) {
+                $skippedFailed++;
+                \Log::warning('Bulk complete task failed', [
+                    'task_id' => $id,
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
+            }
+
+            if (! empty($result['ok'])) {
+                $completed++;
+                if (! empty($result['used_checklist'])) {
+                    $usedChecklist++;
+                }
+                continue;
+            }
+
+            $skip = (string) ($result['skip'] ?? '');
+            if ($skip === 'already Done') {
+                $skippedDone++;
+            } elseif (str_contains($skip, 'checklist')) {
+                $skippedChecklist++;
+            } else {
+                $skippedFailed++;
+            }
+        }
+
+        if ($completed === 0) {
+            $message = 'No tasks were marked as Done.';
+            $status = 422;
+            if ($skippedUnauthorized > 0 && ($skippedUnauthorized + $skippedDone) === count($validated['task_ids'])) {
+                $message = 'You do not have permission to mark the selected tasks as Done.';
+                $status = 403;
+            } elseif ($skippedChecklist > 0) {
+                $message = 'Selected tasks need a matching checklist before they can be marked Done.';
+            } elseif ($skippedDone > 0 && $skippedFailed === 0 && $skippedUnauthorized === 0) {
+                $message = 'Selected tasks are already marked as Done.';
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'completed' => 0,
+            ], $status);
+        }
+
+        $message = $completed === 1
+            ? '1 task completed successfully!'
+            : $completed.' tasks completed successfully!';
+        $skipBits = [];
+        if ($skippedUnauthorized > 0) {
+            $skipBits[] = $skippedUnauthorized.' skipped — no permission';
+        }
+        if ($skippedChecklist > 0) {
+            $skipBits[] = $skippedChecklist.' skipped — checklist required or does not match';
+        }
+        if ($skippedDone > 0) {
+            $skipBits[] = $skippedDone.' already Done';
+        }
+        if ($skippedFailed > 0) {
+            $skipBits[] = $skippedFailed.' could not be completed';
+        }
+        if ($skipBits !== []) {
+            $message .= ' ('.implode('; ', $skipBits).')';
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'completed' => $completed,
+            'used_checklist' => $usedChecklist > 0,
+        ]);
+    }
+
+    protected function checklistFormForTask(Task $task): ?AutomateTaskChecklistForm
+    {
+        if (! $task->automate_task_id || ! Schema::hasTable('automate_task_checklist_forms')) {
+            return null;
+        }
+
+        return AutomateTaskChecklistForm::query()
+            ->where('automate_task_id', $task->automate_task_id)
+            ->first();
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{ok: bool, used_checklist: bool, skip?: string, error?: JsonResponse}
+     */
+    protected function markTaskAsDone(Task $task, array $payload, bool $strictChecklist): array
+    {
+        if ($task->status === 'Done') {
+            return ['ok' => false, 'used_checklist' => false, 'skip' => 'already Done'];
+        }
+
+        $form = $this->checklistFormForTask($task);
+        $questions = ($form && is_array($form->questions)) ? $form->questions : [];
+        $hasChecklist = $form && count($questions) > 0;
+        $atc = (int) ($payload['atc'] ?? 0);
+
+        if ($hasChecklist) {
+            $answers = $payload['checklist_answers'] ?? null;
+            if (! is_array($answers) || $answers === []) {
+                if ($strictChecklist) {
+                    return [
+                        'ok' => false,
+                        'used_checklist' => true,
+                        'error' => response()->json(['message' => 'Checklist answers are required.'], 422),
+                    ];
+                }
+
+                return ['ok' => false, 'used_checklist' => true, 'skip' => 'checklist required'];
+            }
+
+            $normalized = $this->normalizeChecklistAnswers($questions, $answers);
             if ($normalized instanceof JsonResponse) {
-                return $normalized;
+                if ($strictChecklist) {
+                    return ['ok' => false, 'used_checklist' => true, 'error' => $normalized];
+                }
+
+                return ['ok' => false, 'used_checklist' => true, 'skip' => 'checklist does not match'];
             }
 
             AutomateTaskChecklistSubmission::create([
@@ -2242,42 +2430,33 @@ class TaskController extends Controller
             ]);
 
             $task->report = $this->formatChecklistReport($form, $questions, $normalized);
-            $task->reference_link = $validated['reference_link'] ?? null;
+            $task->reference_link = $payload['reference_link'] ?? null;
             $task->status = 'Done';
-            $this->applyTaskDoneEffects($task, (int) $validated['atc']);
+            $this->applyTaskDoneEffects($task, $atc);
             $task->save();
-        } else {
-            // No checklist on the linked automated task — report is not required
-            $validated = $request->validate([
-                'report' => 'nullable|string',
-                'reference_link' => 'nullable|url|max:2048',
-                'atc' => 'required|integer|min:1|digits_between:1,10',
-            ]);
+            $this->notifyTaskDoneSafe($task);
 
-            $report = trim((string) ($validated['report'] ?? ''));
-            $task->report = $report !== '' ? $report : null;
-            $task->reference_link = $validated['reference_link'] ?? null;
-            $task->status = 'Done';
-            $this->applyTaskDoneEffects($task, (int) $validated['atc']);
-            $task->save();
+            return ['ok' => true, 'used_checklist' => true];
         }
 
+        $report = trim((string) ($payload['report'] ?? ''));
+        $task->report = $report !== '' ? $report : null;
+        $task->reference_link = $payload['reference_link'] ?? null;
+        $task->status = 'Done';
+        $this->applyTaskDoneEffects($task, $atc);
+        $task->save();
+        $this->notifyTaskDoneSafe($task);
+
+        return ['ok' => true, 'used_checklist' => false];
+    }
+
+    protected function notifyTaskDoneSafe(Task $task): void
+    {
         try {
             $this->taskWhatsApp->notifyTaskDone($task->fresh());
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify done failed: ' . $e->getMessage());
+            \Log::warning('Task WhatsApp notify done failed: '.$e->getMessage());
         }
-
-        // Auto-archive of completed automated tasks disabled (user request) — completed tasks now stay in the active list.
-        $archived = false;
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Task completed successfully!',
-            'archived' => $archived,
-            'used_checklist' => $hasChecklist,
-            'task' => $task->fresh(),
-        ]);
     }
 
     /**

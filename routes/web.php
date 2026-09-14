@@ -7060,6 +7060,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/bulk-create', [\App\Http\Controllers\TaskController::class, 'bulkCreate'])->name('tasks.bulkCreate');
     Route::post('/tasks/bulk-store', [\App\Http\Controllers\TaskController::class, 'bulkStore'])->name('tasks.bulkStore');
     Route::post('/tasks/bulk-update', [\App\Http\Controllers\TaskController::class, 'bulkUpdate'])->name('tasks.bulkUpdate');
+    Route::post('/tasks/bulk-complete', [\App\Http\Controllers\TaskController::class, 'bulkComplete'])->name('tasks.bulkComplete');
     Route::get('/tasks/{id}/subtasks', [\App\Http\Controllers\TaskController::class, 'subtasks'])->name('tasks.subtasks');
     Route::post('/tasks/{id}/subtasks', [\App\Http\Controllers\TaskController::class, 'storeSubtask'])->name('tasks.subtasks.store');
     Route::get('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'show'])->name('tasks.show');

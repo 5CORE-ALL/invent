@@ -2170,6 +2170,9 @@
                             <div class="task-toolbar-meta d-none d-md-block">
                                 <span id="selected-count" class="text-muted" style="display: none;">
                                     <strong id="count-number">0</strong> selected
+                                    <button type="button" class="btn btn-sm btn-success ms-2" id="selected-mark-done-btn" title="Mark all selected tasks as Done">
+                                        <i class="mdi mdi-check"></i> Mark Done
+                                    </button>
                                 </span>
                             </div>
                         </div>
@@ -2290,12 +2293,13 @@
         <div class="modal-content">
             <div class="modal-header" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
                 <h5 class="modal-title">
-                    <i class="mdi mdi-check-circle me-2"></i>Mark Task as Done
+                    <i class="mdi mdi-check-circle me-2"></i><span id="done-modal-title-text">Mark Task as Done</span>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div id="done-modal-errors" class="alert alert-danger d-none mb-3" role="alert"></div>
+                <div id="done-bulk-hint" class="alert alert-info py-2 small d-none mb-3" role="status"></div>
                 <div id="done-modal-loading" class="text-muted small mb-3 d-none"><i class="mdi mdi-loading mdi-spin me-1"></i>Loading…</div>
 
                 {{-- Checklist first when linked to automated task form --}}
@@ -2333,7 +2337,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-success" id="confirm-done-btn">
-                    <i class="mdi mdi-check me-1"></i>Submit &amp; mark Done
+                    <i class="mdi mdi-check me-1"></i><span id="confirm-done-btn-label">Submit &amp; mark Done</span>
                 </button>
             </div>
         </div>
@@ -2750,6 +2754,11 @@
                 </p>
 
                 <div class="list-group">
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-done-btn">
+                        <i class="mdi mdi-check-circle text-success me-2"></i>
+                        <strong>Mark Selected as Done</strong>
+                        <small class="d-block text-muted">Complete all selected tasks with the same ATC</small>
+                    </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
                         <strong>Delete Selected Tasks</strong>
@@ -3862,7 +3871,7 @@
             };
             
             window.markAsDone = function(id) {
-                openDoneModalForTask(id);
+                openDoneModalForTasks(collectDoneTargetTaskIds(id));
             };
             
             window.editTask = function(id) {
@@ -4472,6 +4481,9 @@
                         field: "status", 
                         width: 118,
                         hozAlign: "center",
+                        cellClick: function(e) {
+                            e.stopPropagation();
+                        },
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var value = cell.getValue();
@@ -6264,6 +6276,29 @@
                 $('#bulkAssignorModal').modal('hide');
             });
 
+            function openDoneModalForSelectedTasks() {
+                var ids = collectIncompleteTaskIdsFrom(selectedTasks);
+                if (!ids.length) {
+                    alert('Select at least one task that is not already Done.');
+                    return false;
+                }
+                openDoneModalForTasks(ids);
+                return true;
+            }
+
+            $('#bulk-done-btn').on('click', function(e) {
+                e.preventDefault();
+                if (openDoneModalForSelectedTasks()) {
+                    $('#bulkActionsModal').modal('hide');
+                }
+            });
+
+            $('#selected-mark-done-btn').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openDoneModalForSelectedTasks();
+            });
+
             // Bulk Delete (no confirmation)
             $('#bulk-delete-btn').on('click', function(e) {
                 e.preventDefault();
@@ -7559,6 +7594,8 @@
             var newStatusValue = null;
             var doneChecklistMode = false;
             var doneChecklistQuestions = [];
+            var doneTargetTaskIds = [];
+            var statusChangeSelectedSnapshot = [];
 
             function doneEsc(t) {
                 return String(t == null ? '' : t)
@@ -7572,6 +7609,7 @@
             function resetDoneModalUi() {
                 doneChecklistMode = false;
                 doneChecklistQuestions = [];
+                doneTargetTaskIds = [];
                 $('#done-checklist-pane').addClass('d-none');
                 $('#done-report-pane').addClass('d-none');
                 $('#done-checklist-questions').empty();
@@ -7581,10 +7619,98 @@
                 $('#task-done-reference-link').val('');
                 $('#task-done-atc').val('');
                 $('#done-modal-errors').addClass('d-none').text('');
+                $('#done-bulk-hint').addClass('d-none').text('');
+                $('#done-modal-title-text').text('Mark Task as Done');
+                $('#confirm-done-btn-label').text('Submit & mark Done');
                 $('#task-done-report').removeClass('is-invalid');
                 $('#task-done-report-feedback').addClass('d-none');
                 $('#task-done-atc').removeClass('is-invalid');
                 $('#task-done-atc-feedback').addClass('d-none');
+            }
+
+            function taskRowDataById(id) {
+                try {
+                    var row = table.getRow(id);
+                    return row ? row.getData() : null;
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            function isTaskAlreadyDone(id) {
+                var d = taskRowDataById(id);
+                return !!(d && (d.status === 'Done' || d.status === 'Archived'));
+            }
+
+            function collectIncompleteTaskIdsFrom(pool, clickedId) {
+                var ids = [];
+                var seen = {};
+                (pool || []).forEach(function(id) {
+                    var sid = String(id);
+                    if (!sid || seen[sid] || isTaskAlreadyDone(sid)) {
+                        return;
+                    }
+                    seen[sid] = true;
+                    ids.push(sid);
+                });
+                var clicked = clickedId != null ? String(clickedId) : '';
+                if (clicked && !seen[clicked] && !isTaskAlreadyDone(clicked)) {
+                    ids.unshift(clicked);
+                }
+                return ids;
+            }
+
+            function collectDoneTargetTaskIds(clickedId, snapshotIds) {
+                var clicked = String(clickedId);
+                var pool = (snapshotIds && snapshotIds.length) ? snapshotIds : (selectedTasks || []);
+                var set = new Set(pool.map(function(id) { return String(id); }));
+                if (pool.length > 1 && set.has(clicked)) {
+                    var ids = collectIncompleteTaskIdsFrom(pool, clicked);
+                    return ids.length ? ids : [clicked];
+                }
+                return [clicked];
+            }
+
+            function pickDoneModalPrimaryTaskId(ids) {
+                for (var i = 0; i < ids.length; i++) {
+                    var d = taskRowDataById(ids[i]);
+                    if (d && d.has_checklist_form) {
+                        return ids[i];
+                    }
+                }
+                return ids[0];
+            }
+
+            function applyDoneModalChrome(ids) {
+                var n = ids.length;
+                if (n > 1) {
+                    $('#done-modal-title-text').text('Mark ' + n + ' Tasks as Done');
+                    $('#confirm-done-btn-label').text('Submit & mark ' + n + ' Done');
+                    var hint = 'ATC and notes will be applied to all ' + n + ' selected tasks.';
+                    var autoKeys = [];
+                    var hasForm = false;
+                    var hasNone = false;
+                    ids.forEach(function(id) {
+                        var d = taskRowDataById(id);
+                        if (d && d.has_checklist_form) {
+                            hasForm = true;
+                            autoKeys.push(String(d.automate_task_id || id));
+                        } else {
+                            hasNone = true;
+                        }
+                    });
+                    var uniqueForms = Array.from(new Set(autoKeys));
+                    if (uniqueForms.length > 1) {
+                        hint += ' Selected tasks use different checklists — fill the form shown; others that need a different checklist will be skipped.';
+                    } else if (hasForm && hasNone) {
+                        hint += ' Some selected tasks have a checklist. Fill it if shown; tasks that need a different checklist may be skipped.';
+                    }
+                    $('#done-bulk-hint').removeClass('d-none').text(hint);
+                } else {
+                    $('#done-modal-title-text').text('Mark Task as Done');
+                    $('#confirm-done-btn-label').text('Submit & mark Done');
+                    $('#done-bulk-hint').addClass('d-none').text('');
+                }
             }
 
             function renderDoneChecklistQuestions(questions) {
@@ -7660,20 +7786,39 @@
                 return { answers: answers, missing: missing };
             }
 
-            async function openDoneModalForTask(taskId) {
-                currentTaskId = taskId;
-                resetDoneModalUi();
+            async function openDoneModalForTasks(taskIds) {
+                var ids = (taskIds || []).map(function(id) { return String(id); }).filter(Boolean);
+                if (!ids.length) {
+                    alert('Select at least one task that is not already Done.');
+                    return;
+                }
+                doneTargetTaskIds = ids;
+                currentTaskId = pickDoneModalPrimaryTaskId(ids);
+                doneChecklistMode = false;
+                doneChecklistQuestions = [];
+                $('#done-checklist-pane').addClass('d-none');
+                $('#done-report-pane').addClass('d-none');
+                $('#done-checklist-questions').empty();
+                $('#done-checklist-form-meta').text('—');
+                $('#task-done-report').val('');
+                $('#task-done-reference-link').val('');
+                $('#task-done-atc').val('');
+                $('#done-modal-errors').addClass('d-none').text('');
+                $('#task-done-report').removeClass('is-invalid');
+                $('#task-done-report-feedback').addClass('d-none');
+                $('#task-done-atc').removeClass('is-invalid');
+                $('#task-done-atc-feedback').addClass('d-none');
+                applyDoneModalChrome(ids);
                 $('#done-modal-loading').removeClass('d-none');
                 $('#doneModal').modal('show');
                 try {
-                    var res = await fetch('/tasks/' + taskId + '/done-checklist', {
+                    var res = await fetch('/tasks/' + currentTaskId + '/done-checklist', {
                         headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                         credentials: 'same-origin'
                     });
                     var data = await res.json().catch(function() { return {}; });
                     $('#done-modal-loading').addClass('d-none');
                     if (!res.ok) {
-                        // No checklist available — skip report; ATC/reference only
                         doneChecklistMode = false;
                         $('#done-checklist-pane').addClass('d-none');
                         $('#done-report-pane').addClass('d-none');
@@ -7691,7 +7836,6 @@
                         );
                         renderDoneChecklistQuestions(doneChecklistQuestions);
                     } else {
-                        // No checklist provided — do not ask for a completion report
                         doneChecklistMode = false;
                         $('#done-checklist-pane').addClass('d-none');
                         $('#done-report-pane').addClass('d-none');
@@ -7702,6 +7846,10 @@
                     $('#done-checklist-pane').addClass('d-none');
                     $('#done-report-pane').addClass('d-none');
                 }
+            }
+
+            async function openDoneModalForTask(taskId) {
+                return openDoneModalForTasks(collectDoneTargetTaskIds(taskId));
             }
 
             function openReworkModalForTask(taskId) {
@@ -7799,6 +7947,10 @@
                 }
             };
 
+            $(document).on('mousedown', '.status-select', function() {
+                statusChangeSelectedSnapshot = (selectedTasks || []).slice();
+            });
+
             $(document).on('change', '.status-select', function() {
                 var select = $(this);
                 newStatusValue = select.val();
@@ -7806,8 +7958,9 @@
                 previousStatus = select.data('current-status');
                 
                 if (newStatusValue === 'Done') {
-                    openDoneModalForTask(currentTaskId);
+                    openDoneModalForTasks(collectDoneTargetTaskIds(currentTaskId, statusChangeSelectedSnapshot));
                     select.val(previousStatus);
+                    statusChangeSelectedSnapshot = [];
                 } else if (addAssigneeStatusConfig[newStatusValue]) {
                     // Dependent / Need Help / Need Approval — offer add-assignee modal
                     openAddAssigneeStatusModal(currentTaskId, newStatusValue);
@@ -7919,13 +8072,24 @@
                 var $btn = $(this);
                 $btn.prop('disabled', true);
 
+                var targetIds = (doneTargetTaskIds && doneTargetTaskIds.length)
+                    ? doneTargetTaskIds.slice()
+                    : [String(currentTaskId)];
+                var isBulkDone = targetIds.length > 1;
+                if (isBulkDone) {
+                    payload.task_ids = targetIds;
+                }
+
                 $.ajax({
-                    url: '/tasks/' + currentTaskId + '/complete',
+                    url: isBulkDone ? '{{ route('tasks.bulkComplete') }}' : ('/tasks/' + currentTaskId + '/complete'),
                     type: 'POST',
                     data: payload,
                     success: function(response) {
                         $('#doneModal').modal('hide');
                         resetDoneModalUi();
+                        if (isBulkDone && table && typeof table.deselectRow === 'function') {
+                            table.deselectRow();
+                        }
                         table.replaceData();
 
                         var alertHtml = `
