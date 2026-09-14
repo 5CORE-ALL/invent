@@ -104,14 +104,14 @@
             color: #444;
             font: inherit;
             font-weight: 600;
-            font-size: 14px;
-            padding: 12px 16px;
+            font-size: 13px;
+            padding: 10px 12px;
             border-radius: 8px;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            flex: 1 1 160px;
+            gap: 6px;
+            flex: 1 1 140px;
             justify-content: center;
         }
         .sp-tab i { color: var(--sp-red); font-size: 18px; }

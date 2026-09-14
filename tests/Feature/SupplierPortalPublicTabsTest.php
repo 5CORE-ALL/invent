@@ -31,8 +31,9 @@ class SupplierPortalPublicTabsTest extends TestCase
         ])->render();
 
         $this->assertStringContainsString('role="tablist"', $html);
-        foreach (SupplierPortalAsset::CATEGORIES as $label) {
-            $this->assertStringContainsString($label, $html);
+        foreach (SupplierPortalAsset::CATEGORIES as $key => $label) {
+            $this->assertStringContainsString('data-tab="'.$key.'"', $html);
+            $this->assertStringContainsString(e($label), $html);
         }
         $this->assertStringNotContainsString('Packaging Designs', $html);
         $this->assertStringNotContainsString('Marketing Materials', $html);

@@ -12,6 +12,9 @@ class SupplierPortalAsset extends Model
         'inner_box_designs' => 'Inner Box Designs',
         'inner_box_cover' => 'Inner Box Cover',
         'master_carton_designs' => 'Master Carton Designs',
+        'assembly_designs' => 'Assembly Designs',
+        'operations_manual' => 'Operations Manual',
+        'dos_and_donts' => "Do's & Don'ts",
     ];
 
     public const LEGACY_CATEGORY_SLUGS = [
@@ -26,6 +29,9 @@ class SupplierPortalAsset extends Model
         'inner_box_designs' => 'ri-box-3-line',
         'inner_box_cover' => 'ri-inbox-archive-line',
         'master_carton_designs' => 'ri-stack-line',
+        'assembly_designs' => 'ri-tools-line',
+        'operations_manual' => 'ri-book-2-line',
+        'dos_and_donts' => 'ri-error-warning-line',
     ];
 
     public const CATEGORY_HINTS = [
@@ -33,6 +39,9 @@ class SupplierPortalAsset extends Model
         'inner_box_designs' => 'Inner box artwork and dielines',
         'inner_box_cover' => 'Inner box cover artwork',
         'master_carton_designs' => 'Master carton artwork and dielines',
+        'assembly_designs' => 'Assembly drawings and build files',
+        'operations_manual' => 'User and operations manuals',
+        'dos_and_donts' => 'Do and do not guidelines',
     ];
 
     public static function resolveCategoryKey(string $category): ?string

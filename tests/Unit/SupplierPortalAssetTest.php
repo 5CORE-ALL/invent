@@ -14,6 +14,9 @@ class SupplierPortalAssetTest extends TestCase
             'inner_box_designs' => 'Inner Box Designs',
             'inner_box_cover' => 'Inner Box Cover',
             'master_carton_designs' => 'Master Carton Designs',
+            'assembly_designs' => 'Assembly Designs',
+            'operations_manual' => 'Operations Manual',
+            'dos_and_donts' => "Do's & Don'ts",
         ], SupplierPortalAsset::CATEGORIES);
     }
 
@@ -22,6 +25,9 @@ class SupplierPortalAssetTest extends TestCase
         $this->assertSame('brand_assets', SupplierPortalAsset::resolveCategoryKey('logos'));
         $this->assertSame('inner_box_designs', SupplierPortalAsset::resolveCategoryKey('packaging'));
         $this->assertSame('inner_box_cover', SupplierPortalAsset::resolveCategoryKey('inner_box_cover'));
+        $this->assertSame('assembly_designs', SupplierPortalAsset::resolveCategoryKey('assembly_designs'));
+        $this->assertSame('operations_manual', SupplierPortalAsset::resolveCategoryKey('operations_manual'));
+        $this->assertSame('dos_and_donts', SupplierPortalAsset::resolveCategoryKey('dos_and_donts'));
         $this->assertNull(SupplierPortalAsset::resolveCategoryKey('unknown'));
     }
 }
