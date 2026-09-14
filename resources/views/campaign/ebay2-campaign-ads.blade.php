@@ -491,9 +491,14 @@ $(document).ready(function () {
                 }
             },
             {
-                title: 'Campaign Name', field: 'campaign_name', width: 220, visible: false,
+                title: 'Campaign Name', field: 'campaign_name', width: 240, hozAlign: 'left',
+                headerTooltip: 'Promoted Listings campaign this ad belongs to. Same listing can appear in more than one campaign.',
                 formatter: function(cell) {
-                    return cell.getValue() || '—';
+                    const v = cell.getValue();
+                    if (!v) {
+                        return '<span style="color:#aaa; font-size:11px;">No Campaign</span>';
+                    }
+                    return `<span title="${String(v).replace(/"/g, '&quot;')}">${v}</span>`;
                 }
             },
             {
