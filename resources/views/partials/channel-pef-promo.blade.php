@@ -1540,7 +1540,7 @@
                 label: 'Shein',
                 saveSpriceUrl: '/shein/save-sprice',
                 saveSpriceBatchUrl: '/shein/save-sprice',
-                pushPriceUrl: '/cvr-master-push-price',
+                pushPriceUrl: '/shein/pricing-push-price',
                 priceField: 'special_offer',
                 dilField: 'dil_percent',
                 invField: 'inv',
@@ -6589,6 +6589,13 @@
                             if (CHANNEL_PROMO_CHANNEL === 'aliexpress' && pushed > 0) {
                                 patch.price = pushed;
                                 patch.sprice = pushed;
+                            }
+                            if (CHANNEL_PROMO_CHANNEL === 'shein' && pushed > 0) {
+                                patch.special_offer = pushed;
+                                patch.calc_price = pushed;
+                                patch.sprice = pushed;
+                                patch.is_missing_shein = false;
+                                patch.missing = '';
                             }
                             if (typeof window.aeApplyPushPatchToSku === 'function' && CHANNEL_PROMO_CHANNEL === 'aliexpress') {
                                 window.aeApplyPushPatchToSku(job.sku, patch);

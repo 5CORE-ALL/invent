@@ -3,6 +3,7 @@
 namespace App\Services\Support;
 
 use App\Http\Controllers\MarketPlace\AliexpressController;
+use App\Http\Controllers\MarketPlace\SheinController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\MacyController;
 use App\Http\Controllers\MarketPlace\DobaController;
@@ -14,6 +15,7 @@ use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\TemuController;
 use App\Http\Controllers\MarketPlace\Temu3Controller;
 use App\Services\AliExpressApiService;
+use App\Services\SheinApiService;
 use App\Services\ChannelLivePriceSync;
 use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
@@ -464,6 +466,17 @@ class ChannelPushSpriceRunner
             $aeReq->headers->set('Accept', 'application/json');
 
             return app(AliexpressController::class)->pushPricingPrice($aeReq, app(AliExpressApiService::class));
+        }
+
+        if ($this->channel === 'shein') {
+            $sheinReq = Request::create('/shein/pricing-push-price', 'POST', [
+                'updates' => [
+                    ['sku' => $sku, 'price' => $pushPrice],
+                ],
+            ]);
+            $sheinReq->headers->set('Accept', 'application/json');
+
+            return app(SheinController::class)->pushPricingPrice($sheinReq, app(SheinApiService::class));
         }
 
         if (in_array($this->channel, ['macys', 'macy'], true)) {

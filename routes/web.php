@@ -5797,6 +5797,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shein/pricing-data', [SheinController::class, 'getSheinPricingData'])->name('shein.pricing.data');
     Route::post('/shein/sync-pricing', [SheinController::class, 'syncPricingFromApi'])->name('shein.sync.pricing');
     Route::post('/shein/save-sprice', [SheinController::class, 'saveSheinSpriceUpdates'])->name('shein.pricing.save.sprice');
+    Route::post('/shein/pricing-push-price', [SheinController::class, 'pushPricingPrice'])->name('shein.pricing.push');
     Route::post('/shein/save-links', [SheinController::class, 'saveLinks'])->name('shein.pricing.save.links');
     Route::post('/shein/lmp/add', [SheinController::class, 'saveLmpEntry'])->name('shein.pricing.lmp.add');
     Route::post('/shein/lmp/update', [SheinController::class, 'updateLmpEntry'])->name('shein.pricing.lmp.update');

@@ -50,6 +50,12 @@ class SheinApiService
 
     protected int $lastMetricUpdated = 0;
 
+    /** @var array<string, SheinPricingPrice>|null */
+    private ?array $pricingRowByNorm = null;
+
+    /** @var array<string, SheinMetric>|null */
+    private ?array $metricRowByNorm = null;
+
     public function __construct()
     {
         $this->appId = config('services.shein.app_id');
@@ -3176,6 +3182,338 @@ class SheinApiService
             'success' => false,
             'message' => (string) ($bulk['error_message'] ?? 'Shein inventory update failed'),
         ];
+    }
+
+    /**
+     * Push sale price for one seller SKU via product/price/save.
+     *
+     * shopPrice is the list/retail; specialPrice is the sale when it is below shopPrice.
+     *
+     * @return array{success: bool, message: string, sku?: string, sku_code?: string, price?: float, shop_price?: float}
+     */
+    public function updatePrice(string $sellerSku, float $salePrice, ?float $shopPrice = null): array
+    {
+        $bulk = $this->updateItemPriceBulk([[
+            'sku' => $sellerSku,
+            'price' => $salePrice,
+            'shop_price' => $shopPrice,
+        ]]);
+
+        $first = $bulk['results'][0] ?? [];
+        if (($bulk['pushed'] ?? 0) > 0 && ! empty($first['success'])) {
+            return [
+                'success' => true,
+                'message' => (string) ($first['message'] ?? $bulk['error_message'] ?? 'Shein price updated.'),
+                'sku' => (string) ($first['sku'] ?? $sellerSku),
+                'sku_code' => (string) ($first['sku_code'] ?? ''),
+                'price' => isset($first['price']) ? (float) $first['price'] : round($salePrice, 2),
+                'shop_price' => isset($first['shop_price']) ? (float) $first['shop_price'] : null,
+            ];
+        }
+
+        return [
+            'success' => false,
+            'message' => (string) ($first['error'] ?? $bulk['error_message'] ?? 'Shein price update failed'),
+            'sku' => $sellerSku,
+        ];
+    }
+
+    /**
+     * Build one product/price/save row (Shein productCode = platform skuCode).
+     *
+     * @return array{currencyCode: string, productCode: string, site: string, shopPrice: float, specialPrice: float|null, riseReason: string|null}
+     */
+    public function buildPriceSaveEntry(
+        string $productCode,
+        float $salePrice,
+        float $shopPrice,
+        ?float $previousShopPrice = null,
+        ?string $site = null,
+        ?string $currency = null
+    ): array {
+        $sale = round(max(0.01, $salePrice), 2);
+        $shop = round(max($shopPrice, $sale), 2);
+        $site = trim((string) ($site ?: config('services.shein.sub_site', 'shein-us'))) ?: 'shein-us';
+        $currency = strtoupper(trim((string) ($currency ?: config('services.shein.currency', 'USD')))) ?: 'USD';
+
+        $entry = [
+            'currencyCode' => $currency,
+            'productCode' => trim($productCode),
+            'site' => $site,
+            'shopPrice' => $shop,
+            'specialPrice' => $shop > $sale + 0.001 ? $sale : null,
+            'riseReason' => null,
+        ];
+        if ($previousShopPrice !== null && $shop > ((float) $previousShopPrice) + 0.001) {
+            $entry['riseReason'] = 'Market price adjustment';
+        }
+
+        return $entry;
+    }
+
+    /**
+     * Bulk price push (up to 100 SKUs per Shein API request).
+     *
+     * @param  list<array{sku?: string, price: float|int|string, shop_price?: float|int|string|null}>  $items
+     * @return array{ok: bool, pushed: int, failed: int, error_message: ?string, results: list<array<string, mixed>>}
+     */
+    public function updateItemPriceBulk(array $items): array
+    {
+        $results = [];
+        $pushed = 0;
+        $failed = 0;
+        $lastError = null;
+
+        if (! $this->isConfigured()) {
+            return [
+                'ok' => false,
+                'pushed' => 0,
+                'failed' => count($items),
+                'error_message' => 'Configure SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY in .env.',
+                'results' => [],
+            ];
+        }
+
+        $endpoint = (string) config(
+            'services.shein.price_update_path',
+            '/open-api/openapi-business-backend/product/price/save'
+        );
+
+        $prepared = [];
+        foreach ($items as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            $sale = isset($item['price']) ? (float) $item['price'] : 0.0;
+            $shopHint = isset($item['shop_price']) && is_numeric($item['shop_price'])
+                ? (float) $item['shop_price']
+                : null;
+            if ($sku === '' || $sale <= 0) {
+                $failed++;
+                $lastError = $sku === '' ? 'SKU is required.' : 'Price must be > 0.';
+                $results[] = [
+                    'sku' => $sku,
+                    'success' => false,
+                    'error' => $lastError,
+                ];
+
+                continue;
+            }
+
+            $skuCode = $this->resolvePlatformSkuCodeForPricePush($sku);
+            if ($skuCode === '' || ! $this->isPlatformSkuCode($skuCode, $sku)) {
+                $failed++;
+                $lastError = 'No Shein skuCode for '.$sku.' — sync Shein products first.';
+                $results[] = [
+                    'sku' => $sku,
+                    'success' => false,
+                    'error' => $lastError,
+                ];
+
+                continue;
+            }
+
+            $existing = $this->sheinListedPricesForSku($sku);
+            $shop = $shopHint !== null && $shopHint > 0 ? $shopHint : (float) ($existing['shop'] ?? 0);
+            $entry = $this->buildPriceSaveEntry(
+                $skuCode,
+                $sale,
+                $shop,
+                $existing['shop'] ?? null
+            );
+            $prepared[] = [
+                'sku' => $sku,
+                'sku_code' => $skuCode,
+                'sale' => round($sale, 2),
+                'shop' => (float) $entry['shopPrice'],
+                'entry' => $entry,
+            ];
+        }
+
+        foreach (array_chunk($prepared, 100) as $chunk) {
+            $payload = [
+                'productPriceList' => array_map(static fn ($row) => $row['entry'], $chunk),
+            ];
+
+            try {
+                $response = Http::withoutVerifying()
+                    ->timeout(60)
+                    ->withHeaders($this->buildSheinAuthHeaders($endpoint))
+                    ->post($this->baseUrl.$endpoint, $payload);
+                $json = is_array($response->json()) ? $response->json() : null;
+                $ok = $response->successful() && $this->sheinResponseIndicatesSuccess($json);
+                if (! $ok) {
+                    $lastError = $this->sheinExtractErrorMessage($json)
+                        ?: ('HTTP '.$response->status().': '.mb_substr((string) $response->body(), 0, 400));
+                    foreach ($chunk as $row) {
+                        $failed++;
+                        $results[] = [
+                            'sku' => $row['sku'],
+                            'sku_code' => $row['sku_code'],
+                            'success' => false,
+                            'error' => $lastError,
+                        ];
+                    }
+
+                    continue;
+                }
+
+                foreach ($chunk as $row) {
+                    $this->persistLocalSheinPushedPrice($row['sku'], $row['sale'], $row['shop']);
+                    $pushed++;
+                    $results[] = [
+                        'sku' => $row['sku'],
+                        'sku_code' => $row['sku_code'],
+                        'success' => true,
+                        'price' => $row['sale'],
+                        'shop_price' => $row['shop'],
+                        'message' => 'Price $'.number_format($row['sale'], 2).' pushed to Shein.',
+                    ];
+                }
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                foreach ($chunk as $row) {
+                    $failed++;
+                    $results[] = [
+                        'sku' => $row['sku'],
+                        'sku_code' => $row['sku_code'],
+                        'success' => false,
+                        'error' => $lastError,
+                    ];
+                }
+            }
+        }
+
+        return [
+            'ok' => $pushed > 0 && $failed === 0,
+            'pushed' => $pushed,
+            'failed' => $failed,
+            'error_message' => $failed > 0 ? $lastError : null,
+            'results' => $results,
+        ];
+    }
+
+    private function resolvePlatformSkuCodeForPricePush(string $sellerSku): string
+    {
+        $hit = $this->resolvePlatformSkuCodesForSellerSkus([$sellerSku], [], true);
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sellerSku);
+
+        return trim((string) ($hit[$norm]['sku_code'] ?? $hit[$sellerSku]['sku_code'] ?? ''));
+    }
+
+    /**
+     * @return array{shop: float, sale: float}
+     */
+    private function sheinListedPricesForSku(string $sku): array
+    {
+        $norm = $this->normalizeSellerSku($sku);
+        $shop = 0.0;
+        $sale = 0.0;
+        $row = $norm !== '' ? ($this->pricingRowsByNorm()[$norm] ?? null) : null;
+        if ($row) {
+            $shop = max((float) ($row->original_price ?? 0), (float) ($row->price ?? 0));
+            $sale = (float) ($row->special_offer_price ?? 0);
+        }
+        $metric = $norm !== '' ? ($this->metricRowsByNorm()[$norm] ?? null) : null;
+        if ($metric) {
+            if ($shop <= 0) {
+                $shop = max((float) ($metric->retail_price ?? 0), (float) ($metric->price ?? 0));
+            }
+            if ($sale <= 0) {
+                $sale = (float) ($metric->price ?? 0);
+            }
+        }
+
+        return ['shop' => $shop, 'sale' => $sale];
+    }
+
+    private function persistLocalSheinPushedPrice(string $sku, float $sale, float $shop): void
+    {
+        $sale = round(max(0, $sale), 2);
+        $shop = round(max($shop, $sale), 2);
+        $norm = $this->normalizeSellerSku($sku);
+        if ($norm === '') {
+            return;
+        }
+
+        $row = $this->pricingRowsByNorm()[$norm] ?? null;
+        if ($row) {
+            $row->special_offer_price = $sale;
+            $row->price = $shop;
+            if ((float) ($row->original_price ?? 0) < $shop) {
+                $row->original_price = $shop;
+            }
+            $row->save();
+        } elseif (Schema::hasTable('shein_pricing_prices')) {
+            $row = SheinPricingPrice::query()->create([
+                'sku' => $sku,
+                'price' => $shop,
+                'original_price' => $shop,
+                'special_offer_price' => $sale,
+                'shein_stock' => 0,
+            ]);
+            $this->pricingRowByNorm[$norm] = $row;
+        }
+
+        $metric = $this->metricRowsByNorm()[$norm] ?? $this->safeSheinMetricFindBySku($sku);
+        if ($metric) {
+            $metric->price = $sale;
+            if (Schema::hasColumn('shein_metrics', 'retail_price') && (float) ($metric->retail_price ?? 0) < $shop) {
+                $metric->retail_price = $shop;
+            }
+            $metric->save();
+            $this->metricRowByNorm[$norm] = $metric;
+        }
+    }
+
+    /**
+     * @return array<string, SheinPricingPrice>
+     */
+    private function pricingRowsByNorm(): array
+    {
+        if ($this->pricingRowByNorm !== null) {
+            return $this->pricingRowByNorm;
+        }
+        $this->pricingRowByNorm = [];
+        if (! Schema::hasTable('shein_pricing_prices')) {
+            return $this->pricingRowByNorm;
+        }
+        foreach (SheinPricingPrice::query()->get() as $row) {
+            $n = $this->normalizeSellerSku((string) $row->sku);
+            if ($n !== '' && ! isset($this->pricingRowByNorm[$n])) {
+                $this->pricingRowByNorm[$n] = $row;
+            }
+        }
+
+        return $this->pricingRowByNorm;
+    }
+
+    /**
+     * @return array<string, SheinMetric>
+     */
+    private function metricRowsByNorm(): array
+    {
+        if ($this->metricRowByNorm !== null) {
+            return $this->metricRowByNorm;
+        }
+        $this->metricRowByNorm = [];
+        if (! $this->metricsTableExists()) {
+            return $this->metricRowByNorm;
+        }
+        foreach (SheinMetric::query()->get() as $row) {
+            $n = $this->normalizeSellerSku((string) $row->sku);
+            if ($n !== '' && ! isset($this->metricRowByNorm[$n])) {
+                $this->metricRowByNorm[$n] = $row;
+            }
+        }
+
+        return $this->metricRowByNorm;
+    }
+
+    private function normalizeSellerSku(string $sku): string
+    {
+        $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim($sku));
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
+
+        return trim(strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku)));
     }
 
     /**
