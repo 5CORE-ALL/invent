@@ -66,6 +66,10 @@ class SupplierPortalAssetTest extends TestCase
         $this->assertSame('Design Instructions', \App\Support\SupplierPortalPackingData::FIELDS['packing_instructions']);
         $this->assertSame('ctn pkg', \App\Support\SupplierPortalPackingData::CTN_PKG_LABEL);
         $this->assertSame('ctn_instructions', \App\Support\SupplierPortalPackingData::CTN_PKG_KEY);
+        $this->assertSame('CTN L (cm)', \App\Support\SupplierPortalPackingData::CTN_MASTER_FIELDS['ctn_l']);
+        $this->assertSame('CTN L (in)', \App\Support\SupplierPortalPackingData::CTN_MASTER_FIELDS['ctn_l_in']);
+        $this->assertSame('CTN Weight (kg)', \App\Support\SupplierPortalPackingData::CTN_MASTER_FIELDS['ctn_weight_kg']);
+        $this->assertContains('ctn_l', \App\Support\SupplierPortalPackingData::CTN_MASTER_STORED);
         $this->assertSame(
             'https://cdn.example/cover.jpg',
             \App\Support\SupplierPortalDimWtData::resolveCoverUrl(['item_pkg_cover' => 'https://cdn.example/cover.jpg'])

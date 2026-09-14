@@ -41,7 +41,13 @@ class SupplierPortalPublicTabsTest extends TestCase
         $this->assertStringContainsString('data-variant="cover"', $html);
         $this->assertStringContainsString('data-variant="sku"', $html);
         $this->assertStringContainsString('>Files</th>', $html);
+        $this->assertStringContainsString('sp-dw-parent', $html);
+        $this->assertStringContainsString('sp-pi-parent', $html);
         $this->assertStringContainsString('ctn pkg', $html);
+        $this->assertStringContainsString('CTN L (cm)', $html);
+        $this->assertStringContainsString('CTN L (in)', $html);
+        $this->assertStringContainsString('CTN Weight (kg)', $html);
+        $this->assertStringContainsString('CTN WT (lb)', $html);
         $this->assertStringNotContainsString('class="sp-dw-actions"', $html);
         $this->assertStringNotContainsString('class="sp-pi-actions"', $html);
     }
@@ -157,6 +163,12 @@ class SupplierPortalPublicTabsTest extends TestCase
         $this->assertStringContainsString('data-sp-pi-sync', $html);
         $this->assertStringContainsString('Design Instructions', $html);
         $this->assertStringContainsString('ctn pkg', $html);
+        $this->assertStringContainsString('CTN L (cm)', $html);
+        $this->assertStringContainsString('CTN W (cm)', $html);
+        $this->assertStringContainsString('CTN H (cm)', $html);
+        $this->assertStringContainsString('CTN L (in)', $html);
+        $this->assertStringContainsString('CTN Weight (kg)', $html);
+        $this->assertStringContainsString('CTN WT (lb)', $html);
         $this->assertStringContainsString('Box / carton', $html);
         $this->assertStringContainsString('item PKG', $html);
         $this->assertStringContainsString('Itm pkg Cover', $html);

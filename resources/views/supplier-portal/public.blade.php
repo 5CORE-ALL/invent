@@ -318,34 +318,36 @@
                 @if(\App\Support\SupplierPortalDimWtData::usesDimWtSkuGrid($key))
                     @include('supplier-portal.partials.dim-wt-item-grid', ['prefix' => 'spDwSkuPublic_'.$key, 'editable' => false, 'variant' => 'sku', 'category' => $key])
                 @endif
-                @if($items->isEmpty())
-                    <p class="sp-empty">No {{ strtolower($label) }} files uploaded yet.</p>
-                @else
-                    <div class="sp-grid">
-                        @foreach($items as $asset)
-                            <a class="sp-card" href="{{ route('supplier-portal.show', $asset) }}">
-                                <div class="sp-thumb">
-                                    @if($asset->isImage())
-                                        <img src="{{ $asset->publicUrl() }}" alt="{{ $asset->title }}">
-                                    @else
-                                        <div class="sp-pdf">{{ $asset->extensionLabel() }}</div>
-                                    @endif
-                                </div>
-                                <div class="sp-file-code">{{ $asset->codeLabel($loop->iteration) }}</div>
-                                <div class="sp-card-body">
-                                    <h3>{{ $asset->title }}</h3>
-                                    @if($asset->productMeta() !== '')
-                                        <div class="sp-product">{{ $asset->productMeta() }}</div>
-                                    @endif
-                                    <div class="sp-meta">{{ $asset->extensionLabel() }} · {{ $asset->sizeLabel() }}</div>
-                                    <span class="sp-dl">
-                                        Open <i class="ri-arrow-right-up-line"></i>
-                                    </span>
-                                </div>
-                            </a>
-                        @endforeach
-                    </div>
-                @endif
+                @unless(\App\Support\SupplierPortalDimWtData::usesDimWtSkuGrid($key))
+                    @if($items->isEmpty())
+                        <p class="sp-empty">No {{ strtolower($label) }} files uploaded yet.</p>
+                    @else
+                        <div class="sp-grid">
+                            @foreach($items as $asset)
+                                <a class="sp-card" href="{{ route('supplier-portal.show', $asset) }}">
+                                    <div class="sp-thumb">
+                                        @if($asset->isImage())
+                                            <img src="{{ $asset->publicUrl() }}" alt="{{ $asset->title }}">
+                                        @else
+                                            <div class="sp-pdf">{{ $asset->extensionLabel() }}</div>
+                                        @endif
+                                    </div>
+                                    <div class="sp-file-code">{{ $asset->codeLabel($loop->iteration) }}</div>
+                                    <div class="sp-card-body">
+                                        <h3>{{ $asset->title }}</h3>
+                                        @if($asset->productMeta() !== '')
+                                            <div class="sp-product">{{ $asset->productMeta() }}</div>
+                                        @endif
+                                        <div class="sp-meta">{{ $asset->extensionLabel() }} · {{ $asset->sizeLabel() }}</div>
+                                        <span class="sp-dl">
+                                            Open <i class="ri-arrow-right-up-line"></i>
+                                        </span>
+                                    </div>
+                                </a>
+                            @endforeach
+                        </div>
+                    @endif
+                @endunless
             </section>
         @endforeach
     </main>

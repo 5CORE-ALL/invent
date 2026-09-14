@@ -344,6 +344,7 @@
                     role="tabpanel"
                     aria-labelledby="sp-tab-btn-{{ $key }}"
                 >
+                    @unless(\App\Support\SupplierPortalDimWtData::usesDimWtSkuGrid($key))
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0">
                             <thead>
@@ -431,6 +432,7 @@
                             </tbody>
                         </table>
                     </div>
+                    @endunless
                     @if(\App\Support\SupplierPortalPackingData::usesPackingGrid($key))
                         @include('supplier-portal.partials.packing-inner-grid', ['prefix' => 'spPiAdmin_'.$key, 'editable' => true])
                     @endif
