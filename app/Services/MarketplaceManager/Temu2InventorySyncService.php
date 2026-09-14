@@ -67,13 +67,11 @@ class Temu2InventorySyncService
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
 
-        if ($exactShopifyQty) {
-            // Listings mismatch tab uses shopify_skus as Shopify qty source of truth.
-            // Overlay it so pushed Temu 2 qty matches the numbers shown on that tab.
-            foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($fetchSkus) as $key => $qty) {
-                $shopifyQty[$key] = (int) $qty;
-            }
-        }
+        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
+            $shopifyQty,
+            $fetchSkus,
+            $exactShopifyQty
+        );
 
         $metrics = Temu2Metric::query()
             ->whereNotNull('goods_id')

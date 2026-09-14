@@ -63,11 +63,11 @@ class TopDawgInventorySyncService
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
 
-        if ($exactShopifyQty) {
-            foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($fetchSkus) as $key => $qty) {
-                $shopifyQty[$key] = (int) $qty;
-            }
-        }
+        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
+            $shopifyQty,
+            $fetchSkus,
+            $exactShopifyQty
+        );
 
         $exactMetricSkus = TopDawgProduct::query()
             ->whereIn('sku', $skus)

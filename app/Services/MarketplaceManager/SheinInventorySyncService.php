@@ -63,9 +63,11 @@ class SheinInventorySyncService
             $fetchSkus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
-        if ($exactShopifyQty) {
-            $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $fetchSkus);
-        }
+        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
+            $shopifyQty,
+            $fetchSkus,
+            $exactShopifyQty
+        );
 
         // Match Shein rows by normalized SKU (Shopify often stores NBSP; Shein uses normal spaces).
         $metrics = SheinMmMetric::query()

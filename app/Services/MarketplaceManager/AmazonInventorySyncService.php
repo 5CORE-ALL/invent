@@ -65,18 +65,17 @@ class AmazonInventorySyncService
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
         $shopifyQty = MarketplaceLiveInventoryRules::applyConfirmedLocalZeros($shopifyQty, $fetchSkus);
+        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
+            $shopifyQty,
+            $fetchSkus,
+            $exactShopifyQty
+        );
 
         $coverage = MarketplaceLiveInventoryRules::shopifyLiveCoverageReport(
             $skus,
             fn (string $sku) => $this->resolveShopifyQty($shopifyQty, $sku)
         );
         Log::info('AmazonInventorySyncService: Shopify live coverage', $coverage);
-
-        if ($exactShopifyQty) {
-            foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($fetchSkus) as $key => $qty) {
-                $shopifyQty[$key] = (int) $qty;
-            }
-        }
 
         $statusMap = AmazonListingStatusHelper::mapForSkus($skus);
         $metrics = [];
@@ -357,8 +356,8 @@ class AmazonInventorySyncService
             $live = [];
         }
 
-        // Local fallback only for confirmed zeros. A stale positive must not keep Amazon in stock
-        // after Shopify is already 0 and the Admin API missed the SKU.
+        // Local fallback for confirmed zeros when Admin missed the SKU.
+        // Positive CP Master Inv is restored later by applyListingsShopifyQtyForPush.
         $local = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
         foreach ($skus as $sku) {
             if ($this->resolveShopifyQty($live, $sku) !== null) {

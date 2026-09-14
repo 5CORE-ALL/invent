@@ -53,9 +53,11 @@ class AlibabaInventorySyncService
             $skus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
-        if ($exactShopifyQty) {
-            $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $skus);
-        }
+        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
+            $shopifyQty,
+            $skus,
+            $exactShopifyQty
+        );
         $metrics = AlibabaMetric::query()
             ->whereIn('sku', $skus)
             ->whereNotNull('product_id')

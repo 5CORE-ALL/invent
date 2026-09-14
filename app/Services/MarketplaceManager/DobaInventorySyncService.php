@@ -64,9 +64,11 @@ class DobaInventorySyncService
             $fetchSkus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
-        if ($exactShopifyQty) {
-            $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $fetchSkus);
-        }
+        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush(
+            $shopifyQty,
+            $fetchSkus,
+            $exactShopifyQty
+        );
 
         $products = DobaMetric::query()
             ->whereNotNull('sku')
