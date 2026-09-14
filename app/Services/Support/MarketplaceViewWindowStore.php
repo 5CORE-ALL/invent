@@ -42,10 +42,10 @@ class MarketplaceViewWindowStore
             return $row;
         });
         $safe('temu', function () use ($date) {
-            $row = $this->fromDailyColumn('temu_sku_daily_data', 'product_clicks', 'temu_metrics', 'product_clicks_l1', 'product_clicks_l7', $date, 'sku_daily_delta');
-            $this->applySkuWindows('temu2_metrics', 'product_clicks_l1', 'product_clicks_l7', $this->lastSkuWindows);
-
-            return $row;
+            return $this->fromDailyColumn('temu_sku_daily_data', 'product_clicks', 'temu_metrics', 'product_clicks_l1', 'product_clicks_l7', $date, 'sku_daily_delta');
+        });
+        $safe('temu2', function () use ($date) {
+            return $this->fromDailyJsonTemu2Views($date);
         });
         $safe('shopify', function () use ($date, $viewsApi) {
             $row = $this->storeShopifyWindows($date, $viewsApi);
@@ -100,6 +100,83 @@ class MarketplaceViewWindowStore
         $this->applySkuWindows($targetTable, $l1Col, $l7Col, $windows);
 
         return $this->sumWindows($windows, $source);
+    }
+
+    /**
+     * Temu 2 L1/L7 from temu_sku_daily_data.daily_data.temu2_product_clicks
+     * (Temu 1 product_clicks must not be copied onto temu2_metrics).
+     *
+     * @return array{l1: int, l7: int, source: string}
+     */
+    private function fromDailyJsonTemu2Views(string $date): array
+    {
+        $windows = $this->skuWindowsFromDailyJsonKeys(
+            'temu_sku_daily_data',
+            $date,
+            ['temu2_product_clicks', 'temu2_views']
+        );
+        $this->lastSkuWindows = $windows;
+        $this->applySkuWindows('temu2_metrics', 'product_clicks_l1', 'product_clicks_l7', $windows);
+
+        return $this->sumWindows($windows, 'sku_daily_delta');
+    }
+
+    /**
+     * @param  list<string>  $jsonKeys
+     * @return array<string, array{l1: int, l7: int}>
+     */
+    private function skuWindowsFromDailyJsonKeys(string $table, string $date, array $jsonKeys): array
+    {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'daily_data')) {
+            return [];
+        }
+
+        $start = Carbon::parse($date, self::TZ)->subDays(8)->toDateString();
+        $bySku = [];
+        foreach (DB::table($table)->where('record_date', '>=', $start)->where('record_date', '<=', $date)->orderBy('record_date')->get(['sku', 'record_date', 'daily_data']) as $row) {
+            $sku = strtoupper(trim((string) $row->sku));
+            if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            $decoded = is_string($row->daily_data)
+                ? (json_decode($row->daily_data, true) ?: [])
+                : (is_array($row->daily_data) ? $row->daily_data : []);
+            $views = 0;
+            foreach ($jsonKeys as $key) {
+                if (isset($decoded[$key]) && (int) $decoded[$key] > 0) {
+                    $views = (int) $decoded[$key];
+                    break;
+                }
+            }
+            $day = Carbon::parse($row->record_date)->toDateString();
+            $bySku[$sku][$day] = $views;
+        }
+
+        $windows = [];
+        $l7Start = Carbon::parse($date, self::TZ)->subDays(6)->toDateString();
+        $prev = Carbon::parse($date, self::TZ)->subDay()->toDateString();
+        foreach ($bySku as $sku => $days) {
+            ksort($days);
+            $keys = array_keys($days);
+            $deltas = [];
+            for ($i = 0; $i < count($keys); $i++) {
+                $dk = $keys[$i];
+                $deltas[$dk] = $i === 0 ? 0 : max(0, (int) $days[$dk] - (int) $days[$keys[$i - 1]]);
+            }
+            $l1 = (int) ($deltas[$date] ?? 0);
+            if ($l1 === 0 && isset($days[$date], $days[$prev])) {
+                $l1 = max(0, (int) $days[$date] - (int) $days[$prev]);
+            }
+            $l7 = 0;
+            foreach ($deltas as $d => $v) {
+                if ($d >= $l7Start && $d <= $date) {
+                    $l7 += $v;
+                }
+            }
+            $windows[$sku] = ['l1' => $l1, 'l7' => $l7];
+        }
+
+        return $windows;
     }
 
     /**
@@ -333,6 +410,7 @@ class MarketplaceViewWindowStore
             'shopify' => ['shopify', 'shopifyb2c'],
             'walmart' => ['walmart'],
             'temu' => ['temu'],
+            'temu2' => ['temu2', 'temutwo'],
             'amazon' => ['amazon'],
         ];
         $want = $aliases[preg_replace('/[^a-z0-9]/', '', strtolower($channel))] ?? [preg_replace('/[^a-z0-9]/', '', strtolower($channel))];

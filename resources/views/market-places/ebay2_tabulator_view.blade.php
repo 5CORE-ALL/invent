@@ -947,6 +947,9 @@
                     <button type="button" class="btn btn-sm btn-primary mb-2" id="sbid-slab-add-rule-btn">
                         <i class="fas fa-plus me-1"></i>Add rule / slab
                     </button>
+                    <div class="alert alert-info small py-2 mb-0">
+                        If <strong>E L30 (el30) = 0</strong>, the <strong>maximum S Bid %</strong> is always applied.
+                    </div>
                     <p class="small text-danger mb-0 mt-2 d-none" id="sbid-slab-rule-err"></p>
                 </div>
                 <div class="modal-footer py-2 d-flex justify-content-between">
@@ -1321,9 +1324,24 @@
             return true;
         }
 
+        function maxSbidFromSlabs(slabs) {
+            let max = 0;
+            (slabs || []).forEach(function(r) {
+                const bid = parseFloat(r.sbid);
+                if (isFinite(bid) && bid > max) max = bid;
+            });
+            return max;
+        }
+
         function getCombinedSbid(rowData) {
+            const el30 = parseFloat(rowData['eBay L30']) || 0;
             const l7Views = parseFloat(rowData.l7_views) || 0;
             const rules = currentSbidSlabRules || [];
+            if (el30 <= 0) {
+                const maxBid = maxSbidFromSlabs(rules);
+                if (maxBid > 0) return { bid: maxBid, color: '#0d6efd', skip: false, zeroSoldMax: true };
+                return { bid: 0, color: '#6c757d', skip: true };
+            }
             for (let i = 0; i < rules.length; i++) {
                 const r = rules[i];
                 if (sbidSlabInRange(l7Views, r.l7_views_min, r.l7_views_max)) {
@@ -4019,25 +4037,11 @@
                     },
 
                     {
-                        title: "S GPFT",
-                        field: "SGPFT",
-                        hozAlign: "center",
-                        headerTooltip: "S GPFT from S PRC (SPRICE), eBay 1 take-home formula.",
-                        formatter: function(cell) {
-                            const percent = ebay2ComputeSgpftFromSprice(cell.getRow().getData());
-                            if (percent === null || !isFinite(percent)) return '';
-
-                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        },
-                        width: 80
-                    },
-                    {
-                        title: "S GROI",
+                        title: "SGROI%",
                         field: "SGROI",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "S GROI from the visible S PRC. LMP cap (when SGROI at LMP ≥ 20%) can lower the shown %.",
+                        headerTooltip: "SGROI from the visible S PRC. LMP cap (when SGROI at LMP ≥ 20%) can lower the shown %.",
                         formatter: function(cell) {
                             const percent = ebay2ComputeSgroiFromSprice(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';
@@ -4048,7 +4052,7 @@
                         width: 80
                     },
                     {
-                        title: "SNROI",
+                        title: "SNROI%",
                         field: "SROI",
                         hozAlign: "center",
                         headerTooltip: "SNROI from S PRC using eBay 2 Ads%.",
@@ -4063,6 +4067,20 @@
                             if (percent === null || !isFinite(percent)) return '';
 
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "S GPFT",
+                        field: "SGPFT",
+                        hozAlign: "center",
+                        headerTooltip: "S GPFT from S PRC (SPRICE), eBay 1 take-home formula.",
+                        formatter: function(cell) {
+                            const percent = ebay2ComputeSgpftFromSprice(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '';
+
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 80
@@ -4203,7 +4221,7 @@
                         field: "s_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "View VS SBID slabs (For L7 Views). First matching slab wins.",
+                        headerTooltip: "View VS SBID slabs (For L7 Views). If E L30 = 0, maximum S Bid % is always applied. First matching slab wins otherwise.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
@@ -4213,7 +4231,8 @@
                                 return `<span class="text-muted" title="No matching Sbid Rule slab" style="font-size:11px;">—</span>`;
                             }
                             const color = res.bid > EBAY2_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
-                            return `<span title="Sbid Rule slab" style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>`;
+                            const title = res.zeroSoldMax ? 'E L30 = 0 → maximum S Bid %' : 'Sbid Rule slab';
+                            return `<span title="${title}" style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>`;
                         }
                     },
                     {
@@ -5275,8 +5294,8 @@
                 'nr_req': 'NR/REQ',
                 'SPRICE': 'SPRICE',
                 'SPFT': 'SNPFT',
-                'SGROI': 'S GROI',
-                'SROI': 'SNROI',
+                'SGROI': 'SGROI%',
+                'SROI': 'SNROI%',
                 'SGPFT': 'SGPFT',
                 'Listed': 'Listed',
                 'Live': 'Live',

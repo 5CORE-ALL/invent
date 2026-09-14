@@ -897,6 +897,7 @@
             }
         }
     </script>
+    @include('partials.clear-browser-cache-on-login')
     @auth
         @include('partials.user-incentives')
         @if(!empty($agent_update_available))

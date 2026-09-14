@@ -7,7 +7,8 @@
   Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
   eBay 1–3 / Shein: Dil below the first slab or above the last slab uses the nearest slab (Dil 0 and fast-seller Dil > last To).
   Temu 1 / New Temu One / New Temu Two: Temu L30 = 0 uses the minimum Target GROI (not the Dil-matching slab). Dil is still OV L30 ÷ INV. New Temu Two uses Temu 2 L30 and the same Temu Dil store.
-  eBay 1–3 CVR overlay is level-only (CVR < Down → −10 GROI; CVR > Up → +10 GROI). Temu 1–2 also use the overlay; Reverb / Faire / TikTok / Shopify B2C / Shein are level-only. Shein applies the overlay only when the SKU has views.
+  CVR overlay Count and Adj: Down = down-arrow CVR and CVR < threshold; Up = up-arrow CVR and CVR > threshold.
+  Horizontal / opposite-arrow rows are excluded. Shein applies the overlay only when the SKU has views.
   Macys: Dil-matching when MC L30 > 0. MC L30 = 0 (0 Sold) always uses the minimum Target GROI
   (not the Dil-matching slab). Dil is MC L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price,
   S PRC = A Price (do not keep a lower Dil/Std price). Out of box + sold uses Std Prc, then the same A Price floor.
@@ -283,7 +284,9 @@
                         </li>
                         @if(!empty($ebaySprcDilCvrGroiAdj))
                         <li>
-                            <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table:
+                            <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table
+                            (Down = down-arrow CVR and CVR &lt; threshold; Up = up-arrow CVR and CVR &gt; threshold;
+                            horizontal / opposite arrows are excluded):
                             apply that Adj {{ $ebaySprcDilTargetLabel }} to the Target {{ $ebaySprcDilTargetLabel }} (Count updates as you edit).
                         </li>
                         @endif
@@ -333,14 +336,13 @@
                         @endif
                         @if(!empty($ebaySprcDilCvrGroiAdj))
                         <li>
-                            <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table:
-                            apply that Adj {{ $ebaySprcDilTargetLabel }} to the Dil slab Target {{ $ebaySprcDilTargetLabel }}
-                            @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'shein'], true))
-                            from <strong>CVR% only</strong> (Down &lt; threshold decreases; Up &gt; threshold increases)
-                            @endif
+                            <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table
+                            (Down = down-arrow CVR and CVR &lt; threshold; Up = up-arrow CVR and CVR &gt; threshold;
+                            horizontal / opposite arrows are excluded)
                             @if($ebaySprcDilChannel === 'shein')
                             — only when the SKU has <strong>views</strong>
                             @endif
+                            : apply that Adj {{ $ebaySprcDilTargetLabel }} to the Dil slab Target {{ $ebaySprcDilTargetLabel }}
                             (Count updates as you edit).
                         </li>
                         @endif
@@ -424,7 +426,7 @@
                                     <th>When</th>
                                     <th class="text-center">CVR%</th>
                                     <th class="text-end">Adj {{ $ebaySprcDilTargetLabel }}</th>
-                                    <th class="text-center" style="width:80px;">Count</th>
+                                    <th class="text-center" style="width:80px;" title="Down: CVR &lt; threshold and down-arrow only (not up or horizontal). Up: CVR &gt; threshold and up-arrow only.">Count</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -798,18 +800,13 @@
             if (typeof chPromoCvr === 'function') return Number(chPromoCvr(d)) || 0;
             return Number(d && (d.SCVR != null ? d.SCVR : d.cvr_percent)) || 0;
         }
-        function ebayDgHasCvrPrior(d) {
-            if (!d) return false;
+        function ebayDgCvr60(d) {
+            if (!d) return 0;
             const raw = (d.CVR_60 != null && d.CVR_60 !== '') ? d.CVR_60
                 : ((d.cvr_60 != null && d.cvr_60 !== '') ? d.cvr_60
                     : ((d.CVR_45 != null && d.CVR_45 !== '') ? d.CVR_45
                         : d.cvr_45));
-            if (raw == null || raw === '') return false;
-            const n = Number(raw);
-            return isFinite(n) && n > 0;
-        }
-        function ebayDgCvr60(d) {
-            return Number(d && (d.CVR_60 != null ? d.CVR_60 : d.cvr_60)) || 0;
+            return Number(raw) || 0;
         }
         function ebayDgCvrTrend(d) {
             const cvr = ebayDgCvr30(d);
@@ -829,19 +826,6 @@
         function ebayDgViews(d) {
             return Number(d && (d.views != null ? d.views : d.Views)) || 0;
         }
-        function ebayDgUsesCvrLevelOnly() {
-            return EBAY_DIL_GROI_CHANNEL === 'ebay1'
-                || EBAY_DIL_GROI_CHANNEL === 'ebay2'
-                || EBAY_DIL_GROI_CHANNEL === 'ebay2op'
-                || EBAY_DIL_GROI_CHANNEL === 'ebay3'
-                || EBAY_DIL_GROI_CHANNEL === 'reverb'
-                || EBAY_DIL_GROI_CHANNEL === 'faire'
-                || EBAY_DIL_GROI_CHANNEL === 'tiktok'
-                || EBAY_DIL_GROI_CHANNEL === 'tiktok2'
-                || EBAY_DIL_GROI_CHANNEL === 'shopify_b2c'
-                || EBAY_DIL_GROI_CHANNEL === 'shopify_b2b'
-                || EBAY_DIL_GROI_CHANNEL === 'shein';
-        }
         function ebayDgClampsDilToNearestSlab() {
             return !!EBAY_DIL_GROI_CLAMP_NEAREST
                 || EBAY_DIL_GROI_CHANNEL === 'ebay1'
@@ -855,11 +839,6 @@
             if (ebayDgIsShein() && !(ebayDgViews(d) > 0)) return 0;
             const cvr = ebayDgCvr30(d);
             const cfg = ebayCvrGroiAdjNow();
-            if (ebayDgUsesCvrLevelOnly() || !ebayDgHasCvrPrior(d)) {
-                if (cvr < cfg.down_lt) return cfg.down_adj;
-                if (cvr > cfg.up_gt) return cfg.up_adj;
-                return 0;
-            }
             const trend = ebayDgCvrTrend(d);
             if (trend === 'down' && cvr < cfg.down_lt) return cfg.down_adj;
             if (trend === 'up' && cvr > cfg.up_gt) return cfg.up_adj;
@@ -1159,8 +1138,8 @@
                 const sign = meta.cvrAdj > 0 ? '+' : '';
                 const cfg = ebayCvrGroiAdjNow();
                 const why = meta.cvrAdj > 0
-                    ? ('CVR Up > ' + cfg.up_gt + '%')
-                    : ('CVR Down < ' + cfg.down_lt + '%');
+                    ? ('CVR Up > ' + cfg.up_gt + '% and up arrow')
+                    : ('CVR Down < ' + cfg.down_lt + '% and down arrow');
                 tip += ' ' + sign + meta.cvrAdj + ' (' + why + ') → ' + meta.groi + '%';
             }
             return tip + (meta.lmpCapped ? ' → LMP $' : ' → $') + Number(meta.sprc).toFixed(2);
@@ -1224,10 +1203,13 @@
         function ebayDilGroiCollectCvrAdjCounts() {
             const counts = { down: 0, up: 0 };
             if (!EBAY_DIL_GROI_CVR_ADJ) return counts;
+            const cfg = ebayCvrGroiAdjNow();
             ebayDgEachInvChild(function(d) {
-                const adj = ebayDilGroiCvrAdj(d);
-                if (adj < 0) counts.down++;
-                else if (adj > 0) counts.up++;
+                if (ebayDgIsShein() && !(ebayDgViews(d) > 0)) return;
+                const cvr = ebayDgCvr30(d);
+                const trend = ebayDgCvrTrend(d);
+                if (trend === 'down' && cvr < cfg.down_lt) counts.down++;
+                else if (trend === 'up' && cvr > cfg.up_gt) counts.up++;
             });
             return counts;
         }

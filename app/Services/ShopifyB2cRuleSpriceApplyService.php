@@ -285,7 +285,12 @@ class ShopifyB2cRuleSpriceApplyService
                 ? AmazonDilGroiRule::minTarget($dilRules)
                 : AmazonDilGroiRule::groiForDil($dil, $dilRules);
             if ($target !== null && $lp > 0 && $margin > 0) {
-                $target = AmazonDilGroiRule::adjustGroiForCvrLevel($target, $cvr, $cvrAdj);
+                $target = AmazonDilGroiRule::adjustGroiForCvrArrow(
+                    $target,
+                    $cvr,
+                    (float) ($row['cvr_60'] ?? 0),
+                    $cvrAdj
+                );
                 $raw = AmazonDilGroiRule::suggestedPrice($lp, $ship, $target, $adsPct, $margin);
                 $sprice = ($raw !== null && $raw >= 0.01) ? round($raw, 2) : 0.0;
             } elseif (! $zeroSold) {

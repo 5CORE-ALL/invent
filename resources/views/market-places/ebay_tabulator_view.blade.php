@@ -1229,6 +1229,9 @@
                     <button type="button" class="btn btn-sm btn-primary mb-2" id="sbid-slab-add-rule-btn">
                         <i class="fas fa-plus me-1"></i>Add rule / slab
                     </button>
+                    <div class="alert alert-info small py-2 mb-0">
+                        If <strong>E L30 (el30) = 0</strong>, the <strong>maximum S Bid %</strong> is always applied.
+                    </div>
 
                     <p class="small text-danger mb-0 mt-2 d-none" id="sbid-slab-rule-err"></p>
                 </div>
@@ -2314,9 +2317,24 @@
             return true;
         }
 
+        function maxSbidFromSlabs(slabs) {
+            let max = 0;
+            (slabs || []).forEach(function(r) {
+                const bid = parseFloat(r.sbid);
+                if (isFinite(bid) && bid > max) max = bid;
+            });
+            return max;
+        }
+
         function getCombinedSbid(rowData) {
+            const el30 = parseFloat(rowData['eBay L30']) || 0;
             const l7Views = parseFloat(rowData.l7_views) || 0;
             const rules = currentSbidSlabRules || [];
+            if (el30 <= 0) {
+                const maxBid = maxSbidFromSlabs(rules);
+                if (maxBid > 0) return { bid: maxBid, color: '#0d6efd', skip: false, zeroSoldMax: true };
+                return { bid: 0, color: '#6c757d', skip: true };
+            }
             for (let i = 0; i < rules.length; i++) {
                 const r = rules[i];
                 if (sbidSlabInRange(l7Views, r.l7_views_min, r.l7_views_max)) {
@@ -5019,7 +5037,7 @@
                         field: "ca_suggested_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "View VS SBID slabs (For L7 Views). Red if S BID > Ads% badge, otherwise green.",
+                        headerTooltip: "View VS SBID slabs (For L7 Views). If E L30 = 0, maximum S Bid % is always applied. Red if S BID > Ads% badge, otherwise green.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
@@ -5029,7 +5047,8 @@
                                 return `<span class="text-muted" title="No matching View VS SBID slab" style="font-size:11px;">—</span>`;
                             }
                             const color = res.bid > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
-                            return `<span title="View VS SBID slab" style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>`;
+                            const title = res.zeroSoldMax ? 'E L30 = 0 → maximum S Bid %' : 'View VS SBID slab';
+                            return `<span title="${title}" style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>`;
                         }
                     },
                     {

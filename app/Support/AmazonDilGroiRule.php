@@ -426,8 +426,20 @@ class AmazonDilGroiRule
     }
 
     /**
-     * Level-only overlay (Reverb / Faire / TikTok / Shopify B2C): no prior-period CVR.
-     * CVR &lt; down_lt → down_adj; CVR &gt; up_gt → up_adj.
+     * Overlay using the same arrow as the CVR column (L30 vs prior, ±0.1).
+     * Down-arrow and CVR &lt; down_lt → down_adj; up-arrow and CVR &gt; up_gt → up_adj.
+     * Horizontal / opposite arrows are excluded.
+     *
+     * @param  array<string, mixed>|null  $cvrAdj
+     */
+    public static function adjustGroiForCvrArrow(float $groi, float $cvrL30, float $cvrPrior, ?array $cvrAdj = null): float
+    {
+        return self::adjustGroiForCvr($groi, $cvrL30, self::cvrTrend($cvrL30, $cvrPrior), $cvrAdj);
+    }
+
+    /**
+     * Level-only overlay (no prior-period CVR). Prefer adjustGroiForCvrArrow()
+     * so Count / Adj match the down / up / horizontal arrow.
      *
      * @param  array<string, mixed>|null  $cvrAdj
      */

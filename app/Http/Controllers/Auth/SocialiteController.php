@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Helpers\PermissionHelper;
 use App\Models\User;
 use App\Providers\RouteServiceProvider;
+use App\Support\LoginCacheClearer;
 use Auth;
 use Exception;
 use Illuminate\Http\RedirectResponse;
@@ -58,7 +59,9 @@ class SocialiteController extends Controller
                     return $desktop;
                 }
 
-                return redirect()->intended(RouteServiceProvider::HOME);
+                return LoginCacheClearer::noCacheRedirect(
+                    redirect()->intended(RouteServiceProvider::HOME)
+                );
             }
 
             $given = $googleUser->user['given_name'] ?? '';
@@ -84,7 +87,9 @@ class SocialiteController extends Controller
                 return $desktop;
             }
 
-            return redirect()->intended(RouteServiceProvider::HOME);
+            return LoginCacheClearer::noCacheRedirect(
+                redirect()->intended(RouteServiceProvider::HOME)
+            );
         } catch (Exception $e) {
             Log::error('Google Auth Error: '.$e->getMessage());
 

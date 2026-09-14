@@ -8,6 +8,7 @@ use App\Models\EbayMetric;
 use App\Services\EbayChannelMetricsService;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use App\Support\Marketplace\EbayListingEnded;
+use App\Support\SbidSlabRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -348,15 +349,10 @@ class EbayCampaignAdsController extends Controller
         ]);
     }
 
-    /** Resolve S Bid from View VS SBID slabs (first matching L7 Views range wins). */
+    /** Resolve S Bid from View VS SBID slabs (el30 = 0 → max S Bid %; else first matching L7 Views range). */
     private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, float $l7Views, array $slabs): float
     {
-        foreach ($slabs as $s) {
-            if ($this->slabInRange($l7Views, $s['l7_views_min'] ?? null, $s['l7_views_max'] ?? null)) {
-                return (float) ($s['sbid'] ?? 0);
-            }
-        }
-        return 0.0;
+        return SbidSlabRule::resolve($esold, $l7Views, $slabs);
     }
 
     private function slabInRange(float $val, $min, $max): bool

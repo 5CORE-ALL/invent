@@ -60,6 +60,7 @@
     @yield('script-after-vite')
 
     @include('components.ai-chat-widget')
+    @include('partials.clear-browser-cache-on-login')
     @auth
         @if(!empty($agent_update_available))
             @include('partials.attendance-agent-update-modal')

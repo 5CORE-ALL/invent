@@ -147,7 +147,14 @@ class YesterdayViewsService
             }
         }
 
-        // Temu 2 L30 page uses temu2_view_data.product_clicks, not the thinner metrics L30.
+        // Temu / Temu 2 L30 pages use sheet product_clicks, not the thinner metrics L30.
+        if (Schema::hasTable('temu_view_data') && Schema::hasColumn('temu_view_data', 'product_clicks')) {
+            $clicks = (int) DB::table('temu_view_data')->sum('product_clicks');
+            $est = (int) round($clicks / 30);
+            if ($est > ($map['temu'] ?? 0)) {
+                $map['temu'] = $est;
+            }
+        }
         if (Schema::hasTable('temu2_view_data') && Schema::hasColumn('temu2_view_data', 'product_clicks')) {
             $clicks = (int) DB::table('temu2_view_data')->sum('product_clicks');
             $est = (int) round($clicks / 30);
@@ -510,6 +517,7 @@ class YesterdayViewsService
             'ebaytwo', 'ebay2' => 'ebay2',
             'ebaythree', 'ebay3' => 'ebay3',
             'shopifyb2c', 'shopify' => 'shopify',
+            'temutwo', 'temu2' => 'temu2',
             default => $k,
         };
     }

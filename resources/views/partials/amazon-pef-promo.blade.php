@@ -694,7 +694,9 @@
                             using Channel Master Ads%: (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100).
                         </li>
                         <li>
-                            <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table:
+                            <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table
+                            (Down = down-arrow CVR and CVR &lt; threshold; Up = up-arrow CVR and CVR &gt; threshold;
+                            horizontal / opposite arrows are excluded):
                             apply that Adj NROI to the Dil slab Target NROI (Count updates as you edit).
                         </li>
                         <li>
@@ -738,7 +740,7 @@
                                     <th>When</th>
                                     <th class="text-center">CVR%</th>
                                     <th class="text-end">Adj NROI</th>
-                                    <th class="text-center" style="width:80px;">Count</th>
+                                    <th class="text-center" style="width:80px;" title="Down: CVR &lt; threshold and down-arrow only (not up or horizontal). Up: CVR &gt; threshold and up-arrow only.">Count</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1402,10 +1404,12 @@
         }
         function amzDilGroiCollectCvrAdjCounts() {
             const counts = { down: 0, up: 0 };
+            const cfg = amzCvrGroiAdjNow();
             amzDgEachInvChild(function(d) {
-                const adj = amzDilGroiCvrAdj(d);
-                if (adj < 0) counts.down++;
-                else if (adj > 0) counts.up++;
+                const cvr = amzPefCvrL30Live(d);
+                const trend = amzPefCvrTrend(d);
+                if (trend === 'down' && cvr < cfg.down_lt) counts.down++;
+                else if (trend === 'up' && cvr > cfg.up_gt) counts.up++;
             });
             return counts;
         }
@@ -2684,7 +2688,7 @@
                     const cfg = amzCvrGroiAdjNow();
                     const why = plan.dilGroiCvrAdj > 0
                         ? ('CVR Up > ' + cfg.up_gt + '%')
-                        : ('CVR Down < ' + cfg.down_lt + '%');
+                        : ('CVR Down < ' + cfg.down_lt + '% and down arrow');
                     groiNote = 'Sprc Dil NROI ' + (plan.dilGroiSlabGroi != null ? plan.dilGroiSlabGroi : '') + '%'
                         + ' ' + sign + plan.dilGroiCvrAdj + ' (' + why + ') → '
                         + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%';

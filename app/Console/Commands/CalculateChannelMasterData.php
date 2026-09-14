@@ -321,7 +321,7 @@ class CalculateChannelMasterData extends Command
      */
     private function stabilizeChannelViews(string $channelKey, float $candidateViews, float $candidateQty): float
     {
-        if (in_array($channelKey, ['temu', 'temu2', 'temu3', 'temuthree'], true)) {
+        if (in_array($channelKey, ['temu', 'temu2', 'temutwo', 'temu3', 'temuthree'], true)) {
             return $candidateViews;
         }
 
@@ -347,6 +347,7 @@ class CalculateChannelMasterData extends Command
             'inventory_value_amazon' => $response['inventory_value_amazon'] ?? 0,
             'inv_at_lp' => $response['inv_at_lp'] ?? 0,
             'inv_at_sp' => $response['inv_at_sp'] ?? 0,
+            'inv_metrics_version' => $response['inv_metrics_version'] ?? 2,
             'shopify_inv_sum' => $response['shopify_inv_sum'] ?? 0,
             'shopify_weighted_avg_lp' => $response['shopify_weighted_avg_lp'] ?? 0,
             'inventory_pies' => $response['inventory_pies'] ?? [],

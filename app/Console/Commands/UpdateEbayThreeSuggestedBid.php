@@ -8,6 +8,7 @@ use App\Models\Ebay3GeneralReport;
 use App\Models\Ebay3Metric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Support\SbidSlabRule;
 use App\Services\CronMonitor\CronExecutionContext;
 use Exception;
 use GuzzleHttp\Client;
@@ -439,12 +440,7 @@ class UpdateEbayThreeSuggestedBid extends Command
 
     private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, float $l7Views, array $slabs): float
     {
-        foreach ($slabs as $s) {
-            if ($this->slabInRange($l7Views, $s['l7_views_min'] ?? null, $s['l7_views_max'] ?? null)) {
-                return (float) ($s['sbid'] ?? 0);
-            }
-        }
-        return 0.0;
+        return SbidSlabRule::resolve($esold, $l7Views, $slabs);
     }
 
     private function slabInRange(float $val, $min, $max): bool

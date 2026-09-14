@@ -229,9 +229,10 @@ class EbayRuleSpriceApplyService
             return null;
         }
 
-        $target = AmazonDilGroiRule::adjustGroiForCvrLevel(
+        $target = AmazonDilGroiRule::adjustGroiForCvrArrow(
             (float) ($rule['nroi'] ?? $rule['groi']),
             (float) ($row['cvr'] ?? 0),
+            (float) ($row['cvr_60'] ?? 0),
             $cvrAdj
         );
         $ship = (float) ($row['ship'] ?? 0);
@@ -371,6 +372,7 @@ class EbayRuleSpriceApplyService
             $itemId = trim((string) ($metric->item_id ?? ''));
             $views = (float) ($metric->views ?? 0);
             $ebayL30 = (float) ($metric->ebay_l30 ?? 0);
+            $ebayL60 = (float) ($metric->ebay_l60 ?? 0);
             $lmpRow = [];
             EbaySkuCompetitor::applyToRow($lmpRow, $sku, $lmpLowest, $lmpDetails);
 
@@ -384,6 +386,7 @@ class EbayRuleSpriceApplyService
                 'lp' => $lpShip['lp'],
                 'ship' => $lpShip['ship'],
                 'cvr' => $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0.0,
+                'cvr_60' => $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0.0,
                 'lmp' => (float) ($lmpRow['lmp_price'] ?? 0),
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
                 'pushed_sprice' => $pushedBySku[$sku] ?? 0.0,

@@ -5,11 +5,10 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Providers\RouteServiceProvider;
+use App\Support\LoginCacheClearer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cookie;
-use Illuminate\Support\Facades\Cache;
-use App\Models\Permission;
 use App\Helpers\PermissionHelper;
 
 class AuthenticatedSessionController extends Controller
@@ -42,7 +41,9 @@ class AuthenticatedSessionController extends Controller
         
         PermissionHelper::cacheUserPermissions($user->id);
 
-        return redirect()->intended(RouteServiceProvider::HOME);
+        return LoginCacheClearer::noCacheRedirect(
+            redirect()->intended(RouteServiceProvider::HOME)
+        );
     }
 
     /**

@@ -226,14 +226,7 @@ class NewTemuoneSuggestedPriceStore
             }
             $slabGroi = (float) $rule['groi'];
         }
-        $groi = $cvrPrior > 0
-            ? AmazonDilGroiRule::adjustGroiForCvr(
-                $slabGroi,
-                $cvr,
-                AmazonDilGroiRule::cvrTrend($cvr, $cvrPrior),
-                $cvrAdj
-            )
-            : AmazonDilGroiRule::adjustGroiForCvrLevel($slabGroi, $cvr, $cvrAdj);
+        $groi = AmazonDilGroiRule::adjustGroiForCvrArrow($slabGroi, $cvr, $cvrPrior, $cvrAdj);
 
         return is_finite($groi) ? (float) $groi : null;
     }

@@ -132,6 +132,7 @@ use App\Models\AmazonListingStatus;
 use App\Models\EbayListingStatus;
 use App\Models\TemuListingStatus;
 use App\Services\EbayChannelMetricsService;
+use App\Services\LmpSkuGroupService;
 use App\Services\SheinShopifySalesService;
 use App\Services\TemuShopifySalesService;
 use App\Models\BestbuyUSAListingStatus;
@@ -153,6 +154,12 @@ class ChannelMasterController extends Controller
 
     /** @var array<string, float|null> */
     private static array $pacificDayYSalesCache = [];
+
+    /** Bump when Inv / Inv@SP / Inv@LP formulas change so stale cache is recomputed. */
+    private const INV_METRICS_VERSION = 2;
+
+    /** @var array<string, mixed>|null */
+    private ?array $shopifyInvLpMetricsCache = null;
 
     public function __construct(ApiController $apiController)
     {
@@ -2000,6 +2007,7 @@ class ChannelMasterController extends Controller
             // Temu 2 GPFT / GROI from /temu2-tabulator (base_price_total + R Price GPFT$).
             $rows = $this->overlayLiveTemuSalesOnChannelRows($rows);
             $rows = $this->overlayLiveTemu2AdsOnChannelRows($rows);
+            $rows = $this->overlayLiveTemuViewsOnChannelRows($rows);
         } catch (\Throwable $e) {
             Log::warning('Fast-path Temu overlay failed: '.$e->getMessage());
         }
@@ -2172,27 +2180,38 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Active Channel Temu 2 views + listing CVR — same as /temu2-decrease badge.
+     * Active Channel Temu / Temu 2 / Temu 3 views + listing CVR — same as pricing-page badges.
+     * Also writes today's ChannelMasterSummary so Views history is recorded.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
-    private function overlayLiveTemu2ViewsOnChannelRows(array $rows): array
+    private function overlayLiveTemuViewsOnChannelRows(array $rows): array
     {
-        $snap = null;
+        $snaps = [];
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if ($name !== 'Temu 2') {
+            if (! in_array($name, ['Temu', 'Temu 2', 'Temu 3', 'Temu3'], true)) {
                 continue;
             }
-            $snap ??= $this->computeTemu2ViewsLikeTemu2DecreasePage();
-            if (empty($snap['ok'])) {
-                break;
+            $key = $this->temuMasterChannelKey($name);
+            $snaps[$key] ??= $this->computeTemuViewsForMasterChannel($key);
+            if (! empty($snaps[$key]['ok'])) {
+                $row['Total Views'] = $snaps[$key]['total_views'];
+                $row['CVR'] = $snaps[$key]['cvr_pct'];
+                $this->persistTemuViewsCvrToCalculatedData($name, $key, $snaps[$key]);
             }
-            $row['Total Views'] = $snap['total_views'];
-            $row['CVR'] = $snap['cvr_pct'];
-            $this->persistTemu2ViewsCvrToCalculatedData($snap);
-            break;
+            $views = (int) ($row['Total Views'] ?? 0);
+            if ($views <= 0 && empty($snaps[$key]['ok'])) {
+                continue;
+            }
+            $this->syncLiveMapMissViewsToChannelHistory($key, $name, [
+                'map' => (int) ($row['Map'] ?? 0),
+                'miss' => (int) ($row['Miss'] ?? 0),
+                'nmap' => (int) ($row['NMap'] ?? 0),
+                'total_views' => ! empty($snaps[$key]['ok']) ? $snaps[$key]['total_views'] : $views,
+                'cvr_pct' => $row['CVR'] ?? ($snaps[$key]['cvr_pct'] ?? null),
+            ]);
         }
         unset($row);
 
@@ -2200,24 +2219,62 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * @deprecated Use overlayLiveTemuViewsOnChannelRows
+     */
+    private function overlayLiveTemu2ViewsOnChannelRows(array $rows): array
+    {
+        return $this->overlayLiveTemuViewsOnChannelRows($rows);
+    }
+
+    private function temuViewsSkipStabilize(string $channelKey): bool
+    {
+        $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channelKey)));
+
+        return in_array($key, ['temu', 'temu2', 'temutwo', 'temu3', 'temuthree'], true);
+    }
+
+    /**
      * @param  array{ok?: bool, total_views?: int, cvr_pct?: float}  $snap
      */
-    private function persistTemu2ViewsCvrToCalculatedData(array $snap): void
+    private function persistTemuViewsCvrToCalculatedData(string $displayName, string $channelKey, array $snap): void
     {
         if (empty($snap['ok']) || ! Schema::hasTable('channel_master_calculated_data')) {
             return;
         }
 
         try {
+            $names = array_values(array_unique(array_filter([
+                $displayName,
+                $channelKey,
+                match ($channelKey) {
+                    'temu2' => 'Temu 2',
+                    'temu3' => 'Temu 3',
+                    default => 'Temu',
+                },
+            ])));
             \App\Models\ChannelMasterCalculatedData::query()
-                ->whereIn('channel', ['Temu 2', 'Temu2', 'temu2'])
+                ->where(function ($q) use ($names, $channelKey) {
+                    $q->whereIn('channel', $names)
+                        ->orWhereRaw(
+                            'LOWER(REPLACE(REPLACE(REPLACE(REPLACE(channel, " ", ""), "-", ""), "&", ""), "/", "")) = ?',
+                            [$channelKey]
+                        );
+                })
                 ->update([
                     'total_views' => (int) ($snap['total_views'] ?? 0),
                     'listing_cvr' => $snap['cvr_pct'] ?? 0,
                 ]);
         } catch (\Throwable $e) {
-            Log::warning('Persist Temu 2 views/CVR failed: '.$e->getMessage());
+            Log::warning('Persist Temu views/CVR failed: '.$e->getMessage(), ['channel' => $channelKey]);
         }
+    }
+
+    /**
+     * @param  array{ok?: bool, total_views?: int, cvr_pct?: float}  $snap
+     */
+    private function persistTemu2ViewsCvrToCalculatedData(array $snap): void
+    {
+        $this->persistTemuViewsCvrToCalculatedData('Temu 2', 'temu2', $snap);
     }
 
     /**
@@ -3786,10 +3843,11 @@ class ChannelMasterController extends Controller
                 $row['CVR'] = $viewsForCvr > 0 ? round(($qty / $viewsForCvr) * 100, 2) : 0.0;
             }
 
-            // EbayTwo views chart was reading a stale ChannelMasterSummary total_views
-            // while the column uses this live overlay — keep history + cache in sync.
-            $historyKey = strtolower(str_replace([' ', '-', '&', '/'], '', $name));
-            if (in_array($historyKey, ['amazon', 'ebaytwo', 'aliexpress', 'shein'], true) && array_key_exists('total_views', $counts)) {
+            // Live Views overlay must also write ChannelMasterSummary or the
+            // Views chart stays empty. Temu / Temu 2 use sheet views (no ViewsGuard).
+            $historyKey = $this->allMarketplaceSnapshotKey($name);
+            if (in_array($historyKey, ['amazon', 'ebaytwo', 'aliexpress', 'shein', 'temu', 'temu2', 'temu3'], true)
+                && array_key_exists('total_views', $counts)) {
                 $this->syncLiveMapMissViewsToChannelHistory($historyKey, $name, $counts);
             }
         }
@@ -3855,38 +3913,71 @@ class ChannelMasterController extends Controller
     {
         try {
             $today = now('America/Los_Angeles')->toDateString();
+            $lookupKeys = $this->allMarketplaceSnapshotLookupKeys($channelKey);
 
-            $existing = \App\Models\ChannelMasterSummary::where('channel', $channelKey)
+            $existing = \App\Models\ChannelMasterSummary::whereIn('channel', $lookupKeys)
                 ->whereDate('snapshot_date', $today)
                 ->first();
+            $createdToday = false;
             if (! $existing) {
-                $existing = \App\Models\ChannelMasterSummary::where('channel', $channelKey)
+                $latest = \App\Models\ChannelMasterSummary::whereIn('channel', $lookupKeys)
                     ->orderByDesc('snapshot_date')
                     ->first();
+                if ($this->temuViewsSkipStabilize($channelKey)) {
+                    $seed = $latest
+                        ? \App\Models\ChannelMasterSummary::decodeSummaryData($latest->summary_data ?? [])
+                        : [];
+                    unset($seed['seeded_from_snapshot'], $seed['y_sales']);
+                    $seed['calculated_at'] = now()->toDateTimeString();
+                    $existing = \App\Models\ChannelMasterSummary::updateOrCreate(
+                        [
+                            'channel' => $channelKey,
+                            'snapshot_date' => $today,
+                        ],
+                        [
+                            'summary_data' => $seed,
+                            'notes' => 'Auto-saved channel master snapshot',
+                        ]
+                    );
+                    $createdToday = true;
+                } else {
+                    $existing = $latest;
+                }
             }
             if (! $existing) {
                 return;
             }
 
             $summary = is_array($existing->summary_data) ? $existing->summary_data : [];
-            $summary['miss_count'] = (int) ($counts['miss'] ?? 0);
-            $summary['map_count'] = (int) ($counts['map'] ?? 0);
-            $summary['nmap_count'] = (int) ($counts['nmap'] ?? 0);
+            $summary['miss_count'] = (int) ($counts['miss'] ?? $summary['miss_count'] ?? 0);
+            $summary['map_count'] = (int) ($counts['map'] ?? $summary['map_count'] ?? 0);
+            $summary['nmap_count'] = (int) ($counts['nmap'] ?? $summary['nmap_count'] ?? 0);
             $qtyForViews = (float) ($summary['total_quantity'] ?? $summary['l30_orders'] ?? 0);
-            $summary['total_views'] = ChannelMasterViewsGuard::stabilize(
-                $channelKey,
-                (float) ($counts['total_views'] ?? 0),
-                $qtyForViews,
-                $today
-            );
+            $liveViews = (float) ($counts['total_views'] ?? 0);
+            $summary['total_views'] = $this->temuViewsSkipStabilize($channelKey)
+                ? $liveViews
+                : ChannelMasterViewsGuard::stabilize($channelKey, $liveViews, $qtyForViews, $today);
             if (array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null) {
                 $summary['listing_cvr'] = round((float) $counts['cvr_pct'], 2);
             }
             $summary['map_miss_updated_at'] = now()->toDateTimeString();
+            $summary['calculated_at'] = now()->toDateTimeString();
+            if (! array_key_exists('l30_sales', $summary)) {
+                $summary['l30_sales'] = 0;
+            }
+            unset($summary['seeded_from_snapshot']);
 
             $existing->summary_data = $summary;
-            $existing->notes = 'Map/Miss/Views synced from all-marketplace-master live overlay';
+            if ($createdToday || $this->temuViewsSkipStabilize($channelKey)
+                || stripos((string) $existing->notes, 'Listing') !== false
+                || stripos((string) $existing->notes, 'Merged') !== false) {
+                $existing->notes = 'Auto-saved channel master snapshot';
+            }
             $existing->save();
+
+            foreach ([0, 1, 7] as $dotWindow) {
+                \Cache::forget($this->channelMetricDotTrendsCacheKey($dotWindow));
+            }
 
             if (Schema::hasTable('channel_master_calculated_data')) {
                 $calcUpdate = [
@@ -4403,11 +4494,16 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Sum of (inventory * Amazon price) across all SKUs for the INV Val badge.
-     * Uses product_stock_mappings.inventory_amazon and amazon_datsheets.price.
+     * inv badge: same Active Shopify units as Inv@LP / Inv@SP × Amazon live price.
+     * Falls back to Amazon warehouse qty × datasheet price when Shopify metrics are empty.
      */
     private function getInventoryValueAmazon(): float
     {
+        $fromShopify = (float) ($this->getShopifyInvLpMetrics()['inv_at_amz'] ?? 0);
+        if ($fromShopify > 0) {
+            return $fromShopify;
+        }
+
         $total = DB::table('product_stock_mappings as psm')
             ->join('amazon_datsheets as ad', DB::raw('TRIM(UPPER(psm.sku))'), '=', DB::raw('TRIM(UPPER(ad.sku))'))
             ->whereNotNull('psm.sku')
@@ -4419,18 +4515,24 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Shopify inventory + LP from product_master Values JSON (same matching as Inv@LP).
-     * Only includes ACTIVE status SKUs from product_master.
+     * Shopify inventory + LP / SP from product_master Values JSON.
+     * Active SKUs only. Each Shopify inventory row is counted once.
+     * Inv@SP uses amazon_data_view.STANDARD_PRICE (Sku Link LMP siblings), then live Amazon price.
      *
-     * @return array{inv_sum: float, inv_at_lp: float, inv_at_sp: float, weighted_avg_lp: float, dil_bands: array<string, array{count: int, units: float, inv_at_lp: float, inv_at_sp: float}>}
+     * @return array{inv_sum: float, inv_at_lp: float, inv_at_sp: float, inv_at_amz: float, weighted_avg_lp: float, dil_bands: array<string, array{count: int, units: float, inv_at_lp: float, inv_at_sp: float}>}
      */
     private function getShopifyInvLpMetrics(): array
     {
+        if ($this->shopifyInvLpMetricsCache !== null) {
+            return $this->shopifyInvLpMetricsCache;
+        }
+
         $emptyBands = $this->emptyInvDilBands();
         $empty = [
             'inv_sum' => 0.0,
             'inv_at_lp' => 0.0,
             'inv_at_sp' => 0.0,
+            'inv_at_amz' => 0.0,
             'weighted_avg_lp' => 0.0,
             'dil_bands' => $emptyBands,
         ];
@@ -4440,41 +4542,35 @@ class ChannelMasterController extends Controller
             return strtolower(ProductMaster::statusValueFromValues($pm->Values ?? [])) === 'active';
         });
         if ($productMasters->isEmpty()) {
-            return $empty;
+            return $this->shopifyInvLpMetricsCache = $empty;
         }
 
         $activeSkus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
         $shopifyByPmSku = ShopifySku::mapByProductSkus($activeSkus);
         if ($shopifyByPmSku->isEmpty()) {
-            return $empty;
+            return $this->shopifyInvLpMetricsCache = $empty;
         }
 
         $pmBySku = $productMasters->keyBy(function ($item) {
             return strtoupper(trim((string) $item->sku));
         });
 
-        $stdByNorm = [];
+        $stdByKey = $this->amazonStandardPriceLookupMap();
+        $amzLiveByKey = $this->amazonLivePriceLookupMap();
+        $lmp = null;
         try {
-            foreach (AmazonDataView::whereIn('sku', $activeSkus)->get(['sku', 'value']) as $adv) {
-                $val = is_array($adv->value)
-                    ? $adv->value
-                    : (json_decode((string) ($adv->value ?? ''), true) ?: []);
-                $std = $val['STANDARD_PRICE'] ?? $val['standard_price'] ?? null;
-                if (is_numeric($std) && (float) $std > 0) {
-                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $adv->sku);
-                    if ($norm !== '') {
-                        $stdByNorm[$norm] = (float) $std;
-                    }
-                }
-            }
+            $lmp = app(LmpSkuGroupService::class);
+            $lmp->prepareForSkus($activeSkus);
         } catch (\Throwable $e) {
-            Log::warning('Inv@SP standard price lookup failed: '.$e->getMessage());
+            Log::warning('Inv@SP LMP group lookup failed: '.$e->getMessage());
         }
 
         $invSum = 0.0;
         $invAtLp = 0.0;
         $invAtSp = 0.0;
+        $invAtAmz = 0.0;
         $dilBands = $emptyBands;
+        $seenShopify = [];
         foreach ($shopifyByPmSku as $pmSku => $row) {
             if (stripos((string) $pmSku, 'PARENT') !== false) {
                 continue;
@@ -4488,6 +4584,14 @@ class ChannelMasterController extends Controller
                 continue;
             }
 
+            $dedupeKey = isset($row->id)
+                ? 'id:'.$row->id
+                : 'sku:'.ShopifySku::normalizeSkuForShopifyLookup((string) ($row->sku ?? $pmSku));
+            if ($dedupeKey !== '' && isset($seenShopify[$dedupeKey])) {
+                continue;
+            }
+            $seenShopify[$dedupeKey] = true;
+
             $invSum += $inv;
             $pm = $pmBySku->get(strtoupper(trim((string) $pmSku)));
             $lp = 0.0;
@@ -4495,11 +4599,14 @@ class ChannelMasterController extends Controller
                 $values = is_array($pm->Values ?? null) ? $pm->Values : (is_string($pm->Values ?? null) ? json_decode($pm->Values, true) : []);
                 $lp = isset($values['lp']) ? (float) $values['lp'] : (isset($pm->lp) ? (float) $pm->lp : 0);
             }
+            $amzLive = $this->lookupSkuPrice($amzLiveByKey, (string) $pmSku);
+            $sp = $this->resolveStandardPriceForSku((string) $pmSku, $stdByKey, $amzLive, $lmp);
             $lpValue = $inv * $lp;
-            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
-            $spValue = $inv * ($stdByNorm[$norm] ?? 0.0);
+            $spValue = $inv * $sp;
+            $amzValue = $inv * $amzLive;
             $invAtLp += $lpValue;
             $invAtSp += $spValue;
+            $invAtAmz += $amzValue;
 
             $l30 = 0.0;
             if (is_numeric($row->quantity ?? null)) {
@@ -4521,13 +4628,139 @@ class ChannelMasterController extends Controller
             $dilBands[$key]['inv_at_sp'] = round((float) $band['inv_at_sp'], 2);
         }
 
-        return [
+        return $this->shopifyInvLpMetricsCache = [
             'inv_sum' => round($invSum, 2),
             'inv_at_lp' => round($invAtLp, 2),
             'inv_at_sp' => round($invAtSp, 2),
+            'inv_at_amz' => round($invAtAmz, 2),
             'weighted_avg_lp' => $weightedAvgLp,
             'dil_bands' => $dilBands,
         ];
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function amazonStandardPriceLookupMap(): array
+    {
+        $map = [];
+        try {
+            $rows = DB::table('amazon_data_view')
+                ->select('sku')
+                ->selectRaw("JSON_UNQUOTE(JSON_EXTRACT(value, '$.STANDARD_PRICE')) as std_price")
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get();
+            foreach ($rows as $row) {
+                if (! is_numeric($row->std_price ?? null) || (float) $row->std_price <= 0) {
+                    continue;
+                }
+                $this->indexSkuPrice($map, (string) $row->sku, (float) $row->std_price);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Inv@SP standard price JSON lookup failed: '.$e->getMessage());
+            try {
+                foreach (AmazonDataView::query()->select(['id', 'sku', 'value'])->orderBy('id')->cursor() as $adv) {
+                    $val = is_array($adv->value)
+                        ? $adv->value
+                        : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                    $std = $val['STANDARD_PRICE'] ?? $val['standard_price'] ?? null;
+                    if (is_numeric($std) && (float) $std > 0) {
+                        $this->indexSkuPrice($map, (string) $adv->sku, (float) $std);
+                    }
+                }
+            } catch (\Throwable $inner) {
+                Log::warning('Inv@SP standard price fallback lookup failed: '.$inner->getMessage());
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function amazonLivePriceLookupMap(): array
+    {
+        $map = [];
+        try {
+            foreach (DB::table('amazon_datsheets')->select('sku', 'price')->where('price', '>', 0)->cursor() as $row) {
+                if (! is_numeric($row->price ?? null) || (float) $row->price <= 0) {
+                    continue;
+                }
+                $this->indexSkuPrice($map, (string) ($row->sku ?? ''), (float) $row->price);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Inv Amazon live price lookup failed: '.$e->getMessage());
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  array<string, float>  $map
+     */
+    private function indexSkuPrice(array &$map, string $sku, float $price): void
+    {
+        if (! ($price > 0) || $sku === '') {
+            return;
+        }
+        foreach (array_unique(array_filter([
+            ShopifySku::normalizeSkuForShopifyLookup($sku),
+            ShopifySku::compactSkuForLookup($sku),
+            AmazonDatasheet::normalizeSkuForLookup($sku),
+            strtoupper(trim($sku)),
+        ])) as $key) {
+            if ($key !== '' && ! isset($map[$key])) {
+                $map[$key] = $price;
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, float>  $map
+     */
+    private function lookupSkuPrice(array $map, string $sku): float
+    {
+        foreach ([
+            ShopifySku::normalizeSkuForShopifyLookup($sku),
+            ShopifySku::compactSkuForLookup($sku),
+            AmazonDatasheet::normalizeSkuForLookup($sku),
+            strtoupper(trim($sku)),
+        ] as $key) {
+            if ($key !== '' && isset($map[$key]) && $map[$key] > 0) {
+                return (float) $map[$key];
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * STANDARD_PRICE for the SKU, then Sku Link LMP siblings, then Amazon live price.
+     *
+     * @param  array<string, float>  $stdByKey
+     */
+    private function resolveStandardPriceForSku(string $sku, array $stdByKey, float $amzLive, ?LmpSkuGroupService $lmp): float
+    {
+        $sp = $this->lookupSkuPrice($stdByKey, $sku);
+        if ($sp > 0) {
+            return $sp;
+        }
+        if ($lmp) {
+            try {
+                foreach ($lmp->groupContaining($sku) as $sibling) {
+                    $sp = $this->lookupSkuPrice($stdByKey, (string) $sibling);
+                    if ($sp > 0) {
+                        return $sp;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // keep live-price fallback
+            }
+        }
+
+        return $amzLive > 0 ? $amzLive : 0.0;
     }
 
     /**
@@ -4710,8 +4943,10 @@ class ChannelMasterController extends Controller
             }
             $existing['inv_at_lp'] = $payload['inv_at_lp'] ?? ($existing['inv_at_lp'] ?? 0);
             $existing['inv_at_sp'] = $payload['inv_at_sp'] ?? ($existing['inv_at_sp'] ?? 0);
+            $existing['inventory_value_amazon'] = $payload['inventory_value_amazon'] ?? ($existing['inventory_value_amazon'] ?? 0);
             $existing['shopify_inv_sum'] = $payload['shopify_inv_sum'] ?? ($existing['shopify_inv_sum'] ?? 0);
             $existing['shopify_weighted_avg_lp'] = $payload['shopify_weighted_avg_lp'] ?? ($existing['shopify_weighted_avg_lp'] ?? 0);
+            $existing['inv_metrics_version'] = self::INV_METRICS_VERSION;
             if (! empty($payload['inventory_pies'])) {
                 $existing['inventory_pies'] = $payload['inventory_pies'];
             }
@@ -4719,8 +4954,36 @@ class ChannelMasterController extends Controller
                 $existing['inventory_by_color'] = $payload['inventory_by_color'];
             }
             \Cache::put('channel_master_summary_data', $existing, 86400);
+            $this->persistCompanyInventoryOnTodaySnapshot($existing);
         } catch (\Throwable $e) {
             // ignore cache write failures
+        }
+    }
+
+    /**
+     * Write company-wide inv / Inv@LP / Inv@SP onto today's first channel snapshot
+     * so the All-channel history chart has a real point.
+     *
+     * @param  array<string, mixed>  $metrics
+     */
+    private function persistCompanyInventoryOnTodaySnapshot(array $metrics): void
+    {
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+            $row = \App\Models\ChannelMasterSummary::whereDate('snapshot_date', $today)
+                ->orderBy('id')
+                ->first();
+            if (! $row) {
+                return;
+            }
+            $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+            $sd['inv_at_lp'] = round((float) ($metrics['inv_at_lp'] ?? $sd['inv_at_lp'] ?? 0), 2);
+            $sd['inv_at_sp'] = round((float) ($metrics['inv_at_sp'] ?? $sd['inv_at_sp'] ?? 0), 2);
+            $sd['inventory_value_amazon'] = round((float) ($metrics['inventory_value_amazon'] ?? $sd['inventory_value_amazon'] ?? 0), 2);
+            $row->summary_data = $sd;
+            $row->save();
+        } catch (\Throwable $e) {
+            // ignore snapshot write failures
         }
     }
 
@@ -4732,40 +4995,34 @@ class ChannelMasterController extends Controller
      */
     private function ensureInventoryExtrasOnPayload(array $payload): array
     {
-        $missingInv = ! array_key_exists('inventory_value_amazon', $payload) || $payload['inventory_value_amazon'] === null || $payload['inventory_value_amazon'] === '';
-        if ($missingInv || (float) $payload['inventory_value_amazon'] <= 0) {
-            try {
-                $payload['inventory_value_amazon'] = round($this->getInventoryValueAmazon(), 2);
-            } catch (\Throwable $e) {
-                $payload['inventory_value_amazon'] = (float) ($payload['inventory_value_amazon'] ?? 0);
-            }
-        }
-
+        $staleFormula = (int) ($payload['inv_metrics_version'] ?? 0) < self::INV_METRICS_VERSION;
+        $missingInv = ! array_key_exists('inventory_value_amazon', $payload) || $payload['inventory_value_amazon'] === null || $payload['inventory_value_amazon'] === ''
+            || (float) $payload['inventory_value_amazon'] <= 0;
         $missingSp = ! array_key_exists('inv_at_sp', $payload) || $payload['inv_at_sp'] === null || $payload['inv_at_sp'] === ''
             || (float) $payload['inv_at_sp'] <= 0;
         $missingLp = ! array_key_exists('inv_at_lp', $payload) || $payload['inv_at_lp'] === null || $payload['inv_at_lp'] === ''
             || (float) $payload['inv_at_lp'] <= 0;
         $missingPies = empty($payload['inventory_pies']['slices']) && empty($payload['inventory_by_color']);
-        if ($missingSp || $missingLp || $missingPies) {
+
+        if ($staleFormula || $missingInv || $missingSp || $missingLp || $missingPies) {
             try {
                 $shopifyMetrics = $this->getShopifyInvLpMetrics();
-                if ($missingLp) {
-                    $payload['inv_at_lp'] = $shopifyMetrics['inv_at_lp'];
-                    $payload['shopify_inv_sum'] = $shopifyMetrics['inv_sum'];
-                    $payload['shopify_weighted_avg_lp'] = $shopifyMetrics['weighted_avg_lp'];
-                }
-                if ($missingSp) {
-                    $payload['inv_at_sp'] = $shopifyMetrics['inv_at_sp'] ?? 0;
-                }
-                if ($missingPies) {
-                    $pies = $this->inventoryDilPiesFromMetrics($shopifyMetrics);
-                    $payload['inventory_pies'] = $pies;
-                    $payload['inventory_by_color'] = $this->inventoryByColorFromDilPies($pies);
-                }
+                $payload['inv_at_lp'] = $shopifyMetrics['inv_at_lp'];
+                $payload['inv_at_sp'] = $shopifyMetrics['inv_at_sp'] ?? 0;
+                $payload['inventory_value_amazon'] = ($shopifyMetrics['inv_at_amz'] ?? 0) > 0
+                    ? $shopifyMetrics['inv_at_amz']
+                    : $this->getInventoryValueAmazon();
+                $payload['shopify_inv_sum'] = $shopifyMetrics['inv_sum'];
+                $payload['shopify_weighted_avg_lp'] = $shopifyMetrics['weighted_avg_lp'];
+                $pies = $this->inventoryDilPiesFromMetrics($shopifyMetrics);
+                $payload['inventory_pies'] = $pies;
+                $payload['inventory_by_color'] = $this->inventoryByColorFromDilPies($pies);
+                $payload['inv_metrics_version'] = self::INV_METRICS_VERSION;
                 $this->rememberChannelMasterInventorySummary($payload);
             } catch (\Throwable $e) {
                 $payload['inv_at_lp'] = (float) ($payload['inv_at_lp'] ?? 0);
                 $payload['inv_at_sp'] = (float) ($payload['inv_at_sp'] ?? 0);
+                $payload['inventory_value_amazon'] = (float) ($payload['inventory_value_amazon'] ?? 0);
             }
         }
 
@@ -6752,6 +7009,11 @@ class ChannelMasterController extends Controller
                 $cachedPayload['data'] = $this->applyFastPathLiveSalesOverlays($cachedPayload['data'] ?? []);
                 $cachedPayload['data'] = $this->scaleReverbViewsForAllMarketplaceMaster($cachedPayload['data']);
                 $cachedPayload = $this->ensureInventoryExtrasOnPayload($cachedPayload);
+                try {
+                    \Cache::put($cacheKey, $cachedPayload, now()->addSeconds(90));
+                } catch (\Throwable $e) {
+                    // ignore cache write failures
+                }
 
                 return response()->json($this->attachCachedDotTrends($cachedPayload));
             }
@@ -6984,6 +7246,7 @@ class ChannelMasterController extends Controller
                 'ad_spend_by_color_amazon' => $summaryData['ad_spend_by_color_amazon'] ?? [],
                 'ad_spend_by_color_by_channel' => $summaryData['ad_spend_by_color_by_channel'] ?? [],
                 'calculated_at' => $summaryData['calculated_at'] ?? null,
+                'inv_metrics_version' => $summaryData['inv_metrics_version'] ?? 0,
             ];
             $payload = $this->ensureInventoryExtrasOnPayload($payload);
 
@@ -7717,16 +7980,19 @@ class ChannelMasterController extends Controller
         $finalData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemuSalesOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemu2AdsOnChannelRows($finalData);
+        $finalData = $this->overlayLiveTemuViewsOnChannelRows($finalData);
 
-        // Sum of (inventory * Amazon price) for INV Val badge and TAT (save in first row for daily history)
-        $inventoryValueAmazon = $this->getInventoryValueAmazon();
-        if (!empty($finalData)) {
-            $finalData[0]['inventory_value_amazon'] = $inventoryValueAmazon;
-        }
-
-        // Sum of (Shopify inventory * LP) for Inv@LP badge and chart + Inv / LP breakdown
+        // Same Active Shopify units for inv / Inv@LP / Inv@SP (save on first row for daily history)
         $shopifyInvLp = $this->getShopifyInvLpMetrics();
+        $inventoryValueAmazon = $this->getInventoryValueAmazon();
         $invAtLp = $shopifyInvLp['inv_at_lp'];
+        $invAtSp = (float) ($shopifyInvLp['inv_at_sp'] ?? 0);
+        if (! empty($finalData)) {
+            $finalData[0]['inventory_value_amazon'] = $inventoryValueAmazon;
+            $finalData[0]['Inv at LP'] = $invAtLp;
+            $finalData[0]['Inv at SP'] = $invAtSp;
+            $finalData[0]['inv_at_sp'] = $invAtSp;
+        }
         $inventoryPies = $this->inventoryDilPiesFromMetrics($shopifyInvLp);
         $inventoryByColor = $this->inventoryByColorFromDilPies($inventoryPies);
         $stockAvailability = $this->getStockAvailability();
@@ -7766,7 +8032,8 @@ class ChannelMasterController extends Controller
             'data'    => $finalData,
             'inventory_value_amazon' => round($inventoryValueAmazon, 2),
             'inv_at_lp' => round($invAtLp, 2),
-            'inv_at_sp' => round($shopifyInvLp['inv_at_sp'] ?? 0, 2),
+            'inv_at_sp' => round($invAtSp, 2),
+            'inv_metrics_version' => self::INV_METRICS_VERSION,
             'shopify_inv_sum' => $shopifyInvLp['inv_sum'],
             'shopify_weighted_avg_lp' => $shopifyInvLp['weighted_avg_lp'],
             'inventory_pies' => $inventoryPies,
@@ -15042,6 +15309,7 @@ class ChannelMasterController extends Controller
             'bestbuy', 'bestbuyusa' => 'bestbuyusa',
             'facebookmarketplace', 'fbmarketplace' => 'fbmarketplace',
             'temu3', 'temuthree' => 'temu3',
+            'temu2', 'temutwo' => 'temu2',
             default => $key,
         };
     }
@@ -15062,7 +15330,9 @@ class ChannelMasterController extends Controller
             'tiktokshop' => ['tiktokshop', 'tiktok'],
             'tiktokshop2' => ['tiktokshop2', 'tiktok2'],
             'fbmarketplace' => ['fbmarketplace', 'facebookmarketplace'],
-            'temu3' => ['temu3', 'temuthree'],
+            'temu3' => ['temu3', 'temuthree', 'Temu 3', 'Temu3'],
+            'temu2' => ['temu2', 'temutwo', 'Temu 2', 'Temu2'],
+            'temu' => ['temu', 'Temu'],
         ];
 
         return array_values(array_unique($aliases[$canonical] ?? [$canonical]));
@@ -16298,6 +16568,8 @@ class ChannelMasterController extends Controller
                 'cvr' => null,      // computed: (total_quantity / total_views) * 100 — units-based, matches /temu-decrease
                 'total_views' => 'total_views',
                 'inv_at_lp' => 'inv_at_lp',
+                'inv_at_sp' => 'inv_at_sp',
+                'inventory' => 'inventory_value_amazon',
                 'tat' => null,  // computed: inventory_value_amazon / total l30_sales (all only)
             ];
 
@@ -16454,6 +16726,11 @@ class ChannelMasterController extends Controller
             })->values();
 
             if ($history->isEmpty()) {
+                $seeded = $this->seedTemuViewsChartIfEmpty($channel, $metric, $isAll, []);
+                if ($seeded !== null) {
+                    return response()->json(['success' => true, 'data' => $seeded]);
+                }
+
                 return response()->json(['success' => true, 'data' => []]);
             }
 
@@ -16532,7 +16809,8 @@ class ChannelMasterController extends Controller
 
                     foreach ($rows as $row) {
                         $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
-                        if (! $useDailyWindow && ($metric === 'cvr' || $metric === 'total_views')) {
+                        if (! $useDailyWindow && ($metric === 'cvr' || $metric === 'total_views')
+                            && ! $this->temuViewsSkipStabilize((string) ($row->channel ?? ''))) {
                             $rowChannel = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($row->channel ?? ''))));
                             $cvrM = ChannelMasterViewsGuard::metricsFromSummary($sd);
                             $carry = $viewsCarryByChannel[$rowChannel] ?? null;
@@ -16624,8 +16902,14 @@ class ChannelMasterController extends Controller
                             $totalSpend += $channelAdSpend;
                             $totalSales += $channelL30Sales;
                         } elseif ($metric === 'tat') {
-                            $totalInvAmazon += floatval($sd['inventory_value_amazon'] ?? 0);
+                            $totalInvAmazon = max($totalInvAmazon, floatval($sd['inventory_value_amazon'] ?? 0));
                             $totalSales += $channelL30Sales;
+                        } elseif (in_array($metric, ['inv_at_sp', 'inv_at_lp', 'inventory'], true)) {
+                            $invKey = $metric === 'inventory' ? 'inventory_value_amazon' : $metric;
+                            if (array_key_exists($invKey, $sd)) {
+                                $hasMetricData = true;
+                                $totalVal = max($totalVal, floatval($sd[$invKey] ?? 0));
+                            }
                         } elseif ($shouldAvg) {
                             $totalVal += floatval($sd[$metricKey] ?? 0);
                         } else {
@@ -16709,6 +16993,11 @@ class ChannelMasterController extends Controller
                         // days omitted the key, so do not continue here for y_sales.
                         if (in_array($metric, ['l7_sales', 'p_sales', 'y_sales'], true) && !$hasMetricData) continue;
                         $value = round($totalVal, 2);
+                    } elseif (in_array($metric, ['inv_at_sp', 'inv_at_lp', 'inventory'], true)) {
+                        if (! $hasMetricData) {
+                            continue;
+                        }
+                        $value = round($totalVal, 2);
                     } elseif ($useL7Window && $metricKey !== null && !$hasMetricData) {
                         continue;
                     } elseif ($shouldAvg && $count > 0) {
@@ -16720,7 +17009,7 @@ class ChannelMasterController extends Controller
                     // Single channel
                     $row = $rows->first();
                     $summaryData = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
-                    if (! $useDailyWindow) {
+                    if (! $useDailyWindow && ! $this->temuViewsSkipStabilize($channel)) {
                         $cvrM = ChannelMasterViewsGuard::metricsFromSummary($summaryData);
                         if ($cvrCarryViews !== null && ChannelMasterViewsGuard::isCollapsed($cvrM['views'], $cvrCarryViews, $cvrM['qty'], $cvrCarryQty ?? 0.0)) {
                             $summaryData = ChannelMasterViewsGuard::carrySummary($summaryData, $cvrCarryViews);
@@ -16887,6 +17176,35 @@ class ChannelMasterController extends Controller
                     $chartData,
                     $this->metricDotEpsilon($metric)
                 );
+            }
+
+            if (! $isAll && $metric === 'total_views') {
+                $seeded = $this->seedTemuViewsChartIfEmpty($channel, $metric, false, $chartData);
+                if ($seeded !== null) {
+                    $chartData = $seeded;
+                }
+            }
+
+            if ($isAll && in_array($metric, ['inv_at_sp', 'inv_at_lp', 'inventory'], true)) {
+                $hasReal = false;
+                foreach ($chartData as $pt) {
+                    if ((float) ($pt['value'] ?? 0) > 0.01) {
+                        $hasReal = true;
+                        break;
+                    }
+                }
+                if (! $hasReal) {
+                    $badge = $request->input('badge_value');
+                    $live = (is_numeric($badge) && (float) $badge > 0)
+                        ? (float) $badge
+                        : (float) ($this->getAllChannelsTableReference($metric) ?? 0);
+                    if ($live > 0) {
+                        $chartData = [[
+                            'date' => now('America/Los_Angeles')->format('M d'),
+                            'value' => round($live, 2),
+                        ]];
+                    }
+                }
             }
 
             // Extra lookback for L7 rolling should not appear on the X-axis.
@@ -17249,9 +17567,11 @@ class ChannelMasterController extends Controller
                 'clicks' => 'clicks',
                 'total_views' => 'total_views',
                 'inv_at_lp' => 'inv_at_lp',
+                'inv_at_sp' => 'inv_at_sp',
+                'inventory' => 'inventory_value_amazon',
                 'tat' => 'tat',
             ];
-            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'y_pft', 'y_npft_amt', 'l7_sales', 'p_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'p_npft', 'p_groi_pct', 'y_npft_pct', 'y_groi_pct', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'y_pft', 'y_npft_amt', 'l7_sales', 'p_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'p_npft', 'p_groi_pct', 'y_npft_pct', 'y_groi_pct', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'inv_at_sp', 'inventory', 'tat'];
             $out = [];
             $processedByChannel = [];
 
@@ -17508,9 +17828,15 @@ class ChannelMasterController extends Controller
                 $totalClicks += (float) ($sd['clicks'] ?? 0);
                 $hasMetric = true;
             } elseif ($metric === 'tat') {
-                $totalInvAmazon += (float) ($sd['inventory_value_amazon'] ?? 0);
+                $totalInvAmazon = max($totalInvAmazon, (float) ($sd['inventory_value_amazon'] ?? 0));
                 $totalSales += $sales;
                 $hasMetric = true;
+            } elseif (in_array($metric, ['inv_at_sp', 'inv_at_lp', 'inventory'], true)) {
+                $invKey = $metric === 'inventory' ? 'inventory_value_amazon' : $metric;
+                if (array_key_exists($invKey, $sd)) {
+                    $totalVal = max($totalVal, (float) ($sd[$invKey] ?? 0));
+                    $hasMetric = true;
+                }
             } else {
                 $v = $this->getMetricValueFromSummaryData((string) $channel, $metric, $sd, $metricMap, true);
                 if ($v !== null) {
@@ -17789,6 +18115,17 @@ class ChannelMasterController extends Controller
             return null;
         }
 
+        if ($metric === 'inv_at_sp') {
+            $v = (float) ($this->getShopifyInvLpMetrics()['inv_at_sp'] ?? 0);
+
+            return $v > 0 ? $v : null;
+        }
+        if ($metric === 'inventory') {
+            $v = $this->getInventoryValueAmazon();
+
+            return $v > 0 ? $v : null;
+        }
+
         if ($metric === 'p_npft') {
             $pGross = 0.0;
             $pSales = 0.0;
@@ -17920,9 +18257,19 @@ class ChannelMasterController extends Controller
             return $totalSales > 0 ? round($weightedSum / $totalSales, 2) : ($count > 0 ? round($weightedSum / $count, 2) : null);
         }
 
-        // Inv@LP: from Shopify inventory × ProductMaster LP (not in marketplace_daily_metrics)
+        // Inv@LP / Inv@SP / inv: Shopify Active inventory (not in marketplace_daily_metrics)
         if ($metric === 'inv_at_lp') {
             return $this->getInvAtLpShopify();
+        }
+        if ($metric === 'inv_at_sp') {
+            $v = (float) ($this->getShopifyInvLpMetrics()['inv_at_sp'] ?? 0);
+
+            return $v > 0 ? $v : null;
+        }
+        if ($metric === 'inventory') {
+            $v = $this->getInventoryValueAmazon();
+
+            return $v > 0 ? $v : null;
         }
 
         // TAT: inventory_value_amazon / total L30 sales (all channels)
@@ -19370,6 +19717,55 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Temu / Temu 2 / Temu 3 Views were never snapshotted. Seed today's point
+     * from the live sheet total and persist it so the next open has history.
+     *
+     * @param  list<array{date: string, value: float}>  $chartData
+     * @return list<array{date: string, value: float}>|null
+     */
+    private function seedTemuViewsChartIfEmpty(string $channel, string $metric, bool $isAll, array $chartData): ?array
+    {
+        if ($isAll || $metric !== 'total_views' || ! $this->temuViewsSkipStabilize($channel)) {
+            return null;
+        }
+        $hasReal = false;
+        foreach ($chartData as $pt) {
+            if ((float) ($pt['value'] ?? 0) > 0) {
+                $hasReal = true;
+                break;
+            }
+        }
+        if ($hasReal) {
+            return null;
+        }
+
+        $key = $this->temuMasterChannelKey($channel);
+        $snap = $this->computeTemuViewsForMasterChannel($key);
+        $live = ! empty($snap['ok']) ? (int) ($snap['total_views'] ?? 0) : 0;
+        if ($live <= 0) {
+            $saved = $this->getSavedTableMetric($key, 'total_views');
+            $live = $saved !== null ? (int) $saved : 0;
+        }
+        if ($live <= 0) {
+            return null;
+        }
+
+        $this->syncLiveMapMissViewsToChannelHistory($key, match ($key) {
+            'temu2' => 'Temu 2',
+            'temu3' => 'Temu 3',
+            default => 'Temu',
+        }, [
+            'total_views' => $live,
+            'cvr_pct' => $snap['cvr_pct'] ?? null,
+        ]);
+
+        return [[
+            'date' => now('America/Los_Angeles')->format('M d'),
+            'value' => (float) $live,
+        ]];
+    }
+
+    /**
      * Last graph point = Active Channel table cell (saved calculated row, or
      * the live overlay the grid already shows).
      *
@@ -19885,12 +20281,14 @@ class ChannelMasterController extends Controller
                     'l60_orders' => floatval($row['L60 Orders'] ?? 0),
                     'l30_orders' => floatval($row['L30 Orders'] ?? 0),
                     'total_quantity' => floatval($totalQuantity), // Total quantity (units sold) from marketplace_daily_metrics
-                    'total_views' => ChannelMasterViewsGuard::stabilize(
-                        $channelName,
-                        floatval($row['Total Views'] ?? 0),
-                        floatval($totalQuantity),
-                        $today
-                    ),
+                    'total_views' => $this->temuViewsSkipStabilize($channelName)
+                        ? floatval($row['Total Views'] ?? 0)
+                        : ChannelMasterViewsGuard::stabilize(
+                            $channelName,
+                            floatval($row['Total Views'] ?? 0),
+                            floatval($totalQuantity),
+                            $today
+                        ),
                     // Listing CVR (OV L30 ÷ Views for Shopify; qty÷views elsewhere). Distinct from Ads CVR.
                     'listing_cvr' => (array_key_exists('CVR', $row) && $row['CVR'] !== null && $row['CVR'] !== '')
                         ? floatval(preg_replace('/[^0-9.\-]/', '', (string) $row['CVR']))
@@ -19931,9 +20329,9 @@ class ChannelMasterController extends Controller
                     'w_ads' => intval($row['W/Ads'] ?? 0),
                     'update' => intval($row['Update'] ?? 0),
                     
-                    // Inv@LP (Shopify inv * PM LP) — only non-zero for Shopify B2C
-                    'inv_at_lp' => floatval($row['Inv at LP'] ?? 0),
-                    // INV Val (for TAT = inv / sales) — only first channel has it
+                    // Company-wide inventory $ — only first channel row carries the totals
+                    'inv_at_lp' => floatval($row['Inv at LP'] ?? $row['inv_at_lp'] ?? 0),
+                    'inv_at_sp' => floatval($row['Inv at SP'] ?? $row['inv_at_sp'] ?? 0),
                     'inventory_value_amazon' => floatval($row['inventory_value_amazon'] ?? 0),
                     
                     // Metadata

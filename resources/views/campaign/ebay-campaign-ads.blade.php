@@ -176,6 +176,7 @@
                     <i class="fas fa-info-circle me-1"></i>
                     Rules are evaluated <strong>top to bottom</strong> — the first rule where all filled ranges
                     match a row sets that row's <strong>S Bid</strong>. Leave a Min/Max blank to ignore it.
+                    If <strong>E L30 (el30) = 0</strong>, the <strong>maximum S Bid %</strong> is always applied.
                     Shared with <code>/ebay-tabulator-view</code>. Autopush runs when a slab or 0-sold value changes.
                 </div>
                 <p class="small text-danger mb-0 mt-2 d-none" id="sbid-slab-rule-err"></p>
@@ -573,7 +574,7 @@ $(document).ready(function () {
             },
             {
                 title: 'S Bid', field: 'ebay_l30', width: 110, hozAlign: 'center',
-                headerTooltip: 'S Bid from Sbid Rule slabs (For L7 Views / CVR). First matching rule wins. No match → —.',
+                headerTooltip: 'S Bid from Sbid Rule slabs (For L7 Views / CVR). If E L30 = 0, maximum S Bid % is always applied. Otherwise first matching rule wins. No match → —.',
                 sorter: function(a, b, aRow, bRow) {
                     return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                 },
@@ -582,7 +583,8 @@ $(document).ready(function () {
                     if (res.skip) {
                         return `<span class="text-muted" title="No matching Sbid Rule slab" style="font-size:11px;">— no sbid</span>`;
                     }
-                    return `<span style="color:${res.color}; font-weight:700;">${res.bid.toFixed(1)}%</span>`;
+                    const title = res.zeroSoldMax ? 'E L30 = 0 → maximum S Bid %' : '';
+                    return `<span style="color:${res.color}; font-weight:700;" title="${title}">${res.bid.toFixed(1)}%</span>`;
                 }
             },
             {
@@ -926,6 +928,15 @@ function sbidSlabInRange(val, min, max) {
     return true;
 }
 
+function maxSbidFromSlabs(slabs) {
+    let max = 0;
+    (slabs || []).forEach(function(r) {
+        const bid = parseFloat(r.sbid);
+        if (isFinite(bid) && bid > max) max = bid;
+    });
+    return max;
+}
+
 function getCombinedSbid(row) {
     const esold = parseFloat(row.ebay_l30)   || 0;
     const views = parseFloat(row.views)      || 0;
@@ -934,6 +945,12 @@ function getCombinedSbid(row) {
     const qty   = parseFloat(row.shopify_qty) || 0;
     const cvr   = views > 0 ? (esold / views) * 100 : 0;
     const dil   = inv   > 0 ? (qty / inv) * 100 : 0;
+
+    if (esold <= 0) {
+        const maxBid = maxSbidFromSlabs(currentSbidSlabs);
+        if (maxBid > 0) return { bid: maxBid, color: '#0d6efd', skip: false, zeroSoldMax: true };
+        return { bid: 0, color: '#6c757d', skip: true };
+    }
 
     for (let i = 0; i < currentSbidSlabs.length; i++) {
         const r = currentSbidSlabs[i];

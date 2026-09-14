@@ -335,9 +335,10 @@ class DilRuleSpriceApplyService
         if (! empty($cfg['cvr_adj'])) {
             $views = (float) ($row['views'] ?? 0);
             if (empty($cfg['cvr_adj_requires_views']) || $views > 0) {
-                $groi = AmazonDilGroiRule::adjustGroiForCvrLevel(
+                $groi = AmazonDilGroiRule::adjustGroiForCvrArrow(
                     $groi,
                     (float) ($row['cvr'] ?? 0),
+                    (float) ($row['cvr_60'] ?? $row['cvr60'] ?? 0),
                     $cvrAdj
                 );
             }

@@ -1700,6 +1700,7 @@ class YesterdayMarketplaceMetricsService
             'tiktokshop', 'tiktok' => 'tiktok',
             'tiktok2', 'tiktokshop2' => 'tiktok2',
             'temu3', 'temuthree' => 'temu3',
+            'temu2', 'temutwo' => 'temu2',
             default => $k,
         };
     }

@@ -6267,6 +6267,10 @@ class TemuController extends Controller
                 return response()->json(['error' => 'SKU is required'], 400);
             }
 
+            $channelKey = strtolower(str_replace([' ', '-', '&', '/'], '', (string) $request->input('channel', '')));
+            $isTemu2 = $request->boolean('temu2')
+                || in_array($channelKey, ['temu2', 'temutwo'], true);
+
             // Check if table exists
             if (!DB::getSchemaBuilder()->hasTable('temu_sku_daily_data')) {
                 Log::warning('temu_sku_daily_data table does not exist. Please run migration.');
@@ -6326,7 +6330,7 @@ class TemuController extends Controller
             }
 
             // Format data for chart from stored snapshots (prefer daily_data JSON)
-            $chartData = $metricsData->map(function ($record) use ($lp, $temuShip, $percentage) {
+            $chartData = $metricsData->map(function ($record) use ($lp, $temuShip, $percentage, $isTemu2) {
                 $json = [];
                 if (isset($record->daily_data) && $record->daily_data) {
                     $json = is_array($record->daily_data)
@@ -6348,7 +6352,9 @@ class TemuController extends Controller
                 $npftPercent = $adsPercent == 100 ? $profitPercent : $profitPercent - $adsPercent;
                 $nroiPercent = $adsPercent == 100 ? $roiPercent : $roiPercent - $adsPercent;
 
-                $productClicks = intval($json['product_clicks'] ?? $json['views'] ?? $record->product_clicks ?? 0);
+                $productClicks = $isTemu2
+                    ? intval($json['temu2_product_clicks'] ?? $json['temu2_views'] ?? 0)
+                    : intval($json['product_clicks'] ?? $json['views'] ?? $record->product_clicks ?? 0);
                 // ad_clicks may be absent on older temu_sku_daily_data rows
                 $adClicksHist = intval($json['ad_clicks'] ?? ($record->ad_clicks ?? 0));
                 $recordDate = Carbon::parse($record->record_date)->toDateString();

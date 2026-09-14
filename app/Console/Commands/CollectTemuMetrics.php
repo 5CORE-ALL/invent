@@ -5,10 +5,13 @@ namespace App\Console\Commands;
 use App\Console\Commands\Concerns\MonitorsCronExecution;
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\ProductMaster;
+use App\Models\Temu2Metric;
+use App\Models\Temu2Pricing;
 use App\Models\TemuMetric;
 use App\Models\TemuAdData;
 use App\Services\TemuShopifySalesService;
 use App\Models\TemuBadgeDailyData;
+use App\Support\TemuGoodsIdHelper;
 use App\Services\CronMonitor\CronExecutionContext;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -60,14 +63,19 @@ class CollectTemuMetrics extends Command
 
         $this->info('Found ' . $temuPricing->count() . ' SKUs in Temu Metrics');
 
-        $temuViewsData = collect();
-        if (Schema::hasTable('temu_metrics') && Schema::hasColumn('temu_metrics', 'product_clicks_l30')) {
+        $temuViewsData = $this->viewsByGoodsId('temu_view_data');
+        if ($temuViewsData->isEmpty()
+            && Schema::hasTable('temu_metrics')
+            && Schema::hasColumn('temu_metrics', 'product_clicks_l30')) {
             $temuViewsData = TemuMetric::select('goods_id', DB::raw('SUM(product_clicks_l30) as total_clicks'))
                 ->whereNotNull('goods_id')
                 ->groupBy('goods_id')
                 ->get()
-                ->keyBy('goods_id');
+                ->keyBy(fn ($row) => TemuGoodsIdHelper::normalizeKey($row->goods_id) ?: (string) $row->goods_id);
         }
+
+        $temu2ViewsData = $this->viewsByGoodsId('temu2_view_data');
+        $temu2GidBySku = $this->temu2GoodsIdBySku();
 
         $temuSalesData = collect();
         try {
@@ -117,6 +125,8 @@ class CollectTemuMetrics extends Command
             function (array $chunk) use (
                 $today,
                 $temuViewsData,
+                $temu2ViewsData,
+                $temu2GidBySku,
                 $temuSalesData,
                 $temuAdData,
                 &$collected,
@@ -139,8 +149,12 @@ class CollectTemuMetrics extends Command
 
                         $basePrice = floatval($pricingData->base_price ?? 0);
 
-                        $viewData = $goodsId ? $temuViewsData->get($goodsId) : null;
+                        $gidKey = TemuGoodsIdHelper::normalizeKey($goodsId) ?: (string) $goodsId;
+                        $viewData = $gidKey !== '' ? $temuViewsData->get($gidKey) : null;
                         $productClicks = $viewData ? intval($viewData->total_clicks ?? 0) : 0;
+                        $temu2Gid = $temu2GidBySku[$sku] ?? $gidKey;
+                        $temu2View = $temu2Gid !== '' ? $temu2ViewsData->get($temu2Gid) : null;
+                        $temu2Clicks = $temu2View ? intval($temu2View->total_clicks ?? 0) : 0;
 
                         $salesData = $temuSalesData->get($sku);
                         $temuL30 = $salesData ? intval($salesData->temu_l30 ?? 0) : 0;
@@ -158,6 +172,8 @@ class CollectTemuMetrics extends Command
                             'base_price' => round($basePrice, 2),
                             'views' => $productClicks,
                             'product_clicks' => $productClicks,
+                            'temu2_views' => $temu2Clicks,
+                            'temu2_product_clicks' => $temu2Clicks,
                             'temu_l30' => $temuL30,
                             'cvr_percent' => round($cvrPercent, 2),
                             'spend' => round($spend, 2),
@@ -212,9 +228,103 @@ class CollectTemuMetrics extends Command
         $this->info("  - Skipped: {$skipped} SKUs");
         $this->info("  - Date: " . $today->toDateString());
 
+        $this->snapshotTemu2OnlySkuViews($today, $temu2ViewsData, $temu2GidBySku, $temuPricing);
         $this->snapshotBadgeDailyData($today, $productData);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<string, object>
+     */
+    private function viewsByGoodsId(string $table)
+    {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'product_clicks')) {
+            return collect();
+        }
+
+        return DB::table($table)
+            ->select('goods_id', DB::raw('SUM(product_clicks) as total_clicks'))
+            ->whereNotNull('goods_id')
+            ->groupBy('goods_id')
+            ->get()
+            ->keyBy(fn ($row) => TemuGoodsIdHelper::normalizeKey($row->goods_id) ?: (string) $row->goods_id);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function temu2GoodsIdBySku(): array
+    {
+        $map = [];
+        if (Schema::hasTable('temu2_pricing')) {
+            foreach (Temu2Pricing::query()->select(['sku', 'goods_id'])->get() as $row) {
+                $sku = strtoupper(trim((string) $row->sku));
+                $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+                if ($sku !== '' && $gid) {
+                    $map[$sku] = $gid;
+                }
+            }
+        }
+        if (Schema::hasTable('temu2_metrics')) {
+            foreach (Temu2Metric::query()->select(['sku', 'goods_id'])->get() as $row) {
+                $sku = strtoupper(trim((string) $row->sku));
+                if ($sku === '' || isset($map[$sku])) {
+                    continue;
+                }
+                $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+                if ($gid) {
+                    $map[$sku] = $gid;
+                }
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Temu 2-only SKUs are missing from temu_metrics; still write their sheet views.
+     *
+     * @param  \Illuminate\Support\Collection<string, object>  $temu2ViewsData
+     * @param  array<string, string>  $temu2GidBySku
+     * @param  \Illuminate\Support\Collection<string, mixed>  $temu1Pricing
+     */
+    private function snapshotTemu2OnlySkuViews(Carbon $today, $temu2ViewsData, array $temu2GidBySku, $temu1Pricing): void
+    {
+        if ($temu2GidBySku === [] || ! Schema::hasTable('temu_sku_daily_data')) {
+            return;
+        }
+
+        $written = 0;
+        foreach ($temu2GidBySku as $sku => $gid) {
+            if (stripos($sku, 'PARENT') !== false || $temu1Pricing->has($sku)) {
+                continue;
+            }
+            $clicks = (int) ($temu2ViewsData->get($gid)->total_clicks ?? 0);
+            $existing = DB::table('temu_sku_daily_data')
+                ->where('sku', $sku)
+                ->whereDate('record_date', $today)
+                ->first();
+            $json = [];
+            if ($existing && ! empty($existing->daily_data)) {
+                $json = is_array($existing->daily_data)
+                    ? $existing->daily_data
+                    : (json_decode((string) $existing->daily_data, true) ?: []);
+            }
+            $json['temu2_views'] = $clicks;
+            $json['temu2_product_clicks'] = $clicks;
+            $payload = ['updated_at' => now()];
+            if (Schema::hasColumn('temu_sku_daily_data', 'daily_data')) {
+                $payload['daily_data'] = json_encode($json);
+            }
+            DB::table('temu_sku_daily_data')->updateOrInsert(
+                ['sku' => $sku, 'record_date' => $today->toDateString()],
+                $payload
+            );
+            $written++;
+        }
+
+        $this->info("  - Temu 2 view snapshots: {$written} SKUs");
     }
 
     /**

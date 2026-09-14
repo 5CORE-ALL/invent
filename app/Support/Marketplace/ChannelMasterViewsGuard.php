@@ -106,6 +106,8 @@ class ChannelMasterViewsGuard
             'tiktokshop' => ['tiktokshop', 'tiktok'],
             'tiktokshop2' => ['tiktokshop2', 'tiktok2'],
             'temu3' => ['temu3', 'temuthree'],
+            'temu2' => ['temu2', 'temutwo'],
+            'temutwo' => ['temu2', 'temutwo'],
             'fbmarketplace' => ['fbmarketplace', 'facebookmarketplace'],
             'bestbuyusa' => ['bestbuyusa', 'bestbuy'],
         ];
@@ -156,6 +158,10 @@ class ChannelMasterViewsGuard
         float $candidateQty = 0.0,
         ?string $beforeDate = null
     ): float {
+        if (self::isSheetViewsChannel($channel)) {
+            return $candidateViews;
+        }
+
         $trusted = self::lastTrusted($channel, $beforeDate);
         if ($trusted === null) {
             return $candidateViews;
@@ -228,6 +234,10 @@ class ChannelMasterViewsGuard
         $carryQty = null;
         foreach ($chronological as $row) {
             $sd = ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+            if (self::isSheetViewsChannel((string) ($row->channel ?? ''))) {
+                $out[$row->id] = $sd;
+                continue;
+            }
             $m = self::metricsFromSummary($sd);
             if ($carryViews !== null && self::isCollapsed($m['views'], $carryViews, $m['qty'], $carryQty ?? 0.0)) {
                 $sd = self::rewriteViews($sd, $m, $carryViews);
@@ -248,7 +258,7 @@ class ChannelMasterViewsGuard
     public static function repairChannel(string $channel, int $days = 60): int
     {
         $channel = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)));
-        if ($channel === '') {
+        if ($channel === '' || self::isSheetViewsChannel($channel)) {
             return 0;
         }
 
@@ -287,6 +297,14 @@ class ChannelMasterViewsGuard
         }
 
         return $fixed;
+    }
+
+    /** Temu family Views come from Seller Center sheets — do not carry a stale number. */
+    public static function isSheetViewsChannel(string $channel): bool
+    {
+        $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)));
+
+        return in_array($key, ['temu', 'temu2', 'temutwo', 'temu3', 'temuthree'], true);
     }
 
     /**

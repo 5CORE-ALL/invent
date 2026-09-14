@@ -656,10 +656,10 @@
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             <span class="summary-trend-dot none" data-metric="nroi" title="Rolling history"></span>NROI: <span id="avg-nroi">0.0%</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="inventory" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of (Inventory × Amz Price)">
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="inventory" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of (Shopify INV × Amazon live price) for Active SKUs — same units as Inv@SP / Inv@LP">
                             <span class="summary-trend-dot none" data-metric="inventory" title="Rolling history"></span>inv: <span id="inventory-value-amazon">0</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="inv_at_sp" style="color: black; font-weight: bold; cursor:pointer;" title="Inventory Sum = Shopify INV × Standard Price (amazon_data_view.STANDARD_PRICE) for active SKUs">
+                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="inv_at_sp" style="color: black; font-weight: bold; cursor:pointer;" title="Shopify INV × Standard Price (amazon_data_view.STANDARD_PRICE, LMP siblings, then live Amazon price) for Active SKUs">
                             <span class="summary-trend-dot none" data-metric="inv_at_sp" title="Rolling history"></span>Inv@SP: <span id="inv-at-sp">0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Sum of (Shopify inventory × LP)">
@@ -1996,17 +1996,17 @@
                         const invVal = setCompactInvBadge(
                             'inventory-value-amazon',
                             response.inventory_value_amazon,
-                            'Sum of (Inventory × Amz Price)'
+                            'Shopify INV × Amazon live price'
                         );
                         setCompactInvBadge(
                             'inv-at-lp',
                             response.inv_at_lp,
-                            'View trend - Sum of (Shopify inventory × LP)'
+                            'Shopify INV × LP'
                         );
                         setCompactInvBadge(
                             'inv-at-sp',
                             response.inv_at_sp,
-                            'Inventory Sum — Shopify INV × Standard Price'
+                            'Shopify INV × Standard Price'
                         );
                         if (response.inventory_pies && Array.isArray(response.inventory_pies.slices)) {
                             lastInventoryPies = response.inventory_pies;
