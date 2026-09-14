@@ -261,6 +261,110 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         ]));
     }
 
+    public function test_shein_zero_sold_uses_dil_slab_not_min_groi(): void
+    {
+        $rules = [
+            AmazonDilGroiRule::make(0.1, 5.0, 80),
+            AmazonDilGroiRule::make(5.0, 10.0, 40),
+        ];
+        $out = DilRuleSpriceApplyService::for('shein')->computeTarget(
+            [
+                'inv' => 8,
+                'dil' => 0,
+                'ov_l30' => 0,
+                'al30' => 0,
+                'cvr' => 0,
+                'views' => 0,
+                'lp' => 20,
+                'ship' => 0,
+                'lmp' => 0,
+            ],
+            $rules,
+            AmazonDilGroiRule::defaultCvrAdj(),
+            0.80
+        );
+
+        $this->assertNotNull($out);
+        // Dil 0 clamps to first slab GROI 80, not min GROI 40. No views → no CVR adj.
+        // (20 * 1.80) / 0.80 = 45.00
+        $this->assertEqualsWithDelta(45.00, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(80.0, $out['groi'], 0.01);
+    }
+
+    public function test_shein_high_dil_clamps_to_last_slab(): void
+    {
+        $out = $this->compute('shein', [
+            'inv' => 10,
+            'dil' => 80,
+            'ov_l30' => 5,
+            'al30' => 5,
+            'cvr' => 8,
+            'views' => 100,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 0,
+        ]);
+
+        $this->assertNotNull($out);
+        // last default slab 20–25 GROI 70; CVR 8 is mid-band so no adj.
+        // (20 * 1.70) / 0.80 = 42.50
+        $this->assertEqualsWithDelta(42.50, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(70.0, $out['groi'], 0.01);
+    }
+
+    public function test_shein_cvr_overlay_skips_without_views(): void
+    {
+        $out = $this->compute('shein', [
+            'inv' => 10,
+            'dil' => 3,
+            'ov_l30' => 0,
+            'al30' => 0,
+            'cvr' => 0,
+            'views' => 0,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 0,
+        ]);
+
+        $this->assertNotNull($out);
+        // 0.1–5 slab GROI 50. CVR 0 would be −10 if views existed.
+        $this->assertEqualsWithDelta(50.0, $out['groi'], 0.01);
+        $this->assertEqualsWithDelta(37.50, $out['sprice'], 0.01);
+    }
+
+    public function test_shein_cvr_overlay_applies_when_views_exist(): void
+    {
+        $down = $this->compute('shein', [
+            'inv' => 10,
+            'dil' => 3,
+            'ov_l30' => 1,
+            'al30' => 1,
+            'cvr' => 3,
+            'views' => 40,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 0,
+        ]);
+        $this->assertNotNull($down);
+        $this->assertEqualsWithDelta(40.0, $down['groi'], 0.01);
+        $this->assertEqualsWithDelta(35.00, $down['sprice'], 0.01);
+
+        $up = $this->compute('shein', [
+            'inv' => 10,
+            'dil' => 3,
+            'ov_l30' => 6,
+            'al30' => 6,
+            'cvr' => 15,
+            'views' => 40,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 0,
+        ]);
+        $this->assertNotNull($up);
+        $this->assertEqualsWithDelta(60.0, $up['groi'], 0.01);
+        $this->assertEqualsWithDelta(40.00, $up['sprice'], 0.01);
+    }
+
     public function test_aliexpress_zero_sold_uses_dil_slab_not_min_groi(): void
     {
         $out = $this->compute('aliexpress', [

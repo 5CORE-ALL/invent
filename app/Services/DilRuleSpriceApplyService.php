@@ -58,11 +58,12 @@ use Throwable;
  * their own nightly save cron (eBay / Amazon / Shopify B2C / Macys / PP do).
  *
  * Same cell math as ebay-sprc-dil: listing Dil, 0-sold min GROI (except
- * Temu 2/3 and AliExpress). Temu 1 0 Sold uses temu_orders L30 (same as
+ * Temu 2/3, AliExpress, and Shein). Temu 1 0 Sold uses temu_orders L30 (same as
  * /temu1-data), not temu_metrics.quantity_purchased_l30. Dil stays Shopify
  * OV L30. CVR overlay where the page uses it, ship excluded on
  * Wayfair / Faire / TopDawg / FB, Newegg / Best Buy Amz floor, LMP cap at SGROI ≥ 20%.
  * AliExpress only: SKU Dil; out of slab → Std then LMP if Std > LMP; Stop < N% skips.
+ * Shein: Dil-matching including 0 Sold, nearest slab, level-only CVR overlay when views > 0.
  */
 class DilRuleSpriceApplyService
 {
@@ -332,11 +333,14 @@ class DilRuleSpriceApplyService
         }
 
         if (! empty($cfg['cvr_adj'])) {
-            $groi = AmazonDilGroiRule::adjustGroiForCvrLevel(
-                $groi,
-                (float) ($row['cvr'] ?? 0),
-                $cvrAdj
-            );
+            $views = (float) ($row['views'] ?? 0);
+            if (empty($cfg['cvr_adj_requires_views']) || $views > 0) {
+                $groi = AmazonDilGroiRule::adjustGroiForCvrLevel(
+                    $groi,
+                    (float) ($row['cvr'] ?? 0),
+                    $cvrAdj
+                );
+            }
         }
 
         $ship = ! empty($cfg['exclude_ship']) ? 0.0 : (float) ($row['ship'] ?? 0);
@@ -611,6 +615,7 @@ class DilRuleSpriceApplyService
                 'live' => round((float) ($metric->{$priceCol} ?? 0), 2),
                 'lp' => $lpShip['lp'],
                 'ship' => $lpShip['ship'],
+                'views' => $views,
                 'cvr' => $views > 0
                     ? round(((($this->channel === 'temu' || $this->channel === 'temu2')
                         ? (float) ($l30Overlay[$sku] ?? 0)
@@ -1123,6 +1128,7 @@ class DilRuleSpriceApplyService
      *     zero_sold_min_groi: bool,
      *     match_or_nearest: bool,
      *     cvr_adj: bool,
+     *     cvr_adj_requires_views: bool,
      *     amz_floor: bool,
      *     a_l30: bool,
      *     live_is_base: bool
@@ -1138,6 +1144,7 @@ class DilRuleSpriceApplyService
             'zero_sold_min_groi' => true,
             'match_or_nearest' => false,
             'cvr_adj' => false,
+            'cvr_adj_requires_views' => false,
             'amz_floor' => false,
             'a_l30' => false,
             'live_is_base' => false,
@@ -1238,6 +1245,11 @@ class DilRuleSpriceApplyService
                 'view' => SheinDataView::class,
                 'price' => 'price',
                 'l30' => null,
+                'views' => 'views',
+                'zero_sold_min_groi' => false,
+                'match_or_nearest' => true,
+                'cvr_adj' => true,
+                'cvr_adj_requires_views' => true,
             ],
             'wayfair' => [
                 'metric' => WayfairPricingPrice::class,

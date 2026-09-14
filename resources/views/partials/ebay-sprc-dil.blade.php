@@ -2,11 +2,11 @@
   Sprc Dil — same Dil → Target GROI slabs as Amazon.
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / AliExpress: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
+  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / AliExpress / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
   AliExpress only: Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
-  eBay 1–3: Dil below the first slab or above the last slab uses the nearest slab (Dil 0 and fast-seller Dil > last To).
+  eBay 1–3 / Shein: Dil below the first slab or above the last slab uses the nearest slab (Dil 0 and fast-seller Dil > last To).
   Temu 1 / New Temu One / New Temu Two: Temu L30 = 0 uses the minimum Target GROI (not the Dil-matching slab). Dil is still OV L30 ÷ INV. New Temu Two uses Temu 2 L30 and the same Temu Dil store.
-  eBay 1–3 CVR overlay is level-only (CVR < Down → −10 GROI; CVR > Up → +10 GROI). Temu 1–2 also use the overlay; Reverb / Faire / TikTok / Shopify B2C are level-only.
+  eBay 1–3 CVR overlay is level-only (CVR < Down → −10 GROI; CVR > Up → +10 GROI). Temu 1–2 also use the overlay; Reverb / Faire / TikTok / Shopify B2C / Shein are level-only. Shein applies the overlay only when the SKU has views.
   Macys: Dil-matching when MC L30 > 0. MC L30 = 0 (0 Sold) always uses the minimum Target GROI
   (not the Dil-matching slab). Dil is MC L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price,
   S PRC = A Price (do not keep a lower Dil/Std price). Out of box + sold uses Std Prc, then the same A Price floor.
@@ -24,13 +24,13 @@
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
-        ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'aliexpress'], true);
-    $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b'], true);
+        ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'aliexpress', 'shein'], true);
+    $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
-        ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true);
+        ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true);
-    $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'mercari_wship', 'mercari_woship'], true);
+    $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'mercari_wship', 'mercari_woship'], true);
     $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship'], true);
     $ebaySprcDilSoldLabel = match ($ebaySprcDilChannel) {
         'temu', 'temu2', 'temu3' => 'Temu L30',
@@ -314,7 +314,7 @@
                             If that price’s SGROI is below <strong>Stop &lt; N%</strong>, skip (no S PRC).
                         </li>
                         @endif
-                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true))
+                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'shein'], true))
                         <li>
                             <strong>When</strong> Dil is below the first From or above the last To (INV &gt; 0):
                             use the <strong>nearest slab</strong> so 0 Sold and high-Dil SKUs still get a Target GROI.
@@ -324,8 +324,11 @@
                         <li>
                             <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table:
                             apply that Adj GROI to the Dil slab Target GROI
-                            @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true))
+                            @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'shein'], true))
                             from <strong>CVR% only</strong> (Down &lt; threshold decreases; Up &gt; threshold increases)
+                            @endif
+                            @if($ebaySprcDilChannel === 'shein')
+                            — only when the SKU has <strong>views</strong>
                             @endif
                             (Count updates as you edit).
                         </li>
@@ -744,6 +747,15 @@
                 const units = Number(d && (d.units_sold != null ? d.units_sold : d.al30)) || 0;
                 return views > 0 ? (units / views) * 100 : 0;
             }
+            if (EBAY_DIL_GROI_CHANNEL === 'shein') {
+                if (d && d.cvr != null && d.cvr !== '') {
+                    const n = Number(d.cvr);
+                    if (isFinite(n) && n >= 0) return n;
+                }
+                const views = ebayDgViews(d);
+                const sold = Number(d && (d.al30 != null ? d.al30 : d.AL30)) || 0;
+                return views > 0 ? (sold / views) * 100 : 0;
+            }
             if (EBAY_DIL_GROI_CHANNEL === 'tiktok' || EBAY_DIL_GROI_CHANNEL === 'tiktok2') {
                 if (typeof ttListingCvr === 'function') return Number(ttListingCvr(d)) || 0;
                 const raw = (d && d.cvr != null && d.cvr !== '' && d.cvr !== '-') ? d.cvr : (d && d['CVR%']);
@@ -793,6 +805,9 @@
             const bucket = cvr < cfg.down_lt ? 'lt' : (cvr > cfg.up_gt ? 'gt' : 'mid');
             return trend + '-' + bucket;
         }
+        function ebayDgViews(d) {
+            return Number(d && (d.views != null ? d.views : d.Views)) || 0;
+        }
         function ebayDgUsesCvrLevelOnly() {
             return EBAY_DIL_GROI_CHANNEL === 'ebay1'
                 || EBAY_DIL_GROI_CHANNEL === 'ebay2'
@@ -803,17 +818,20 @@
                 || EBAY_DIL_GROI_CHANNEL === 'tiktok'
                 || EBAY_DIL_GROI_CHANNEL === 'tiktok2'
                 || EBAY_DIL_GROI_CHANNEL === 'shopify_b2c'
-                || EBAY_DIL_GROI_CHANNEL === 'shopify_b2b';
+                || EBAY_DIL_GROI_CHANNEL === 'shopify_b2b'
+                || EBAY_DIL_GROI_CHANNEL === 'shein';
         }
         function ebayDgClampsDilToNearestSlab() {
             return !!EBAY_DIL_GROI_CLAMP_NEAREST
                 || EBAY_DIL_GROI_CHANNEL === 'ebay1'
                 || EBAY_DIL_GROI_CHANNEL === 'ebay2'
                 || EBAY_DIL_GROI_CHANNEL === 'ebay2op'
-                || EBAY_DIL_GROI_CHANNEL === 'ebay3';
+                || EBAY_DIL_GROI_CHANNEL === 'ebay3'
+                || EBAY_DIL_GROI_CHANNEL === 'shein';
         }
         function ebayDilGroiCvrAdj(d) {
             if (!EBAY_DIL_GROI_CVR_ADJ) return 0;
+            if (ebayDgIsShein() && !(ebayDgViews(d) > 0)) return 0;
             const cvr = ebayDgCvr30(d);
             const cfg = ebayCvrGroiAdjNow();
             if (ebayDgUsesCvrLevelOnly() || !ebayDgHasCvrPrior(d)) {

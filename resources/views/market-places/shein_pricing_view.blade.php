@@ -616,6 +616,10 @@
         function sheinVisibleSprice(data) {
             const raw = sheinRuleSpriceRaw(data);
             if (!(raw > 0)) return 0;
+            if (typeof chPromoCapSpriceToLmp === 'function') {
+                const capped = Number(chPromoCapSpriceToLmp(data, raw));
+                if (capped > 0) return Math.round(capped * 100) / 100;
+            }
             if (window.SpriceLmpCap) {
                 const cap = SpriceLmpCap.apply(data, raw, sheinEffectiveLmp);
                 if (cap && cap.shown > 0) return Math.round(cap.shown * 100) / 100;
@@ -647,7 +651,10 @@
         function sheinPrepareSpriceToSave(data, sprice) {
             let shown = Number(sprice) || 0;
             if (!(shown > 0)) shown = sheinVisibleSprice(data) || parseFloat(data && data.special_offer) || 0;
-            if (shown > 0 && window.SpriceLmpCap) {
+            if (shown > 0 && typeof chPromoCapSpriceToLmp === 'function') {
+                const capped = Number(chPromoCapSpriceToLmp(data, shown));
+                if (capped > 0) shown = Math.round(capped * 100) / 100;
+            } else if (shown > 0 && window.SpriceLmpCap) {
                 const cap = SpriceLmpCap.apply(data, shown, sheinEffectiveLmp);
                 if (cap && cap.shown > 0) shown = Math.round(cap.shown * 100) / 100;
             } else if (shown > 0) {
@@ -1729,6 +1736,7 @@
                         sorter: "number",
                         hozAlign: "center",
                         width: 55,
+                        headerTooltip: "SKU Dil (OV L30 ÷ INV). Red <25% · Green 25–50% · Pink 50%+. Same Dil Sprc Dil uses.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const inv   = parseFloat(row.inv)    || 0;
@@ -1993,17 +2001,19 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (AL30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                        headerTooltip: "Suggested price from Dil → Target GROI% slabs, same as /amazon-tabulator-view and /ebay-tabulator-view. Every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Dil outside the table uses the nearest slab. CVR overlay is level-only (CVR < 7% −10 GROI; CVR > 10% +10) and only when the SKU has views. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData && rowData.is_parent) return '';
                             if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                             const meta = ebayDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2);
+                            const tip = (typeof ebayDilGroiTipText === 'function')
+                                ? ebayDilGroiTipText(meta)
+                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                    + ' → ' + meta.label
+                                    + ' → GROI ' + meta.groi + '%'
+                                    + ' → $' + meta.sprc.toFixed(2));
                             return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                                 + meta.sprc.toFixed(2) + '</span>';
                         },
@@ -2015,27 +2025,20 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when AL30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI for every INV > 0 SKU (including 0 Sold); Dil outside the table uses the nearest slab. CVR overlay adjusts Target GROI when the SKU has views. Same as Amazon/eBay: Dil below LMP stays Dil; Dil at/above LMP becomes LMP only when SGROI at LMP ≥ 20%. Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const raw = sheinRuleSpriceRaw(d);
                             if (!(raw > 0)) return '';
                             const lmpNow = sheinEffectiveLmp(d);
-                            const cap = window.SpriceLmpCap
-                                ? SpriceLmpCap.apply(d, raw, sheinEffectiveLmp)
-                                : null;
-                            let sprice = raw;
-                            const atOrAboveLmp = cap
-                                ? cap.alert
-                                : (lmpNow > 0 && sprice + 0.0001 >= lmpNow);
-                            if (cap && cap.shown > 0) sprice = cap.shown;
-                            else if (atOrAboveLmp && lmpNow > 0) sprice = Math.round(lmpNow * 100) / 100;
+                            const sprice = sheinVisibleSprice(d) || raw;
+                            const atOrAboveLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
                             if (!(sprice > 0)) return '';
                             const live = parseFloat(d.special_offer) || 0;
                             const redTri = atOrAboveLmp
-                                ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
-                                    + (lmpNow > 0 ? lmpNow.toFixed(2) : '') + '"></i>')
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC ≥ LMP $'
+                                    + (lmpNow > 0 ? lmpNow.toFixed(2) : '') + '"></i>'
                                 : '';
                             const blueTri = (!atOrAboveLmp && live > 0 && sprice > 0
                                 && Math.round(live * 100) !== Math.round(sprice * 100))
