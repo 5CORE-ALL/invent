@@ -531,8 +531,8 @@ class ChannelMasterController extends Controller
                 'cvr_pct' => $cvrPct,
             ];
 
-            // Temu 1 / Temu 2 / Temu 3 Views/CVR must match the pricing-page badges
-            // (sheet views by goods_id), not a guarded/stale leftover.
+            // Temu 1 / Temu 2 / Temu 3 Views/CVR must match the /new-temuone and
+            // /new-temutwo Views badges (sum of every SKU row), not a guarded leftover.
             $pageViews = $this->computeTemuViewsForMasterChannel($channel);
             if (! empty($pageViews['ok'])) {
                 $result['total_views'] = $pageViews['total_views'];
@@ -556,9 +556,11 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * /temu1-data Views badge: o_clicks || product_clicks, once per goods_id, skip PARENT.
-     * o_clicks = SUM(temu_view_data.product_clicks) joined on temu_metrics.goods_id.
-     * product_clicks = sheet sum, else temu_metrics.product_clicks_l30, then + ads clicks.
+     * /new-temuone Views badge: sum every Active PM SKU row (skip PARENT).
+     * Per row — same as NewTemuoneController::dataJson:
+     *   sheet = SUM(temu_view_data.product_clicks) by temu_metrics.goods_id
+     *   views = sheet if > 0, else product_clicks_l30 + ads clicks.
+     * Variations that share a Goods ID are counted once per SKU (badge sum).
      *
      * @return array{ok: bool, total_views: int, total_sold: int, cvr_pct: float}
      */
@@ -635,7 +637,6 @@ class ChannelMasterController extends Controller
                     });
             }
 
-            $viewsByGoodsId = [];
             $totalViews = 0;
             foreach ($normalizedPm as $norm => $_sku) {
                 $item = $metricsByNorm[$norm] ?? null;
@@ -645,15 +646,7 @@ class ChannelMasterController extends Controller
                 $oClicks = $sheet;
                 $productClicks = $hasSheet ? $sheet : (int) ($item->product_clicks_l30 ?? 0);
                 $adsViews = $gid ? (int) ($adsByGid[$gid] ?? 0) : 0;
-                $rowViews = $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
-                if ($gid) {
-                    $viewsByGoodsId[$gid] = $rowViews;
-                } else {
-                    $totalViews += $rowViews;
-                }
-            }
-            foreach ($viewsByGoodsId as $views) {
-                $totalViews += (int) $views;
+                $totalViews += $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
             }
 
             $totalSold = 0;
@@ -687,9 +680,10 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * /temu2-decrease Views badge: o_clicks from temu2_view_data, once per goods_id, skip PARENT.
-     * Goods ID from temu2_pricing (SKU → CP Master), else temu2_metrics.
-     * CVR = Temu 2 L30 sold ÷ those views.
+     * /new-temutwo Views badge: sum every Active PM SKU row (skip PARENT).
+     * Same per-row formula as NewTemutwoController::dataJson:
+     *   sheet = SUM(temu2_view_data.product_clicks) by temu2_metrics.goods_id
+     *   views = sheet if > 0, else product_clicks_l30 + campaign-report clicks.
      *
      * @return array{ok: bool, total_views: int, total_sold: int, cvr_pct: float}
      */
@@ -730,25 +724,16 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            $gidByNorm = [];
-            if (Schema::hasTable('temu2_pricing')) {
-                foreach (Temu2Pricing::query()->select(['sku', 'goods_id'])->get() as $row) {
-                    $n = $normalizeSku($row->sku);
-                    $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
-                    if ($n !== '' && $gid && isset($normalizedPm[$n])) {
-                        $gidByNorm[$n] = $gid;
-                    }
-                }
-            }
+            $metricsByNorm = [];
             if (Schema::hasTable('temu2_metrics')) {
-                foreach (Temu2Metric::query()->select(['sku', 'goods_id'])->get() as $row) {
-                    $n = $normalizeSku($row->sku);
-                    if ($n === '' || isset($gidByNorm[$n]) || ! isset($normalizedPm[$n])) {
+                foreach (Temu2Metric::query()->select(['sku', 'base_price', 'goods_id', 'product_clicks_l30'])->get() as $m) {
+                    $n = $normalizeSku($m->sku);
+                    if ($n === '' || ! isset($normalizedPm[$n])) {
                         continue;
                     }
-                    $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
-                    if ($gid) {
-                        $gidByNorm[$n] = $gid;
+                    $price = (float) ($m->base_price ?? 0);
+                    if (! isset($metricsByNorm[$n]) || ($price > 0 && (float) ($metricsByNorm[$n]->base_price ?? 0) <= 0)) {
+                        $metricsByNorm[$n] = $m;
                     }
                 }
             }
@@ -766,19 +751,33 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            $viewsByGoodsId = [];
-            $totalViews = 0;
-            foreach ($normalizedPm as $norm => $_sku) {
-                $gid = $gidByNorm[$norm] ?? null;
-                $rowViews = $gid ? (int) ($viewByGid[$gid] ?? 0) : 0;
-                if ($gid) {
-                    $viewsByGoodsId[$gid] = $rowViews;
-                } else {
-                    $totalViews += $rowViews;
+            $adsByGid = [];
+            if (Schema::hasTable('temu2_campaign_reports')) {
+                $ids = Temu2CampaignReport::latestRowIdsByGoodsId('L30');
+                if ($ids->isNotEmpty()) {
+                    Temu2CampaignReport::query()
+                        ->whereIn('id', $ids)
+                        ->whereRaw("LOWER(TRIM(COALESCE(status, ''))) != 'not created'")
+                        ->whereNotNull('goods_id')
+                        ->get(['goods_id', 'clicks'])
+                        ->each(function ($row) use (&$adsByGid) {
+                            $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+                            if ($gid) {
+                                $adsByGid[$gid] = (int) ($row->clicks ?? 0);
+                            }
+                        });
                 }
             }
-            foreach ($viewsByGoodsId as $views) {
-                $totalViews += (int) $views;
+
+            $totalViews = 0;
+            foreach ($normalizedPm as $norm => $_sku) {
+                $item = $metricsByNorm[$norm] ?? null;
+                $gid = $item ? TemuGoodsIdHelper::normalizeKey($item->goods_id) : null;
+                $hasSheet = $gid !== null && array_key_exists($gid, $viewByGid);
+                $oClicks = $hasSheet ? (int) $viewByGid[$gid] : 0;
+                $productClicks = $hasSheet ? $oClicks : (int) ($item?->product_clicks_l30 ?? 0);
+                $adsViews = $gid ? (int) ($adsByGid[$gid] ?? 0) : 0;
+                $totalViews += $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
             }
 
             $totalSold = 0;
@@ -805,7 +804,7 @@ class ChannelMasterController extends Controller
                 'cvr_pct' => $cvrPct,
             ];
         } catch (\Throwable $e) {
-            Log::warning('Temu 2 views (temu2-decrease source) failed: '.$e->getMessage());
+            Log::warning('Temu 2 views (new-temutwo source) failed: '.$e->getMessage());
 
             return $empty;
         }
@@ -844,8 +843,11 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * /temu3-decrease Views badge: product_clicks from temu3_view_data, once per goods_id.
-     * CVR = Temu 3 sheet L30 sold ÷ those views.
+     * Temu 3 Views on /all-marketplace-master: sum every Active PM SKU row (skip PARENT).
+     * Same per-row Views column as /temu3-decrease:
+     *   Goods ID from temu3_pricing, views = SUM(temu3_view_data.product_clicks)
+     *   in the L30 sheet window. No ads fallback.
+     * Variations that share a Goods ID each carry the full listing clicks.
      *
      * @return array{ok: bool, total_views: int, total_sold: int, cvr_pct: float}
      */
@@ -886,6 +888,34 @@ class ChannelMasterController extends Controller
                 }
             }
 
+            $gidByNorm = [];
+            if (Schema::hasTable('temu3_pricing')) {
+                foreach (Temu3Pricing::query()->select(['sku', 'goods_id'])->get() as $row) {
+                    $n = $normalizeSku($row->sku);
+                    if ($n === '' || ! isset($normalizedPm[$n])) {
+                        continue;
+                    }
+                    $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+                    if ($gid) {
+                        $gidByNorm[$n] = $gid;
+                    }
+                }
+            }
+
+            $viewByGid = [];
+            foreach (TemuShopifySalesService::temu3ViewDataByGoodsId('L30') as $row) {
+                $key = TemuGoodsIdHelper::normalizeKey($row->goods_id ?? null);
+                if ($key) {
+                    $viewByGid[$key] = (int) ($row->product_clicks ?? 0);
+                }
+            }
+
+            $totalViews = 0;
+            foreach ($normalizedPm as $norm => $_sku) {
+                $gid = $gidByNorm[$norm] ?? null;
+                $totalViews += $gid ? (int) ($viewByGid[$gid] ?? 0) : 0;
+            }
+
             $totalSold = 0;
             [$apiStart, $apiEnd] = TemuShopifySalesService::temu3SheetL30Window();
             foreach (TemuShopifySalesService::getTemu3OrdersTableRows($apiStart, $apiEnd) as $row) {
@@ -901,16 +931,16 @@ class ChannelMasterController extends Controller
                 $totalSold += (int) ($row['quantity_purchased'] ?? 0);
             }
 
-            $summary = TemuShopifySalesService::temu3ViewsSummary($totalSold, 'L30');
+            $cvrPct = $totalViews > 0 ? round(($totalSold / $totalViews) * 100, 2) : 0.0;
 
             return [
                 'ok' => true,
-                'total_views' => $summary['total_views'],
-                'total_sold' => $summary['total_sold'],
-                'cvr_pct' => $summary['cvr_pct'],
+                'total_views' => $totalViews,
+                'total_sold' => $totalSold,
+                'cvr_pct' => $cvrPct,
             ];
         } catch (\Throwable $e) {
-            Log::warning('Temu 3 views (temu3-decrease source) failed: '.$e->getMessage());
+            Log::warning('Temu 3 views (temu3-decrease column sum) failed: '.$e->getMessage());
 
             return $empty;
         }
