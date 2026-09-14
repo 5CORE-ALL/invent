@@ -1396,6 +1396,10 @@ class ChannelPromoPricingController extends Controller
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
     }
 
+    /**
+     * Dil slabs → target %. Amazon /amazon-tabulator-view uses Target NROI
+     * (stored groi/nroi). Other channels still use Target GROI.
+     */
     public function dilGroiRules(Request $request, string $channel): JsonResponse
     {
         $channel = $this->normalizeRulesChannel($channel);
@@ -1408,10 +1412,12 @@ class ChannelPromoPricingController extends Controller
             ->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
+        $targetMetric = $channel === 'amazon' ? 'nroi' : 'groi';
         if ($unpacked['rules'] === []) {
             return response()->json([
                 'success' => true,
                 'is_default' => true,
+                'target_metric' => $targetMetric,
                 'rules' => AmazonDilGroiRule::defaults(),
                 'cvr_adj' => $unpacked['cvr_adj'],
             ]);
@@ -1420,6 +1426,7 @@ class ChannelPromoPricingController extends Controller
         return response()->json([
             'success' => true,
             'is_default' => false,
+            'target_metric' => $targetMetric,
             'rules' => $unpacked['rules'],
             'cvr_adj' => $unpacked['cvr_adj'],
         ]);
@@ -1480,6 +1487,7 @@ class ChannelPromoPricingController extends Controller
         return response()->json([
             'success' => true,
             'channel' => $channel,
+            'target_metric' => $channel === 'amazon' ? 'nroi' : 'groi',
             'rules' => $rules,
             'cvr_adj' => $cvrAdj,
         ]);

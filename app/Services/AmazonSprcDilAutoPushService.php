@@ -7,6 +7,7 @@ use App\Models\AmazonDataView;
 use App\Models\AmazonProductReview;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonSkuDailyData;
+use App\Models\ChannelMasterCalculatedData;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -20,8 +21,9 @@ use Throwable;
  * Amazon Analytics Sprc Dil stack → SPRICE → Listings API (page not required).
  *
  * Same as Push Prc on /amazon-tabulator-view:
- *  Dil in slab (INV > 0, including 0 Sold) → Sale = Dil→GROI (LP/Ship / 0.80)
- *    then CVR Down & < 7% → Target GROI −10; CVR Up & > 10% → Target GROI +10
+ *  Dil in slab (INV > 0, including 0 Sold) → Sale = Dil→NROI
+ *    (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100)
+ *    then CVR Down & < 7% → Target NROI −10; CVR Up & > 10% → Target NROI +10
  *  Else → Sale = Std × (1 − (CVR Disc + Rev Disc)/100)
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%.
  *  Skip when live Price already equals the target. Price column updates on each push.
@@ -47,11 +49,13 @@ class AmazonSprcDilAutoPushService
         $cvrGroiAdj = $dilStore['cvr_adj'];
         $cvrRules = $this->loadCvrDiscRules();
         $review = $this->loadReviewDiscRules();
+        $adsPct = $this->amazonAdsPercent();
 
         $this->log($logger, 'Loaded Dil slabs='.count($dilRules)
             .' CVR Disc slabs='.count($cvrRules)
             .' Rev Disc slabs='.count($review['rules'])
-            .' (amazon_dil_vs_groi / amazon_cvr_vs_disc / amazon_review_vs_disc)');
+            .' Ads%='.$adsPct
+            .' (amazon_dil_vs_groi Target NROI / amazon_cvr_vs_disc / amazon_review_vs_disc)');
 
         $stats = [
             'candidates' => 0,
@@ -96,7 +100,8 @@ class AmazonSprcDilAutoPushService
                         $cvrRules,
                         $review['rules'],
                         $review['max_reviews'],
-                        $cvrGroiAdj
+                        $cvrGroiAdj,
+                        $adsPct
                     );
                     if ($computed === null) {
                         $stats['skipped']++;
@@ -192,7 +197,7 @@ class AmazonSprcDilAutoPushService
      * @param  list<array{key:string,label:string,disc:float}>  $cvrRules
      * @param  list<array{key:string,min:int,max:int,disc:float}>  $reviewRules
      * @param  array<string, mixed>|null  $cvrAdj
-     * @return array{sprice:float,dil:float,groi:?float,cvr_disc:float,review_disc:float,dil_groi:bool,lmp_capped:bool,base:float}|null
+     * @return array{sprice:float,dil:float,groi:?float,nroi:?float,cvr_disc:float,review_disc:float,dil_groi:bool,lmp_capped:bool,base:float}|null
      */
     public function computeTarget(
         array $row,
@@ -200,7 +205,8 @@ class AmazonSprcDilAutoPushService
         array $cvrRules,
         array $reviewRules,
         int $reviewMax,
-        ?array $cvrAdj = null
+        ?array $cvrAdj = null,
+        ?float $adsPct = null
     ): ?array {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
@@ -215,24 +221,25 @@ class AmazonSprcDilAutoPushService
         $reviews = (int) ($row['review_count'] ?? 0);
         $lmp = (float) ($row['lmp'] ?? 0);
 
+        $ads = $adsPct ?? $this->amazonAdsPercent();
         $dilRule = AmazonDilGroiRule::match($dil, $dilRules);
         $dilPrice = null;
-        $groi = null;
+        $nroi = null;
         if ($dilRule !== null && $lp > 0) {
-            $groi = (float) $dilRule['groi'];
+            $nroi = (float) ($dilRule['nroi'] ?? $dilRule['groi']);
             $aL30 = (float) ($row['a_l30'] ?? 0);
             $sess30 = (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0);
             $aL60 = (float) ($row['a_l60'] ?? $row['units_ordered_l60'] ?? 0);
             $sess60 = (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0);
             $cvrL30 = AmazonDilGroiRule::cvrL30($aL30, $sess30);
             $cvrL45 = AmazonDilGroiRule::cvrL45($aL30, $sess30, $aL60, $sess60);
-            $groi = AmazonDilGroiRule::adjustGroiForCvr(
-                $groi,
+            $nroi = AmazonDilGroiRule::adjustGroiForCvr(
+                $nroi,
                 $cvrL30,
                 AmazonDilGroiRule::cvrTrend($cvrL30, $cvrL45),
                 $cvrAdj
             );
-            $dilPrice = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi);
+            $dilPrice = AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $nroi, $ads);
             if ($dilPrice !== null && ! ($dilPrice >= 0.01)) {
                 $dilPrice = null;
             }
@@ -271,7 +278,8 @@ class AmazonSprcDilAutoPushService
         return [
             'sprice' => round($sprice, 2),
             'dil' => round($dil, 2),
-            'groi' => $groi,
+            'groi' => $nroi,
+            'nroi' => $nroi,
             'cvr_disc' => $dilGroi ? 0.0 : $cvrDisc,
             'review_disc' => $dilGroi ? 0.0 : $reviewDisc,
             'dil_groi' => $dilGroi,
@@ -660,13 +668,14 @@ class AmazonSprcDilAutoPushService
         $existing['SPRICE'] = round((float) $computed['sprice'], 2);
         $existing['SPRICE_STATUS'] = 'saved';
         $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
-        $existing['SPRC_DIL_GROI'] = $computed['groi'];
+        $existing['SPRC_DIL_GROI'] = $computed['nroi'] ?? $computed['groi'];
+        $existing['SPRC_DIL_NROI'] = $computed['nroi'] ?? $computed['groi'];
         $existing['SPRC_DIL_OWNED'] = ! empty($computed['dil_groi']);
 
         $view->value = $existing;
         $view->save();
 
-        $this->syncDailyHistory(strtoupper(trim($sku)), (float) $computed['sprice'], $computed['groi'] ?? null);
+        $this->syncDailyHistory(strtoupper(trim($sku)), (float) $computed['sprice'], $computed['nroi'] ?? $computed['groi'] ?? null);
     }
 
     protected function syncDailyHistory(string $sku, float $sprice, ?float $groi): void
@@ -683,6 +692,7 @@ class AmazonSprcDilAutoPushService
             $payload['sprice'] = $sprice;
             if ($groi !== null) {
                 $payload['sprc_dil_groi'] = $groi;
+                $payload['sprc_dil_nroi'] = $groi;
             }
             $daily->daily_data = $payload;
             $daily->save();
@@ -754,6 +764,18 @@ class AmazonSprcDilAutoPushService
                 'sku' => $sku,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /** Channel Master Amazon Ads% — same source as /amazon-tabulator-view SNROI. */
+    public function amazonAdsPercent(): float
+    {
+        try {
+            return (float) (ChannelMasterCalculatedData::query()->where('channel', 'Amazon')->value('ads_percentage')
+                ?? ChannelMasterCalculatedData::query()->where('channel', 'like', 'Amazon%')->value('ads_percentage')
+                ?? 0);
+        } catch (Throwable $e) {
+            return 0.0;
         }
     }
 
