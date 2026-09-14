@@ -54,35 +54,39 @@ class ChannelMasterInventoryGuard
 
     /**
      * Carry the previous trusted inventory across collapsed / V-dip days.
+     * Uses immediate neighbors so a single crash (e.g. $1.78M → $972k → $1.53M)
+     * is always replaced, even if earlier days already moved the baseline.
      *
      * @param  list<array{date?: string, value: float|int|string|null}>  $chartData
      * @return list<array{date?: string, value: float}>
      */
     public static function repairChartPoints(array $chartData): array
     {
+        $chartData = array_values($chartData);
         $n = count($chartData);
         if ($n < 2) {
             return $chartData;
         }
 
+        // Pass 1: isolated V vs immediate neighbors.
+        for ($i = 1; $i < $n - 1; $i++) {
+            $prev = (float) ($chartData[$i - 1]['value'] ?? 0);
+            $cur = (float) ($chartData[$i]['value'] ?? 0);
+            $next = (float) ($chartData[$i + 1]['value'] ?? 0);
+            if (self::isIsolatedDip($prev, $cur, $next)) {
+                $chartData[$i]['value'] = round($prev > 0 ? $prev : $next, 2);
+            }
+        }
+
+        // Pass 2: any remaining 20%+ crash vs the last trusted day.
         $trusted = (float) ($chartData[0]['value'] ?? 0);
         for ($i = 1; $i < $n; $i++) {
             $cur = (float) ($chartData[$i]['value'] ?? 0);
-            $next = $i + 1 < $n ? (float) ($chartData[$i + 1]['value'] ?? 0) : null;
-
-            $isolated = $next !== null && self::isIsolatedDip($trusted, $cur, $next);
-            $collapsedThenRecovered = $next !== null
-                && self::isCollapsed($cur, $trusted)
-                && ! self::isCollapsed($next, $trusted);
-
-            if ($isolated || $collapsedThenRecovered) {
+            if ($trusted > 0 && self::isCollapsed($cur, $trusted)) {
                 $chartData[$i]['value'] = round($trusted, 2);
                 continue;
             }
-
-            if ($cur > 0 && ! self::isCollapsed($cur, $trusted > 0 ? $trusted : $cur)) {
-                $trusted = $cur;
-            } elseif ($cur > 0 && $trusted <= 0) {
+            if ($cur > 0) {
                 $trusted = $cur;
             }
         }

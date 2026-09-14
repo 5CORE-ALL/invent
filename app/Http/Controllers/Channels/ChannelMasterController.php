@@ -16842,6 +16842,7 @@ class ChannelMasterController extends Controller
             $cvrCarryViews = null;
             $cvrCarryQty = null;
             $viewsCarryByChannel = [];
+            $invCarryValue = null;
             foreach ($grouped as $dateKey => $rows) {
                 $date = Carbon::parse($dateKey, 'America/Los_Angeles')->format('M d');
 
@@ -16987,7 +16988,13 @@ class ChannelMasterController extends Controller
                             $invKey = $metric === 'inventory' ? 'inventory_value_amazon' : $metric;
                             $dayInv = floatval($sd['inventory_value_amazon'] ?? 0);
                             $dayVal = floatval($sd[$invKey] ?? 0);
+                            $dayLp = floatval($sd['inv_at_lp'] ?? 0);
                             $totalInvAmazon = max($totalInvAmazon, $dayInv);
+                            if ($metric === 'inventory' && $dayLp > 0 && $dayInv > 0
+                                && abs($dayInv - $dayLp) / max($dayInv, $dayLp) < 0.03) {
+                                // Inv@LP was saved as inv that day — ignore it.
+                                $dayVal = 0.0;
+                            }
                             if ($dayVal > 0) {
                                 $hasMetricData = true;
                                 $totalVal = max($totalVal, $dayVal);
