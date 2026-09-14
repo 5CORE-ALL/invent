@@ -2350,6 +2350,30 @@
                         }
                     },
                     {
+                        title: "SNROI",
+                        field: "SNROI",
+                        headerTooltip: "SNROI = SGROI on AliExpress (no Ads%). Same live value as the SGROI column.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
+                            const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
+                            return av - bv;
+                        },
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = aeSpriceMetrics(d).sroi;
+                            if (isNaN(v) || v === 0) return '0%';
+                            let color;
+                            if      (v < 40)  color = '#a00211';
+                            else if (v < 75)  color = '#ffc107';
+                            else if (v < 125) color = '#28a745';
+                            else              color = '#d63384';
+                            return '<span title="SNROI = SGROI (no Ads%)" style="color:' + color + ';font-weight:600;">'
+                                + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
                         title: "SGPFT",
                         field: "sgpft",
                         sorter: function(a, b, aRow, bRow) {
@@ -2365,6 +2389,26 @@
                             if (isNaN(v) || v === 0) return '0%';
                             let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
                             return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
+                        }
+                    },
+                    {
+                        title: "SNPFT",
+                        field: "SNPFT",
+                        headerTooltip: "SNPFT = SGPFT on AliExpress (no Ads%). Same live value as the SGPFT column.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sgpft;
+                            const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sgpft;
+                            return av - bv;
+                        },
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = aeSpriceMetrics(d).sgpft;
+                            if (isNaN(v) || v === 0) return '0%';
+                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            return '<span title="SNPFT = SGPFT (no Ads%)" style="color:' + color + ';font-weight:600;">'
+                                + Math.round(v) + '%</span>';
                         }
                     },
                 ],

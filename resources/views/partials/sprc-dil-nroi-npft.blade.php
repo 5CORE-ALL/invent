@@ -40,36 +40,59 @@
             return null;
         }
         function ebayDilRowSprice(d) {
+            if (typeof aeVisibleSprice === 'function') {
+                const ae = Number(aeVisibleSprice(d));
+                if (isFinite(ae) && ae > 0) return ae;
+            }
             return ebayDilFirstNumber(d, ['SPRICE', 'sprice', 'SPRC_DIL', 'sprc_dil']) || 0;
         }
         function ebayDilRowShip(d) {
             if (typeof ebayDgExcludeShip === 'function' && ebayDgExcludeShip()) return 0;
-            return parseFloat(d && d.Ship_productmaster) || 0;
+            if (typeof chPromoShipCost === 'function') {
+                try {
+                    const s = Number(chPromoShipCost(d));
+                    if (isFinite(s) && s >= 0) return s;
+                } catch (e) { /* fall through */ }
+            }
+            return parseFloat(d && (d.Ship_productmaster != null ? d.Ship_productmaster : d.ship)) || 0;
+        }
+        function ebayDilRowLp(d) {
+            if (typeof chPromoLp === 'function') {
+                try {
+                    const lp = Number(chPromoLp(d));
+                    if (isFinite(lp) && lp > 0) return lp;
+                } catch (e) { /* fall through */ }
+            }
+            return parseFloat(d && (d.LP_productmaster != null ? d.LP_productmaster : d.lp)) || 0;
+        }
+        function ebayDilLiveSMetrics(d) {
+            if (typeof aeSpriceMetrics === 'function') {
+                const m = aeSpriceMetrics(d) || {};
+                return { sgroi: Number(m.sroi) || 0, sgpft: Number(m.sgpft) || 0 };
+            }
+            const price = ebayDilRowSprice(d);
+            const lp = ebayDilRowLp(d);
+            if (!(price > 0)) return { sgroi: 0, sgpft: 0 };
+            const margin = (typeof ebayDilTakehomeMargin === 'function') ? ebayDilTakehomeMargin(d) : 0.80;
+            const ship = ebayDilRowShip(d);
+            const gross = price * margin - lp - ship;
+            return {
+                sgroi: lp > 0 ? (gross / lp) * 100 : 0,
+                sgpft: (gross / price) * 100,
+            };
         }
         function ebayDilRowSgroi(d) {
-            const n = ebayDilFirstNumber(d, ['SGROI', 'SROI', 'sgroi', 'sroi']);
-            if (n != null) return n;
-            const price = ebayDilRowSprice(d);
-            const lp = parseFloat(d && d.LP_productmaster) || 0;
-            if (!(price > 0) || !(lp > 0)) return 0;
-            const margin = (typeof ebayDilTakehomeMargin === 'function') ? ebayDilTakehomeMargin(d) : 0.80;
-            return ((price * margin - lp - ebayDilRowShip(d)) / lp) * 100;
+            return ebayDilLiveSMetrics(d).sgroi;
         }
         function ebayDilRowSgpft(d) {
-            const n = ebayDilFirstNumber(d, ['SGPFT', 'sgpft']);
-            if (n != null) return n;
-            const price = ebayDilRowSprice(d);
-            if (!(price > 0)) return 0;
-            const lp = parseFloat(d && d.LP_productmaster) || 0;
-            const margin = (typeof ebayDilTakehomeMargin === 'function') ? ebayDilTakehomeMargin(d) : 0.80;
-            return ((price * margin - lp - ebayDilRowShip(d)) / price) * 100;
+            return ebayDilLiveSMetrics(d).sgpft;
         }
         function ebayDilComputedSnroi(d) {
             const ads = (typeof ebayDilAdsPct === 'function') ? ebayDilAdsPct() : 0;
             const sgroi = ebayDilRowSgroi(d);
             if (!(ads > 0)) return sgroi;
             const price = ebayDilRowSprice(d);
-            const lp = parseFloat(d && d.LP_productmaster) || 0;
+            const lp = ebayDilRowLp(d);
             if (!(price > 0) || !(lp > 0)) return sgroi;
             const margin = (typeof ebayDilTakehomeMargin === 'function') ? ebayDilTakehomeMargin(d) : 0.80;
             return ((price * margin - lp - ebayDilRowShip(d) - price * ads / 100) / lp) * 100;

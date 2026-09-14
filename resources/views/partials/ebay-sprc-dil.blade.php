@@ -983,36 +983,22 @@
                     return 0;
                 }
             };
-            if (typeof shopifyChannelAdsPct === 'function') {
-                const n = parseFloat(shopifyChannelAdsPct());
-                if (isFinite(n) && n > 0) return n;
+            const ch = (typeof EBAY_DIL_GROI_CHANNEL !== 'undefined') ? EBAY_DIL_GROI_CHANNEL : '';
+            if (ch === 'ebay2') return read(function() { return EBAY2_CHANNEL_ADS_PCT; });
+            if (ch === 'ebay3') return read(function() { return EBAY3_CHANNEL_ADS_PCT; });
+            if (ch === 'ebay1') return read(function() { return EBAY_CHANNEL_ADS_PCT; });
+            if (ch === 'shopify_b2c' || ch === 'shopify_b2b') {
+                if (typeof shopifyChannelAdsPct === 'function') {
+                    const n = parseFloat(shopifyChannelAdsPct());
+                    if (isFinite(n) && n > 0) return n;
+                }
+                return ch === 'shopify_b2b'
+                    ? read(function() { return SHOPIFY_B2B_TCOS_PCT; })
+                    : read(function() { return SHOPIFY_DIRECT_TCOS_PCT; });
             }
-            if (EBAY_DIL_GROI_CHANNEL === 'ebay2') {
-                return read(function() { return EBAY2_CHANNEL_ADS_PCT; });
-            }
-            if (EBAY_DIL_GROI_CHANNEL === 'ebay3') {
-                return read(function() { return EBAY3_CHANNEL_ADS_PCT; });
-            }
-            if (EBAY_DIL_GROI_CHANNEL === 'shopify_b2c') {
-                return read(function() { return SHOPIFY_DIRECT_TCOS_PCT; });
-            }
-            if (EBAY_DIL_GROI_CHANNEL === 'shopify_b2b') {
-                return read(function() { return SHOPIFY_B2B_TCOS_PCT; });
-            }
-            if (EBAY_DIL_GROI_CHANNEL === 'reverb') {
-                return read(function() { return REVERB_CHANNEL_ADS_PCT; });
-            }
-            if (EBAY_DIL_GROI_CHANNEL === 'ebay1') {
-                return read(function() { return EBAY_CHANNEL_ADS_PCT; });
-            }
-            const n = read(function() { return AMAZON_CHANNEL_ADS_PCT; })
-                || read(function() { return EBAY_CHANNEL_ADS_PCT; })
-                || read(function() { return EBAY2_CHANNEL_ADS_PCT; })
-                || read(function() { return EBAY3_CHANNEL_ADS_PCT; })
-                || read(function() { return REVERB_CHANNEL_ADS_PCT; })
-                || read(function() { return SHOPIFY_DIRECT_TCOS_PCT; })
-                || read(function() { return SHOPIFY_B2B_TCOS_PCT; });
-            return n;
+            if (ch === 'reverb') return read(function() { return REVERB_CHANNEL_ADS_PCT; });
+            if (ch === 'amazon') return read(function() { return AMAZON_CHANNEL_ADS_PCT; });
+            return 0;
         }
         function ebayDilTakehomeMargin(d) {
             if (typeof chPromoTakehomeMargin === 'function') {
