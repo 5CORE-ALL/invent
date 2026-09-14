@@ -150,7 +150,9 @@
             background: #fff;
             display: flex;
             flex-direction: column;
+            transition: box-shadow .15s ease, border-color .15s ease;
         }
+        a.sp-card:hover { border-color: #f0b7b9; box-shadow: 0 8px 22px rgba(227,28,35,.08); }
         .sp-thumb {
             height: 150px;
             background: #f6f6f6;
@@ -300,7 +302,7 @@
                 @else
                     <div class="sp-grid">
                         @foreach($items as $asset)
-                            <article class="sp-card">
+                            <a class="sp-card" href="{{ route('supplier-portal.show', $asset) }}">
                                 <div class="sp-thumb">
                                     @if($asset->isImage())
                                         <img src="{{ $asset->publicUrl() }}" alt="{{ $asset->title }}">
@@ -311,11 +313,11 @@
                                 <div class="sp-card-body">
                                     <h3>{{ $asset->title }}</h3>
                                     <div class="sp-meta">{{ $asset->extensionLabel() }} · {{ $asset->sizeLabel() }}</div>
-                                    <a class="sp-dl" href="{{ route('supplier-portal.download', $asset) }}">
-                                        Download <i class="ri-download-line"></i>
-                                    </a>
+                                    <span class="sp-dl">
+                                        Open <i class="ri-arrow-right-up-line"></i>
+                                    </span>
                                 </div>
-                            </article>
+                            </a>
                         @endforeach
                     </div>
                 @endif
