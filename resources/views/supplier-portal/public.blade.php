@@ -88,27 +88,55 @@
             margin: 8px 0 18px;
         }
         .sp-head h2 { margin: 0; font-size: 22px; font-weight: 800; }
-        .sp-viewall { color: var(--sp-red); font-weight: 600; font-size: 14px; }
-        .sp-viewall:hover { color: var(--sp-red-dark); }
-        .sp-quick {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            margin-bottom: 36px;
-        }
-        .sp-quick a {
+        .sp-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 0 0 28px;
+            padding: 6px;
             border: 1px solid var(--sp-line);
-            border-radius: 10px;
-            padding: 18px 16px 16px;
-            min-height: 112px;
-            position: relative;
-            transition: box-shadow .15s ease, border-color .15s ease;
+            border-radius: 12px;
+            background: #fafafa;
         }
-        .sp-quick a:hover { border-color: #f0b7b9; box-shadow: 0 8px 22px rgba(227,28,35,.08); }
-        .sp-quick i { color: var(--sp-red); font-size: 22px; }
-        .sp-quick strong { display: block; margin: 10px 0 4px; font-size: 15px; }
-        .sp-quick span { color: var(--sp-muted); font-size: 12px; }
-        .sp-quick .ri-arrow-right-s-line { position: absolute; right: 10px; bottom: 8px; font-size: 20px; color: #bbb; }
+        .sp-tab {
+            border: 0;
+            background: transparent;
+            color: #444;
+            font: inherit;
+            font-weight: 600;
+            font-size: 14px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1 1 160px;
+            justify-content: center;
+        }
+        .sp-tab i { color: var(--sp-red); font-size: 18px; }
+        .sp-tab:hover { background: #fff; color: var(--sp-ink); }
+        .sp-tab.is-active {
+            background: #fff;
+            color: var(--sp-ink);
+            box-shadow: 0 2px 10px rgba(20,20,20,.08);
+        }
+        .sp-tab-count {
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            border-radius: 999px;
+            background: #eee;
+            color: #555;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .sp-tab.is-active .sp-tab-count { background: var(--sp-soft); color: var(--sp-red-dark); }
+        .sp-panel { display: none; }
+        .sp-panel.is-active { display: block; }
         .sp-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -188,11 +216,12 @@
         .sp-footer a:hover { color: #fff; }
         @media (max-width: 980px) {
             .sp-hero { min-height: 300px; }
-            .sp-quick, .sp-grid { grid-template-columns: 1fr 1fr; }
+            .sp-grid { grid-template-columns: 1fr 1fr; }
             .sp-footer, .sp-announce { flex-direction: column; align-items: flex-start; }
         }
         @media (max-width: 640px) {
-            .sp-quick, .sp-grid { grid-template-columns: 1fr; }
+            .sp-grid { grid-template-columns: 1fr; }
+            .sp-tabs { flex-direction: column; }
             .sp-hero { min-height: 260px; padding-top: 48px; padding-bottom: 48px; }
             .sp-top, .sp-hero, .sp-wrap, .sp-announce, .sp-footer { padding-left: 18px; padding-right: 18px; }
         }
@@ -228,56 +257,49 @@
         </div>
     </section>
 
-    <main class="sp-wrap">
-        @if($section === null)
-            <div class="sp-head"><h2>Quick Access</h2></div>
-            <div class="sp-quick">
-                <a href="#logos">
-                    <i class="ri-palette-line"></i>
-                    <strong>Brand Assets</strong>
-                    <span>Logos, icons, brand files</span>
-                    <i class="ri-arrow-right-s-line"></i>
-                </a>
-                <a href="#packaging">
-                    <i class="ri-box-3-line"></i>
-                    <strong>Packaging Designs</strong>
-                    <span>Dielines and box artwork</span>
-                    <i class="ri-arrow-right-s-line"></i>
-                </a>
-                <a href="#marketing">
-                    <i class="ri-image-line"></i>
-                    <strong>Marketing Materials</strong>
-                    <span>Catalogs, banners, kits</span>
-                    <i class="ri-arrow-right-s-line"></i>
-                </a>
-                <a href="#documents">
-                    <i class="ri-file-text-line"></i>
-                    <strong>Guidelines</strong>
-                    <span>Brand and compliance PDFs</span>
-                    <i class="ri-arrow-right-s-line"></i>
-                </a>
-            </div>
-        @endif
+    <main class="sp-wrap" id="spCatalog">
+        @php
+            $categories = \App\Models\SupplierPortalAsset::CATEGORIES;
+            $activeTab = $section && isset($categories[$section])
+                ? $section
+                : array_key_first($categories);
+        @endphp
+        <div class="sp-head">
+            <h2>Download files</h2>
+        </div>
+        <div class="sp-tabs" role="tablist" aria-label="Supplier file categories">
+            @foreach($categories as $key => $label)
+                @php $count = ($grouped[$key] ?? collect())->count(); @endphp
+                <button
+                    type="button"
+                    class="sp-tab{{ $key === $activeTab ? ' is-active' : '' }}"
+                    role="tab"
+                    id="sp-tab-{{ $key }}"
+                    data-tab="{{ $key }}"
+                    aria-selected="{{ $key === $activeTab ? 'true' : 'false' }}"
+                    aria-controls="sp-panel-{{ $key }}"
+                >
+                    <i class="{{ \App\Models\SupplierPortalAsset::CATEGORY_ICONS[$key] ?? 'ri-folder-line' }}"></i>
+                    <span>{{ $label }}</span>
+                    <span class="sp-tab-count">{{ $count }}</span>
+                </button>
+            @endforeach
+        </div>
 
-        @foreach(\App\Models\SupplierPortalAsset::CATEGORIES as $key => $label)
-            @if($section !== null && $section !== $key)
-                @continue
-            @endif
-            @php $items = $grouped[$key] ?? collect(); $preview = $section ? $items : $items->take(4); @endphp
-            <section id="{{ $key }}">
-                <div class="sp-head">
-                    <h2>{{ $label }}</h2>
-                    @if($section === null && $items->count() > 4)
-                        <a class="sp-viewall" href="{{ url('/supplier-portal/'.$key) }}">View All &gt;</a>
-                    @elseif($section !== null)
-                        <a class="sp-viewall" href="{{ url('/supplier-portal') }}">&lt; Back to portal</a>
-                    @endif
-                </div>
-                @if($preview->isEmpty())
-                    <p class="sp-empty">Files for this section will appear here after they are uploaded.</p>
+        @foreach($categories as $key => $label)
+            @php $items = $grouped[$key] ?? collect(); @endphp
+            <section
+                class="sp-panel{{ $key === $activeTab ? ' is-active' : '' }}"
+                id="sp-panel-{{ $key }}"
+                role="tabpanel"
+                aria-labelledby="sp-tab-{{ $key }}"
+                data-panel="{{ $key }}"
+            >
+                @if($items->isEmpty())
+                    <p class="sp-empty">No {{ strtolower($label) }} files uploaded yet.</p>
                 @else
                     <div class="sp-grid">
-                        @foreach($preview as $asset)
+                        @foreach($items as $asset)
                             <article class="sp-card">
                                 <div class="sp-thumb">
                                     @if($asset->isImage())
@@ -328,5 +350,41 @@
             @endif
         </div>
     </footer>
+    <script>
+    (function () {
+        var root = document.getElementById('spCatalog');
+        if (!root) return;
+        var tabs = Array.prototype.slice.call(root.querySelectorAll('.sp-tab'));
+        var panels = Array.prototype.slice.call(root.querySelectorAll('.sp-panel'));
+        var known = {};
+        tabs.forEach(function (tab) { known[tab.getAttribute('data-tab')] = true; });
+
+        function show(key, updateHash) {
+            if (!known[key]) return;
+            tabs.forEach(function (tab) {
+                var on = tab.getAttribute('data-tab') === key;
+                tab.classList.toggle('is-active', on);
+                tab.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            panels.forEach(function (panel) {
+                panel.classList.toggle('is-active', panel.getAttribute('data-panel') === key);
+            });
+            if (updateHash) {
+                history.replaceState(null, '', '#' + key);
+            }
+        }
+
+        tabs.forEach(function (tab) {
+            tab.addEventListener('click', function () {
+                show(tab.getAttribute('data-tab'), true);
+            });
+        });
+
+        var fromHash = (location.hash || '').replace('#', '');
+        if (known[fromHash]) {
+            show(fromHash, false);
+        }
+    })();
+    </script>
 </body>
 </html>

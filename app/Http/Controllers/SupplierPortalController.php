@@ -29,8 +29,8 @@ class SupplierPortalController extends Controller
 
     public function section(string $category)
     {
-        $category = strtolower(trim($category));
-        if (! isset(SupplierPortalAsset::CATEGORIES[$category])) {
+        $category = SupplierPortalAsset::resolveCategoryKey($category);
+        if ($category === null) {
             abort(404);
         }
 
@@ -65,12 +65,18 @@ class SupplierPortalController extends Controller
         $all = SupplierPortalAsset::query()
             ->orderBy('sort_order')
             ->orderBy('id')
-            ->get()
-            ->groupBy('category');
+            ->get();
 
         $out = [];
         foreach (array_keys(SupplierPortalAsset::CATEGORIES) as $key) {
-            $out[$key] = $all->get($key, collect());
+            $out[$key] = collect();
+        }
+        foreach ($all as $asset) {
+            $key = SupplierPortalAsset::resolveCategoryKey((string) $asset->category);
+            if ($key === null || ! isset($out[$key])) {
+                continue;
+            }
+            $out[$key]->push($asset);
         }
 
         return $out;

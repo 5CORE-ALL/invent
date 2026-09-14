@@ -8,11 +8,45 @@ use Illuminate\Support\Facades\Storage;
 class SupplierPortalAsset extends Model
 {
     public const CATEGORIES = [
-        'logos' => 'Brand Assets / Logos',
-        'packaging' => 'Packaging Designs',
-        'marketing' => 'Marketing Materials',
-        'documents' => 'Guidelines & Documents',
+        'brand_assets' => 'Brand Assets',
+        'inner_box_designs' => 'Inner Box Designs',
+        'inner_box_cover' => 'Inner Box Cover',
+        'master_carton_designs' => 'Master Carton Designs',
     ];
+
+    public const LEGACY_CATEGORY_SLUGS = [
+        'logos' => 'brand_assets',
+        'packaging' => 'inner_box_designs',
+        'marketing' => 'brand_assets',
+        'documents' => 'brand_assets',
+    ];
+
+    public const CATEGORY_ICONS = [
+        'brand_assets' => 'ri-palette-line',
+        'inner_box_designs' => 'ri-box-3-line',
+        'inner_box_cover' => 'ri-inbox-archive-line',
+        'master_carton_designs' => 'ri-stack-line',
+    ];
+
+    public const CATEGORY_HINTS = [
+        'brand_assets' => 'Logos, icons, brand files',
+        'inner_box_designs' => 'Inner box artwork and dielines',
+        'inner_box_cover' => 'Inner box cover artwork',
+        'master_carton_designs' => 'Master carton artwork and dielines',
+    ];
+
+    public static function resolveCategoryKey(string $category): ?string
+    {
+        $category = strtolower(trim($category));
+        if ($category === '') {
+            return null;
+        }
+        if (isset(self::CATEGORIES[$category])) {
+            return $category;
+        }
+
+        return self::LEGACY_CATEGORY_SLUGS[$category] ?? null;
+    }
 
     protected $table = 'supplier_portal_assets';
 
