@@ -7,10 +7,14 @@
     <div class="d-flex align-items-center justify-content-between mb-3">
         <div>
             <h4 class="mb-0 fw-bold">eBay 2 Campaign Ads</h4>
-            <small class="text-muted">Raw data from <code>ebay2_campaign_ads</code> table · synced daily</small>
+            <small class="text-muted">Raw data from <code>ebay2_campaign_ads</code> table · Eligible ads auto-enroll daily into the matching parent campaign</small>
         </div>
         <div class="d-flex gap-2 align-items-center">
             <span class="badge bg-primary fs-6" id="total-count">Loading…</span>
+            <button class="btn btn-sm btn-warning" id="auto-enroll-eligible-btn"
+                    title="Enroll every Eligible (RECOMMENDED) listing into its matching parent PMT campaign and start RUNNING">
+                <i class="fas fa-bolt me-1"></i>Start Eligible Ads
+            </button>
             <button class="btn btn-sm btn-success d-none" id="push-selected-btn">
                 <i class="fas fa-cloud-upload-alt me-1"></i>Push Selected (<span id="selected-count">0</span>)
             </button>
@@ -491,14 +495,21 @@ $(document).ready(function () {
                 }
             },
             {
-                title: 'Campaign Name', field: 'campaign_name', width: 240, hozAlign: 'left',
-                headerTooltip: 'Promoted Listings campaign this ad belongs to. Same listing can appear in more than one campaign.',
+                title: 'Campaign Name', field: 'campaign_name', width: 260, hozAlign: 'left',
+                headerTooltip: 'eBay Promoted Listings campaign name (not SKU). Many campaigns are named after the parent SKU, so the text can match SKU even though this is a different field.',
                 formatter: function(cell) {
-                    const v = cell.getValue();
-                    if (!v) {
+                    const row = cell.getRow().getData() || {};
+                    const name = cell.getValue();
+                    const cid = row.campaign_id;
+                    if (!name && (cid == null || cid === '')) {
                         return '<span style="color:#aaa; font-size:11px;">No Campaign</span>';
                     }
-                    return `<span title="${String(v).replace(/"/g, '&quot;')}">${v}</span>`;
+                    const safeName = String(name || '—').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                    const safeCid = cid ? String(cid).replace(/</g, '&lt;') : '';
+                    return `<div style="line-height:1.25;">`
+                        + `<div style="color:#212529; font-weight:600;">${safeName}</div>`
+                        + (safeCid ? `<div style="color:#6c757d; font-size:11px;">ID ${safeCid}</div>` : '')
+                        + `</div>`;
                 }
             },
             {
@@ -520,17 +531,16 @@ $(document).ready(function () {
                 title: 'Status', field: 'campaign_status', width: 110, hozAlign: 'center',
                 headerTooltip: 'Campaign status from eBay. Dash / No Campaign = listing is not in a Promoted Listings campaign yet (Eligible on eBay is the Promote column).',
                 formatter: function(cell) {
+                    const row = cell.getRow().getData() || {};
                     const v = String(cell.getValue() || '').toUpperCase();
                     if (v === 'RUNNING') return '<span class="badge-run">RUNNING</span>';
                     if (v === 'PAUSED')  return '<span class="badge-paus">PAUSED</span>';
                     if (v === 'SYSTEM_PAUSED') return '<span class="badge-paus">SYSTEM_PAUSED</span>';
-                    if (v === 'ENDED')   return '<span class="badge-end">ENDED</span>';
-                    if (v === 'INACTIVE') return '<span class="badge-end">INACTIVE</span>';
-                    const listingStatus = String((cell.getRow().getData() || {}).listing_status || '').toUpperCase();
+                    const listingStatus = String(row.listing_status || '').toUpperCase();
                     if (['ENDED', 'INACTIVE', 'UNSOLD', 'COMPLETED', 'SOLD'].includes(listingStatus)) {
                         return '<span class="badge-end" title="Listing ended on eBay">ENDED</span>';
                     }
-                    return '<span style="color:#aaa; font-size:11px;" title="Not enrolled in a campaign">No Campaign</span>';
+                    return '<span style="color:#aaa; font-size:11px;" title="Not enrolled in a live campaign">No Campaign</span>';
                 }
             },
             {
@@ -735,6 +745,41 @@ document.getElementById('enroll-confirm-btn').addEventListener('click', function
             btn.innerHTML = '<i class="fas fa-plus-circle me-1"></i>Enroll Now';
             errEl.textContent = 'Error: ' + (xhr.responseJSON?.error || xhr.responseText.substring(0, 100));
             errEl.classList.remove('d-none');
+        }
+    });
+});
+
+document.getElementById('auto-enroll-eligible-btn').addEventListener('click', function() {
+    if (!confirm('Start RUNNING ads for all Eligible (RECOMMENDED) listings?\n\nEach listing is enrolled into the matching parent PMT campaign (same name as the parent SKU). A new campaign is created only when that parent campaign does not exist yet.')) {
+        return;
+    }
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Starting…';
+    $.ajax({
+        url: @json(url('/ebay2/campaign-ads/auto-enroll-eligible')),
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+        contentType: 'application/json',
+        data: '{}',
+        timeout: 300000,
+        success: function(resp) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Start Eligible Ads';
+            let msg = `✅ Enrolled: ${resp.success || 0} | ❌ Failed: ${resp.failed || 0} | ⏭ Skipped: ${resp.skipped || 0}`;
+            if (resp.created_campaigns) msg += ` | Campaigns created: ${resp.created_campaigns}`;
+            msg += '\n\n';
+            (resp.results || []).forEach(r => {
+                const icon = r.status === 'enrolled' || r.status === 'would_enroll' ? '✅' : r.status === 'skipped' ? '⏭' : '❌';
+                msg += `${icon} ${r.sku || r.listing_id} → ${r.status}${r.bid ? ' @ ' + r.bid : ''}${r.campaign_name ? ' · ' + r.campaign_name : ''}${r.reason ? ' (' + r.reason + ')' : ''}\n`;
+            });
+            alert(msg);
+            loadData();
+        },
+        error: function(xhr) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Start Eligible Ads';
+            alert('Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText.substring(0, 200)));
         }
     });
 });

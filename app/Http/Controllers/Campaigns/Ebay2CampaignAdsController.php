@@ -506,6 +506,30 @@ class Ebay2CampaignAdsController extends Controller
             return response()->json(['error' => 'listing_ids and campaign_id required'], 422);
         }
 
+        $campaignName = DB::table('ebay2_campaign_ads')
+            ->where('campaign_id', (string) $campaignId)
+            ->value('campaign_name');
+
+        $out = $this->enrollListings(
+            $listingIds,
+            (string) $campaignId,
+            $campaignName !== null && $campaignName !== '' ? (string) $campaignName : null
+        );
+        if (! empty($out['error'])) {
+            return response()->json(['error' => $out['error']], 500);
+        }
+
+        return response()->json($out);
+    }
+
+    /**
+     * Enroll listings into a COST_PER_SALE campaign and mark them RUNNING.
+     *
+     * @param  list<string|int>  $listingIds
+     * @return array{success:int,failed:int,skipped:int,results:array<int,array<string,mixed>>,error?:string}
+     */
+    public function enrollListings(array $listingIds, string $campaignId, ?string $campaignName = null): array
+    {
         $slabs = $this->sbidSlabs();
 
         $ads = DB::table('ebay2_campaign_ads')
@@ -523,7 +547,13 @@ class Ebay2CampaignAdsController extends Controller
             $service = new \App\Services\Ebay2ApiService();
             $token   = $service->generateBearerToken();
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Token error: ' . $e->getMessage()], 500);
+            return [
+                'success' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'results' => [],
+                'error' => 'Token error: ' . $e->getMessage(),
+            ];
         }
 
         $results = [];
@@ -619,15 +649,7 @@ class Ebay2CampaignAdsController extends Controller
                     $adData = $resp->json();
                     DB::table('ebay2_campaign_ads')
                         ->where('listing_id', $lid)
-                        ->update([
-                            'campaign_id'      => $campaignId,
-                            'funding_strategy' => 'COST_PER_SALE',
-                            'campaign_status'  => 'RUNNING',
-                            'bid_percentage'   => $bid,
-                            'promote_with_ad'  => 'AD_ALREADY_CREATED',
-                            'ad_id'            => $adData['adId'] ?? null,
-                            'updated_at'       => now(),
-                        ]);
+                        ->update($this->enrolledAdsUpdate($campaignId, $campaignName, $bid, $adData['adId'] ?? null));
 
                     $results[] = ['listing_id' => $lid, 'sku' => $sku !== '' ? $sku : $metric?->sku, 'status' => 'enrolled', 'bid' => $bid . '%'];
                     $success++;
@@ -648,15 +670,9 @@ class Ebay2CampaignAdsController extends Controller
                                 ]);
                             if ($retry->successful() || $retry->status() === 201) {
                                 $adData = $retry->json();
-                                DB::table('ebay2_campaign_ads')->where('listing_id', $lid)->update([
-                                    'campaign_id' => $campaignId,
-                                    'funding_strategy' => 'COST_PER_SALE',
-                                    'campaign_status' => 'RUNNING',
-                                    'bid_percentage' => $bid,
-                                    'promote_with_ad' => 'AD_ALREADY_CREATED',
-                                    'ad_id' => $adData['adId'] ?? null,
-                                    'updated_at' => now(),
-                                ]);
+                                DB::table('ebay2_campaign_ads')->where('listing_id', $lid)->update(
+                                    $this->enrolledAdsUpdate($campaignId, $campaignName, $bid, $adData['adId'] ?? null)
+                                );
                                 $results[] = ['listing_id' => $lid, 'sku' => $sku, 'status' => 'enrolled', 'bid' => $bid.'%', 'reason' => 'Remapped ended listing to '.$lid];
                                 $success++;
                                 continue;
@@ -677,12 +693,380 @@ class Ebay2CampaignAdsController extends Controller
             }
         }
 
-        return response()->json([
+        return [
             'success' => $success,
             'failed'  => $failed,
             'skipped' => $skipped,
             'results' => $results,
-        ]);
+        ];
+    }
+
+    public function autoEnrollEligibleHttp()
+    {
+        $out = $this->autoEnrollEligible();
+        if (! empty($out['error'])) {
+            return response()->json(['error' => $out['error']], 500);
+        }
+
+        return response()->json($out);
+    }
+
+    /**
+     * Eligible (RECOMMENDED) listings with stock and a price, not already
+     * RUNNING/PAUSED, are enrolled into the matching parent PMT campaign.
+     *
+     * @return array{success:int,failed:int,skipped:int,created_campaigns:int,results:array<int,array<string,mixed>>,error?:string}
+     */
+    public function autoEnrollEligible(bool $dryRun = false, ?int $limit = null): array
+    {
+        $listingIds = $this->eligibleListingIdsForAutoEnroll();
+        if ($limit !== null && $limit > 0) {
+            $listingIds = array_slice($listingIds, 0, $limit);
+        }
+
+        $empty = [
+            'success' => 0,
+            'failed' => 0,
+            'skipped' => 0,
+            'created_campaigns' => 0,
+            'results' => [],
+        ];
+
+        if ($listingIds === []) {
+            return $empty;
+        }
+
+        try {
+            $token = (new \App\Services\Ebay2ApiService())->generateBearerToken();
+        } catch (\Exception $e) {
+            $empty['error'] = 'Token error: '.$e->getMessage();
+
+            return $empty;
+        }
+
+        $campaigns = $this->fetchRunningCpsCampaigns($token);
+        $created = 0;
+        $allResults = [];
+        $success = 0;
+        $failed = 0;
+        $skipped = 0;
+
+        foreach ($listingIds as $lid) {
+            $sku = $this->resolvedSkuForListing((string) $lid);
+            $parent = $this->productMasterParent($sku);
+            $match = $this->matchCampaignForSku($sku, $campaigns, $parent);
+
+            if (! $match && $this->isEbay2ParentSku($sku)) {
+                if ($dryRun) {
+                    $allResults[] = [
+                        'listing_id' => $lid,
+                        'sku' => $sku,
+                        'status' => 'would_create_campaign',
+                        'reason' => $sku,
+                    ];
+                    $skipped++;
+                    continue;
+                }
+                $createdCampaign = $this->createParentCpsCampaign($token, $sku);
+                if ($createdCampaign) {
+                    $campaigns[] = $createdCampaign;
+                    $match = $createdCampaign;
+                    $created++;
+                }
+            }
+
+            if (! $match) {
+                $allResults[] = [
+                    'listing_id' => $lid,
+                    'sku' => $sku,
+                    'status' => 'skipped',
+                    'reason' => 'No matching RUNNING PMT campaign for '.$sku,
+                ];
+                $skipped++;
+                continue;
+            }
+
+            if ($dryRun) {
+                $allResults[] = [
+                    'listing_id' => $lid,
+                    'sku' => $sku,
+                    'status' => 'would_enroll',
+                    'reason' => $match['campaign_name'],
+                    'campaign_id' => $match['campaign_id'],
+                ];
+                $success++;
+                continue;
+            }
+
+            $out = $this->enrollListings([(string) $lid], $match['campaign_id'], $match['campaign_name']);
+            if (! empty($out['error'])) {
+                $allResults[] = [
+                    'listing_id' => $lid,
+                    'sku' => $sku,
+                    'status' => 'failed',
+                    'reason' => $out['error'],
+                ];
+                $failed++;
+                continue;
+            }
+            foreach ($out['results'] as $row) {
+                $row['campaign_name'] = $match['campaign_name'];
+                $allResults[] = $row;
+            }
+            $success += (int) ($out['success'] ?? 0);
+            $failed += (int) ($out['failed'] ?? 0);
+            $skipped += (int) ($out['skipped'] ?? 0);
+            usleep(200000);
+        }
+
+        return [
+            'success' => $success,
+            'failed' => $failed,
+            'skipped' => $skipped,
+            'created_campaigns' => $created,
+            'results' => $allResults,
+        ];
+    }
+
+    /** @return list<string> */
+    private function eligibleListingIdsForAutoEnroll(): array
+    {
+        $liveIds = DB::table('ebay2_campaign_ads')
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->whereRaw("UPPER(TRIM(COALESCE(campaign_status, ''))) IN ('RUNNING', 'PAUSED', 'SYSTEM_PAUSED')")
+            ->pluck('listing_id')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $query = DB::table('ebay2_campaign_ads as ca')
+            ->leftJoin('ebay_2_metrics as em', function ($join) {
+                $join->on('em.item_id', '=', 'ca.listing_id')
+                    ->whereRaw("em.id = (
+                        SELECT em2.id FROM ebay_2_metrics em2
+                        WHERE em2.item_id = ca.listing_id
+                        ORDER BY CASE WHEN UPPER(TRIM(em2.sku)) LIKE 'PARENT%' THEN 0 ELSE 1 END, em2.id
+                        LIMIT 1
+                    )");
+            })
+            ->where('ca.promote_with_ad', 'RECOMMENDED')
+            ->whereRaw("UPPER(TRIM(COALESCE(em.listing_status, ''))) = 'ACTIVE'")
+            ->whereRaw("COALESCE(em.sku, ca.sku) IS NOT NULL")
+            ->whereRaw("COALESCE(em.sku, ca.sku) != ''")
+            ->whereRaw('COALESCE(em.ebay_price, ca.price) > 0')
+            ->whereRaw("(SELECT ss.inv FROM shopify_skus ss WHERE ss.sku = COALESCE(em.sku, ca.sku) LIMIT 1) > 0");
+
+        if ($liveIds !== []) {
+            $query->whereNotIn('ca.listing_id', $liveIds);
+        }
+
+        return $query
+            ->distinct()
+            ->pluck('ca.listing_id')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function resolvedSkuForListing(string $listingId): string
+    {
+        $metric = Ebay2Metric::query()
+            ->where('item_id', $listingId)
+            ->orderByRaw("CASE WHEN UPPER(TRIM(sku)) LIKE 'PARENT%' THEN 0 ELSE 1 END")
+            ->orderBy('id')
+            ->first();
+        if ($metric && trim((string) $metric->sku) !== '') {
+            return trim((string) $metric->sku);
+        }
+
+        return trim((string) (DB::table('ebay2_campaign_ads')->where('listing_id', $listingId)->value('sku') ?? ''));
+    }
+
+    private function productMasterParent(string $sku): ?string
+    {
+        $norm = $this->normSku($sku);
+        if ($norm === '') {
+            return null;
+        }
+
+        $row = ProductMaster::whereNull('deleted_at')
+            ->where(function ($q) use ($norm) {
+                $q->whereRaw('UPPER(TRIM(sku)) = ?', [$norm])
+                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', ['PARENT '.$this->ebay2ParentKey($norm)]);
+            })
+            ->first(['parent', 'sku']);
+
+        $parent = trim((string) ($row->parent ?? ''));
+        if ($parent !== '') {
+            return $parent;
+        }
+        if ($row && $this->isEbay2ParentSku((string) $row->sku)) {
+            return $this->ebay2ParentKey((string) $row->sku);
+        }
+
+        return $this->isEbay2ParentSku($sku) ? $this->ebay2ParentKey($sku) : null;
+    }
+
+    /**
+     * @param  list<array{campaign_id:string,campaign_name:string}>  $campaigns
+     * @return array{campaign_id:string,campaign_name:string}|null
+     */
+    private function matchCampaignForSku(string $sku, array $campaigns, ?string $parent = null): ?array
+    {
+        $candidates = [];
+        $norm = $this->normSku($sku);
+        if ($norm !== '') {
+            $candidates[] = $norm;
+        }
+        if ($this->isEbay2ParentSku($sku)) {
+            $key = $this->ebay2ParentKey($sku);
+            $candidates[] = $this->normSku('PARENT '.$key);
+            $candidates[] = $key;
+        }
+        if ($parent) {
+            $candidates[] = $this->normSku($parent);
+            $candidates[] = $this->normSku('PARENT '.$parent);
+        }
+        $candidates = array_values(array_unique(array_filter($candidates)));
+
+        $byName = [];
+        foreach ($campaigns as $c) {
+            $name = $this->normSku($c['campaign_name'] ?? '');
+            if ($name !== '' && ! isset($byName[$name])) {
+                $byName[$name] = $c;
+            }
+        }
+        foreach ($candidates as $cand) {
+            if (isset($byName[$cand])) {
+                return $byName[$cand];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<array{campaign_id:string,campaign_name:string}>
+     */
+    private function fetchRunningCpsCampaigns(string $token): array
+    {
+        try {
+            $all = [];
+            $offset = 0;
+            $limit = 200;
+            do {
+                $resp = \Illuminate\Support\Facades\Http::withToken($token)
+                    ->get('https://api.ebay.com/sell/marketing/v1/ad_campaign', [
+                        'limit' => $limit,
+                        'offset' => $offset,
+                    ]);
+                $data = $resp->json();
+                $batch = $data['campaigns'] ?? [];
+                $total = (int) ($data['total'] ?? 0);
+                $all = array_merge($all, $batch);
+                $offset += $limit;
+            } while (count($all) < $total && $batch !== []);
+
+            $out = [];
+            foreach ($all as $c) {
+                $funding = $c['fundingStrategy']['fundingModel'] ?? null;
+                $status = strtoupper((string) ($c['campaignStatus'] ?? ''));
+                $id = (string) ($c['campaignId'] ?? '');
+                if ($funding !== 'COST_PER_SALE' || $status !== 'RUNNING' || $id === '') {
+                    continue;
+                }
+                $out[] = [
+                    'campaign_id' => $id,
+                    'campaign_name' => (string) ($c['campaignName'] ?? ''),
+                ];
+            }
+            if ($out !== []) {
+                return $out;
+            }
+        } catch (\Exception $e) {
+            // fall through to local table
+        }
+
+        return DB::table('ebay2_campaign_ads')
+            ->where('funding_strategy', 'COST_PER_SALE')
+            ->where('campaign_status', 'RUNNING')
+            ->whereNotNull('campaign_id')
+            ->select('campaign_id', 'campaign_name')
+            ->distinct()
+            ->get()
+            ->map(fn ($r) => [
+                'campaign_id' => (string) $r->campaign_id,
+                'campaign_name' => (string) $r->campaign_name,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array{campaign_id:string,campaign_name:string}|null
+     */
+    private function createParentCpsCampaign(string $token, string $name): ?array
+    {
+        $name = trim($name);
+        if ($name === '') {
+            return null;
+        }
+
+        try {
+            $resp = \Illuminate\Support\Facades\Http::withToken($token)
+                ->withHeaders([
+                    'Content-Type' => 'application/json',
+                    'X-EBAY-C-MARKETPLACE-ID' => 'EBAY-US',
+                ])
+                ->post('https://api.ebay.com/sell/marketing/v1/ad_campaign', [
+                    'campaignName' => $name,
+                    'startDate' => now('UTC')->format('Y-m-d\TH:i:s.000\Z'),
+                    'marketplaceId' => 'EBAY_US',
+                    'fundingStrategy' => [
+                        'fundingModel' => 'COST_PER_SALE',
+                        'bidPercentage' => '7.0',
+                    ],
+                ]);
+            if (! $resp->successful() && $resp->status() !== 201) {
+                return null;
+            }
+            $data = $resp->json();
+            $id = (string) ($data['campaignId'] ?? '');
+            if ($id === '') {
+                return null;
+            }
+
+            return [
+                'campaign_id' => $id,
+                'campaign_name' => (string) ($data['campaignName'] ?? $name),
+            ];
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function enrolledAdsUpdate(string $campaignId, ?string $campaignName, float $bid, $adId): array
+    {
+        $row = [
+            'campaign_id' => $campaignId,
+            'funding_strategy' => 'COST_PER_SALE',
+            'campaign_status' => 'RUNNING',
+            'bid_percentage' => $bid,
+            'promote_with_ad' => 'AD_ALREADY_CREATED',
+            'ad_id' => $adId,
+            'updated_at' => now(),
+        ];
+        if ($campaignName !== null && $campaignName !== '') {
+            $row['campaign_name'] = $campaignName;
+        }
+
+        return $row;
     }
 
     /** Shared Ebay 1 View VS SBID slabs (For L7 Views → S Bid). */
@@ -1009,7 +1393,15 @@ class Ebay2CampaignAdsController extends Controller
             $query->where('ca.funding_strategy', $request->funding_strategy);
         }
         if ($request->filled('campaign_status')) {
-            $query->where('ca.campaign_status', $request->campaign_status);
+            $status = strtoupper(trim((string) $request->campaign_status));
+            if ($status === 'ENDED') {
+                $query->where(function ($q) {
+                    $q->whereRaw("UPPER(TRIM(COALESCE(ca.campaign_status, ''))) IN ('ENDED', 'INACTIVE')")
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(em.listing_status, ''))) IN ('ENDED', 'INACTIVE', 'UNSOLD', 'COMPLETED', 'SOLD')");
+                });
+            } else {
+                $query->where('ca.campaign_status', $request->campaign_status);
+            }
         }
         if ($request->filled('promote_with_ad')) {
             $promote = $request->promote_with_ad;
@@ -1019,18 +1411,34 @@ class Ebay2CampaignAdsController extends Controller
                       ->orWhere('ca.promote_with_ad', '');
                 });
             } elseif ($promote === 'RECOMMENDED') {
-                // Seller Hub Eligible. Also include ACTIVE listings with no campaign
-                // whose promote status was never synced (apicentral gap).
+                // Seller Hub Eligible = can still start an ad. Exclude ended
+                // listings and anything already RUNNING/PAUSED (those still
+                // often have promote_with_ad=RECOMMENDED leftover).
                 $query->where(function ($q) {
                     $q->where('ca.promote_with_ad', 'RECOMMENDED')
                         ->orWhere(function ($q2) {
-                            $q2->whereNull('ca.campaign_id')
-                                ->where(function ($q3) {
-                                    $q3->whereNull('ca.promote_with_ad')
-                                        ->orWhere('ca.promote_with_ad', '');
-                                })
-                                ->whereRaw("UPPER(TRIM(em.listing_status)) = 'ACTIVE'");
+                            $q2->whereNull('ca.promote_with_ad')
+                                ->orWhere('ca.promote_with_ad', '');
                         });
+                })
+                ->whereRaw("UPPER(TRIM(COALESCE(em.listing_status, ''))) = 'ACTIVE'")
+                ->where(function ($q) {
+                    $q->whereNull('ca.campaign_id')
+                        ->orWhere('ca.campaign_id', '')
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(ca.campaign_status, ''))) IN ('ENDED', 'INACTIVE')");
+                })
+                ->whereNotExists(function ($q) {
+                    $q->selectRaw('1')
+                        ->from('ebay2_campaign_ads as live')
+                        ->whereColumn('live.listing_id', 'ca.listing_id')
+                        ->whereNotNull('live.campaign_id')
+                        ->where('live.campaign_id', '!=', '')
+                        ->whereRaw("UPPER(TRIM(COALESCE(live.campaign_status, ''))) IN ('RUNNING', 'PAUSED', 'SYSTEM_PAUSED')");
+                });
+            } elseif ($promote === 'AD_ALREADY_CREATED') {
+                $query->where(function ($q) {
+                    $q->where('ca.promote_with_ad', 'AD_ALREADY_CREATED')
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(ca.campaign_status, ''))) IN ('RUNNING', 'PAUSED', 'SYSTEM_PAUSED')");
                 });
             } else {
                 $query->where('ca.promote_with_ad', $promote);
