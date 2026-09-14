@@ -1079,6 +1079,9 @@
         /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
         const TABULATOR_COLUMN_CHANNEL = 'ebay2_tabulator';
         const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+        const EBAY2_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
+        /** Take-home from marketplace_percentages (EbayTwo). Used when a row has no percentage. */
+        const EBAY2_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay2'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
@@ -1092,9 +1095,6 @@
         const ORDERS_L30_COGS = {{ (float) ($ordersL30Cogs ?? 0) }};
         const EBAY2_AD_SPEND = {{ (float) ($ebayAdSpend ?? 0) }};
         const ORDERS_L30_NROI = {{ (float) ($ordersL30Nroi ?? 0) }};
-        const EBAY2_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
-        /** Take-home from marketplace_percentages (EbayTwo). Used when a row has no percentage. */
-        const EBAY2_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
 
         /**
          * Net ROI — same shape as Amazon NROI / SNROI badge:
@@ -3934,7 +3934,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "Suggested price from Dil → Target GROI% slabs. Dil outside the table uses the nearest slab (including 0 Sold). CVR < 7% subtracts 10 from Target GROI%; CVR > 10% adds 10. Formula: (LP × (1 + GROI%/100) + Ship) / take-home.",
+                        headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil outside the table uses the nearest slab (including 0 Sold). CVR < 7% subtracts 10 from Target NROI%; CVR > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';

@@ -50,6 +50,7 @@ class EbayThreeController extends Controller
 
         return view('market-places.ebay3_tabulator_view', [
             'ebayTakeHome' => MarketplacePercentage::takeHomeDecimal('EbayThree'),
+            'channelAdsPercent' => app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent(),
             'ordersL30TotalQty' => $agg['qty'],
             'ordersL30TotalSales' => $agg['sales'],
             'ordersL30Gpft' => $agg['gpft'],

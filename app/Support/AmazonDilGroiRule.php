@@ -4,7 +4,7 @@ namespace App\Support;
 
 /**
  * Dil% slabs → Target % → Sprc Dil.
- * Amazon /amazon-tabulator-view treats the slab number as Target NROI%
+ * Amazon /amazon-tabulator-view and eBay 1 / 2 / 3 treat the slab number as Target NROI%
  * (S PRC so SNROI = target, using Channel Master Ads%).
  * Other Sprc Dil pages still treat it as Target GROI%.
  * First-time defaults: five slabs 0.1–25%. Add/delete is allowed; match is by min/max.

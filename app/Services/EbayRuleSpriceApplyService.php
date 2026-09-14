@@ -10,6 +10,7 @@ use App\Models\EbayMetric;
 use App\Models\EbaySkuCompetitor;
 use App\Models\EbayThreeDataView;
 use App\Models\EbayTwoDataView;
+use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -21,6 +22,7 @@ use Throwable;
 
 /**
  * Page-less Sprc Dil → S PRC for eBay 1 / 2 / 3 tabulator pages.
+ * eBay 1 / 2 / 3: Dil → Target NROI (Ads% from Channel Master).
  * Listing Dil (Σ OV L30 ÷ Σ INV), nearest slab, CVR overlay, then Amazon LMP cap:
  * Dil below LMP stays Dil; Dil at/above LMP caps only when SGROI at LMP ≥ 20%.
  * INV > 0 only — same as ebayDilGroiMetaForRow.
@@ -88,8 +90,12 @@ class EbayRuleSpriceApplyService
         $dilRules = $store['rules'];
         $cvrAdj = $store['cvr_adj'];
         $margin = $this->takeHome();
+        $adsPct = $this->channelAdsPercent();
 
-        $this->log($logger, $this->channel.' loaded Dil slabs='.count($dilRules).' margin='.$margin);
+        $this->log($logger, $this->channel.' loaded Dil slabs='.count($dilRules)
+            .' margin='.$margin
+            .' ads%='.$adsPct
+            .' target='.($this->targetsNroi() ? 'NROI' : 'GROI'));
 
         $stats = [
             'channel' => $this->channel,
@@ -111,7 +117,7 @@ class EbayRuleSpriceApplyService
                     break;
                 }
                 try {
-                    $computed = $this->computeTarget($row, $dilRules, $cvrAdj, $margin);
+                    $computed = $this->computeTarget($row, $dilRules, $cvrAdj, $margin, $adsPct);
                     if ($computed === null) {
                         $stats['skipped']++;
                         continue;
@@ -179,10 +185,11 @@ class EbayRuleSpriceApplyService
     {
         $store = $this->loadDilGroiStore();
         $margin = $this->takeHome();
+        $adsPct = $this->channelAdsPercent();
 
         $out = [];
         foreach ($this->hydrateAll($onlySkus) as $row) {
-            $computed = $this->computeTarget($row, $store['rules'], $store['cvr_adj'], $margin);
+            $computed = $this->computeTarget($row, $store['rules'], $store['cvr_adj'], $margin, $adsPct);
             if ($computed === null) {
                 continue;
             }
@@ -204,9 +211,9 @@ class EbayRuleSpriceApplyService
      * @param  array<string, mixed>  $row
      * @param  list<array{key:string,label:string,min:float,max:float,groi:float}>  $dilRules
      * @param  array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}|null  $cvrAdj
-     * @return array{sprice: float, groi: float}|null
+     * @return array{sprice: float, groi: float, nroi: float}|null
      */
-    public function computeTarget(array $row, array $dilRules, ?array $cvrAdj, float $margin): ?array
+    public function computeTarget(array $row, array $dilRules, ?array $cvrAdj, float $margin, float $adsPct = 0.0): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0) || ! ($margin > 0)) {
@@ -222,14 +229,15 @@ class EbayRuleSpriceApplyService
             return null;
         }
 
-        $groi = AmazonDilGroiRule::adjustGroiForCvrLevel(
-            (float) $rule['groi'],
+        $target = AmazonDilGroiRule::adjustGroiForCvrLevel(
+            (float) ($rule['nroi'] ?? $rule['groi']),
             (float) ($row['cvr'] ?? 0),
             $cvrAdj
         );
         $ship = (float) ($row['ship'] ?? 0);
-        $raw = round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
-        if (! is_finite($raw) || $raw < 0.01) {
+        $ads = $this->targetsNroi() ? $adsPct : 0.0;
+        $raw = AmazonDilGroiRule::suggestedPrice($lp, $ship, $target, $ads, $margin);
+        if ($raw === null || $raw < 0.01) {
             return null;
         }
 
@@ -237,8 +245,33 @@ class EbayRuleSpriceApplyService
 
         return [
             'sprice' => $sprice,
-            'groi' => $groi,
+            'groi' => $target,
+            'nroi' => $target,
         ];
+    }
+
+    public function targetsNroi(): bool
+    {
+        return in_array($this->channel, ['ebay1', 'ebay2', 'ebay3'], true);
+    }
+
+    /** Channel Ads% used for eBay 1 / 2 / 3 Target NROI. */
+    public function channelAdsPercent(): float
+    {
+        if (! $this->targetsNroi()) {
+            return 0.0;
+        }
+        try {
+            $master = app(ChannelMasterController::class);
+
+            return match ($this->channel) {
+                'ebay2' => (float) $master->getEbaytwoMasterAdsPercent(),
+                'ebay3' => (float) $master->getEbaythreeMasterAdsPercent(),
+                default => (float) $master->getEbayMasterAdsPercent(),
+            };
+        } catch (Throwable $e) {
+            return 0.0;
+        }
     }
 
     public function capToLmp(float $sprice, float $lmp, float $lp, float $ship, float $margin): float

@@ -1397,7 +1397,7 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * Dil slabs → target %. Amazon /amazon-tabulator-view uses Target NROI
+     * Dil slabs → target %. Amazon + eBay 1 / 2 / 3 use Target NROI
      * (stored groi/nroi). Other channels still use Target GROI.
      */
     public function dilGroiRules(Request $request, string $channel): JsonResponse
@@ -1412,7 +1412,7 @@ class ChannelPromoPricingController extends Controller
             ->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
-        $targetMetric = $channel === 'amazon' ? 'nroi' : 'groi';
+        $targetMetric = $this->dilTargetMetric($channel);
         if ($unpacked['rules'] === []) {
             return response()->json([
                 'success' => true,
@@ -1487,7 +1487,7 @@ class ChannelPromoPricingController extends Controller
         return response()->json([
             'success' => true,
             'channel' => $channel,
-            'target_metric' => $channel === 'amazon' ? 'nroi' : 'groi',
+            'target_metric' => $this->dilTargetMetric($channel),
             'rules' => $rules,
             'cvr_adj' => $cvrAdj,
         ]);
@@ -1833,6 +1833,12 @@ class ChannelPromoPricingController extends Controller
         $rules[] = ['key' => '24-25', 'label' => '24–25%', 'sgroi' => $sgroi];
 
         return $rules;
+    }
+
+    /** Amazon + eBay 1 / 2 / 3 Sprc Dil slabs are Target NROI%. Other channels stay GROI. */
+    private function dilTargetMetric(string $channel): string
+    {
+        return in_array($channel, ['amazon', 'ebay1', 'ebay2', 'ebay3'], true) ? 'nroi' : 'groi';
     }
 
     private function normalizeRulesChannel(string $channel): ?string

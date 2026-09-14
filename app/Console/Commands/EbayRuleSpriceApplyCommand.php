@@ -16,7 +16,7 @@ class EbayRuleSpriceApplyCommand extends Command
         {--limit= : Max SKUs to save per channel (for testing)}
         {--push : After save, queue S PRC → live listing price}';
 
-    protected $description = 'eBay 1/2/3: apply Sprc Dil (listing Dil + CVR + LMP cap) and save S PRC. Page not required.';
+    protected $description = 'eBay 1/2/3: apply Sprc Dil (Dil→NROI) + CVR + LMP cap and save S PRC.';
 
     public const LOCK_CACHE_KEY = 'ebay-rule-sprice-apply';
 
