@@ -1078,15 +1078,8 @@ class YesterdayMarketplaceMetricsService
                 ->orWhere('tags', 'LIKE', '%Faire%');
         };
 
-        $latest = DB::table('shopify_raw_orders')
-            ->where($faireWhere)
-            ->whereNotNull('order_date')
-            ->max('order_date');
-        $window = $this->latestCompleteDay($latest, 'to_pacific');
-        if ($window !== null) {
-            [$start, $end] = $window;
-        }
-
+        // Use the requested calendar window. Faire is wholesale with multi-day
+        // gaps — shifting to latest-order−1 copied one invoice onto every day.
         $row = DB::table('shopify_raw_orders')
             ->where($faireWhere)
             ->where('order_date', '>=', $start)

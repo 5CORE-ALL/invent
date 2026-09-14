@@ -45,6 +45,7 @@ use App\Http\Controllers\MarketPlace\EbayThreeController as MarketPlaceEbayThree
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Support\EbayCampaignReportRollup;
 use App\Support\AmazonAdsAdvertisementMasterHistory;
+use App\Support\Marketplace\ChannelMasterInventoryGuard;
 use App\Support\Marketplace\ChannelMasterViewsGuard;
 use App\Support\Marketplace\ChannelMetricDotPair;
 use App\Support\Marketplace\ChartDatePad;
@@ -2031,6 +2032,7 @@ class ChannelMasterController extends Controller
         $rows = $this->overlayLiveMiraklTodaySalesOnChannelRows($rows);
         // FB Marketplace L30/L60/Y/L7 from /facebook-marketplace uploads (not stale sheet cache)
         $rows = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($rows);
+        $rows = $this->overlayLiveFaireMetricsOnChannelRows($rows);
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
@@ -2475,7 +2477,7 @@ class ChannelMasterController extends Controller
     private function overlayLiveFaireMetricsOnChannelRows(array $rows): array
     {
         try {
-            [$l30Start, $l30End, $l60Start, $l60End] = $this->completePacificL30L60Windows();
+            [$l30Start, $l30End, $l60Start, $l60End] = $this->faireTabulatorL30L60Windows();
             $l30 = $this->computeFaireMetricsFromShopify($l30Start, $l30End);
             $l60 = $this->computeFaireMetricsFromShopify($l60Start, $l60End);
             $ySales = $this->computeFaireYSalesLikeAmazon();
@@ -2517,7 +2519,7 @@ class ChannelMasterController extends Controller
                 $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
             }
             if ($ySales !== null) {
-                $this->applyLiveYSalesIfPositive($row, $ySales);
+                $this->applyLiveYSalesAllowZero($row, $ySales);
             }
             if ($l7Sales !== null) {
                 $row['L7 Sales'] = $l7Sales;
@@ -2526,6 +2528,25 @@ class ChannelMasterController extends Controller
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * Same L30 window as /faire-tabulator (now−30 00:00 PT through now).
+     * L60 is the 30 days immediately before that start.
+     *
+     * @return array{0: Carbon, 1: Carbon, 2: Carbon, 3: Carbon}
+     */
+    private function faireTabulatorL30L60Windows(): array
+    {
+        $l30Start = FaireController::faireShopifyL30Start();
+        $l30End = Carbon::now('America/Los_Angeles')->endOfDay();
+
+        return [
+            $l30Start,
+            $l30End,
+            $l30Start->copy()->subDays(30)->startOfDay(),
+            $l30Start->copy()->subSecond(),
+        ];
     }
 
     /**
@@ -4545,6 +4566,29 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Live Inv@SP / Inv@LP per inv dollar — used to fill older snapshot days
+     * that only stored inventory_value_amazon.
+     *
+     * @return array{inv: float, sp: float, lp: float}
+     */
+    private function inventoryLiveRatios(): array
+    {
+        $m = $this->getShopifyInvLpMetrics();
+        $inv = (float) ($m['inv_at_amz'] ?? 0);
+        if ($inv <= 0) {
+            $inv = $this->getInventoryValueAmazon();
+        }
+        $sp = (float) ($m['inv_at_sp'] ?? 0);
+        $lp = (float) ($m['inv_at_lp'] ?? 0);
+
+        return [
+            'inv' => $inv,
+            'sp' => ($inv > 0 && $sp > 0) ? $sp / $inv : 1.0,
+            'lp' => ($inv > 0 && $lp > 0) ? $lp / $inv : 1.0,
+        ];
+    }
+
+    /**
      * Shopify inventory + LP / SP from product_master Values JSON.
      * Active SKUs only. Each Shopify inventory row is counted once.
      * Inv@SP uses amazon_data_view.STANDARD_PRICE (Sku Link LMP siblings), then live Amazon price.
@@ -4999,6 +5043,7 @@ class ChannelMasterController extends Controller
     private function persistCompanyInventoryOnTodaySnapshot(array $metrics): void
     {
         try {
+            ChannelMasterInventoryGuard::healRecentIsolatedDips();
             $today = now('America/Los_Angeles')->toDateString();
             $row = \App\Models\ChannelMasterSummary::whereDate('snapshot_date', $today)
                 ->orderBy('id')
@@ -5010,8 +5055,17 @@ class ChannelMasterController extends Controller
             $sd['inv_at_lp'] = round((float) ($metrics['inv_at_lp'] ?? $sd['inv_at_lp'] ?? 0), 2);
             $sd['inv_at_sp'] = round((float) ($metrics['inv_at_sp'] ?? $sd['inv_at_sp'] ?? 0), 2);
             $sd['inventory_value_amazon'] = round((float) ($metrics['inventory_value_amazon'] ?? $sd['inventory_value_amazon'] ?? 0), 2);
+            $yesterday = now('America/Los_Angeles')->subDay()->toDateString();
+            $sd = ChannelMasterInventoryGuard::stabilizeSummary(
+                $sd,
+                ChannelMasterInventoryGuard::trustedTotalsOnDate($yesterday)
+            );
             $row->summary_data = $sd;
             $row->save();
+            $inv = (float) ($sd['inventory_value_amazon'] ?? 0);
+            $spRatio = $inv > 0 ? ((float) ($sd['inv_at_sp'] ?? 0) / $inv) : 1.0;
+            $lpRatio = $inv > 0 ? ((float) ($sd['inv_at_lp'] ?? 0) / $inv) : 1.0;
+            ChannelMasterInventoryGuard::backfillRecentMissing($spRatio, $lpRatio);
         } catch (\Throwable $e) {
             // ignore snapshot write failures
         }
@@ -8006,6 +8060,8 @@ class ChannelMasterController extends Controller
         $finalData = $this->overlayLiveReviewsOnChannelRows($finalData);
         // FB Marketplace: overlay live Sales / GPFT / ROI from /facebook-marketplace
         $finalData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($finalData);
+        // Faire: overlay live L30/L60/Y/L7 from shopify_raw_orders (same as /faire-tabulator)
+        $finalData = $this->overlayLiveFaireMetricsOnChannelRows($finalData);
         // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
         $finalData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemuSalesOnChannelRows($finalData);
@@ -8217,34 +8273,17 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Faire Y Sales: Pacific yesterday from Shopify Faire orders or faire_order_metrics.
-     * Faire orders are wholesale and the Shopify/API sync often lags 1–2 days — if
-     * calendar yesterday is $0, use the latest Faire sales day before today so
-     * Active Channel does not show NYS while /faire-tabulator still has sales.
+     * Faire Y Sales: Pacific yesterday only (Shopify or Faire API for that day).
+     * Do not reuse the last sale day — that copied one wholesale order onto
+     * every following day so Y Sales matched L30 and the chart stayed flat.
      */
     private function computeFaireYSalesLikeAmazon(): ?float
     {
-        [$yStartPacific, $yEndPacific, $yDate] = $this->pacificYesterdayBounds();
-
-        $y = max(
-            $this->sumFaireShopifySalesBetween($yStartPacific, $yEndPacific),
-            $this->sumFaireApiSalesBetween($yStartPacific, $yEndPacific)
-        );
-        if ($y > 0) {
-            return round($y, 2);
-        }
-
-        $latestDate = $this->latestFaireSalesDateBeforeToday();
-        if ($latestDate === null || $latestDate === $yDate) {
-            return 0.0;
-        }
-
-        $start = Carbon::parse($latestDate, 'America/Los_Angeles')->startOfDay();
-        $end = Carbon::parse($latestDate, 'America/Los_Angeles')->endOfDay();
+        [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
         return round(max(
-            $this->sumFaireShopifySalesBetween($start, $end),
-            $this->sumFaireApiSalesBetween($start, $end)
+            $this->sumFaireShopifySalesBetween($yStartPacific, $yEndPacific),
+            $this->sumFaireApiSalesBetween($yStartPacific, $yEndPacific)
         ), 2);
     }
 
@@ -8278,46 +8317,6 @@ class ChannelMasterController extends Controller
             })
             ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
             ->value('revenue');
-    }
-
-    private function latestFaireSalesDateBeforeToday(): ?string
-    {
-        $today = Carbon::now('America/Los_Angeles')->toDateString();
-        $dates = [];
-
-        if (Schema::hasTable('shopify_raw_orders')) {
-            $d = DB::table('shopify_raw_orders')
-                ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
-                ->where('quantity', '>', 0)
-                ->whereRaw('(COALESCE(price, 0) * COALESCE(quantity, 0)) > 0')
-                ->whereRaw('DATE(order_date) < ?', [$today])
-                ->max(DB::raw('DATE(order_date)'));
-            if (is_string($d) && $d !== '') {
-                $dates[] = $d;
-            }
-        }
-
-        if (Schema::hasTable('faire_order_metrics')) {
-            $d = DB::table('faire_order_metrics')
-                ->where('amount', '>', 0)
-                ->where(function ($q) {
-                    $q->whereNull('status')
-                        ->orWhereRaw('UPPER(status) NOT IN (?, ?)', ['CANCELLED', 'CANCELED']);
-                })
-                ->whereRaw('DATE(order_date) < ?', [$today])
-                ->max(DB::raw('DATE(order_date)'));
-            if (is_string($d) && $d !== '') {
-                $dates[] = $d;
-            }
-        }
-
-        if ($dates === []) {
-            return null;
-        }
-
-        rsort($dates);
-
-        return $dates[0];
     }
 
     /**
@@ -12786,6 +12785,9 @@ class ChannelMasterController extends Controller
             ? ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku')
             : collect();
 
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Faire')->first();
+        $keepRate = ($marketplaceData ? (float) ($marketplaceData->percentage ?? 100) : 100) / 100;
+
         $totalSales = 0.0;
         $totalQty   = 0;
         $totalPft   = 0.0;
@@ -12820,8 +12822,8 @@ class ChannelMasterController extends Controller
             $totalSales += $price * $quantity;
             $totalQty   += $quantity;
             $totalCogs  += $lp * $quantity;
-            // Same profit formula as the tabulator: Faire retains 25% commission.
-            $totalPft   += (($price * 0.75) - $lp) * $quantity;
+            // Same keep-rate as /faire-tabulator (marketplace_percentages Faire).
+            $totalPft   += (($price * $keepRate) - $lp) * $quantity;
             if (!empty($r->order_number)) {
                 $orderSet[$r->order_number] = true;
             }
@@ -12844,7 +12846,7 @@ class ChannelMasterController extends Controller
         // same data source the /faire-tabulator page uses — so the two pages match.
         // Previously this read from marketplace_daily_metrics which in turn was sourced
         // from faire_daily_data (manual Excel uploads), drifting out of sync.
-        [$l30Start, $l30End, $l60Start, $l60End] = $this->completePacificL30L60Windows();
+        [$l30Start, $l30End, $l60Start, $l60End] = $this->faireTabulatorL30L60Windows();
 
         $l30 = $this->computeFaireMetricsFromShopify($l30Start, $l30End);
         $l60 = $this->computeFaireMetricsFromShopify($l60Start, $l60End);
@@ -16686,6 +16688,46 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => $chartData]);
             }
 
+            if (! $isAll && $metric === 'l30_sales' && $channel === 'faire') {
+                $chartData = $this->buildFaireLiveRollingSalesChart($days, 31);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
+            if (! $isAll && $metric === 'l60_sales' && $channel === 'faire') {
+                $chartData = $this->buildFaireLiveL60SalesChart($days);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
+            if (! $isAll && $metric === 'y_sales' && $channel === 'faire' && ! $useDailyWindow && ! $useL7Window) {
+                $chartData = $this->buildFaireLiveDailyYSalesChart($days);
+                $chartData = ChartDatePad::fillGapsThroughYesterday($chartData, $days);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
             if (! $isAll && $metric === 'l30_sales' && $channel === 'depop') {
                 $chartData = $this->buildDepopLiveRollingSalesChart($days, 30);
                 $chartData = $this->pinChartSeriesLastToTable(
@@ -16762,6 +16804,13 @@ class ChannelMasterController extends Controller
                 }
 
                 return response()->json(['success' => true, 'data' => []]);
+            }
+
+            $invRatios = ['inv' => 0.0, 'sp' => 1.0, 'lp' => 1.0];
+            if ($isAll && ChannelMasterInventoryGuard::isInventoryChartMetric($metric)) {
+                $invRatios = $this->inventoryLiveRatios();
+                ChannelMasterInventoryGuard::healIsolatedDipsOnRows($history);
+                ChannelMasterInventoryGuard::backfillMissingOnRows($history, $invRatios['sp'], $invRatios['lp']);
             }
 
             if ($useDailyWindow) {
@@ -16936,9 +16985,14 @@ class ChannelMasterController extends Controller
                             $totalSales += $channelL30Sales;
                         } elseif (in_array($metric, ['inv_at_sp', 'inv_at_lp', 'inventory'], true)) {
                             $invKey = $metric === 'inventory' ? 'inventory_value_amazon' : $metric;
-                            if (array_key_exists($invKey, $sd)) {
+                            $dayInv = floatval($sd['inventory_value_amazon'] ?? 0);
+                            $dayVal = floatval($sd[$invKey] ?? 0);
+                            $totalInvAmazon = max($totalInvAmazon, $dayInv);
+                            if ($dayVal > 0) {
                                 $hasMetricData = true;
-                                $totalVal = max($totalVal, floatval($sd[$invKey] ?? 0));
+                                $totalVal = max($totalVal, $dayVal);
+                            } elseif ($dayInv > 0) {
+                                $hasMetricData = true;
                             }
                         } elseif ($shouldAvg) {
                             $totalVal += floatval($sd[$metricKey] ?? 0);
@@ -17024,7 +17078,19 @@ class ChannelMasterController extends Controller
                         if (in_array($metric, ['l7_sales', 'p_sales', 'y_sales'], true) && !$hasMetricData) continue;
                         $value = round($totalVal, 2);
                     } elseif (in_array($metric, ['inv_at_sp', 'inv_at_lp', 'inventory'], true)) {
-                        if (! $hasMetricData) {
+                        if ($metric !== 'inventory') {
+                            $ratio = $metric === 'inv_at_lp'
+                                ? (float) ($invRatios['lp'] ?? 1.0)
+                                : (float) ($invRatios['sp'] ?? 1.0);
+                            $expected = $totalInvAmazon > 0 && $ratio > 0
+                                ? $totalInvAmazon * $ratio
+                                : 0.0;
+                            if ($expected > 0 && ($totalVal <= 0 || ChannelMasterInventoryGuard::isCollapsed($totalVal, $expected))) {
+                                $totalVal = $expected;
+                                $hasMetricData = true;
+                            }
+                        }
+                        if (! $hasMetricData && $totalVal <= 0) {
                             continue;
                         }
                         $value = round($totalVal, 2);
@@ -17172,7 +17238,20 @@ class ChannelMasterController extends Controller
             // Table (channel_master_calculated_data / the grid cell) is the source.
             // Pin first so collapse cannot drop yesterday and write the table onto D−2.
             if (! empty($chartData)) {
-                if ($isAll && $metric !== 'cvr') {
+                if ($isAll && ChannelMasterInventoryGuard::isInventoryChartMetric($metric)) {
+                    $chartData = ChannelMasterInventoryGuard::repairChartPoints($chartData);
+                    $badgeValue = $request->input('badge_value');
+                    $hasBadge = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue));
+                    $tableRef = $hasBadge
+                        ? (float) $badgeValue
+                        : $this->getAllChannelsTableReference($metric);
+                    if ($tableRef !== null && $tableRef != 0) {
+                        $lastIdx = array_key_last($chartData);
+                        if ($lastIdx !== null) {
+                            $chartData[$lastIdx]['value'] = round((float) $tableRef, 2);
+                        }
+                    }
+                } elseif ($isAll && $metric !== 'cvr') {
                     $badgeValue = $request->input('badge_value');
                     $hasBadge = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue));
                     $tableRef = $hasBadge
@@ -17742,6 +17821,16 @@ class ChannelMasterController extends Controller
         }
         krsort($byDate);
 
+        $invRows = [];
+        foreach ($byDate as $chs) {
+            foreach ($chs as $row) {
+                $invRows[] = $row;
+            }
+        }
+        $invRatios = $this->inventoryLiveRatios();
+        ChannelMasterInventoryGuard::healIsolatedDipsOnRows($invRows);
+        ChannelMasterInventoryGuard::backfillMissingOnRows($invRows, $invRatios['sp'], $invRatios['lp']);
+
         $summariesFor = function (string $date) use ($byDate): array {
             $rows = collect(array_values($byDate[$date] ?? []));
             $stabilized = ChannelMasterViewsGuard::stabilizeRowSummaries($rows);
@@ -17761,6 +17850,12 @@ class ChannelMasterController extends Controller
             foreach (array_keys($byDate) as $date) {
                 [$sd, $rows] = $summariesFor($date);
                 $series[] = $this->aggregateAllChannelsMetricFromSummaries($metric, $sd, $rows, $metricMap);
+            }
+            if (ChannelMasterInventoryGuard::isInventoryChartMetric($metric)) {
+                ChannelMasterInventoryGuard::healRecentIsolatedDips();
+                $chronological = array_reverse($series);
+                $chronological = ChannelMasterInventoryGuard::repairValueSeries($chronological);
+                $series = array_reverse($chronological);
             }
             $out[$metric] = ChannelMetricDotPair::lastTwoDistinct(
                 $series,
@@ -17863,8 +17958,13 @@ class ChannelMasterController extends Controller
                 $hasMetric = true;
             } elseif (in_array($metric, ['inv_at_sp', 'inv_at_lp', 'inventory'], true)) {
                 $invKey = $metric === 'inventory' ? 'inventory_value_amazon' : $metric;
-                if (array_key_exists($invKey, $sd)) {
-                    $totalVal = max($totalVal, (float) ($sd[$invKey] ?? 0));
+                $dayInv = (float) ($sd['inventory_value_amazon'] ?? 0);
+                $dayVal = (float) ($sd[$invKey] ?? 0);
+                $totalInvAmazon = max($totalInvAmazon, $dayInv);
+                if ($dayVal > 0) {
+                    $totalVal = max($totalVal, $dayVal);
+                    $hasMetric = true;
+                } elseif ($dayInv > 0) {
                     $hasMetric = true;
                 }
             } else {
@@ -17873,6 +17973,16 @@ class ChannelMasterController extends Controller
                     $totalVal += $v;
                     $hasMetric = true;
                 }
+            }
+        }
+
+        if (in_array($metric, ['inv_at_sp', 'inv_at_lp'], true)) {
+            $ratios = $this->inventoryLiveRatios();
+            $ratio = $metric === 'inv_at_lp' ? $ratios['lp'] : $ratios['sp'];
+            $expected = $totalInvAmazon > 0 && $ratio > 0 ? $totalInvAmazon * $ratio : 0.0;
+            if ($expected > 0 && ($totalVal <= 0 || ChannelMasterInventoryGuard::isCollapsed($totalVal, $expected))) {
+                $totalVal = $expected;
+                $hasMetric = true;
             }
         }
 
@@ -18515,6 +18625,16 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
+            if ($channel === 'faire') {
+                $day = Carbon::parse($ymd, 'America/Los_Angeles');
+                self::$pacificDayYSalesCache[$key] = round(max(
+                    $this->sumFaireShopifySalesBetween($day->copy()->startOfDay(), $day->copy()->endOfDay()),
+                    $this->sumFaireApiSalesBetween($day->copy()->startOfDay(), $day->copy()->endOfDay())
+                ), 2);
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
             if ($channel === 'fbmarketplace' || $channel === 'facebookmarketplace') {
                 $day = FacebookMarketplaceController::dailySalesByPacificDate($ymd, $ymd);
                 self::$pacificDayYSalesCache[$key] = (float) ($day[$ymd]['sales'] ?? 0);
@@ -18543,7 +18663,7 @@ class ChannelMasterController extends Controller
     private function overlayLiveYSalesOnChart(string $channel, array $chartData): array
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
-        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace'], true) || $chartData === []) {
+        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace', 'faire'], true) || $chartData === []) {
             return $chartData;
         }
 
@@ -18568,7 +18688,7 @@ class ChannelMasterController extends Controller
             } catch (\Throwable $e) {
                 continue;
             }
-            if ($live !== null && (float) $live > 0) {
+            if ($live !== null) {
                 $pt['value'] = round((float) $live, 2);
             }
         }
@@ -19397,6 +19517,9 @@ class ChannelMasterController extends Controller
         if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'depop') {
             return $this->buildDepopLiveDailyYSalesChart($span);
         }
+        if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'faire') {
+            return $this->buildFaireLiveDailyYSalesChart($span);
+        }
         $startDate = now($tz)->subDays($span + 1)->toDateString();
         $want = $isAll ? null : $this->allMarketplaceSnapshotKey($channel);
 
@@ -19484,6 +19607,118 @@ class ChannelMasterController extends Controller
      *
      * @return list<array{date: string, value: float}>
      */
+    /**
+     * Faire daily sales from shopify_raw_orders (same filter as /faire-tabulator).
+     *
+     * @return array<string, array{sales: float}>
+     */
+    private function faireDailySalesByDate(Carbon $start, Carbon $end): array
+    {
+        $out = [];
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return $out;
+        }
+
+        $rows = DB::table('shopify_raw_orders')
+            ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
+            ->where('order_date', '>=', $start)
+            ->where('order_date', '<=', $end)
+            ->where('quantity', '>', 0)
+            ->selectRaw('DATE(order_date) as d, COALESCE(SUM(price * quantity), 0) as revenue')
+            ->groupBy('d')
+            ->get();
+
+        foreach ($rows as $row) {
+            $d = (string) ($row->d ?? '');
+            if ($d === '') {
+                continue;
+            }
+            $out[$d] = ['sales' => (float) ($row->revenue ?? 0)];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Faire Y Sales chart: one Pacific calendar day each. Days with no orders are $0
+     * so the last wholesale invoice is not copied forward.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildFaireLiveDailyYSalesChart(int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = now($tz)->subDay()->startOfDay();
+        $span = $days > 0 ? $days : 7;
+        $start = $end->copy()->subDays($span - 1);
+        $byDate = $this->faireDailySalesByDate($start->copy()->startOfDay(), $end->copy()->endOfDay());
+
+        $out = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $ymd = $cursor->toDateString();
+            $cell = $byDate[$ymd] ?? ['sales' => 0];
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round((float) ($cell['sales'] ?? 0), 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * Faire L30 Sales chart — same window as /faire-tabulator (>= as-of − 30 days).
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildFaireLiveRollingSalesChart(int $days, int $windowDays): array
+    {
+        $end = now('America/Los_Angeles');
+        $span = $days > 0 ? $days : 90;
+        $chartStart = $end->copy()->subDays($span - 1);
+        $dataStart = $chartStart->copy()->subDays(max(1, $windowDays) - 1);
+        $byDay = $this->faireDailySalesByDate($dataStart->copy()->startOfDay(), $end->copy()->endOfDay());
+
+        return TemuShopifySalesService::rollingSalesSeries($byDay, $chartStart, $end, $windowDays);
+    }
+
+    /**
+     * Faire L60 column: 30 days before the tabulator L30 window (D−60 … D−31).
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildFaireLiveL60SalesChart(int $days): array
+    {
+        $end = now('America/Los_Angeles');
+        $span = $days > 0 ? $days : 90;
+        $chartStart = $end->copy()->subDays($span - 1);
+        $dataStart = $chartStart->copy()->subDays(60);
+        $byDay = $this->faireDailySalesByDate($dataStart->copy()->startOfDay(), $end->copy()->endOfDay());
+
+        $out = [];
+        $cursor = $chartStart->copy();
+        while ($cursor->lte($end)) {
+            $sum = 0.0;
+            $winStart = $cursor->copy()->subDays(60);
+            $winEnd = $cursor->copy()->subDays(31);
+            $day = $winStart->copy();
+            while ($day->lte($winEnd)) {
+                $cell = $byDay[$day->toDateString()] ?? ['sales' => 0];
+                $sum += (float) ($cell['sales'] ?? 0);
+                $day->addDay();
+            }
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round($sum, 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
     private function buildDepopLiveDailyYSalesChart(int $days): array
     {
         $tz = 'America/Los_Angeles';
@@ -20268,7 +20503,10 @@ class ChannelMasterController extends Controller
         try {
             // Capture-day in California/Pacific (not India). Chart displays as-of = this − 1 day.
             $today = now('America/Los_Angeles')->toDateString();
-            
+            $trustedInventory = ChannelMasterInventoryGuard::trustedTotalsOnDate(
+                now('America/Los_Angeles')->subDay()->toDateString()
+            );
+
             foreach ($channelData as $row) {
                 $channelName = $this->allMarketplaceSnapshotKey($row['Channel '] ?? '');
                 
@@ -20367,6 +20605,12 @@ class ChannelMasterController extends Controller
                     // Metadata
                     'calculated_at' => now()->toDateTimeString(),
                 ];
+
+                if ((float) ($summaryData['inventory_value_amazon'] ?? 0) > 0
+                    || (float) ($summaryData['inv_at_sp'] ?? 0) > 0
+                    || (float) ($summaryData['inv_at_lp'] ?? 0) > 0) {
+                    $summaryData = ChannelMasterInventoryGuard::stabilizeSummary($summaryData, $trustedInventory);
+                }
                 
                 // Preserve listing-page Missing L fields written by /missing-listing
                 $existingSummary = \App\Models\ChannelMasterSummary::where('channel', $channelName)
@@ -20400,6 +20644,7 @@ class ChannelMasterController extends Controller
             $this->healClosedChannelYSalesSnapshot('temu2');
             $this->healClosedChannelYSalesSnapshot('temu3');
             $this->healClosedChannelYSalesSnapshot('depop');
+            $this->healClosedChannelYSalesSnapshot('faire');
 
             foreach ([0, 1, 7] as $dotWindow) {
                 \Cache::forget($this->channelMetricDotTrendsCacheKey($dotWindow));
