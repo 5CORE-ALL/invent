@@ -17097,8 +17097,17 @@ class ChannelMasterController extends Controller
                                 $hasMetricData = true;
                             }
                         }
+                        if ($totalVal <= 0 && $invCarryValue !== null) {
+                            $totalVal = $invCarryValue;
+                            $hasMetricData = true;
+                        }
                         if (! $hasMetricData && $totalVal <= 0) {
                             continue;
+                        }
+                        if ($invCarryValue !== null && ChannelMasterInventoryGuard::isCollapsed($totalVal, $invCarryValue)) {
+                            $totalVal = $invCarryValue;
+                        } elseif ($totalVal > 0) {
+                            $invCarryValue = $totalVal;
                         }
                         $value = round($totalVal, 2);
                     } elseif ($useL7Window && $metricKey !== null && !$hasMetricData) {
@@ -17326,6 +17335,10 @@ class ChannelMasterController extends Controller
             // Extra lookback for L7 rolling should not appear on the X-axis.
             if ($useL7Window && $days > 0 && count($chartData) > $days) {
                 $chartData = array_values(array_slice($chartData, -$days));
+            }
+
+            if (ChannelMasterInventoryGuard::isInventoryChartMetric($metric) && $chartData !== []) {
+                $chartData = ChannelMasterInventoryGuard::repairChartPoints($chartData);
             }
 
             // Do NOT interpolate channel-metric chart: values are exact snapshots from DB.

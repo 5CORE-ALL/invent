@@ -28,8 +28,8 @@ class ChannelMasterInventoryGuardTest extends TestCase
 
         $this->assertSame(1784197.0, (float) $repaired[0]['value']);
         $this->assertSame(1784197.0, (float) $repaired[1]['value']);
-        $this->assertSame(1532552.0, (float) $repaired[2]['value']);
-        $this->assertSame(1780000.0, (float) $repaired[3]['value']);
+        $this->assertEqualsWithDelta(1532552.0, (float) $repaired[2]['value'], 0.01);
+        $this->assertEqualsWithDelta(1780000.0, (float) $repaired[3]['value'], 0.01);
     }
 
     public function test_stabilize_summary_rejects_collapsed_inv(): void

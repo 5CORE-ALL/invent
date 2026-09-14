@@ -68,6 +68,15 @@ class ChannelMasterInventoryGuard
             return $chartData;
         }
 
+        if ($n >= 3) {
+            $first = (float) ($chartData[0]['value'] ?? 0);
+            $second = (float) ($chartData[1]['value'] ?? 0);
+            $third = (float) ($chartData[2]['value'] ?? 0);
+            if ($second > 0 && self::isCollapsed($first, $second) && ! self::isCollapsed($third, $second)) {
+                $chartData[0]['value'] = round($second, 2);
+            }
+        }
+
         // Pass 1: isolated V vs immediate neighbors.
         for ($i = 1; $i < $n - 1; $i++) {
             $prev = (float) ($chartData[$i - 1]['value'] ?? 0);
