@@ -2485,6 +2485,9 @@
                             <a href="{{ route('masters.barcode') }}">PM Masters Barcode</a>
                         </li>
                         <li>
+                            <a href="{{ route('barcode.image') }}" target="_blank" rel="noopener">Barcode Image</a>
+                        </li>
+                        <li>
                             <a href="{{ route('category.master') }}">PM Category Master</a>
                         </li>
                         <li>
@@ -2528,7 +2531,7 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('packing.instructions.master') }}">PM Packing Inner Design</a>
+                            <a href="{{ route('packing.instructions.master') }}">PM Packing Carton</a>
                         </li>
                         <li>
                             <a href="{{ route('a.plus.images.master') }}">PM Listing Audit</a>

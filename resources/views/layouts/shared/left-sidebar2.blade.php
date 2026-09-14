@@ -172,6 +172,9 @@
                                 <a href="{{ route('product.master') }}">PM CP Masters</a>
                             </li>
                             <li>
+                                <a href="{{ route('barcode.image') }}" target="_blank" rel="noopener">Barcode Image</a>
+                            </li>
+                            <li>
                                 <a href="{{ route('title.master') }}">PM Title Master</a>
                             </li>
                             <li>

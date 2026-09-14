@@ -21,6 +21,14 @@ class MastersBarcodeController extends Controller
     }
 
     /**
+     * Public read-only barcode catalog. No login. No generate/save.
+     */
+    public function publicIndex()
+    {
+        return view('barcode-image');
+    }
+
+    /**
      * GET /masters-barcode-data
      */
     public function getData()

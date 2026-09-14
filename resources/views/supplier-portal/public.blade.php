@@ -81,52 +81,46 @@
         }
         .sp-lock i { color: var(--sp-red); }
         .sp-wrap { padding: 42px 7% 20px; }
-        .sp-head {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin: 8px 0 18px;
-        }
-        .sp-head h2 { margin: 0; font-size: 22px; font-weight: 800; }
         .sp-tabs {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
-            margin: 0 0 28px;
-            padding: 6px;
-            border: 1px solid var(--sp-line);
-            border-radius: 12px;
-            background: #fafafa;
+            gap: 0;
+            margin: 0 0 24px;
+            padding: 0;
+            border: 0;
+            border-bottom: 1px solid var(--sp-line);
+            background: transparent;
         }
         .sp-tab {
             border: 0;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
             background: transparent;
-            color: #444;
+            color: #6b6b6b;
             font: inherit;
             font-weight: 600;
             font-size: 13px;
-            padding: 10px 12px;
-            border-radius: 8px;
+            padding: 11px 14px;
+            border-radius: 0;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            flex: 1 1 140px;
-            justify-content: center;
+            gap: 8px;
+            white-space: nowrap;
         }
-        .sp-tab i { color: var(--sp-red); font-size: 18px; }
-        .sp-tab:hover { background: #fff; color: var(--sp-ink); }
+        .sp-tab:hover { color: var(--sp-ink); background: transparent; }
         .sp-tab.is-active {
-            background: #fff;
             color: var(--sp-ink);
-            box-shadow: 0 2px 10px rgba(20,20,20,.08);
+            background: transparent;
+            border-bottom-color: var(--sp-red);
+            box-shadow: none;
         }
         .sp-tab-count {
-            min-width: 20px;
-            height: 20px;
+            min-width: 18px;
+            height: 18px;
             padding: 0 6px;
-            border-radius: 999px;
-            background: #eee;
+            border-radius: 4px;
+            background: #f1f1f1;
             color: #555;
             font-size: 11px;
             font-weight: 700;
@@ -162,6 +156,14 @@
             overflow: hidden;
         }
         .sp-thumb img { max-width: 86%; max-height: 130px; object-fit: contain; }
+        .sp-file-code {
+            text-align: center;
+            padding: 8px 10px 0;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: .04em;
+            color: var(--sp-red);
+        }
         .sp-pdf {
             width: 72px;
             height: 90px;
@@ -177,6 +179,7 @@
         }
         .sp-card-body { padding: 14px 14px 16px; }
         .sp-card-body h3 { margin: 0 0 6px; font-size: 14px; font-weight: 700; }
+        .sp-product { color: var(--sp-ink); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
         .sp-meta { color: var(--sp-muted); font-size: 12px; margin-bottom: 10px; }
         .sp-dl {
             color: var(--sp-red);
@@ -188,20 +191,16 @@
         }
         .sp-dl:hover { color: var(--sp-red-dark); }
         .sp-empty { color: var(--sp-muted); font-size: 14px; padding: 8px 0 28px; }
-        .sp-announce {
-            margin: 10px 7% 0;
-            background: var(--sp-soft);
+        .sp-page-headers { display: grid; gap: 12px; margin: 0 0 20px; }
+        .sp-page-header {
+            border: 1px solid var(--sp-line);
+            border-left: 4px solid var(--sp-red);
             border-radius: 8px;
-            padding: 16px 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
+            padding: 14px 16px;
+            background: #fffaf8;
         }
-        .sp-announce-left { display: flex; align-items: flex-start; gap: 12px; }
-        .sp-announce i { color: var(--sp-red); font-size: 22px; margin-top: 1px; }
-        .sp-announce strong { display: block; font-size: 14px; }
-        .sp-announce p { margin: 3px 0 0; font-size: 13px; color: #5a5a5a; }
+        .sp-page-header h3 { margin: 0 0 6px; font-size: 16px; font-weight: 800; }
+        .sp-page-header p { margin: 0; color: #555; font-size: 14px; white-space: pre-wrap; }
         .sp-footer {
             margin-top: 36px;
             background: #141414;
@@ -219,13 +218,13 @@
         @media (max-width: 980px) {
             .sp-hero { min-height: 300px; }
             .sp-grid { grid-template-columns: 1fr 1fr; }
-            .sp-footer, .sp-announce { flex-direction: column; align-items: flex-start; }
+            .sp-footer { flex-direction: column; align-items: flex-start; }
         }
         @media (max-width: 640px) {
             .sp-grid { grid-template-columns: 1fr; }
-            .sp-tabs { flex-direction: column; }
+            .sp-tabs { overflow-x: auto; flex-wrap: nowrap; }
             .sp-hero { min-height: 260px; padding-top: 48px; padding-bottom: 48px; }
-            .sp-top, .sp-hero, .sp-wrap, .sp-announce, .sp-footer { padding-left: 18px; padding-right: 18px; }
+            .sp-top, .sp-hero, .sp-wrap, .sp-footer { padding-left: 18px; padding-right: 18px; }
         }
     </style>
 </head>
@@ -262,13 +261,11 @@
     <main class="sp-wrap" id="spCatalog">
         @php
             $categories = \App\Models\SupplierPortalAsset::CATEGORIES;
+            $headers = $headers ?? [];
             $activeTab = $section && isset($categories[$section])
                 ? $section
                 : array_key_first($categories);
         @endphp
-        <div class="sp-head">
-            <h2>Download files</h2>
-        </div>
         <div class="sp-tabs" role="tablist" aria-label="Supplier file categories">
             @foreach($categories as $key => $label)
                 @php $count = ($grouped[$key] ?? collect())->count(); @endphp
@@ -281,7 +278,6 @@
                     aria-selected="{{ $key === $activeTab ? 'true' : 'false' }}"
                     aria-controls="sp-panel-{{ $key }}"
                 >
-                    <i class="{{ \App\Models\SupplierPortalAsset::CATEGORY_ICONS[$key] ?? 'ri-folder-line' }}"></i>
                     <span>{{ $label }}</span>
                     <span class="sp-tab-count">{{ $count }}</span>
                 </button>
@@ -297,6 +293,31 @@
                 aria-labelledby="sp-tab-{{ $key }}"
                 data-panel="{{ $key }}"
             >
+                @php $pageHeaders = ($headers[$key] ?? collect()); @endphp
+                @if($pageHeaders->isNotEmpty())
+                    <div class="sp-page-headers">
+                        @foreach($pageHeaders as $header)
+                            <article class="sp-page-header">
+                                <h3>{{ $header->title }}</h3>
+                                @if(trim((string) ($header->instructions ?? '')) !== '')
+                                    <p>{{ $header->instructions }}</p>
+                                @endif
+                            </article>
+                        @endforeach
+                    </div>
+                @endif
+                @if(\App\Support\SupplierPortalPackingData::usesPackingGrid($key))
+                    @include('supplier-portal.partials.packing-inner-grid', ['prefix' => 'spPiPublic_'.$key, 'editable' => false])
+                @endif
+                @if(\App\Support\SupplierPortalDimWtData::usesDimWtGrid($key))
+                    @include('supplier-portal.partials.dim-wt-item-grid', ['prefix' => 'spDwPublic_'.$key, 'editable' => false, 'variant' => 'pkg'])
+                @endif
+                @if(\App\Support\SupplierPortalDimWtData::usesDimWtCoverGrid($key))
+                    @include('supplier-portal.partials.dim-wt-item-grid', ['prefix' => 'spDwCoverPublic_'.$key, 'editable' => false, 'variant' => 'cover'])
+                @endif
+                @if(\App\Support\SupplierPortalDimWtData::usesDimWtSkuGrid($key))
+                    @include('supplier-portal.partials.dim-wt-item-grid', ['prefix' => 'spDwSkuPublic_'.$key, 'editable' => false, 'variant' => 'sku', 'category' => $key])
+                @endif
                 @if($items->isEmpty())
                     <p class="sp-empty">No {{ strtolower($label) }} files uploaded yet.</p>
                 @else
@@ -310,8 +331,12 @@
                                         <div class="sp-pdf">{{ $asset->extensionLabel() }}</div>
                                     @endif
                                 </div>
+                                <div class="sp-file-code">{{ $asset->codeLabel($loop->iteration) }}</div>
                                 <div class="sp-card-body">
                                     <h3>{{ $asset->title }}</h3>
+                                    @if($asset->productMeta() !== '')
+                                        <div class="sp-product">{{ $asset->productMeta() }}</div>
+                                    @endif
                                     <div class="sp-meta">{{ $asset->extensionLabel() }} · {{ $asset->sizeLabel() }}</div>
                                     <span class="sp-dl">
                                         Open <i class="ri-arrow-right-up-line"></i>
@@ -325,18 +350,6 @@
         @endforeach
     </main>
 
-    @if($settings->announcement)
-        <div class="sp-announce">
-            <div class="sp-announce-left">
-                <i class="ri-notification-3-line"></i>
-                <div>
-                    <strong>Latest Announcement</strong>
-                    <p>{{ $settings->announcement }}</p>
-                </div>
-            </div>
-        </div>
-    @endif
-
     <footer class="sp-footer">
         <div>
             <strong>{{ $settings->company_name }}</strong>
@@ -344,12 +357,6 @@
                 <em> · {{ $settings->footer_tagline }}</em>
             @endif
             <div style="margin-top:6px">© {{ date('Y') }} {{ $settings->company_name }} Inc. All rights reserved.</div>
-        </div>
-        <div>
-            This portal is for authorized suppliers only.
-            @if($settings->contact_email)
-                · <a href="mailto:{{ $settings->contact_email }}">Contact</a>
-            @endif
         </div>
     </footer>
     <script>

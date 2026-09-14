@@ -194,6 +194,9 @@
                         <small class="text-muted">Image, SKU, and barcode from UPC</small>
                     </div>
                     <div class="d-flex align-items-center gap-2">
+                        <a class="btn btn-sm btn-outline-primary" href="{{ route('barcode.image') }}" target="_blank" rel="noopener">
+                            <i class="fas fa-image me-1"></i>Barcode Image
+                        </a>
                         <button type="button" class="btn btn-sm btn-success" id="mbAutogenerateBtn">
                             <i class="fas fa-barcode me-1"></i>Autogenerate from UPC
                         </button>
