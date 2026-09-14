@@ -853,6 +853,7 @@ class EbayCampaignAdsController extends Controller
                 'em.views',
                 'em.l7_views',
                 'em.ebay_l30',
+                'em.listing_status',
                 // Dilution inputs (from shopify_skus, matched by sku). Correlated subqueries
                 // avoid row multiplication and keep every ad row visible even when unmatched.
                 // DIL = (quantity / inv) * 100  — quantity = L30 sold, inv = stock on hand.
@@ -864,7 +865,15 @@ class EbayCampaignAdsController extends Controller
             $query->where('ca.funding_strategy', $request->funding_strategy);
         }
         if ($request->filled('campaign_status')) {
-            $query->where('ca.campaign_status', $request->campaign_status);
+            $status = strtoupper(trim((string) $request->campaign_status));
+            if ($status === 'ENDED') {
+                $query->where(function ($q) {
+                    $q->whereRaw("UPPER(TRIM(COALESCE(ca.campaign_status, ''))) IN ('ENDED', 'INACTIVE')")
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(em.listing_status, ''))) IN ('ENDED', 'INACTIVE', 'UNSOLD', 'COMPLETED', 'SOLD')");
+                });
+            } else {
+                $query->where('ca.campaign_status', $request->campaign_status);
+            }
         }
         if ($request->filled('promote_with_ad')) {
             $promote = $request->promote_with_ad;
@@ -872,6 +881,33 @@ class EbayCampaignAdsController extends Controller
                 $query->where(function ($q) {
                     $q->whereNull('ca.promote_with_ad')
                       ->orWhere('ca.promote_with_ad', '');
+                });
+            } elseif ($promote === 'RECOMMENDED') {
+                $query->where(function ($q) {
+                    $q->where('ca.promote_with_ad', 'RECOMMENDED')
+                        ->orWhere(function ($q2) {
+                            $q2->whereNull('ca.promote_with_ad')
+                                ->orWhere('ca.promote_with_ad', '');
+                        });
+                })
+                ->whereRaw("UPPER(TRIM(COALESCE(em.listing_status, ''))) = 'ACTIVE'")
+                ->where(function ($q) {
+                    $q->whereNull('ca.campaign_id')
+                        ->orWhere('ca.campaign_id', '')
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(ca.campaign_status, ''))) IN ('ENDED', 'INACTIVE')");
+                })
+                ->whereNotExists(function ($q) {
+                    $q->selectRaw('1')
+                        ->from('ebay_campaign_ads as live')
+                        ->whereColumn('live.listing_id', 'ca.listing_id')
+                        ->whereNotNull('live.campaign_id')
+                        ->where('live.campaign_id', '!=', '')
+                        ->whereRaw("UPPER(TRIM(COALESCE(live.campaign_status, ''))) IN ('RUNNING', 'PAUSED', 'SYSTEM_PAUSED')");
+                });
+            } elseif ($promote === 'AD_ALREADY_CREATED') {
+                $query->where(function ($q) {
+                    $q->where('ca.promote_with_ad', 'AD_ALREADY_CREATED')
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(ca.campaign_status, ''))) IN ('RUNNING', 'PAUSED', 'SYSTEM_PAUSED')");
                 });
             } else {
                 $query->where('ca.promote_with_ad', $promote);

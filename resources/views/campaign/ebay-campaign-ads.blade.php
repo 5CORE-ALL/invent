@@ -527,12 +527,16 @@ $(document).ready(function () {
                 title: 'Status', field: 'campaign_status', width: 110, hozAlign: 'center',
                 headerTooltip: 'Campaign status from eBay. Dash / No Campaign = listing is not in a Promoted Listings campaign yet (Eligible on eBay is the Promote column).',
                 formatter: function(cell) {
+                    const row = cell.getRow().getData() || {};
                     const v = String(cell.getValue() || '').toUpperCase();
                     if (v === 'RUNNING') return '<span class="badge-run">RUNNING</span>';
                     if (v === 'PAUSED')  return '<span class="badge-paus">PAUSED</span>';
-                    if (v === 'ENDED')   return '<span class="badge-end">ENDED</span>';
-                    if (v === 'INACTIVE') return '<span class="badge-end">INACTIVE</span>';
-                    return '<span style="color:#aaa; font-size:11px;" title="Not enrolled in a campaign">No Campaign</span>';
+                    if (v === 'SYSTEM_PAUSED') return '<span class="badge-paus">SYSTEM_PAUSED</span>';
+                    const listingStatus = String(row.listing_status || '').toUpperCase();
+                    if (['ENDED', 'INACTIVE', 'UNSOLD', 'COMPLETED', 'SOLD'].includes(listingStatus)) {
+                        return '<span class="badge-end" title="Listing ended on eBay">ENDED</span>';
+                    }
+                    return '<span style="color:#aaa; font-size:11px;" title="Not enrolled in a live campaign">No Campaign</span>';
                 }
             },
             {
