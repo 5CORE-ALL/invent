@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 class SupplierPortalAsset extends Model
@@ -96,6 +98,23 @@ class SupplierPortalAsset extends Model
         $n = $number ?? max(1, (int) $this->sort_order);
 
         return self::prefixFor((string) $this->category).'-'.str_pad((string) $n, 2, '0', STR_PAD_LEFT);
+    }
+
+    public static function ensureSkuParentColumns(): void
+    {
+        if (! Schema::hasTable('supplier_portal_assets')) {
+            return;
+        }
+        if (! Schema::hasColumn('supplier_portal_assets', 'sku')) {
+            Schema::table('supplier_portal_assets', function (Blueprint $table) {
+                $table->string('sku', 120)->nullable()->index();
+            });
+        }
+        if (! Schema::hasColumn('supplier_portal_assets', 'parent')) {
+            Schema::table('supplier_portal_assets', function (Blueprint $table) {
+                $table->string('parent', 120)->nullable()->index();
+            });
+        }
     }
 
     protected $table = 'supplier_portal_assets';

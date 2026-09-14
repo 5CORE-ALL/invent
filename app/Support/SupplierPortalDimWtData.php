@@ -137,6 +137,10 @@ class SupplierPortalDimWtData
         if (! Schema::hasTable('supplier_portal_assets')) {
             return $out;
         }
+        SupplierPortalAsset::ensureSkuParentColumns();
+        if (! Schema::hasColumn('supplier_portal_assets', 'sku')) {
+            return $out;
+        }
 
         $assets = SupplierPortalAsset::query()
             ->orderBy('sort_order')

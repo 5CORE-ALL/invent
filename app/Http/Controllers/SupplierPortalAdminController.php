@@ -21,6 +21,7 @@ class SupplierPortalAdminController extends Controller
     public function index(): View
     {
         SupplierPortalSetting::ensureDatabaseReachable();
+        SupplierPortalAsset::ensureSkuParentColumns();
         $settings = SupplierPortalSetting::current();
         $grouped = [];
         foreach (array_keys(SupplierPortalAsset::CATEGORIES) as $key) {
@@ -136,6 +137,7 @@ class SupplierPortalAdminController extends Controller
 
     public function storeAsset(Request $request): RedirectResponse
     {
+        SupplierPortalAsset::ensureSkuParentColumns();
         $data = $request->validate([
             'category' => ['required', 'in:'.implode(',', array_keys(SupplierPortalAsset::CATEGORIES))],
             'title' => ['nullable', 'string', 'max:160'],
@@ -313,6 +315,7 @@ class SupplierPortalAdminController extends Controller
 
     public function storeSkuFile(Request $request): JsonResponse
     {
+        SupplierPortalAsset::ensureSkuParentColumns();
         $data = $request->validate([
             'category' => ['required', 'in:'.implode(',', SupplierPortalDimWtData::SKU_CATEGORIES)],
             'sku' => ['required', 'string', 'max:120'],

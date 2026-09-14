@@ -60,6 +60,7 @@ class SupplierPortalAssetTest extends TestCase
         $this->assertTrue(\App\Support\SupplierPortalDimWtData::usesDimWtSkuGrid('operations_manual'));
         $this->assertTrue(\App\Support\SupplierPortalDimWtData::usesDimWtSkuGrid('dos_and_donts'));
         $this->assertContains('assembly_designs', \App\Support\SupplierPortalDimWtData::SKU_CATEGORIES);
+        $this->assertTrue(method_exists(\App\Models\SupplierPortalAsset::class, 'ensureSkuParentColumns'));
         $this->assertFalse(\App\Support\SupplierPortalDimWtData::usesDimWtGrid('master_carton_designs'));
         $this->assertFalse(\App\Support\SupplierPortalDimWtData::usesDimWtSkuGrid('inner_box_designs'));
         $this->assertSame('Design Instructions', \App\Support\SupplierPortalPackingData::FIELDS['packing_instructions']);
