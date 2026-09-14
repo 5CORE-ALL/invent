@@ -109,6 +109,8 @@
     .sp-dw-table th { position: sticky; top: 0; background: #eef4ff; color: #111; text-align: left; padding: 8px; font-weight: 700; white-space: nowrap; }
     .sp-dw-table td { border-bottom: 1px solid #f0f0f0; padding: 7px 8px; vertical-align: middle; }
     .sp-dw-table tbody tr:hover { background: #f8fbff; }
+    .sp-dw-table tbody tr.sp-dw-parent td { background: #d1e9ff; border-bottom: 3px solid #38bdf8; font-weight: 600; }
+    .sp-dw-table tbody tr.sp-dw-parent:hover td { background: #bfdbfe; }
     .sp-dw-empty { color: #888; padding: 16px !important; }
     .sp-dw-check { width: 36px; text-align: center; }
     .sp-dw-table img { width: 30px; height: 30px; object-fit: cover; border-radius: 4px; }
@@ -277,7 +279,7 @@
             }
             body.innerHTML = list.map(function (row) {
                 var img = val(row, 'image_path');
-                return '<tr data-id="' + esc(row.id) + '">' +
+                return '<tr data-id="' + esc(row.id) + '"' + (isParentSku(row.SKU) ? ' class="sp-dw-parent"' : '') + '>' +
                     '<td class="sp-dw-check">' + (isParentSku(row.SKU) ? '' : '<input type="checkbox" data-sp-dw-row value="' + esc(row.SKU) + '">') + '</td>' +
                     '<td>' + (img ? '<img src="' + esc(img) + '" alt="">' : '—') + '</td>' +
                     '<td title="' + esc(row.Parent) + '">' + esc(row.Parent || '—') + '</td>' +

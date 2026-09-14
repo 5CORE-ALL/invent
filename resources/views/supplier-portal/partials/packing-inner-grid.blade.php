@@ -8,14 +8,15 @@
     $ctnUpdateUrl = url('/dim-wt-master/update');
     $fields = \App\Support\SupplierPortalPackingData::FIELDS;
     $ctnPkgLabel = \App\Support\SupplierPortalPackingData::CTN_PKG_LABEL;
-    $colCount = 3 + count($fields) + 1 + ($editable ? 1 : 0);
+    $ctnMasterFields = \App\Support\SupplierPortalPackingData::CTN_MASTER_FIELDS;
+    $colCount = 3 + count($fields) + 1 + count($ctnMasterFields) + ($editable ? 1 : 0);
     $clearUrl = url('/packing-instructions-master/clear');
 @endphp
 <div class="sp-pi-wrap" id="{{ $prefix }}Wrap" data-sp-pi data-editable="{{ $editable ? '1' : '0' }}" data-url="{{ $dataUrl }}" data-update="{{ $updateUrl }}" data-ctn-update="{{ $ctnUpdateUrl }}" data-clear="{{ $clearUrl }}">
     <div class="sp-pi-toolbar">
         <div>
             <strong>Packing Carton</strong>
-            <div class="sp-pi-sub">Data from /packing-instructions-master — ctn pkg from /dim-wt-master-ctn</div>
+            <div class="sp-pi-sub">Data from /packing-instructions-master — ctn pkg, dimensions &amp; weight from /dim-wt-master-ctn</div>
         </div>
         @if($editable)
             <div class="sp-pi-actions">
@@ -41,6 +42,15 @@
         </label>
         @foreach($fields as $key => $label)
             @if($key === 'packing_instructions')
+                @foreach($ctnMasterFields as $ctnKey => $ctnLabel)
+                    <label>{{ $ctnLabel }}
+                        <select data-sp-pi-field="{{ $ctnKey }}">
+                            <option value="all">All</option>
+                            <option value="missing">Missing</option>
+                            <option value="has">Has data</option>
+                        </select>
+                    </label>
+                @endforeach
                 <label>{{ $ctnPkgLabel }}
                     <select data-sp-pi-field="ctn_instructions">
                         <option value="all">All</option>
@@ -67,6 +77,9 @@
                     <th>Status</th>
                     @foreach($fields as $key => $label)
                         @if($key === 'packing_instructions')
+                            @foreach($ctnMasterFields as $ctnLabel)
+                                <th>{{ $ctnLabel }}</th>
+                            @endforeach
                             <th>{{ $ctnPkgLabel }}</th>
                         @endif
                         <th>{{ $label }}</th>
@@ -98,8 +111,11 @@
     .sp-pi-table th { position: sticky; top: 0; background: #141414; color: #fff; text-align: left; padding: 8px; font-weight: 600; white-space: nowrap; }
     .sp-pi-table td { border-bottom: 1px solid #f0f0f0; padding: 6px 8px; vertical-align: top; }
     .sp-pi-table tbody tr:hover { background: #fffaf8; }
+    .sp-pi-table tbody tr.sp-pi-parent td { background: #d1e9ff; border-bottom: 3px solid #38bdf8; font-weight: 600; }
+    .sp-pi-table tbody tr.sp-pi-parent:hover td { background: #bfdbfe; }
     .sp-pi-empty { color: #888; padding: 16px !important; }
     .sp-pi-table textarea, .sp-pi-table input.sp-pi-cell { width: 100%; min-width: 90px; border: 1px solid #ddd; border-radius: 4px; padding: 4px 6px; font: inherit; }
+    .sp-pi-table input.sp-pi-num { min-width: 72px; max-width: 92px; }
     .sp-pi-save, .sp-pi-edit, .sp-pi-del { border: 0; border-radius: 5px; padding: 4px 8px; font-size: 12px; font-weight: 700; margin: 0 2px 0 0; cursor: pointer; }
     .sp-pi-save { background: #e31c23; color: #fff; }
     .sp-pi-save:disabled { opacity: .6; }
@@ -123,11 +139,17 @@
 (function () {
     if (window.spInitPackingGrid) return;
     var FIELDS = @json(array_keys($fields));
+    var CTN_MASTER_KEYS = @json(array_keys($ctnMasterFields));
     var CSRF = @json(csrf_token());
+    var IN_CM = 2.54;
+    var KG_LB = 2.2046226218;
     var SEARCH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>';
     var DISPLAY_KEYS = [];
     FIELDS.forEach(function (key) {
-        if (key === 'packing_instructions') DISPLAY_KEYS.push('ctn_instructions');
+        if (key === 'packing_instructions') {
+            CTN_MASTER_KEYS.forEach(function (k) { DISPLAY_KEYS.push(k); });
+            DISPLAY_KEYS.push('ctn_instructions');
+        }
         DISPLAY_KEYS.push(key);
     });
     window.spPackingRows = null;
@@ -167,7 +189,71 @@
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
         function val(row, key) { return String(row[key] || '').trim(); }
-        function isParentSku(sku) { return String(sku || '').toUpperCase().indexOf('PARENT') === 0; }
+        function isParentSku(sku) { return String(sku || '').toUpperCase().indexOf('PARENT') !== -1; }
+        function toNum(v) {
+            if (v === null || v === undefined || String(v).trim() === '') return null;
+            var n = parseFloat(v);
+            return isNaN(n) ? null : n;
+        }
+        function fmt(n, d) {
+            if (n == null) return '';
+            var p = Math.pow(10, d);
+            return String(Math.round(n * p) / p);
+        }
+        function storedKey(key) {
+            if (key === 'ctn_l_in') return 'ctn_l';
+            if (key === 'ctn_w_in') return 'ctn_w';
+            if (key === 'ctn_h_in') return 'ctn_h';
+            if (key === 'ctn_weight_lb') return 'ctn_weight_kg';
+            return key;
+        }
+        function displayVal(row, key) {
+            if (key === 'ctn_l_in' || key === 'ctn_w_in' || key === 'ctn_h_in') {
+                var cm = toNum(row[storedKey(key)]);
+                return cm == null ? '' : fmt(cm / IN_CM, 2);
+            }
+            if (key === 'ctn_weight_lb') {
+                var kg = toNum(row.ctn_weight_kg);
+                if (kg != null) return fmt(kg * KG_LB, 2);
+                return val(row, 'ctn_weight_lb');
+            }
+            return val(row, key);
+        }
+        function fieldEmpty(row, key) {
+            if (key === 'ctn_weight_lb' || key === 'ctn_weight_kg') {
+                return val(row, 'ctn_weight_kg') === '' && val(row, 'ctn_weight_lb') === '';
+            }
+            return val(row, storedKey(key)) === '';
+        }
+        function convertPair(el) {
+            var tr = el.closest('tr');
+            var pair = tr && tr.querySelector('[data-field="' + el.getAttribute('data-pair') + '"]');
+            if (!pair) return;
+            var n = toNum(el.value);
+            var kind = el.getAttribute('data-convert');
+            if (kind === 'cm') pair.value = n == null ? '' : fmt(n / IN_CM, 2);
+            if (kind === 'in') pair.value = n == null ? '' : fmt(n * IN_CM, 2);
+            if (kind === 'kg') pair.value = n == null ? '' : fmt(n * KG_LB, 2);
+            if (kind === 'lb') pair.value = n == null ? '' : fmt(n / KG_LB, 2);
+        }
+        function ctnInput(key, shown) {
+            var convert = 'cm';
+            var pair = '';
+            if (key === 'ctn_l' || key === 'ctn_w' || key === 'ctn_h') {
+                convert = 'cm';
+                pair = key + '_in';
+            } else if (key === 'ctn_l_in' || key === 'ctn_w_in' || key === 'ctn_h_in') {
+                convert = 'in';
+                pair = key.replace(/_in$/, '');
+            } else if (key === 'ctn_weight_kg') {
+                convert = 'kg';
+                pair = 'ctn_weight_lb';
+            } else {
+                convert = 'lb';
+                pair = 'ctn_weight_kg';
+            }
+            return '<td><input type="number" step="0.01" class="sp-pi-cell sp-pi-num" data-field="' + key + '" data-convert="' + convert + '" data-pair="' + pair + '" value="' + esc(shown) + '"></td>';
+        }
 
         function filtered() {
             var parent = (wrap.querySelector('[data-sp-pi-filter="parent"]')?.value || '').toLowerCase();
@@ -183,7 +269,7 @@
                     var sel = wrap.querySelector('[data-sp-pi-field="' + DISPLAY_KEYS[i] + '"]');
                     if (!sel) continue;
                     var fv = sel.value;
-                    var empty = val(row, DISPLAY_KEYS[i]) === '';
+                    var empty = fieldEmpty(row, DISPLAY_KEYS[i]);
                     if (fv === 'missing' && !empty) return false;
                     if (fv === 'has' && empty) return false;
                 }
@@ -194,13 +280,19 @@
         function render() {
             var list = filtered();
             if (!list.length) {
-                body.innerHTML = '<tr><td colspan="20" class="sp-pi-empty">No packing rows match these filters.</td></tr>';
+                body.innerHTML = '<tr><td colspan="32" class="sp-pi-empty">No packing rows match these filters.</td></tr>';
                 return;
             }
             body.innerHTML = list.map(function (row) {
                 var canEdit = editable && !isParentSku(row.SKU) && (mode === 'edit' || editingSku === String(row.SKU));
                 var cells = DISPLAY_KEYS.map(function (key) {
                     var v = val(row, key);
+                    if (CTN_MASTER_KEYS.indexOf(key) !== -1) {
+                        if (isParentSku(row.SKU)) return '<td class="sp-pi-dash">--</td>';
+                        var shown = displayVal(row, key);
+                        if (!canEdit) return '<td>' + esc(shown || '—') + '</td>';
+                        return ctnInput(key, shown);
+                    }
                     if (key === 'ctn_instructions') {
                         if (isParentSku(row.SKU)) return '<td class="sp-pi-dash">--</td>';
                         if (canEdit) {
@@ -227,7 +319,7 @@
                             '<button type="button" class="sp-pi-del" data-id="' + esc(row.id) + '" data-sku="' + esc(row.SKU) + '" data-parent="' + esc(row.Parent || '') + '">Delete</button></td>';
                     }
                 }
-                return '<tr data-sku="' + esc(row.SKU) + '">' +
+                return '<tr data-sku="' + esc(row.SKU) + '"' + (isParentSku(row.SKU) ? ' class="sp-pi-parent"' : '') + '>' +
                     '<td>' + esc(row.Parent || '—') + '</td>' +
                     '<td>' + esc(row.SKU) + '</td>' +
                     '<td>' + esc(row.status || '—') + '</td>' +
@@ -236,7 +328,7 @@
         }
 
         function load(force) {
-            body.innerHTML = '<tr><td colspan="20" class="sp-pi-empty">Loading packing data…</td></tr>';
+            body.innerHTML = '<tr><td colspan="32" class="sp-pi-empty">Loading packing data…</td></tr>';
             var req = (!force && window.spPackingRows)
                 ? Promise.resolve(window.spPackingRows)
                 : fetch(url + (url.indexOf('?') === -1 ? '?' : '&') + 'ts=' + Date.now(), {
@@ -249,12 +341,16 @@
                 rows = data || [];
                 render();
             }).catch(function () {
-                body.innerHTML = '<tr><td colspan="20" class="sp-pi-empty">Could not load packing-instructions-master data.</td></tr>';
+                body.innerHTML = '<tr><td colspan="32" class="sp-pi-empty">Could not load packing-instructions-master data.</td></tr>';
             });
         }
         wrap._spPiLoad = load;
 
         wrap.addEventListener('input', function (e) {
+            if (e.target.matches('[data-convert]')) {
+                convertPair(e.target);
+                return;
+            }
             if (e.target.matches('[data-sp-pi-filter], [data-sp-pi-field]')) render();
         });
         wrap.addEventListener('change', function (e) {
@@ -334,6 +430,11 @@
             });
             var ctnEl = tr.querySelector('[data-field="ctn_instructions"]');
             var ctnVal = ctnEl ? String(ctnEl.value || '').trim().slice(0, 100) : '';
+            var kg = toNum(tr.querySelector('[data-field="ctn_weight_kg"]')?.value);
+            if (kg == null) {
+                var lb = toNum(tr.querySelector('[data-field="ctn_weight_lb"]')?.value);
+                if (lb != null) kg = lb / KG_LB;
+            }
             btn.disabled = true;
             var packingReq = fetch(updateUrl, {
                 method: 'POST',
@@ -348,6 +449,10 @@
                     sku: sku,
                     parent: btn.getAttribute('data-parent') || '',
                     ctn_instructions: ctnVal.length ? ctnVal : null,
+                    ctn_l: toNum(tr.querySelector('[data-field="ctn_l"]')?.value),
+                    ctn_w: toNum(tr.querySelector('[data-field="ctn_w"]')?.value),
+                    ctn_h: toNum(tr.querySelector('[data-field="ctn_h"]')?.value),
+                    ctn_weight_kg: kg,
                     _token: CSRF
                 })
             }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
