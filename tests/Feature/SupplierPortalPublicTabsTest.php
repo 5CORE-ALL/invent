@@ -41,8 +41,10 @@ class SupplierPortalPublicTabsTest extends TestCase
         $this->assertStringContainsString('data-variant="cover"', $html);
         $this->assertStringContainsString('data-variant="sku"', $html);
         $this->assertStringContainsString('>Files</th>', $html);
-        $this->assertStringContainsString('sp-dw-parent', $html);
-        $this->assertStringContainsString('sp-pi-parent', $html);
+        $this->assertStringContainsString('sp-dw-thumb', $html);
+        $this->assertStringContainsString('spDwImgHover', $html);
+        $this->assertStringNotContainsString('sp-dw-parent', $html);
+        $this->assertStringNotContainsString('sp-pi-parent', $html);
         $this->assertStringContainsString('ctn pkg', $html);
         $this->assertStringContainsString('CTN L (cm)', $html);
         $this->assertStringContainsString('CTN L (in)', $html);

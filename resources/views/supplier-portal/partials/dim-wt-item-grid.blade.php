@@ -109,11 +109,15 @@
     .sp-dw-table th { position: sticky; top: 0; background: #eef4ff; color: #111; text-align: left; padding: 8px; font-weight: 700; white-space: nowrap; }
     .sp-dw-table td { border-bottom: 1px solid #f0f0f0; padding: 7px 8px; vertical-align: middle; }
     .sp-dw-table tbody tr:hover { background: #f8fbff; }
-    .sp-dw-table tbody tr.sp-dw-parent td { background: #d1e9ff; border-bottom: 3px solid #38bdf8; font-weight: 600; }
-    .sp-dw-table tbody tr.sp-dw-parent:hover td { background: #bfdbfe; }
     .sp-dw-empty { color: #888; padding: 16px !important; }
     .sp-dw-check { width: 36px; text-align: center; }
-    .sp-dw-table img { width: 30px; height: 30px; object-fit: cover; border-radius: 4px; }
+    .sp-dw-table img.sp-dw-thumb { width: 30px; height: 30px; object-fit: cover; border-radius: 4px; cursor: zoom-in; }
+    #spDwImgHover {
+        position: fixed; display: none; z-index: 200060; pointer-events: none;
+        max-width: min(420px, 90vw); max-height: min(420px, 80vh);
+        object-fit: contain; background: #fff; border-radius: 10px; padding: 4px;
+        box-shadow: 0 8px 32px rgba(0,0,0,.35); border: 1px solid rgba(0,0,0,.08);
+    }
     .sp-dw-pkg, .sp-dw-cover { border: 0; background: transparent; cursor: pointer; padding: 0; line-height: 1; color: #2563eb; }
     .sp-dw-pkg svg, .sp-dw-cover svg { width: 16px; height: 16px; display: block; }
     .sp-dw-pkg.is-ok svg { color: #28a745; }
@@ -219,8 +223,22 @@
             return Array.isArray(all[category]) ? all[category] : [];
         }
 
+        function familyImage(row) {
+            var img = val(row, 'image_path');
+            if (img) return img;
+            var parent = val(row, 'Parent') || val(row, 'SKU');
+            if (!parent) return '';
+            for (var i = 0; i < rows.length; i++) {
+                var other = rows[i];
+                if (val(other, 'image_path') === '') continue;
+                if (val(other, 'Parent') === parent || val(other, 'SKU') === parent) {
+                    return val(other, 'image_path');
+                }
+            }
+            return '';
+        }
+
         function filesCell(row) {
-            if (isParentSku(row.SKU)) return '<span class="sp-dw-dash">--</span>';
             var list = rowFiles(row);
             var html = list.map(function (f) {
                 var name = esc(f.title || f.file_name || 'File');
@@ -253,7 +271,6 @@
 
         function extraCell(row) {
             if (isSkuOnly) return filesCell(row);
-            if (isParentSku(row.SKU)) return '<span class="sp-dw-dash">--</span>';
             if (isCover) {
                 var cover = val(row, 'item_pkg_cover');
                 if (rowIsEditing(row)) {
@@ -278,10 +295,10 @@
                 return;
             }
             body.innerHTML = list.map(function (row) {
-                var img = val(row, 'image_path');
-                return '<tr data-id="' + esc(row.id) + '"' + (isParentSku(row.SKU) ? ' class="sp-dw-parent"' : '') + '>' +
-                    '<td class="sp-dw-check">' + (isParentSku(row.SKU) ? '' : '<input type="checkbox" data-sp-dw-row value="' + esc(row.SKU) + '">') + '</td>' +
-                    '<td>' + (img ? '<img src="' + esc(img) + '" alt="">' : '—') + '</td>' +
+                var img = familyImage(row);
+                return '<tr data-id="' + esc(row.id) + '">' +
+                    '<td class="sp-dw-check"><input type="checkbox" data-sp-dw-row value="' + esc(row.SKU) + '"></td>' +
+                    '<td>' + (img ? '<img class="sp-dw-thumb no-img-hover" src="' + esc(img) + '" alt="">' : '—') + '</td>' +
                     '<td title="' + esc(row.Parent) + '">' + esc(row.Parent || '—') + '</td>' +
                     '<td title="' + esc(row.SKU) + '">' + esc(row.SKU) + '</td>' +
                     '<td>' + extraCell(row) + '</td>' +
@@ -499,6 +516,76 @@
     document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('[data-sp-dw]').forEach(window.spInitDimWtGrid);
     });
+
+    (function bindThumbHover() {
+        if (window.__spDwImgHoverBound) return;
+        window.__spDwImgHoverBound = true;
+        var popup = document.getElementById('spDwImgHover');
+        if (!popup) {
+            popup = document.createElement('img');
+            popup.id = 'spDwImgHover';
+            popup.alt = '';
+            document.body.appendChild(popup);
+        }
+        var active = null;
+        var moveRaf = false;
+        var cx = 0;
+        var cy = 0;
+        function position() {
+            if (popup.style.display !== 'block') return;
+            var pad = 16;
+            var vw = window.innerWidth;
+            var vh = window.innerHeight;
+            var pw = popup.offsetWidth || 320;
+            var ph = popup.offsetHeight || 320;
+            var x = cx + pad;
+            var y = cy + pad;
+            if (x + pw > vw - 8) x = cx - pw - pad;
+            if (y + ph > vh - 8) y = cy - ph - pad;
+            if (x < 8) x = 8;
+            if (y < 8) y = 8;
+            popup.style.left = x + 'px';
+            popup.style.top = y + 'px';
+        }
+        function show(img, e) {
+            active = img;
+            popup.src = img.currentSrc || img.src;
+            popup.style.display = 'block';
+            cx = e.clientX;
+            cy = e.clientY;
+            position();
+            popup.onload = position;
+        }
+        function hide() {
+            active = null;
+            popup.style.display = 'none';
+            popup.removeAttribute('src');
+            popup.onload = null;
+        }
+        document.addEventListener('mouseover', function (e) {
+            var img = e.target && e.target.closest ? e.target.closest('.sp-dw-table img.sp-dw-thumb') : null;
+            if (!img) return;
+            show(img, e);
+        }, true);
+        document.addEventListener('mouseout', function (e) {
+            var img = e.target && e.target.closest ? e.target.closest('.sp-dw-table img.sp-dw-thumb') : null;
+            if (!img || img !== active) return;
+            var to = e.relatedTarget;
+            if (to && img.contains && img.contains(to)) return;
+            hide();
+        }, true);
+        document.addEventListener('mousemove', function (e) {
+            if (popup.style.display !== 'block') return;
+            cx = e.clientX;
+            cy = e.clientY;
+            if (moveRaf) return;
+            moveRaf = true;
+            requestAnimationFrame(function () {
+                moveRaf = false;
+                position();
+            });
+        }, true);
+    })();
 })();
 </script>
 @endonce

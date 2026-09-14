@@ -111,8 +111,6 @@
     .sp-pi-table th { position: sticky; top: 0; background: #141414; color: #fff; text-align: left; padding: 8px; font-weight: 600; white-space: nowrap; }
     .sp-pi-table td { border-bottom: 1px solid #f0f0f0; padding: 6px 8px; vertical-align: top; }
     .sp-pi-table tbody tr:hover { background: #fffaf8; }
-    .sp-pi-table tbody tr.sp-pi-parent td { background: #d1e9ff; border-bottom: 3px solid #38bdf8; font-weight: 600; }
-    .sp-pi-table tbody tr.sp-pi-parent:hover td { background: #bfdbfe; }
     .sp-pi-empty { color: #888; padding: 16px !important; }
     .sp-pi-table textarea, .sp-pi-table input.sp-pi-cell { width: 100%; min-width: 90px; border: 1px solid #ddd; border-radius: 4px; padding: 4px 6px; font: inherit; }
     .sp-pi-table input.sp-pi-num { min-width: 72px; max-width: 92px; }
@@ -288,13 +286,11 @@
                 var cells = DISPLAY_KEYS.map(function (key) {
                     var v = val(row, key);
                     if (CTN_MASTER_KEYS.indexOf(key) !== -1) {
-                        if (isParentSku(row.SKU)) return '<td class="sp-pi-dash">--</td>';
                         var shown = displayVal(row, key);
                         if (!canEdit) return '<td>' + esc(shown || '—') + '</td>';
                         return ctnInput(key, shown);
                     }
                     if (key === 'ctn_instructions') {
-                        if (isParentSku(row.SKU)) return '<td class="sp-pi-dash">--</td>';
                         if (canEdit) {
                             return '<td><input class="sp-pi-cell" data-field="ctn_instructions" maxlength="100" value="' + esc(v) + '" placeholder="ctn pkg (max 100)"></td>';
                         }
@@ -319,7 +315,7 @@
                             '<button type="button" class="sp-pi-del" data-id="' + esc(row.id) + '" data-sku="' + esc(row.SKU) + '" data-parent="' + esc(row.Parent || '') + '">Delete</button></td>';
                     }
                 }
-                return '<tr data-sku="' + esc(row.SKU) + '"' + (isParentSku(row.SKU) ? ' class="sp-pi-parent"' : '') + '>' +
+                return '<tr data-sku="' + esc(row.SKU) + '">' +
                     '<td>' + esc(row.Parent || '—') + '</td>' +
                     '<td>' + esc(row.SKU) + '</td>' +
                     '<td>' + esc(row.status || '—') + '</td>' +
