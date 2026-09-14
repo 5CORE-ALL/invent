@@ -319,7 +319,11 @@
                         </li>
                         @if($ebaySprcDilChannel === 'aliexpress')
                         <li>
-                            <strong>When</strong> Dil is outside every From–To (INV &gt; 0):
+                            <strong>When</strong> Dil is below the first From (0 Sold Dil 0, INV &gt; 0):
+                            use the <strong>first slab</strong> Target {{ $ebaySprcDilTargetLabel }} (do not skip).
+                        </li>
+                        <li>
+                            <strong>When</strong> Dil is above the last To (INV &gt; 0):
                             S PRC = <strong>Std Prc</strong>. If Std &gt; LMP, S PRC = <strong>LMP</strong>.
                             If that price’s SGROI is below <strong>Stop &lt; N%</strong>, skip (no S PRC).
                         </li>
@@ -1084,7 +1088,15 @@
                 key = minSlab.key || 'zero-sold-min';
                 zeroSoldMin = true;
             } else if (ebayDgIsAliexpress()) {
-                return ebayDilGroiAliexpressOutOfSlabMeta(d, dil);
+                const list = ebayDilGroiCurrentList();
+                if (list.length && isFinite(dil) && dil < list[0].min) {
+                    groi = list[0].groi;
+                    label = list[0].label;
+                    key = list[0].key;
+                    clamped = true;
+                } else {
+                    return ebayDilGroiAliexpressOutOfSlabMeta(d, dil);
+                }
             } else {
                 return null;
             }

@@ -387,7 +387,8 @@ class DilRuleSpriceApplyService
     }
 
     /**
-     * /aliexpress-pricing Sprc Dil: Dil slab (including 0 Sold), else Std then LMP if Std > LMP.
+     * /aliexpress-pricing Sprc Dil: Dil slab (including 0 Sold Dil 0 → first slab),
+     * else Std then LMP if Std > LMP.
      * Stop < N% (when ON) skips the save — same cutoff as the pricing-page button.
      *
      * @param  list<array{key:string,label:string,min:float,max:float,groi:float}>  $dilRules
@@ -408,6 +409,12 @@ class DilRuleSpriceApplyService
         $al30 = (float) ($row['al30'] ?? 0);
         $lmp = (float) ($row['lmp'] ?? 0);
         $rule = AmazonDilGroiRule::match($dil, $dilRules);
+        if ($rule === null) {
+            $list = AmazonDilGroiRule::normalizeList($dilRules);
+            if ($list !== [] && $dil < (float) $list[0]['min']) {
+                $rule = $list[0];
+            }
+        }
 
         if ($rule !== null) {
             $groi = (float) $rule['groi'];

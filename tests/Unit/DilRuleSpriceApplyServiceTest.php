@@ -365,6 +365,25 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(40.00, $up['sprice'], 0.01);
     }
 
+    public function test_aliexpress_dil_zero_uses_first_slab(): void
+    {
+        $out = $this->compute('aliexpress', [
+            'inv' => 10,
+            'dil' => 0,
+            'al30' => 0,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 100,
+            'std_price' => 99,
+        ]);
+
+        $this->assertNotNull($out);
+        // Dil 0 is below first From 0.1 → first slab GROI 50, not Std $99.
+        // (20 × 1.50) / 0.80 = 37.50
+        $this->assertEqualsWithDelta(37.50, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(50.0, $out['groi'], 0.01);
+    }
+
     public function test_aliexpress_zero_sold_uses_dil_slab_not_min_groi(): void
     {
         $out = $this->compute('aliexpress', [
