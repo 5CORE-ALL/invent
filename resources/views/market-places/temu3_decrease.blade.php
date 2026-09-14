@@ -2080,16 +2080,8 @@
         const cap = typeof temuSpriceCapResult === 'function'
             ? temuSpriceCapResult(row)
             : { sprice: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
-        const value = (cap && cap.sprice > 0) ? +Number(cap.sprice).toFixed(2) : 0;
         const stored = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
-        if (value > 0 && Math.abs(stored - value) > 0.009) {
-            row.SPRICE = value;
-            row.sprice = value;
-            row.has_custom_sprice = true;
-        } else if (!(value > 0) && stored > 0) {
-            row.SPRICE = null;
-            row.sprice = null;
-        }
+        const value = stored > 0 ? +stored.toFixed(2) : 0;
         return {
             value: value,
             labels: (cap && cap.labels) || [],
@@ -2102,7 +2094,8 @@
     window.temuSpriceCellModel = temuSpriceCellModel;
 
     function temuDisplayedSprice(row) {
-        return temuRuleSprice(row);
+        const stored = parseFloat(row && (row.SPRICE != null ? row.SPRICE : row.sprice)) || 0;
+        return stored > 0 ? +stored.toFixed(2) : 0;
     }
     window.temuDisplayedSprice = temuDisplayedSprice;
 

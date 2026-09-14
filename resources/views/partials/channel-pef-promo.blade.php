@@ -3861,10 +3861,15 @@
                 ? chPromoRound2(live)
                 : chPromoFloorShopifySpriceToAmz(d, chPromoCapSpriceToLmp(d, live));
         }
+        /** Cell / S GPFT / S GROI / SNROI: saved SPRICE only. Dil stays in Sprc Dil / Apply. */
+        function chPromoTableSprice(d) {
+            if (!d) return 0;
+            const saved = chPromoGetSprice(d);
+            return saved > 0 ? chPromoRound2(saved) : 0;
+        }
         /** Cell / S GPFT / S GROI: saved SPRICE only. No live fallback. */
         function chPromoSavedOrLiveSprice(d) {
-            const saved = chPromoGetSprice(d);
-            return saved > 0 ? saved : 0;
+            return chPromoTableSprice(d);
         }
         function chPromoSpricePatch(val) {
             const n = Number(val);
@@ -11768,6 +11773,8 @@
         window.chPromoIsEndedListing = chPromoIsEndedListing;
         window.chPromoSpriceFromStdTPromo = chPromoSpriceFromStdTPromo;
         window.chPromoLiveSprice = chPromoLiveSprice;
+        window.chPromoTableSprice = chPromoTableSprice;
+        window.chPromoSavedOrLiveSprice = chPromoSavedOrLiveSprice;
         window.chPromoPushSpriceAmount = chPromoPushSpriceAmount;
         window.chPromoQueueReloadSpricePush = chPromoQueueReloadSpricePush;
         window.chPromoPageDisplayedSprice = chPromoPageDisplayedSprice;

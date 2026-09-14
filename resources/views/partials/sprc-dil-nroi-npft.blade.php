@@ -40,11 +40,15 @@
             return null;
         }
         function ebayDilRowSprice(d) {
-            if (typeof aeVisibleSprice === 'function') {
-                const ae = Number(aeVisibleSprice(d));
-                if (isFinite(ae) && ae > 0) return ae;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(d));
+                if (saved > 0) return saved;
             }
-            return ebayDilFirstNumber(d, ['SPRICE', 'sprice', 'SPRC_DIL', 'sprc_dil']) || 0;
+            if (typeof chPromoSavedOrLiveSprice === 'function') {
+                const saved = Number(chPromoSavedOrLiveSprice(d));
+                if (saved > 0) return saved;
+            }
+            return ebayDilFirstNumber(d, ['SPRICE', 'sprice']) || 0;
         }
         function ebayDilRowShip(d) {
             if (typeof ebayDgExcludeShip === 'function' && ebayDgExcludeShip()) return 0;
@@ -132,7 +136,12 @@
                         ? 'SNPFT = SGPFT (this page has no Ads%)'
                         : 'SNROI = SGROI (this page has no Ads%)');
                 const color = ebayDilPctColor(v, kind === 'snpft' ? 'gpft' : 'groi');
-                return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="color:' + color + ';font-weight:600;">'
+                const st = (window.MetricPctColors && typeof MetricPctColors.styleForCellColor === 'function')
+                    ? MetricPctColors.styleForCellColor(color)
+                    : (color === '#ffc107'
+                        ? 'color:#000;background-color:#ffc107;font-weight:700;padding:1px 5px;border-radius:3px;'
+                        : ('color:' + color + ';font-weight:600;'));
+                return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="' + st + '">'
                     + Math.round(v) + '%</span>';
             };
         }

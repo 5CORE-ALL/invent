@@ -1482,25 +1482,20 @@
         }
         function ebayRawRuleSprice(rowData) {
             if (!rowData || rowData.is_parent_summary) return 0;
-            if (typeof ebaySprcDilForRow === 'function') {
-                const dil = Number(ebaySprcDilForRow(rowData)) || 0;
-                if (dil > 0) return dil;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(rowData)) || 0;
+                if (saved > 0) return saved;
             }
-            let saved = 0;
             if (typeof chPromoSavedOrLiveSprice === 'function') {
-                saved = Number(chPromoSavedOrLiveSprice(rowData)) || 0;
+                const saved = Number(chPromoSavedOrLiveSprice(rowData)) || 0;
+                if (saved > 0) return saved;
             }
-            if (!(saved > 0)) {
-                saved = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
-            }
-            return saved > 0 ? saved : 0;
+            const stored = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
+            return stored > 0 ? stored : 0;
         }
-        /** Visible S PRC = Dil / saved rule price, LMP-capped like Amazon. */
+        /** Visible S PRC = saved SPRICE (same $ as the cell / DB). Dil is the Sprc Dil column. */
         function ebayDisplayedSprice(rowData) {
-            const raw = ebayRawRuleSprice(rowData);
-            if (!(raw > 0)) return 0;
-            const shown = ebayCapSpriceToLmp(rowData, raw);
-            return shown > 0 ? shown : raw;
+            return ebayRawRuleSprice(rowData);
         }
         window.ebaySgroiAtPrice = ebaySgroiAtPrice;
         window.ebayShouldCapSpriceToLmp = ebayShouldCapSpriceToLmp;
@@ -2717,8 +2712,8 @@
             }
             if (metric === 'sprice') {
                 let n = Number(found.SPRICE);
-                if (!(isFinite(n) && n > 0) && typeof chPromoLiveSprice === 'function') {
-                    n = Number(chPromoLiveSprice(found));
+                if (!(isFinite(n) && n > 0) && typeof chPromoTableSprice === 'function') {
+                    n = Number(chPromoTableSprice(found));
                 }
                 return isFinite(n) && n > 0 ? n : null;
             }
@@ -4811,10 +4806,7 @@
                             const lmpNow = (typeof ebayEffectiveLmp === 'function')
                                 ? ebayEffectiveLmp(rowData)
                                 : (parseFloat(rowData.lmp_price) || 0);
-                            const shown = (typeof ebayCapSpriceToLmp === 'function')
-                                ? ebayCapSpriceToLmp(rowData, raw)
-                                : raw;
-                            const sprice = shown > 0 ? shown : raw;
+                            const sprice = raw;
                             const wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
                             const appliedLmp = wouldHitLmp && sprice + 0.0001 <= lmpNow + 0.0001;
                             const atOrAboveLmp = wouldHitLmp;

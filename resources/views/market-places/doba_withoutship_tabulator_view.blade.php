@@ -2432,7 +2432,10 @@
                         else if (roiVal < 125) roiBadgeBg = '#28a745';
                         else                   roiBadgeBg = '#e83e8c';
                         $('#roi-percentage-badge')
-                            .css('background-color', roiBadgeBg)
+                            .css({
+                                'background-color': roiBadgeBg,
+                                'color': roiBadgeBg === '#ffc107' ? '#000' : '#fff',
+                            })
                             .text('ROI: ' + Math.round(roiVal) + '%');
                         $('#total-cogs-badge').text(
                             'Total COGS: $' + Math.round(parseFloat(data.total_cogs) || 0).toLocaleString()

@@ -2800,17 +2800,13 @@
                             const rowData = cell.getRow().getData();
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const ebay2Price = parseFloat(rowData['eBay Price']) || 0;
-                            let sprice = parseFloat(value) || 0;
-                            if (!(sprice > 0) && typeof chPromoLiveSprice === 'function'
-                                && !rowData.is_parent_summary
-                                && !(String(rowData.Parent || '').toUpperCase().startsWith('PARENT'))) {
-                                const calc = chPromoLiveSprice(rowData);
-                                if (calc > 0) sprice = calc;
-                            }
+                            let sprice = (typeof chPromoTableSprice === 'function')
+                                ? Number(chPromoTableSprice(rowData)) || 0
+                                : (parseFloat(value) || 0);
+                            if (!(sprice > 0)) sprice = parseFloat(value) || 0;
 
                             if (!(sprice > 0)) return '';
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, sprice) : null;
-                            if (cap && cap.shown > 0) sprice = cap.shown;
                             
                             // Always show SPRICE when it has a value — even if it equals the eBay price.
                             const formattedValue = `$${Number(sprice).toFixed(2)}`;

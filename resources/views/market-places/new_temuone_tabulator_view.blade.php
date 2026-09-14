@@ -1119,12 +1119,9 @@
 
     function temuSpriceCellModel(row) {
         if (!row) return { value: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
+        const saved = ntoSavedSprice(row);
         const cap = temuSpriceCapResult(row);
-        const value = (cap && cap.sprice > 0) ? +Number(cap.sprice).toFixed(2) : 0;
-        if (value > 0 && !ntoRowUsesSaved(row)) {
-            row.SPRICE = value;
-            row.sprice = value;
-        }
+        const value = saved > 0 ? saved : 0;
         return {
             value: value,
             labels: (cap && cap.labels) || [],
@@ -1136,8 +1133,8 @@
     }
 
     function temuDisplayedSprice(row) {
-        const cap = temuSpriceCapResult(row);
-        return (cap && cap.sprice > 0) ? +Number(cap.sprice).toFixed(2) : 0;
+        const saved = ntoSavedSprice(row);
+        return saved > 0 ? saved : 0;
     }
 
     /** S Base Prc: invert S PRC through the T Price rule — the Base Price equivalent of S PRC. */

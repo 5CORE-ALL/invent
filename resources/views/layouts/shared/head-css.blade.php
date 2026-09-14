@@ -66,6 +66,43 @@
     .text-bg-warning * {
         color: #000 !important;
     }
+
+    /*
+     * Yellow metric text (GROI / NROI / GPFT / CVR mid-band, etc.):
+     * black text on yellow chip so #ffc107 is readable on every page.
+     * Icons / spinners stay yellow (they use <i>, not these spans/classes).
+     */
+    span[style*="color:#ffc107"]:not(:has(i)),
+    span[style*="color: #ffc107"]:not(:has(i)),
+    span[style*="color:#FFC107"]:not(:has(i)),
+    span[style*="color: #FFC107"]:not(:has(i)),
+    strong[style*="color:#ffc107"]:not(:has(i)),
+    strong[style*="color: #ffc107"]:not(:has(i)),
+    strong[style*="color:#FFC107"]:not(:has(i)),
+    strong[style*="color: #FFC107"]:not(:has(i)),
+    b[style*="color:#ffc107"],
+    b[style*="color: #ffc107"],
+    a[style*="color:#ffc107"]:not(:has(i)),
+    a[style*="color: #ffc107"]:not(:has(i)),
+    td[style*="color:#ffc107"]:not(:has(i)),
+    td[style*="color: #ffc107"]:not(:has(i)),
+    .dil-percent-value.yellow,
+    .dil-yellow,
+    .pef-metric-yellow,
+    .cvr-up-dn-badge.is-zero {
+        color: #000 !important;
+        background-color: #ffc107 !important;
+        font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 3px;
+    }
+    /* Saved / summary chips that already use yellow as the background */
+    .badge[style*="background:#ffc107"],
+    .badge[style*="background: #ffc107"],
+    .badge[style*="background-color:#ffc107"],
+    .badge[style*="background-color: #ffc107"] {
+        color: #000 !important;
+    }
 </style>
 
 {{-- Global: PARENT rows light yellow + ParentExpand triangle column helpers --}}

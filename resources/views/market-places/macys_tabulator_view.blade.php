@@ -352,31 +352,15 @@
     function macysRowSpriceForAlert(data) {
         return macysDisplayedSprice(data);
     }
-    /** Cell / triangle / push: Dil rule first, not stale stored SPRICE. */
+    /** Cell / triangle / SGROI: saved SPRICE only. Dil is the Sprc Dil column. */
     function macysDisplayedSprice(data) {
         if (!data || isMacysParentRow(data)) return 0;
-        let value = 0;
-        if (typeof ebayTiktokRuleDiscount === 'function') {
-            value = Number(ebayTiktokRuleDiscount(data)) || 0;
+        if (typeof chPromoTableSprice === 'function') {
+            const saved = Number(chPromoTableSprice(data)) || 0;
+            if (saved > 0) return saved;
         }
-        if (!(value > 0) && typeof ebaySprcDilForRow === 'function') {
-            value = Number(ebaySprcDilForRow(data)) || 0;
-        }
-        if (!(value > 0) && typeof chPromoLiveSprice === 'function') {
-            value = Number(chPromoLiveSprice(data)) || 0;
-        }
-        if (!(value > 0)) value = parseFloat(data.SPRICE) || 0;
+        const value = parseFloat(data.SPRICE) || 0;
         if (!(value > 0)) return 0;
-        if (typeof chPromoCapSpriceToLmp === 'function') {
-            value = Number(chPromoCapSpriceToLmp(data, value)) || value;
-        } else if (window.SpriceLmpCap) {
-            const cap = SpriceLmpCap.apply(data, value);
-            if (cap && cap.shown > 0) value = cap.shown;
-        }
-        const amz = macysAmazonPriceForRow(data);
-        if (value > 0 && amz > 0 && value < amz - 0.0001) {
-            return Math.round(amz * 100) / 100;
-        }
         return Math.round(value * 100) / 100;
     }
     window.macysDisplayedSprice = macysDisplayedSprice;

@@ -594,30 +594,39 @@
             }
             return parseFloat(row.lmp_price || row.lmp || row.LMP) || 0;
         }
+        function sheinPctStyle(color) {
+            if (window.MetricPctColors && typeof MetricPctColors.styleForCellColor === 'function') {
+                return MetricPctColors.styleForCellColor(color);
+            }
+            if (color === '#ffc107') {
+                return 'color:#000;background-color:#ffc107;font-weight:700;padding:1px 5px;border-radius:3px;';
+            }
+            return 'color:' + color + ';font-weight:600;';
+        }
+        function sheinRoiColor(v) {
+            if (v < 40) return '#a00211';
+            if (v < 75) return '#ffc107';
+            if (v < 125) return '#28a745';
+            return '#d63384';
+        }
+        function sheinGpftColor(v) {
+            return v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+        }
+        function sheinPctHtml(v, kind) {
+            const color = kind === 'gpft' ? sheinGpftColor(v) : sheinRoiColor(v);
+            return '<span style="' + sheinPctStyle(color) + '">' + Math.round(v) + '%</span>';
+        }
         function sheinRuleSpriceRaw(data) {
             if (!data || data.is_parent) return 0;
-            let sprice = parseFloat(data.sprice || data.SPRICE) || 0;
-            if (typeof chPromoLiveSprice === 'function') {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) sprice = calc;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(data)) || 0;
+                if (saved > 0) return saved;
             }
-            if (!(sprice > 0)) sprice = parseFloat(data.special_offer || data.price) || 0;
+            const sprice = parseFloat(data.sprice || data.SPRICE) || 0;
             return sprice > 0 ? Math.round(sprice * 100) / 100 : 0;
         }
         function sheinVisibleSprice(data) {
-            const raw = sheinRuleSpriceRaw(data);
-            if (!(raw > 0)) return 0;
-            if (typeof chPromoCapSpriceToLmp === 'function') {
-                const capped = Number(chPromoCapSpriceToLmp(data, raw));
-                if (capped > 0) return Math.round(capped * 100) / 100;
-            }
-            if (window.SpriceLmpCap) {
-                const cap = SpriceLmpCap.apply(data, raw, sheinEffectiveLmp);
-                if (cap && cap.shown > 0) return Math.round(cap.shown * 100) / 100;
-            }
-            const lmp = sheinEffectiveLmp(data);
-            if (lmp > 0 && raw + 0.0001 >= lmp) return Math.round(lmp * 100) / 100;
-            return raw;
+            return sheinRuleSpriceRaw(data);
         }
         window.sheinVisibleSprice = sheinVisibleSprice;
         function sheinSpriceMetrics(data, spriceOpt) {
@@ -1870,14 +1879,7 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue()) || 0;
-                            // Color ranges matching the ROI% filter dropdown
-                            let color;
-                            if      (v < 40)  color = '#a00211';
-                            else if (v < 75)  color = '#ffc107';
-                            else if (v < 125) color = '#28a745';
-                            else              color = '#d63384';
-                            const r = Math.round(v);
-                            return `<span style="color:${color};font-weight:600;">${r}%</span>`;
+                            return sheinPctHtml(v, 'groi');
                         }
                     },
                     {
@@ -1891,9 +1893,7 @@
                             if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
                             if (v === 0 && !d.is_parent) return '0%';
                             if (v === 0 &&  d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const r = Math.round(v);
-                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return `<span style="color:${color};font-weight:${d.is_parent?'700':'600'};">${r}%</span>`;
+                            return sheinPctHtml(v, 'gpft');
                         }
                     },
                     {
@@ -2046,9 +2046,8 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = sheinSpriceMetrics(d).sgpft;
-                            if (isNaN(v) || v === 0) return '0%';
-                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
+                            if (isNaN(v)) return '0%';
+                            return sheinPctHtml(v, 'gpft');
                         }
                     },
                     {
@@ -2064,13 +2063,8 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = sheinSpriceMetrics(d).sroi;
-                            if (isNaN(v) || v === 0) return '0%';
-                            let color;
-                            if      (v < 40)  color = '#a00211';
-                            else if (v < 75)  color = '#ffc107';
-                            else if (v < 125) color = '#28a745';
-                            else              color = '#d63384';
-                            return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
+                            if (isNaN(v)) return '0%';
+                            return sheinPctHtml(v, 'groi');
                         }
                     },
                 ],

@@ -611,23 +611,11 @@
     }
     function bestbuyDisplayedSprice(data) {
         if (!data || isBestbuyParentRow(data)) return 0;
-        let value = 0;
-        if (typeof ebaySprcDilForRow === 'function') {
-            value = Number(ebaySprcDilForRow(data)) || 0;
+        if (typeof chPromoTableSprice === 'function') {
+            const saved = Number(chPromoTableSprice(data)) || 0;
+            if (saved > 0) return saved;
         }
-        if (!(value > 0) && typeof chPromoLiveSprice === 'function') {
-            value = Number(chPromoLiveSprice(data)) || 0;
-        }
-        if (!(value > 0)) value = parseFloat(data.SPRICE) || 0;
-        if (!(value > 0)) return 0;
-        value = bestbuyApplyAmzFloor(data, value);
-        if (typeof chPromoCapSpriceToLmp === 'function') {
-            value = Number(chPromoCapSpriceToLmp(data, value)) || value;
-        } else if (window.SpriceLmpCap) {
-            const cap = SpriceLmpCap.apply(data, value);
-            if (cap && cap.shown > 0) value = cap.shown;
-        }
-        return value;
+        return parseFloat(data.SPRICE) || 0;
     }
     function bestbuyRowSpriceForAlert(data) {
         return bestbuyDisplayedSprice(data);

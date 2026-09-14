@@ -1269,9 +1269,9 @@
             if (amz > 0) return Math.round(amz * 100) / 100;
             return stored > 0 ? Math.round(stored * 100) / 100 : 0;
         }
-        if (typeof chPromoLiveSprice === 'function') {
-            const calc = chPromoLiveSprice(data);
-            if (calc > 0) return calc;
+        if (typeof chPromoTableSprice === 'function') {
+            const saved = Number(chPromoTableSprice(data)) || 0;
+            if (saved > 0) return saved;
         }
         return stored > 0 ? Math.round(stored * 100) / 100 : 0;
     }
@@ -1307,9 +1307,9 @@
         return Math.round(value * 100) / 100;
     }
 
-    /** Cell / push value: LMP-capped S PRC, then floored up to A Price when below Amz. */
+    /** Cell / SGROI: saved SPRICE. Dil / Amz floor stay on flags + Apply. */
     function shopifyB2cShownSprice(data) {
-        return shopifyB2cApplyAmzFloor(data, shopifyB2cPriceBeforeAmzFloor(data));
+        return shopifyB2cDisplayedSprice(data);
     }
     window.shopifyB2cShownSprice = shopifyB2cShownSprice;
 
@@ -3354,7 +3354,6 @@
                         let redTri = '';
                         if (!amzSugg) {
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                            if (cap && cap.shown > 0) value = cap.shown;
                             overLmp = cap ? cap.alert : overLmp;
                             redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         } else if (overLmp) {
@@ -3362,7 +3361,6 @@
                                 + lmp.toFixed(2) + ' — not capped"></i>';
                         }
                         const amzFloor = shopifyB2cHasAmzFloor(rowData);
-                        value = shopifyB2cShownSprice(rowData);
                         if (amzFloor && lmp > 0 && value + 0.0001 >= lmp) {
                             overLmp = true;
                             redTri = '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC raised to Amz $'

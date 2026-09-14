@@ -1144,24 +1144,19 @@
         }
         function ebay2RawRuleSprice(rowData) {
             if (!rowData || rowData.is_parent_summary || rowData.is_parent_row) return 0;
-            if (typeof ebaySprcDilForRow === 'function') {
-                const dil = Number(ebaySprcDilForRow(rowData)) || 0;
-                if (dil > 0) return dil;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(rowData)) || 0;
+                if (saved > 0) return saved;
             }
-            let saved = 0;
             if (typeof chPromoSavedOrLiveSprice === 'function') {
-                saved = Number(chPromoSavedOrLiveSprice(rowData)) || 0;
+                const saved = Number(chPromoSavedOrLiveSprice(rowData)) || 0;
+                if (saved > 0) return saved;
             }
-            if (!(saved > 0)) {
-                saved = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
-            }
-            return saved > 0 ? saved : 0;
+            const stored = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
+            return stored > 0 ? stored : 0;
         }
         function ebay2DisplayedSprice(rowData) {
-            const raw = ebay2RawRuleSprice(rowData);
-            if (!(raw > 0)) return 0;
-            const shown = ebay2CapSpriceToLmp(rowData, raw);
-            return shown > 0 ? shown : raw;
+            return ebay2RawRuleSprice(rowData);
         }
         function ebay2SpriceAmount(rowData) {
             if (typeof ebay2DisplayedSprice === 'function') {
@@ -3982,10 +3977,7 @@
                                 : ((window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function')
                                     ? Number(LmpIgnore.effectiveLmp(rowData)) || 0
                                     : (parseFloat(rowData.lmp_price) || 0));
-                            const shown = (typeof ebay2CapSpriceToLmp === 'function')
-                                ? ebay2CapSpriceToLmp(rowData, raw)
-                                : raw;
-                            const sprice = shown > 0 ? shown : raw;
+                            const sprice = raw;
                             const wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
                             const appliedLmp = wouldHitLmp && sprice + 0.0001 <= lmpNow + 0.0001;
                             const atOrAboveLmp = wouldHitLmp;

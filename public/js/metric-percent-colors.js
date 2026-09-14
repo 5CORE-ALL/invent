@@ -90,14 +90,25 @@
     function dilColor(v) { return bandColor(dilBand(v)); }
 
     /**
-     * CSS style string for a band (yellow gets black text via callers that use styleForCellColor).
+     * CSS style string for a band.
+     * Yellow: black text on yellow chip (readable on every page).
      * pink-dil uses purple text (project convention).
      */
     function styleFromBand(band) {
         var c = bandColor(band);
         if (!c) return '';
         if (band === 'pink-dil') return 'color:#4e0dab;font-weight:700;';
-        if (band === 'yellow') return 'color:#000000;font-weight:700;';
+        if (band === 'yellow') return styleForCellColor(COLORS.yellow);
+        return 'color:' + c + ';font-weight:700;';
+    }
+
+    /** Inline style for a hex color. Yellow #ffc107 → black text + yellow background. */
+    function styleForCellColor(c) {
+        var hex = String(c || '').trim().toLowerCase();
+        if (hex === '#ffc107' || hex === 'yellow') {
+            return 'color:#000000;background-color:#ffc107;font-weight:700;padding:1px 5px;border-radius:3px;';
+        }
+        if (!c) return 'font-weight:700;';
         return 'color:' + c + ';font-weight:700;';
     }
 
@@ -237,6 +248,7 @@
         styleFor: styleFor,
         colorForField: colorForField,
         styleForField: styleForField,
+        styleForCellColor: styleForCellColor,
         htmlFor: htmlFor,
         htmlForField: htmlForField,
         legacyRoiClass: legacyRoiClass,

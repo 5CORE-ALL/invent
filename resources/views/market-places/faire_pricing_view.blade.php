@@ -582,11 +582,9 @@
         }
         function frRowSpriceForAlert(data) {
             if (frIsParentRow(data)) return 0;
-            const rule = frRuleSprice(data);
-            if (rule > 0) return rule;
-            if (typeof chPromoLiveSprice === 'function') {
-                const calc = Number(chPromoLiveSprice(data));
-                if (calc > 0) return calc;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(data)) || 0;
+                if (saved > 0) return saved;
             }
             return parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
         }
@@ -2435,11 +2433,9 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
-                            let value = frRuleSprice(d);
-                            if (!(value > 0) && typeof chPromoLiveSprice === 'function') {
-                                const calc = Number(chPromoLiveSprice(d));
-                                if (calc > 0) value = calc;
-                            }
+                            let value = (typeof chPromoTableSprice === 'function')
+                                ? Number(chPromoTableSprice(d)) || 0
+                                : parseFloat(cell.getValue() || 0);
                             if (!(value > 0)) value = parseFloat(cell.getValue() || 0) || 0;
                             if (!(value > 0)) return '<span style="color:#6c757d;">–</span>';
                             const live = parseFloat(d.price) || 0;

@@ -387,12 +387,11 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'wayfair'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'wayfair'])
         function wayfairRowSpriceForAlert(data) {
-            let sprice = parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
-            if (typeof chPromoLiveSprice === 'function' && !isWayfairParentRow(data)) {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) sprice = calc;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(data)) || 0;
+                if (saved > 0) return saved;
             }
-            return sprice;
+            return parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
         }
         window.wayfairRowSpriceForAlert = wayfairRowSpriceForAlert;
         function wayfairHasBlueTriangle(data) {
@@ -1615,16 +1614,14 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            let value = parseFloat(cell.getValue() || 0);
-                            if (typeof chPromoLiveSprice === 'function') {
-                                const calc = chPromoLiveSprice(d);
-                                if (calc > 0) value = calc;
-                            }
+                            let value = (typeof chPromoTableSprice === 'function')
+                                ? Number(chPromoTableSprice(d)) || 0
+                                : parseFloat(cell.getValue() || 0);
+                            if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
                             const live = parseFloat(d.price) || 0;
                             const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
                             if (!(value > 0)) return '';
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
-                            if (cap && cap.shown > 0) value = cap.shown;
                             const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                             const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                             const formatted = money(value);

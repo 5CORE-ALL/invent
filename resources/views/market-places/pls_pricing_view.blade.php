@@ -331,12 +331,11 @@
         return !!(d && (d.is_parent || d.is_parent_summary || (d.parent && String(d.parent).toUpperCase().indexOf('PARENT') === 0 && String(d.sku || '').toUpperCase().indexOf('PARENT') !== -1)));
     }
     function plsRowSpriceForAlert(data) {
-        let sprice = parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
-        if (typeof chPromoLiveSprice === 'function' && !plsIsParentRow(data)) {
-            const calc = chPromoLiveSprice(data);
-            if (calc > 0) sprice = calc;
+        if (typeof chPromoTableSprice === 'function') {
+            const saved = Number(chPromoTableSprice(data)) || 0;
+            if (saved > 0) return saved;
         }
-        return sprice;
+        return parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
     }
     function plsHasBlueTriangle(data) {
         if (plsIsParentRow(data)) return false;
@@ -974,16 +973,14 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (plsIsParentRow(rowData)) return '';
-                        let value = parseFloat(cell.getValue() || 0);
-                        if (typeof chPromoLiveSprice === 'function') {
-                            const calc = chPromoLiveSprice(rowData);
-                            if (calc > 0) value = calc;
-                        }
+                        let value = (typeof chPromoTableSprice === 'function')
+                            ? Number(chPromoTableSprice(rowData)) || 0
+                            : parseFloat(cell.getValue() || 0);
+                        if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
                         if (!(value > 0)) return '';
                         const live = parseFloat(rowData.price) || 0;
                         const lmp = parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0;
                         const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                        if (cap && cap.shown > 0) value = cap.shown;
                         const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                         const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         const formatted = '$' + value.toFixed(2);

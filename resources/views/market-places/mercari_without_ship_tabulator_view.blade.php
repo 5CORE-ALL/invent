@@ -491,16 +491,14 @@
                         headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
-                            let value = parseFloat(cell.getValue() || d.sprice || 0);
-                            if (typeof chPromoLiveSprice === 'function') {
-                                const calc = chPromoLiveSprice(d);
-                                if (calc > 0) value = calc;
-                            }
+                            let value = (typeof chPromoTableSprice === 'function')
+                                ? Number(chPromoTableSprice(d)) || 0
+                                : parseFloat(cell.getValue() || d.sprice || 0);
+                            if (!(value > 0)) value = parseFloat(cell.getValue() || d.sprice || 0);
                             if (!(value > 0)) return '';
                             const live = parseFloat(d.price) || 0;
                             const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
-                            if (cap && cap.shown > 0) value = cap.shown;
                             const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                             const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                             const formatted = '$' + value.toFixed(2);
@@ -1012,12 +1010,11 @@
 
         function mercWosRowSpriceForAlert(data) {
             if (!data) return 0;
-            let sprice = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
-            if (typeof chPromoLiveSprice === 'function') {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) sprice = calc;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(data)) || 0;
+                if (saved > 0) return saved;
             }
-            return sprice;
+            return parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
         }
         function mercWosHasBlueTriangle(data) {
             if (!data) return false;
