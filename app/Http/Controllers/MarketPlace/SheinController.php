@@ -1175,6 +1175,90 @@ class SheinController extends Controller
     }
 
     /**
+     * Push S PRC to live Shein listings (product/price/save).
+     */
+    public function pushPricingPrice(Request $request, SheinApiService $sheinApi)
+    {
+        $updates = $request->input('updates', []);
+        if (! is_array($updates) || $updates === []) {
+            $sku = trim((string) $request->input('sku', ''));
+            $price = $request->input('price', $request->input('sprice'));
+            if ($sku !== '' && is_numeric($price)) {
+                $updates = [['sku' => $sku, 'price' => $price]];
+            }
+        }
+        if (! is_array($updates) || $updates === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No updates provided.',
+                'pushed' => 0,
+                'failed' => 0,
+                'results' => [],
+            ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+
+        $items = [];
+        $prefail = [];
+        foreach ($updates as $u) {
+            if (! is_array($u)) {
+                continue;
+            }
+            $sku = trim((string) ($u['sku'] ?? ''));
+            $price = isset($u['price']) ? (float) $u['price'] : (float) ($u['sprice'] ?? 0);
+            if ($sku === '' || $price <= 0) {
+                $prefail[] = [
+                    'sku' => $sku,
+                    'success' => false,
+                    'error' => $sku === '' ? 'SKU is required.' : 'Price must be > 0.',
+                ];
+
+                continue;
+            }
+            $items[] = [
+                'sku' => $sku,
+                'price' => round($price, 2),
+                'shop_price' => isset($u['shop_price']) && is_numeric($u['shop_price'])
+                    ? (float) $u['shop_price']
+                    : null,
+            ];
+        }
+
+        if ($items === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No valid SKU/price pairs to push.',
+                'pushed' => 0,
+                'failed' => count($prefail),
+                'results' => $prefail,
+            ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+
+        $bulk = $sheinApi->updateItemPriceBulk($items);
+        $results = array_merge($prefail, $bulk['results'] ?? []);
+        $pushed = (int) ($bulk['pushed'] ?? 0);
+        $failed = (int) ($bulk['failed'] ?? 0) + count($prefail);
+        $ok = $pushed > 0 && $failed === 0;
+        $firstOk = null;
+        foreach ($results as $row) {
+            if (! empty($row['success']) && isset($row['price'])) {
+                $firstOk = $row;
+                break;
+            }
+        }
+
+        return response()->json([
+            'success' => $ok,
+            'message' => $ok
+                ? ('Pushed '.$pushed.' Shein price'.($pushed === 1 ? '' : 's').'.')
+                : (string) ($bulk['error_message'] ?? ($results[0]['error'] ?? 'Shein price push failed.')),
+            'pushed' => $pushed,
+            'failed' => $failed,
+            'price' => isset($firstOk['price']) ? (float) $firstOk['price'] : null,
+            'results' => $results,
+        ], $ok ? 200 : 400, [], JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    /**
      * Save buyer / seller links for a SKU into shein_listing_statuses.value JSON.
      * Empty strings clear the link (URL validation only applies to non-empty values).
      */

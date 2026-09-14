@@ -1138,14 +1138,12 @@
         const sku = String(d && (d['(Child) sku'] || d.sku || d.SKU) || '');
         return !!(d && (d.is_parent_summary || d.is_parent || (sku && sku.toUpperCase().indexOf('PARENT') !== -1)));
     }
-    function reverbRowSpriceForAlert(data) {
-        let sprice = parseFloat(data && data.SPRICE) || 0;
-        if (typeof chPromoLiveSprice === 'function' && !isReverbParentRow(data)) {
-            const calc = chPromoLiveSprice(data);
-            if (calc > 0) sprice = calc;
+        function reverbRowSpriceForAlert(data) {
+        if (typeof chPromoTableSprice === 'function') {
+            const saved = Number(chPromoTableSprice(data)) || 0;
+            if (saved > 0) return saved;
         }
-        if (window.SpriceLmpCap) sprice = SpriceLmpCap.prepare(data, sprice);
-        return sprice;
+        return parseFloat(data && data.SPRICE) || 0;
     }
     window.reverbRowSpriceForAlert = reverbRowSpriceForAlert;
     function reverbHasBlueTriangle(data) {
@@ -3266,13 +3264,11 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isReverbParentRow(rowData)) return '';
-                        let value = parseFloat(cell.getValue() || 0);
-                        if (typeof chPromoLiveSprice === 'function') {
-                            const calc = chPromoLiveSprice(rowData);
-                            if (calc > 0) value = calc;
-                        }
+                        let value = (typeof chPromoTableSprice === 'function')
+                            ? Number(chPromoTableSprice(rowData)) || 0
+                            : parseFloat(cell.getValue() || 0);
+                        if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
                         const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                        if (cap && cap.shown > 0) value = cap.shown;
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData['RV Price']) || 0;

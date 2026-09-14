@@ -120,17 +120,40 @@ class ShopifyB2cRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(33.68, $out['sprice'], 0.01);
     }
 
+    public function test_nroi_uses_ads_and_inverts_snroi(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 5,
+            'b2c_l30' => 2,
+            'lp' => 20,
+            'ship' => 0,
+            'std' => 100,
+            'amz' => 1,
+            'cvr' => 8,
+        ], [AmazonDilGroiRule::make(0.1, 25, 50)], 10.0);
+
+        $this->assertNotNull($out);
+        $expected = AmazonDilGroiRule::suggestedPriceFromNroi(20, 0, 50, 10, 0.95);
+        $this->assertEqualsWithDelta($expected, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(
+            50.0,
+            AmazonDilGroiRule::snroiAtPrice($out['sprice'], 20, 0, 10, 0.95),
+            0.06
+        );
+    }
+
     /**
      * @param  array<string, mixed>  $row
      * @param  list<array{key:string,label:string,min:float,max:float,groi:float}>  $dilRules
      * @return array{sprice:float,prmt:float,cpn:float,amz_sugg:bool}|null
      */
-    private function compute(array $row, array $dilRules): ?array
+    private function compute(array $row, array $dilRules, float $adsPct = 0.0): ?array
     {
         $service = app(ShopifyB2cRuleSpriceApplyService::class);
         $method = new ReflectionMethod($service, 'computeTarget');
         $method->setAccessible(true);
 
-        return $method->invoke($service, $row, [], [], 0.0, 0.95, $dilRules);
+        return $method->invoke($service, $row, [], [], 0.0, 0.95, $dilRules, null, $adsPct);
     }
 }

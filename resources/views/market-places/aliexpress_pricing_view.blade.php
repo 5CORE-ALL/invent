@@ -732,15 +732,39 @@
             }
             return parseFloat(row.lmp_price || row.lmp || row.LMP) || 0;
         }
+        /** Same yellow chip for live GROI/GPFT cells and saved SGROI/SGPFT/SNROI/SNPFT. */
+        function aePctStyle(color) {
+            if (window.MetricPctColors && typeof MetricPctColors.styleForCellColor === 'function') {
+                return MetricPctColors.styleForCellColor(color);
+            }
+            if (color === '#ffc107') {
+                return 'color:#000;background-color:#ffc107;font-weight:700;padding:1px 5px;border-radius:3px;';
+            }
+            return 'color:' + color + ';font-weight:600;';
+        }
+        function aeRoiColor(v) {
+            if (v < 40) return '#a00211';
+            if (v < 75) return '#ffc107';
+            if (v < 125) return '#28a745';
+            return '#d63384';
+        }
+        function aeGpftColor(v) {
+            return v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+        }
+        function aePctHtml(v, kind, extra) {
+            extra = extra || {};
+            const color = kind === 'gpft' ? aeGpftColor(v) : aeRoiColor(v);
+            const tip = extra.title ? (' title="' + String(extra.title).replace(/"/g, '&quot;') + '"') : '';
+            return '<span' + tip + ' style="' + aePctStyle(color) + '">' + Math.round(v) + '%</span>';
+        }
 
         function aeRuleSpriceRaw(data) {
             if (!data || data.is_parent) return 0;
-            let sprice = parseFloat(data.sprice || data.SPRICE) || 0;
-            if (typeof chPromoLiveSprice === 'function') {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) sprice = calc;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(data)) || 0;
+                if (saved > 0) return saved;
             }
-            if (!(sprice > 0)) sprice = parseFloat(data.price) || 0;
+            const sprice = parseFloat(data.sprice || data.SPRICE) || 0;
             return sprice > 0 ? Math.round(sprice * 100) / 100 : 0;
         }
         function aeShouldCapSpriceToLmp(data) {
@@ -749,18 +773,9 @@
             }
             return !(typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(data));
         }
-        /** Visible S PRC: 0-sold Target GROI% (no LMP cap), else LMP-capped. */
+        /** Visible S PRC = saved SPRICE (same $ as the cell / DB). Dil is the Sprc Dil column. */
         function aeVisibleSprice(data) {
-            const raw = aeRuleSpriceRaw(data);
-            if (!(raw > 0)) return 0;
-            if (!aeShouldCapSpriceToLmp(data)) return raw;
-            if (window.SpriceLmpCap) {
-                const cap = SpriceLmpCap.apply(data, raw, aeEffectiveLmp);
-                if (cap && cap.shown > 0) return Math.round(cap.shown * 100) / 100;
-            }
-            const lmp = aeEffectiveLmp(data);
-            if (lmp > 0 && raw + 0.0001 >= lmp) return Math.round(lmp * 100) / 100;
-            return raw;
+            return aeRuleSpriceRaw(data);
         }
         function aeSpriceMetrics(data, spriceOpt) {
             const sprice = spriceOpt != null ? Number(spriceOpt) : aeVisibleSprice(data);
@@ -809,6 +824,11 @@
                 ? ebayDilGroiMetaForRow(data)
                 : null;
             if (meta && meta.sprc > 0) {
+                if (meta.zeroSoldMin) {
+                    return 'AL30 = 0 (0 Sold). min Target NROI ' + meta.groi + '%'
+                        + ' → S PRC $' + Number(meta.sprc).toFixed(2)
+                        + ' → SGROI ' + shown + '%';
+                }
                 if (meta.outOfSlabStd) {
                     return 'Dil ' + (isFinite(dil) ? dil.toFixed(1) : '0') + '% is outside slabs. '
                         + meta.label + ' → S PRC $' + Number(meta.sprc).toFixed(2)
@@ -816,7 +836,7 @@
                 }
                 return 'Dil ' + (isFinite(dil) ? dil.toFixed(1) : '0') + '% is in '
                     + (meta.label || 'slab')
-                    + ' → Target GROI ' + meta.groi + '%'
+                    + ' → Target NROI ' + meta.groi + '%'
                     + ' → S PRC $' + Number(meta.sprc).toFixed(2)
                     + ' → SGROI ' + shown + '%';
             }
@@ -2108,13 +2128,7 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue()) || 0;
-                            // Color ranges matching the ROI% filter dropdown
-                            let color;
-                            if      (v < 40)  color = '#a00211';
-                            else if (v < 75)  color = '#ffc107';
-                            else if (v < 125) color = '#28a745';
-                            else              color = '#d63384';
-                            return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
+                            return aePctHtml(v, 'groi');
                         }
                     },
                     {
@@ -2128,8 +2142,7 @@
                             if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
                             if (v === 0 && !d.is_parent) return '0%';
                             if (v === 0 &&  d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return `<span style="color:${color};font-weight:${d.is_parent?'700':'600'};">${Math.round(v)}%</span>`;
+                            return aePctHtml(v, 'gpft');
                         }
                     },
                     {
@@ -2211,7 +2224,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target GROI% slabs (INV > 0, including 0 Sold). First matching From–To; last slab includes the To value. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                        headerTooltip: "S PRC from Dil → Target NROI slabs. AL30 = 0 uses min Target NROI. AL30 > 0 uses the Dil-matching slab. Dil above last To uses Std, then LMP if Std > LMP. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof aeIsParentRow === 'function' && aeIsParentRow(rowData)) return '';
@@ -2234,7 +2247,7 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when Dil is in a From–To range (INV > 0, including 0 Sold). S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "S PRC from Sprc Dil. AL30 = 0 uses min Target NROI. AL30 > 0 uses Dil-matching Target NROI. Dil above last To uses Std, then LMP if Std > LMP. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2245,12 +2258,10 @@
                             const cap = (allowLmpCap && window.SpriceLmpCap)
                                 ? SpriceLmpCap.apply(d, raw, aeEffectiveLmp)
                                 : null;
-                            let sprice = raw;
+                            const sprice = raw;
                             const atOrAboveLmp = allowLmpCap && (cap
                                 ? cap.alert
                                 : (lmpNow > 0 && sprice + 0.0001 >= lmpNow));
-                            if (allowLmpCap && cap && cap.shown > 0) sprice = cap.shown;
-                            else if (allowLmpCap && atOrAboveLmp && lmpNow > 0) sprice = Math.round(lmpNow * 100) / 100;
                             if (!(sprice > 0)) return '';
                             const live = parseFloat(d.price) || 0;
                             const redTri = atOrAboveLmp
@@ -2326,7 +2337,7 @@
                     {
                         title: "SGROI",
                         field: "sroi",
-                        headerTooltip: "SGROI from Sprc Dil S PRC. Dil-matching Target GROI when Dil is in a From–To range (INV > 0, including 0 Sold). LMP cap can lower the shown %.",
+                        headerTooltip: "SGROI from Sprc Dil S PRC. AL30 = 0 uses min Target NROI (no LMP cap). AL30 > 0 uses Dil slab; LMP cap can lower the shown %.",
                         sorter: function(a, b, aRow, bRow) {
                             const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
                             const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
@@ -2337,16 +2348,8 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = aeSpriceMetrics(d).sroi;
-                            if (isNaN(v) || v === 0) return '0%';
-                            let color;
-                            if      (v < 40)  color = '#a00211';
-                            else if (v < 75)  color = '#ffc107';
-                            else if (v < 125) color = '#28a745';
-                            else              color = '#d63384';
-                            const tip = aeTargetGroiWhy(d);
-                            return '<span title="' + String(tip).replace(/"/g, '&quot;')
-                                + '" style="color:' + color + ';font-weight:600;">'
-                                + Math.round(v) + '%</span>';
+                            if (isNaN(v)) return '0%';
+                            return aePctHtml(v, 'groi', { title: aeTargetGroiWhy(d) });
                         }
                     },
                     {
@@ -2362,9 +2365,44 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = aeSpriceMetrics(d).sgpft;
-                            if (isNaN(v) || v === 0) return '0%';
-                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
+                            if (isNaN(v)) return '0%';
+                            return aePctHtml(v, 'gpft');
+                        }
+                    },
+                    {
+                        title: "SNROI",
+                        field: "SNROI",
+                        headerTooltip: "SNROI = SGROI on AliExpress (no Ads%). Same live value as the SGROI column.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
+                            const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
+                            return av - bv;
+                        },
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = aeSpriceMetrics(d).sroi;
+                            if (isNaN(v)) return '0%';
+                            return aePctHtml(v, 'groi', { title: 'SNROI = SGROI (no Ads%)' });
+                        }
+                    },
+                    {
+                        title: "SNPFT",
+                        field: "SNPFT",
+                        headerTooltip: "SNPFT = SGPFT on AliExpress (no Ads%). Same live value as the SGPFT column.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sgpft;
+                            const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sgpft;
+                            return av - bv;
+                        },
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = aeSpriceMetrics(d).sgpft;
+                            if (isNaN(v)) return '0%';
+                            return aePctHtml(v, 'gpft', { title: 'SNPFT = SGPFT (no Ads%)' });
                         }
                     },
                 ],

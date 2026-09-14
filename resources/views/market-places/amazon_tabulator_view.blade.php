@@ -4346,17 +4346,20 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "Suggested price from Dil → Target GROI% slabs (including 0 Sold). CVR Down < 7% subtracts 10 from Target GROI%; CVR Up > 10% adds 10. Formula: (LP × (1 + GROI%/100) + Ship) / 0.80.",
+                        headerTooltip: "Suggested price from Dil → Target NROI% slabs (including 0 Sold). CVR Down < 7% subtracts 10 from Target NROI%; CVR Up > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100) so SNROI = target.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
                             if (typeof amzDilGroiMetaForRow !== 'function') return '';
                             const meta = amzDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
-                            const slabGroi = (meta.slabGroi != null) ? meta.slabGroi : meta.groi;
+                            const slabNroi = (meta.slabNroi != null)
+                                ? meta.slabNroi
+                                : ((meta.slabGroi != null) ? meta.slabGroi : (meta.nroi != null ? meta.nroi : meta.groi));
+                            const liveNroi = (meta.nroi != null) ? meta.nroi : meta.groi;
                             let tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                                 + ' → ' + meta.label
-                                + ' → GROI ' + slabGroi + '%';
+                                + ' → NROI ' + slabNroi + '%';
                             if (meta.cvrAdj) {
                                 const sign = meta.cvrAdj > 0 ? '+' : '';
                                 const cfg = (typeof amzCvrGroiAdjNow === 'function')
@@ -4365,7 +4368,7 @@
                                 const why = meta.cvrAdj > 0
                                     ? ('CVR Up > ' + cfg.up_gt + '%')
                                     : ('CVR Down < ' + cfg.down_lt + '%');
-                                tip += ' ' + sign + meta.cvrAdj + ' (' + why + ') → ' + meta.groi + '%';
+                                tip += ' ' + sign + meta.cvrAdj + ' (' + why + ') → ' + liveNroi + '%';
                             }
                             tip += ' → $' + meta.sprc.toFixed(2);
                             return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'

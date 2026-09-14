@@ -1377,36 +1377,57 @@
         }
         function ttDisplayedSprice(rowData) {
             if (!rowData || ttIsParentRow(rowData)) return 0;
-            if (typeof chPromoLiveSprice === 'function') {
-                const calc = Number(chPromoLiveSprice(rowData)) || 0;
-                if (calc > 0) return calc;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(rowData)) || 0;
+                if (saved > 0) return saved;
             }
             return ttSavedSpriceAmount(rowData);
         }
         window.ttDisplayedSprice = ttDisplayedSprice;
-        /** SNROI = (gross PFT$ − S PRC × TACOS%/100) / LP × 100 — same shape as eBay / Amazon SNROI. */
+        /**
+         * Ads% used by Sprc Dil NROI (same as ebayDilAdsPct).
+         * TikTok 2 has no Channel Ads% — do not subtract listing TACOS%
+         * (spend/sales, often 100% when spend exists but TT Price/sales is 0).
+         * That made SNROI/SNPFT deeply negative while SGROI still matched the Dil slab.
+         */
+        function ttDilAdsPct(rowData) {
+            if (TTP_CFG && TTP_CFG.summaryChannel === 'tiktok2') {
+                if (typeof ebayDilAdsPct === 'function') {
+                    const n = parseFloat(ebayDilAdsPct());
+                    if (isFinite(n) && n > 0) return n;
+                }
+                return 0;
+            }
+            const tacos = parseFloat(rowData && rowData['TACOS%']);
+            return (isFinite(tacos) && tacos > 0) ? tacos : 0;
+        }
+        function ttSnroiPrice(rowData) {
+            const live = ttDisplayedSprice(rowData);
+            return live > 0 ? live : ttSavedSpriceAmount(rowData);
+        }
+        /** SNROI = (gross PFT$ − S PRC × Ads%/100) / LP × 100 — Ads% matches Sprc Dil. */
         function ttComputeSnroi(rowData) {
-            const price = ttSavedSpriceAmount(rowData);
+            const price = ttSnroiPrice(rowData);
             const lp = parseFloat(rowData && rowData.LP_productmaster);
             if (!(price > 0) || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const margin = getRowMarginFactor(rowData);
-            const tacos = parseFloat(rowData['TACOS%']) || 0;
+            const ads = ttDilAdsPct(rowData);
             const grossPft = (price * margin) - ship - lp;
-            const adSpend = price * (tacos / 100);
+            const adSpend = price * (ads / 100);
             return ((grossPft - adSpend) / lp) * 100;
         }
-        /** SNPFT = live S GPFT − TACOS% (Amazon SNPFT = S GPFT − Ads%). */
+        /** SNPFT = live S GPFT − Dil Ads% (TikTok 2 Ads% = 0 → SNPFT = SGPFT). */
         function ttComputeSnpft(rowData) {
-            const price = ttSavedSpriceAmount(rowData);
+            const price = ttSnroiPrice(rowData);
             if (!(price > 0)) return null;
             const lp = parseFloat(rowData && rowData.LP_productmaster) || 0;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const margin = getRowMarginFactor(rowData);
-            const tacos = parseFloat(rowData['TACOS%']) || 0;
+            const ads = ttDilAdsPct(rowData);
             const sgpft = ((price * margin) - ship - lp) / price * 100;
             if (!isFinite(sgpft)) return null;
-            return sgpft - tacos;
+            return sgpft - ads;
         }
 
         /** GROI standard as 3 colors: red <60, gray 60-90, green >=90 (yellow->gray, pink->green). */
@@ -4167,7 +4188,9 @@
                             return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
                                  - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
                         },
-                        headerTooltip: "SNROI from S PRC: (gross PFT$ − S PRC × TACOS%/100) / LP × 100.",
+                        headerTooltip: (TTP_CFG.summaryChannel === 'tiktok2')
+                            ? "SNROI from Dil S PRC using the same Ads% as Sprc Dil (TikTok 2 Channel Ads% = 0, so SNROI = SGROI). Listing TACOS% is not subtracted."
+                            : "SNROI from S PRC: (gross PFT$ − S PRC × TACOS%/100) / LP × 100.",
                         formatter: function(cell) {
                             const percent = ttComputeSnroi(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) {
@@ -4188,7 +4211,9 @@
                             return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
                                  - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
                         },
-                        headerTooltip: "SNPFT = live S GPFT − TACOS%. Same S PRC as SGPFT / SNROI.",
+                        headerTooltip: (TTP_CFG.summaryChannel === 'tiktok2')
+                            ? "SNPFT from Dil S PRC using the same Ads% as Sprc Dil (TikTok 2 = 0, so SNPFT = SGPFT)."
+                            : "SNPFT = live S GPFT − TACOS%. Same S PRC as SGPFT / SNROI.",
                         formatter: function(cell) {
                             const percent = ttComputeSnpft(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) {

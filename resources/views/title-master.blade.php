@@ -3775,10 +3775,12 @@
             td.title = hasData ? fullText : emptyTooltip;
         }
 
-        const titleMasterDarkMustard = '#ff9c00';
         function styleForTitleMasterCvrColor(c) {
+            if (window.MetricPctColors && typeof MetricPctColors.styleForCellColor === 'function') {
+                return MetricPctColors.styleForCellColor(c);
+            }
             if (!c) return 'font-weight:600;';
-            if (c === '#ffc107') return 'color:' + titleMasterDarkMustard + ';font-weight:600;';
+            if (c === '#ffc107') return 'color:#000;background-color:#ffc107;font-weight:700;padding:1px 5px;border-radius:3px;';
             return 'color:' + c + ';font-weight:600;';
         }
         /** INV / Dil% / CVR% — same daily snapshot as /pricing-master-cvr (pricing_master_daily_snapshots_sku). */

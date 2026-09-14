@@ -8,7 +8,7 @@ use App\Services\CronMonitor\CronExecutionContext;
 use Illuminate\Console\Command;
 
 /**
- * Twice daily 4:00 AM and 8:00 PM IST: Sprc Dil (Dil→GROI) + CVR/Rev fallback
+ * Twice daily 4:00 AM and 8:00 PM IST: Sprc Dil (Dil→NROI) + CVR/Rev fallback
  * → SPRICE → Amazon Listings API. Page not required.
  * Only pushes SKUs whose target price changed. Price column updates on each successful push.
  */
@@ -23,7 +23,7 @@ class AmazonSprcDilAutoPushCommand extends Command
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between Amazon Listings API calls (ms)}';
 
-    protected $description = 'Sprc Dil: Dil→GROI (CVR/Rev fallback, LMP cap) → SPRICE → Amazon (4 AM + 8 PM IST).';
+    protected $description = 'Sprc Dil: Dil→NROI (CVR/Rev fallback, LMP cap) → SPRICE → Amazon (4 AM + 8 PM IST).';
 
     protected string $monitorJobName = 'Amazon Sprc Dil Auto Push';
 
@@ -50,7 +50,7 @@ class AmazonSprcDilAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('Amazon Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: 04:00 and 20:00 Asia/Kolkata (IST)');
-        $this->info('Rules: amazon_dil_vs_groi (page Sprc Dil) + CVR/Rev Disc + LMP cap');
+        $this->info('Rules: amazon_dil_vs_groi (page Sprc Dil Target NROI) + CVR/Rev Disc + LMP cap');
         $this->info('Push: Amazon Listings — only when Sale/Business/Min differ from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

@@ -722,26 +722,21 @@
 
         function neDisplayedSpriceRaw(data) {
             if (!data) return 0;
-            if (typeof chPromoLiveSprice === 'function') {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) return calc;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(data)) || 0;
+                if (saved > 0) return saved;
             }
             return parseFloat(data.sprice || data.SPRICE) || 0;
         }
 
         function nePriceBeforeAmzFloor(data) {
             if (!data) return 0;
-            let value = neDisplayedSpriceRaw(data);
-            if (!(value > 0)) return 0;
-            if (window.SpriceLmpCap) {
-                const cap = SpriceLmpCap.apply(data, value);
-                if (cap && cap.shown > 0) value = cap.shown;
-            }
-            return Math.round(value * 100) / 100;
+            const value = neDisplayedSpriceRaw(data);
+            return value > 0 ? Math.round(value * 100) / 100 : 0;
         }
 
         function neShownSprice(data) {
-            return neApplyAmzFloor(data, nePriceBeforeAmzFloor(data));
+            return neDisplayedSpriceRaw(data);
         }
         window.neShownSprice = neShownSprice;
 

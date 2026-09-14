@@ -635,12 +635,11 @@
 
         function vintedRowSpriceForAlert(data) {
             if (!data) return 0;
-            let sprice = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
-            if (typeof chPromoLiveSprice === 'function') {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) sprice = calc;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(data)) || 0;
+                if (saved > 0) return saved;
             }
-            return sprice;
+            return parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
         }
         function vintedHasBlueTriangle(data) {
             if (!data) return false;
@@ -995,11 +994,10 @@
                     headerTooltip: "Not editable. S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ V Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
-                        let value = parseFloat(cell.getValue() || 0);
-                        if (typeof chPromoLiveSprice === 'function') {
-                            const calc = chPromoLiveSprice(d);
-                            if (calc > 0) value = calc;
-                        }
+                        let value = (typeof chPromoTableSprice === 'function')
+                            ? Number(chPromoTableSprice(d)) || 0
+                            : parseFloat(cell.getValue() || 0);
+                        if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
                         if (!(value > 0) && !(parseFloat(cell.getValue() || 0) > 0)) {
                             return '';
                         }
@@ -1010,7 +1008,7 @@
                         else if (d.has_custom_sprice) bg = 'background-color:#e7f1ff;';
                         const live = parseFloat(d['V Price']) || 0;
                         const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, display) : null;
-                        const shown = (cap && cap.shown > 0) ? cap.shown : display;
+                        const shown = display;
                         const lmp = cap ? cap.lmp : (parseFloat(d.lmp_price || d.lmp || d.LMP) || 0);
                         const formatted = '$' + shown.toFixed(2);
                         const overLmp = cap ? cap.alert : (lmp > 0 && shown + 0.0001 >= lmp);

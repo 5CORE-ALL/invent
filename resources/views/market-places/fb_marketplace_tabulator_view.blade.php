@@ -324,13 +324,9 @@
         }
         function fbMpDisplayedSprice(data) {
             if (!data) return 0;
-            if (typeof ebaySprcDilForRow === 'function') {
-                const dil = Number(ebaySprcDilForRow(data)) || 0;
-                if (dil > 0) return fbMpRoundSprice(dil);
-            }
-            if (typeof chPromoLiveSprice === 'function') {
-                const live = Number(chPromoLiveSprice(data)) || 0;
-                if (live > 0) return fbMpRoundSprice(live);
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(data)) || 0;
+                if (saved > 0) return fbMpRoundSprice(saved);
             }
             const saved = (typeof chPromoSavedOrLiveSprice === 'function')
                 ? Number(chPromoSavedOrLiveSprice(data)) || 0

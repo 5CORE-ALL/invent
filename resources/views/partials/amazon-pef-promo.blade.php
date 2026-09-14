@@ -1,7 +1,8 @@
 {{--
   CVR Disc. / Rev Disc. / Push Prc / Sprc Dil for Amazon tabulator.
-  Sprc Dil: Amazon-only Dil 0.1–25% (5 slabs) → Target GROI% (amazon_dil_vs_groi).
-  CVR overlay on Target GROI: Down and < 7% = -10; Up and > 10% = +10.
+  Sprc Dil: Amazon-only Dil 0.1–25% (5 slabs) → Target NROI% (amazon_dil_vs_groi).
+  CVR overlay on Target NROI: Down and < 7% = -10; Up and > 10% = +10.
+  S PRC so SNROI = target: (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100).
   Amazon path: discount SPRICE via /save-amazon-sprice (no eBay Marketing APIs).
 --}}
 @php
@@ -536,7 +537,7 @@
                         </ul>
                     </div>
                     <button type="button" class="btn btn-sm" id="amz-dil-groi-btn"
-                        title="Dil slabs → Target GROI%. CVR overlay (editable, with Count) adjusts Target GROI. Every INV &gt; 0 SKU uses the Dil-matching slab.">
+                        title="Dil slabs → Target NROI%. CVR overlay (editable, with Count) adjusts Target NROI. Every INV &gt; 0 SKU uses the Dil-matching slab.">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
 @endif
@@ -656,7 +657,7 @@
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="amzDilGroiModalLabel">
-                        <i class="fas fa-sliders-h me-1"></i> Dil vs Target GROI — Sprc Dil
+                        <i class="fas fa-sliders-h me-1"></i> Dil vs Target NROI — Sprc Dil
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -688,18 +689,20 @@
                     <ul class="small text-muted amz-dg-rules">
                         <li>
                             <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
-                            use that slab’s Target GROI (first match; last slab includes the To value).
+                            use that slab’s Target NROI (first match; last slab includes the To value).
+                            S PRC is set so <strong>SNROI = Target NROI</strong>
+                            using Channel Master Ads%: (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100).
                         </li>
                         <li>
                             <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table:
-                            apply that Adj GROI to the Dil slab Target GROI (Count updates as you edit).
+                            apply that Adj NROI to the Dil slab Target NROI (Count updates as you edit).
                         </li>
                         <li>
                             <strong>When</strong> a price is calculated from a Dil slab match:
                             it auto-applies to <strong>S PRC</strong> and Push Prc Sale.
                         </li>
                         <li>
-                            <strong>When</strong> you change the first Target GROI%:
+                            <strong>When</strong> you change the first Target NROI%:
                             later rows fill as first +5, +10, … (increasing down the table).
                         </li>
                         <li>
@@ -717,7 +720,7 @@
                                     <th class="text-center" style="width:90px;">From</th>
                                     <th class="text-center" style="width:90px;">To</th>
                                     <th class="text-center" style="width:80px;" title="Child SKUs with INV &gt; 0 whose Dil is in this slab">Count</th>
-                                    <th class="text-end" style="width:130px;">Target GROI%</th>
+                                    <th class="text-end" style="width:130px;">Target NROI%</th>
                                     <th style="width:36px;"></th>
                                 </tr>
                             </thead>
@@ -727,14 +730,14 @@
                     <button type="button" class="btn btn-sm btn-outline-primary amz-dg-add-btn mt-2" id="amz-dil-groi-add-btn">
                         <i class="fas fa-plus me-1"></i> Add slab
                     </button>
-                    <div class="amz-dg-rules-title mt-3">CVR overlay — Target GROI</div>
+                    <div class="amz-dg-rules-title mt-3">CVR overlay — Target NROI</div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-cvr-groi-table">
                             <thead class="table-light">
                                 <tr>
                                     <th>When</th>
                                     <th class="text-center">CVR%</th>
-                                    <th class="text-end">Adj GROI</th>
+                                    <th class="text-end">Adj NROI</th>
                                     <th class="text-center" style="width:80px;">Count</th>
                                 </tr>
                             </thead>
@@ -768,7 +771,7 @@
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-primary" id="amz-dil-groi-save-btn"
-                        title="Save Dil → Target GROI% slabs via API and apply S PRC on matching SKUs.">
+                        title="Save Dil → Target NROI% slabs via API and apply S PRC on matching SKUs.">
                         <i class="fas fa-save me-1"></i> Save and Apply
                     </button>
                 </div>
@@ -821,11 +824,11 @@
         let amzCdHistChart = null;
         let amzCdLiveCounts = {};
         const AMZ_DIL_GROI_DEFAULTS = [
-            { key: '0.1-5', label: '0.1–5%', min: 0.1, max: 5, groi: 50 },
-            { key: '5-10', label: '5–10%', min: 5, max: 10, groi: 55 },
-            { key: '10-15', label: '10–15%', min: 10, max: 15, groi: 60 },
-            { key: '15-20', label: '15–20%', min: 15, max: 20, groi: 65 },
-            { key: '20-25', label: '20–25%', min: 20, max: 25, groi: 70 },
+            { key: '0.1-5', label: '0.1–5%', min: 0.1, max: 5, groi: 50, nroi: 50 },
+            { key: '5-10', label: '5–10%', min: 5, max: 10, groi: 55, nroi: 55 },
+            { key: '10-15', label: '10–15%', min: 10, max: 15, groi: 60, nroi: 60 },
+            { key: '15-20', label: '15–20%', min: 15, max: 20, groi: 65, nroi: 65 },
+            { key: '20-25', label: '20–25%', min: 20, max: 25, groi: 70, nroi: 70 },
         ];
         let amzDilGroiRules = AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzDgDilPieChart = null;
@@ -1238,13 +1241,28 @@
             if (amzPefInv(d) <= 0) return false;
             return !(amzPefAL30(d) > 0);
         }
-        function amzSpriceFromTargetGroi(d, roiPct) {
+        function amzAmazonAdsPct() {
+            try {
+                if (typeof AMAZON_CHANNEL_ADS_PCT !== 'undefined') {
+                    const n = parseFloat(AMAZON_CHANNEL_ADS_PCT);
+                    return (isFinite(n) && n > 0) ? n : 0;
+                }
+            } catch (e) { /* const may still be in TDZ */ }
+            return 0;
+        }
+        /** S PRC so SNROI% = target: (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100). */
+        function amzSpriceFromTargetNroi(d, nroiPct) {
             const lp = parseFloat(d.LP_productmaster) || 0;
             if (!(lp > 0)) return 0;
             const ship = parseFloat(d.Ship_productmaster) || 0;
-            const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
-            const price = (lp * (1 + roi / 100) + ship) / 0.80;
+            const nroi = isFinite(Number(nroiPct)) ? Number(nroiPct) : 0;
+            const denom = 0.80 - (amzAmazonAdsPct() / 100);
+            if (!(denom > 0)) return 0;
+            const price = (lp * (1 + nroi / 100) + ship) / denom;
             return (isFinite(price) && price > 0) ? amzPefRound2(price) : 0;
+        }
+        function amzSpriceFromTargetGroi(d, roiPct) {
+            return amzSpriceFromTargetNroi(d, roiPct);
         }
         function amzDilGroiFmtNum(n) {
             const x = Number(n);
@@ -1264,7 +1282,7 @@
             if (!isFinite(min) || !isFinite(max) || min < 0 || max <= min) return null;
             min = amzPefRound2(min);
             max = amzPefRound2(max);
-            let groi = Number(raw.groi);
+            let groi = Number(raw.nroi != null && raw.nroi !== '' ? raw.nroi : raw.groi);
             if (!isFinite(groi) || groi < 0) groi = 0;
             groi = amzPefRound2(groi);
             const key = amzDilGroiFmtNum(min) + '-' + amzDilGroiFmtNum(max);
@@ -1274,6 +1292,7 @@
                 min: min,
                 max: max,
                 groi: groi,
+                nroi: groi,
             };
         }
         function amzNormalizeDilGroiList(list) {
@@ -1623,17 +1642,19 @@
             const dil = amzPefDil(d);
             const rule = amzDilGroiMatch(dil);
             if (!rule) return null;
-            const slabGroi = rule.groi;
+            const slabNroi = (rule.nroi != null) ? rule.nroi : rule.groi;
             const cvrAdj = amzDilGroiCvrAdj(d);
-            const groi = amzDilGroiApplyCvrAdj(slabGroi, d);
-            const sprc = amzSpriceFromTargetGroi(d, groi);
+            const nroi = amzDilGroiApplyCvrAdj(slabNroi, d);
+            const sprc = amzSpriceFromTargetNroi(d, nroi);
             if (!(sprc > 0)) return null;
             return {
                 dil: dil,
                 key: rule.key,
                 label: rule.label,
-                slabGroi: slabGroi,
-                groi: groi,
+                slabGroi: slabNroi,
+                slabNroi: slabNroi,
+                groi: nroi,
+                nroi: nroi,
                 cvrAdj: cvrAdj,
                 sprc: sprc,
                 zeroSoldMin: false,
@@ -1716,7 +1737,7 @@
                     + '<td class="amz-dg-count"><span class="amz-dg-count-n">0</span></td>'
                     + '<td class="text-end">'
                     + '<input type="number" class="form-control form-control-sm amz-dil-groi-input amz-dg-groi" '
-                    + 'step="0.1" value="' + r.groi + '"'
+                    + 'step="0.1" value="' + ((r.nroi != null) ? r.nroi : r.groi) + '"'
                     + (first ? ' title="Changing this sets following slabs to +5 each"' : '')
                     + '>'
                     + '</td>'
@@ -1755,7 +1776,8 @@
                 ? amzNormalizeDilGroiList(rules)
                 : AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
             return amzDilGroiRules.map(function(r) {
-                return { key: r.key, label: r.label, min: r.min, max: r.max, groi: Number(r.groi) || 0 };
+                const target = Number(r.nroi != null ? r.nroi : r.groi) || 0;
+                return { key: r.key, label: r.label, min: r.min, max: r.max, groi: target, nroi: target };
             });
         }
         function amzDilGroiAddSlab() {
@@ -1822,7 +1844,7 @@
                 renderAmzDilGroiModalTable();
                 redrawAmzSprcDilColumn();
                 if (fromServer.length && !(res && res.is_default)) {
-                    $('#amz-dil-groi-status').text('Loaded saved Dil → GROI slabs from API.');
+                    $('#amz-dil-groi-status').text('Loaded saved Dil → NROI slabs from API.');
                 } else {
                     $('#amz-dil-groi-status').text('Using first-time defaults (0.1–5 → 50 … 20–25 → 70, +5 each). Add or delete slabs, then Save and Apply.');
                 }
@@ -2625,7 +2647,7 @@
          * Live rule stack for this SKU.
          * CVR Disc = CVR slab (INV=0 or CVR≤0 → 0)
          * Rev Disc = review-count slab (INV=0 or count 0 or count > max → 0)
-         * Sprc Dil = Dil slab → Target GROI, then CVR Down < 7% -10 / Up > 10% +10 (every INV > 0 SKU, including 0 Sold)
+         * Sprc Dil = Dil slab → Target NROI, then CVR Down < 7% -10 / Up > 10% +10 (every INV > 0 SKU, including 0 Sold)
          */
         function computeAmzRuleStack(d) {
             const cvrDisc = Math.max(0, Number(typeof computeAmzCvrDiscountPct === 'function' ? computeAmzCvrDiscountPct(d) : 0) || 0);
@@ -2656,14 +2678,14 @@
         function formatAmzPushPrcDiscNote(plan) {
             const parts = [];
             if (plan.dilGroi) {
-                let groiNote = 'Sprc Dil GROI ' + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%';
+                let groiNote = 'Sprc Dil NROI ' + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%';
                 if (plan.dilGroiCvrAdj) {
                     const sign = plan.dilGroiCvrAdj > 0 ? '+' : '';
                     const cfg = amzCvrGroiAdjNow();
                     const why = plan.dilGroiCvrAdj > 0
                         ? ('CVR Up > ' + cfg.up_gt + '%')
                         : ('CVR Down < ' + cfg.down_lt + '%');
-                    groiNote = 'Sprc Dil GROI ' + (plan.dilGroiSlabGroi != null ? plan.dilGroiSlabGroi : '') + '%'
+                    groiNote = 'Sprc Dil NROI ' + (plan.dilGroiSlabGroi != null ? plan.dilGroiSlabGroi : '') + '%'
                         + ' ' + sign + plan.dilGroiCvrAdj + ' (' + why + ') → '
                         + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%';
                 }
@@ -2677,7 +2699,7 @@
         }
         /**
          * Push Prc plan per SKU:
-         *  Sprc Dil (Dil in slab, including 0 Sold) → Sale = Dil→GROI target, then CVR Down < 7% -10 / Up > 10% +10 (does not stack discounts)
+         *  Sprc Dil (Dil in slab, including 0 Sold) → Sale = Dil→NROI target, then CVR Down < 7% -10 / Up > 10% +10 (does not stack discounts)
          *  Other  → Sale = Std × (1 − (CVR Disc + Rev Disc)/100)
          *  Your = Std; Sale = Business = Min
          */
@@ -3170,7 +3192,7 @@
                 'Clear S PRC and refill for ' + ready.length + ' ' + scopeLabel + ' SKU(s)?'
                 + (skippedInv ? ('\n(Skip ' + skippedInv + ' with INV = 0)') : '')
                 + '\n\nFormula (same as Push Prc, no Amazon push):\n'
-                + 'Dil in slab → Target GROI from Sprc Dil (including 0 Sold)\n'
+                + 'Dil in slab → Target NROI from Sprc Dil (including 0 Sold)\n'
                 + 'No Dil match → Std × (1 − (CVR Disc + Rev Disc)/100)\n'
                 + 'If no rule → S PRC = Std'
             )) return;

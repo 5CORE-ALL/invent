@@ -684,7 +684,7 @@
                         <i class="fas fa-paper-plane"></i> Push
                     </button>
 
-                    {{-- Sprc Dil (same Dil → Target GROI as /tiktok-2-pricing) + CVR Disc --}}
+                    {{-- Sprc Dil (Dil → Target NROI, same as Amazon / eBay) + CVR Disc --}}
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'shopify_b2c'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2c'])
                 </div>
@@ -1269,9 +1269,9 @@
             if (amz > 0) return Math.round(amz * 100) / 100;
             return stored > 0 ? Math.round(stored * 100) / 100 : 0;
         }
-        if (typeof chPromoLiveSprice === 'function') {
-            const calc = chPromoLiveSprice(data);
-            if (calc > 0) return calc;
+        if (typeof chPromoTableSprice === 'function') {
+            const saved = Number(chPromoTableSprice(data)) || 0;
+            if (saved > 0) return saved;
         }
         return stored > 0 ? Math.round(stored * 100) / 100 : 0;
     }
@@ -1307,9 +1307,9 @@
         return Math.round(value * 100) / 100;
     }
 
-    /** Cell / push value: LMP-capped S PRC, then floored up to A Price when below Amz. */
+    /** Cell / SGROI: saved SPRICE. Dil / Amz floor stay on flags + Apply. */
     function shopifyB2cShownSprice(data) {
-        return shopifyB2cApplyAmzFloor(data, shopifyB2cPriceBeforeAmzFloor(data));
+        return shopifyB2cDisplayedSprice(data);
     }
     window.shopifyB2cShownSprice = shopifyB2cShownSprice;
 
@@ -3295,7 +3295,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target GROI% slabs (same as /tiktok-2-pricing). Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target GROI. CVR overlay (editable) adjusts Target GROI; Count updates live. Below A Price is raised to Amz. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. Below A Price is raised to Amz. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
@@ -3307,7 +3307,7 @@
                         const raised = amz > 0 && raw > 0 && raw + 0.001 < amz;
                         const tipMeta = raised ? Object.assign({}, meta, { sprc: raw }) : meta;
                         let tip = (typeof ebayDilGroiTipText === 'function')
-                            ? ebayDilGroiTipText(tipMeta, { zeroSoldLabel: '0 Sold B2C L30 → min Target GROI' })
+                            ? ebayDilGroiTipText(tipMeta, { zeroSoldLabel: '0 Sold B2C L30 → min Target NROI' })
                             : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                                 + ' → ' + meta.label
                                 + ' → GROI ' + meta.groi + '%'
@@ -3327,7 +3327,7 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab or 0 Sold min GROI, then CVR overlay), then raised to Amz when below A Price. Blue triangle = S PRC ≠ Price. Red triangle = S PRC at/above LMP.",
+                    headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab or 0 Sold min NROI, then CVR overlay), then raised to Amz when below A Price. Blue triangle = S PRC ≠ Price. Red triangle = S PRC at/above LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
@@ -3354,7 +3354,6 @@
                         let redTri = '';
                         if (!amzSugg) {
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                            if (cap && cap.shown > 0) value = cap.shown;
                             overLmp = cap ? cap.alert : overLmp;
                             redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         } else if (overLmp) {
@@ -3362,7 +3361,6 @@
                                 + lmp.toFixed(2) + ' — not capped"></i>';
                         }
                         const amzFloor = shopifyB2cHasAmzFloor(rowData);
-                        value = shopifyB2cShownSprice(rowData);
                         if (amzFloor && lmp > 0 && value + 0.0001 >= lmp) {
                             overLmp = true;
                             redTri = '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC raised to Amz $'

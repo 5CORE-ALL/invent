@@ -294,9 +294,9 @@
     }
     function tdDisplayedSprice(data) {
         if (!data || tdIsParentRow(data)) return 0;
-        if (typeof chPromoLiveSprice === 'function') {
-            const calc = Number(chPromoLiveSprice(data)) || 0;
-            if (calc > 0) return calc;
+        if (typeof chPromoTableSprice === 'function') {
+            const saved = Number(chPromoTableSprice(data)) || 0;
+            if (saved > 0) return saved;
         }
         if (typeof chPromoSavedOrLiveSprice === 'function') {
             return Number(chPromoSavedOrLiveSprice(data)) || 0;

@@ -1396,6 +1396,10 @@ class ChannelPromoPricingController extends Controller
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
     }
 
+    /**
+     * Dil slabs → target %. Every Sprc Dil page uses Target NROI
+     * (stored groi/nroi). Ads%=0 keeps the same dollar as GROI.
+     */
     public function dilGroiRules(Request $request, string $channel): JsonResponse
     {
         $channel = $this->normalizeRulesChannel($channel);
@@ -1408,10 +1412,12 @@ class ChannelPromoPricingController extends Controller
             ->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
+        $targetMetric = $this->dilTargetMetric($channel);
         if ($unpacked['rules'] === []) {
             return response()->json([
                 'success' => true,
                 'is_default' => true,
+                'target_metric' => $targetMetric,
                 'rules' => AmazonDilGroiRule::defaults(),
                 'cvr_adj' => $unpacked['cvr_adj'],
             ]);
@@ -1420,6 +1426,7 @@ class ChannelPromoPricingController extends Controller
         return response()->json([
             'success' => true,
             'is_default' => false,
+            'target_metric' => $targetMetric,
             'rules' => $unpacked['rules'],
             'cvr_adj' => $unpacked['cvr_adj'],
         ]);
@@ -1480,6 +1487,7 @@ class ChannelPromoPricingController extends Controller
         return response()->json([
             'success' => true,
             'channel' => $channel,
+            'target_metric' => $this->dilTargetMetric($channel),
             'rules' => $rules,
             'cvr_adj' => $cvrAdj,
         ]);
@@ -1825,6 +1833,12 @@ class ChannelPromoPricingController extends Controller
         $rules[] = ['key' => '24-25', 'label' => '24–25%', 'sgroi' => $sgroi];
 
         return $rules;
+    }
+
+    /** Every Sprc Dil page uses Target NROI% (Ads%=0 → same $ as GROI). */
+    private function dilTargetMetric(string $channel): string
+    {
+        return 'nroi';
     }
 
     private function normalizeRulesChannel(string $channel): ?string

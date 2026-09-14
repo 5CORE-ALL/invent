@@ -57,12 +57,13 @@ use Throwable;
  * Page-less Sprc Dil → S PRC for Dil tabulator pages that do not have
  * their own nightly save cron (eBay / Amazon / Shopify B2C / Macys / PP do).
  *
- * Same cell math as ebay-sprc-dil: listing Dil, 0-sold min GROI (except
- * Temu 2/3 and AliExpress). Temu 1 0 Sold uses temu_orders L30 (same as
+ * Same cell math as ebay-sprc-dil: listing Dil, Target NROI (Ads%=0 → GROI), 0-sold min (except
+ * Temu 2/3 and Shein). Temu 1 0 Sold uses temu_orders L30 (same as
  * /temu1-data), not temu_metrics.quantity_purchased_l30. Dil stays Shopify
  * OV L30. CVR overlay where the page uses it, ship excluded on
  * Wayfair / Faire / TopDawg / FB, Newegg / Best Buy Amz floor, LMP cap at SGROI ≥ 20%.
- * AliExpress only: SKU Dil; out of slab → Std then LMP if Std > LMP; Stop < N% skips.
+ * AliExpress: AL30 = 0 uses min Target NROI; AL30 > 0 uses Dil slab, else Std then LMP if Std > LMP; Stop < N% skips.
+ * Shein: Dil-matching including 0 Sold, nearest slab, level-only CVR overlay when views > 0.
  */
 class DilRuleSpriceApplyService
 {
@@ -332,11 +333,14 @@ class DilRuleSpriceApplyService
         }
 
         if (! empty($cfg['cvr_adj'])) {
-            $groi = AmazonDilGroiRule::adjustGroiForCvrLevel(
-                $groi,
-                (float) ($row['cvr'] ?? 0),
-                $cvrAdj
-            );
+            $views = (float) ($row['views'] ?? 0);
+            if (empty($cfg['cvr_adj_requires_views']) || $views > 0) {
+                $groi = AmazonDilGroiRule::adjustGroiForCvrLevel(
+                    $groi,
+                    (float) ($row['cvr'] ?? 0),
+                    $cvrAdj
+                );
+            }
         }
 
         $ship = ! empty($cfg['exclude_ship']) ? 0.0 : (float) ($row['ship'] ?? 0);
@@ -377,11 +381,14 @@ class DilRuleSpriceApplyService
             return TemuShopifySalesService::spriceFromTargetSgroi($lp, $ship, $groi, 0.0);
         }
 
-        return round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
+        $price = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi, 0.0, $margin);
+
+        return $price !== null ? $price : round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
     }
 
     /**
-     * /aliexpress-pricing Sprc Dil: Dil slab (including 0 Sold), else Std then LMP if Std > LMP.
+     * /aliexpress-pricing Sprc Dil: AL30 = 0 uses min Target NROI (same as other
+     * 0 Sold pages). AL30 > 0 uses Dil slab, else Std then LMP if Std > LMP.
      * Stop < N% (when ON) skips the save — same cutoff as the pricing-page button.
      *
      * @param  list<array{key:string,label:string,min:float,max:float,groi:float}>  $dilRules
@@ -401,11 +408,30 @@ class DilRuleSpriceApplyService
         $dil = (float) ($row['dil'] ?? 0);
         $al30 = (float) ($row['al30'] ?? 0);
         $lmp = (float) ($row['lmp'] ?? 0);
+
+        if ($al30 <= 0) {
+            $groi = AmazonDilGroiRule::minTarget($dilRules);
+            if ($groi === null) {
+                return null;
+            }
+            $raw = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi, 0.0, $margin);
+            $raw = $raw !== null ? $raw : round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
+            if (! is_finite($raw) || $raw < 0.01) {
+                return null;
+            }
+            if ($this->aliexpressStopBlocks($raw, $lp, $ship, $margin)) {
+                return null;
+            }
+
+            return ['sprice' => $raw, 'groi' => $groi];
+        }
+
         $rule = AmazonDilGroiRule::match($dil, $dilRules);
 
         if ($rule !== null) {
             $groi = (float) $rule['groi'];
-            $raw = round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
+            $raw = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi, 0.0, $margin);
+            $raw = $raw !== null ? $raw : round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
             if (! is_finite($raw) || $raw < 0.01) {
                 return null;
             }
@@ -611,6 +637,7 @@ class DilRuleSpriceApplyService
                 'live' => round((float) ($metric->{$priceCol} ?? 0), 2),
                 'lp' => $lpShip['lp'],
                 'ship' => $lpShip['ship'],
+                'views' => $views,
                 'cvr' => $views > 0
                     ? round(((($this->channel === 'temu' || $this->channel === 'temu2')
                         ? (float) ($l30Overlay[$sku] ?? 0)
@@ -1123,6 +1150,7 @@ class DilRuleSpriceApplyService
      *     zero_sold_min_groi: bool,
      *     match_or_nearest: bool,
      *     cvr_adj: bool,
+     *     cvr_adj_requires_views: bool,
      *     amz_floor: bool,
      *     a_l30: bool,
      *     live_is_base: bool
@@ -1138,6 +1166,7 @@ class DilRuleSpriceApplyService
             'zero_sold_min_groi' => true,
             'match_or_nearest' => false,
             'cvr_adj' => false,
+            'cvr_adj_requires_views' => false,
             'amz_floor' => false,
             'a_l30' => false,
             'live_is_base' => false,
@@ -1156,7 +1185,7 @@ class DilRuleSpriceApplyService
                 'view' => AliexpressDataView::class,
                 'price' => 'price',
                 'views' => 'views',
-                'zero_sold_min_groi' => false,
+                'zero_sold_min_groi' => true,
             ],
             'newegg' => [
                 'metric' => NeweggMetric::class,
@@ -1238,6 +1267,11 @@ class DilRuleSpriceApplyService
                 'view' => SheinDataView::class,
                 'price' => 'price',
                 'l30' => null,
+                'views' => 'views',
+                'zero_sold_min_groi' => false,
+                'match_or_nearest' => true,
+                'cvr_adj' => true,
+                'cvr_adj_requires_views' => true,
             ],
             'wayfair' => [
                 'metric' => WayfairPricingPrice::class,

@@ -680,9 +680,9 @@
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'doba'])
         function dobaDisplayedSprice(data) {
             if (!data || isDobaParentRow(data)) return 0;
-            if (typeof chPromoLiveSprice === 'function') {
-                const calc = Number(chPromoLiveSprice(data)) || 0;
-                if (calc > 0) return calc;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(data)) || 0;
+                if (saved > 0) return saved;
             }
             if (typeof chPromoSavedOrLiveSprice === 'function') {
                 return Number(chPromoSavedOrLiveSprice(data)) || 0;
@@ -2954,7 +2954,10 @@
                             else if (_roiVal < 125) _roiBg = '#28a745';
                             else                    _roiBg = '#e83e8c';
                             $('#roi-percentage-badge')
-                                .css('background-color', _roiBg)
+                                .css({
+                                    'background-color': _roiBg,
+                                    'color': _roiBg === '#ffc107' ? '#000' : '#fff',
+                                })
                                 .text('ROI: ' + Math.round(_roiVal) + '%');
                             // L30 GPFT $ + Total COGS are hidden badges, but the
                             // assignments are preserved so the data lives on the

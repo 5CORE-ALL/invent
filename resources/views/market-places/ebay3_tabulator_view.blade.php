@@ -825,10 +825,11 @@
     /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
     const TABULATOR_COLUMN_CHANNEL = 'ebay3_tabulator';
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+    const EBAY3_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
+    const EBAY3_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
-    const EBAY3_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
     let table = null;
 
     /** Keep "Showing X–Y of Z rows" in sync with filtered/active set (same as eBay 1). */
@@ -948,27 +949,19 @@
     }
     function ebay3RawRuleSprice(rowData) {
         if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return 0;
-        const dilFn = (typeof window !== 'undefined' && typeof window.ebaySprcDilForRow === 'function')
-            ? window.ebaySprcDilForRow
-            : (typeof ebaySprcDilForRow === 'function' ? ebaySprcDilForRow : null);
-        if (dilFn) {
-            const dil = Number(dilFn(rowData)) || 0;
-            if (dil > 0) return dil;
+        if (typeof chPromoTableSprice === 'function') {
+            const saved = Number(chPromoTableSprice(rowData)) || 0;
+            if (saved > 0) return saved;
         }
-        let saved = 0;
         if (typeof chPromoSavedOrLiveSprice === 'function') {
-            saved = Number(chPromoSavedOrLiveSprice(rowData)) || 0;
+            const saved = Number(chPromoSavedOrLiveSprice(rowData)) || 0;
+            if (saved > 0) return saved;
         }
-        if (!(saved > 0)) {
-            saved = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
-        }
-        return saved > 0 ? saved : 0;
+        const stored = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
+        return stored > 0 ? stored : 0;
     }
     function ebay3DisplayedSprice(rowData) {
-        const raw = ebay3RawRuleSprice(rowData);
-        if (!(raw > 0)) return 0;
-        const shown = ebay3CapSpriceToLmp(rowData, raw);
-        return shown > 0 ? shown : raw;
+        return ebay3RawRuleSprice(rowData);
     }
     function ebay3SpriceAmount(rowData) {
         if (typeof ebay3DisplayedSprice === 'function') {
@@ -2754,7 +2747,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "Suggested price from Dil → Target GROI% slabs. Dil outside the table uses the nearest slab (including 0 Sold). CVR < 7% subtracts 10 from Target GROI%; CVR > 10% adds 10. Formula: (LP × (1 + GROI%/100) + Ship) / take-home.",
+                    headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil outside the table uses the nearest slab (including 0 Sold). CVR < 7% subtracts 10 from Target NROI%; CVR > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary || rowData.is_parent_row) return '';
@@ -2804,10 +2797,7 @@
                             : ((window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function')
                                 ? Number(LmpIgnore.effectiveLmp(rowData)) || 0
                                 : (parseFloat(rowData.lmp_price) || 0));
-                        const shown = (typeof ebay3CapSpriceToLmp === 'function')
-                            ? ebay3CapSpriceToLmp(rowData, raw)
-                            : raw;
-                        const sprice = shown > 0 ? shown : raw;
+                        const sprice = raw;
                         const wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
                         const appliedLmp = wouldHitLmp && sprice + 0.0001 <= lmpNow + 0.0001;
                         const atOrAboveLmp = wouldHitLmp;

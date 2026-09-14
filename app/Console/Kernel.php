@@ -888,9 +888,9 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         // amazon:dil-prmt-auto-push is not scheduled. Amazon Analytics uses Sprc Dil
-        // (amazon_dil_vs_groi), not Dil vs PRMT. Do not re-enable that cron.
+        // (amazon_dil_vs_groi Target NROI), not Dil vs PRMT. Do not re-enable that cron.
 
-        // Amazon Sprc Dil (Dil→GROI) + CVR/Rev Disc + LMP cap → SPRICE → Listings.
+        // Amazon Sprc Dil (Dil→NROI) + CVR/Rev Disc + LMP cap → SPRICE → Listings.
         // 04:00 and 20:00 IST. Do NOT wrap 20:00 in $ist() — IST window ends at 20:00.
         $schedule->command('amazon:sprc-dil-auto-push')
             ->dailyAt('04:00')
@@ -918,7 +918,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Shopify B2C Dil / PRMT / CVR Disc / 0 Sold → save SPRICE (page not required).
+        // Shopify B2C Dil→NROI / PRMT / CVR Disc / 0 Sold → save SPRICE (page not required).
         $schedule->command('shopify-b2c:rule-sprice-apply')
             ->dailyAt('04:10')
             ->timezone('America/New_York')
@@ -1107,7 +1107,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // eBay 1/2/3 Sprc Dil → save SPRICE (Amazon LMP cap: Dil below LMP stays Dil).
+        // eBay 1/2/3 Sprc Dil → save SPRICE (Dil→NROI + LMP cap).
         // Primary fire is /etc/cron.d/ebay3-sprice-daily (bypasses overloaded schedule:run).
         // These slots are backup + late catch-up.
         $schedule->command('ebay:rule-sprice-apply')

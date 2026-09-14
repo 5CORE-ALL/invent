@@ -910,16 +910,25 @@ class TikTokPricingController extends Controller
             $processedItem['cvr'] = $listingCvr;
             $processedItem['CVR%'] = $listingCvr;
 
-            // TACOS% = (spend / (TT L30 * TT Price)) * 100
-            $spend = (float)$processedItem["spend"];
-            $ttL30 = (float)($processedItem["TT L30"] ?? 0);
-            $ttPrice = (float)($processedItem["TT Price"] ?? 0);
+            // TACOS% = spend / (TT L30 × listing price). Never invent 100% when
+            // price is missing — that made SNROI/SNPFT deeply negative on Dil rows.
+            $spend = (float) $processedItem['spend'];
+            $ttL30 = (float) ($processedItem['TT L30'] ?? 0);
+            $ttPrice = (float) ($processedItem['TT Price'] ?? 0);
+            if ($ttPrice <= 0) {
+                $ttPrice = (float) ($processedItem['Price'] ?? 0);
+            }
             $salesValue = $ttL30 * $ttPrice;
-            $processedItem["TACOS%"] = $salesValue > 0 ? round(($spend / $salesValue) * 100, 2) : ($spend > 0 ? 100 : 0);
+            $processedItem['TACOS%'] = $salesValue > 0 ? round(($spend / $salesValue) * 100, 2) : 0.0;
             $processedItem["PFT %"] = round($processedItem["GPFT%"] - $processedItem["TACOS%"], 2);
-            // SPFT / SNPFT = SGPFT - TACOS%
-            $processedItem["SPFT"] = round($processedItem["SGPFT"] - $processedItem["TACOS%"], 2);
-            $processedItem["SNPFT"] = $processedItem["SPFT"];
+            // TikTok 2 Dil Ads% is 0 — SNPFT/SPFT match SGPFT (do not subtract listing TACOS%).
+            if ($isTiktokTwo) {
+                $processedItem['SPFT'] = $processedItem['SGPFT'];
+                $processedItem['SNPFT'] = $processedItem['SGPFT'];
+            } else {
+                $processedItem['SPFT'] = round($processedItem['SGPFT'] - $processedItem['TACOS%'], 2);
+                $processedItem['SNPFT'] = $processedItem['SPFT'];
+            }
             $processedItem["ad_sold"] = (int)($metrics['sku_orders'] ?? 0);
             $processedItem["ad_clicks"] = (int)($metrics['clicks'] ?? 0);
             $adSold = $processedItem["ad_sold"];
@@ -1167,7 +1176,7 @@ class TikTokPricingController extends Controller
         $dilPct = $sumInv > 0 ? round(($sumL30 / $sumInv) * 100, 2) : 0;
         $adCvrPct = $sumAdClicks > 0 ? round(($sumAdSold / $sumAdClicks) * 100, 2) : null;
         $acosPct = $sumAdSales > 0 ? round(($sumSpend / $sumAdSales) * 100, 2) : 0;
-        $tacosPct = $sumTSales > 0 ? round(($sumSpend / $sumTSales) * 100, 2) : ($sumSpend > 0 ? 100 : 0);
+        $tacosPct = $sumTSales > 0 ? round(($sumSpend / $sumTSales) * 100, 2) : 0.0;
         $parentProfit = $sumTSales - $sumCogs;
         $gpftPct = $sumTSales > 0 ? round(($parentProfit / $sumTSales) * 100, 2) : 0;
         $roiPct = $sumCogs > 0 ? round(($parentProfit / $sumCogs) * 100, 2) : 0;

@@ -199,9 +199,8 @@
                         <select id="ae-al30-filter" class="form-select form-select-sm pricing-filter-item"
                             title="Excludes 0 inventory items">
                             <option value="all">Sh L30</option>
-                            <option value="0">0</option>
-                            <option value="0-10">1–10</option>
-                            <option value="10plus">10+</option>
+                            <option value="0">=0</option>
+                            <option value="more">>0</option>
                         </select>
 
                         <select id="ae-nrl-filter" class="form-select form-select-sm pricing-filter-item">
@@ -228,12 +227,6 @@
                             <option value="gt125">125%+</option>
                         </select>
 
-                        <select id="ae-map-filter" class="form-select form-select-sm pricing-filter-item">
-                            <option value="all">MAP</option>
-                            <option value="map">MP only</option>
-                            <option value="nmap">N MP only</option>
-                        </select>
-
                         <select id="ae-sprice-filter" class="form-select form-select-sm pricing-filter-item">
                             <option value="all">SPRICE</option>
                             <option value="blank">Blank SPRICE only</option>
@@ -248,8 +241,8 @@
                         </select>
 
                         <select id="ae-row-type-filter" class="form-select form-select-sm pricing-filter-item">
-                            <option value="all" selected>All Rows</option>
-                            <option value="skus">SKUs</option>
+                            <option value="all">All Rows</option>
+                            <option value="skus" selected>SKUs</option>
                         </select>
 
                         <div class="dropdown d-inline-block pricing-filter-item">
@@ -354,6 +347,8 @@
                                 style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                                 title="Blue triangle: S PRC ≠ Sp. Price. Click to show only those rows. Click again to clear.">
                                 <i class="fas fa-exclamation-triangle"></i> 0</span>
+                            @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shein-price-gt-lmp-badge', 'pglChannelKey' => 'shein', 'pglPriceField' => 'special_offer'])
+                            @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'shein-price-lt80-lmp-badge', 'pltChannelKey' => 'shein', 'pltPriceField' => 'special_offer'])
                             <span class="badge fs-6 p-2" id="ae-more-sold-badge" style="font-weight:700;cursor:pointer;background:#b6e0fe;color:#0f172a;" title="Click to filter sold items">&gt; 0 Sold: 0</span>
                             <span class="badge bg-primary fs-6 p-2" id="ae-total-sales-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator: Σ (product_price × qty) from API orders">Sales: $0</span>
                             <span class="badge bg-warning fs-6 p-2" id="ae-total-al30-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator Total Quantity">Qty: 0</span>
@@ -363,9 +358,6 @@
                             <span class="badge bg-danger fs-6 p-2" id="ae-avg-cvr-badge" style="font-weight:700;" title="CVR = Σ Sh L30 ÷ Σ Views × 100. Same formula as /all-marketplace-master Shein CVR.">CVR: 0%</span>
                             <span class="badge bg-success fs-6 p-2 d-none" id="ae-total-pft-badge" style="font-weight:700;color:#111;" aria-hidden="true">PFT: $0</span>
                             <span class="badge bg-secondary fs-6 p-2" id="ae-total-sku-badge" style="font-weight:700;">SKU: 0</span>
-                            <span class="badge bg-danger fs-6 p-2" id="ae-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter Missing L">M L: 0</span>
-                            <span class="badge fs-6 p-2 d-none" id="ae-map-badge" style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click to filter Map rows" aria-hidden="true">Map: 0</span>
-                            <span class="badge fs-6 p-2" id="ae-nmap-badge" style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click to filter N Map rows">N Map: 0</span>
                             <span class="badge bg-warning fs-6 p-2 d-none" id="ae-avg-dil-badge" style="font-weight:700;color:#111;" aria-hidden="true">DIL%: 0%</span>
                         </div>
                     </div>
@@ -557,12 +549,11 @@
         let salesPageTotals = null;
 
         // Badge-click filter flags (identical to TikTok pattern)
-        let aeMissingActive  = false;
-        let aeMapActive      = false;
-        let aeNMapActive     = false;
         let aeZeroSoldActive = false;
         let aeMoreSoldActive = false;
         let blueTriangleFilterActive = false;
+        let priceGtLmpFilterActive = false;
+        let priceLt80LmpFilterActive = false;
 
         function sheinEntryIsIgnored(e) {
             if (window.LmpIgnore && typeof LmpIgnore.isIgnored === 'function') {
@@ -603,26 +594,39 @@
             }
             return parseFloat(row.lmp_price || row.lmp || row.LMP) || 0;
         }
+        function sheinPctStyle(color) {
+            if (window.MetricPctColors && typeof MetricPctColors.styleForCellColor === 'function') {
+                return MetricPctColors.styleForCellColor(color);
+            }
+            if (color === '#ffc107') {
+                return 'color:#000;background-color:#ffc107;font-weight:700;padding:1px 5px;border-radius:3px;';
+            }
+            return 'color:' + color + ';font-weight:600;';
+        }
+        function sheinRoiColor(v) {
+            if (v < 40) return '#a00211';
+            if (v < 75) return '#ffc107';
+            if (v < 125) return '#28a745';
+            return '#d63384';
+        }
+        function sheinGpftColor(v) {
+            return v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+        }
+        function sheinPctHtml(v, kind) {
+            const color = kind === 'gpft' ? sheinGpftColor(v) : sheinRoiColor(v);
+            return '<span style="' + sheinPctStyle(color) + '">' + Math.round(v) + '%</span>';
+        }
         function sheinRuleSpriceRaw(data) {
             if (!data || data.is_parent) return 0;
-            let sprice = parseFloat(data.sprice || data.SPRICE) || 0;
-            if (typeof chPromoLiveSprice === 'function') {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) sprice = calc;
+            if (typeof chPromoTableSprice === 'function') {
+                const saved = Number(chPromoTableSprice(data)) || 0;
+                if (saved > 0) return saved;
             }
-            if (!(sprice > 0)) sprice = parseFloat(data.special_offer || data.price) || 0;
+            const sprice = parseFloat(data.sprice || data.SPRICE) || 0;
             return sprice > 0 ? Math.round(sprice * 100) / 100 : 0;
         }
         function sheinVisibleSprice(data) {
-            const raw = sheinRuleSpriceRaw(data);
-            if (!(raw > 0)) return 0;
-            if (window.SpriceLmpCap) {
-                const cap = SpriceLmpCap.apply(data, raw, sheinEffectiveLmp);
-                if (cap && cap.shown > 0) return Math.round(cap.shown * 100) / 100;
-            }
-            const lmp = sheinEffectiveLmp(data);
-            if (lmp > 0 && raw + 0.0001 >= lmp) return Math.round(lmp * 100) / 100;
-            return raw;
+            return sheinRuleSpriceRaw(data);
         }
         window.sheinVisibleSprice = sheinVisibleSprice;
         function sheinSpriceMetrics(data, spriceOpt) {
@@ -647,7 +651,10 @@
         function sheinPrepareSpriceToSave(data, sprice) {
             let shown = Number(sprice) || 0;
             if (!(shown > 0)) shown = sheinVisibleSprice(data) || parseFloat(data && data.special_offer) || 0;
-            if (shown > 0 && window.SpriceLmpCap) {
+            if (shown > 0 && typeof chPromoCapSpriceToLmp === 'function') {
+                const capped = Number(chPromoCapSpriceToLmp(data, shown));
+                if (capped > 0) shown = Math.round(capped * 100) / 100;
+            } else if (shown > 0 && window.SpriceLmpCap) {
                 const cap = SpriceLmpCap.apply(data, shown, sheinEffectiveLmp);
                 if (cap && cap.shown > 0) shown = Math.round(cap.shown * 100) / 100;
             } else if (shown > 0) {
@@ -698,11 +705,8 @@
         function aeApplyBadgeFilterFromUrl() {
             const badge = (new URLSearchParams(window.location.search).get('badge') || '').toLowerCase();
             if (!badge || !table) return;
-            aeMissingActive = aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
-            if (badge === 'missing') aeMissingActive = true;
-            else if (badge === 'map') aeMapActive = true;
-            else if (badge === 'nmap') aeNMapActive = true;
-            else if (badge === 'zero_sold') aeZeroSoldActive = true;
+            aeZeroSoldActive = aeMoreSoldActive = false;
+            if (badge === 'zero_sold') aeZeroSoldActive = true;
             else if (badge === 'more_sold') aeMoreSoldActive = true;
             else return;
             applyFilters();
@@ -1061,7 +1065,6 @@
             const gpftFilter = $('#ae-gpft-filter').val();
             const roiFilter  = $('#ae-roi-filter').val();
             const al30Filter = $('#ae-al30-filter').val();
-            const mapFilter  = $('#ae-map-filter').val();
             const nrlFilter  = $('#ae-nrl-filter').val() || 'all';
             const spriceFilter = $('#ae-sprice-filter').val() || 'all';
             const dilColor   = $('#ae-dil-filter').val() || 'all';
@@ -1134,18 +1137,10 @@
                 table.addFilter(function(d) {
                     if ((parseInt(d.inv, 10) || 0) <= 0) return false;
                     const al30 = parseFloat(d.al30) || 0;
-                    if (al30Filter === '0')      return al30 === 0;
-                    if (al30Filter === '0-10')   return al30 > 0 && al30 <= 10;
-                    if (al30Filter === '10plus') return al30 > 10;
+                    if (al30Filter === '0')    return al30 === 0;
+                    if (al30Filter === 'more') return al30 > 0;
                     return true;
                 });
-            }
-
-            // Map filter (same rows as MAP column / ebay2)
-            if (mapFilter === 'map') {
-                table.addFilter(d => sheinRowIsMap(d));
-            } else if (mapFilter === 'nmap') {
-                table.addFilter(d => sheinRowIsNMap(d));
             }
 
             // Blank SPRICE only (matches /ebay2-tabulator-view)
@@ -1171,20 +1166,21 @@
             }
 
             // Badge-click filters
-            if (aeMissingActive) {
-                table.addFilter(d => sheinRowIsMissingL(d));
-            }
-            if (aeMapActive) {
-                table.addFilter(d => sheinRowIsMap(d));
-            }
-            if (aeNMapActive) {
-                table.addFilter(d => sheinRowIsNMap(d));
-            }
             if (aeZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (aeMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
             if (blueTriangleFilterActive) {
                 table.addFilter(function(data) {
                     return sheinHasBlueTriangle(data);
+                });
+            }
+            if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'special_offer', sheinEffectiveLmp);
+                });
+            }
+            if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                table.addFilter(function(data) {
+                    return PriceLt80LmpBadge.hasPurpleTriangle(data, 'special_offer');
                 });
             }
         }
@@ -1222,7 +1218,6 @@
             }
             if (!rows.length) return;
 
-            let missingCount = 0, mapCount = 0, nmapCount = 0;
             let zeroSold = 0, moreSold = 0;
             let dilSum = 0, dilCount = 0;
             let totalViews = 0, totalAl30Views = 0;
@@ -1236,18 +1231,8 @@
                 const ovL30  = parseFloat(row.ov_l30) || 0;
                 totalViews += parseInt(row.views, 10) || 0;
                 totalAl30Views += al30;
-                const isMissingL = sheinRowIsMissingL(row);
-
                 if (al30 === 0) zeroSold++; else moreSold++;
                 if (inv > 0) { dilSum += (ovL30 / inv) * 100; dilCount++; }
-
-                if (isMissingL) {
-                    missingCount++;
-                } else if (sheinRowIsMap(row)) {
-                    mapCount++;
-                } else if (sheinRowIsNMap(row)) {
-                    nmapCount++;
-                }
             });
 
             // Sales / Qty / GPFT / GROI — identical to /shein-tabulator (API order product_price)
@@ -1265,9 +1250,6 @@
             $('#ae-total-pft-badge').text(hasSalesTotals ? `PFT: $${Math.round(totalPft).toLocaleString()}` : 'PFT: –');
             $('#ae-total-al30-badge').text(hasSalesTotals ? `Qty: ${totalQty.toLocaleString()}` : 'Qty: –');
             $('#ae-avg-gpft-badge').text(hasSalesTotals && Number.isFinite(avgGpft) ? `GPFT: ${Math.round(avgGpft)}%` : 'GPFT: –');
-            $('#ae-missing-badge').text(`M L: ${missingCount.toLocaleString()}`);
-            $('#ae-map-badge').text(`Map: ${mapCount.toLocaleString()}`);
-            $('#ae-nmap-badge').text(`N Map: ${nmapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
             $('#ae-more-sold-badge').text(`> 0 Sold: ${moreSold.toLocaleString()}`);
             let blueTriangleCount = 0;
@@ -1278,6 +1260,14 @@
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             if (typeof syncSheinTriangleBadgeState === 'function') syncSheinTriangleBadgeState();
+            if (window.PriceGtLmpBadge) {
+                PriceGtLmpBadge.update('#shein-price-gt-lmp-badge', rows, 'shein', 'special_offer', sheinEffectiveLmp);
+                PriceGtLmpBadge.setOutline(document.getElementById('shein-price-gt-lmp-badge'), priceGtLmpFilterActive);
+            }
+            if (window.PriceLt80LmpBadge) {
+                PriceLt80LmpBadge.update('#shein-price-lt80-lmp-badge', rows, 'shein', 'special_offer');
+                PriceLt80LmpBadge.setOutline(document.getElementById('shein-price-lt80-lmp-badge'), priceLt80LmpFilterActive);
+            }
             $('#ae-avg-dil-badge').text(dilCount > 0 ? `DIL%: ${avgDil.toFixed(1)}%` : 'DIL%: –');
             if ($('#ae-avg-roi-badge').length) {
                 $('#ae-avg-roi-badge').text(hasSalesTotals && Number.isFinite(avgRoi) ? `GROI: ${Math.round(avgRoi)}%` : 'GROI: –');
@@ -1729,6 +1719,7 @@
                         sorter: "number",
                         hozAlign: "center",
                         width: 55,
+                        headerTooltip: "SKU Dil (OV L30 ÷ INV). Red <25% · Green 25–50% · Pink 50%+. Same Dil Sprc Dil uses.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const inv   = parseFloat(row.inv)    || 0;
@@ -1794,7 +1785,10 @@
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue()) || 0;
                             if (v === 0) return '<span style="color:#adb5bd;">–</span>';
-                            return `<span style="color:#e83e8c;font-weight:600;">${money(v)}</span>`;
+                            const lmpForTri = sheinEffectiveLmp(d);
+                            const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(v, lmpForTri) : '');
+                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(v, lmpForTri) : '');
+                            return `<span style="color:#e83e8c;font-weight:600;">${money(v)}</span>` + lmpTri + purpleTri;
                         }
                     },
                     {
@@ -1885,14 +1879,7 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue()) || 0;
-                            // Color ranges matching the ROI% filter dropdown
-                            let color;
-                            if      (v < 40)  color = '#a00211';
-                            else if (v < 75)  color = '#ffc107';
-                            else if (v < 125) color = '#28a745';
-                            else              color = '#d63384';
-                            const r = Math.round(v);
-                            return `<span style="color:${color};font-weight:600;">${r}%</span>`;
+                            return sheinPctHtml(v, 'groi');
                         }
                     },
                     {
@@ -1906,9 +1893,7 @@
                             if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
                             if (v === 0 && !d.is_parent) return '0%';
                             if (v === 0 &&  d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const r = Math.round(v);
-                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return `<span style="color:${color};font-weight:${d.is_parent?'700':'600'};">${r}%</span>`;
+                            return sheinPctHtml(v, 'gpft');
                         }
                     },
                     {
@@ -1993,17 +1978,19 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (AL30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                        headerTooltip: "Suggested price from Dil → Target GROI% slabs, same as /amazon-tabulator-view and /ebay-tabulator-view. Every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Dil outside the table uses the nearest slab. CVR overlay is level-only (CVR < 7% −10 GROI; CVR > 10% +10) and only when the SKU has views. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData && rowData.is_parent) return '';
                             if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                             const meta = ebayDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2);
+                            const tip = (typeof ebayDilGroiTipText === 'function')
+                                ? ebayDilGroiTipText(meta)
+                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                    + ' → ' + meta.label
+                                    + ' → GROI ' + meta.groi + '%'
+                                    + ' → $' + meta.sprc.toFixed(2));
                             return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                                 + meta.sprc.toFixed(2) + '</span>';
                         },
@@ -2015,27 +2002,20 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when AL30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI for every INV > 0 SKU (including 0 Sold); Dil outside the table uses the nearest slab. CVR overlay adjusts Target GROI when the SKU has views. Same as Amazon/eBay: Dil below LMP stays Dil; Dil at/above LMP becomes LMP only when SGROI at LMP ≥ 20%. Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const raw = sheinRuleSpriceRaw(d);
                             if (!(raw > 0)) return '';
                             const lmpNow = sheinEffectiveLmp(d);
-                            const cap = window.SpriceLmpCap
-                                ? SpriceLmpCap.apply(d, raw, sheinEffectiveLmp)
-                                : null;
-                            let sprice = raw;
-                            const atOrAboveLmp = cap
-                                ? cap.alert
-                                : (lmpNow > 0 && sprice + 0.0001 >= lmpNow);
-                            if (cap && cap.shown > 0) sprice = cap.shown;
-                            else if (atOrAboveLmp && lmpNow > 0) sprice = Math.round(lmpNow * 100) / 100;
+                            const sprice = sheinVisibleSprice(d) || raw;
+                            const atOrAboveLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
                             if (!(sprice > 0)) return '';
                             const live = parseFloat(d.special_offer) || 0;
                             const redTri = atOrAboveLmp
-                                ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
-                                    + (lmpNow > 0 ? lmpNow.toFixed(2) : '') + '"></i>')
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC ≥ LMP $'
+                                    + (lmpNow > 0 ? lmpNow.toFixed(2) : '') + '"></i>'
                                 : '';
                             const blueTri = (!atOrAboveLmp && live > 0 && sprice > 0
                                 && Math.round(live * 100) !== Math.round(sprice * 100))
@@ -2066,9 +2046,8 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = sheinSpriceMetrics(d).sgpft;
-                            if (isNaN(v) || v === 0) return '0%';
-                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
+                            if (isNaN(v)) return '0%';
+                            return sheinPctHtml(v, 'gpft');
                         }
                     },
                     {
@@ -2084,13 +2063,8 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = sheinSpriceMetrics(d).sroi;
-                            if (isNaN(v) || v === 0) return '0%';
-                            let color;
-                            if      (v < 40)  color = '#a00211';
-                            else if (v < 75)  color = '#ffc107';
-                            else if (v < 125) color = '#28a745';
-                            else              color = '#d63384';
-                            return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
+                            if (isNaN(v)) return '0%';
+                            return sheinPctHtml(v, 'groi');
                         }
                     },
                 ],
@@ -2142,7 +2116,6 @@
             $('#ae-gpft-filter').on('change',   function() { applyFilters(); });
             $('#ae-roi-filter').on('change',    function() { applyFilters(); });
             $('#ae-al30-filter').on('change',   function() { applyFilters(); });
-            $('#ae-map-filter').on('change',    function() { applyFilters(); });
             $('#ae-nrl-filter').on('change',    function() { applyFilters(); });
             $('#ae-sprice-filter').on('change', function() { applyFilters(); });
             $('#ae-dil-filter').on('change',    function() { applyFilters(); });
@@ -2528,50 +2501,71 @@
             });
 
             // Badge click → table filter only (same as /ebay2-tabulator-view — no hover/click chart)
-            $('#ae-missing-badge').on('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                aeMissingActive = !aeMissingActive;
-                aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
-                applyFilters();
-            });
-            $('#ae-map-badge').on('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                aeMapActive = !aeMapActive;
-                aeMissingActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
-                applyFilters();
-            });
-            $('#ae-nmap-badge').on('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                aeNMapActive = !aeNMapActive;
-                aeMissingActive = aeMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
-                applyFilters();
-            });
             $('#ae-zero-sold-badge').on('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 aeZeroSoldActive = !aeZeroSoldActive;
-                aeMoreSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
-                if (aeZeroSoldActive) blueTriangleFilterActive = false;
+                aeMoreSoldActive = false;
+                if (aeZeroSoldActive) {
+                    blueTriangleFilterActive = false;
+                    priceGtLmpFilterActive = false;
+                    priceLt80LmpFilterActive = false;
+                }
                 applyFilters();
             });
             $('#ae-more-sold-badge').on('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 aeMoreSoldActive = !aeMoreSoldActive;
-                aeZeroSoldActive = aeMissingActive = aeMapActive = aeNMapActive = false;
-                if (aeMoreSoldActive) blueTriangleFilterActive = false;
+                aeZeroSoldActive = false;
+                if (aeMoreSoldActive) {
+                    blueTriangleFilterActive = false;
+                    priceGtLmpFilterActive = false;
+                    priceLt80LmpFilterActive = false;
+                }
                 applyFilters();
             });
             $('#shein-blue-triangle-badge').on('click', function() {
                 blueTriangleFilterActive = !blueTriangleFilterActive;
                 if (blueTriangleFilterActive) {
-                    aeMissingActive = aeMapActive = aeNMapActive = aeZeroSoldActive = aeMoreSoldActive = false;
+                    aeZeroSoldActive = aeMoreSoldActive = false;
+                    priceGtLmpFilterActive = false;
+                    priceLt80LmpFilterActive = false;
                 }
                 applyFilters();
             });
+            if (window.PriceGtLmpBadge) {
+                PriceGtLmpBadge.bind({
+                    badge: '#shein-price-gt-lmp-badge',
+                    getActive: function() { return priceGtLmpFilterActive; },
+                    onToggle: function(on) {
+                        priceGtLmpFilterActive = on;
+                        if (on) {
+                            blueTriangleFilterActive = false;
+                            priceLt80LmpFilterActive = false;
+                            aeZeroSoldActive = aeMoreSoldActive = false;
+                        }
+                        applyFilters();
+                        if (typeof syncSheinTriangleBadgeState === 'function') syncSheinTriangleBadgeState();
+                    }
+                });
+            }
+            if (window.PriceLt80LmpBadge) {
+                PriceLt80LmpBadge.bind({
+                    badge: '#shein-price-lt80-lmp-badge',
+                    getActive: function() { return priceLt80LmpFilterActive; },
+                    onToggle: function(on) {
+                        priceLt80LmpFilterActive = on;
+                        if (on) {
+                            blueTriangleFilterActive = false;
+                            priceGtLmpFilterActive = false;
+                            aeZeroSoldActive = aeMoreSoldActive = false;
+                        }
+                        applyFilters();
+                        if (typeof syncSheinTriangleBadgeState === 'function') syncSheinTriangleBadgeState();
+                    }
+                });
+            }
 
             $('#refresh-pricing-table').on('click', function() {
                 table.setData("/shein/pricing-data");

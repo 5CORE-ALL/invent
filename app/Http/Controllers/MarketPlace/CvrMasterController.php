@@ -7816,10 +7816,12 @@ class CvrMasterController extends Controller
                 $response = $this->pushToTikTok2($sku, $price);
             } elseif ($marketplace === 'aliexpress') {
                 $response = $this->pushToAliexpress($skuRaw !== '' ? $skuRaw : $sku, $price);
+            } elseif ($marketplace === 'shein') {
+                $response = $this->pushToShein($skuRaw !== '' ? $skuRaw : $sku, $price);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, PPower, Wayfair, Reverb, TopDawg, Faire, Temu, Temu2, TikTok, TikTok 2, AliExpress, FBA."
+                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, PPower, Wayfair, Reverb, TopDawg, Faire, Temu, Temu2, TikTok, TikTok 2, AliExpress, Shein, FBA."
                 ], 400);
             }
 
@@ -9315,6 +9317,71 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Push sale price to Shein (same API as /shein-pricing → SheinController::pushPricingPrice).
+     */
+    private function pushToShein($sku, $price)
+    {
+        try {
+            if (! ($price > 0)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid Shein price (must be > 0)',
+                ], 400);
+            }
+
+            $sku = trim((string) $sku);
+            $rounded = round((float) $price, 2);
+            $req = Request::create('/shein/pricing-push-price', 'POST', [
+                'updates' => [
+                    ['sku' => $sku, 'price' => $rounded],
+                ],
+            ]);
+            $req->headers->set('Accept', 'application/json');
+
+            $response = app(SheinController::class)->pushPricingPrice(
+                $req,
+                app(\App\Services\SheinApiService::class)
+            );
+            $data = method_exists($response, 'getData') ? $response->getData(true) : [];
+            $ok = ! empty($data['success']) || ((int) ($data['pushed'] ?? 0) > 0);
+            if ($ok) {
+                $this->savePricePushStatus($sku, 'shein', 'pushed', $rounded);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $data['message'] ?? ('Price $'.number_format($rounded, 2).' pushed to Shein for SKU: '.$sku),
+                    'price' => $rounded,
+                    'result' => $data,
+                ]);
+            }
+
+            $err = (string) ($data['message'] ?? 'Failed to push price to Shein');
+            $first = is_array($data['results'] ?? null) ? ($data['results'][0] ?? []) : [];
+            if (! empty($first['error'])) {
+                $err = (string) $first['error'];
+            }
+            $this->savePricePushStatus($sku, 'shein', 'error', $rounded);
+
+            return response()->json([
+                'success' => false,
+                'message' => $err,
+                'result' => $data,
+            ], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'shein', 'error', $price);
+            Log::error('CVR Master - Shein push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Shein API error: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Push price to AliExpress (same API as /aliexpress-pricing → AliexpressController::pushPricingPrice).
      */
     private function pushToAliexpress($sku, $price)
@@ -9790,6 +9857,11 @@ class CvrMasterController extends Controller
                 if (Schema::hasTable('aliexpress_data_views')) {
                     $existingAe = AliexpressDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
                     $dataView = $existingAe ?: new AliexpressDataView(['sku' => $sku]);
+                }
+            } elseif ($marketplace === 'shein') {
+                if (Schema::hasTable('shein_data_views')) {
+                    $existingShein = \App\Models\SheinDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+                    $dataView = $existingShein ?: new \App\Models\SheinDataView(['sku' => $sku]);
                 }
             } elseif ($marketplace === 'faire') {
                 if (Schema::hasTable('faire_data_views')) {

@@ -360,6 +360,7 @@ class ChannelLivePriceSync
             'shein' => [
                 ['model' => SheinMetric::class, 'column' => 'price'],
                 ['model' => SheinPricingPrice::class, 'column' => 'price'],
+                ['model' => SheinPricingPrice::class, 'column' => 'special_offer_price'],
             ],
             'wayfair' => [
                 ['model' => WayfairPricingPrice::class, 'column' => 'price'],

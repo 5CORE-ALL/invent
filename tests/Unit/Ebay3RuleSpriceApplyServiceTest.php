@@ -128,6 +128,49 @@ class Ebay3RuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(37.50, $a['sprice'], 0.01);
     }
 
+    public function test_ebay1_nroi_uses_ads_and_inverts_snroi(): void
+    {
+        $this->assertNroiInvertsForChannel('ebay1');
+    }
+
+    public function test_ebay2_nroi_uses_ads_and_inverts_snroi(): void
+    {
+        $this->assertNroiInvertsForChannel('ebay2');
+    }
+
+    public function test_ebay3_nroi_uses_ads_and_inverts_snroi(): void
+    {
+        $this->assertNroiInvertsForChannel('ebay3');
+    }
+
+    private function assertNroiInvertsForChannel(string $channel): void
+    {
+        $out = EbayRuleSpriceApplyService::for($channel)->computeTarget(
+            [
+                'inv' => 10,
+                'dil' => 3,
+                'cvr' => 8,
+                'lp' => 20,
+                'ship' => 0,
+                'lmp' => 0,
+            ],
+            AmazonDilGroiRule::defaults(),
+            AmazonDilGroiRule::defaultCvrAdj(),
+            0.80,
+            10.0
+        );
+
+        $this->assertNotNull($out);
+        $expected = AmazonDilGroiRule::suggestedPriceFromNroi(20, 0, 50, 10, 0.80);
+        $this->assertEqualsWithDelta($expected, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(50.0, $out['nroi'], 0.01);
+        $this->assertEqualsWithDelta(
+            50.0,
+            AmazonDilGroiRule::snroiAtPrice($out['sprice'], 20, 0, 10, 0.80),
+            0.06
+        );
+    }
+
     public function test_channels_from_arg(): void
     {
         $this->assertSame(['ebay1', 'ebay2', 'ebay3'], EbayRuleSpriceApplyService::channelsFromArg('all'));

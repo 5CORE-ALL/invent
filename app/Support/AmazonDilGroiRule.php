@@ -3,8 +3,9 @@
 namespace App\Support;
 
 /**
- * Dil% slabs → Target GROI% → Sprc Dil.
- * Used by Amazon, eBay 1–3 / 2 OP, Temu 1–3, and the other Sprc Dil tabulator pages.
+ * Dil% slabs → Target % → Sprc Dil.
+ * Every Sprc Dil page treats the slab number as Target NROI%
+ * (S PRC so SNROI = target). Ads%=0 → same dollar as Target GROI.
  * First-time defaults: five slabs 0.1–25%. Add/delete is allowed; match is by min/max.
  */
 class AmazonDilGroiRule
@@ -46,6 +47,7 @@ class AmazonDilGroiRule
             'min' => $min,
             'max' => $max,
             'groi' => $groi,
+            'nroi' => $groi,
         ];
     }
 
@@ -67,7 +69,8 @@ class AmazonDilGroiRule
         if ($min === null || $max === null || $min < 0 || $max <= $min) {
             return null;
         }
-        $groi = is_numeric($item['groi'] ?? null) ? (float) $item['groi'] : 0.0;
+        $target = $item['nroi'] ?? $item['groi'] ?? null;
+        $groi = is_numeric($target) ? (float) $target : 0.0;
 
         return self::make($min, $max, $groi);
     }
@@ -181,10 +184,11 @@ class AmazonDilGroiRule
     }
 
     /**
-     * Suggested price so GROI% = target:
-     * (LP × (1 + GROI%/100) + Ship) / 0.80
+     * Suggested price so the target % lands on the listing.
+     * Ads% = 0 → GROI (other channels): (LP × (1 + %/100) + Ship) / 0.80
+     * Ads% > 0 → NROI (Amazon): (LP × (1 + %/100) + Ship) / (0.80 − Ads%/100)
      */
-    public static function suggestedPrice(float $lp, float $ship, float $groiPct): ?float
+    public static function suggestedPrice(float $lp, float $ship, float $targetPct, float $adsPct = 0.0, float $margin = self::TAKE_HOME): ?float
     {
         if (! is_finite($lp) || $lp <= 0) {
             return null;
@@ -192,15 +196,64 @@ class AmazonDilGroiRule
         if (! is_finite($ship)) {
             $ship = 0.0;
         }
-        if (! is_finite($groiPct)) {
+        if (! is_finite($targetPct)) {
             return null;
         }
-        $price = ($lp * (1 + $groiPct / 100) + $ship) / self::TAKE_HOME;
+        if (! is_finite($adsPct) || $adsPct < 0) {
+            $adsPct = 0.0;
+        }
+        if (! is_finite($margin) || $margin <= 0) {
+            return null;
+        }
+        if ($margin > 1) {
+            $margin = $margin / 100;
+        }
+        $netTakeHome = $margin - ($adsPct / 100);
+        if ($netTakeHome <= 0) {
+            return null;
+        }
+        $price = ($lp * (1 + $targetPct / 100) + $ship) / $netTakeHome;
         if (! is_finite($price) || $price <= 0) {
             return null;
         }
 
         return round($price, 2);
+    }
+
+    /**
+     * Amazon Sprc Dil: S PRC so SNROI% = target.
+     * SNROI = ((price × 0.80 − ship − LP − price × Ads%/100) / LP) × 100
+     */
+    public static function suggestedPriceFromNroi(float $lp, float $ship, float $nroiPct, float $adsPct, float $margin = self::TAKE_HOME): ?float
+    {
+        return self::suggestedPrice($lp, $ship, $nroiPct, $adsPct, $margin);
+    }
+
+    /**
+     * SNROI at a candidate price — same shape as /amazon-tabulator-view SNROI:
+     * ((price × margin − LP − Ship − price × Ads%/100) / LP) × 100.
+     */
+    public static function snroiAtPrice(float $price, float $lp, float $ship = 0.0, float $adsPct = 0.0, float $margin = self::TAKE_HOME): ?float
+    {
+        if (! is_finite($price) || $price <= 0 || ! is_finite($lp) || $lp <= 0) {
+            return null;
+        }
+        if (! is_finite($ship)) {
+            $ship = 0.0;
+        }
+        if (! is_finite($adsPct) || $adsPct < 0) {
+            $adsPct = 0.0;
+        }
+        if (! is_finite($margin) || $margin <= 0) {
+            return null;
+        }
+        if ($margin > 1) {
+            $margin = $margin / 100;
+        }
+        $grossPft = ($price * $margin) - $ship - $lp;
+        $adSpend = $price * ($adsPct / 100);
+
+        return (($grossPft - $adSpend) / $lp) * 100;
     }
 
     /**

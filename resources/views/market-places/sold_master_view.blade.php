@@ -2627,16 +2627,17 @@ title: "Dil %",
             if (pct >= 100 && pct <= 150) return '#28a745';
             return '#e83e8c';
         }
-        // Dark mustard text (no yellow background)
-        const darkMustard = '#ff9c00'; // orange/mustard accent
         function styleForCellColor(c) {
+            if (window.MetricPctColors && typeof MetricPctColors.styleForCellColor === 'function') {
+                return MetricPctColors.styleForCellColor(c);
+            }
             if (!c) return 'font-weight:600;';
-            if (c === '#ffc107') return 'color:' + darkMustard + ';font-weight:600;';
+            if (c === '#ffc107') return 'color:#000;background-color:#ffc107;font-weight:700;padding:1px 5px;border-radius:3px;';
             return 'color:' + c + ';font-weight:600;';
         }
         function applyCellColor($el, c) {
-            if (c === '#ffc107') { $el.css({ backgroundColor: '', color: darkMustard }); }
-            else { $el.css({ backgroundColor: '', color: c || '#6c757d' }); }
+            if (c === '#ffc107') { $el.css({ backgroundColor: '#ffc107', color: '#000', fontWeight: 700, padding: '1px 5px', borderRadius: '3px' }); }
+            else { $el.css({ backgroundColor: '', color: c || '#6c757d', padding: '', borderRadius: '' }); }
         }
 
         // Sprice modal: instant recalc when Amz SPRICE input changes

@@ -1540,7 +1540,7 @@
                 label: 'Shein',
                 saveSpriceUrl: '/shein/save-sprice',
                 saveSpriceBatchUrl: '/shein/save-sprice',
-                pushPriceUrl: '/cvr-master-push-price',
+                pushPriceUrl: '/shein/pricing-push-price',
                 priceField: 'special_offer',
                 dilField: 'dil_percent',
                 invField: 'inv',
@@ -3412,9 +3412,13 @@
         /** SGROI at a candidate S PRC — same shape as /ebay-tabulator-view S GROI. */
         function chPromoSgroiAtPrice(d, price) {
             const sprice = Number(price);
-            const lp = parseFloat(d && d.LP_productmaster);
+            const lp = (typeof chPromoLp === 'function')
+                ? chPromoLp(d)
+                : parseFloat(d && (d.LP_productmaster != null ? d.LP_productmaster : d.lp));
             if (!(sprice > 0) || !(lp > 0)) return null;
-            const ship = parseFloat(d && d.Ship_productmaster) || 0;
+            const ship = (typeof chPromoShipCost === 'function')
+                ? chPromoShipCost(d)
+                : (parseFloat(d && (d.Ship_productmaster != null ? d.Ship_productmaster : d.ship)) || 0);
             const margin = (typeof chPromoTakehomeMargin === 'function')
                 ? chPromoTakehomeMargin(d)
                 : 1;
@@ -3449,8 +3453,13 @@
                 return false;
             }
             if (!d) return true;
-            // eBay matches Amazon: 0 Sold Dil prices still LMP-cap when SGROI at LMP ≥ 20%.
+            // eBay / Shein match Amazon: 0 Sold Dil prices still LMP-cap when SGROI at LMP ≥ 20%.
             if (chPromoIsEbayChannel()) return true;
+            if (typeof chPromoIsSheinPromoChannel === 'function'
+                ? chPromoIsSheinPromoChannel()
+                : CHANNEL_PROMO_CHANNEL === 'shein') {
+                return true;
+            }
             // Best Buy: always LMP-cap (including 0 Sold). Amz floor must not skip this.
             if (typeof chPromoIsBestbuyPromoChannel === 'function'
                 ? chPromoIsBestbuyPromoChannel()
@@ -3472,6 +3481,15 @@
                 if (!chPromoEbayShouldCapToLmp(d, sprice)) return chPromoRound2(sprice);
                 const ebayLmp = chPromoLmp(d);
                 return ebayLmp > 0 ? chPromoRound2(ebayLmp) : chPromoRound2(sprice);
+            }
+            if (typeof chPromoIsSheinPromoChannel === 'function'
+                ? chPromoIsSheinPromoChannel()
+                : CHANNEL_PROMO_CHANNEL === 'shein') {
+                if (!chPromoEbayShouldCapToLmp(d, sprice)) return chPromoRound2(sprice);
+                const sheinLmp = (typeof sheinEffectiveLmp === 'function')
+                    ? sheinEffectiveLmp(d)
+                    : chPromoLmp(d);
+                return sheinLmp > 0 ? chPromoRound2(sheinLmp) : chPromoRound2(sprice);
             }
             const getLmp = (typeof aeEffectiveLmp === 'function')
                 ? aeEffectiveLmp
@@ -3843,10 +3861,15 @@
                 ? chPromoRound2(live)
                 : chPromoFloorShopifySpriceToAmz(d, chPromoCapSpriceToLmp(d, live));
         }
+        /** Cell / S GPFT / S GROI / SNROI: saved SPRICE only. Dil stays in Sprc Dil / Apply. */
+        function chPromoTableSprice(d) {
+            if (!d) return 0;
+            const saved = chPromoGetSprice(d);
+            return saved > 0 ? chPromoRound2(saved) : 0;
+        }
         /** Cell / S GPFT / S GROI: saved SPRICE only. No live fallback. */
         function chPromoSavedOrLiveSprice(d) {
-            const saved = chPromoGetSprice(d);
-            return saved > 0 ? saved : 0;
+            return chPromoTableSprice(d);
         }
         function chPromoSpricePatch(val) {
             const n = Number(val);
@@ -4160,6 +4183,13 @@
                 const views = Number(d.views) || 0;
                 const orders = Number(d.output_order) || 0;
                 return views > 0 ? chPromoRound2((orders / views) * 100) : 0;
+            }
+            if (CHANNEL_PROMO_CHANNEL === 'shein') {
+                let sheinCvr = Number(d.cvr);
+                if (isFinite(sheinCvr) && sheinCvr >= 0) return sheinCvr;
+                const views = Number(d.views) || 0;
+                const sold = Number(d.al30 != null ? d.al30 : d.AL30) || 0;
+                return views > 0 ? chPromoRound2((sold / views) * 100) : 0;
             }
             const f = chPromoCfg.cvrField;
             let cvr = Number(f ? d[f] : NaN);
@@ -6589,6 +6619,13 @@
                             if (CHANNEL_PROMO_CHANNEL === 'aliexpress' && pushed > 0) {
                                 patch.price = pushed;
                                 patch.sprice = pushed;
+                            }
+                            if (CHANNEL_PROMO_CHANNEL === 'shein' && pushed > 0) {
+                                patch.special_offer = pushed;
+                                patch.calc_price = pushed;
+                                patch.sprice = pushed;
+                                patch.is_missing_shein = false;
+                                patch.missing = '';
                             }
                             if (typeof window.aeApplyPushPatchToSku === 'function' && CHANNEL_PROMO_CHANNEL === 'aliexpress') {
                                 window.aeApplyPushPatchToSku(job.sku, patch);
@@ -11736,6 +11773,8 @@
         window.chPromoIsEndedListing = chPromoIsEndedListing;
         window.chPromoSpriceFromStdTPromo = chPromoSpriceFromStdTPromo;
         window.chPromoLiveSprice = chPromoLiveSprice;
+        window.chPromoTableSprice = chPromoTableSprice;
+        window.chPromoSavedOrLiveSprice = chPromoSavedOrLiveSprice;
         window.chPromoPushSpriceAmount = chPromoPushSpriceAmount;
         window.chPromoQueueReloadSpricePush = chPromoQueueReloadSpricePush;
         window.chPromoPageDisplayedSprice = chPromoPageDisplayedSprice;

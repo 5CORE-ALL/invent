@@ -91,6 +91,31 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertNull(AmazonDilGroiRule::suggestedPrice(0, $ship, $groi));
     }
 
+    public function test_normalize_accepts_nroi_alias(): void
+    {
+        $rule = AmazonDilGroiRule::normalize(['min' => 0.1, 'max' => 5, 'nroi' => 45]);
+        $this->assertNotNull($rule);
+        $this->assertSame(45.0, $rule['groi']);
+        $this->assertSame(45.0, $rule['nroi']);
+    }
+
+    public function test_suggested_price_from_nroi_uses_ads_and_inverts_snroi(): void
+    {
+        $lp = 40.0;
+        $ship = 8.0;
+        $nroi = 50.0;
+        $ads = 10.0;
+        $price = AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $nroi, $ads);
+        $expected = round(($lp * (1 + $nroi / 100) + $ship) / (0.80 - 0.10), 2);
+        $this->assertSame($expected, $price);
+        $this->assertEqualsWithDelta(
+            $nroi,
+            AmazonDilGroiRule::snroiAtPrice($price, $lp, $ship, $ads),
+            0.05
+        );
+        $this->assertNull(AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $nroi, 80));
+    }
+
     public function test_cvr_trend_matches_tabulator_l30_vs_l45(): void
     {
         $this->assertSame('down', AmazonDilGroiRule::cvrTrend(0, 8));
