@@ -5,7 +5,7 @@ namespace App\Support;
 /**
  * Dil% slabs → Target % → Sprc Dil.
  * Every Sprc Dil page treats the slab number as Target NROI%
- * (S PRC so SNROI = target). Ads% = 0 → same dollars as GROI.
+ * (S PRC so SNROI = target). Ads%=0 → same dollar as Target GROI.
  * First-time defaults: five slabs 0.1–25%. Add/delete is allowed; match is by min/max.
  */
 class AmazonDilGroiRule

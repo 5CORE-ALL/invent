@@ -1397,8 +1397,8 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * Dil slabs → target %. All Sprc Dil pages use Target NROI
-     * (stored groi/nroi). Ads% = 0 → same dollars as GROI.
+     * Dil slabs → target %. Every Sprc Dil page uses Target NROI
+     * (stored groi/nroi). Ads%=0 keeps the same dollar as GROI.
      */
     public function dilGroiRules(Request $request, string $channel): JsonResponse
     {
@@ -1835,7 +1835,7 @@ class ChannelPromoPricingController extends Controller
         return $rules;
     }
 
-    /** Every Sprc Dil page stores slabs as Target NROI% (Ads% = 0 → same $ as GROI). */
+    /** Every Sprc Dil page uses Target NROI% (Ads%=0 → same $ as GROI). */
     private function dilTargetMetric(string $channel): string
     {
         return 'nroi';

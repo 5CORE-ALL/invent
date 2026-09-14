@@ -1,6 +1,5 @@
 {{--
-  Sprc Dil — Dil → Target NROI slabs on every page that includes this blade.
-  Ads% = 0 (no Ads on the page) → NROI = GROI and NPFT = GPFT.
+  Sprc Dil — Dil → Target NROI slabs on every Dil tabulator (Ads%=0 → same $ as GROI).
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
   Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / AliExpress / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
@@ -976,37 +975,44 @@
             return !!EBAY_DIL_TARGET_NROI;
         }
         function ebayDilAdsPct() {
+            const read = function(getter) {
+                try {
+                    const n = parseFloat(getter());
+                    return (isFinite(n) && n > 0) ? n : 0;
+                } catch (e) {
+                    return 0;
+                }
+            };
             if (typeof shopifyChannelAdsPct === 'function') {
-                try {
-                    const n = parseFloat(shopifyChannelAdsPct());
-                    if (isFinite(n) && n > 0) return n;
-                } catch (e) { /* ignore */ }
+                const n = parseFloat(shopifyChannelAdsPct());
+                if (isFinite(n) && n > 0) return n;
             }
-            const getters = [
-                function() { return EBAY_CHANNEL_ADS_PCT; },
-                function() { return EBAY2_CHANNEL_ADS_PCT; },
-                function() { return EBAY3_CHANNEL_ADS_PCT; },
-                function() { return AMAZON_CHANNEL_ADS_PCT; },
-                function() { return SHOPIFY_DIRECT_TCOS_PCT; },
-                function() { return CHANNEL_ADS_PCT; },
-            ];
-            for (let i = 0; i < getters.length; i++) {
-                try {
-                    const n = parseFloat(getters[i]());
-                    if (isFinite(n) && n > 0) return n;
-                } catch (e) { /* undeclared / TDZ */ }
+            if (EBAY_DIL_GROI_CHANNEL === 'ebay2') {
+                return read(function() { return EBAY2_CHANNEL_ADS_PCT; });
             }
-            return 0;
-        }
-        function ebayDilUsesSpecialSprice() {
-            if (typeof ebayDgIsDobaWithoutship === 'function' && ebayDgIsDobaWithoutship()) return true;
-            if (EBAY_DIL_GROI_CHANNEL === 'temu' || EBAY_DIL_GROI_CHANNEL === 'temu2' || EBAY_DIL_GROI_CHANNEL === 'temu3') {
-                return true;
+            if (EBAY_DIL_GROI_CHANNEL === 'ebay3') {
+                return read(function() { return EBAY3_CHANNEL_ADS_PCT; });
             }
-            try {
-                if (typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel()) return true;
-            } catch (e) { /* ignore */ }
-            return false;
+            if (EBAY_DIL_GROI_CHANNEL === 'shopify_b2c') {
+                return read(function() { return SHOPIFY_DIRECT_TCOS_PCT; });
+            }
+            if (EBAY_DIL_GROI_CHANNEL === 'shopify_b2b') {
+                return read(function() { return SHOPIFY_B2B_TCOS_PCT; });
+            }
+            if (EBAY_DIL_GROI_CHANNEL === 'reverb') {
+                return read(function() { return REVERB_CHANNEL_ADS_PCT; });
+            }
+            if (EBAY_DIL_GROI_CHANNEL === 'ebay1') {
+                return read(function() { return EBAY_CHANNEL_ADS_PCT; });
+            }
+            const n = read(function() { return AMAZON_CHANNEL_ADS_PCT; })
+                || read(function() { return EBAY_CHANNEL_ADS_PCT; })
+                || read(function() { return EBAY2_CHANNEL_ADS_PCT; })
+                || read(function() { return EBAY3_CHANNEL_ADS_PCT; })
+                || read(function() { return REVERB_CHANNEL_ADS_PCT; })
+                || read(function() { return SHOPIFY_DIRECT_TCOS_PCT; })
+                || read(function() { return SHOPIFY_B2B_TCOS_PCT; });
+            return n;
         }
         function ebayDilTakehomeMargin(d) {
             if (typeof chPromoTakehomeMargin === 'function') {
@@ -1024,16 +1030,6 @@
             return margin > 1 ? (margin / 100) : margin;
         }
         function ebaySpriceFromGroi(d, groi) {
-            if (ebayDilTargetsNroi() && !ebayDilUsesSpecialSprice()) {
-                const lp = parseFloat(d && d.LP_productmaster) || 0;
-                if (!(lp > 0)) return 0;
-                const ship = ebayDgExcludeShip() ? 0 : (parseFloat(d && d.Ship_productmaster) || 0);
-                const margin = ebayDilTakehomeMargin(d);
-                const denom = margin - (ebayDilAdsPct() / 100);
-                if (!(denom > 0)) return 0;
-                const price = (lp * (1 + (Number(groi) || 0) / 100) + ship) / denom;
-                return (isFinite(price) && price > 0) ? ebayDgRound2(price) : 0;
-            }
             if (ebayDgIsDobaWithoutship()) {
                 const copied = ebayDgDobaTabulatorSPick(d);
                 if (copied > 0) return copied;
@@ -1048,6 +1044,17 @@
                     ? ebayDgRound2(Math.max(0, delivery - ship))
                     : 0;
             }
+            const ads = ebayDilTargetsNroi() ? ebayDilAdsPct() : 0;
+            if (ads > 0) {
+                const lp = parseFloat(d && d.LP_productmaster) || 0;
+                if (!(lp > 0)) return 0;
+                const ship = ebayDgExcludeShip() ? 0 : (parseFloat(d && d.Ship_productmaster) || 0);
+                const margin = ebayDilTakehomeMargin(d);
+                const denom = margin - (ads / 100);
+                if (!(denom > 0)) return 0;
+                const price = (lp * (1 + (Number(groi) || 0) / 100) + ship) / denom;
+                return (isFinite(price) && price > 0) ? ebayDgRound2(price) : 0;
+            }
             if (typeof chPromoSpriceFromTargetRoi === 'function') {
                 const p = chPromoSpriceFromTargetRoi(d, groi);
                 return p > 0 ? p : 0;
@@ -1055,13 +1062,10 @@
             const lp = parseFloat(d && d.LP_productmaster) || 0;
             if (!(lp > 0)) return 0;
             const ship = ebayDgExcludeShip() ? 0 : (parseFloat(d && d.Ship_productmaster) || 0);
-            const margin = (typeof CHANNEL_PROMO_TAKEHOME === 'number' && CHANNEL_PROMO_TAKEHOME > 0)
-                ? CHANNEL_PROMO_TAKEHOME
-                : ((typeof EBAY_TAKEHOME !== 'undefined' && Number(EBAY_TAKEHOME) > 0) ? Number(EBAY_TAKEHOME)
-                    : ((typeof EBAY2_TAKEHOME !== 'undefined' && Number(EBAY2_TAKEHOME) > 0) ? Number(EBAY2_TAKEHOME)
-                        : ((typeof EBAY3_TAKEHOME !== 'undefined' && Number(EBAY3_TAKEHOME) > 0) ? Number(EBAY3_TAKEHOME)
-                            : 0.80)));
-            const price = (lp * (1 + (Number(groi) || 0) / 100) + ship) / margin;
+            const margin = ebayDilTakehomeMargin(d);
+            const denom = margin - (ads / 100);
+            if (!(denom > 0)) return 0;
+            const price = (lp * (1 + (Number(groi) || 0) / 100) + ship) / denom;
             return (isFinite(price) && price > 0) ? ebayDgRound2(price) : 0;
         }
         function ebayDilGroiMetaForRow(d) {
@@ -2213,7 +2217,6 @@
             });
             Promise.resolve(loadEbayDilGroiRules()).catch(function() { /* defaults */ });
             bindEbaySprcDilAutofill();
-            if (typeof ebayDilBindNetColumns === 'function') ebayDilBindNetColumns();
         });
         @include('partials.sprc-dil-nroi-npft')
 @endif

@@ -1,26 +1,33 @@
 {{--
-  Shared by ebay-sprc-dil (every Dil tabulator).
-  If the page has no NROI / NPFT column, add them next to GROI / GPFT.
-  Ads% = 0 → NROI shows GROI, NPFT shows GPFT.
-  Ads% > 0 → NROI / NPFT use the net formula.
+  Shared by ebay-sprc-dil (every Dil tabulator). Blade-only — no per-channel SH/service.
+  If the page has no SNROI / SNPFT column, add them next to SGROI / SGPFT.
+  Ads% = 0 → SNROI shows SGROI, SNPFT shows SGPFT.
+  Ads% > 0 → SNROI / SNPFT use the net formula from S PRC.
 --}}
         function ebayDilColInfo(col) {
             const def = (col && col.getDefinition) ? (col.getDefinition() || {}) : {};
             return { col: col, title: String(def.title || ''), field: String(def.field || '') };
         }
-        function ebayDilColMatch(info, re) {
-            return re.test(info.title) || re.test(info.field);
+        function ebayDilIsSnroiCol(info) {
+            return /snroi/i.test(info.title) || /snroi/i.test(info.field);
         }
-        function ebayDilIsNroiCol(info) { return ebayDilColMatch(info, /nroi/i); }
-        function ebayDilIsNpftCol(info) { return ebayDilColMatch(info, /npft/i); }
-        function ebayDilIsGroiCol(info) {
-            if (ebayDilIsNroiCol(info) || /sgroi/i.test(info.title) || /sgroi/i.test(info.field)) return false;
-            return /groi/i.test(info.title) || /^(groi%?|roi%?)$/i.test(info.field);
+        function ebayDilIsSnpftCol(info) {
+            return /snpft/i.test(info.title) || /snpft/i.test(info.field);
         }
-        function ebayDilIsGpftCol(info) {
-            if (ebayDilIsNpftCol(info) || /sgpft/i.test(info.title) || /sgpft/i.test(info.field)) return false;
-            if (/gpft\s*\$/i.test(info.title) || /gpft\$/i.test(info.field)) return false;
-            return /gpft/i.test(info.title) || /^(gpft%?|pft_pct|pft %)$/i.test(info.field);
+        function ebayDilIsSgroiCol(info) {
+            if (ebayDilIsSnroiCol(info)) return false;
+            return /s\s*groi/i.test(info.title)
+                || /sgroi/i.test(info.field)
+                || /^s\s*roi/i.test(info.title)
+                || /^(sroi|sgroi)$/i.test(info.field);
+        }
+        function ebayDilIsSgpftCol(info) {
+            if (ebayDilIsSnpftCol(info)) return false;
+            return /s\s*gpft/i.test(info.title) || /sgpft/i.test(info.field);
+        }
+        function ebayDilIsSpriceCol(info) {
+            return /^(s\s*prc|sprice)$/i.test(String(info.title).trim())
+                || /^(sprice|sprc)$/i.test(info.field);
         }
         function ebayDilFirstNumber(d, keys) {
             if (!d) return null;
@@ -32,36 +39,45 @@
             }
             return null;
         }
-        function ebayDilRowGroiValue(d) {
-            const n = ebayDilFirstNumber(d, ['GROI%', 'GROI', 'groi', 'ROI%', 'roi', 'SROI']);
-            return n == null ? 0 : n;
+        function ebayDilRowSprice(d) {
+            return ebayDilFirstNumber(d, ['SPRICE', 'sprice', 'SPRC_DIL', 'sprc_dil']) || 0;
         }
-        function ebayDilRowGpftValue(d) {
-            const n = ebayDilFirstNumber(d, ['GPFT%', 'GPFT', 'gpft', 'pft_pct', 'PFT %', 'PFT%']);
-            return n == null ? 0 : n;
+        function ebayDilRowShip(d) {
+            if (typeof ebayDgExcludeShip === 'function' && ebayDgExcludeShip()) return 0;
+            return parseFloat(d && d.Ship_productmaster) || 0;
         }
-        function ebayDilRowListedPrice(d) {
-            return ebayDilFirstNumber(d, [
-                'Price', 'price', 'eBay Price', 'EBAY PRICE', 'listed_price', 'Shopify Price', 'Sp. Price'
-            ]) || 0;
-        }
-        function ebayDilComputedNroi(d) {
-            const ads = (typeof ebayDilAdsPct === 'function') ? ebayDilAdsPct() : 0;
-            const groi = ebayDilRowGroiValue(d);
-            if (!(ads > 0)) return groi;
-            const price = ebayDilRowListedPrice(d);
+        function ebayDilRowSgroi(d) {
+            const n = ebayDilFirstNumber(d, ['SGROI', 'SROI', 'sgroi', 'sroi']);
+            if (n != null) return n;
+            const price = ebayDilRowSprice(d);
             const lp = parseFloat(d && d.LP_productmaster) || 0;
-            if (!(price > 0) || !(lp > 0)) return groi;
-            const ship = (typeof ebayDgExcludeShip === 'function' && ebayDgExcludeShip())
-                ? 0
-                : (parseFloat(d && d.Ship_productmaster) || 0);
+            if (!(price > 0) || !(lp > 0)) return 0;
             const margin = (typeof ebayDilTakehomeMargin === 'function') ? ebayDilTakehomeMargin(d) : 0.80;
-            return ((price * margin - lp - ship - price * ads / 100) / lp) * 100;
+            return ((price * margin - lp - ebayDilRowShip(d)) / lp) * 100;
         }
-        function ebayDilComputedNpft(d) {
+        function ebayDilRowSgpft(d) {
+            const n = ebayDilFirstNumber(d, ['SGPFT', 'sgpft']);
+            if (n != null) return n;
+            const price = ebayDilRowSprice(d);
+            if (!(price > 0)) return 0;
+            const lp = parseFloat(d && d.LP_productmaster) || 0;
+            const margin = (typeof ebayDilTakehomeMargin === 'function') ? ebayDilTakehomeMargin(d) : 0.80;
+            return ((price * margin - lp - ebayDilRowShip(d)) / price) * 100;
+        }
+        function ebayDilComputedSnroi(d) {
             const ads = (typeof ebayDilAdsPct === 'function') ? ebayDilAdsPct() : 0;
-            const gpft = ebayDilRowGpftValue(d);
-            return (ads > 0) ? (gpft - ads) : gpft;
+            const sgroi = ebayDilRowSgroi(d);
+            if (!(ads > 0)) return sgroi;
+            const price = ebayDilRowSprice(d);
+            const lp = parseFloat(d && d.LP_productmaster) || 0;
+            if (!(price > 0) || !(lp > 0)) return sgroi;
+            const margin = (typeof ebayDilTakehomeMargin === 'function') ? ebayDilTakehomeMargin(d) : 0.80;
+            return ((price * margin - lp - ebayDilRowShip(d) - price * ads / 100) / lp) * 100;
+        }
+        function ebayDilComputedSnpft(d) {
+            const ads = (typeof ebayDilAdsPct === 'function') ? ebayDilAdsPct() : 0;
+            const sgpft = ebayDilRowSgpft(d);
+            return (ads > 0) ? (sgpft - ads) : sgpft;
         }
         function ebayDilPctColor(v, kind) {
             if (kind === 'gpft') {
@@ -79,33 +95,38 @@
         function ebayDilNetColFormatter(kind) {
             return function(cell) {
                 const d = (cell.getRow() && cell.getRow().getData) ? (cell.getRow().getData() || {}) : {};
-                if (d.is_parent || d.is_parent_summary || d._children) {
-                    if (d.is_parent || d.is_parent_summary) return '<span style="color:#6c757d;">–</span>';
+                if (d.is_parent || d.is_parent_summary) {
+                    return '<span style="color:#6c757d;">–</span>';
                 }
-                const v = kind === 'npft' ? ebayDilComputedNpft(d) : ebayDilComputedNroi(d);
+                const v = kind === 'snpft' ? ebayDilComputedSnpft(d) : ebayDilComputedSnroi(d);
                 if (!isFinite(v)) return '';
                 const ads = (typeof ebayDilAdsPct === 'function') ? ebayDilAdsPct() : 0;
                 const tip = ads > 0
-                    ? (kind === 'npft' ? ('NPFT = GPFT − Ads% (' + ads + ')') : ('NROI = net of Ads% (' + ads + ')'))
-                    : (kind === 'npft' ? 'NPFT = GPFT (no Ads%)' : 'NROI = GROI (no Ads%)');
-                const color = ebayDilPctColor(v, kind === 'npft' ? 'gpft' : 'groi');
+                    ? (kind === 'snpft'
+                        ? ('SNPFT = SGPFT − Ads% (' + ads + ')')
+                        : ('SNROI from S PRC, net of Ads% (' + ads + ')'))
+                    : (kind === 'snpft'
+                        ? 'SNPFT = SGPFT (this page has no Ads%)'
+                        : 'SNROI = SGROI (this page has no Ads%)');
+                const color = ebayDilPctColor(v, kind === 'snpft' ? 'gpft' : 'groi');
                 return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="color:' + color + ';font-weight:600;">'
                     + Math.round(v) + '%</span>';
             };
         }
         function ebayDilNetColumnDef(title, field, kind) {
+            const ads = (typeof ebayDilAdsPct === 'function') ? ebayDilAdsPct() : 0;
             return {
                 title: title,
                 field: field,
                 hozAlign: 'center',
                 sorter: 'number',
                 width: 58,
-                headerTooltip: kind === 'npft'
-                    ? (ebayDilAdsPct() > 0 ? 'NPFT = GPFT − Ads%.' : 'NPFT = GPFT (this page has no Ads%).')
-                    : (ebayDilAdsPct() > 0 ? 'NROI = net of Ads%.' : 'NROI = GROI (this page has no Ads%).'),
+                headerTooltip: kind === 'snpft'
+                    ? (ads > 0 ? 'SNPFT = SGPFT − Ads%.' : 'SNPFT = SGPFT (this page has no Ads%).')
+                    : (ads > 0 ? 'SNROI from S PRC, net of Ads%.' : 'SNROI = SGROI (this page has no Ads%).'),
                 formatter: ebayDilNetColFormatter(kind),
                 accessorDownload: function(value, d) {
-                    const v = kind === 'npft' ? ebayDilComputedNpft(d || {}) : ebayDilComputedNroi(d || {});
+                    const v = kind === 'snpft' ? ebayDilComputedSnpft(d || {}) : ebayDilComputedSnroi(d || {});
                     return isFinite(v) ? Math.round(v) : '';
                 },
             };
@@ -118,28 +139,24 @@
             try { cols = tbl.getColumns(true) || []; } catch (e) { return false; }
             if (!cols.length) return false;
             const infos = cols.map(ebayDilColInfo);
-            const hasNroi = infos.some(ebayDilIsNroiCol);
-            const hasNpft = infos.some(ebayDilIsNpftCol);
-            const groi = infos.find(ebayDilIsGroiCol);
-            const gpft = infos.find(ebayDilIsGpftCol);
-            if (hasNroi && hasNpft) {
+            const hasSnroi = infos.some(ebayDilIsSnroiCol);
+            const hasSnpft = infos.some(ebayDilIsSnpftCol);
+            const sgroi = infos.find(ebayDilIsSgroiCol);
+            const sgpft = infos.find(ebayDilIsSgpftCol);
+            const sprice = infos.find(ebayDilIsSpriceCol);
+            if (hasSnroi && hasSnpft) {
                 tbl._ebayDilNetColsAdded = true;
                 return true;
             }
-            if (!groi && !gpft && hasNroi && hasNpft) {
-                tbl._ebayDilNetColsAdded = true;
-                return true;
-            }
+            const after = (sgroi && sgroi.field) || (sgpft && sgpft.field) || (sprice && sprice.field);
+            if (!after) return false;
             try {
-                if (!hasNroi && groi && groi.field && typeof tbl.addColumn === 'function') {
-                    tbl.addColumn(ebayDilNetColumnDef('NROI', 'NROI', 'nroi'), false, groi.field);
-                } else if (!hasNroi && gpft && gpft.field && typeof tbl.addColumn === 'function') {
-                    tbl.addColumn(ebayDilNetColumnDef('NROI', 'NROI', 'nroi'), false, gpft.field);
+                if (!hasSnroi && typeof tbl.addColumn === 'function') {
+                    tbl.addColumn(ebayDilNetColumnDef('SNROI', 'SNROI', 'snroi'), false, after);
                 }
-                if (!hasNpft && gpft && gpft.field && typeof tbl.addColumn === 'function') {
-                    tbl.addColumn(ebayDilNetColumnDef('NPFT', 'NPFT', 'npft'), false, gpft.field);
-                } else if (!hasNpft && groi && groi.field && typeof tbl.addColumn === 'function') {
-                    tbl.addColumn(ebayDilNetColumnDef('NPFT', 'NPFT', 'npft'), false, groi.field);
+                if (!hasSnpft && typeof tbl.addColumn === 'function') {
+                    const npftAfter = (sgpft && sgpft.field) || 'SNROI' || after;
+                    tbl.addColumn(ebayDilNetColumnDef('SNPFT', 'SNPFT', 'snpft'), false, npftAfter);
                 }
                 tbl._ebayDilNetColsAdded = true;
                 return true;
@@ -159,11 +176,11 @@
             try { table.on('dataLoaded', run); } catch (e) { /* ignore */ }
             run();
             setTimeout(run, 800);
-            setTimeout(run, 2000);
+            setTimeout(run, 2500);
         }
         window.ebayDilEnsureNetColumns = ebayDilEnsureNetColumns;
-        window.ebayDilComputedNroi = ebayDilComputedNroi;
-        window.ebayDilComputedNpft = ebayDilComputedNpft;
+        window.ebayDilComputedSnroi = ebayDilComputedSnroi;
+        window.ebayDilComputedSnpft = ebayDilComputedSnpft;
         if (typeof jQuery !== 'undefined') {
             jQuery(ebayDilBindNetColumns);
         } else {
