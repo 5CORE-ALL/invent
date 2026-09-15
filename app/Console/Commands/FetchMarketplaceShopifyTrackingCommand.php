@@ -14,12 +14,41 @@ class FetchMarketplaceShopifyTrackingCommand extends Command
                             {--fresh : Recheck Shopify copies even if recently cached}
                             {--all : Walk newest and oldest unfulfilled/partial copies, not only the latest page}
                             {--amazon= : Fulfill one Shopify copy by Amazon order id}
-                            {--name= : Shopify order number, e.g. 331615}';
+                            {--name= : Shopify order number, e.g. 331615}
+                            {--ids= : Comma-separated marketplace order ids to fulfill now}
+                            {--marketplace=bestbuy : Channel slug for --ids}';
 
     protected $description = 'Fetch Veeqo / GOFO tracking onto unfulfilled Shopify copies for every marketplace.';
 
     public function handle(VeeqoShopifyFulfillmentService $sync): int
     {
+        $idsRaw = trim((string) $this->option('ids'));
+        if ($idsRaw !== '') {
+            $ids = array_values(array_filter(array_map('trim', explode(',', $idsRaw))));
+            $marketplace = strtolower(trim((string) $this->option('marketplace'))) ?: 'bestbuy';
+            $this->info('Fulfilling Shopify copies for '.$marketplace.' order ids: '.implode(', ', $ids));
+            Cache::forget('mm.label_ssl_broken');
+            $rows = $sync->fulfillShopifyCopiesByOrderRefs($ids, $marketplace);
+            $failed = 0;
+            foreach ($rows as $row) {
+                $ok = ! empty($row['success']);
+                if (! $ok) {
+                    $failed++;
+                }
+                $this->line(sprintf(
+                    '%s %s sku=%s action=%s tracking=%s — %s',
+                    $ok ? 'OK' : 'FAIL',
+                    (string) ($row['ref'] ?? ''),
+                    (string) ($row['sku'] ?? ''),
+                    (string) ($row['action'] ?? ''),
+                    (string) ($row['tracking'] ?? ''),
+                    (string) ($row['message'] ?? '')
+                ));
+            }
+
+            return $failed === 0 ? self::SUCCESS : self::FAILURE;
+        }
+
         $amazon = trim((string) $this->option('amazon'));
         if ($amazon !== '') {
             $name = trim((string) $this->option('name')) ?: null;

@@ -31,11 +31,14 @@ final class VeeqoAllocationTracking
                 continue;
             }
             $shipment = is_array($row['shipment'] ?? null) ? $row['shipment'] : $row;
-            $tracking = self::trackingNumberFrom($shipment) ?? self::trackingNumberFrom($row);
-            if ($tracking === null) {
-                continue;
+            $tracking = null;
+            foreach (array_merge(self::trackingNumbersFrom($shipment), self::trackingNumbersFrom($row)) as $tn) {
+                if (! isset($exclude[$tn])) {
+                    $tracking = $tn;
+                    break;
+                }
             }
-            if (isset($exclude[$tracking])) {
+            if ($tracking === null) {
                 continue;
             }
 
@@ -78,14 +81,51 @@ final class VeeqoAllocationTracking
     public static function buckets(array $order): array
     {
         $buckets = [];
-        if (isset($order['allocations']) && is_array($order['allocations'])) {
-            $buckets = array_merge($buckets, $order['allocations']);
-        }
-        if (isset($order['shipments']) && is_array($order['shipments'])) {
-            foreach ($order['shipments'] as $shipment) {
-                $buckets[] = ['shipment' => $shipment];
+        foreach (['allocations', 'allocation'] as $key) {
+            $raw = $order[$key] ?? null;
+            if (is_array($raw)) {
+                $buckets = array_merge($buckets, array_is_list($raw) ? $raw : [$raw]);
             }
         }
+        foreach (['shipments', 'parcels'] as $key) {
+            $raw = $order[$key] ?? null;
+            if (! is_array($raw)) {
+                continue;
+            }
+            foreach (array_is_list($raw) ? $raw : [$raw] as $shipment) {
+                if (is_array($shipment)) {
+                    $buckets[] = ['shipment' => $shipment];
+                }
+            }
+        }
+
+        $seen = [];
+        foreach ($buckets as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $tn = self::trackingNumberFrom(is_array($row['shipment'] ?? null) ? $row['shipment'] : $row)
+                ?? self::trackingNumberFrom($row);
+            if ($tn !== null) {
+                $seen[$tn] = true;
+            }
+        }
+        $walk = static function ($node) use (&$walk, &$buckets, &$seen): void {
+            if (! is_array($node)) {
+                return;
+            }
+            $tn = self::trackingNumberFrom($node);
+            if ($tn !== null && ! isset($seen[$tn])) {
+                $seen[$tn] = true;
+                $buckets[] = ['shipment' => $node];
+            }
+            foreach ($node as $k => $v) {
+                if (is_array($v) && ! in_array((string) $k, ['customer', 'billing_address', 'shipping_address'], true)) {
+                    $walk($v);
+                }
+            }
+        };
+        $walk($order);
 
         return $buckets;
     }
@@ -97,24 +137,46 @@ final class VeeqoAllocationTracking
 
     public static function trackingNumberFrom(array $row): ?string
     {
-        $candidates = [
+        $all = self::trackingNumbersFrom($row);
+
+        return $all[0] ?? null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function trackingNumbersFrom(array $row): array
+    {
+        $out = [];
+        $push = static function (mixed $raw) use (&$out): void {
+            if (is_array($raw)) {
+                $raw = $raw['tracking_number'] ?? $raw['number'] ?? $raw['value'] ?? null;
+            }
+            $tn = self::normalizeTracking((string) $raw);
+            if ($tn !== '' && ! in_array($tn, $out, true)) {
+                $out[] = $tn;
+            }
+        };
+        foreach ([
             $row['tracking_number'] ?? null,
             $row['trackingNumber'] ?? null,
             $row['tracking'] ?? null,
             $row['shipment_tracking_number'] ?? null,
             $row['mail_tracking_number'] ?? null,
-        ];
-        foreach ($candidates as $raw) {
-            if (is_array($raw)) {
-                $raw = $raw['tracking_number'] ?? $raw['number'] ?? $raw['value'] ?? null;
+        ] as $raw) {
+            $push($raw);
+        }
+        foreach (['tracking_numbers', 'trackingNumbers'] as $key) {
+            $list = $row[$key] ?? null;
+            if (! is_array($list)) {
+                continue;
             }
-            $tn = self::normalizeTracking((string) $raw);
-            if ($tn !== '') {
-                return $tn;
+            foreach ($list as $item) {
+                $push($item);
             }
         }
 
-        return null;
+        return $out;
     }
 
     /**
@@ -134,10 +196,7 @@ final class VeeqoAllocationTracking
                     continue;
                 }
                 $key = strtolower((string) $k);
-                if (
-                    in_array($key, ['sku', 'seller_sku', 'seller_part_number', 'sellernumber', 'part_number'], true)
-                    || str_ends_with($key, '_sku')
-                ) {
+                if (self::keyLooksLikeSku($key)) {
                     if (trim((string) $v) !== '') {
                         $found = true;
 
@@ -169,10 +228,7 @@ final class VeeqoAllocationTracking
                     continue;
                 }
                 $key = strtolower((string) $k);
-                if (
-                    in_array($key, ['sku', 'seller_sku', 'seller_part_number', 'sellernumber', 'part_number'], true)
-                    || str_ends_with($key, '_sku')
-                ) {
+                if (self::keyLooksLikeSku($key)) {
                     if ($matcher->skusEqual((string) $v, $want)) {
                         $found = true;
 
@@ -184,6 +240,22 @@ final class VeeqoAllocationTracking
         $walk($payload);
 
         return $found;
+    }
+
+    public static function keyLooksLikeSku(string $key): bool
+    {
+        $key = strtolower(trim($key));
+
+        return in_array($key, [
+            'sku',
+            'sku_code',
+            'skucode',
+            'seller_sku',
+            'seller_part_number',
+            'sellernumber',
+            'part_number',
+            'product_sku',
+        ], true) || str_ends_with($key, '_sku') || str_ends_with($key, 'sku_code');
     }
 
     /**
