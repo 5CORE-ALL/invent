@@ -1378,15 +1378,17 @@
         }
         function ttDisplayedSprice(rowData) {
             if (!rowData || ttIsParentRow(rowData)) return 0;
-            if (typeof ebaySprcDilForRow === 'function') {
-                const dil = Number(ebaySprcDilForRow(rowData)) || 0;
-                if (dil > 0) return dil;
-            }
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(rowData)) || 0;
                 if (saved > 0) return saved;
             }
-            return ttSavedSpriceAmount(rowData);
+            const stored = ttSavedSpriceAmount(rowData);
+            if (stored > 0) return stored;
+            if (typeof ebaySprcDilForRow === 'function') {
+                const dil = Number(ebaySprcDilForRow(rowData)) || 0;
+                if (dil > 0) return dil;
+            }
+            return 0;
         }
         window.ttDisplayedSprice = ttDisplayedSprice;
         /**
@@ -4062,8 +4064,8 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (ttIsParentRow(rowData)) return '';
-                            let value = ttDisplayedSprice(rowData);
-                            if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
+                            let value = parseFloat(cell.getValue() || 0);
+                            if (!(value > 0)) value = ttDisplayedSprice(rowData);
                             if (!(value > 0)) return '';
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
                             const hasCustom = rowData.has_custom_sprice;
