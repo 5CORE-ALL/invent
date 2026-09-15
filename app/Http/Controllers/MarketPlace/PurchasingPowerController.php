@@ -30,7 +30,7 @@ class PurchasingPowerController extends Controller
 
     public static function purchasingPowerLineRevenueSql(): string
     {
-        return 'COALESCE(NULLIF(unit_price, 0) * quantity, amount, 0)';
+        return 'COALESCE(NULLIF(unit_price, 0) * NULLIF(quantity, 0), NULLIF(amount, 0), 0)';
     }
 
     public function pricingView(Request $request)
@@ -830,7 +830,7 @@ class PurchasingPowerController extends Controller
                 $qty = 0;
                 $orderIds = [];
                 foreach ($lines as $line) {
-                    $lineQty = max(0, (int) ($line->quantity ?? 0));
+                    $lineQty = max(0, (int) ($line->quantity ?? $line->stock ?? 0));
                     if ($lineQty <= 0) {
                         continue;
                     }

@@ -2183,7 +2183,6 @@ class ChannelMasterController extends Controller
         // Last: Pacific yesterday Y Sales including $0/NYS so stale calculated
         // yesterday_sales cannot stay on the grid after a quiet day.
         $rows = $this->overlayLivePacificYSalesOnChannelRows($rows);
-        $rows = $this->overlayLiveNeweggMetricsOnChannelRows($rows);
 
         return $rows;
     }
@@ -2790,112 +2789,14 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Fast-path Newegg L30 / L60 / L7 / Y from newegg_orders — same rows as
-     * /newegg/daily-sales. Calculated_data and Pacific-yesterday overlay stay $0
-     * on gap days even when daily-sales still has recent orders.
+     * Newegg grid/chart use saved snapshots only. Live overlay used to copy the
+     * last order day onto quiet days so Sep 13 and Sep 14 both showed $123.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
     private function overlayLiveNeweggMetricsOnChannelRows(array $rows): array
     {
-        $hasNewegg = false;
-        foreach ($rows as $row) {
-            if ($this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? '')) === 'newegg') {
-                $hasNewegg = true;
-                break;
-            }
-        }
-        if (! $hasNewegg || ! Schema::hasTable('newegg_orders')) {
-            return $rows;
-        }
-
-        try {
-            $mp = MarketplacePercentage::where('marketplace', 'Neweggb2c')->first();
-            $percentage = $mp ? (float) $mp->percentage : 85;
-            $adUpdates = $mp ? (float) $mp->ad_updates : 0;
-            $margin = $percentage - $adUpdates;
-            $factor = $margin > 0 ? $margin / 100 : 0.85;
-            $productMasters = ProductMaster::all()->keyBy(function ($item) {
-                return ShopifySku::normalizeSkuForShopifyLookup($item->sku);
-            });
-
-            $now = Carbon::now();
-            $l30 = $this->computeNeweggWindow($now->copy()->subDays(30), $now, $productMasters, $factor);
-            $l60 = $this->computeNeweggWindow($now->copy()->subDays(60), $now->copy()->subDays(30), $productMasters, $factor);
-            $l7 = $this->computeNeweggWindow($now->copy()->subDays(7), $now, $productMasters, $factor);
-            $y = $this->computeNeweggWindow(
-                $now->copy()->subDay()->startOfDay(),
-                $now->copy()->subDay()->endOfDay(),
-                $productMasters,
-                $factor
-            );
-            if (($l30['sales'] ?? 0) <= 0) {
-                $latestRaw = DB::table('newegg_orders')
-                    ->whereNotNull('order_date')
-                    ->where(function ($q) {
-                        $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
-                    })
-                    ->max('order_date');
-                if ($latestRaw) {
-                    $anchor = Carbon::parse($latestRaw);
-                    $l30 = $this->computeNeweggWindow($anchor->copy()->subDays(30), $anchor, $productMasters, $factor);
-                    $l60 = $this->computeNeweggWindow($anchor->copy()->subDays(60), $anchor->copy()->subDays(30), $productMasters, $factor);
-                    $l7 = $this->computeNeweggWindow($anchor->copy()->subDays(7), $anchor, $productMasters, $factor);
-                }
-            }
-            if (($l30['sales'] ?? 0) <= 0) {
-                $l30 = $this->computeNeweggWindow(
-                    Carbon::parse('2000-01-01')->startOfDay(),
-                    $now->copy()->endOfDay(),
-                    $productMasters,
-                    $factor
-                );
-            }
-            if (($y['sales'] ?? 0) <= 0) {
-                $y = $this->computeNeweggLatestSalesDayWindow($productMasters, $factor);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Fast-path Newegg sales overlay failed: '.$e->getMessage());
-
-            return $rows;
-        }
-
-        $l30Sales = (float) ($l30['sales'] ?? 0);
-        $l60Sales = (float) ($l60['sales'] ?? 0);
-        $totalPft = (float) ($l30['profit'] ?? 0);
-        $totalCogs = (float) ($l30['cogs'] ?? 0);
-        $gpftPct = $l30Sales > 0 ? ($totalPft / $l30Sales) * 100 : 0.0;
-        $groi = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
-
-        foreach ($rows as &$row) {
-            if ($this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? '')) !== 'newegg') {
-                continue;
-            }
-
-            $row['L30 Sales'] = (int) round($l30Sales);
-            $row['L30 Orders'] = (int) ($l30['orders'] ?? 0);
-            $row['Qty'] = (int) ($l30['qty'] ?? 0);
-            $row['L-60 Sales'] = (int) round($l60Sales);
-            $row['L60 Orders'] = (int) ($l60['orders'] ?? 0);
-            $row['L7 Sales'] = round((float) ($l7['sales'] ?? 0), 2);
-            $row['Total PFT'] = round($totalPft, 2);
-            $row['cogs'] = round($totalCogs, 2);
-            $row['Gprofit%'] = round($gpftPct, 1).'%';
-            $row['G Roi'] = round($groi, 1);
-            $row['N PFT'] = round($gpftPct, 1).'%';
-            $row['N ROI'] = round($groi, 1);
-            $row['Total Ad Spend'] = 0;
-            $row['Ads%'] = '0%';
-            $row['TACOS %'] = '0%';
-            if ($l60Sales > 0) {
-                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
-            }
-            $this->applyLiveYSalesIfPositive($row, $y['sales'] ?? 0);
-            $row = $this->withYProfitColumns($row);
-        }
-        unset($row);
-
         return $rows;
     }
 
@@ -12500,11 +12401,13 @@ class ChannelMasterController extends Controller
             return ShopifySku::normalizeSkuForShopifyLookup($item->sku);
         });
 
-        $now = Carbon::now();
-        $l30 = $this->computeNeweggWindow($now->copy()->subDays(30), $now, $productMasters, $factor);
-        $l60 = $this->computeNeweggWindow($now->copy()->subDays(60), $now->copy()->subDays(30), $productMasters, $factor);
-        $l7  = $this->computeNeweggWindow($now->copy()->subDays(7), $now, $productMasters, $factor);
-        $y   = $this->computeNeweggWindow($now->copy()->subDay()->startOfDay(), $now->copy()->subDay()->endOfDay(), $productMasters, $factor);
+        [$l30Start, $l30End, $l60Start, $l60End] = $this->completePacificL30L60Windows();
+        [$l7Start, $l7End] = $this->pacificL7WindowEndingYesterday(Carbon::now('America/Los_Angeles'));
+        [$yStart, $yEnd] = $this->pacificYesterdayBounds();
+        $l30 = $this->computeNeweggWindow($l30Start, $l30End, $productMasters, $factor);
+        $l60 = $this->computeNeweggWindow($l60Start, $l60End, $productMasters, $factor);
+        $l7  = $this->computeNeweggWindow($l7Start, $l7End, $productMasters, $factor);
+        $y   = $this->computeNeweggWindow($yStart, $yEnd, $productMasters, $factor);
 
         $growth     = $l60['sales'] > 0 ? (($l30['sales'] - $l60['sales']) / $l60['sales']) * 100 : 0;
         $gProfitPct = $l30['sales'] > 0 ? ($l30['profit'] / $l30['sales']) * 100 : 0;
@@ -13307,9 +13210,14 @@ class ChannelMasterController extends Controller
         foreach ($rows as $r) {
             $sku      = strtoupper(trim((string) ($r->offer_sku ?: $r->product_sku)));
             $quantity = (int) ($r->quantity ?? 0);
+            $amount   = (float) ($r->amount ?? 0);
             $price    = (float) ($r->unit_price ?? 0);
             if ($price <= 0 && $quantity > 0) {
-                $price = ((float) ($r->amount ?? 0)) / $quantity;
+                $price = $amount / $quantity;
+            }
+            if ($quantity <= 0 && $amount > 0) {
+                $quantity = 1;
+                $price = $amount;
             }
             if ($quantity <= 0) continue;
 
