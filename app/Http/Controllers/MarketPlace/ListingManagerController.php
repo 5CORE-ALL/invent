@@ -1279,10 +1279,7 @@ class ListingManagerController extends Controller
             ->orderBy('channel')
             ->get(['id', 'channel', 'logo'])
             ->filter(function ($c) {
-                $name = (string) $c->channel;
-
-                return ListingManagerPublishDispatcher::supportsListingApi($name)
-                    && $this->channelHasConnectedListingApi($name);
+                return ListingManagerPublishDispatcher::supportsListingApi((string) $c->channel);
             })
             ->values();
 

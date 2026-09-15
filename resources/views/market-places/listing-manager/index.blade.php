@@ -1171,7 +1171,7 @@
                     <input class="form-check-input" type="checkbox" id="lm-include-siblings">
                     <label class="form-check-label" for="lm-include-siblings">Also add sibling SKUs from the same parent</label>
                 </div>
-                <div class="lm-info-box mx-0">Only marketplaces with a connected listing API are shown (create or update). Select the ones you want. Products go to <strong>Drafts</strong>. Then open Channel Listings and Save &amp; Publish.</div>
+                <div class="lm-info-box mx-0">Only marketplaces with a listing API are shown (create or update). Sheet-only channels are omitted. Select the ones you want. Products go to <strong>Drafts</strong>. Then open Channel Listings and Save &amp; Publish.</div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-lc btn-lc-ghost" data-bs-dismiss="modal">Cancel</button>
@@ -1189,7 +1189,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted small mb-3">Choose which connected listing APIs appear when you add drafts. Amazon, eBay, Temu, TikTok, Reverb, Faire, Wayfair, AliExpress, and Shein can create or update listings.</p>
+                <p class="text-muted small mb-3">Choose which listing APIs appear when you add drafts. Only marketplaces with a listing API are listed: Amazon, eBay, Temu, TikTok, Reverb, Faire, Wayfair, AliExpress, Shein, Newegg, and TopDawg.</p>
                 <div class="lm-channel-list" id="lm-manage-channel-list"></div>
             </div>
             <div class="modal-footer">

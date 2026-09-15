@@ -78,13 +78,13 @@ class ListingManagerPublishDispatcher
     }
 
     /**
-     * Channels that can create a new listing or update an existing one via API.
+     * Normalized channel keys that can create or update a listing via API.
+     *
+     * @return list<string>
      */
-    public static function supportsListingApi(string $channelName): bool
+    public static function listingApiChannelKeys(): array
     {
-        $key = ListingChannelCounts::normalize($channelName);
-
-        return in_array($key, [
+        return [
             'amazon', 'amazonfba', 'amz', 'amzfbm',
             'ebay', 'ebay1', 'ebayone',
             'ebay2', 'ebaytwo',
@@ -95,10 +95,22 @@ class ListingManagerPublishDispatcher
             'reverb', 'reverbcom',
             'wayfair',
             'aliexpress',
-            'tiktok', 'tiktokshop',
+            'tiktok', 'tiktokshop', 'tiktok1',
             'tiktok2', 'tiktokshop2', 'tiktoktwo',
             'shein',
-        ], true);
+            'newegg', 'neweggb2c', 'neweggb2b',
+            'topdawg',
+        ];
+    }
+
+    /**
+     * Channels that can create a new listing or update an existing one via API.
+     */
+    public static function supportsListingApi(string $channelName): bool
+    {
+        $key = ListingChannelCounts::normalize($channelName);
+
+        return in_array($key, self::listingApiChannelKeys(), true);
     }
 
     /**
