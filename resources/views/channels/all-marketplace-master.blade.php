@@ -229,6 +229,11 @@
             color: white;
         }
 
+        .type-wholesale {
+            background: linear-gradient(135deg, #e67e22 0%, #f39c12 100%);
+            color: white;
+        }
+
         /* Toast container */
         .toast-container {
             position: fixed;
@@ -549,6 +554,7 @@
                         <option value="B2C">🛒 B2C</option>
                         <option value="B2B">🏢 B2B</option>
                         <option value="Dropship">📦 Dropship</option>
+                        <option value="Wholesale">🏬 Wholesale</option>
                     </select>
 
                     <!-- Column Visibility Dropdown -->
@@ -802,6 +808,7 @@
                                 <option value="B2B">B2B</option>
                                 <option value="B2C">B2C</option>
                                 <option value="Dropship">Dropship</option>
+                                <option value="Wholesale">Wholesale</option>
                             </select>
                         </div>
                         <div class="mb-3">
@@ -896,6 +903,7 @@
                                 <option value="B2B">B2B</option>
                                 <option value="B2C">B2C</option>
                                 <option value="Dropship">Dropship</option>
+                                <option value="Wholesale">Wholesale</option>
                             </select>
                         </div>
                         <div class="mb-3">
@@ -5009,7 +5017,7 @@
                 setBadgeExact($revBadge, reviewsSum);
             }
 
-            // Combine channel search and type (B2C/B2B/Dropship) filters
+            // Combine channel search and type (B2C/B2B/Dropship/Wholesale) filters
             function applyMasterFilters() {
                 if (!table || typeof table.clearFilter !== 'function') return;
                 const q = ($('#channel-search').val() || '').trim().toLowerCase();

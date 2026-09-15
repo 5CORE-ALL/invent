@@ -7424,7 +7424,7 @@ class ChannelMasterController extends Controller
             $query = \App\Models\ChannelMasterCalculatedData::query()
                 ->orderBy('l30_sales', 'desc');
             
-            if ($section && in_array($section, ['B2C', 'B2B', 'Dropship'])) {
+            if ($section && in_array($section, ['B2C', 'B2B', 'Dropship', 'Wholesale'], true)) {
                 $query->where('type', $section);
             }
 
@@ -8157,14 +8157,14 @@ class ChannelMasterController extends Controller
         foreach ($channels as $channelRow) {
             $channel = $channelRow->channel;
 
-            // Base row - normalize type to only B2C, B2B, Dropship
+            // Base row - normalize type to B2C, B2B, Dropship, or Wholesale
             $rawType = $channelRow->type ?? '';
-            $normalizedType = 'B2C'; // default
-            if (strtolower(trim($rawType)) === 'b2b') {
-                $normalizedType = 'B2B';
-            } elseif (strtolower(trim($rawType)) === 'dropship') {
-                $normalizedType = 'Dropship';
-            }
+            $normalizedType = [
+                'b2c' => 'B2C',
+                'b2b' => 'B2B',
+                'dropship' => 'Dropship',
+                'wholesale' => 'Wholesale',
+            ][strtolower(trim($rawType))] ?? 'B2C';
             
             $row = [
                 'Channel '       => ucfirst($channel),

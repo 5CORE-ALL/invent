@@ -1308,11 +1308,13 @@
                 var v = cell.getValue();
                 var raw = (v === null || v === undefined) ? '' : String(v).trim();
                 if (raw === '') return '<span class="amz-raw-status-cell text-muted" title="—">—</span>';
-                var enabled = raw.toUpperCase() === 'ENABLED';
-                var color = enabled ? '#16a34a' : '#dc2626';
-                var tip = amzEsc(raw);
-                return '<span class="amz-raw-status-cell" title="' + tip + '" style="display:inline-flex;align-items:center;justify-content:center;">'
-                     + '<span class="d-inline-block rounded-circle" style="width:10px;height:10px;background-color:' + color + ';"></span></span>';
+                var up = raw.toUpperCase();
+                var enabled = up === 'ENABLED';
+                var paused = up === 'PAUSED';
+                var color = enabled ? '#16a34a' : (paused ? '#dc2626' : '#6b7280');
+                var label = paused ? 'P' : (enabled ? 'E' : raw.charAt(0).toUpperCase());
+                return '<span class="amz-raw-status-cell" title="' + amzEsc(raw) + '" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:11px;font-weight:700;color:' + color + ';">'
+                     + '<span class="d-inline-block rounded-circle" style="width:8px;height:8px;background-color:' + color + ';"></span>' + amzEsc(label) + '</span>';
             }
             function fmtRuleStatus(cell) {
                 var v = cell.getValue();
@@ -1320,10 +1322,13 @@
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var tipRaw = (row && row.ruleStatusTip) ? String(row.ruleStatusTip) : (raw || '—');
                 if (raw === '') return '<span class="amz-raw-status-cell text-muted" title="' + amzEsc(tipRaw) + '">—</span>';
-                var enabled = raw.toUpperCase() === 'ENABLED';
-                var color = enabled ? '#16a34a' : '#dc2626';
-                return '<span class="amz-raw-status-cell" title="' + amzEsc(tipRaw) + '" style="display:inline-flex;align-items:center;justify-content:center;">'
-                     + '<span class="d-inline-block rounded-circle" style="width:10px;height:10px;background-color:' + color + ';"></span></span>';
+                var up = raw.toUpperCase();
+                var enabled = up === 'ENABLED';
+                var paused = up === 'PAUSED';
+                var color = enabled ? '#16a34a' : (paused ? '#dc2626' : '#6b7280');
+                var label = paused ? 'P' : (enabled ? 'E' : raw.charAt(0).toUpperCase());
+                return '<span class="amz-raw-status-cell" title="' + amzEsc(tipRaw) + '" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:11px;font-weight:700;color:' + color + ';">'
+                     + '<span class="d-inline-block rounded-circle" style="width:8px;height:8px;background-color:' + color + ';"></span>' + amzEsc(label) + '</span>';
             }
             function fmtActiveAgain(cell) {
                 var v = cell.getValue();
@@ -3626,10 +3631,19 @@
                         if (b.apply) {
                             msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
                                 + ', unchanged ' + (b.apply.unchanged || 0) + ', failed ' + (b.apply.failed || 0) + '.';
+                            var pausedNames = Array.isArray(b.apply.paused_names) ? b.apply.paused_names.filter(Boolean) : [];
+                            if (pausedNames.length) {
+                                msg += ' Stat will show P (Paused): ' + pausedNames.slice(0, 12).join(', ')
+                                    + (pausedNames.length > 12 ? ' …' : '') + '.';
+                            }
                             var prErrs = Array.isArray(b.apply.errors) ? b.apply.errors.filter(Boolean) : [];
                             if (prErrs.length && err) {
                                 err.textContent = prErrs.slice(0, 8).join(' | ');
                                 err.classList.remove('d-none');
+                            }
+                            var statSel = document.getElementById('amazonAdsFilterCampaignStatus');
+                            if (statSel && (b.apply.paused || 0) > 0) {
+                                statSel.value = '';
                             }
                         }
                         if (ok) { ok.textContent = msg; ok.classList.remove('d-none'); }

@@ -24,6 +24,12 @@ class AmazonAdsPauseRuleApplicator
     /** @var array<string, string> */
     private array $namesByCid = [];
 
+    /** @var array<string, string> */
+    private array $queuedPauseNames = [];
+
+    /** @var array<string, string> */
+    private array $queuedEnableNames = [];
+
     private bool $trackRuleState = false;
 
     public function __construct(
@@ -45,6 +51,8 @@ class AmazonAdsPauseRuleApplicator
         @ini_set('max_execution_time', '300');
         @ini_set('memory_limit', '512M');
 
+        $this->queuedPauseNames = [];
+        $this->queuedEnableNames = [];
         $stats = [
             'paused' => 0,
             'enabled' => 0,
@@ -52,6 +60,8 @@ class AmazonAdsPauseRuleApplicator
             'skipped' => 0,
             'failed' => 0,
             'errors' => [],
+            'paused_names' => [],
+            'enabled_names' => [],
         ];
 
         $rule = AmazonAdsPauseRule::resolvedRule();
@@ -82,6 +92,8 @@ class AmazonAdsPauseRuleApplicator
 
         $this->applyChannel('sp', $sp, $rule, $metricsByName, $familyByName, $parentDilByFam, $dryRun, $stats);
         $this->applyChannel('sb', $sb, $rule, $metricsByName, $familyByName, $parentDilByFam, $dryRun, $stats);
+        $stats['paused_names'] = array_values(array_unique(array_filter($this->queuedPauseNames)));
+        $stats['enabled_names'] = array_values(array_unique(array_filter($this->queuedEnableNames)));
 
         return $stats;
     }
@@ -425,6 +437,7 @@ class AmazonAdsPauseRuleApplicator
                     continue;
                 }
                 $pauseIds[] = $row['campaign_id'];
+                $this->queuedPauseNames[$row['campaign_id']] = $campaignName;
                 continue;
             }
             if (AmazonAdsPauseRule::shouldAutoEnable($decision, $status, $pausedAt, null, $campaignName, $pausedReason)) {
@@ -434,6 +447,7 @@ class AmazonAdsPauseRuleApplicator
                     continue;
                 }
                 $enableIds[] = $row['campaign_id'];
+                $this->queuedEnableNames[$row['campaign_id']] = $campaignName;
                 continue;
             }
             $stats['unchanged']++;

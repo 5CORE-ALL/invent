@@ -35,6 +35,15 @@ class ApplyAmazonAdsPauseRule extends Command
             $stats['skipped'],
             $stats['failed']
         ));
+        foreach (array_slice($stats['paused_names'] ?? [], 0, 50) as $name) {
+            $this->line('  PAUSED  '.$name);
+        }
+        if (count($stats['paused_names'] ?? []) > 50) {
+            $this->line('  … and '.(count($stats['paused_names']) - 50).' more');
+        }
+        foreach (array_slice($stats['enabled_names'] ?? [], 0, 20) as $name) {
+            $this->line('  ENABLED '.$name);
+        }
         foreach (array_slice($stats['errors'], 0, 20) as $err) {
             $this->warn('  '.$err);
         }
