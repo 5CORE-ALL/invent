@@ -7,23 +7,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .tabulator { border: 1px solid #dee2e6; border-radius: 8px; font-size: 12px; }
-        #shein-pricing-table .tabulator-row {
-            height: 36px !important;
-            max-height: 36px !important;
-            min-height: 36px !important;
-        }
-        #shein-pricing-table .tabulator-row .tabulator-cell {
-            font-size: 13px !important;
-            line-height: 1.2 !important;
-            height: 36px !important;
-            max-height: 36px !important;
-            padding-top: 2px !important;
-            padding-bottom: 2px !important;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            vertical-align: middle !important;
-        }
         .tabulator .tabulator-header { background: #f8f9fa; border-bottom: 1px solid #dee2e6; }
         .tabulator-col .tabulator-col-sorter { display: none !important; }
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
@@ -1545,7 +1528,6 @@
                 },
                 layout: "fitDataStretch",
                 height: "calc(100vh - 260px)",
-                rowHeight: 36,
                 sortMode: "local",
                 filterMode: "local",
                 paginationMode: "local",
