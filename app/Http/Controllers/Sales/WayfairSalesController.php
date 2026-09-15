@@ -29,22 +29,17 @@ class WayfairSalesController extends Controller
      * Yesterday (Y) sales for Wayfair.
      *
      * Mirrors ChannelMasterController::computeWayfairYSalesLikeAmazon() so this page's
-     * "Y Sales" badge matches the Wayfair row on /all-marketplace-master: the calendar
-     * day before the latest po_date (Pacific), summing unit_price × quantity.
+     * "Y Sales" badge matches the Wayfair row on /all-marketplace-master: Pacific
+     * yesterday, summing unit_price × quantity. Do not reuse latest po_date − 1.
      *
      * @return array{sales: float, date: ?string, quantity: int, orders: int}
      */
     private function computeYesterdaySales(): array
     {
-        $latestRaw = WayfairDailyData::whereNotNull('po_date')->max('po_date');
-        if (!$latestRaw) {
-            return ['sales' => 0.0, 'date' => null, 'quantity' => 0, 'orders' => 0];
-        }
+        $yDate = \Carbon\Carbon::yesterday('America/Los_Angeles')->toDateString();
 
-        $latestPacific = \Carbon\Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yDate = $latestPacific->copy()->subDay()->toDateString();
-
-        $agg = WayfairDailyData::whereDate('po_date', $yDate)
+        $agg = WayfairDailyData::where('sku', 'not like', '%Parent%')
+            ->whereDate('po_date', $yDate)
             ->where('quantity', '>', 0)
             ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
             ->selectRaw('COALESCE(SUM(quantity), 0) as qty')

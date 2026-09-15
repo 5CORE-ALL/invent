@@ -2167,6 +2167,7 @@ class ChannelMasterController extends Controller
         // FB Marketplace L30/L60/Y/L7 from /facebook-marketplace uploads (not stale sheet cache)
         $rows = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($rows);
         $rows = $this->overlayLiveFaireMetricsOnChannelRows($rows);
+        $rows = $this->overlayLiveWayfairMetricsOnChannelRows($rows);
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
@@ -2710,6 +2711,7 @@ class ChannelMasterController extends Controller
             'mercariwoship' => fn () => $this->computeMercariYSalesLikeAmazon(false),
             'topdawg' => fn () => $this->computeTopDawgYSalesLikeAmazon(),
             'shein' => fn () => $this->computeSheinYSalesLikeAmazon(),
+            'wayfair' => fn () => $this->computeWayfairYSalesLikeAmazon(),
         ];
 
         foreach ($rows as &$row) {
@@ -2777,6 +2779,49 @@ class ChannelMasterController extends Controller
             $row['TACOS %'] = '0%';
             if ($l60Sales > 0) {
                 $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
+            }
+            if ($ySales !== null) {
+                $this->applyLiveYSalesAllowZero($row, $ySales);
+            }
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Fast-path Wayfair L30 / L60 / Y / L7 from wayfair_daily_data po_date.
+     * Do not reuse "latest PO − 1 day" — that copied one window onto every day.
+     */
+    private function overlayLiveWayfairMetricsOnChannelRows(array $rows): array
+    {
+        $hasWayfair = false;
+        foreach ($rows as $row) {
+            if ($this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? '')) === 'wayfair') {
+                $hasWayfair = true;
+                break;
+            }
+        }
+        if (! $hasWayfair || ! Schema::hasTable('wayfair_daily_data')) {
+            return $rows;
+        }
+
+        try {
+            $ySales = $this->computeWayfairYSalesLikeAmazon();
+            $l7Sales = $this->computeWayfairL7SalesLikeAmazon();
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Wayfair sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'wayfair') {
+                continue;
             }
             if ($ySales !== null) {
                 $this->applyLiveYSalesAllowZero($row, $ySales);
@@ -8471,6 +8516,7 @@ class ChannelMasterController extends Controller
         $finalData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($finalData);
         // Faire: overlay live L30/L60/Y/L7 from shopify_raw_orders (same as /faire-tabulator)
         $finalData = $this->overlayLiveFaireMetricsOnChannelRows($finalData);
+        $finalData = $this->overlayLiveWayfairMetricsOnChannelRows($finalData);
         // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
         $finalData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemuSalesOnChannelRows($finalData);
@@ -8663,25 +8709,40 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Wayfair: SUM(unit_price × quantity) on po_date = day before latest po_date (Pacific).
+     * Wayfair Y Sales: Pacific yesterday only (unit_price × qty).
+     * Do not reuse the day before latest po_date — that copied one L7/last-sale
+     * window onto every following day so Sep 13 and Sep 14 both showed $1,844.
      */
     private function computeWayfairYSalesLikeAmazon(): ?float
     {
-        $latestRaw = DB::table('wayfair_daily_data')->whereNotNull('po_date')->max('po_date');
-        if (!$latestRaw) {
+        if (! Schema::hasTable('wayfair_daily_data')) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yDate = $latestPacific->copy()->subDay()->toDateString();
+        if (! DB::table('wayfair_daily_data')->whereNotNull('po_date')->exists()) {
+            return null;
+        }
 
-        $sum = (float) DB::table('wayfair_daily_data')
-            ->whereDate('po_date', $yDate)
+        return $this->sumWayfairRevenueForPacificDate(
+            Carbon::yesterday('America/Los_Angeles')->toDateString()
+        );
+    }
+
+    /**
+     * One Pacific calendar day's Wayfair GMV (unit_price × qty). Gap days are $0.
+     */
+    private function sumWayfairRevenueForPacificDate(string $ymd): float
+    {
+        if ($ymd === '' || ! Schema::hasTable('wayfair_daily_data')) {
+            return 0.0;
+        }
+
+        return round((float) DB::table('wayfair_daily_data')
+            ->where('sku', 'not like', '%Parent%')
+            ->whereDate('po_date', $ymd)
             ->where('quantity', '>', 0)
             ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
-            ->value('revenue');
-
-        return round($sum, 2);
+            ->value('revenue'), 2);
     }
 
     /**
@@ -9302,18 +9363,22 @@ class ChannelMasterController extends Controller
 
     private function computeWayfairL7SalesLikeAmazon(): ?float
     {
-        $latestRaw = DB::table('wayfair_daily_data')->whereNotNull('po_date')->max('po_date');
-        if (!$latestRaw) {
+        if (! Schema::hasTable('wayfair_daily_data')) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $l7StartDate = $latestPacific->copy()->subDay()->subDays(6)->toDateString();
-        $l7EndDate = $latestPacific->copy()->subDay()->toDateString();
+        if (! DB::table('wayfair_daily_data')->whereNotNull('po_date')->exists()) {
+            return null;
+        }
+
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
 
         $sum = (float) DB::table('wayfair_daily_data')
-            ->where('po_date', '>=', $l7StartDate)
-            ->where('po_date', '<=', $l7EndDate)
+            ->where('sku', 'not like', '%Parent%')
+            ->whereDate('po_date', '>=', $l7StartPacific->toDateString())
+            ->whereDate('po_date', '<=', $l7EndPacific->toDateString())
             ->where('quantity', '>', 0)
             ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
             ->value('revenue');
@@ -17091,6 +17156,65 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => $chartData]);
             }
 
+            if (! $isAll && $metric === 'l30_sales' && $channel === 'wayfair') {
+                $chartData = $this->buildWayfairLiveRollingSalesChart($days, 30);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
+            if (! $isAll && $metric === 'l60_sales' && $channel === 'wayfair') {
+                $chartData = $this->buildWayfairLiveL60SalesChart($days);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
+            if (! $isAll && $metric === 'y_sales' && $channel === 'wayfair' && ! $useDailyWindow && ! $useL7Window) {
+                $chartData = $this->buildWayfairLiveDailyYSalesChart($days);
+                $chartData = ChartDatePad::fillGapsThroughYesterday($chartData, $days);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
+            if (! $isAll && in_array($metric, ['l7_sales', 'p_sales'], true) && $channel === 'wayfair') {
+                $chartData = $this->buildWayfairLiveRollingSalesChart($days, 7);
+                if ($metric === 'p_sales') {
+                    foreach ($chartData as &$pt) {
+                        $pt['value'] = $this->projectedSalesFromL7($pt['value'] ?? 0);
+                    }
+                    unset($pt);
+                }
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
             if (! $isAll && $metric === 'y_sales' && $channel === 'faire' && ! $useDailyWindow && ! $useL7Window) {
                 $chartData = $this->buildFaireLiveDailyYSalesChart($days);
                 $chartData = ChartDatePad::fillGapsThroughYesterday($chartData, $days);
@@ -19111,6 +19235,12 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
+            if ($channel === 'wayfair') {
+                self::$pacificDayYSalesCache[$key] = $this->sumWayfairRevenueForPacificDate($ymd);
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
             if ($channel === 'fbmarketplace' || $channel === 'facebookmarketplace') {
                 $day = FacebookMarketplaceController::dailySalesByPacificDate($ymd, $ymd);
                 self::$pacificDayYSalesCache[$key] = (float) ($day[$ymd]['sales'] ?? 0);
@@ -19139,7 +19269,7 @@ class ChannelMasterController extends Controller
     private function overlayLiveYSalesOnChart(string $channel, array $chartData): array
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
-        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace', 'faire', 'shein', 'newegg'], true) || $chartData === []) {
+        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace', 'faire', 'shein', 'newegg', 'wayfair'], true) || $chartData === []) {
             return $chartData;
         }
 
@@ -19186,7 +19316,7 @@ class ChannelMasterController extends Controller
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
         $tz = 'America/Los_Angeles';
-        $lookback = in_array($channel, ['temu2', 'depop', 'faire', 'shein', 'newegg'], true) ? 14 : 1;
+        $lookback = in_array($channel, ['temu2', 'depop', 'faire', 'shein', 'newegg', 'wayfair'], true) ? 14 : 1;
         $lookupKeys = $this->allMarketplaceSnapshotLookupKeys($channel);
 
         for ($offset = 0; $offset <= $lookback; $offset++) {
@@ -19993,6 +20123,9 @@ class ChannelMasterController extends Controller
         if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'depop') {
             return $this->buildDepopLiveDailyYSalesChart($span);
         }
+        if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'wayfair') {
+            return $this->buildWayfairLiveDailyYSalesChart($span);
+        }
         if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'faire') {
             return $this->buildFaireLiveDailyYSalesChart($span);
         }
@@ -20253,6 +20386,125 @@ class ChannelMasterController extends Controller
             $out[] = [
                 'date' => $cursor->format('M d'),
                 'value' => round((float) ($cell['sales'] ?? 0), 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * Wayfair daily GMV from wayfair_daily_data (unit_price × qty by po_date).
+     * Gap days stay $0 so a stale "latest PO − 1 day" / L7 total is not copied.
+     *
+     * @return array<string, array{sales: float}>
+     */
+    private function wayfairDailySalesByDate(Carbon $start, Carbon $end): array
+    {
+        $out = [];
+        $cursor = $start->copy()->startOfDay();
+        $last = $end->copy()->startOfDay();
+        while ($cursor->lte($last)) {
+            $out[$cursor->toDateString()] = ['sales' => 0.0];
+            $cursor->addDay();
+        }
+
+        if (! Schema::hasTable('wayfair_daily_data')) {
+            return $out;
+        }
+
+        $rows = DB::table('wayfair_daily_data')
+            ->where('sku', 'not like', '%Parent%')
+            ->where('quantity', '>', 0)
+            ->whereDate('po_date', '>=', $start->toDateString())
+            ->whereDate('po_date', '<=', $end->toDateString())
+            ->selectRaw('DATE(po_date) as d, COALESCE(SUM(unit_price * quantity), 0) as revenue')
+            ->groupBy('d')
+            ->get();
+
+        foreach ($rows as $row) {
+            $d = (string) ($row->d ?? '');
+            if ($d === '' || ! isset($out[$d])) {
+                continue;
+            }
+            $out[$d] = ['sales' => round((float) ($row->revenue ?? 0), 2)];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Wayfair Y Sales chart: one Pacific calendar day each. Gap days are $0.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildWayfairLiveDailyYSalesChart(int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = now($tz)->subDay()->startOfDay();
+        $span = $days > 0 ? $days : 7;
+        $start = $end->copy()->subDays($span - 1);
+        $byDate = $this->wayfairDailySalesByDate($start->copy()->startOfDay(), $end->copy()->endOfDay());
+
+        $out = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $ymd = $cursor->toDateString();
+            $cell = $byDate[$ymd] ?? ['sales' => 0];
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round((float) ($cell['sales'] ?? 0), 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * Wayfair L30 Sales chart — trailing 30 po_date days through today.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildWayfairLiveRollingSalesChart(int $days, int $windowDays): array
+    {
+        $end = now('America/Los_Angeles');
+        $span = $days > 0 ? $days : 90;
+        $chartStart = $end->copy()->subDays($span - 1);
+        $dataStart = $chartStart->copy()->subDays(max(1, $windowDays) - 1);
+        $byDay = $this->wayfairDailySalesByDate($dataStart->copy()->startOfDay(), $end->copy()->endOfDay());
+
+        return TemuShopifySalesService::rollingSalesSeries($byDay, $chartStart, $end, $windowDays);
+    }
+
+    /**
+     * Wayfair L60 column: 30 days before the L30 window (D−60 … D−31).
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildWayfairLiveL60SalesChart(int $days): array
+    {
+        $end = now('America/Los_Angeles');
+        $span = $days > 0 ? $days : 90;
+        $chartStart = $end->copy()->subDays($span - 1);
+        $dataStart = $chartStart->copy()->subDays(60);
+        $byDay = $this->wayfairDailySalesByDate($dataStart->copy()->startOfDay(), $end->copy()->endOfDay());
+
+        $out = [];
+        $cursor = $chartStart->copy();
+        while ($cursor->lte($end)) {
+            $sum = 0.0;
+            $winStart = $cursor->copy()->subDays(60);
+            $winEnd = $cursor->copy()->subDays(31);
+            $day = $winStart->copy();
+            while ($day->lte($winEnd)) {
+                $cell = $byDay[$day->toDateString()] ?? ['sales' => 0];
+                $sum += (float) ($cell['sales'] ?? 0);
+                $day->addDay();
+            }
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round($sum, 2),
             ];
             $cursor->addDay();
         }
@@ -21335,6 +21587,7 @@ class ChannelMasterController extends Controller
             $this->healClosedChannelYSalesSnapshot('faire');
             $this->healClosedChannelYSalesSnapshot('shein');
             $this->healClosedChannelYSalesSnapshot('newegg');
+            $this->healClosedChannelYSalesSnapshot('wayfair');
 
             foreach ([0, 1, 7] as $dotWindow) {
                 \Cache::forget($this->channelMetricDotTrendsCacheKey($dotWindow));

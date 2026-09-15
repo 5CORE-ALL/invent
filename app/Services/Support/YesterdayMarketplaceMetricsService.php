@@ -787,14 +787,11 @@ class YesterdayMarketplaceMetricsService
             return $this->fallback('wayfair');
         }
 
-        $latest = DB::table('wayfair_daily_data')->whereNotNull('po_date')->max('po_date');
-        $window = $this->latestCompleteDay($latest, 'to_pacific');
-        if ($window !== null) {
-            $date = $window[2];
-        }
-
+        // Use the requested Pacific day (or 7-day window ending on it).
+        // Remapping to "latest po_date − 1" copied one sale day onto every chart point.
         [$from, $to] = $this->windowYmdBounds($date);
         $rows = DB::table('wayfair_daily_data')
+            ->where('sku', 'not like', '%Parent%')
             ->whereDate('po_date', '>=', $from)
             ->whereDate('po_date', '<=', $to)
             ->where('quantity', '>', 0)
