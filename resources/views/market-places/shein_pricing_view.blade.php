@@ -2084,10 +2084,7 @@
                     }
                     setTimeout(function() {
                         try { sheinPersistVisibleSprices(); } catch (e) { /* ignore */ }
-                    }, 400);
-                    setTimeout(function() {
-                        try { sheinPersistVisibleSprices(); } catch (e) { /* ignore */ }
-                    }, 2000);
+                    }, 2500);
                 },
                 dataFiltered: function(filters, rows) {
                     updateSummary(rows);
