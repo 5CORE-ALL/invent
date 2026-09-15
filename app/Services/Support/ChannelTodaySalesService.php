@@ -3,6 +3,7 @@
 namespace App\Services\Support;
 
 use App\Http\Controllers\MarketPlace\FaireController;
+use App\Http\Controllers\MarketPlace\PurchasingPowerController;
 use App\Http\Controllers\ShopifyRawDataController;
 use App\Models\AmazonOrder;
 use App\Models\ChannelMasterCalculatedData;
@@ -576,54 +577,32 @@ class ChannelTodaySalesService
 
     private function faire(Carbon $start, Carbon $end): ?float
     {
-        $shopify = 0.0;
-        $api = 0.0;
-
-        if (Schema::hasTable('shopify_raw_orders')) {
-            $shopify = (float) DB::table('shopify_raw_orders')
-                ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
-                ->where('order_date', '>=', $start)
-                ->where('order_date', '<=', $end)
-                ->where('quantity', '>', 0)
-                ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
-                ->value('revenue');
-        }
-
-        if (Schema::hasTable('faire_order_metrics')) {
-            $api = (float) DB::table('faire_order_metrics')
-                ->where('order_date', '>=', $start)
-                ->where('order_date', '<=', $end)
-                ->where(function ($q) {
-                    $q->whereNull('status')
-                        ->orWhereRaw('UPPER(status) NOT IN (?, ?)', ['CANCELLED', 'CANCELED']);
-                })
-                ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
-                ->value('revenue');
-        }
-
-        if (! Schema::hasTable('shopify_raw_orders') && ! Schema::hasTable('faire_order_metrics')) {
+        if (! Schema::hasTable('faire_order_metrics')) {
             return null;
         }
 
-        return round(max($shopify, $api), 2);
+        return round((float) DB::table('faire_order_metrics')
+            ->where('order_date', '>=', $start)
+            ->where('order_date', '<=', $end)
+            ->where(fn ($q) => FaireController::applyFaireApiOrderFilter($q))
+            ->where('quantity', '>', 0)
+            ->selectRaw('COALESCE(SUM(amount * quantity), 0) as revenue')
+            ->value('revenue'), 2);
     }
 
     private function purchasingPower(Carbon $start, Carbon $end): ?float
     {
-        try {
-            $ppWhere = function ($q) {
-                $q->where('source_name', 'LIKE', '%purchasing power%')
-                    ->orWhere('source_name', 'LIKE', '%purchasingpower%')
-                    ->orWhere('tags', 'LIKE', '%Purchasing Power%')
-                    ->orWhere('tags', 'LIKE', '%PurchasingPower%');
-            };
+        if (! Schema::hasTable('purchasing_power_sales')) {
+            return null;
+        }
 
-            return round((float) DB::table('shopify_raw_orders')
-                ->where($ppWhere)
-                ->where('order_date', '>=', $start)
-                ->where('order_date', '<=', $end)
+        try {
+            return round((float) DB::table('purchasing_power_sales')
+                ->where(fn ($q) => PurchasingPowerController::applyPurchasingPowerSaleFilter($q))
+                ->where('date_created', '>=', $start)
+                ->where('date_created', '<=', $end)
                 ->where('quantity', '>', 0)
-                ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+                ->selectRaw('COALESCE(SUM('.PurchasingPowerController::purchasingPowerLineRevenueSql().'), 0) as revenue')
                 ->value('revenue'), 2);
         } catch (\Throwable $e) {
             return null;

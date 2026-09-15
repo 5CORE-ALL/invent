@@ -23,6 +23,16 @@ use Illuminate\Support\Facades\Schema;
 
 class PurchasingPowerController extends Controller
 {
+    public static function applyPurchasingPowerSaleFilter($query): void
+    {
+        $query->whereRaw('LOWER(TRIM(COALESCE(status, ?))) NOT IN (?, ?)', ['', 'canceled', 'cancelled']);
+    }
+
+    public static function purchasingPowerLineRevenueSql(): string
+    {
+        return 'COALESCE(NULLIF(unit_price, 0) * quantity, amount, 0)';
+    }
+
     public function pricingView(Request $request)
     {
         $mode = $request->query('mode');

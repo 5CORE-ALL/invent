@@ -2,6 +2,8 @@
 
 namespace App\Services\Support;
 
+use App\Http\Controllers\MarketPlace\FaireController;
+use App\Http\Controllers\MarketPlace\PurchasingPowerController;
 use App\Http\Controllers\ShopifyRawDataController;
 use App\Models\AmazonOrder;
 use App\Models\ChannelMaster;
@@ -1059,31 +1061,24 @@ class YesterdayMarketplaceMetricsService
     }
 
     /**
-     * Faire 1-day sales / orders / qty from shopify_raw_orders (same source as All Marketplace).
+     * Faire 1-day sales / orders / qty from faire_order_metrics.
      *
      * @return array<string, mixed>
      */
     private function faire(Carbon $start, Carbon $end): array
     {
-        if (! Schema::hasTable('shopify_raw_orders')) {
+        if (! Schema::hasTable('faire_order_metrics')) {
             return $this->salesOnly(0.0);
         }
-        $faireWhere = function ($q) {
-            $q->where('source_name', 'faire')
-                ->orWhere('source_name', 'LIKE', '%faire%')
-                ->orWhere('tags', 'LIKE', '%Faire%');
-        };
 
-        // Use the requested calendar window. Faire is wholesale with multi-day
-        // gaps — shifting to latest-order−1 copied one invoice onto every day.
-        $row = DB::table('shopify_raw_orders')
-            ->where($faireWhere)
+        $row = DB::table('faire_order_metrics')
+            ->where(fn ($q) => FaireController::applyFaireApiOrderFilter($q))
             ->where('order_date', '>=', $start)
             ->where('order_date', '<=', $end)
             ->where('quantity', '>', 0)
-            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+            ->selectRaw('COALESCE(SUM(amount * quantity), 0) as revenue')
             ->selectRaw('COALESCE(SUM(quantity), 0) as qty')
-            ->selectRaw('COUNT(DISTINCT COALESCE(NULLIF(TRIM(order_number), ""), CAST(order_id AS CHAR))) as orders')
+            ->selectRaw('COUNT(DISTINCT COALESCE(NULLIF(TRIM(order_number), ""), order_id)) as orders')
             ->first();
 
         $m = $this->salesOnly((float) ($row->revenue ?? 0));
@@ -1126,29 +1121,17 @@ class YesterdayMarketplaceMetricsService
 
     private function purchasingPowerSales(Carbon $start, Carbon $end): float
     {
+        if (! Schema::hasTable('purchasing_power_sales')) {
+            return 0.0;
+        }
+
         try {
-            $ppWhere = function ($q) {
-                $q->where('source_name', 'LIKE', '%purchasing power%')
-                    ->orWhere('source_name', 'LIKE', '%purchasingpower%')
-                    ->orWhere('tags', 'LIKE', '%Purchasing Power%')
-                    ->orWhere('tags', 'LIKE', '%PurchasingPower%');
-            };
-
-            $latest = DB::table('shopify_raw_orders')
-                ->where($ppWhere)
-                ->whereNotNull('order_date')
-                ->max('order_date');
-            $window = $this->latestCompleteDay($latest, 'to_pacific');
-            if ($window !== null) {
-                [$start, $end] = $window;
-            }
-
-            return (float) DB::table('shopify_raw_orders')
-                ->where($ppWhere)
-                ->where('order_date', '>=', $start)
-                ->where('order_date', '<=', $end)
+            return (float) DB::table('purchasing_power_sales')
+                ->where(fn ($q) => PurchasingPowerController::applyPurchasingPowerSaleFilter($q))
+                ->where('date_created', '>=', $start)
+                ->where('date_created', '<=', $end)
                 ->where('quantity', '>', 0)
-                ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+                ->selectRaw('COALESCE(SUM('.PurchasingPowerController::purchasingPowerLineRevenueSql().'), 0) as revenue')
                 ->value('revenue');
         } catch (\Throwable $e) {
             return 0.0;

@@ -92,6 +92,7 @@ use App\Models\MercariWShipListingStatus;
 use App\Models\MercariWoShipListingStatus;
 use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Http\Controllers\MarketPlace\FaireController;
+use App\Http\Controllers\MarketPlace\PurchasingPowerController;
 use App\Http\Controllers\MarketPlace\SheinController;
 use App\Http\Controllers\MarketPlace\PlsController;
 use App\Http\Controllers\MarketPlace\WayfairController;
@@ -2164,7 +2165,6 @@ class ChannelMasterController extends Controller
         $rows = $this->overlayLiveMiraklTodaySalesOnChannelRows($rows);
         // FB Marketplace L30/L60/Y/L7 from /facebook-marketplace uploads (not stale sheet cache)
         $rows = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($rows);
-        $rows = $this->overlayLiveFaireMetricsOnChannelRows($rows);
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
@@ -2262,6 +2262,9 @@ class ChannelMasterController extends Controller
             $name = (string) ($row['Channel '] ?? $row['Channel'] ?? '');
             $raw = $this->allMarketplaceYSalesLookupKey($name);
             $snap = $this->allMarketplaceSnapshotKey($name);
+            if ($raw === 'faire' || $snap === 'faire') {
+                continue;
+            }
             if (isset($computers[$raw])) {
                 $needed[$raw] = $computers[$raw];
             }
@@ -2696,13 +2699,12 @@ class ChannelMasterController extends Controller
 
     /**
      * Overlay Pacific-yesterday Y Sales when calculated_data is $0 but orders exist
-     * (TikTok 2 used latest-order−1; Faire API vs Shopify can disagree).
+     * (TikTok 2 used latest-order−1).
      */
     private function overlayLiveStaleYSalesOnChannelRows(array $rows): array
     {
         $live = [
             'aliexpress' => fn () => $this->computeAliexpressYSalesLikeAmazon(),
-            'faire' => fn () => $this->computeFaireYSalesLikeAmazon(),
             'tiktokshop2' => fn () => $this->computeTiktokTwoYSalesLikeAmazon(),
             'mercariwship' => fn () => $this->computeMercariYSalesLikeAmazon(true),
             'mercariwoship' => fn () => $this->computeMercariYSalesLikeAmazon(false),
@@ -2730,14 +2732,14 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Fast-path Faire L30 / L60 / Y / L7 from shopify_raw_orders (same as /faire-tabulator).
+     * Fast-path Faire L30 / L60 / Y / L7 from faire_order_metrics (same as /faire-tabulator).
      */
     private function overlayLiveFaireMetricsOnChannelRows(array $rows): array
     {
         try {
             [$l30Start, $l30End, $l60Start, $l60End] = $this->faireTabulatorL30L60Windows();
-            $l30 = $this->computeFaireMetricsFromShopify($l30Start, $l30End);
-            $l60 = $this->computeFaireMetricsFromShopify($l60Start, $l60End);
+            $l30 = $this->computeFaireMetricsFromApi($l30Start, $l30End);
+            $l60 = $this->computeFaireMetricsFromApi($l60Start, $l60End);
             $ySales = $this->computeFaireYSalesLikeAmazon();
             $l7Sales = $this->computeFaireL7SalesLikeAmazon();
         } catch (\Throwable $e) {
@@ -2934,7 +2936,7 @@ class ChannelMasterController extends Controller
      */
     private function faireTabulatorL30L60Windows(): array
     {
-        $l30Start = FaireController::faireShopifyL30Start();
+        $l30Start = FaireController::faireL30Start();
         $l30End = Carbon::now('America/Los_Angeles')->endOfDay();
 
         return [
@@ -2946,7 +2948,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Live L30/L60 from shopify_raw_orders — same windows as /pp-sales-stats and getPurchasingPowerChannelData().
+     * Live L30/L60 from purchasing_power_sales — same windows as /pp-sales-stats and getPurchasingPowerChannelData().
      *
      * @return array{l30_sales: float, l30_orders: int, qty: int, l60_sales: float, l60_orders: int, pft: float, cogs: float, l60_pft: float, l60_cogs: float}|null
      */
@@ -2955,8 +2957,8 @@ class ChannelMasterController extends Controller
         try {
             [$l30Start, $l30End, $l60Start, $l60End] = $this->completePacificL30L60Windows();
 
-            $l30 = $this->computePurchasingPowerMetricsFromShopify($l30Start, $l30End);
-            $l60 = $this->computePurchasingPowerMetricsFromShopify($l60Start, $l60End);
+            $l30 = $this->computePurchasingPowerMetricsFromApi($l30Start, $l30End);
+            $l60 = $this->computePurchasingPowerMetricsFromApi($l60Start, $l60End);
 
             return [
                 'l30_sales' => $l30['sales'],
@@ -2977,8 +2979,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Overlay live Purchasing Power L30/L60 from Shopify so /all-marketplace-master matches /purchasing-power-sales
-     * even when channel_master_calculated_data was built before the latest Shopify sync.
+     * Overlay Purchasing Power L30/L60 from purchasing_power_sales so /all-marketplace-master
+     * matches /purchasing-power-sales.
      */
     private function overlayLivePurchasingPowerMetricsOnChannelRows(array $rows): array
     {
@@ -7136,7 +7138,7 @@ class ChannelMasterController extends Controller
         }
 
         foreach ($this->livePacificYSalesByLookupKey() as $key => $value) {
-            if ($value !== null) {
+            if ($value !== null && $key !== 'faire') {
                 $sales[$key] = (float) $value;
             }
         }
@@ -8467,8 +8469,6 @@ class ChannelMasterController extends Controller
         $finalData = $this->overlayLiveReviewsOnChannelRows($finalData);
         // FB Marketplace: overlay live Sales / GPFT / ROI from /facebook-marketplace
         $finalData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($finalData);
-        // Faire: overlay live L30/L60/Y/L7 from shopify_raw_orders (same as /faire-tabulator)
-        $finalData = $this->overlayLiveFaireMetricsOnChannelRows($finalData);
         // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
         $finalData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemuSalesOnChannelRows($finalData);
@@ -8683,33 +8683,13 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Faire Y Sales: Pacific yesterday only (Shopify or Faire API for that day).
-     * Do not reuse the last sale day — that copied one wholesale order onto
-     * every following day so Y Sales matched L30 and the chart stayed flat.
+     * Faire Y Sales: Pacific yesterday only from faire_order_metrics.
      */
     private function computeFaireYSalesLikeAmazon(): ?float
     {
         [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
-        return round(max(
-            $this->sumFaireShopifySalesBetween($yStartPacific, $yEndPacific),
-            $this->sumFaireApiSalesBetween($yStartPacific, $yEndPacific)
-        ), 2);
-    }
-
-    private function sumFaireShopifySalesBetween(Carbon $start, Carbon $end): float
-    {
-        if (! Schema::hasTable('shopify_raw_orders')) {
-            return 0.0;
-        }
-
-        return (float) DB::table('shopify_raw_orders')
-            ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
-            ->where('order_date', '>=', $start)
-            ->where('order_date', '<=', $end)
-            ->where('quantity', '>', 0)
-            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
-            ->value('revenue');
+        return round($this->sumFaireApiSalesBetween($yStartPacific, $yEndPacific), 2);
     }
 
     private function sumFaireApiSalesBetween(Carbon $start, Carbon $end): float
@@ -8721,11 +8701,9 @@ class ChannelMasterController extends Controller
         return (float) DB::table('faire_order_metrics')
             ->where('order_date', '>=', $start)
             ->where('order_date', '<=', $end)
-            ->where(function ($q) {
-                $q->whereNull('status')
-                    ->orWhereRaw('UPPER(status) NOT IN (?, ?)', ['CANCELLED', 'CANCELED']);
-            })
-            ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
+            ->where(fn ($q) => FaireController::applyFaireApiOrderFilter($q))
+            ->where('quantity', '>', 0)
+            ->selectRaw('COALESCE(SUM(amount * quantity), 0) as revenue')
             ->value('revenue');
     }
 
@@ -9087,49 +9065,27 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Purchasing Power Y Sales — sourced from shopify_raw_orders (same table as /shopify).
-     * Identification: source_name / tags containing "purchasing power".
-     *
-     * Revenue = price × quantity for Pacific calendar yesterday.
+     * Purchasing Power Y Sales from purchasing_power_sales (MCM OR11).
      */
     private function computePurchasingPowerYSalesLikeAmazon(): ?float
     {
-        $ppWhere = function ($q) {
-            $q->where('source_name', 'LIKE', '%purchasing power%')
-              ->orWhere('source_name', 'LIKE', '%purchasingpower%')
-              ->orWhere('tags', 'LIKE', '%Purchasing Power%')
-              ->orWhere('tags', 'LIKE', '%PurchasingPower%');
-        };
-
         [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
-        $sum = (float) DB::table('shopify_raw_orders')
-            ->where($ppWhere)
-            ->where('order_date', '>=', $yStartPacific)
-            ->where('order_date', '<=', $yEndPacific)
-            ->where('quantity', '>', 0)
-            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
-            ->value('revenue');
-
-        return round($sum, 2);
+        return $this->sumPurchasingPowerApiSalesBetween($yStartPacific, $yEndPacific);
     }
 
     /**
-     * Purchasing Power L7 Sales — same Shopify-based identification as Y Sales, summed across
-     * the seven Pacific calendar days ending on wall-clock yesterday (same clock as Amazon).
+     * Purchasing Power L7 Sales from purchasing_power_sales, seven Pacific days ending yesterday.
      */
     private function computePurchasingPowerL7SalesLikeAmazon(): ?float
     {
-        $ppWhere = function ($q) {
-            $q->where('source_name', 'LIKE', '%purchasing power%')
-              ->orWhere('source_name', 'LIKE', '%purchasingpower%')
-              ->orWhere('tags', 'LIKE', '%Purchasing Power%')
-              ->orWhere('tags', 'LIKE', '%PurchasingPower%');
-        };
+        if (! Schema::hasTable('purchasing_power_sales')) {
+            return null;
+        }
 
-        if (! DB::table('shopify_raw_orders')
-            ->where($ppWhere)
-            ->whereNotNull('order_date')
+        if (! DB::table('purchasing_power_sales')
+            ->where(fn ($q) => PurchasingPowerController::applyPurchasingPowerSaleFilter($q))
+            ->whereNotNull('date_created')
             ->exists()) {
             return null;
         }
@@ -9138,12 +9094,21 @@ class ChannelMasterController extends Controller
             Carbon::now('America/Los_Angeles')
         );
 
-        $sum = (float) DB::table('shopify_raw_orders')
-            ->where($ppWhere)
-            ->where('order_date', '>=', $l7StartPacific)
-            ->where('order_date', '<=', $l7EndPacific)
+        return $this->sumPurchasingPowerApiSalesBetween($l7StartPacific, $l7EndPacific);
+    }
+
+    private function sumPurchasingPowerApiSalesBetween(Carbon $start, Carbon $end): ?float
+    {
+        if (! Schema::hasTable('purchasing_power_sales')) {
+            return 0.0;
+        }
+
+        $sum = (float) DB::table('purchasing_power_sales')
+            ->where(fn ($q) => PurchasingPowerController::applyPurchasingPowerSaleFilter($q))
+            ->where('date_created', '>=', $start)
+            ->where('date_created', '<=', $end)
             ->where('quantity', '>', 0)
-            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+            ->selectRaw('COALESCE(SUM('.PurchasingPowerController::purchasingPowerLineRevenueSql().'), 0) as revenue')
             ->value('revenue');
 
         return round($sum, 2);
@@ -9337,15 +9302,7 @@ class ChannelMasterController extends Controller
             Carbon::now('America/Los_Angeles')
         );
 
-        $sum = (float) DB::table('shopify_raw_orders')
-            ->where('order_date', '>=', $l7StartPacific)
-            ->where('order_date', '<=', $l7EndPacific)
-            ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
-            ->where('quantity', '>', 0)
-            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
-            ->value('revenue');
-
-        return round($sum, 2);
+        return round($this->sumFaireApiSalesBetween($l7StartPacific, $l7EndPacific), 2);
     }
 
     private function computeTiktokShopL7SalesFromOrders(): ?float
@@ -13153,18 +13110,21 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Aggregate Faire sales/profit for a date window straight from Shopify
-     * (shopify_raw_orders). Same identification logic as the faire-tabulator
-     * page so the two stay in sync.
+     * Aggregate Faire sales/profit for a date window from faire_order_metrics.
+     * Same identification logic as the faire-tabulator page so the two stay in sync.
      *
      * @return array{sales:float, orders:int, qty:int, pft:float, cogs:float}
      */
-    private function computeFaireMetricsFromShopify(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): array
+    private function computeFaireMetricsFromApi(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): array
     {
-        $rows = DB::table('shopify_raw_orders')
+        if (! Schema::hasTable('faire_order_metrics')) {
+            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
+        }
+
+        $rows = DB::table('faire_order_metrics')
             ->whereBetween('order_date', [$startDate, $endDate])
-            ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
-            ->get(['order_number', 'sku', 'quantity', 'price']);
+            ->where(fn ($q) => FaireController::applyFaireApiOrderFilter($q))
+            ->get(['order_number', 'sku', 'quantity', 'amount']);
 
         if ($rows->isEmpty()) {
             return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
@@ -13186,7 +13146,7 @@ class ChannelMasterController extends Controller
 
         foreach ($rows as $r) {
             $sku      = $r->sku;
-            $price    = (float) ($r->price ?? 0);
+            $price    = (float) ($r->amount ?? 0);
             $quantity = (int)   ($r->quantity ?? 0);
             if ($quantity <= 0) continue;
 
@@ -13232,14 +13192,11 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // L30 and L60 are computed directly from shopify_raw_orders (Faire source) —
-        // same data source the /faire-tabulator page uses — so the two pages match.
-        // Previously this read from marketplace_daily_metrics which in turn was sourced
-        // from faire_daily_data (manual Excel uploads), drifting out of sync.
+        // L30 and L60 from faire_order_metrics — same source as /faire-tabulator.
         [$l30Start, $l30End, $l60Start, $l60End] = $this->faireTabulatorL30L60Windows();
 
-        $l30 = $this->computeFaireMetricsFromShopify($l30Start, $l30End);
-        $l60 = $this->computeFaireMetricsFromShopify($l60Start, $l60End);
+        $l30 = $this->computeFaireMetricsFromApi($l30Start, $l30End);
+        $l60 = $this->computeFaireMetricsFromApi($l60Start, $l60End);
 
         $l30Sales      = $l30['sales'];
         $l30Orders     = $l30['orders'];
@@ -13312,27 +13269,24 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Aggregate Purchasing Power sales/profit for a date window from shopify_raw_orders
-     * (same table as /shopify). Identification mirrors the shopify-orders page
-     * so the all-marketplace-master row stays in sync with the Shopify dashboard.
+     * Aggregate Purchasing Power sales/profit from purchasing_power_sales (MCM OR11).
      *
-     * Profit per line = (price × pct) − LP, where pct comes from
+     * Profit per line = (unit_price × pct) − LP, where pct comes from
      * marketplace_percentages.marketplace = 'Purchase' (default 65%).
-     * Note: Ship is intentionally excluded from PP profit (matches /purchasing-power-pricing).
+     * Ship is excluded (matches /purchasing-power-pricing).
      *
      * @return array{sales:float, orders:int, qty:int, pft:float, cogs:float}
      */
-    private function computePurchasingPowerMetricsFromShopify(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): array
+    private function computePurchasingPowerMetricsFromApi(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): array
     {
-        $rows = DB::table('shopify_raw_orders')
-            ->whereBetween('order_date', [$startDate, $endDate])
-            ->where(function ($q) {
-                $q->where('source_name', 'LIKE', '%purchasing power%')
-                  ->orWhere('source_name', 'LIKE', '%purchasingpower%')
-                  ->orWhere('tags', 'LIKE', '%Purchasing Power%')
-                  ->orWhere('tags', 'LIKE', '%PurchasingPower%');
-            })
-            ->get(['order_number', 'sku', 'quantity', 'price']);
+        if (! Schema::hasTable('purchasing_power_sales')) {
+            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
+        }
+
+        $rows = DB::table('purchasing_power_sales')
+            ->whereBetween('date_created', [$startDate, $endDate])
+            ->where(fn ($q) => PurchasingPowerController::applyPurchasingPowerSaleFilter($q))
+            ->get(['order_number', 'offer_sku', 'product_sku', 'quantity', 'unit_price', 'amount']);
 
         if ($rows->isEmpty()) {
             return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
@@ -13341,9 +13295,9 @@ class ChannelMasterController extends Controller
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
         $pct = (($marketplaceData ? (float) ($marketplaceData->percentage ?? 65) : 65) / 100);
 
-        $skus = $rows->pluck('sku')->filter()->unique()->values()->toArray();
+        $skus = $rows->map(fn ($r) => $r->offer_sku ?: $r->product_sku)->filter()->unique()->values()->toArray();
         $productMasters = !empty($skus)
-            ? ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku')
+            ? ProductMaster::whereIn('sku', $skus)->get()->keyBy(fn ($pm) => strtoupper(trim((string) $pm->sku)))
             : collect();
 
         $totalSales = 0.0;
@@ -13353,9 +13307,12 @@ class ChannelMasterController extends Controller
         $orderSet   = [];
 
         foreach ($rows as $r) {
-            $sku      = $r->sku;
-            $price    = (float) ($r->price ?? 0);
-            $quantity = (int)   ($r->quantity ?? 0);
+            $sku      = strtoupper(trim((string) ($r->offer_sku ?: $r->product_sku)));
+            $quantity = (int) ($r->quantity ?? 0);
+            $price    = (float) ($r->unit_price ?? 0);
+            if ($price <= 0 && $quantity > 0) {
+                $price = ((float) ($r->amount ?? 0)) / $quantity;
+            }
             if ($quantity <= 0) continue;
 
             $lp = 0.0;
@@ -13400,11 +13357,11 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // L30 and L60 are computed directly from shopify_raw_orders (same table as /shopify).
+        // L30 and L60 from purchasing_power_sales (MCM OR11).
         [$l30Start, $l30End, $l60Start, $l60End] = $this->completePacificL30L60Windows();
 
-        $l30 = $this->computePurchasingPowerMetricsFromShopify($l30Start, $l30End);
-        $l60 = $this->computePurchasingPowerMetricsFromShopify($l60Start, $l60End);
+        $l30 = $this->computePurchasingPowerMetricsFromApi($l30Start, $l30End);
+        $l60 = $this->computePurchasingPowerMetricsFromApi($l60Start, $l60End);
 
         $l30Sales      = $l30['sales'];
         $l30Orders     = $l30['orders'];
@@ -17001,9 +16958,6 @@ class ChannelMasterController extends Controller
                 if ($metric === 'y_sales') {
                     $chartData = ChartDatePad::fillGapsThroughYesterday($chartData, $days);
                 }
-                if ($metric === 'y_sales' && ! $isAll) {
-                    $chartData = $this->overlayLiveYSalesOnChart($channel, $chartData);
-                }
                 $chartData = $this->pinChartSeriesLastToTable(
                     $chartData,
                     $channel,
@@ -17017,145 +16971,6 @@ class ChannelMasterController extends Controller
 
             if ($metric === 'tat' && !$isAll) {
                 return response()->json(['success' => true, 'data' => []]);
-            }
-
-            if (! $isAll && $metric === 'l30_sales' && $channel === 'fbmarketplace') {
-                $chartData = $this->buildFbMarketplaceLiveRollingSalesChart($days, 30);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'l60_sales' && $channel === 'fbmarketplace') {
-                $chartData = $this->buildFbMarketplaceLiveL60SalesChart($days);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'l30_sales' && $channel === 'temu2') {
-                $chartData = $this->buildTemu2LiveRollingSalesChart($days, 30);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'l30_sales' && $channel === 'temu3') {
-                $chartData = $this->buildTemu3LiveRollingSalesChart($days, 30);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'l30_sales' && $channel === 'faire') {
-                $chartData = $this->buildFaireLiveRollingSalesChart($days, 31);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'l60_sales' && $channel === 'faire') {
-                $chartData = $this->buildFaireLiveL60SalesChart($days);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'y_sales' && $channel === 'faire' && ! $useDailyWindow && ! $useL7Window) {
-                $chartData = $this->buildFaireLiveDailyYSalesChart($days);
-                $chartData = ChartDatePad::fillGapsThroughYesterday($chartData, $days);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'y_sales' && $channel === 'shein' && ! $useDailyWindow && ! $useL7Window) {
-                $chartData = $this->buildSheinLiveDailyYSalesChart($days);
-                $chartData = ChartDatePad::fillGapsThroughYesterday($chartData, $days);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'y_sales' && $channel === 'newegg' && ! $useDailyWindow && ! $useL7Window) {
-                $chartData = $this->buildNeweggLiveDailyYSalesChart($days);
-                $chartData = ChartDatePad::fillGapsThroughYesterday($chartData, $days);
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'l30_sales' && $channel === 'depop') {
-                $chartData = $this->buildDepopLiveRollingSalesChart($days, 30);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'l60_sales' && $channel === 'depop') {
-                $chartData = $this->buildDepopLiveL60SalesChart($days);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
             }
 
             // All-channel Y Sales badge: snapshots only (no per-channel live order
@@ -17657,9 +17472,6 @@ class ChannelMasterController extends Controller
 
             if ($metric === 'y_sales' && ! $useL7Window) {
                 $chartData = $this->extendYSalesChartThroughYesterday($channel, $chartData, $isAll, $days);
-                if (! $isAll) {
-                    $chartData = $this->overlayLiveYSalesOnChart($channel, $chartData);
-                }
             }
 
             // Table (channel_master_calculated_data / the grid cell) is the source.
@@ -17858,18 +17670,6 @@ class ChannelMasterController extends Controller
         }
 
         ksort($byDateChannel);
-        $liveStart = Carbon::now($tz)->subDays($days + 1)->startOfDay();
-        $liveEnd = Carbon::yesterday($tz)->endOfDay();
-        $faireByDay = $this->faireDailySalesByDate($liveStart, $liveEnd);
-        $sheinByDay = $this->sheinDailySalesByDate($liveStart, $liveEnd);
-        foreach ($byDateChannel as $asOf => $channels) {
-            $liveAmazon = $this->realPacificDayYSales('amazon', $asOf);
-            if ($liveAmazon !== null) {
-                $byDateChannel[$asOf]['amazon'] = $liveAmazon;
-            }
-            $byDateChannel[$asOf]['faire'] = (float) (($faireByDay[$asOf]['sales'] ?? 0));
-            $byDateChannel[$asOf]['shein'] = (float) (($sheinByDay[$asOf]['sales'] ?? 0));
-        }
         $out = [];
         foreach ($byDateChannel as $asOf => $channels) {
             $out[] = [
@@ -18220,7 +18020,6 @@ class ChannelMasterController extends Controller
 
             if (! $useDailyWindow && ! $useL7Window) {
                 $this->pinLiveDotTrendsFromCalculatedData($out);
-                $this->overlayLiveTemu2L30SalesDotTrend($out);
                 $this->pinAllDotTrendsFromChannelPairs($out);
             }
 
@@ -19089,10 +18888,10 @@ class ChannelMasterController extends Controller
 
             if ($channel === 'faire') {
                 $day = Carbon::parse($ymd, 'America/Los_Angeles');
-                self::$pacificDayYSalesCache[$key] = round(max(
-                    $this->sumFaireShopifySalesBetween($day->copy()->startOfDay(), $day->copy()->endOfDay()),
-                    $this->sumFaireApiSalesBetween($day->copy()->startOfDay(), $day->copy()->endOfDay())
-                ), 2);
+                self::$pacificDayYSalesCache[$key] = round(
+                    $this->sumFaireApiSalesBetween($day->copy()->startOfDay(), $day->copy()->endOfDay()),
+                    2
+                );
 
                 return self::$pacificDayYSalesCache[$key];
             }
@@ -19156,38 +18955,6 @@ class ChannelMasterController extends Controller
      */
     private function overlayLiveYSalesOnChart(string $channel, array $chartData): array
     {
-        $channel = $this->allMarketplaceSnapshotKey($channel);
-        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace', 'faire', 'shein', 'newegg'], true) || $chartData === []) {
-            return $chartData;
-        }
-
-        $tz = 'America/Los_Angeles';
-        $now = now($tz);
-        $lastIdx = array_key_last($chartData);
-        foreach ($chartData as $idx => &$pt) {
-            // Last point is pinned to the saved table cell — do not replace it.
-            if ($idx === $lastIdx) {
-                continue;
-            }
-            $label = trim((string) ($pt['date'] ?? ''));
-            if ($label === '') {
-                continue;
-            }
-            try {
-                $parsed = Carbon::parse($label, $tz);
-                if ($parsed->gt($now)) {
-                    $parsed->subYear();
-                }
-                $live = $this->realPacificDayYSales($channel, $parsed->toDateString());
-            } catch (\Throwable $e) {
-                continue;
-            }
-            if ($live !== null) {
-                $pt['value'] = round((float) $live, 2);
-            }
-        }
-        unset($pt);
-
         return $chartData;
     }
 
@@ -20008,18 +19775,6 @@ class ChannelMasterController extends Controller
         $tz = 'America/Los_Angeles';
         $span = $days > 0 ? $days : 30;
 
-        if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'depop') {
-            return $this->buildDepopLiveDailyYSalesChart($span);
-        }
-        if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'faire') {
-            return $this->buildFaireLiveDailyYSalesChart($span);
-        }
-        if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'shein') {
-            return $this->buildSheinLiveDailyYSalesChart($span);
-        }
-        if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'newegg') {
-            return $this->buildNeweggLiveDailyYSalesChart($span);
-        }
         $startDate = now($tz)->subDays($span + 1)->toDateString();
         $want = $isAll ? null : $this->allMarketplaceSnapshotKey($channel);
 
@@ -20065,10 +19820,6 @@ class ChannelMasterController extends Controller
             ];
         }
 
-        if (! $isAll) {
-            $out = $this->overlayLiveYSalesOnChart($channel, $out);
-        }
-
         return $out;
     }
 
@@ -20108,23 +19859,23 @@ class ChannelMasterController extends Controller
      * @return list<array{date: string, value: float}>
      */
     /**
-     * Faire daily sales from shopify_raw_orders (same filter as /faire-tabulator).
+     * Faire daily sales from faire_order_metrics (same filter as /faire-tabulator).
      *
      * @return array<string, array{sales: float}>
      */
     private function faireDailySalesByDate(Carbon $start, Carbon $end): array
     {
         $out = [];
-        if (! Schema::hasTable('shopify_raw_orders')) {
+        if (! Schema::hasTable('faire_order_metrics')) {
             return $out;
         }
 
-        $rows = DB::table('shopify_raw_orders')
-            ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
+        $rows = DB::table('faire_order_metrics')
+            ->where(fn ($q) => FaireController::applyFaireApiOrderFilter($q))
             ->where('order_date', '>=', $start)
             ->where('order_date', '<=', $end)
             ->where('quantity', '>', 0)
-            ->selectRaw('DATE(order_date) as d, COALESCE(SUM(price * quantity), 0) as revenue')
+            ->selectRaw('DATE(order_date) as d, COALESCE(SUM(amount * quantity), 0) as revenue')
             ->groupBy('d')
             ->get();
 

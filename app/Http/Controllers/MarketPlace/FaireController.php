@@ -526,38 +526,49 @@ class FaireController extends Controller
         }
     }
 
-    public static function applyFaireShopifyOrderFilter($query): void
+    public static function applyFaireApiOrderFilter($query): void
     {
-        $query->where('source_name', 'faire')
-            ->orWhere('source_name', 'LIKE', '%faire%')
-            ->orWhere('tags', 'LIKE', '%Faire%');
+        $query->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereNotIn('sku', ['__order__', '__unknown__'])
+            ->where(function ($q) {
+                $q->whereNull('status')
+                    ->orWhereRaw('UPPER(status) NOT IN (?, ?)', ['CANCELLED', 'CANCELED']);
+            });
     }
 
     /** Last 30 Pacific days — same window as /faire-tabulator. */
-    public static function faireShopifyL30Start(): Carbon
+    public static function faireL30Start(): Carbon
     {
         return Carbon::now('America/Los_Angeles')->subDays(30)->startOfDay();
     }
 
-    /**
-     * Per-SKU AL30 qty + sales from shopify_raw_orders (Faire source).
-     * Replaces faire_daily_data Excel dumps so pricing / CVR move with live orders.
-     */
-    public static function queryFaireShopifyL30SalesBySku()
+    public static function faireShopifyL30Start(): Carbon
     {
-        if (! Schema::hasTable('shopify_raw_orders')) {
+        return self::faireL30Start();
+    }
+
+    /**
+     * Per-SKU AL30 qty + sales from faire_order_metrics (Faire API).
+     */
+    public static function queryFaireL30SalesBySku()
+    {
+        if (! Schema::hasTable('faire_order_metrics')) {
             return collect();
         }
 
-        return DB::table('shopify_raw_orders')
-            ->where('order_date', '>=', self::faireShopifyL30Start())
-            ->where(fn ($q) => self::applyFaireShopifyOrderFilter($q))
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
+        return DB::table('faire_order_metrics')
+            ->where('order_date', '>=', self::faireL30Start())
+            ->where(fn ($q) => self::applyFaireApiOrderFilter($q))
             ->where('quantity', '>', 0)
-            ->selectRaw('sku, SUM(COALESCE(quantity, 0)) as al30, SUM(COALESCE(price, 0) * COALESCE(quantity, 0)) as sales')
+            ->selectRaw('sku, SUM(COALESCE(quantity, 0)) as al30, SUM(COALESCE(amount, 0) * COALESCE(quantity, 0)) as sales')
             ->groupBy('sku')
             ->get();
+    }
+
+    public static function queryFaireShopifyL30SalesBySku()
+    {
+        return self::queryFaireL30SalesBySku();
     }
 
     /**
@@ -566,14 +577,15 @@ class FaireController extends Controller
     public function getDailyData(Request $request)
     {
         try {
-            // Source: shopify_raw_orders on the default (inventory_db) connection. Faire orders
-            // are identified the same way the Shopify Orders page identifies them:
-            // source_name='faire' OR tags contain "Faire".
-            // Window: last 30 days (Pacific time) to match the L30 view used elsewhere.
-            $thirtyDaysAgo = \Carbon\Carbon::now('America/Los_Angeles')->subDays(30)->startOfDay();
-            $rows = DB::table('shopify_raw_orders')
+            // Source: faire_order_metrics (Faire External API v2 via faire:sync-orders).
+            if (! Schema::hasTable('faire_order_metrics')) {
+                return response()->json([]);
+            }
+
+            $thirtyDaysAgo = self::faireL30Start();
+            $rows = DB::table('faire_order_metrics')
                 ->where('order_date', '>=', $thirtyDaysAgo)
-                ->where(fn ($q) => self::applyFaireShopifyOrderFilter($q))
+                ->where(fn ($q) => self::applyFaireApiOrderFilter($q))
                 ->orderBy('order_date', 'desc')
                 ->orderBy('id', 'desc')
                 ->get();
@@ -612,10 +624,13 @@ class FaireController extends Controller
                     }
                 }
 
-                // Shopify stores the actual selling price on `price`; no separate wholesale/retail
-                // split exists for Faire-via-Shopify orders, so use it directly.
-                $price    = (float) ($item->price ?? 0);
+                $price    = (float) ($item->amount ?? 0);
                 $quantity = (float) ($item->quantity ?? 0);
+                $payload  = is_array($item->raw_payload ?? null)
+                    ? $item->raw_payload
+                    : (is_string($item->raw_payload ?? null) ? (json_decode($item->raw_payload, true) ?: []) : []);
+                $address  = is_array(data_get($payload, 'address')) ? data_get($payload, 'address') : [];
+                $retailer = is_array(data_get($payload, 'retailer')) ? data_get($payload, 'retailer') : [];
 
                 // PFT each = (price × keep-rate) − LP. Keep-rate comes from marketplace_percentages
                 // (Faire). No ship cost on Faire.
@@ -632,8 +647,8 @@ class FaireController extends Controller
                     'order_date'    => $item->order_date,
                     'order_number'  => $item->order_number,
                     'sku'           => $sku,
-                    'product_name'  => $item->product_title,
-                    'status'        => $item->financial_status ?: $item->fulfillment_status,
+                    'product_name'  => $item->display_title,
+                    'status'        => $item->status,
                     'quantity'      => (int) $quantity,
                     // Pricing & profit
                     'price'         => round($price, 2),
@@ -643,14 +658,12 @@ class FaireController extends Controller
                     'pft_each_pct'  => round($pftEachPct, 2),
                     'pft'           => round($totalPft, 2),
                     'roi'           => round($roi, 2),
-                    // Shipping (no Faire-style ship_date; expose tracking instead)
                     'ship_date'         => null,
-                    'tracking_company'  => $item->tracking_company,
-                    'tracking_number'   => $item->tracking_number,
-                    // Customer / shipping address (limited columns on shopify_raw_orders)
-                    'retailer_name' => $item->customer_name,
-                    'city'          => $item->shipping_city,
-                    'country'       => $item->shipping_country,
+                    'tracking_company'  => data_get($payload, 'shipments.0.carrier') ?: data_get($payload, 'shipments.0.tracking_code'),
+                    'tracking_number'   => data_get($payload, 'shipments.0.tracking_code') ?: data_get($payload, 'shipments.0.tracking_number'),
+                    'retailer_name' => data_get($retailer, 'name') ?: data_get($address, 'name') ?: data_get($address, 'company_name'),
+                    'city'          => data_get($address, 'city'),
+                    'country'       => data_get($address, 'country') ?: data_get($address, 'country_code'),
                     // Legacy columns kept for back-compat with the tabulator (left empty)
                     'purchase_order_number' => null,
                     'address_1' => null,
@@ -666,7 +679,7 @@ class FaireController extends Controller
 
             return response()->json($mapped->values())->header('Content-Type', 'application/json');
         } catch (\Exception $e) {
-            Log::error('Error fetching Faire data from shopify_raw_orders: ' . $e->getMessage(), [
+            Log::error('Error fetching Faire data from faire_order_metrics: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
             return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
@@ -873,9 +886,8 @@ class FaireController extends Controller
     {
         try {
             // Same grain as /faire/daily-data (tabulator): last 30 Pacific days from
-            // shopify_raw_orders. faire_daily_data is a manual Excel dump and stays frozen
-            // until someone re-uploads (it was stuck for a week).
-            $salesAgg = self::queryFaireShopifyL30SalesBySku();
+            // faire_order_metrics (Faire API).
+            $salesAgg = self::queryFaireL30SalesBySku();
 
             // Robust SKU normalizer (mirrors AliexpressController::normalizeAeSkuExact).
             // The previous `strtoupper(trim(str_replace(NBSP, ' ', $v)))` missed narrow NBSP

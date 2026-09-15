@@ -2954,17 +2954,17 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     /**
      * Faire — same source and per-line economics as FaireController::getDailyData (faire-tabulator).
-     * Last 30 Pacific days from shopify_raw_orders (not the Excel faire_daily_data dump).
+     * Last 30 Pacific days from faire_order_metrics.
      */
     private function calculateFaireMetrics($date)
     {
         $start = Carbon::now('America/Los_Angeles')->subDays(30)->startOfDay();
         $end = Carbon::now('America/Los_Angeles')->endOfDay();
-        $data = DB::table('shopify_raw_orders')
+        $data = DB::table('faire_order_metrics')
             ->whereBetween('order_date', [$start, $end])
-            ->where(fn ($q) => \App\Http\Controllers\MarketPlace\FaireController::applyFaireShopifyOrderFilter($q))
+            ->where(fn ($q) => \App\Http\Controllers\MarketPlace\FaireController::applyFaireApiOrderFilter($q))
             ->where('quantity', '>', 0)
-            ->get(['order_number', 'sku', 'quantity', 'price']);
+            ->get(['order_number', 'sku', 'quantity', 'amount']);
 
         if ($data->isEmpty()) {
             return null;
@@ -3008,7 +3008,7 @@ class UpdateMarketplaceDailyMetrics extends Command
                 }
             }
 
-            $price = (float) ($item->price ?? 0);
+            $price = (float) ($item->amount ?? 0);
             $quantity = (int) ($item->quantity ?? 0);
 
             if ($quantity <= 0) {

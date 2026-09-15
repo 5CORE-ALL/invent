@@ -71,7 +71,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Faire Daily Data',
-        'sub_title' => 'Last 30 days of Faire orders, pulled from shopify_raw_orders (same table as /shopify; source_name=faire or tag "Faire"). No manual uploads needed.',
+        'sub_title' => 'Last 30 days of Faire orders from faire_order_metrics (Faire API).',
     ])
 
     <div class="toast-container"></div>

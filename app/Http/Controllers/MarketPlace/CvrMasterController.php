@@ -1476,7 +1476,7 @@ class CvrMasterController extends Controller
             }
 
             // Faire — same sources/formulas as /faire-pricing (products API → faire_metric; no sheet)
-            // Price/inventory from faire_metric; L30 from shopify_raw_orders (same as /faire-pricing); ship excluded; Ads% = 0
+            // Price/inventory from faire_metric; L30 from faire_order_metrics; ship excluded; Ads% = 0
             $faireMarketplace = MarketplacePercentage::where('marketplace', 'Faire')->first();
             $fairePercentage = $faireMarketplace ? ((float) $faireMarketplace->percentage / 100) : 0.75;
             $faireMetricByNorm = [];
@@ -1490,7 +1490,7 @@ class CvrMasterController extends Controller
                         }
                     }
                 }
-                if (Schema::hasTable('shopify_raw_orders')) {
+                if (Schema::hasTable('faire_order_metrics')) {
                     $faireL30ByNorm = $this->fetchFaireL30ByNormalizedSku();
                 }
                 Log::info('CVR Master - Faire Data fetched', [
@@ -2273,7 +2273,7 @@ class CvrMasterController extends Controller
                 $tdPFT = $tdGPFT; // No ads
 
                 // === FAIRE (same as /faire-pricing) ===
-                // Price from faire_metric (products API); L30 from shopify_raw_orders; no ship; Ads% = 0
+                // Price from faire_metric (products API); L30 from faire_order_metrics; no ship; Ads% = 0
                 $faireNormKey = $this->normalizeFaireSkuForCvr((string) $sku);
                 $faireMetric = ($faireNormKey !== '' && isset($faireMetricByNorm[$faireNormKey]))
                     ? $faireMetricByNorm[$faireNormKey]
@@ -5043,7 +5043,7 @@ class CvrMasterController extends Controller
                         }
                     }
                 }
-                if (Schema::hasTable('shopify_raw_orders') && $faireNormBd !== '') {
+                if (Schema::hasTable('faire_order_metrics') && $faireNormBd !== '') {
                     $faireL30Bd = $this->fetchFaireL30QtyForSku($fullSku);
                 }
             } catch (\Exception $e) {
@@ -11097,7 +11097,7 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * Faire AL30 qty per normalized SKU from shopify_raw_orders (same grain as /faire-pricing).
+     * Faire AL30 qty per normalized SKU from faire_order_metrics (same grain as /faire-pricing).
      *
      * @return array<string, int>
      */
@@ -11105,7 +11105,7 @@ class CvrMasterController extends Controller
     {
         try {
             $out = [];
-            FaireController::queryFaireShopifyL30SalesBySku()
+            FaireController::queryFaireL30SalesBySku()
                 ->each(function ($row) use (&$out) {
                     $key = $this->normalizeFaireSkuForCvr((string) ($row->sku ?? ''));
                     if ($key === '') {
