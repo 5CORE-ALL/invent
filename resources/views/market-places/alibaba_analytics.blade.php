@@ -99,9 +99,9 @@
                         <input type="text" id="ab-search-product" class="form-control form-control-sm" style="width:170px;" placeholder="Search Product Id...">
                         <input type="text" id="ab-search-sku" class="form-control form-control-sm" style="width:170px;" placeholder="Search SKU...">
                         <select id="ab-row-type-filter" class="form-select form-select-sm" style="width:auto;">
-                            <option value="all" selected>All Rows</option>
+                            <option value="all">All Rows</option>
                             <option value="parents">Parents</option>
-                            <option value="skus">SKUs</option>
+                            <option value="skus" selected>SKUs</option>
                         </select>
                         <select id="ab-inventory-filter" class="form-select form-select-sm" style="width:auto;" title="Shopify INV — same as /bestbuy-pricing">
                             <option value="all">All INV</option>
@@ -186,12 +186,22 @@
 
         let abTable = null;
         let abAllRows = [];
+        let abLoadedType = null;
 
         function isAbParentRow(data) {
             if (!data) return false;
-            if (data.is_parent_summary || data.is_parent_row || data.is_parent) return true;
-            const sku = String(data.sku || data['(Child) sku'] || '').toUpperCase();
-            return sku.includes('PARENT');
+            return !!(data.is_parent_summary || data.is_parent_row);
+        }
+
+        function abChildRows() {
+            return (abAllRows || []).filter(function (r) { return !isAbParentRow(r); });
+        }
+
+        function abVisibleRows() {
+            const rowType = document.getElementById('ab-row-type-filter').value;
+            if (rowType === 'parents') return (abAllRows || []).filter(isAbParentRow);
+            if (rowType === 'all') return abAllRows || [];
+            return abChildRows();
         }
 
         function abDilValue(data) {
@@ -227,6 +237,12 @@
             const inventory = document.getElementById('ab-inventory-filter').value;
             const dilFilter = document.getElementById('ab-dil-filter').value;
             const rowType = document.getElementById('ab-row-type-filter').value;
+            const source = abVisibleRows();
+            if (abLoadedType !== rowType) {
+                abLoadedType = rowType;
+                abTable.setData(source).then(function () { applyFilters(); });
+                return;
+            }
 
             abTable.setFilter(function (data) {
                 const isParent = isAbParentRow(data);
@@ -258,14 +274,16 @@
             .then(json => {
                 abAllRows = json.data || [];
                 setStats(json.stats || {});
+                abLoadedType = document.getElementById('ab-row-type-filter').value || 'skus';
+                const initialRows = abVisibleRows();
+                if (window.ParentExpand) ParentExpand.captureDataset(abAllRows);
                 if (abTable) {
-                    if (window.ParentExpand) ParentExpand.captureDataset(abAllRows);
-                    abTable.replaceData(abAllRows);
+                    abTable.replaceData(initialRows);
                     applyFilters();
                     return;
                 }
                 abTable = new Tabulator('#alibaba-analytics-table', {
-                    data: abAllRows,
+                    data: initialRows,
                     layout: 'fitColumns',
                     height: '68vh',
                     placeholder: 'No Alibaba sheet prices yet. Import the price sheet or download the sample.',
