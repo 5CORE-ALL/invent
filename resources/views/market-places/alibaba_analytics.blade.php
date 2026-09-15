@@ -99,9 +99,9 @@
                         <input type="text" id="ab-search-product" class="form-control form-control-sm" style="width:170px;" placeholder="Search Product Id...">
                         <input type="text" id="ab-search-sku" class="form-control form-control-sm" style="width:170px;" placeholder="Search SKU...">
                         <select id="ab-row-type-filter" class="form-select form-select-sm" style="width:auto;">
-                            <option value="all" selected>All Rows</option>
+                            <option value="all">All Rows</option>
                             <option value="parents">Parents</option>
-                            <option value="skus">SKUs</option>
+                            <option value="skus" selected>SKUs</option>
                         </select>
                         <select id="ab-inventory-filter" class="form-select form-select-sm" style="width:auto;" title="Shopify INV — same as /bestbuy-pricing">
                             <option value="all">All INV</option>
@@ -186,12 +186,22 @@
 
         let abTable = null;
         let abAllRows = [];
+        let abLoadedType = null;
 
         function isAbParentRow(data) {
             if (!data) return false;
-            if (data.is_parent_summary || data.is_parent_row || data.is_parent) return true;
-            const sku = String(data.sku || data['(Child) sku'] || '').toUpperCase();
-            return sku.includes('PARENT');
+            return !!(data.is_parent_summary || data.is_parent_row);
+        }
+
+        function abChildRows() {
+            return (abAllRows || []).filter(function (r) { return !isAbParentRow(r); });
+        }
+
+        function abVisibleRows() {
+            const rowType = document.getElementById('ab-row-type-filter').value;
+            if (rowType === 'parents') return (abAllRows || []).filter(isAbParentRow);
+            if (rowType === 'all') return abAllRows || [];
+            return abChildRows();
         }
 
         function abDilValue(data) {
@@ -215,10 +225,6 @@
 
         function applyFilters() {
             if (!abTable) return;
-            if (window.ParentExpand && ParentExpand.isExpanded()) {
-                ParentExpand.beforeFilters(function () { applyFilters(); });
-                return;
-            }
             const parentQ = (document.getElementById('ab-search-parent').value || '').trim().toLowerCase();
             const productQ = (document.getElementById('ab-search-product').value || '').trim().toLowerCase();
             const skuQ = (document.getElementById('ab-search-sku').value || '').trim().toLowerCase();
@@ -227,6 +233,12 @@
             const inventory = document.getElementById('ab-inventory-filter').value;
             const dilFilter = document.getElementById('ab-dil-filter').value;
             const rowType = document.getElementById('ab-row-type-filter').value;
+            const source = abVisibleRows();
+            if (abLoadedType !== rowType) {
+                abLoadedType = rowType;
+                abTable.setData(source).then(function () { applyFilters(); });
+                return;
+            }
 
             abTable.setFilter(function (data) {
                 const isParent = isAbParentRow(data);
@@ -258,14 +270,15 @@
             .then(json => {
                 abAllRows = json.data || [];
                 setStats(json.stats || {});
+                abLoadedType = document.getElementById('ab-row-type-filter').value || 'skus';
+                const initialRows = abVisibleRows();
                 if (abTable) {
-                    if (window.ParentExpand) ParentExpand.captureDataset(abAllRows);
-                    abTable.replaceData(abAllRows);
+                    abTable.replaceData(initialRows);
                     applyFilters();
                     return;
                 }
                 abTable = new Tabulator('#alibaba-analytics-table', {
-                    data: abAllRows,
+                    data: initialRows,
                     layout: 'fitColumns',
                     height: '68vh',
                     placeholder: 'No Alibaba sheet prices yet. Import the price sheet or download the sample.',
@@ -281,7 +294,6 @@
                         }
                     },
                     columns: [
-                        (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                         { title: 'Parent', field: 'Parent', hozAlign: 'left', headerHozAlign: 'center', minWidth: 140, frozen: true },
                         { title: 'SKU', field: 'sku', hozAlign: 'left', headerHozAlign: 'center', minWidth: 200, frozen: true },
                         { title: 'Product Id', field: 'product_id', hozAlign: 'left', headerHozAlign: 'center', minWidth: 150 },
@@ -323,19 +335,6 @@
                         { title: 'Inv Update', field: 'inv_update', hozAlign: 'center', headerHozAlign: 'center', width: 120 },
                     ],
                 });
-                if (window.ParentExpand) {
-                    ParentExpand.configure({
-                        parentField: 'Parent',
-                        skuField: 'sku',
-                        getTable: () => abTable,
-                        getDataset: () => abAllRows,
-                        isParentRow: isAbParentRow,
-                        onAfterExpand: function () {},
-                        onCollapse: function () { applyFilters(); },
-                    });
-                    ParentExpand.bind();
-                    ParentExpand.captureDataset(abAllRows);
-                }
                 applyFilters();
             })
             .finally(() => { loader.style.display = 'none'; });
