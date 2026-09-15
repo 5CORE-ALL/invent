@@ -266,7 +266,35 @@
             document.getElementById('analyticsDilChartLowest').textContent = dataMin.toFixed(1) + '%';
             const range = dataMax - dataMin;
             const yMin = range < 1e-9 ? Math.max(0, dataMin - 0.5) : Math.max(0, dataMin - range * 0.12);
-            const yMax = range < 1e-9 ? dataMax + 0.5 : dataMax + Math.max(range * 0.28, 0.5);
+            const yMax = range < 1e-9 ? dataMax + 1.2 : dataMax + Math.max(range * 0.38, 0.8);
+            const valueLabelsPlugin = {
+                id: 'analyticsDilValueLabels',
+                afterDraw: function(chart) {
+                    const dataset = chart.data.datasets[0];
+                    const meta = chart.getDatasetMeta(0);
+                    const c = chart.ctx;
+                    if (!dataset || !meta || !meta.data) return;
+                    const angle = -40 * Math.PI / 180;
+                    meta.data.forEach(function(point, i) {
+                        const val = dataset.data[i];
+                        if (val == null || !point) return;
+                        const txt = Number(val).toFixed(1) + '%';
+                        c.save();
+                        c.font = 'bold 12px Inter, system-ui, sans-serif';
+                        c.fillStyle = '#111';
+                        c.strokeStyle = 'rgba(255,255,255,0.95)';
+                        c.lineWidth = 3;
+                        c.lineJoin = 'round';
+                        c.textAlign = 'left';
+                        c.textBaseline = 'middle';
+                        c.translate(point.x + 4, point.y - 10);
+                        c.rotate(angle);
+                        c.strokeText(txt, 0, 0);
+                        c.fillText(txt, 0, 0);
+                        c.restore();
+                    });
+                }
+            };
             chartInst = new Chart(ctxEl.getContext('2d'), {
                 type: 'line',
                 data: {
@@ -278,19 +306,25 @@
                         backgroundColor: 'rgba(253,126,20,0.12)',
                         fill: true,
                         tension: 0.25,
-                        pointRadius: 3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
                         pointBackgroundColor: '#fd7e14'
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    layout: { padding: { top: 22, right: 36 } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: true }
+                    },
                     scales: {
                         x: { ticks: { maxRotation: 90, minRotation: 90, font: { size: 10, weight: '600' } } },
                         y: { min: yMin, max: yMax, ticks: { callback: function(v) { return Number(v).toFixed(1) + '%'; } } }
                     }
-                }
+                },
+                plugins: [valueLabelsPlugin]
             });
         };
         if (typeof Chart === 'undefined' && typeof loadChartJs === 'function') {

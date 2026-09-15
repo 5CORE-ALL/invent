@@ -1768,8 +1768,9 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Same Views / CVR 30 scope as /ebay2-tabulator-view badges:
-     * one live ebay_2_metrics row per SKU, E Stock > 0, PARENT SKUs excluded.
+     * Same Views / CVR scope as /ebay2-tabulator-view badges:
+     * Views = Σ ebay_2_metrics.views for E Stock > 0, PARENT excluded.
+     * CVR = Sold Qty (ebay2_order_metrics L30) ÷ Views × 100.
      *
      * @return array{total_views: float, cvr_pct: float}|null
      */
@@ -1794,7 +1795,6 @@ class ChannelMasterController extends Controller
                 ->filter();
 
             $views = 0.0;
-            $ebayL30 = 0.0;
             foreach ($metrics as $metric) {
                 $sku = (string) ($metric->sku ?? '');
                 if ($sku === '' || stripos($sku, 'PARENT') !== false) {
@@ -1804,16 +1804,29 @@ class ChannelMasterController extends Controller
                     continue;
                 }
                 $views += (float) ($metric->views ?? 0);
-                $ebayL30 += (float) ($metric->ebay_l30 ?? 0);
             }
 
             if ($views <= 0) {
                 return null;
             }
 
+            $soldQty = 0;
+            try {
+                $orderRows = app(\App\Http\Controllers\Sales\Ebay2SalesController::class)
+                    ->getData(request())
+                    ->getData(true);
+                if (is_array($orderRows)) {
+                    foreach ($orderRows as $r) {
+                        $soldQty += (int) ($r['quantity'] ?? 0);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('EbayTwo sold-qty for CVR failed: '.$e->getMessage());
+            }
+
             return [
                 'total_views' => $views,
-                'cvr_pct' => round(($ebayL30 / $views) * 100, 2),
+                'cvr_pct' => round(($soldQty / $views) * 100, 2),
             ];
         } catch (\Throwable $e) {
             Log::warning('computeEbayTwoListingViewsFromMetrics failed: '.$e->getMessage());
@@ -1839,10 +1852,10 @@ class ChannelMasterController extends Controller
 
         $sd = is_array($row->summary_data) ? $row->summary_data : [];
         $views = (float) ($sd['total_views'] ?? 0);
-        $ebayL30 = (float) ($sd['total_ebay_listing_l30'] ?? $sd['total_ebay_l30'] ?? 0);
+        $soldQty = (float) ($sd['orders_l30_qty'] ?? $sd['total_ebay_listing_l30'] ?? $sd['total_ebay_l30'] ?? 0);
         $cvr = array_key_exists('cvr_percent', $sd) && $sd['cvr_percent'] !== null && $sd['cvr_percent'] !== ''
             ? round((float) $sd['cvr_percent'], 2)
-            : ($views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0.0);
+            : ($views > 0 ? round(($soldQty / $views) * 100, 2) : 0.0);
 
         return [
             'total_views' => $views,
@@ -4795,7 +4808,7 @@ class ChannelMasterController extends Controller
      * Active SKUs only. Each Shopify inventory row is counted once.
      * Inv@SP uses amazon_data_view.STANDARD_PRICE (Sku Link LMP siblings), then live Amazon price.
      *
-     * @return array{inv_sum: float, inv_at_lp: float, inv_at_sp: float, inv_at_amz: float, weighted_avg_lp: float, dil_bands: array<string, array{count: int, units: float, inv_at_lp: float, inv_at_sp: float}>}
+     * @return array{inv_sum: float, ov_l30_sum: float, dil_inv_sum: float, dil_ov_percent: float, inv_at_lp: float, inv_at_sp: float, inv_at_amz: float, weighted_avg_lp: float, dil_bands: array<string, array{count: int, units: float, inv_at_lp: float, inv_at_sp: float}>}
      */
     private function getShopifyInvLpMetrics(): array
     {
@@ -4806,6 +4819,9 @@ class ChannelMasterController extends Controller
         $emptyBands = $this->emptyInvDilBands();
         $empty = [
             'inv_sum' => 0.0,
+            'ov_l30_sum' => 0.0,
+            'dil_inv_sum' => 0.0,
+            'dil_ov_percent' => 0.0,
             'inv_at_lp' => 0.0,
             'inv_at_sp' => 0.0,
             'inv_at_amz' => 0.0,
@@ -4842,6 +4858,8 @@ class ChannelMasterController extends Controller
         }
 
         $invSum = 0.0;
+        $ovL30Sum = 0.0;
+        $dilInvSum = 0.0;
         $invAtLp = 0.0;
         $invAtSp = 0.0;
         $invAtAmz = 0.0;
@@ -4849,14 +4867,6 @@ class ChannelMasterController extends Controller
         $seenShopify = [];
         foreach ($shopifyByPmSku as $pmSku => $row) {
             if (stripos((string) $pmSku, 'PARENT') !== false) {
-                continue;
-            }
-            if ($row->inv === null || $row->inv === '' || ! is_numeric($row->inv)) {
-                continue;
-            }
-
-            $inv = (float) $row->inv;
-            if ($inv < 0.01) {
                 continue;
             }
 
@@ -4867,6 +4877,20 @@ class ChannelMasterController extends Controller
                 continue;
             }
             $seenShopify[$dedupeKey] = true;
+
+            $inv = is_numeric($row->inv ?? null) ? (float) $row->inv : 0.0;
+            $l30 = 0.0;
+            if (is_numeric($row->quantity ?? null)) {
+                $l30 = (float) $row->quantity;
+            } elseif (is_numeric($row->shopify_l30 ?? null)) {
+                $l30 = (float) $row->shopify_l30;
+            }
+            $ovL30Sum += $l30;
+            $dilInvSum += max(0.0, $inv);
+
+            if ($inv < 0.01) {
+                continue;
+            }
 
             $invSum += $inv;
             $pm = $pmBySku->get(strtoupper(trim((string) $pmSku)));
@@ -4884,12 +4908,6 @@ class ChannelMasterController extends Controller
             $invAtSp += $spValue;
             $invAtAmz += $amzValue;
 
-            $l30 = 0.0;
-            if (is_numeric($row->quantity ?? null)) {
-                $l30 = (float) $row->quantity;
-            } elseif (is_numeric($row->shopify_l30 ?? null)) {
-                $l30 = (float) $row->shopify_l30;
-            }
             $band = $this->invDilBandKey($l30, $inv);
             $dilBands[$band]['count']++;
             $dilBands[$band]['units'] += $inv;
@@ -4906,6 +4924,9 @@ class ChannelMasterController extends Controller
 
         return $this->shopifyInvLpMetricsCache = [
             'inv_sum' => round($invSum, 2),
+            'ov_l30_sum' => round($ovL30Sum, 2),
+            'dil_inv_sum' => round($dilInvSum, 2),
+            'dil_ov_percent' => $dilInvSum > 0 ? round(($ovL30Sum / $dilInvSum) * 100, 2) : 0.0,
             'inv_at_lp' => round($invAtLp, 2),
             'inv_at_sp' => round($invAtSp, 2),
             'inv_at_amz' => round($invAtAmz, 2),
@@ -5222,6 +5243,9 @@ class ChannelMasterController extends Controller
             $existing['inventory_value_amazon'] = $payload['inventory_value_amazon'] ?? ($existing['inventory_value_amazon'] ?? 0);
             $existing['shopify_inv_sum'] = $payload['shopify_inv_sum'] ?? ($existing['shopify_inv_sum'] ?? 0);
             $existing['shopify_weighted_avg_lp'] = $payload['shopify_weighted_avg_lp'] ?? ($existing['shopify_weighted_avg_lp'] ?? 0);
+            $existing['total_ov_l30'] = $payload['total_ov_l30'] ?? ($existing['total_ov_l30'] ?? 0);
+            $existing['total_inv'] = $payload['total_inv'] ?? ($existing['total_inv'] ?? 0);
+            $existing['dil_ov_percent'] = $payload['dil_ov_percent'] ?? ($existing['dil_ov_percent'] ?? 0);
             $existing['inv_metrics_version'] = self::INV_METRICS_VERSION;
             if (! empty($payload['inventory_pies'])) {
                 $existing['inventory_pies'] = $payload['inventory_pies'];
@@ -5300,6 +5324,7 @@ class ChannelMasterController extends Controller
                     : $this->getInventoryValueAmazon();
                 $payload['shopify_inv_sum'] = $shopifyMetrics['inv_sum'];
                 $payload['shopify_weighted_avg_lp'] = $shopifyMetrics['weighted_avg_lp'];
+                $payload = $this->attachDilMetricsToPayload($payload, $shopifyMetrics);
                 $pies = $this->inventoryDilPiesFromMetrics($shopifyMetrics);
                 $payload['inventory_pies'] = $pies;
                 $payload['inventory_by_color'] = $this->inventoryByColorFromDilPies($pies);
@@ -5311,6 +5336,36 @@ class ChannelMasterController extends Controller
                 $payload['inventory_value_amazon'] = (float) ($payload['inventory_value_amazon'] ?? 0);
             }
         }
+
+        if (! isset($payload['dil_ov_percent']) || $payload['dil_ov_percent'] === '' || $payload['dil_ov_percent'] === null) {
+            try {
+                $payload = $this->attachDilMetricsToPayload($payload, $this->getShopifyInvLpMetrics());
+            } catch (\Throwable $e) {
+                $payload['dil_ov_percent'] = (float) ($payload['dil_ov_percent'] ?? 0);
+                $payload['total_ov_l30'] = (float) ($payload['total_ov_l30'] ?? 0);
+                $payload['total_inv'] = (float) ($payload['total_inv'] ?? $payload['shopify_inv_sum'] ?? 0);
+            }
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Dil% = Σ Shopify OV L30 ÷ Σ INV (PARENT excluded). Same formula as analytics Dil% badges.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $metrics
+     * @return array<string, mixed>
+     */
+    private function attachDilMetricsToPayload(array $payload, array $metrics): array
+    {
+        $ov = (float) ($metrics['ov_l30_sum'] ?? 0);
+        $inv = (float) ($metrics['dil_inv_sum'] ?? $metrics['inv_sum'] ?? 0);
+        $payload['total_ov_l30'] = round($ov, 2);
+        $payload['total_inv'] = round($inv, 2);
+        $payload['dil_ov_percent'] = $inv > 0
+            ? round(($ov / $inv) * 100, 2)
+            : (float) ($metrics['dil_ov_percent'] ?? 0);
 
         return $payload;
     }
@@ -7490,6 +7545,9 @@ class ChannelMasterController extends Controller
                 'inv_at_sp' => $summaryData['inv_at_sp'] ?? 0,
                 'shopify_inv_sum' => $summaryData['shopify_inv_sum'] ?? 0,
                 'shopify_weighted_avg_lp' => $summaryData['shopify_weighted_avg_lp'] ?? 0,
+                'total_ov_l30' => $summaryData['total_ov_l30'] ?? 0,
+                'total_inv' => $summaryData['total_inv'] ?? ($summaryData['shopify_inv_sum'] ?? 0),
+                'dil_ov_percent' => $summaryData['dil_ov_percent'] ?? 0,
                 'inventory_pies' => $summaryData['inventory_pies'] ?? [],
                 'inventory_by_color' => $summaryData['inventory_by_color'] ?? [],
                 'stock_availability' => $summaryData['stock_availability'] ?? ['zero_stock' => 0, 'in_stock' => 0],
@@ -8290,6 +8348,9 @@ class ChannelMasterController extends Controller
             'inv_metrics_version' => self::INV_METRICS_VERSION,
             'shopify_inv_sum' => $shopifyInvLp['inv_sum'],
             'shopify_weighted_avg_lp' => $shopifyInvLp['weighted_avg_lp'],
+            'total_ov_l30' => $shopifyInvLp['ov_l30_sum'] ?? 0,
+            'total_inv' => $shopifyInvLp['dil_inv_sum'] ?? $shopifyInvLp['inv_sum'],
+            'dil_ov_percent' => $shopifyInvLp['dil_ov_percent'] ?? 0,
             'inventory_pies' => $inventoryPies,
             'inventory_by_color' => $inventoryByColor,
             'stock_availability' => $stockAvailability,

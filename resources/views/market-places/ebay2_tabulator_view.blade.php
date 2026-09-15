@@ -616,7 +616,7 @@
                         <span class="badge bg-warning" id="avg-price-badge" style="color: black; font-weight: bold;">Prc: $0.00</span>
                         <span class="badge bg-danger" id="avg-cvr-badge"
                               style="color: white; font-weight: bold;"
-                              title="CVR = (Σ eBay L30 / Σ Views) × 100 for rows with E Stock > 0 — same formula as the CVR 30 column and the EbayTwo CVR cell on /all-marketplace-master.">CVR: 0%</span>
+                              title="CVR = Sold Qty ÷ Views × 100. Sold Qty is the Qty badge (ebay2_order_metrics L30). Views is Σ listing views for child rows with E Stock &gt; 0.">CVR: 0%</span>
                         <span class="badge bg-info" id="total-views-badge" style="color: black; font-weight: bold;"
                               title="Σ listing views for child rows with E Stock &gt; 0 (PARENT rows excluded). Same scope as CVR and /all-marketplace-master EbayTwo Views.">Views: 0</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay2'])
@@ -4848,18 +4848,14 @@
                 let totalViews = 0;
                 let totalL7Views = 0;
                 let l7Count = 0;
-                let listingL30 = 0;
                 ebay2ListingViewsScopeRows().forEach(row => {
                     totalViews += parseFloat(row.views || 0);
                     totalL7Views += parseFloat(row.l7_views || 0);
-                    listingL30 += parseFloat(row['eBay L30'] || 0);
                     l7Count++;
                 });
-                // Listing CVR = (Σ eBay L30 / Σ views) × 100 for E Stock > 0.
-                // Same formula as the CVR 30 column and /all-marketplace-master EbayTwo CVR.
-                // S Qty (orders-API units) stays on the Qty badge — mixing that numerator
-                // with listing views understated CVR (~1% vs ~5%).
-                const avgCVR = totalViews > 0 ? (listingL30 / totalViews * 100) : 0;
+                // Same as /ebay-tabulator-view and /ebay3-tabulator-view:
+                // CVR = Sold Qty (orders L30) ÷ Σ Views × 100.
+                const avgCVR = totalViews > 0 ? (ORDERS_L30_TOTAL_QTY / totalViews * 100) : 0;
                 const avgL7Views = l7Count > 0 ? (totalL7Views / l7Count) : 0;
                 const prevAvgL7Views = avgL7ViewsGlobal;
                 avgL7ViewsGlobal = avgL7Views;

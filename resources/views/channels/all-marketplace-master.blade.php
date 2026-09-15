@@ -2009,6 +2009,21 @@
                             response.inv_at_sp,
                             'Shopify INV × Standard Price'
                         );
+                        if (window.AnalyticsDilBadge) {
+                            const ovL30 = parseFloat(response.total_ov_l30) || 0;
+                            const dilInv = parseFloat(response.total_inv || response.shopify_inv_sum) || 0;
+                            const dilPct = parseFloat(response.dil_ov_percent);
+                            AnalyticsDilBadge.init({
+                                getRows: function() {
+                                    return [{ L30: ovL30, INV: dilInv }];
+                                }
+                            });
+                            AnalyticsDilBadge.set(
+                                isFinite(dilPct) ? dilPct : (dilInv > 0 ? (ovL30 / dilInv) * 100 : 0),
+                                ovL30,
+                                dilInv
+                            );
+                        }
                         if (response.inventory_pies && Array.isArray(response.inventory_pies.slices)) {
                             lastInventoryPies = response.inventory_pies;
                         } else if (Array.isArray(response.inventory_by_color) && response.inventory_by_color.length) {

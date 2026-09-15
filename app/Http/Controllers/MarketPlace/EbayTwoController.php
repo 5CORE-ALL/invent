@@ -2679,10 +2679,12 @@ class EbayTwoController extends Controller
                     $listingEbayL30 += (float) (data_get($row, 'eBay L30') ?? 0);
                 }
             }
+
+            $soldQty = (int) ($this->fetchEbay2L30OrdersAggregate()['qty'] ?? 0);
             
             // Calculate averages and percentages (EXACT JavaScript logic)
             $avgPrice = $totalL30 > 0 ? $totalWeightedPrice / $totalL30 : 0;
-            $avgCVR = $totalViews > 0 ? ($listingEbayL30 / $totalViews * 100) : 0;
+            $avgCVR = $totalViews > 0 ? ($soldQty / $totalViews * 100) : 0;
             $tacosPercent = $totalSalesAmt > 0 ? (($totalPmtSpendL30 / $totalSalesAmt) * 100) : 0;
             $groiPercent = $totalLpAmt > 0 ? (($totalPftAmt / $totalLpAmt) * 100) : 0;
             $avgGpft = $totalSalesAmt > 0 ? (($totalPftAmt / $totalSalesAmt) * 100) : 0; // GPFT = (PFT/Sales)*100
@@ -2713,6 +2715,7 @@ class EbayTwoController extends Controller
                 'total_fba_inv' => round($totalFbaInv, 2),
                 'total_ebay_l30' => round($totalFbaL30, 2),
                 'total_ebay_listing_l30' => round($listingEbayL30, 2),
+                'orders_l30_qty' => $soldQty,
                 'total_views' => $totalViews,
                 'total_ov_l30' => round($totalOvL30, 2),
                 'total_inv' => round($totalInv, 2),
@@ -2748,7 +2751,7 @@ class EbayTwoController extends Controller
                 ],
                 [
                     'summary_data' => $summaryData,
-                    'notes' => 'Auto-saved daily snapshot (views/CVR: E Stock > 0, no PARENT)',
+                    'notes' => 'Auto-saved daily snapshot (CVR = sold qty / views; views: E Stock > 0, no PARENT)',
                 ]
             );
             
