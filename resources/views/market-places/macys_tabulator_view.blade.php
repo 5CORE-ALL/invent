@@ -1478,10 +1478,6 @@
         table = new Tabulator("#macys-table", {
             ajaxURL: "/macys-data-json",
             ajaxSorting: false,
-            sortMode: "local",
-            filterMode: "local",
-            paginationMode: "local",
-            headerSort: true,
             layout: "fitData",
             layoutColumnsOnNewData: true,
             pagination: true,
@@ -2126,47 +2122,15 @@
                     }
                 },
                 {
-                    title: "SGROI",
-                    field: "SROI",
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        if (!isFinite(percent)) return '';
-                        const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
-                        return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                    },
-                    width: 50
-                },
-                {
                     title: "SGPFT",
                     field: "SGPFT",
                     hozAlign: "center",
-                    headerSort: true,
                     sorter: "number",
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value === null || value === undefined) return '';
                         const percent = parseFloat(value);
                         const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
-                        return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                    },
-                    width: 50
-                },
-                {
-                    title: "SNROI",
-                    field: "SNROI",
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const percent = parseFloat(rowData.SROI ?? cell.getValue());
-                        if (!isFinite(percent)) return '';
-                        const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
                         return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                     },
                     width: 50
@@ -2175,14 +2139,30 @@
                     title: "SNPFT",
                     field: "SPFT",
                     hozAlign: "center",
-                    headerSort: true,
                     sorter: "number",
                     formatter: function(cell) {
+                        // Macys has no ads — SNPFT = SGPFT
                         const rowData = cell.getRow().getData();
                         const percent = parseFloat(rowData.SGPFT ?? cell.getValue());
                         if (!isFinite(percent)) return '';
                         const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
                         return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "SNROI",
+                    field: "SROI",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        // Macys has no ads — SNROI = gross SROI (no Ads% cut)
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        if (!isFinite(percent)) return '';
+                        const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                     },
                     width: 50
                 }

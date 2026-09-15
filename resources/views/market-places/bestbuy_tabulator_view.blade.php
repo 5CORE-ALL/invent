@@ -1805,10 +1805,6 @@
         table = new Tabulator("#bestbuy-table", {
             ajaxURL: "/bestbuy-data-json",
             ajaxSorting: false,
-            sortMode: "local",
-            filterMode: "local",
-            paginationMode: "local",
-            headerSort: true,
             layout: "fitData",
             layoutColumnsOnNewData: true,
             pagination: true,
@@ -2487,7 +2483,7 @@
                     }
                 },
                 {
-                    title: "SGROI",
+                    title: "SROI",
                     field: "SROI",
                     hozAlign: "center",
                     sorter: "number",

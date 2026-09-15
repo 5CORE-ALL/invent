@@ -824,10 +824,6 @@
         table = new Tabulator('#vinted-table', {
             ajaxURL: '{{ route("vinted.pricing.data") }}',
             ajaxSorting: false,
-            sortMode: "local",
-            filterMode: "local",
-            paginationMode: "local",
-            headerSort: true,
             layout: 'fitDataStretch',
             pagination: true,
             paginationSize: 100,
@@ -1029,16 +1025,7 @@
                     }
                 },
                 {
-                    title: 'SGROI', field: 'SROI', hozAlign: 'center', headerSort: true, sorter: 'number', width: 50,
-                    formatter: function(cell) {
-                        const p = parseFloat(cell.getValue());
-                        if (!isFinite(p)) return '';
-                        const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
-                        return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
-                    }
-                },
-                {
-                    title: 'SGPFT', field: 'SGPFT', hozAlign: 'center', headerSort: true, sorter: 'number', width: 50,
+                    title: 'SGPFT', field: 'SGPFT', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
                         const p = parseFloat(cell.getValue());
                         const color = p < 10 ? '#a00211' : p < 15 ? '#ffc107' : p < 20 ? '#3591dc' : p <= 40 ? '#28a745' : '#e83e8c';
@@ -1046,20 +1033,22 @@
                     }
                 },
                 {
-                    title: 'SNROI', field: 'SNROI', hozAlign: 'center', headerSort: true, sorter: 'number', width: 50,
+                    title: 'SNPFT', field: 'SPFT', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
-                        const p = parseFloat(cell.getRow().getData().SROI ?? cell.getValue());
-                        if (!isFinite(p)) return '';
-                        const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
-                        return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
-                    }
-                },
-                {
-                    title: 'SNPFT', field: 'SPFT', hozAlign: 'center', headerSort: true, sorter: 'number', width: 50,
-                    formatter: function(cell) {
+                        // Vinted has no ads — SNPFT = SGPFT
                         const p = parseFloat(cell.getRow().getData().SGPFT ?? cell.getValue());
                         if (!isFinite(p)) return '';
                         const color = p < 10 ? '#a00211' : p < 15 ? '#ffc107' : p < 20 ? '#3591dc' : p <= 40 ? '#28a745' : '#e83e8c';
+                        return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
+                    }
+                },
+                {
+                    title: 'SNROI', field: 'SROI', hozAlign: 'center', sorter: 'number', width: 50,
+                    formatter: function(cell) {
+                        // Vinted has no ads — SNROI = gross SROI (no Ads% cut)
+                        const p = parseFloat(cell.getValue());
+                        if (!isFinite(p)) return '';
+                        const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
                     }
                 }

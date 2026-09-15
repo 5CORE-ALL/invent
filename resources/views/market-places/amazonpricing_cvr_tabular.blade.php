@@ -2867,7 +2867,7 @@
                         width: 80
                     },
                     {
-                        title: "SGROI",
+                        title: "SROI",
                         field: "SROI",
                         hozAlign: "center",
                         visible: false,
@@ -2889,7 +2889,7 @@
                         width: 80
                     },
                     {
-                        title: "SGPFT",
+                        title: "S GPFT",
                         field: "SGPFT",
                         hozAlign: "center",
                         visible: false,
