@@ -1258,12 +1258,10 @@
                 window.chPushSafeRowUpdate(row, patch);
                 return;
             }
-            if (!row || typeof row.update !== 'function' || !patch) return;
+            if (!patch || typeof patch !== 'object') return;
             try {
-                const ret = row.update(patch);
-                if (ret && typeof ret.then === 'function') {
-                    ret.catch(function() { /* Tabulator renderer not ready */ });
-                }
+                const d = (row && typeof row.getData === 'function') ? row.getData() : null;
+                if (d && typeof d === 'object') Object.assign(d, patch);
             } catch (e) { /* ignore */ }
         }
 

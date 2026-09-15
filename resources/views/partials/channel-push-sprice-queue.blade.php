@@ -114,27 +114,14 @@
                 return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
             }
             function chPushSafeRowUpdate(row, patch) {
-                if (!row || typeof row.update !== 'function' || !patch) return;
+                if (!patch || typeof patch !== 'object') return;
+                // Never call Tabulator row.update()/reformat() from the push pump.
+                // Those re-render after filters/redraw and crash Renderer.js
+                // (undefined.add / undefined.delete).
                 try {
-                    if (typeof row.getTable === 'function' && !row.getTable()) return;
-                    if (typeof row.getElement === 'function') {
-                        const el = row.getElement();
-                        if (el && el.isConnected === false) {
-                            const d = typeof row.getData === 'function' ? row.getData() : null;
-                            if (d) Object.assign(d, patch);
-                            return;
-                        }
-                    }
-                    const ret = row.update(patch);
-                    if (ret && typeof ret.then === 'function') {
-                        ret.catch(function() { /* Tabulator renderer not ready */ });
-                    }
-                } catch (e) {
-                    try {
-                        const d = typeof row.getData === 'function' ? row.getData() : null;
-                        if (d) Object.assign(d, patch);
-                    } catch (e2) { /* ignore */ }
-                }
+                    const d = (row && typeof row.getData === 'function') ? row.getData() : null;
+                    if (d && typeof d === 'object') Object.assign(d, patch);
+                } catch (e) { /* ignore */ }
             }
             global.chPushSafeRowUpdate = chPushSafeRowUpdate;
             function chPushSpriceRound2(n) {
@@ -410,8 +397,6 @@
                         const result = patchRecord(d, t);
                         if (result) {
                             if (result.kind === 'price') priceChanged++;
-                            try { row.update(result.patch); } catch (e) { /* ignore */ }
-                            try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
                             if (CH_PUSH_SPRICE_CHANNEL === 'aliexpress' && typeof window.aeApplyPushPatchToSku === 'function') {
                                 window.aeApplyPushPatchToSku(t.sku, result.patch);
                             }

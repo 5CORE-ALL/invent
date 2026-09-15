@@ -2444,6 +2444,19 @@ class EbayTwoController extends Controller
                 $message = '[eBay #'.$first['ErrorCode'].'] '.$message;
             }
 
+            $ended = EbayListingEnded::looksEndedError($message)
+                || (string) ($first['ErrorCode'] ?? '') === '291';
+            if ($ended) {
+                try {
+                    if (Schema::hasColumn('ebay_2_metrics', 'listing_status')) {
+                        $ebayMetric->listing_status = 'ENDED';
+                        $ebayMetric->save();
+                    }
+                } catch (\Throwable $e) {
+                    // keep going
+                }
+            }
+
             Log::error('[EbayTwoController] eBay2 price push failed via microservice', [
                 'sku'    => $sku,
                 'price'  => $priceFloat,
@@ -2454,7 +2467,7 @@ class EbayTwoController extends Controller
                 'success' => false,
                 'message' => $message,
                 'errors'  => $errors,
-            ], 400);
+            ], $ended ? 422 : 400);
 
         } catch (\Exception $e) {
             $this->saveSpriceStatus($sku, 'failed');
