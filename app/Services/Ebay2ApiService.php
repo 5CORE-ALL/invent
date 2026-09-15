@@ -2257,6 +2257,17 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
 
             $msg = $this->flattenEbayErrors($data) ?: 'ReviseInventoryStatus failed.';
 
+            // SKU on a single-SKU listing (or empty NameValueList) — retry item-level qty.
+            if ($sku !== null && $sku !== '' && (
+                str_contains($msg, '21916587')
+                || $this->ebayErrorLooksLikeNonVariationListing(
+                    isset($data['Errors'][0]) ? $data['Errors'] : (isset($data['Errors']) && is_array($data['Errors']) ? [$data['Errors']] : []),
+                    $msg
+                )
+            )) {
+                return $this->reviseInventoryStatus($itemId, $quantity, null, null);
+            }
+
             Log::warning('eBay2 ReviseInventoryStatus failed', [
                 'itemId' => $itemId,
                 'sku' => $sku,
@@ -2395,6 +2406,19 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             return ['success' => false, 'message' => 'ItemID and SKU are required.'];
         }
 
+        $specifics = [];
+        $raw = $this->getItem($itemId);
+        $item = is_array($raw['Item'] ?? null) ? $raw['Item'] : [];
+        if ($item !== []) {
+            $specifics = \App\Services\MarketplaceManager\EbayLiveListingMapper::variationSpecificsForSku($item, $sku);
+        }
+
+        // Single-SKU listings have no VariationSpecifics — do not send a Variations node
+        // (eBay 21916587 "Missing name in name-value list").
+        if ($specifics === []) {
+            return $this->reviseInventoryStatus($itemId, $quantity, null, null);
+        }
+
         try {
             $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
             $credentials = $xml->addChild('RequesterCredentials');
@@ -2402,12 +2426,18 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             $xml->addChild('ErrorLanguage', 'en_US');
             $xml->addChild('WarningLevel', 'High');
 
-            $item = $xml->addChild('Item');
-            $item->addChild('ItemID', $itemId);
-            $variations = $item->addChild('Variations');
+            $itemNode = $xml->addChild('Item');
+            $itemNode->addChild('ItemID', $itemId);
+            $variations = $itemNode->addChild('Variations');
             $variation = $variations->addChild('Variation');
             $variation->addChild('SKU', $sku);
             $variation->addChild('Quantity', (string) max(0, $quantity));
+            $vs = $variation->addChild('VariationSpecifics');
+            foreach ($specifics as $name => $value) {
+                $nvl = $vs->addChild('NameValueList');
+                $nvl->addChild('Name', (string) $name);
+                $nvl->addChild('Value', (string) $value);
+            }
 
             $headers = [
                 'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
@@ -2434,14 +2464,16 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             $data = json_decode(json_encode($xmlResp), true) ?: [];
             $ack = $data['Ack'] ?? 'Failure';
             $msg = $this->flattenEbayErrors($data);
+            $errors = isset($data['Errors'][0])
+                ? $data['Errors']
+                : (isset($data['Errors']) && is_array($data['Errors']) ? [$data['Errors']] : []);
+            if (
+                str_contains($msg, '21916587')
+                || $this->ebayErrorLooksLikeNonVariationListing($errors, $msg)
+            ) {
+                return $this->reviseInventoryStatus($itemId, $quantity, null, null);
+            }
             if ($ack === 'Success' || $ack === 'Warning') {
-                if ($this->ebayErrorLooksLikeNonVariationListing(
-                    isset($data['Errors'][0]) ? $data['Errors'] : (isset($data['Errors']) && is_array($data['Errors']) ? [$data['Errors']] : []),
-                    $msg
-                )) {
-                    return ['success' => false, 'message' => $msg ?: 'Not a multi-SKU listing.', 'data' => $data];
-                }
-
                 return ['success' => true, 'message' => 'Variation quantity updated.', 'data' => $data];
             }
 

@@ -178,4 +178,70 @@ final class EbayLiveListingMapper
 
         return $lc !== '' && $lc === $rc;
     }
+
+    /**
+     * VariationSpecifics Name=>Value for ReviseFixedPriceItem.
+     * Empty when the listing is single-SKU or the SKU is not a variation.
+     *
+     * @param  array<string, mixed>  $item
+     * @return array<string, string>
+     */
+    public static function variationSpecificsForSku(array $item, string $sku): array
+    {
+        $sku = trim($sku);
+        $vars = $item['Variations']['Variation'] ?? null;
+        if (! is_array($vars) || $vars === [] || $sku === '') {
+            return [];
+        }
+        if (isset($vars['SKU']) || isset($vars['Quantity']) || isset($vars['VariationSpecifics'])) {
+            $vars = [$vars];
+        }
+
+        foreach ($vars as $variation) {
+            if (! is_array($variation)) {
+                continue;
+            }
+            $vSku = trim((string) ($variation['SKU'] ?? ''));
+            if ($vSku === '' || ! self::skuEquals($vSku, $sku)) {
+                continue;
+            }
+
+            return self::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null);
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  mixed  $nameValueList
+     * @return array<string, string>
+     */
+    public static function nameValueMap(mixed $nameValueList): array
+    {
+        if (! is_array($nameValueList) || $nameValueList === []) {
+            return [];
+        }
+        $rows = isset($nameValueList['Name']) || isset($nameValueList['Value'])
+            ? [$nameValueList]
+            : $nameValueList;
+
+        $out = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $name = trim((string) ($row['Name'] ?? ''));
+            $value = $row['Value'] ?? '';
+            if (is_array($value)) {
+                $value = (string) ($value[0] ?? '');
+            }
+            $value = trim((string) $value);
+            if ($name === '' || $value === '') {
+                continue;
+            }
+            $out[$name] = $value;
+        }
+
+        return $out;
+    }
 }
