@@ -12,6 +12,7 @@ use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayThreeApiService;
+use App\Services\NeweggApiService;
 use App\Services\ReverbApiService;
 use App\Services\SheinApiService;
 use App\Services\WayfairApiService;
@@ -1853,6 +1854,14 @@ class ListingManagerController extends Controller
                 ? app(Temu2ListingPublishService::class)
                 : app(TemuListingPublishService::class);
             $result = $svc->searchListingCategories($q, $title);
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        }
+
+        if ($family === 'newegg') {
+            $key = ListingChannelCounts::normalize($channel);
+            $platform = in_array($key, ['neweggb2b', 'newegg-b2b', 'newegg_b2b'], true) ? 'b2b' : 'b2c';
+            $result = app(NeweggApiService::class)->searchListingCategories($q, $title, $platform);
 
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }

@@ -275,6 +275,7 @@ class ListingManagerPublishStatus
         $isTemu = $family === 'temu';
         $isReverb = $family === 'reverb';
         $isAmazon = $family === 'amazon';
+        $isNewegg = $family === 'newegg';
 
         if ($isEbay) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
@@ -313,6 +314,13 @@ class ListingManagerPublishStatus
             $weightOk = ((float) $weightLb + ((float) $weightOz / 16)) > 0;
             if (! $weightOk) {
                 $tabErrors['logistics'][] = 'Package weight is required.';
+            }
+        }
+
+        if ($isNewegg) {
+            $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
+            if ($categoryId === '' || ! preg_match('/^\d+$/', $categoryId)) {
+                $tabErrors['category'][] = 'Newegg subcategory is required. Search Seller Portal categories and select a leaf.';
             }
         }
 
@@ -393,7 +401,7 @@ class ListingManagerPublishStatus
                 'identifiers' => 'Product Identifiers',
                 'title_description' => 'Title & Description',
                 'pricing' => ($isEbay ? 'Pricing' : 'Price & Stock'),
-                'category' => $isAmazon ? 'Product Type' : ($isTiktok ? 'TikTok Category' : ($isTemu ? 'Temu Category' : ($isReverb ? 'Reverb Details' : 'Category'))),
+                'category' => $isAmazon ? 'Product Type' : ($isTiktok ? 'TikTok Category' : ($isTemu ? 'Temu Category' : ($isNewegg ? 'Newegg Category' : ($isReverb ? 'Reverb Details' : 'Category')))),
                 'business_policies' => $family === 'ebay' ? 'Business Policies' : ($isReverb ? 'Shipping & Package' : 'Warehouse & Package'),
                 'auto_relist' => 'Auto Relist',
                 'logistics' => $isAmazon ? 'Packaging' : ($isTiktok ? 'Warehouse & Package' : ($isReverb ? 'Shipping & Package' : 'Package')),
