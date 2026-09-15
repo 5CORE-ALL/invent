@@ -7894,6 +7894,10 @@
             }
 
             const conc = (CHANNEL_PROMO_CHANNEL === 'ebay3') ? 12 : 8;
+            if (opts.persist === false) {
+                if (typeof table !== 'undefined' && table) table.redraw(true);
+                return;
+            }
             if ($progressBtn && jobs.length) {
                 chPromoSetApplyBtnProgress($progressBtn, 0, jobs.length, 'Saving');
             }
@@ -8094,7 +8098,7 @@
             }
             chPromoDilPrmtAutoBusy = true;
             try {
-                await applyChPromoDilPrmtToTargets(targets, 'dil-change', { silent: true });
+                await applyChPromoDilPrmtToTargets(targets, 'dil-change', { silent: true, persist: opts.persist !== false });
             } catch (e) {
                 /* next Dil change retries */
             } finally {
@@ -8230,7 +8234,7 @@
             }
             chPromoCvrCpnAutoBusy = true;
             try {
-                await applyChPromoCvrCpnToTargets(targets, 'cvr-change', { silent: true });
+                await applyChPromoCvrCpnToTargets(targets, 'cvr-change', { silent: true, persist: opts.persist !== false });
             } catch (e) {
                 /* next CVR change retries */
             } finally {
@@ -8375,6 +8379,10 @@
                 }
             }
             if (typeof table !== 'undefined' && table) table.redraw(true);
+
+            if (opts.persist === false) {
+                return;
+            }
 
             await chPromoMapLimit(jobs, 8, async function(job) {
                 if (!job.sku) return;
@@ -9925,23 +9933,12 @@
                 const clearOnce = chPromoShouldClearStoredOnce();
                 const forceSlabs = CHANNEL_PROMO_CHANNEL === 'shopify_b2c' ? !!clearOnce : false;
                 if (!chPromoHideDilPrmt() && typeof chPromoRunDilPrmtAutoApply === 'function') {
-                    await chPromoRunDilPrmtAutoApply({ force: forceSlabs, silent: true });
+                    await chPromoRunDilPrmtAutoApply({ force: forceSlabs, silent: true, persist: false });
                 }
                 if (typeof chPromoRunCvrCpnAutoApply === 'function') {
-                    await chPromoRunCvrCpnAutoApply({ force: forceSlabs, silent: true });
+                    await chPromoRunCvrCpnAutoApply({ force: forceSlabs, silent: true, persist: false });
                 }
-                if (CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE && typeof chPromoRunZeroSoldDilAutoApply === 'function') {
-                    await chPromoRunZeroSoldDilAutoApply({ force: true });
-                }
-                const livePushOn = chPromoPageReloadPushAllowed();
                 if (clearOnce) chPromoMarkStoredClearedOnce();
-                if (livePushOn) {
-                    if (chPromoIsTemuPromoChannel() && typeof scanAndQueueTemuListingPush === 'function') {
-                        scanAndQueueTemuListingPush(chPromoSafeTable());
-                    } else {
-                        chPromoQueueReloadSpricePush({ delay: 500 });
-                    }
-                }
             } finally {
                 chPromoAllEbayRulesBusy = false;
             }
@@ -10002,14 +9999,7 @@
             if (typeof chPromoSyncCvrDiscColumnFromSlabs === 'function') {
                 chPromoSyncCvrDiscColumnFromSlabs();
             }
-            const livePushOn = chPromoPageReloadPushAllowed();
             if (chPromoShouldClearStoredOnce()) chPromoMarkStoredClearedOnce();
-            if (!livePushOn) return;
-            if (chPromoIsTemuPromoChannel() && typeof scanAndQueueTemuListingPush === 'function') {
-                scanAndQueueTemuListingPush(tbl);
-            } else {
-                chPromoQueueReloadSpricePush({ delay: 500 });
-            }
         }
         function bindEbaySpriceAutofill() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
