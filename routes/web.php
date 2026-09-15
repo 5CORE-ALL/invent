@@ -4494,11 +4494,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/mercari-with-ship-price-sold/import', [MercariWShipController::class, 'importMercariWshipPriceSold'])->name('mercari.wship.price-sold.import');
     Route::get('/mercari-with-ship-price-sold/sample', [MercariWShipController::class, 'downloadMercariWshipPriceSoldSample'])->name('mercari.wship.price-sold.sample');
     Route::post('/mercari-with-ship-tabulator/save-status', [MercariWShipController::class, 'saveMercariWshipStatus'])->name('mercari.wship.tabulator.save-status');
+    Route::post('/mercari-with-ship-tabulator/sop-sheet', [MercariWShipController::class, 'saveMercariWshipSopSheet'])->name('mercari.wship.tabulator.sop-sheet');
     Route::get('/mercari-without-ship-tabulator-view', [MercariWoShipController::class, 'mercariWoShipTabulatorView'])->name('mercari.woship.tabulator.view');
     Route::get('/mercari-without-ship-tabulator-data', [MercariWoShipController::class, 'getMercariWoShipTabulatorData'])->name('mercari.woship.tabulator.data');
     Route::post('/mercari-without-ship-price-sold/import', [MercariWoShipController::class, 'importMercariWoShipPriceSold'])->name('mercari.woship.price-sold.import');
     Route::get('/mercari-without-ship-price-sold/sample', [MercariWoShipController::class, 'downloadMercariWoShipPriceSoldSample'])->name('mercari.woship.price-sold.sample');
     Route::post('/mercari-without-ship-tabulator/save-status', [MercariWoShipController::class, 'saveMercariWoShipStatus'])->name('mercari.woship.tabulator.save-status');
+    Route::post('/mercari-without-ship-tabulator/sop-sheet', [MercariWoShipController::class, 'saveMercariWoShipSopSheet'])->name('mercari.woship.tabulator.sop-sheet');
 
     // Fb Marketplace Analytics (tabulator)
     Route::get('/fb-marketplace-tabulator-view', [FbMarketplaceAnalyticsController::class, 'fbMarketplaceTabulatorView'])->name('fb.marketplace.tabulator.view');

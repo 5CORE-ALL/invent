@@ -8163,6 +8163,7 @@ class ChannelMasterController extends Controller
                 'b2c' => 'B2C',
                 'b2b' => 'B2B',
                 'dropship' => 'Dropship',
+                'ds' => 'Dropship',
                 'wholesale' => 'Wholesale',
             ][strtolower(trim($rawType))] ?? 'B2C';
             

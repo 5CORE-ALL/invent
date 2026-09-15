@@ -205,33 +205,31 @@
             display: block !important;
         }
 
-        /* Type badges */
+        /* Type labels — text + color only (no pill) */
         .type-badge {
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 10px;
-            font-weight: 600;
-            display: inline-block;
+            padding: 0;
+            border-radius: 0;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline;
+            background: none !important;
+            line-height: 1.2;
         }
 
         .type-b2c {
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-            color: white;
+            color: #11998e;
         }
 
         .type-b2b {
-            background: linear-gradient(135deg, #4568dc 0%, #b06ab3 100%);
-            color: white;
+            color: #4568dc;
         }
 
         .type-dropship {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            color: white;
+            color: #f5576c;
         }
 
         .type-wholesale {
-            background: linear-gradient(135deg, #e67e22 0%, #f39c12 100%);
-            color: white;
+            color: #e67e22;
         }
 
         /* Toast container */
@@ -553,7 +551,7 @@
                         <option value="all">All Types</option>
                         <option value="B2C">🛒 B2C</option>
                         <option value="B2B">🏢 B2B</option>
-                        <option value="Dropship">📦 Dropship</option>
+                        <option value="Dropship">📦 DS</option>
                         <option value="Wholesale">🏬 Wholesale</option>
                     </select>
 
@@ -807,7 +805,7 @@
                                 <option value="">Select Type</option>
                                 <option value="B2B">B2B</option>
                                 <option value="B2C">B2C</option>
-                                <option value="Dropship">Dropship</option>
+                                <option value="Dropship">DS</option>
                                 <option value="Wholesale">Wholesale</option>
                             </select>
                         </div>
@@ -902,7 +900,7 @@
                                 <option value="">Select Type</option>
                                 <option value="B2B">B2B</option>
                                 <option value="B2C">B2C</option>
-                                <option value="Dropship">Dropship</option>
+                                <option value="Dropship">DS</option>
                                 <option value="Wholesale">Wholesale</option>
                             </select>
                         </div>
@@ -2121,8 +2119,9 @@
                         frozen: true,
                         responsive: 0,
                         hozAlign: "center",
-                        width: 96,
-                        headerTooltip: "Channel type (B2C, B2B, Dropship, Wholesale).",
+                        width: 48,
+                        minWidth: 44,
+                        headerTooltip: "Channel type (B2C, B2B, DS, Wholesale).",
                         formatter: function(cell) {
                             const type = (cell.getValue() || '').toString().trim();
                             if (!type) {
@@ -2133,11 +2132,25 @@
                                 b2c: 'type-b2c',
                                 b2b: 'type-b2b',
                                 dropship: 'type-dropship',
+                                ds: 'type-dropship',
                                 wholesale: 'type-wholesale',
                             };
+                            const labels = {
+                                dropship: 'DS',
+                                ds: 'DS',
+                                wholesale: 'WS',
+                            };
+                            const titles = {
+                                dropship: 'Dropship',
+                                ds: 'Dropship',
+                                wholesale: 'Wholesale',
+                            };
                             const cls = known[slug] || 'type-b2c';
-                            const safe = type.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-                            return `<span class="type-badge ${cls}">${safe}</span>`;
+                            const label = labels[slug] || type;
+                            const safe = label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                            const title = titles[slug] || label;
+                            const safeTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                            return `<span class="type-badge ${cls}" title="${safeTitle}">${safe}</span>`;
                         }
                     },
                     {
