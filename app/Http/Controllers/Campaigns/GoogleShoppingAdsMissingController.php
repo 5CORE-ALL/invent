@@ -50,7 +50,7 @@ class GoogleShoppingAdsMissingController extends Controller
      * In-stock parents with no auto-matched or manually linked Google Shopping campaign.
      * Cached briefly for the left-sidebar badge.
      */
-    public static function missingTotalCount(): int
+    public static function missingTotalCount(bool $computeIfMissing = false): int
     {
         try {
             $cached = Cache::get(self::SIDEBAR_COUNT_CACHE_KEY);
@@ -59,6 +59,10 @@ class GoogleShoppingAdsMissingController extends Controller
             }
         } catch (\Throwable $e) {
             // File cache dirs may be missing mid-request after optimize:clear.
+        }
+
+        if (! $computeIfMissing) {
+            return 0;
         }
 
         try {

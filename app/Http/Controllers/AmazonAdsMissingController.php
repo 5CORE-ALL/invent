@@ -36,9 +36,9 @@ class AmazonAdsMissingController extends Controller
      * Missing PT + Missing KW for in-stock parents (same rules as the page badges).
      * Cached briefly for the left-sidebar badge.
      */
-    public static function missingTotalCount(): int
+    public static function missingTotalCount(bool $computeIfMissing = false): int
     {
-        $counts = self::missingCountsByType();
+        $counts = self::missingCountsByType($computeIfMissing);
 
         return (int) $counts['PT'] + (int) $counts['KW'];
     }
@@ -46,7 +46,7 @@ class AmazonAdsMissingController extends Controller
     /**
      * @return array{PT: int, KW: int}
      */
-    public static function missingCountsByType(): array
+    public static function missingCountsByType(bool $computeIfMissing = true): array
     {
         $empty = ['PT' => 0, 'KW' => 0];
 
@@ -57,6 +57,10 @@ class AmazonAdsMissingController extends Controller
             }
         } catch (\Throwable $e) {
             // File cache dirs may be missing mid-request after optimize:clear.
+        }
+
+        if (! $computeIfMissing) {
+            return $empty;
         }
 
         try {

@@ -417,13 +417,19 @@ class ListingChannelCounts
         }
 
         try {
-            return (int) Cache::remember($cacheKey, now()->addMinutes(10), function () {
-                return self::computeTotalMissingL();
-            });
+            $cached = Cache::get($cacheKey);
+            if ($cached !== null) {
+                return (int) $cached;
+            }
         } catch (\Throwable $e) {
             Log::warning('ListingChannelCounts totalMissingL cache failed: ' . $e->getMessage());
+        }
 
-            return self::computeTotalMissingL();
+        // Never live-scan every channel on a web request (Cloudflare 504).
+        try {
+            return (int) round((float) (\App\Models\BadgeData::dataForPage('all-marketplace-master', ['missing_l' => 0])['missing_l'] ?? 0));
+        } catch (\Throwable $e) {
+            return 0;
         }
     }
 
@@ -469,7 +475,7 @@ class ListingChannelCounts
             }
 
             try {
-                $c = self::forChannel((string) $name, false);
+                $c = self::forChannel((string) $name, true);
                 $total += (int) ($c['Pending'] ?? 0);
             } catch (\Throwable $e) {
                 Log::warning('ListingChannelCounts totalMissingL channel failed (' . $key . '): ' . $e->getMessage());

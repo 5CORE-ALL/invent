@@ -1110,7 +1110,15 @@ class TaskController extends Controller
      */
     public function homeDashboard(): View
     {
-        $taskDashboardStats = $this->getTaskDashboardAggregates();
+        try {
+            $taskDashboardStats = \Illuminate\Support\Facades\Cache::remember(
+                'home.task_dashboard_aggregates',
+                now()->addSeconds(90),
+                fn () => $this->getTaskDashboardAggregates()
+            );
+        } catch (\Throwable $e) {
+            $taskDashboardStats = $this->getTaskDashboardAggregates();
+        }
 
         $user = Auth::user();
         $dashCanCustomize = $user && in_array(
@@ -1127,21 +1135,6 @@ class TaskController extends Controller
             }
         } catch (\Throwable $e) {
             // Prefer empty prefs over breaking the home dashboard.
-            report($e);
-        }
-
-        // Once per California day — do not rewrite every KPI row on each /home load.
-        try {
-            $historyKey = 'dash_kpi_history_recorded:'.now('America/Los_Angeles')->toDateString();
-            if (! \Illuminate\Support\Facades\Cache::get($historyKey)) {
-                foreach (\App\Models\BadgeData::query()->get(['page_name', 'data']) as $badgeRow) {
-                    if (is_array($badgeRow->data)) {
-                        \App\Models\BadgeDataHistory::recordPage((string) $badgeRow->page_name, $badgeRow->data);
-                    }
-                }
-                \Illuminate\Support\Facades\Cache::put($historyKey, 1, now('America/Los_Angeles')->endOfDay());
-            }
-        } catch (\Throwable $e) {
             report($e);
         }
 
