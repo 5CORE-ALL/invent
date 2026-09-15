@@ -53,6 +53,14 @@ class AmazonAdsPauseRuleAutoEnableTest extends TestCase
             AmazonAdsPauseRule::ACTION_PAUSED,
             AmazonAdsPauseRule::decide($rule, ['dil' => 150, 'price' => 5], 'MS 080 1PK BLK PT')['status']
         );
+        $this->assertSame(
+            AmazonAdsPauseRule::ACTION_PAUSED,
+            AmazonAdsPauseRule::decide($rule, ['dil' => 10, 'parent_dil' => 120], 'SS HD 1 PK 4.5 FT WH WOB KW')['status']
+        );
+        $this->assertStringContainsString(
+            'PARENT family',
+            AmazonAdsPauseRule::decide($rule, ['dil' => 10, 'parent_dil' => 120], 'SS HD 1 PK 4.5 FT WH WOB KW')['reason']
+        );
         $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable(
             ['status' => AmazonAdsPauseRule::ACTION_ENABLED, 'reason' => '', 'hits' => []],
             'PAUSED',

@@ -704,6 +704,97 @@ final class AmazonAdsCampaignSkuMetrics
     }
 
     /**
+     * product_master parent family for each campaign name (PARENT prefix or child → parent).
+     *
+     * @param  list<string>  $campaignNames
+     * @return array<string, string>
+     */
+    public static function parentFamiliesForCampaignNames(array $campaignNames): array
+    {
+        $keysByName = [];
+        $uniqueKeys = [];
+        foreach ($campaignNames as $name) {
+            $name = is_string($name) ? trim($name) : '';
+            $key = self::skuKeyFromCampaignName($name);
+            $keysByName[$name] = $key;
+            if ($key !== '') {
+                $uniqueKeys[$key] = true;
+            }
+        }
+        $famByKey = self::parentFamilyBySkuKeys(array_keys($uniqueKeys));
+        $out = [];
+        foreach ($keysByName as $name => $key) {
+            $out[$name] = $famByKey[$key] ?? '';
+        }
+
+        return $out;
+    }
+
+    /**
+     * Aggregated Dil% for each PARENT family, from PARENT … campaign metrics.
+     *
+     * @param  array<string, array<string, mixed>>  $metricsByName
+     * @return array<string, float>
+     */
+    public static function parentDilByFamilyFromMetrics(array $metricsByName): array
+    {
+        $out = [];
+        foreach ($metricsByName as $name => $m) {
+            $key = self::skuKeyFromCampaignName((string) $name);
+            if (! str_starts_with($key, 'PARENT ')) {
+                continue;
+            }
+            $fam = self::normalizeParentFamily(substr($key, 7));
+            if ($fam === '') {
+                continue;
+            }
+            $dil = self::gridMetricsForPause(is_array($m) ? $m : [])['dil'];
+            if ($dil === null || ! is_finite((float) $dil)) {
+                continue;
+            }
+            $n = (float) $dil;
+            if (! isset($out[$fam]) || $n > $out[$fam]) {
+                $out[$fam] = $n;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * PARENT-family Dil for a campaign. Falls back to longest PARENT family prefix
+     * so "SS HD 1 PK 4.5 FT WH WOB KW" follows "PARENT SS HD 1 PK 4.5 FT".
+     *
+     * @param  array<string, string>  $familyByName
+     * @param  array<string, float>  $dilByFam
+     */
+    public static function parentDilForCampaign(string $campaignName, array $familyByName, array $dilByFam): ?float
+    {
+        $fam = trim((string) ($familyByName[$campaignName] ?? ''));
+        if ($fam !== '' && isset($dilByFam[$fam]) && is_finite($dilByFam[$fam])) {
+            return (float) $dilByFam[$fam];
+        }
+        $key = self::skuKeyFromCampaignName($campaignName);
+        if ($key === '' || $dilByFam === []) {
+            return $fam !== '' && isset($dilByFam[$fam]) ? (float) $dilByFam[$fam] : null;
+        }
+        $best = null;
+        $bestLen = 0;
+        foreach ($dilByFam as $f => $dil) {
+            $f = strtoupper(trim((string) $f));
+            if ($f === '' || ! is_finite((float) $dil)) {
+                continue;
+            }
+            if ((str_starts_with($key, $f.' ') || $key === $f) && strlen($f) > $bestLen) {
+                $best = (float) $dil;
+                $bestLen = strlen($f);
+            }
+        }
+
+        return $best;
+    }
+
+    /**
      * @param  list<string>  $skuKeys
      * @return array<string, array{sku: string, price: ?float, dil: ?float, inv: ?float, l30: ?float, ovl30: ?float, lmp_price: ?float}>
      */

@@ -292,15 +292,22 @@ final class AmazonAdsPauseRule
 
         $pr = is_array($r['pr'] ?? null) ? $r['pr'] : self::defaultPr();
         if (! empty($pr['enabled']) && ! empty($pr['dil_enabled'])) {
-            $dilVal = $metrics['dil'] ?? null;
+            $ownDil = self::finiteDil($metrics['dil'] ?? null);
+            $parentDil = self::finiteDil($metrics['parent_dil'] ?? null);
+            $dilVal = $ownDil;
+            $fromParent = false;
+            if ($parentDil !== null && ($dilVal === null || $parentDil > $dilVal)) {
+                $dilVal = $parentDil;
+                $fromParent = true;
+            }
             $threshold = (float) ($pr['dil_above'] ?? 100);
-            if ($dilVal !== null && $dilVal !== '' && is_finite((float) $dilVal) && is_finite($threshold)
-                && (float) $dilVal >= $threshold) {
-                $shown = rtrim(rtrim(number_format((float) $dilVal, 2, '.', ''), '0'), '.');
+            if ($dilVal !== null && is_finite($threshold) && $dilVal >= $threshold) {
+                $shown = rtrim(rtrim(number_format($dilVal, 2, '.', ''), '0'), '.');
                 $th = rtrim(rtrim(number_format($threshold, 2, '.', ''), '0'), '.');
                 $hits[] = [
                     'action' => self::ACTION_PAUSED,
-                    'reason' => 'PR Dil% '.$shown.'% ≥ '.$th.'%',
+                    'reason' => 'PR Dil% '.$shown.'% ≥ '.$th.'%'
+                        .($fromParent ? ' (PARENT family)' : ''),
                 ];
             }
         }
@@ -357,6 +364,15 @@ final class AmazonAdsPauseRule
     public static function isDilPauseReason(mixed $reason): bool
     {
         return stripos(trim((string) $reason), 'dil') !== false;
+    }
+
+    private static function finiteDil(mixed $value): ?float
+    {
+        if ($value === null || $value === '' || ! is_numeric($value) || ! is_finite((float) $value)) {
+            return null;
+        }
+
+        return (float) $value;
     }
 
     public static function isRecentPauseRuleStamp(mixed $pausedAt, ?\DateTimeImmutable $now = null): bool

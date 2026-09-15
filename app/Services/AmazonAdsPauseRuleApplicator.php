@@ -69,10 +69,19 @@ class AmazonAdsPauseRuleApplicator
             array_column($sp, 'campaignName'),
             array_column($sb, 'campaignName')
         ), static fn ($n) => is_string($n) && trim($n) !== '')));
-        $metricsByName = AmazonAdsCampaignSkuMetrics::mapForCampaignNames($names);
+        $familyByName = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames($names);
+        $parentNames = [];
+        foreach ($familyByName as $fam) {
+            $fam = trim((string) $fam);
+            if ($fam !== '') {
+                $parentNames[] = 'PARENT '.$fam;
+            }
+        }
+        $metricsByName = AmazonAdsCampaignSkuMetrics::mapForCampaignNames(array_values(array_unique(array_merge($names, $parentNames))));
+        $parentDilByFam = AmazonAdsCampaignSkuMetrics::parentDilByFamilyFromMetrics($metricsByName);
 
-        $this->applyChannel('sp', $sp, $rule, $metricsByName, $dryRun, $stats);
-        $this->applyChannel('sb', $sb, $rule, $metricsByName, $dryRun, $stats);
+        $this->applyChannel('sp', $sp, $rule, $metricsByName, $familyByName, $parentDilByFam, $dryRun, $stats);
+        $this->applyChannel('sb', $sb, $rule, $metricsByName, $familyByName, $parentDilByFam, $dryRun, $stats);
 
         return $stats;
     }
@@ -221,6 +230,11 @@ class AmazonAdsPauseRuleApplicator
                 $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
                 $decision = AmazonAdsPauseRule::decide($rule, [
                     'dil' => $gm['dil'],
+                    'parent_dil' => AmazonAdsCampaignSkuMetrics::parentDilForCampaign(
+                        $campaignName,
+                        AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames([$campaignName]),
+                        AmazonAdsCampaignSkuMetrics::parentDilByFamilyFromMetrics($metricsByName)
+                    ),
                 ], $campaignName);
                 $this->reasonsByCid[$row['campaign_id']] = ($decision['status'] ?? '') === AmazonAdsPauseRule::ACTION_PAUSED
                     ? (string) $decision['reason']
@@ -356,6 +370,8 @@ class AmazonAdsPauseRuleApplicator
      * @param  list<array{campaign_id: string, campaignName: string, campaignStatus: string, acos: ?float}>  $rows
      * @param  array<string, mixed>  $rule
      * @param  array<string, array{sku: string, price: ?float, dil: ?float, inv: ?float, l30: ?float, rating?: ?float}>  $metricsByName
+     * @param  array<string, string>  $familyByName
+     * @param  array<string, float>  $parentDilByFam
      * @param  array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>}  $stats
      */
     private function applyChannel(
@@ -363,6 +379,8 @@ class AmazonAdsPauseRuleApplicator
         array $rows,
         array $rule,
         array $metricsByName,
+        array $familyByName,
+        array $parentDilByFam,
         bool $dryRun,
         array &$stats
     ): void {
@@ -381,6 +399,11 @@ class AmazonAdsPauseRuleApplicator
             $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
             $decision = AmazonAdsPauseRule::decide($rule, [
                 'dil' => $gm['dil'],
+                'parent_dil' => AmazonAdsCampaignSkuMetrics::parentDilForCampaign(
+                    $campaignName,
+                    $familyByName,
+                    $parentDilByFam
+                ),
             ], $campaignName);
             $desired = $decision['status'];
             $this->namesByCid[$row['campaign_id']] = $campaignName;

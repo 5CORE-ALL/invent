@@ -792,7 +792,7 @@
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
                         Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv).
-                        Pause when Dil% is ≥ the threshold (default 100) for <strong>PARENT and child SKU</strong> campaigns.
+                        Pause when Dil% is ≥ the threshold (default 100) for PARENT campaigns, and for <strong>child SKU</strong> campaigns when their Dil or the <strong>PARENT family Dil</strong> is ≥ the threshold.
                         Save (with auto-pause on) applies matching pauses on Amazon now.
                         Only <strong>PARENT</strong> campaigns this Pause Rule paused recently (last 31 days) are turned back on when Dil% is no longer ≥ the threshold — those rows show <strong>Active Again</strong>.
                         Child SKU campaigns stay paused. Manual, ACOS, old pink DIL, Price leftovers, and older pauses stay off. The job also runs daily at 18:25 IST.

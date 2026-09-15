@@ -3375,7 +3375,7 @@ class AmazonAdsController extends Controller
         }
         $payload = [
             'message' => (! empty($pr['enabled']) && $parts !== []
-                ? 'Pause Rule saved. PARENT and child SKU campaigns matching '.implode(' or ', $parts).' will be paused. Only PARENT campaigns will activate again.'
+                ? 'Pause Rule saved. PARENT campaigns matching '.implode(' or ', $parts).' will be paused, and child SKU campaigns in those families will be paused too. Only PARENT campaigns will activate again.'
                 : 'Pause Rule saved. Dil% will not auto-pause campaigns.'),
             'rule' => $freshRule,
             'status' => 200,
@@ -3815,6 +3815,8 @@ class AmazonAdsController extends Controller
         $pauseRule = ($needRuleStatus || $needActiveAgain) ? AmazonAdsPauseRule::resolvedRule() : null;
         $skuMetricsByCampaign = [];
         $pageCvrByCampaign = [];
+        $familyByName = [];
+        $parentDilByFam = [];
         if ($needSkuMetrics) {
             $ruleNames = [];
             foreach ($rows as $ruleRow) {
@@ -3823,7 +3825,15 @@ class AmazonAdsController extends Controller
                     $ruleNames[] = $cn;
                 }
             }
+            $familyByName = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames($ruleNames);
+            foreach ($familyByName as $fam) {
+                $fam = trim((string) $fam);
+                if ($fam !== '') {
+                    $ruleNames[] = 'PARENT '.$fam;
+                }
+            }
             $skuMetricsByCampaign = AmazonAdsCampaignSkuMetrics::mapForCampaignNames($ruleNames);
+            $parentDilByFam = AmazonAdsCampaignSkuMetrics::parentDilByFamilyFromMetrics($skuMetricsByCampaign);
             if (in_array('pageCvr', $columns, true) || in_array('bgtViews', $columns, true)
                 || in_array('bgtCvr', $columns, true) || in_array('sbgt', $columns, true)
                 || in_array('viewsL30', $columns, true) || in_array('viewsL7', $columns, true)) {
@@ -4148,6 +4158,11 @@ class AmazonAdsController extends Controller
                 $gmRule = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($mRule);
                 $decision = AmazonAdsPauseRule::decide($pauseRule, [
                     'dil' => $gmRule['dil'],
+                    'parent_dil' => AmazonAdsCampaignSkuMetrics::parentDilForCampaign(
+                        $cnRule,
+                        $familyByName,
+                        $parentDilByFam
+                    ),
                 ], $cnRule);
                 $arr['ruleStatus'] = $decision['status'];
                 $arr['ruleStatusTip'] = $decision['reason'];
