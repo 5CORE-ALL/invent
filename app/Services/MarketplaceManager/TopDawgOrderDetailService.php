@@ -29,17 +29,18 @@ class TopDawgOrderDetailService
             ->orderByDesc('id')
             ->first();
         $cached = is_array($existing?->raw_payload) ? $existing->raw_payload : [];
+        if ($cached !== []) {
+            return ['success' => true, 'message' => 'Using stored TopDawg order payload.'];
+        }
 
-        // TopDawg has no single-order endpoint. Refresh only the last 3 days,
-        // then upsert the matching order — never re-sync 60 days per push.
+        // TopDawg has no single-order endpoint. Never re-list history on push —
+        // only scan the last 2 PST days when we have no stored payload.
         try {
-            $result = $this->topdawgApi->fetchOrders(now('America/Los_Angeles')->subDays(3)->startOfDay()->toIso8601String());
+            $result = $this->topdawgApi->fetchOrders(
+                TopDawgOrderSyncService::shopifyImportCutoffDate()->toIso8601String()
+            );
             $orders = $result['data'] ?? [];
         } catch (\Throwable $e) {
-            if ($cached !== []) {
-                return ['success' => true, 'message' => 'Using stored TopDawg order payload.'];
-            }
-
             return ['success' => false, 'message' => $e->getMessage()];
         }
 

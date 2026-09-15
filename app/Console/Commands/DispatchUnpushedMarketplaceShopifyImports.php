@@ -54,7 +54,7 @@ class DispatchUnpushedMarketplaceShopifyImports extends Command
                 } else {
                     $this->line("{$slug}: none.");
                 }
-                if ($slug === 'amazon') {
+                if (in_array($slug, ['amazon', 'topdawg'], true) && method_exists($class, 'importUnpushedInline')) {
                     $inline = (int) app($class)->importUnpushedInline(25);
                     if ($inline > 0) {
                         $total += $inline;

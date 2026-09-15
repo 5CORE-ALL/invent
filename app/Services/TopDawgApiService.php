@@ -291,6 +291,7 @@ class TopDawgApiService
         $all = [];
         $page = 1;
         $perPage = 100;
+        $maxPages = $updatedSince ? 15 : 8;
 
         do {
             $body = ['per_page' => $perPage, 'page' => $page];
@@ -299,7 +300,8 @@ class TopDawgApiService
             }
             $url = $this->baseUrl . '/SupplierOrder/list';
             $response = Http::withHeaders($this->headers())
-                ->timeout(60)
+                ->timeout(45)
+                ->connectTimeout(10)
                 ->post($url, $body);
 
             Log::debug('TopDawg API response', ['url' => $url, 'page' => $page, 'response' => $response->json()]);
@@ -324,7 +326,7 @@ class TopDawgApiService
             $currentPage = (int) ($pagination['current_page'] ?? $page);
             $lastPage = (int) ($pagination['last_page'] ?? $currentPage);
 
-            if (count($items) < $perPage || $currentPage >= $lastPage) {
+            if (count($items) < $perPage || $currentPage >= $lastPage || $page >= $maxPages) {
                 break;
             }
             $page = $currentPage + 1;

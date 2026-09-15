@@ -5,7 +5,7 @@
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'topdawg') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> TopDawg Manager</a>
         @include('marketplace._page-heading', ['slug' => 'topdawg', 'heading' => 'TopDawg Orders'])
-        <p class="text-muted mb-3">Orders stored locally from TopDawg API. They auto-push to Shopify when auto-import is On in <a href="{{ route('marketplace.settings', 'topdawg') }}">Settings</a>. If the order already exists in Shopify, it is linked — a second copy is not created.</p>
+        <p class="text-muted mb-3">Orders stored locally from TopDawg API. Shopify only receives the last 2 days including today. Older rows stay here and are not pushed. Auto-import is in <a href="{{ route('marketplace.settings', 'topdawg') }}">Settings</a>. If the order already exists in Shopify, it is linked — a second copy is not created.</p>
 
         @include('marketplace.topdawg._nav', ['active' => 'orders'])
 
@@ -18,9 +18,7 @@
                 <span class="badge bg-primary">{{ $orders->total() }} orders</span>
                 <div class="d-flex gap-2 align-items-center flex-wrap">
                     <select id="fetch-days" class="form-select form-select-sm" style="width:auto;">
-                        <option value="from:2026-07-07" selected>From July 7, 2026 onward</option>
-                        <option value="7">Last 7 days (from July 7 min)</option>
-                        <option value="30">Last 30 days (from July 7 min)</option>
+                        <option value="2" selected>Last 2 days (including today)</option>
                     </select>
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-fetch-orders">
                         <i class="ri-download-cloud-line"></i> Fetch from TopDawg
@@ -74,6 +72,8 @@
                                             <span class="badge bg-info">Queued</span>
                                         @elseif(($o->import_status ?? '') === 'import_failed')
                                             <span class="badge bg-danger">Failed</span>
+                                        @elseif(($o->import_status ?? '') === 'skipped_old')
+                                            <span class="badge bg-secondary">Older than 2 days</span>
                                         @else
                                             <span class="badge bg-light text-muted">Pending</span>
                                         @endif
@@ -83,11 +83,16 @@
                                             —
                                         @else
                                             @php
+                                                $tooOld = ! empty($shopifyImportCutoff)
+                                                    && $o->order_date
+                                                    && \Carbon\Carbon::parse($o->order_date)->toDateString() < $shopifyImportCutoff;
                                                 $pushBlocked = ($importPaidOrdersOnly ?? false)
                                                     && ! \App\Services\MarketplaceManager\MarketplaceOrderPaidFilter::isPaid('topdawg', $o);
                                             @endphp
                                             <div class="d-flex gap-1 flex-wrap" onclick="event.stopPropagation();">
-                                                @if($pushBlocked)
+                                                @if($tooOld)
+                                                    <button type="button" class="btn btn-sm btn-secondary" disabled title="Only the last 2 days including today are pushed to Shopify.">Too old for Shopify</button>
+                                                @elseif($pushBlocked)
                                                     <button type="button" class="btn btn-sm btn-secondary" disabled title="{{ \App\Services\MarketplaceManager\MarketplaceOrderPaidFilter::unpaidPushBlockedMessage() }}">Push to Shopify</button>
                                                     <small class="text-muted align-self-center">Turn off “Only auto-import paid orders” in Settings to push unpaid orders.</small>
                                                 @else
@@ -120,20 +125,12 @@
 <script>
 document.getElementById('btn-fetch-orders')?.addEventListener('click', function () {
     var btn = this;
-    var selected = document.getElementById('fetch-days')?.value || '0';
-    var body = { import: false };
-    var confirmMsg = '';
-
-    if (selected.indexOf('from:') === 0) {
-        var fromDate = selected.slice(5);
-        body.from_date = fromDate;
-        confirmMsg = 'Fetch TopDawg orders from ' + fromDate + ' onward?\n\nUnpushed orders will be queued to Shopify when auto-import is On. Existing Shopify copies are linked, not duplicated.';
-    } else {
-        var days = parseInt(selected, 10);
+    var selected = document.getElementById('fetch-days')?.value || '2';
+    var body = { import: true, days: 2 };
+    var confirmMsg = 'Fetch TopDawg orders from the last 2 days (including today) and push new ones to Shopify?\n\nOlder orders are not sent to Shopify. Existing Shopify copies are linked, not duplicated.';
+    var days = parseInt(selected, 10);
+    if (!isNaN(days) && days > 0) {
         body.days = days;
-        confirmMsg = days === 0
-            ? 'Fetch all TopDawg orders (up to 2 years)? This may take several minutes.\n\nUnpushed orders will be queued when auto-import is On (existing Shopify copies are linked, not duplicated).'
-            : 'Fetch orders from the last ' + days + ' days?\n\nUnpushed orders will be queued when auto-import is On (existing Shopify copies are linked, not duplicated).';
     }
 
     if (!confirm(confirmMsg)) {

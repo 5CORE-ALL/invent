@@ -27,7 +27,7 @@ class SyncTopDawgManagerOrders extends Command
 
         $from = trim((string) $this->option('from'));
         if ($from === '') {
-            $from = Carbon::now()->subDays(max(0, (int) $this->option('days')))->toDateString();
+            $from = Carbon::now('America/Los_Angeles')->subDays(max(0, (int) $this->option('days')))->toDateString();
         }
 
         $result = $sync->sync($from, (bool) $this->option('import'));

@@ -216,16 +216,16 @@ class TopDawgOrderPushService
 
     public function isWithinShopifyImportWindow(TopDawgOrderMetric $order): bool
     {
-        $cutoff = app(TopDawgOrderSyncService::class)->shopifyImportCutoff();
-        $raw = $order->order_date ?? $order->created_at ?? null;
-        if ($raw === null || $raw === '') {
-            return false;
+        if (TopDawgOrderSyncService::orderDateIsWithinShopifyWindow($order->order_date)) {
+            return true;
         }
-        try {
-            return \Illuminate\Support\Carbon::parse($raw)->gte($cutoff);
-        } catch (\Throwable) {
-            return false;
+        if (TopDawgOrderSyncService::orderDateIsWithinShopifyWindow($order->created_at ?? null)) {
+            return true;
         }
+        $raw = is_array($order->raw_payload) ? $order->raw_payload : [];
+        $parsed = TopDawgOrderSyncService::parseOrderDate($raw);
+
+        return $parsed !== null && TopDawgOrderSyncService::orderDateIsWithinShopifyWindow($parsed);
     }
 
     public static function canAutoSyncAddress(?array $settings = null): bool
@@ -415,8 +415,8 @@ class TopDawgOrderPushService
             ];
         }
 
-        // Same as AliExpress / Reverb: require a successful live detail refresh before push.
-        // Snapshot cache only to restore ship-to if TopDawg returns a privacy-stripped address.
+        // Use the stored TopDawg payload. A live list refresh is only attempted
+        // when that payload is missing — never re-scan order history on push.
         $cachedRoot = $this->orderDetailService->resolveOrderRoot($order);
 
         $detailResult = $this->orderDetailService->fetchAndPersistOrderDetail($orderId);
