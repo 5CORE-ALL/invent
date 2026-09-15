@@ -3089,6 +3089,7 @@
             let allTableData = []; // Store all unfiltered data
             let ebay2BoundViewMode = null; // last dataset slice: all | parent | sku
             let ebay2SkipNextDataLoadedFilter = false;
+            let ebay2FiltersBusy = false;
 
             function ebay2EscHtmlAttr(val) {
                 if (val == null || val === '') return '';
@@ -3227,7 +3228,10 @@
                     setTimeout(function() {
                         if (typeof ebay2PullEndedListings === 'function') ebay2PullEndedListings();
                     }, 400);
-                    return payload;
+                    var viewMode = ($('#view-mode-filter').val() || 'sku');
+                    var viewRows = ebay2RowsForViewMode(viewMode, payload);
+                    ebay2BoundViewMode = viewMode;
+                    return viewRows;
                 },
                 ajaxSorting: false,
                 sortMode: "local",
@@ -4800,6 +4804,8 @@
                     || table.getDataCount() !== viewRows.length
                 );
                 if (needReplace) {
+                    if (ebay2FiltersBusy) return;
+                    ebay2FiltersBusy = true;
                     ebay2SkipNextDataLoadedFilter = true;
                     table.setData(viewRows).then(function() {
                         ebay2BoundViewMode = viewModeFilter;
@@ -4808,6 +4814,8 @@
                         ebay2SkipNextDataLoadedFilter = false;
                         ebay2BoundViewMode = viewModeFilter;
                         runEbay2Filters();
+                    }).finally(function() {
+                        ebay2FiltersBusy = false;
                     });
                 } else {
                     ebay2BoundViewMode = viewModeFilter;
@@ -5184,8 +5192,6 @@
             table.on('tableBuilt', function() {
                 applyColumnVisibilityFromServer();
                 buildColumnDropdown();
-                applyFilters();
-                
             });
 
             table.on('dataLoaded', function() {
@@ -5212,13 +5218,6 @@
                     tooltipTriggerList.forEach(function (tooltipTriggerEl) {
                         new bootstrap.Tooltip(tooltipTriggerEl);
                     });
-                    try {
-                        var painted = document.querySelectorAll('#ebay2-table .tabulator-row:not(.tabulator-calcs)').length;
-                        var count = typeof table.getDataCount === 'function' ? table.getDataCount('active') : 0;
-                        if (count > 0 && painted === 0) {
-                            table.redraw(true);
-                        }
-                    } catch (e) { /* ignore */ }
                 }, 100);
             });
 

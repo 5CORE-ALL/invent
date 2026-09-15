@@ -4,7 +4,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+
     <style>
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
@@ -53,6 +53,21 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'mercari_wship'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'mercari_wship'])
+
+        #mercWsOpSpriceModal.modal {
+            align-items: flex-start;
+            padding-top: 1.5rem;
+        }
+        #mercWsOpSpriceModal .merc-ws-op-modal-dialog {
+            margin-top: 0;
+        }
+        #mercWsOpSpriceModal .merc-ws-op-drag-header {
+            cursor: move;
+            user-select: none;
+        }
+        #mercWsOpSpriceModal .merc-ws-op-metric {
+            font-weight: 700;
+        }
     </style>
 @endsection
 
@@ -263,6 +278,54 @@
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'mercari_wship'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'mercari_wship'])
+
+    <div class="modal fade" id="mercWsOpSpriceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog merc-ws-op-modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header merc-ws-op-drag-header" style="background-color: #0d6efd;">
+                    <h5 class="modal-title text-white">
+                        <i class="fas fa-calculator me-2"></i>
+                        OP Sprice – <span id="mercWsOpModalSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-bordered mb-0">
+                        <tbody>
+                            <tr>
+                                <th style="width: 40%;">OP Sprice</th>
+                                <td class="text-end">
+                                    <span class="text-muted me-1">$</span>
+                                    <input type="number" class="form-control form-control-sm d-inline-block"
+                                        id="mercWsOpSpriceInput" value="" step="0.01" min="0" placeholder="0.00"
+                                        style="width: 90px; text-align: right;">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th title="SGPFT% = ((OP Sprice × factor − LP − Ship) / OP Sprice) × 100 — same as S Price SPFT">SGPFT%</th>
+                                <td class="text-end merc-ws-op-metric" id="mercWsOpSgpft">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SGROI% = ((OP Sprice × factor − LP − Ship) / LP) × 100 — same as S Price SGROI">SGROI%</th>
+                                <td class="text-end merc-ws-op-metric" id="mercWsOpSgroi">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SPFT% = SGPFT% − Ads% — same net-profit formula as S Price">SPFT%</th>
+                                <td class="text-end merc-ws-op-metric" id="mercWsOpSpft">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SNROI% = ((OP Sprice × factor − LP − Ship − OP Sprice × Ads%) / LP) × 100">SNROI%</th>
+                                <td class="text-end merc-ws-op-metric" id="mercWsOpSnroi">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -619,6 +682,25 @@
                             const spft = sprice > 0 ? ((sprice * factor - lp - ship) / sprice) * 100 : 0;
                             const sroi = lp > 0 ? ((sprice * factor - lp - ship) / lp) * 100 : 0;
                             row.update({ SPFT: Math.round(spft * 100) / 100, SROI: Math.round(sroi * 100) / 100 });
+                        }
+                    },
+                    {
+                        title: "OP",
+                        field: "op_sprice",
+                        hozAlign: "center",
+                        width: 80,
+                        headerSort: true,
+                        sorter: "number",
+                        headerTooltip: "OP Sprice calculator — separate from S Price. Click to enter OP Sprice and see SGPFT / SGROI / SPFT / SNROI.",
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue());
+                            const label = (isFinite(v) && v > 0) ? ('$' + v.toFixed(2)) : 'OP';
+                            return '<button type="button" class="btn btn-sm btn-outline-primary merc-ws-op-btn"'
+                                + ' style="padding:1px 8px;font-size:11px;font-weight:600;min-width:52px;">'
+                                + label + '</button>';
+                        },
+                        cellClick: function(e, cell) {
+                            openMercWsOpSpriceModal(cell.getRow());
                         }
                     },
                     {
@@ -1295,5 +1377,175 @@
                 console.error('Failed to save status', err);
             });
         }
+
+        let mercWsOpModalRow = null;
+
+        function mercWsOpProfitColor(kind, pct) {
+            if (!isFinite(pct)) return '#6c757d';
+            if (kind === 'pft') {
+                if (pct < 0) return '#dc3545';
+                if (pct < 10) return '#ffc107';
+                return '#28a745';
+            }
+            if (pct < 0) return '#dc3545';
+            if (pct < 40) return '#ffc107';
+            return '#28a745';
+        }
+
+        function mercWsPaintOpMetric(sel, value, kind) {
+            const el = document.querySelector(sel);
+            if (!el) return;
+            if (value == null || !isFinite(value)) {
+                el.textContent = '-';
+                el.style.color = '#6c757d';
+                return;
+            }
+            el.textContent = Math.round(value) + '%';
+            el.style.color = mercWsOpProfitColor(kind, value);
+        }
+
+        /** Same 4 Sprice results: SGPFT / SGROI (gross) and SPFT / SNROI (after Ads%). */
+        function mercWsOpSpriceMetrics(opSprice, lp, ship, factor, adsPct) {
+            opSprice = parseFloat(opSprice) || 0;
+            lp = parseFloat(lp) || 0;
+            ship = parseFloat(ship) || 0;
+            factor = parseFloat(factor) || 1;
+            adsPct = parseFloat(adsPct) || 0;
+            if (opSprice <= 0) {
+                return { sgpft: null, sgroi: null, spft: null, snroi: null };
+            }
+            const sgpft = ((opSprice * factor - lp - ship) / opSprice) * 100;
+            const sgroi = lp > 0 ? ((opSprice * factor - lp - ship) / lp) * 100 : 0;
+            const spft = sgpft - adsPct;
+            const snroi = lp > 0
+                ? ((opSprice * factor - lp - ship - opSprice * (adsPct / 100)) / lp) * 100
+                : 0;
+            return { sgpft: sgpft, sgroi: sgroi, spft: spft, snroi: snroi };
+        }
+
+        function mercWsRefreshOpModalMetrics() {
+            const modal = document.getElementById('mercWsOpSpriceModal');
+            const input = document.getElementById('mercWsOpSpriceInput');
+            if (!modal || !input) return;
+            const metrics = mercWsOpSpriceMetrics(
+                input.value,
+                modal.getAttribute('data-lp'),
+                modal.getAttribute('data-ship'),
+                modal.getAttribute('data-factor'),
+                modal.getAttribute('data-ads')
+            );
+            mercWsPaintOpMetric('#mercWsOpSgpft', metrics.sgpft, 'pft');
+            mercWsPaintOpMetric('#mercWsOpSgroi', metrics.sgroi, 'roi');
+            mercWsPaintOpMetric('#mercWsOpSpft', metrics.spft, 'pft');
+            mercWsPaintOpMetric('#mercWsOpSnroi', metrics.snroi, 'roi');
+        }
+
+        function openMercWsOpSpriceModal(row) {
+            if (!row) return;
+            mercWsOpModalRow = row;
+            const d = row.getData() || {};
+            const sku = d.sku || '';
+            const lp = parseFloat(d.lp) || 0;
+            const ship = parseFloat(d.ship) || 0;
+            const factor = parseFloat(d.factor) || 1;
+            const ads = parseFloat(d.ads_pct) || 0;
+            const opVal = parseFloat(d.op_sprice != null ? d.op_sprice : d.OP_SPRICE);
+            const modalEl = document.getElementById('mercWsOpSpriceModal');
+            const skuEl = document.getElementById('mercWsOpModalSku');
+            const input = document.getElementById('mercWsOpSpriceInput');
+            if (!modalEl || !input) return;
+            if (skuEl) skuEl.textContent = sku || '—';
+            modalEl.setAttribute('data-sku', sku);
+            modalEl.setAttribute('data-lp', String(lp));
+            modalEl.setAttribute('data-ship', String(ship));
+            modalEl.setAttribute('data-factor', String(factor));
+            modalEl.setAttribute('data-ads', String(ads));
+            input.value = (isFinite(opVal) && opVal > 0) ? opVal.toFixed(2) : '';
+            mercWsRefreshOpModalMetrics();
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+
+        function mercWsSaveOpSpriceFromModal() {
+            const modal = document.getElementById('mercWsOpSpriceModal');
+            const input = document.getElementById('mercWsOpSpriceInput');
+            if (!modal || !input) return;
+            const sku = modal.getAttribute('data-sku');
+            if (!sku) return;
+            const raw = String(input.value || '').trim();
+            const opSprice = raw === '' ? null : parseFloat(raw);
+            const saved = (opSprice != null && isFinite(opSprice) && opSprice > 0)
+                ? Math.round(opSprice * 100) / 100
+                : null;
+            const metrics = mercWsOpSpriceMetrics(
+                saved,
+                modal.getAttribute('data-lp'),
+                modal.getAttribute('data-ship'),
+                modal.getAttribute('data-factor'),
+                modal.getAttribute('data-ads')
+            );
+            if (mercWsOpModalRow) {
+                mercWsOpModalRow.update({
+                    op_sprice: saved,
+                    OP_SPRICE: saved,
+                    OP_SGPFT: metrics.sgpft == null ? 0 : Math.round(metrics.sgpft * 100) / 100,
+                    OP_SGROI: metrics.sgroi == null ? 0 : Math.round(metrics.sgroi * 100) / 100,
+                    OP_SPFT: metrics.spft == null ? 0 : Math.round(metrics.spft * 100) / 100,
+                    OP_SNROI: metrics.snroi == null ? 0 : Math.round(metrics.snroi * 100) / 100
+                });
+            }
+            saveMercariStatus(sku, { op_sprice: saved });
+        }
+
+        (function initMercWsOpSpriceModal() {
+            const modal = document.getElementById('mercWsOpSpriceModal');
+            const input = document.getElementById('mercWsOpSpriceInput');
+            if (!modal || !input) return;
+
+            input.addEventListener('input', mercWsRefreshOpModalMetrics);
+            input.addEventListener('blur', mercWsSaveOpSpriceFromModal);
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    input.blur();
+                }
+            });
+
+            modal.addEventListener('shown.bs.modal', function() {
+                const dialog = modal.querySelector('.modal-dialog');
+                if (!dialog) return;
+                dialog.style.position = 'fixed';
+                dialog.style.left = '50%';
+                dialog.style.top = '1.5rem';
+                dialog.style.transform = 'translateX(-50%)';
+                dialog.style.margin = '0';
+                input.focus();
+                input.select();
+            });
+
+            let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+            const header = modal.querySelector('.merc-ws-op-drag-header');
+            const dialog = modal.querySelector('.modal-dialog');
+            if (!header || !dialog) return;
+            function onMove(e) {
+                dialog.style.left = (startLeft + (e.clientX - startX)) + 'px';
+                dialog.style.top = (startTop + (e.clientY - startY)) + 'px';
+                dialog.style.transform = 'none';
+            }
+            function onUp() {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            }
+            header.addEventListener('mousedown', function(e) {
+                if (e.target.closest('.btn-close')) return;
+                const r = dialog.getBoundingClientRect();
+                startLeft = r.left;
+                startTop = r.top;
+                startX = e.clientX;
+                startY = e.clientY;
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+                e.preventDefault();
+            });
+        })();
     </script>
 @endsection

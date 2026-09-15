@@ -4936,7 +4936,6 @@
             } finally {
                 if (blocked) table.restoreRedraw();
             }
-            try { table.redraw(true); } catch (e) { /* ignore */ }
         }
         function chPromoSyncEbayPrmtColumnFromSlabs() {
             // Live-fill PRMT% from Dil slabs (no row selection required).
@@ -4977,7 +4976,6 @@
             } finally {
                 if (blocked) table.restoreRedraw();
             }
-            try { table.redraw(true); } catch (e) { /* ignore */ }
         }
         function chPromoDilColorBand(dil) {
             const n = Number(dil);
