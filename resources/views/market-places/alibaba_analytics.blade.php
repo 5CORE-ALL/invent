@@ -225,10 +225,6 @@
 
         function applyFilters() {
             if (!abTable) return;
-            if (window.ParentExpand && ParentExpand.isExpanded()) {
-                ParentExpand.beforeFilters(function () { applyFilters(); });
-                return;
-            }
             const parentQ = (document.getElementById('ab-search-parent').value || '').trim().toLowerCase();
             const productQ = (document.getElementById('ab-search-product').value || '').trim().toLowerCase();
             const skuQ = (document.getElementById('ab-search-sku').value || '').trim().toLowerCase();
@@ -276,7 +272,6 @@
                 setStats(json.stats || {});
                 abLoadedType = document.getElementById('ab-row-type-filter').value || 'skus';
                 const initialRows = abVisibleRows();
-                if (window.ParentExpand) ParentExpand.captureDataset(abAllRows);
                 if (abTable) {
                     abTable.replaceData(initialRows);
                     applyFilters();
@@ -299,7 +294,6 @@
                         }
                     },
                     columns: [
-                        (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                         { title: 'Parent', field: 'Parent', hozAlign: 'left', headerHozAlign: 'center', minWidth: 140, frozen: true },
                         { title: 'SKU', field: 'sku', hozAlign: 'left', headerHozAlign: 'center', minWidth: 200, frozen: true },
                         { title: 'Product Id', field: 'product_id', hozAlign: 'left', headerHozAlign: 'center', minWidth: 150 },
@@ -341,19 +335,6 @@
                         { title: 'Inv Update', field: 'inv_update', hozAlign: 'center', headerHozAlign: 'center', width: 120 },
                     ],
                 });
-                if (window.ParentExpand) {
-                    ParentExpand.configure({
-                        parentField: 'Parent',
-                        skuField: 'sku',
-                        getTable: () => abTable,
-                        getDataset: () => abAllRows,
-                        isParentRow: isAbParentRow,
-                        onAfterExpand: function () {},
-                        onCollapse: function () { applyFilters(); },
-                    });
-                    ParentExpand.bind();
-                    ParentExpand.captureDataset(abAllRows);
-                }
                 applyFilters();
             })
             .finally(() => { loader.style.display = 'none'; });
