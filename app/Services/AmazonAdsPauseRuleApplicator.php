@@ -66,34 +66,47 @@ class AmazonAdsPauseRuleApplicator
 
         $rule = AmazonAdsPauseRule::resolvedRule();
         $hasCampaign = AmazonAdsPauseRule::hasCampaignBands($rule);
-        if (! $hasCampaign) {
-            $stats['errors'][] = 'No Dil% pause rule configured — Amazon was not updated.';
-            Log::warning('amazon:ads-pause-rule skipped: empty pause rule (PR Dil% off).');
-
-            return $stats;
-        }
-
-        $sp = $this->collectLatestCampaigns('sp');
-        $sb = $this->collectLatestCampaigns('sb');
-        $names = array_values(array_unique(array_filter(array_merge(
-            array_column($sp, 'campaignName'),
-            array_column($sb, 'campaignName')
-        ), static fn ($n) => is_string($n) && trim($n) !== '')));
-        $familyByName = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames($names);
-        $parentNames = [];
-        foreach ($familyByName as $fam) {
-            $fam = trim((string) $fam);
-            if ($fam !== '') {
-                $parentNames[] = 'PARENT '.$fam;
+        if ($hasCampaign) {
+            $sp = $this->collectLatestCampaigns('sp');
+            $sb = $this->collectLatestCampaigns('sb');
+            $names = array_values(array_unique(array_filter(array_merge(
+                array_column($sp, 'campaignName'),
+                array_column($sb, 'campaignName')
+            ), static fn ($n) => is_string($n) && trim($n) !== '')));
+            $familyByName = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames($names);
+            $parentNames = [];
+            foreach ($familyByName as $fam) {
+                $fam = trim((string) $fam);
+                if ($fam !== '') {
+                    $parentNames[] = 'PARENT '.$fam;
+                }
             }
-        }
-        $metricsByName = AmazonAdsCampaignSkuMetrics::mapForCampaignNames(array_values(array_unique(array_merge($names, $parentNames))));
-        $parentDilByFam = AmazonAdsCampaignSkuMetrics::parentDilByFamilyFromMetrics($metricsByName);
+            $metricsByName = AmazonAdsCampaignSkuMetrics::mapForCampaignNames(array_values(array_unique(array_merge($names, $parentNames))));
+            $parentDilByFam = AmazonAdsCampaignSkuMetrics::parentDilByFamilyFromMetrics($metricsByName);
 
-        $this->applyChannel('sp', $sp, $rule, $metricsByName, $familyByName, $parentDilByFam, $dryRun, $stats);
-        $this->applyChannel('sb', $sb, $rule, $metricsByName, $familyByName, $parentDilByFam, $dryRun, $stats);
+            $this->applyChannel('sp', $sp, $rule, $metricsByName, $familyByName, $parentDilByFam, $dryRun, $stats);
+            $this->applyChannel('sb', $sb, $rule, $metricsByName, $familyByName, $parentDilByFam, $dryRun, $stats);
+        }
+
+        $again = $this->pauseReactivatedChildCampaigns($dryRun);
+        $stats['paused'] += (int) ($again['paused'] ?? 0);
+        $stats['unchanged'] += (int) ($again['unchanged'] ?? 0);
+        $stats['skipped'] += (int) ($again['skipped'] ?? 0);
+        $stats['failed'] += (int) ($again['failed'] ?? 0);
+        foreach ($again['errors'] ?? [] as $err) {
+            $stats['errors'][] = $err;
+        }
+        foreach ($again['paused_names'] ?? [] as $name) {
+            $this->queuedPauseNames[] = $name;
+        }
+
         $stats['paused_names'] = array_values(array_unique(array_filter($this->queuedPauseNames)));
         $stats['enabled_names'] = array_values(array_unique(array_filter($this->queuedEnableNames)));
+
+        if (! $hasCampaign && $stats['paused'] === 0) {
+            $stats['errors'][] = 'No Dil% pause rule configured — Amazon was not updated.';
+            Log::warning('amazon:ads-pause-rule skipped: empty pause rule (PR Dil% off).');
+        }
 
         return $stats;
     }
@@ -123,6 +136,68 @@ class AmazonAdsPauseRuleApplicator
             return $stats;
         }
         $this->pushState($channel, $ids, AmazonAdsPauseRule::ACTION_PAUSED, $stats);
+
+        return $stats;
+    }
+
+    /**
+     * Pause child SKU campaigns that show Active Again. PARENT Active Again stays on.
+     *
+     * @return array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>, paused_names: list<string>}
+     */
+    public function pauseReactivatedChildCampaigns(bool $dryRun = false): array
+    {
+        $stats = [
+            'paused' => 0,
+            'enabled' => 0,
+            'unchanged' => 0,
+            'skipped' => 0,
+            'failed' => 0,
+            'errors' => [],
+            'paused_names' => [],
+        ];
+        if (! class_exists(AmazonAdsPauseRuleState::class)) {
+            return $stats;
+        }
+        AmazonAdsPauseRuleState::ensureTable();
+        $byChannel = ['sp' => [], 'sb' => []];
+        $this->trackRuleState = true;
+        foreach (AmazonAdsPauseRuleState::query()->whereNotNull('reactivated_at')->get() as $row) {
+            $name = trim((string) ($row->campaign_name ?? ''));
+            if ($name === '' || AmazonAdsPauseRule::isParentCampaign($name)) {
+                $stats['skipped']++;
+                continue;
+            }
+            $ch = in_array($row->channel, ['sp', 'sb'], true) ? $row->channel : 'sp';
+            $cid = trim((string) $row->campaign_id);
+            if ($cid === '') {
+                $stats['skipped']++;
+                continue;
+            }
+            $byChannel[$ch][] = $cid;
+            $this->namesByCid[$cid] = $name;
+            $this->reasonsByCid[$cid] = 'Pause — SKU Active Again (PARENT stays on)';
+            $stats['paused_names'][] = $name;
+        }
+        $stats['paused_names'] = array_values(array_unique($stats['paused_names']));
+        $allIds = array_merge($byChannel['sp'], $byChannel['sb']);
+        if ($allIds === []) {
+            return $stats;
+        }
+        if ($dryRun) {
+            $stats['paused'] = count($allIds);
+
+            return $stats;
+        }
+        foreach ($byChannel as $channel => $ids) {
+            $chunk = $this->pauseCampaigns($channel, $ids);
+            $stats['paused'] += (int) ($chunk['paused'] ?? 0);
+            $stats['failed'] += (int) ($chunk['failed'] ?? 0);
+            $stats['skipped'] += (int) ($chunk['skipped'] ?? 0);
+            foreach ($chunk['errors'] ?? [] as $err) {
+                $stats['errors'][] = $err;
+            }
+        }
 
         return $stats;
     }
@@ -425,7 +500,9 @@ class AmazonAdsPauseRuleApplicator
             $pausedReason = is_array($open) ? (string) ($open['paused_reason'] ?? '') : '';
             if ($desired === AmazonAdsPauseRule::ACTION_PAUSED) {
                 if ($status === AmazonAdsPauseRule::ACTION_PAUSED) {
-                    if (is_array($open)) {
+                    // Keep Dil stamps only. Do not rewrite Price / pink / manual
+                    // pauses as Dil — that would later enable old ads.
+                    if (is_array($open) && AmazonAdsPauseRule::isDilPauseReason($pausedReason)) {
                         AmazonAdsPauseRuleState::recordPause(
                             $channel,
                             $row['campaign_id'],

@@ -12,7 +12,7 @@ class ApplyAmazonAdsPauseRule extends Command
                             {--dry-run : Evaluate pause/enable without calling Amazon}
                             {--enable-name=* : Campaign name to turn back on if still paused}';
 
-    protected $description = 'Pause PARENT and child SKU campaigns when Dil% ≥ threshold; re-enable only PARENT campaigns this Dil rule paused in the last 31 days.';
+    protected $description = 'Pause Dil matches and Active Again child SKUs. Old ads stay off. Only recently Dil-paused PARENT campaigns auto-enable.';
 
     public function handle(AmazonAdsPauseRuleApplicator $applicator): int
     {

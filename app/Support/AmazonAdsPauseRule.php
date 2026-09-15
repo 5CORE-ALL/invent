@@ -334,7 +334,9 @@ final class AmazonAdsPauseRule
 
     /**
      * Re-enable only a PARENT campaign this Dil Pause Rule paused recently.
-     * Manual / ACOS / pink-DIL / Price leftovers and child SKUs stay off.
+     * Old ads stay off: Price, Reviews, ACOS, pink-DIL, empty reason, and
+     * pauses older than 31 days or before PAUSE_RULE_STARTED_AT never enable.
+     * Child SKUs never enable.
      */
     public static function shouldAutoEnable(
         array $decision,
@@ -347,10 +349,10 @@ final class AmazonAdsPauseRule
         if (! self::isParentCampaign($campaignName ?? '')) {
             return false;
         }
-        if (! self::isRecentPauseRuleStamp($pausedAt, $now)) {
+        if (! self::isDilPauseReason($pausedReason)) {
             return false;
         }
-        if ($pausedReason !== null && ! self::isDilPauseReason($pausedReason)) {
+        if (! self::isRecentPauseRuleStamp($pausedAt, $now)) {
             return false;
         }
         $st = strtoupper(trim($status));
@@ -361,9 +363,19 @@ final class AmazonAdsPauseRule
         return ($decision['status'] ?? '') !== self::ACTION_PAUSED;
     }
 
+    /**
+     * Current Dil Pause Rule wording only. "pink DIL" / Price leftovers do not match.
+     */
     public static function isDilPauseReason(mixed $reason): bool
     {
-        return stripos(trim((string) $reason), 'dil') !== false;
+        $r = strtolower(trim((string) $reason));
+        if ($r === '') {
+            return false;
+        }
+
+        return str_contains($r, 'pr dil%')
+            || str_contains($r, 'pr dil ')
+            || str_contains($r, 'pause rule (dil');
     }
 
     private static function finiteDil(mixed $value): ?float

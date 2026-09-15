@@ -794,8 +794,9 @@
                         Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv).
                         Pause when Dil% is ≥ the threshold (default 100) for PARENT campaigns, and for <strong>child SKU</strong> campaigns when their Dil or the <strong>PARENT family Dil</strong> is ≥ the threshold.
                         Save (with auto-pause on) applies matching pauses on Amazon now.
-                        Only <strong>PARENT</strong> campaigns this Pause Rule paused recently (last 31 days) are turned back on when Dil% is no longer ≥ the threshold — those rows show <strong>Active Again</strong>.
-                        Child SKU campaigns stay paused. Manual, ACOS, old pink DIL, Price leftovers, and older pauses stay off. The job also runs daily at 18:25 IST.
+                        Only <strong>PARENT</strong> campaigns this Dil Pause Rule paused recently (last 31 days) are turned back on when Dil% is no longer ≥ the threshold — those rows show <strong>Active Again</strong>.
+                        Child SKU campaigns that show <strong>Active Again</strong> are paused again (PARENT Active Again stays on).
+                        Old ads stay paused: Price leftovers, Reviews, ACOS, old pink DIL, and anything paused before this Dil rule or older than 31 days are never turned back on. The job also runs daily at 18:25 IST.
                     </p>
                     <div class="form-check mb-1">
                         <input class="form-check-input" type="checkbox" id="amazonAdsPrDilEnabled" checked>

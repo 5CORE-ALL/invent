@@ -167,12 +167,14 @@ class AmazonAdsPauseRuleState extends Model
         }
         $reason = trim($reason) !== '' ? trim($reason) : AmazonAdsPauseRule::fallbackPauseReason();
         $existing = self::query()->where('channel', $channel)->where('campaign_id', $cid)->first();
+        $reopen = $existing !== null && $existing->reactivated_at !== null;
+        $fresh = $existing === null || $existing->paused_at === null || $reopen;
         self::query()->updateOrCreate(
             ['channel' => $channel, 'campaign_id' => $cid],
             [
                 'campaign_name' => $campaignName !== '' ? $campaignName : ($existing?->campaign_name),
                 'paused_reason' => $reason,
-                'paused_at' => $existing?->paused_at ?? now(),
+                'paused_at' => $fresh ? now() : $existing->paused_at,
                 'reactivated_at' => null,
             ]
         );

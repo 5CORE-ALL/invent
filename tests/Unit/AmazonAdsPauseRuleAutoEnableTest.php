@@ -66,7 +66,60 @@ class AmazonAdsPauseRuleAutoEnableTest extends TestCase
             'PAUSED',
             '2026-08-27 13:09:13',
             new \DateTimeImmutable('2026-09-12 18:00:00'),
-            'MS 080 1PK BLK PT'
+            'MS 080 1PK BLK PT',
+            'Pause — PR Dil% 120% ≥ 100%'
         ));
+    }
+
+    public function test_only_recent_parent_dil_pause_auto_enables(): void
+    {
+        $now = new \DateTimeImmutable('2026-09-16 00:00:00');
+        $enabled = ['status' => AmazonAdsPauseRule::ACTION_ENABLED, 'reason' => '', 'hits' => []];
+        $dilReason = 'Pause — PR Dil% 120% ≥ 100% (PARENT family)';
+
+        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable(
+            $enabled,
+            'PAUSED',
+            '2026-08-27 13:09:13',
+            $now,
+            'PARENT SS HD 1 PK KW',
+            $dilReason
+        ));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable(
+            $enabled,
+            'PAUSED',
+            '2026-07-01 10:00:00',
+            $now,
+            'PARENT SS HD 1 PK KW',
+            $dilReason
+        ), 'old Dil pause must stay off');
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable(
+            $enabled,
+            'PAUSED',
+            '2026-08-27 13:09:13',
+            $now,
+            'PARENT 8 GTR KW',
+            'Pause — PR Price $18.59 < $20'
+        ), 'Price leftover must stay off');
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable(
+            $enabled,
+            'PAUSED',
+            '2026-08-27 13:09:13',
+            $now,
+            'PARENT 8 GTR KW',
+            'old pink DIL'
+        ), 'old pink DIL must stay off');
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable(
+            $enabled,
+            'PAUSED',
+            '2026-08-27 13:09:13',
+            $now,
+            'PARENT 8 GTR KW',
+            ''
+        ), 'empty reason is an old/unknown pause');
+        $this->assertFalse(AmazonAdsPauseRule::isDilPauseReason('Pause — PR Price $18.59 < $20'));
+        $this->assertFalse(AmazonAdsPauseRule::isDilPauseReason('old pink DIL'));
+        $this->assertTrue(AmazonAdsPauseRule::isDilPauseReason($dilReason));
+        $this->assertTrue(AmazonAdsPauseRule::isDilPauseReason(AmazonAdsPauseRule::fallbackPauseReason()));
     }
 }

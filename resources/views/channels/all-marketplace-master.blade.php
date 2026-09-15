@@ -2116,6 +2116,31 @@
                         }
                     },
                     {
+                        title: "Type",
+                        field: "type",
+                        frozen: true,
+                        responsive: 0,
+                        hozAlign: "center",
+                        width: 96,
+                        headerTooltip: "Channel type (B2C, B2B, Dropship, Wholesale).",
+                        formatter: function(cell) {
+                            const type = (cell.getValue() || '').toString().trim();
+                            if (!type) {
+                                return '<span style="color:#adb5bd;">-</span>';
+                            }
+                            const slug = type.toLowerCase().replace(/[^a-z0-9]+/g, '');
+                            const known = {
+                                b2c: 'type-b2c',
+                                b2b: 'type-b2b',
+                                dropship: 'type-dropship',
+                                wholesale: 'type-wholesale',
+                            };
+                            const cls = known[slug] || 'type-b2c';
+                            const safe = type.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                            return `<span class="type-badge ${cls}">${safe}</span>`;
+                        }
+                    },
+                    {
                         // Alias: short display label set per channel in the Edit modal.
                         // Clicking it opens the channel's tabulator view (the same
                         // "Blade page link" / missing_link used by the channel name).
