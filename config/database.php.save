@@ -102,27 +102,6 @@ return [
             ],
         ],
 
-        'apicentral' => [
-            'driver' => 'mysql',
-            'host' => env('DB_APICENTRAL_HOST', '127.0.0.1'),
-            'port' => env('DB_APICENTRAL_PORT', '3306'),
-            'database' => env('DB_APICENTRAL_DATABASE', 'api_central'),
-            'username' => env('DB_APICENTRAL_USERNAME', 'root'),
-            'password' => env('DB_APICENTRAL_PASSWORD', ''),
-            'charset' => 'utf8mb4',
-            'collation' => 'utf8mb4_unicode_ci',
-            'prefix' => '',
-            'strict' => true,
-            'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
-                PDO::ATTR_TIMEOUT => 5,
-            ]) : [],
-            'pool' => [
-                'min' => 1,
-                'max' => 5,
-            ],
-        ],
-
         'shiphub' => [
             'driver' => 'mysql',
             'host' => env('SHIPHUB_DB_HOST', '127.0.0.1'),

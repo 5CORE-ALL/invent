@@ -799,7 +799,7 @@ class PurchasingPowerController extends Controller
     }
 
     /**
-     * L30 / L60 rollups from Purchasing Power MCM OR11 (not apicentral).
+     * L30 / L60 rollups from Purchasing Power MCM OR11.
      */
     public function salesStats(Request $request)
     {

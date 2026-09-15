@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\DB;
 class CreateDatabasesIfMissing extends Command
 {
     protected $signature = 'db:create-if-missing
-                            {--databases=api_central,shiphub : Comma-separated database names (default: api_central, shiphub)}';
+                            {--databases=shiphub : Comma-separated database names (default: shiphub)}';
 
-    protected $description = 'Create MySQL databases (e.g. apicentral, shiphub) if they do not exist';
+    protected $description = 'Create MySQL databases (e.g. shiphub) if they do not exist';
 
     public function handle(): int
     {

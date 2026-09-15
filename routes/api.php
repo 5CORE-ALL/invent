@@ -30,14 +30,13 @@ Route::get('/data', [ApiController::class, 'getData']);
 
 Route::post('/data', [ApiController::class, 'storeData']);
 
-// Test route to get Shein 30-day sales data from apicentral.shein_orders
+// Test route to get Shein 30-day sales data from shein_daily_data
 Route::get('/test-shein-sales', function () {
     $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
     
-    $sheinSales = DB::connection('apicentral')
-        ->table('shein_orders')
-        ->select('seller_sku as sku', DB::raw('COUNT(*) as total_orders'))
-        ->where('created_at', '>=', $thirtyDaysAgo)
+    $sheinSales = \Illuminate\Support\Facades\DB::table('shein_daily_data')
+        ->select('seller_sku as sku', \Illuminate\Support\Facades\DB::raw('COUNT(*) as total_orders'))
+        ->where('order_processed_on', '>=', $thirtyDaysAgo)
         ->groupBy('seller_sku')
         ->orderBy('total_orders', 'desc')
         ->get();

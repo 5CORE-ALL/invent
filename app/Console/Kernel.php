@@ -29,6 +29,7 @@ use App\Console\Commands\SyncMercariWoShipSheet;
 use App\Console\Commands\SyncMercariWShipSheet;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Console\Commands\FetchMiraklDailyData;
 use App\Console\Commands\FetchEbay3DailyData;
 use App\Console\Commands\FetchReverbDailyData;
@@ -1649,10 +1650,11 @@ class Kernel extends ConsoleKernel
         // withoutOverlapping(2) keeps the daily reset single-fire even if a tick is delayed.
         $schedule->call(function () {
             try {
-                DB::connection('apicentral')
-                    ->table('google_ads_campaigns')
-                    ->where('id', 1)
-                    ->update(['sbid_status' => 0]);
+                if (Schema::hasTable('google_ads_campaigns') && Schema::hasColumn('google_ads_campaigns', 'sbid_status')) {
+                    DB::table('google_ads_campaigns')
+                        ->where('id', 1)
+                        ->update(['sbid_status' => 0]);
+                }
             } catch (\Throwable $e) {
                 Log::error('Scheduler: Failed to reset sbid_status - ' . $e->getMessage());
             }

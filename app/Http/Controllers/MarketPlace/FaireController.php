@@ -647,7 +647,7 @@ class FaireController extends Controller
                     'ship_date'         => null,
                     'tracking_company'  => $item->tracking_company,
                     'tracking_number'   => $item->tracking_number,
-                    // Customer / shipping address (limited columns on shopify_order_items)
+                    // Customer / shipping address (limited columns on shopify_raw_orders)
                     'retailer_name' => $item->customer_name,
                     'city'          => $item->shipping_city,
                     'country'       => $item->shipping_country,
@@ -666,7 +666,7 @@ class FaireController extends Controller
 
             return response()->json($mapped->values())->header('Content-Type', 'application/json');
         } catch (\Exception $e) {
-            Log::error('Error fetching Faire data from shopify_order_items: ' . $e->getMessage(), [
+            Log::error('Error fetching Faire data from shopify_raw_orders: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
             return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);

@@ -339,16 +339,14 @@ class WalmartZeroController extends Controller
     //     $shopifyData = ShopifySku::mapByProductSkus($skus);
     //     $ebayDataViews = WalmartListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
-    //     $ebayMetrics = DB::connection('apicentral')
-    //         ->table('walmart_api_data as api')
+    //     $ebayMetrics = DB::table('walmart_metrics')
     //         ->select(
-    //             'api.sku',
-    //             'api.price',
-    //             DB::raw('COALESCE(m.l30, 0) as l30'),
-    //             DB::raw('COALESCE(m.l60, 0) as l60')
+    //             'sku',
+    //             'price',
+    //             DB::raw('COALESCE(l30, 0) as l30'),
+    //             DB::raw('COALESCE(l60, 0) as l60')
     //         )
-    //         ->leftJoin('walmart_metrics as m', 'api.sku', '=', 'm.sku')
-    //         ->whereIn('api.sku', $skus)
+    //         ->whereIn('sku', $skus)
     //         ->get()
     //         ->keyBy('sku');
 

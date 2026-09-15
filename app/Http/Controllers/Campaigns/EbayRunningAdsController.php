@@ -121,11 +121,11 @@ class EbayRunningAdsController extends Controller
         )));
         $shopifyData = ShopifySku::mapByProductSkus($shopifySkuKeys);
 
-        $ebayMetricData = DB::connection('apicentral')->table('ebay_one_metrics')
+        $ebayMetricData = EbayMetric::query()
             ->select('sku', 'ebay_price', 'item_id')
             ->whereIn('sku', $skus)
             ->get()
-            ->keyBy(fn($item) => $normalizeSku($item->sku));
+            ->keyBy(fn ($item) => $normalizeSku($item->sku));
 
         $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 

@@ -12,6 +12,7 @@ use App\Models\WalmartProductSheet;
 use App\Models\Walmart7ubDailyCount;
 use App\Models\MarketplacePercentage;
 use App\Models\WalmartListingStatus;
+use App\Models\WalmartMetrics;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -60,15 +61,13 @@ class WalmartUtilisationController extends Controller
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Walmart')->first();
         $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.80; // Default to 80% if not found
 
-        // Get price data from walmart_api_data (same as walmart-tabulator-view)
         $nonParentSkus = array_filter($skus, function($sku) {
             return stripos($sku, 'PARENT') === false;
         });
-        
-        $walmartLookup = DB::connection('apicentral')
-            ->table('walmart_api_data as api')
-            ->select('api.sku', 'api.price')
-            ->whereIn('api.sku', $nonParentSkus)
+
+        $walmartLookup = WalmartMetrics::query()
+            ->select('sku', 'price')
+            ->whereIn('sku', $nonParentSkus)
             ->get()
             ->keyBy('sku');
 

@@ -391,11 +391,8 @@ class YesterdayMarketplaceMetricsService
      */
     private function ebay3(string $date): array
     {
-        $latest = Ebay3DailyData::where('period', 'l30')->whereNotNull('creation_date')->max('creation_date');
-        $window = $this->latestCompleteDay($latest, 'naive');
-        if ($window !== null) {
-            $date = $window[2];
-        }
+        // Use the requested Pacific day. Remapping to latest creation_date − 1
+        // copied one eBay 3 total onto Sep 12 and Sep 13.
 
         if (! isset($this->orderCollectionCache['ebay3_l30'])) {
             $this->orderCollectionCache['ebay3_l30'] = Ebay3DailyData::where('period', 'l30')->get();
@@ -1137,7 +1134,7 @@ class YesterdayMarketplaceMetricsService
                     ->orWhere('tags', 'LIKE', '%PurchasingPower%');
             };
 
-            $latest = DB::connection('apicentral')->table('shopify_order_items')
+            $latest = DB::table('shopify_raw_orders')
                 ->where($ppWhere)
                 ->whereNotNull('order_date')
                 ->max('order_date');
@@ -1146,7 +1143,7 @@ class YesterdayMarketplaceMetricsService
                 [$start, $end] = $window;
             }
 
-            return (float) DB::connection('apicentral')->table('shopify_order_items')
+            return (float) DB::table('shopify_raw_orders')
                 ->where($ppWhere)
                 ->where('order_date', '>=', $start)
                 ->where('order_date', '<=', $end)
@@ -1167,10 +1164,8 @@ class YesterdayMarketplaceMetricsService
             return $this->salesOnly(0.0);
         }
 
-        if ($this->alignLatestCompleteDay) {
-            $date = Carbon::now('UTC')->subDay()->toDateString();
-        }
-
+        // Use the requested calendar day. Remapping every row to UTC yesterday
+        // copied one Reverb total onto consecutive /all-marketplace-master points.
         [$from, $to] = $this->windowYmdBounds($date);
         $row = DB::table('reverb_daily_data')
             ->whereDate('order_date', '>=', $from)
@@ -1549,24 +1544,9 @@ class YesterdayMarketplaceMetricsService
      */
     private function latestCompleteDay(?string $latestRaw, string $style = 'to_pacific'): ?array
     {
-        if (! $this->alignLatestCompleteDay) {
-            return null;
-        }
-        if ($latestRaw === null || $latestRaw === '') {
-            return null;
-        }
-
-        $latest = match ($style) {
-            'as_pacific' => Carbon::parse($latestRaw, self::TZ),
-            'naive' => Carbon::parse($latestRaw),
-            default => Carbon::parse($latestRaw)->timezone(self::TZ),
-        };
-
-        $endDay = $latest->copy()->subDay();
-        $end = $endDay->copy()->endOfDay();
-        $start = $endDay->copy()->subDays(max(1, $this->windowDays) - 1)->startOfDay();
-
-        return [$start, $end, $endDay->toDateString()];
+        // Never remap a requested day to "latest order − 1". That copied one
+        // sale total onto consecutive /all-marketplace-master chart points.
+        return null;
     }
 
     /**

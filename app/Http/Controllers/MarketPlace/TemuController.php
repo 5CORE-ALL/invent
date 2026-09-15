@@ -1029,7 +1029,7 @@ class TemuController extends Controller
 
     /**
      * Get daily data for Temu tabulator (sales page).
-     * Source: apicentral.shopify_order_items — same Temu identification as /shopify-orders.
+     * Source: temu_orders — same Temu identification as /temu-tabulator.
      */
     public function getDailyData(Request $request)
     {

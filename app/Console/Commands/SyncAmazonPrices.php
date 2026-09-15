@@ -16,7 +16,7 @@ class SyncAmazonPrices extends Command
     protected $signature = 'sync:amazon-prices
         {--chunk= : Override chunk size (default from cron-monitor config)}';
 
-    protected $description = 'One-time sync of prices from repricer.lmpa_data to 5coreinventory.amazon_datsheets';
+    protected $description = 'Sync Amazon LMP from amazon_sku_competitors into amazon_datsheets.price_lmpa';
 
     protected string $monitorJobName = 'Sync Amazon Prices';
 
@@ -33,9 +33,16 @@ class SyncAmazonPrices extends Command
         $chunkSize = $this->monitoredChunkSize();
 
         try {
-            $skus = DB::table('5core_repricer.lmpa_data')
+            if (! \Illuminate\Support\Facades\Schema::hasTable('amazon_sku_competitors')
+                || ! \Illuminate\Support\Facades\Schema::hasTable('amazon_datsheets')) {
+                $this->warn('⚠️ amazon_sku_competitors / amazon_datsheets missing. Nothing to sync.');
+
+                return self::SUCCESS;
+            }
+
+            $skus = DB::table('amazon_sku_competitors')
                 ->select('sku')
-                ->where('price', '>', 0)
+                ->whereRaw('CAST(price AS DECIMAL(10,2)) > 0')
                 ->whereNotNull('sku')
                 ->groupBy('sku')
                 ->pluck('sku')
@@ -55,13 +62,13 @@ class SyncAmazonPrices extends Command
 
             foreach (array_chunk($skus, $chunkSize) as $skuChunk) {
                 $updated = DB::transaction(function () use ($skuChunk) {
-                    $subQuery = DB::table('5core_repricer.lmpa_data')
-                        ->select('sku', DB::raw('MIN(price) as price'))
-                        ->where('price', '>', 0)
+                    $subQuery = DB::table('amazon_sku_competitors')
+                        ->select('sku', DB::raw('MIN(CAST(price AS DECIMAL(10,2))) as price'))
+                        ->whereRaw('CAST(price AS DECIMAL(10,2)) > 0')
                         ->whereIn('sku', $skuChunk)
                         ->groupBy('sku');
 
-                    return DB::table('5coreinventory.amazon_datsheets as a')
+                    return DB::table('amazon_datsheets as a')
                         ->joinSub($subQuery, 'l', function ($join) {
                             $join->on('a.sku', '=', 'l.sku');
                         })

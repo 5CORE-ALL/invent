@@ -90,6 +90,7 @@ use App\Models\EbayTwoListingStatus;
 use App\Models\EbayThreeListingStatus;
 use App\Models\DobaListingStatus;
 use App\Models\WalmartListingStatus;
+use App\Models\WalmartMetrics;
 use App\Models\TiktokShopListingStatus;
 use App\Models\ShopifyB2CListingStatus;
 use App\Models\MacysListingStatus;
@@ -8152,12 +8153,7 @@ class CvrMasterController extends Controller
     private function pushToWalmart($sku, $price)
     {
         try {
-            // Walmart uses SKU directly (no need to lookup item_id)
-            // Verify SKU exists in walmart_api_data table
-            $walmartSku = DB::connection('apicentral')
-                ->table('walmart_api_data')
-                ->where('sku', $sku)
-                ->value('sku');
+            $walmartSku = WalmartMetrics::where('sku', $sku)->value('sku');
             
             if (!$walmartSku) {
                 $this->savePricePushStatus($sku, 'walmart', 'error', $price);

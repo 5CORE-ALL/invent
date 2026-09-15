@@ -8,6 +8,7 @@ use App\Models\AmazonDataView;
 use App\Models\EbayDataView;
 use App\Models\EbayListingStatus;
 use App\Models\EbayMetric;
+use App\Models\EbaySkuCompetitor;
 use App\Models\EbayGeneralReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -17,6 +18,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use App\Models\EbayPriorityReport;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class EbayZeroController extends Controller
 {
@@ -54,11 +56,7 @@ class EbayZeroController extends Controller
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay')->first();
         $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1;
 
-        // external ebay metrics (apicentral) - fetch and key by normalized SKU
-        $rawEbayDatasheets = DB::connection('apicentral')
-            ->table('ebay_one_metrics')
-            ->whereIn('sku', $skus)
-            ->get();
+        $rawEbayDatasheets = EbayMetric::whereIn('sku', $skus)->get();
 
         $ebayDatasheetsBySku = collect($rawEbayDatasheets)->mapWithKeys(function ($item) use ($normalize) {
             $skuKey = $normalize($item->sku ?? $item->SKU ?? '');
@@ -95,13 +93,15 @@ class EbayZeroController extends Controller
 
         $result = [];
 
-        $lmpData = DB::connection('repricer')
-            ->table('lmp_data')
-            ->whereIn('sku', $skus)
-            ->where('price', '>', 0)
-            ->orderBy('price', 'asc')
-            ->get()
-            ->groupBy('sku');
+        $lmpData = collect();
+        if (Schema::hasTable('ebay_sku_competitors')) {
+            $lmpData = EbaySkuCompetitor::query()
+                ->where('marketplace', 'ebay')
+                ->where('total_price', '>', 0)
+                ->orderBy('total_price', 'asc')
+                ->get()
+                ->groupBy(fn ($item) => EbaySkuCompetitor::normalizeSkuKey($item->sku));
+        }
 
         foreach ($productMasters as $pm) {
             $sku = $normalize($pm->sku);
@@ -109,7 +109,7 @@ class EbayZeroController extends Controller
 
             $ebaySheet = $ebayDatasheetsBySku[$sku] ?? null;
             $shopify = $shopifyData[$sku] ?? ShopifySku::firstForProductSku($pm->sku);
-            // fallback: local EbayMetric if apicentral row missing
+            // fallback: local EbayMetric if sheet row missing
             $localEbayMetric = null;
             if (!$ebaySheet) {
                 $localEbayMetric = EbayMetric::where('sku', $pm->sku)->first();
@@ -186,7 +186,7 @@ class EbayZeroController extends Controller
             // $row['hl_sold_L30']  = (int) ($matchedHlL30->unitsSold ?? 0);
             // $row['hl_sold_L7']   = (int) ($matchedHlL7->unitsSold ?? 0);
 
-            // totals & derived - prefer direct metrics from apicentral/local metric when available
+            // totals & derived - prefer direct metrics from local EbayMetric when available
             // Prefer explicit eBay metric columns if available (avoid using KW/HL sums)
             $row['A_L30'] = (int) (
                 $ebaySheet?->ebay_l30
@@ -211,7 +211,7 @@ class EbayZeroController extends Controller
             $row['SHIP'] = $ship;
             $row['LP'] = $lp;
 
-            // determine price: prefer apicentral ebay_one_metrics, fallback to local EbayMetric
+            // determine price: prefer ebay sheet, fallback to local EbayMetric
             $price = 0;
             if ($ebaySheet) {
                 $price = $ebaySheet->ebay_price ?? $ebaySheet->price ?? 0;
@@ -239,7 +239,7 @@ class EbayZeroController extends Controller
             $row['clicks_L30'] = (int) ($matchedKwL30->cpc_clicks ?? 0);
             $row['clicks_L7']  = (int) ($matchedKwL7->cpc_clicks ?? 0);
 
-            // A_L90/A_L7 - prefer direct metrics from apicentral/local metric when available
+            // A_L90/A_L7 - prefer direct metrics from local EbayMetric when available
             $row['A_L90'] = (int) (
                 $ebaySheet?->ebay_l90
                 ?? ($localEbayMetric ? ($localEbayMetric->ebay_l90 ?? 0) : 0)
@@ -290,7 +290,7 @@ class EbayZeroController extends Controller
             $row['A DIL %'] = ($row['INV'] > 0) ? round(($row['A_L30'] ?? 0) / $row['INV'], 4) : 0;
 
             $prices = isset($lmpData[$sku])
-                ? $lmpData[$sku]->pluck('price')->toArray()
+                ? $lmpData[$sku]->map(fn ($r) => (float) ($r->total_price ?: $r->price ?: 0))->values()->all()
                 : [];
 
             for ($i = 0; $i <= 11; $i++) {
@@ -314,33 +314,25 @@ class EbayZeroController extends Controller
     public function updateEbayPrice(Request $request) {
         try {
             $validated = $request->validate([
-            'sku' => 'required|exists:apicentral.ebay_one_metrics,sku',
+            'sku' => 'required|exists:ebay_metrics,sku',
             'price' => 'required|numeric',
         ]);
 
-        $ebayData = DB::connection('apicentral')
-            ->table('ebay_one_metrics')
-            ->where('sku', $validated['sku'])
-            ->first();
+        $ebayData = EbayMetric::where('sku', $validated['sku'])->first();
 
         if (!$ebayData) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'SKU not found in ebay_one_metrics.',
+                'message' => 'SKU not found in ebay_metrics.',
             ], 404);
         }
 
-        DB::connection('apicentral')
-            ->table('ebay_one_metrics')
-            ->where('sku', $validated['sku'])
+        EbayMetric::where('sku', $validated['sku'])
             ->update([
                 'ebay_price' => $validated['price'],
             ]);
 
-        $updatedData = DB::connection('apicentral')
-            ->table('ebay_one_metrics')
-            ->where('sku', $validated['sku'])
-            ->first();
+        $updatedData = EbayMetric::where('sku', $validated['sku'])->first();
 
         return response()->json([
             'status' => 'success',

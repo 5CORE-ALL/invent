@@ -407,7 +407,7 @@ class SyncShopifyOrdersToInventory extends Command
         return $rows;
     }
 
-    // ── Upsert batch into apicentral DB ────────────────────────────────────
+    // ── Upsert batch into shopify_raw_orders ────────────────────────────────
 
     /**
      * Laravel upsert() omits `id`. If AUTO_INCREMENT was dropped, new rows

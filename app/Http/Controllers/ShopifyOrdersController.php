@@ -31,8 +31,7 @@ class ShopifyOrdersController extends Controller
 
         // First, create a mapping of source_name to display name
         $sourceMapping = [];
-        $sourceSamples = DB::connection('apicentral')
-            ->table('shopify_order_items')
+        $sourceSamples = DB::table('shopify_raw_orders')
             ->select('source_name', 'tags')
             ->where('order_date', '>=', $thirtyDaysAgo)
             ->whereNotNull('source_name')
@@ -103,9 +102,7 @@ class ShopifyOrdersController extends Controller
             $sourceMapping[$sourceName] = $source;
         }
 
-        // Query shopify_order_items
-        $orderItems = DB::connection('apicentral')
-            ->table('shopify_order_items')
+        $orderItems = DB::table('shopify_raw_orders')
             ->select('sku', 'source_name', DB::raw('SUM(quantity) as total_quantity'))
             ->where('order_date', '>=', $thirtyDaysAgo)
             ->whereNotNull('sku')
@@ -286,29 +283,25 @@ class ShopifyOrdersController extends Controller
         $pstTimezone = 'America/Los_Angeles';
         $thirtyDaysAgo = Carbon::now($pstTimezone)->subDays(30)->startOfDay();
         
-        $totalSkus = DB::connection('apicentral')
-            ->table('shopify_order_items')
+        $totalSkus = DB::table('shopify_raw_orders')
             ->where('order_date', '>=', $thirtyDaysAgo)
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->distinct('sku')
             ->count('sku');
 
-        $totalQuantity = DB::connection('apicentral')
-            ->table('shopify_order_items')
+        $totalQuantity = DB::table('shopify_raw_orders')
             ->where('order_date', '>=', $thirtyDaysAgo)
             ->sum('quantity');
 
-        $totalSources = DB::connection('apicentral')
-            ->table('shopify_order_items')
+        $totalSources = DB::table('shopify_raw_orders')
             ->where('order_date', '>=', $thirtyDaysAgo)
             ->whereNotNull('source_name')
             ->where('source_name', '!=', '')
             ->distinct('source_name')
             ->count('source_name');
 
-        $totalOrders = DB::connection('apicentral')
-            ->table('shopify_order_items')
+        $totalOrders = DB::table('shopify_raw_orders')
             ->where('order_date', '>=', $thirtyDaysAgo)
             ->count();
 

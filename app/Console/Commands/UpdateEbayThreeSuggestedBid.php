@@ -149,7 +149,7 @@ class UpdateEbayThreeSuggestedBid extends Command
             $ebayMetricsNormalized[$normalizedKey] = $item;
         }
 
-        // Same source as /ebay3/campaign-ads (not stale apicentral *_listings).
+        // Same source as /ebay3/campaign-ads.
         $this->info('Loading campaign listings from ebay3_campaign_ads...');
         $campaignListings = DB::table('ebay3_campaign_ads')
             ->select('listing_id', 'campaign_id', 'bid_percentage', 'suggested_bid', 'updated_at')

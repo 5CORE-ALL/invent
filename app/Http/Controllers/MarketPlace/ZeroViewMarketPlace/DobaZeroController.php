@@ -199,16 +199,14 @@ class DobaZeroController extends Controller
     //     $ebayDataViews = DobaListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
     //     // $ebayMetrics = Ebay2Metric::whereIn('sku', $skus)->get()->keyBy('sku');
 
-    //     $ebayMetrics = DB::connection('apicentral')
-    //         ->table('doba_api_data as api_doba')
+    //     $ebayMetrics = DB::table('doba_metrics')
     //         ->select(
-    //             'api_doba.spu as sku',
-    //             'api_doba.sellPrice as doba_price',
-    //             DB::raw('COALESCE(doba_m.l30, 0) as l30'),
-    //             DB::raw('COALESCE(doba_m.l60, 0) as l60')
+    //             'sku',
+    //             'self_pick_price as doba_price',
+    //             DB::raw('COALESCE(quantity_l30, 0) as l30'),
+    //             DB::raw('COALESCE(quantity_l60, 0) as l60')
     //         )
-    //         ->leftJoin('doba_metrics as doba_m', 'api_doba.spu', '=', 'doba_m.sku')
-    //         ->whereIn('api_doba.spu', $skus)
+    //         ->whereIn('sku', $skus)
     //         ->get()
     //         ->keyBy('sku');
 

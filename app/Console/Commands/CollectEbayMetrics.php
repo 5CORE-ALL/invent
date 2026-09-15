@@ -43,7 +43,7 @@ class CollectEbayMetrics extends Command
         $today = Carbon::now('America/Los_Angeles')->toDateString();
         $chunkSize = $this->monitoredChunkSize();
 
-        // Same live table the eBay tabulator CVR 30 column uses (NOT stale apicentral.ebay_one_metrics).
+        // Same live table the eBay tabulator CVR 30 column uses (ebay_metrics).
         $totalMetrics = EbayMetric::query()->whereNotNull('sku')->count();
         $monitor->setFetched($totalMetrics);
         $monitor->setExpected($totalMetrics);

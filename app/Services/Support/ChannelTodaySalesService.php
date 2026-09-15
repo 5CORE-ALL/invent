@@ -618,7 +618,7 @@ class ChannelTodaySalesService
                     ->orWhere('tags', 'LIKE', '%PurchasingPower%');
             };
 
-            return round((float) DB::connection('apicentral')->table('shopify_order_items')
+            return round((float) DB::table('shopify_raw_orders')
                 ->where($ppWhere)
                 ->where('order_date', '>=', $start)
                 ->where('order_date', '<=', $end)

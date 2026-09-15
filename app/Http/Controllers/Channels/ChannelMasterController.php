@@ -64,8 +64,6 @@ use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
 use App\Models\AmazonSpCampaignReport;
-use App\Models\ApiCentralWalmartApiData;
-use App\Models\ApiCentralWalmartMetric;
 use App\Models\BestbuyUsaProduct;
 use App\Models\ChannelMaster;
 use App\Models\DobaListingStatus;
@@ -2167,7 +2165,6 @@ class ChannelMasterController extends Controller
         // FB Marketplace L30/L60/Y/L7 from /facebook-marketplace uploads (not stale sheet cache)
         $rows = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($rows);
         $rows = $this->overlayLiveFaireMetricsOnChannelRows($rows);
-        $rows = $this->overlayLiveWayfairMetricsOnChannelRows($rows);
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
@@ -2711,7 +2708,6 @@ class ChannelMasterController extends Controller
             'mercariwoship' => fn () => $this->computeMercariYSalesLikeAmazon(false),
             'topdawg' => fn () => $this->computeTopDawgYSalesLikeAmazon(),
             'shein' => fn () => $this->computeSheinYSalesLikeAmazon(),
-            'wayfair' => fn () => $this->computeWayfairYSalesLikeAmazon(),
         ];
 
         foreach ($rows as &$row) {
@@ -2779,49 +2775,6 @@ class ChannelMasterController extends Controller
             $row['TACOS %'] = '0%';
             if ($l60Sales > 0) {
                 $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
-            }
-            if ($ySales !== null) {
-                $this->applyLiveYSalesAllowZero($row, $ySales);
-            }
-            if ($l7Sales !== null) {
-                $row['L7 Sales'] = $l7Sales;
-            }
-        }
-        unset($row);
-
-        return $rows;
-    }
-
-    /**
-     * Fast-path Wayfair L30 / L60 / Y / L7 from wayfair_daily_data po_date.
-     * Do not reuse "latest PO − 1 day" — that copied one window onto every day.
-     */
-    private function overlayLiveWayfairMetricsOnChannelRows(array $rows): array
-    {
-        $hasWayfair = false;
-        foreach ($rows as $row) {
-            if ($this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? '')) === 'wayfair') {
-                $hasWayfair = true;
-                break;
-            }
-        }
-        if (! $hasWayfair || ! Schema::hasTable('wayfair_daily_data')) {
-            return $rows;
-        }
-
-        try {
-            $ySales = $this->computeWayfairYSalesLikeAmazon();
-            $l7Sales = $this->computeWayfairL7SalesLikeAmazon();
-        } catch (\Throwable $e) {
-            Log::warning('Fast-path Wayfair sales overlay failed: '.$e->getMessage());
-
-            return $rows;
-        }
-
-        foreach ($rows as &$row) {
-            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if ($key !== 'wayfair') {
-                continue;
             }
             if ($ySales !== null) {
                 $this->applyLiveYSalesAllowZero($row, $ySales);
@@ -2993,7 +2946,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Live L30/L60 from shopify_order_items — same windows as /pp-sales-stats and getPurchasingPowerChannelData().
+     * Live L30/L60 from shopify_raw_orders — same windows as /pp-sales-stats and getPurchasingPowerChannelData().
      *
      * @return array{l30_sales: float, l30_orders: int, qty: int, l60_sales: float, l60_orders: int, pft: float, cogs: float, l60_pft: float, l60_cogs: float}|null
      */
@@ -8516,7 +8469,6 @@ class ChannelMasterController extends Controller
         $finalData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($finalData);
         // Faire: overlay live L30/L60/Y/L7 from shopify_raw_orders (same as /faire-tabulator)
         $finalData = $this->overlayLiveFaireMetricsOnChannelRows($finalData);
-        $finalData = $this->overlayLiveWayfairMetricsOnChannelRows($finalData);
         // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
         $finalData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemuSalesOnChannelRows($finalData);
@@ -8609,8 +8561,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * eBay 1 / 2 / 3 Y Sales: revenue for the Pacific calendar day before the latest order timestamp,
-     * same clock as Amazon Y Sales. Line revenue matches UpdateMarketplaceDailyMetrics (item price = line total;
+     * eBay 1 / 2 / 3 Y Sales: wall-clock Pacific yesterday, same clock as Amazon Y Sales.
+     * Line revenue matches UpdateMarketplaceDailyMetrics (item price = line total;
      * eBay 3 unit_price = line total).
      *
      * @param int $which 1 = eBay, 2 = eBay 2, 3 = eBay 3
@@ -8621,26 +8573,18 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Doba Y Sales: sum of doba_daily_data.total_price for the Pacific calendar day before the latest
-     * non-cancelled order_time (matches UpdateMarketplaceDailyMetrics revenue and FetchDobaMetrics status filter).
+     * Doba Y Sales: sum of doba_daily_data.total_price for wall-clock Pacific yesterday
+     * (same clock as Amazon Y Sales; matches FetchDobaMetrics status filter).
      */
     private function computeDobaYSalesLikeAmazon(): ?float
     {
         $cancelled = ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'];
 
-        $latestRaw = DB::table('doba_daily_data')
-            ->where(function ($q) use ($cancelled) {
-                $q->whereNull('order_status')->orWhereNotIn('order_status', $cancelled);
-            })
-            ->max('order_time');
-
-        if (!$latestRaw) {
+        if (! Schema::hasTable('doba_daily_data')) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+        [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
         $sum = (float) DB::table('doba_daily_data')
             ->where('order_time', '>=', $yStartPacific)
@@ -8654,22 +8598,15 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Mirakl channels (Best Buy USA, Macy's): unit_price × qty, day before latest order_created_at, excl. CLOSED.
+     * Mirakl channels (Best Buy USA, Macy's): unit_price × qty for wall-clock Pacific yesterday, excl. CLOSED.
      */
     private function computeMiraklYSalesLikeAmazon(string $channelName): ?float
     {
-        $latestRaw = DB::table('mirakl_daily_data')
-            ->where('channel_name', $channelName)
-            ->where('status', '!=', 'CLOSED')
-            ->max('order_created_at');
-
-        if (!$latestRaw) {
+        if (! Schema::hasTable('mirakl_daily_data')) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+        [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
         $sum = (float) DB::table('mirakl_daily_data')
             ->where('channel_name', $channelName)
@@ -8834,12 +8771,7 @@ class ChannelMasterController extends Controller
             return null;
         }
 
-        $latestRaw = DB::table('vinted_sales_data')->whereNotNull('sale_date')->max('sale_date');
-        if (! $latestRaw) {
-            return null;
-        }
-
-        $yDate = Carbon::parse($latestRaw)->subDay()->toDateString();
+        $yDate = Carbon::yesterday('America/Los_Angeles')->toDateString();
 
         $sum = (float) DB::table('vinted_sales_data')
             ->whereDate('sale_date', $yDate)
@@ -8854,13 +8786,7 @@ class ChannelMasterController extends Controller
      */
     private function computeTiktokShopYSalesFromOrders(): ?float
     {
-        $latestPacific = TiktokOrder::latestCreatedAt();
-        if (! $latestPacific) {
-            return null;
-        }
-
-        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+        [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
         return round(TiktokOrder::salesAmountBetween($yStartPacific, $yEndPacific), 2);
     }
@@ -8892,8 +8818,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Reverb Yesterday sales — matches /reverb-sales: UTC yesterday (order_date is stored
-     * as a UTC date), summing the Reverb order total (`amount`, product + shipping + tax).
+     * Reverb Y Sales: wall-clock Pacific yesterday, same clock as Amazon Y Sales.
      */
     private function computeReverbYSalesLikeAmazon(): ?float
     {
@@ -8901,18 +8826,32 @@ class ChannelMasterController extends Controller
             return null;
         }
 
-        $yDate = Carbon::now('UTC')->subDay()->toDateString();
+        if (! DB::table('reverb_daily_data')->whereNotNull('order_date')->exists()) {
+            return null;
+        }
 
-        $sum = (float) DB::table('reverb_daily_data')
-            ->whereDate('order_date', $yDate)
+        return $this->sumReverbRevenueForDate(
+            Carbon::yesterday('America/Los_Angeles')->toDateString()
+        );
+    }
+
+    /**
+     * One calendar day's Reverb GMV (amount, else product_subtotal). Gap days are $0.
+     */
+    private function sumReverbRevenueForDate(string $ymd): float
+    {
+        if ($ymd === '' || ! Schema::hasTable('reverb_daily_data')) {
+            return 0.0;
+        }
+
+        return round((float) DB::table('reverb_daily_data')
+            ->whereDate('order_date', $ymd)
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
             ->whereNotNull('sku')->where('sku', '!=', '')
             ->whereNotNull('order_number')->where('order_number', '!=', '')
             ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
-            ->value('revenue');
-
-        return round($sum, 2);
+            ->value('revenue'), 2);
     }
 
     /**
@@ -9148,10 +9087,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Purchasing Power Y Sales — sourced from shopify_order_items (apicentral) so PP's Y Sales
-     * uses the same pipeline as the all-marketplace-master Purchasing Power row and stays in
-     * sync with the Shopify orders dashboard. Identification mirrors the shopify-orders page:
-     * source_name / tags containing "purchasing power".
+     * Purchasing Power Y Sales — sourced from shopify_raw_orders (same table as /shopify).
+     * Identification: source_name / tags containing "purchasing power".
      *
      * Revenue = price × quantity for Pacific calendar yesterday.
      */
@@ -9166,7 +9103,7 @@ class ChannelMasterController extends Controller
 
         [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
-        $sum = (float) DB::connection('apicentral')->table('shopify_order_items')
+        $sum = (float) DB::table('shopify_raw_orders')
             ->where($ppWhere)
             ->where('order_date', '>=', $yStartPacific)
             ->where('order_date', '<=', $yEndPacific)
@@ -9179,7 +9116,7 @@ class ChannelMasterController extends Controller
 
     /**
      * Purchasing Power L7 Sales — same Shopify-based identification as Y Sales, summed across
-     * the seven Pacific calendar days ending on Y-Sales "yesterday" (day before latest anchor).
+     * the seven Pacific calendar days ending on wall-clock yesterday (same clock as Amazon).
      */
     private function computePurchasingPowerL7SalesLikeAmazon(): ?float
     {
@@ -9190,18 +9127,18 @@ class ChannelMasterController extends Controller
               ->orWhere('tags', 'LIKE', '%PurchasingPower%');
         };
 
-        $latestRaw = DB::connection('apicentral')->table('shopify_order_items')
+        if (! DB::table('shopify_raw_orders')
             ->where($ppWhere)
             ->whereNotNull('order_date')
-            ->max('order_date');
-        if (!$latestRaw) {
+            ->exists()) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
 
-        $sum = (float) DB::connection('apicentral')->table('shopify_order_items')
+        $sum = (float) DB::table('shopify_raw_orders')
             ->where($ppWhere)
             ->where('order_date', '>=', $l7StartPacific)
             ->where('order_date', '<=', $l7EndPacific)
@@ -9284,18 +9221,22 @@ class ChannelMasterController extends Controller
     {
         $cancelled = ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'];
 
-        $latestRaw = DB::table('doba_daily_data')
-            ->where(function ($q) use ($cancelled) {
-                $q->whereNull('order_status')->orWhereNotIn('order_status', $cancelled);
-            })
-            ->max('order_time');
-
-        if (!$latestRaw) {
+        if (! Schema::hasTable('doba_daily_data')) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+        if (! DB::table('doba_daily_data')
+            ->where(function ($q) use ($cancelled) {
+                $q->whereNull('order_status')->orWhereNotIn('order_status', $cancelled);
+            })
+            ->whereNotNull('order_time')
+            ->exists()) {
+            return null;
+        }
+
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
 
         $sum = (float) DB::table('doba_daily_data')
             ->where('order_time', '>=', $l7StartPacific)
@@ -9310,17 +9251,21 @@ class ChannelMasterController extends Controller
 
     private function computeMiraklL7SalesLikeAmazon(string $channelName): ?float
     {
-        $latestRaw = DB::table('mirakl_daily_data')
-            ->where('channel_name', $channelName)
-            ->where('status', '!=', 'CLOSED')
-            ->max('order_created_at');
-
-        if (!$latestRaw) {
+        if (! Schema::hasTable('mirakl_daily_data')) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+        if (! DB::table('mirakl_daily_data')
+            ->where('channel_name', $channelName)
+            ->where('status', '!=', 'CLOSED')
+            ->whereNotNull('order_created_at')
+            ->exists()) {
+            return null;
+        }
+
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
 
         $sum = (float) DB::table('mirakl_daily_data')
             ->where('channel_name', $channelName)
@@ -9405,12 +9350,13 @@ class ChannelMasterController extends Controller
 
     private function computeTiktokShopL7SalesFromOrders(): ?float
     {
-        $latestPacific = TiktokOrder::latestCreatedAt();
-        if (! $latestPacific) {
+        if (! TiktokOrder::latestCreatedAt()) {
             return null;
         }
 
-        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
 
         return round(TiktokOrder::salesAmountBetween($l7StartPacific, $l7EndPacific), 2);
     }
@@ -9439,9 +9385,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Reverb L7 sales — matches /reverb-sales: UTC window of today + 7 previous days
-     * (subDays(7), the same +1-day convention Reverb's dashboard uses), summing the Reverb
-     * order total (`amount`, product + shipping + tax).
+     * Reverb L7: seven Pacific calendar days ending wall-clock yesterday (same clock as Amazon).
      */
     private function computeReverbL7SalesLikeAmazon(): ?float
     {
@@ -9449,13 +9393,19 @@ class ChannelMasterController extends Controller
             return null;
         }
 
-        $nowUtc = Carbon::now('UTC');
-        $l7StartDate = $nowUtc->copy()->subDays(7)->toDateString();
-        $l7EndDate = $nowUtc->toDateString();
+        if (! DB::table('reverb_daily_data')->whereNotNull('order_date')->exists()) {
+            return null;
+        }
+
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
+        $end = $l7EndPacific->toDateString();
+        $start = $l7StartPacific->toDateString();
 
         $sum = (float) DB::table('reverb_daily_data')
-            ->where('order_date', '>=', $l7StartDate)
-            ->where('order_date', '<=', $l7EndDate)
+            ->whereDate('order_date', '>=', $start)
+            ->whereDate('order_date', '<=', $end)
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
             ->whereNotNull('sku')->where('sku', '!=', '')
@@ -9488,13 +9438,13 @@ class ChannelMasterController extends Controller
             $q->where('buyer_shipping_fee', '>', 0);
         }
 
-        $latestRaw = (clone $q)->max('sold_date');
-        if (!$latestRaw) {
+        if (! (clone $q)->exists()) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
 
         $sum = (float) (clone $q)
             ->where('sold_date', '>=', $l7StartPacific)
@@ -9511,14 +9461,13 @@ class ChannelMasterController extends Controller
             return null;
         }
 
-        $latestRaw = DB::table('topdawg_order_metrics')->whereNotNull('order_date')->max('order_date');
-        if (!$latestRaw) {
+        if (! DB::table('topdawg_order_metrics')->whereNotNull('order_date')->exists()) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $l7StartDate = $latestPacific->copy()->subDay()->subDays(6)->toDateString();
-        $l7EndDate = $latestPacific->copy()->subDay()->toDateString();
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+        $l7StartDate = $yesterday->copy()->subDays(6)->toDateString();
+        $l7EndDate = $yesterday->toDateString();
 
         $sum = (float) DB::table('topdawg_order_metrics')
             ->where('order_date', '>=', $l7StartDate)
@@ -9554,14 +9503,13 @@ class ChannelMasterController extends Controller
             return null;
         }
 
-        $latestRaw = DB::table('vinted_sales_data')->whereNotNull('sale_date')->max('sale_date');
-        if (! $latestRaw) {
+        if (! DB::table('vinted_sales_data')->whereNotNull('sale_date')->exists()) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $l7StartDate = $latestPacific->copy()->subDay()->subDays(6)->toDateString();
-        $l7EndDate = $latestPacific->copy()->subDay()->toDateString();
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+        $l7StartDate = $yesterday->copy()->subDays(6)->toDateString();
+        $l7EndDate = $yesterday->toDateString();
 
         $sum = (float) DB::table('vinted_sales_data')
             ->where('sale_date', '>=', $l7StartDate)
@@ -9578,13 +9526,13 @@ class ChannelMasterController extends Controller
             return null;
         }
 
-        $latestRaw = DB::table('shein_daily_data')->whereNotNull('order_processed_on')->max('order_processed_on');
-        if (! $latestRaw) {
+        if (! DB::table('shein_daily_data')->whereNotNull('order_processed_on')->exists()) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        [$l7Start, $l7End] = $this->pacificL7WindowEndingYesterday($latestPacific);
+        [$l7Start, $l7End] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
 
         $sum = 0.0;
         foreach (
@@ -13364,8 +13312,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Aggregate Purchasing Power sales/profit for a date window straight from Shopify
-     * (apicentral.shopify_order_items). Identification mirrors the shopify-orders page
+     * Aggregate Purchasing Power sales/profit for a date window from shopify_raw_orders
+     * (same table as /shopify). Identification mirrors the shopify-orders page
      * so the all-marketplace-master row stays in sync with the Shopify dashboard.
      *
      * Profit per line = (price × pct) − LP, where pct comes from
@@ -13376,8 +13324,7 @@ class ChannelMasterController extends Controller
      */
     private function computePurchasingPowerMetricsFromShopify(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): array
     {
-        $rows = DB::connection('apicentral')
-            ->table('shopify_order_items')
+        $rows = DB::table('shopify_raw_orders')
             ->whereBetween('order_date', [$startDate, $endDate])
             ->where(function ($q) {
                 $q->where('source_name', 'LIKE', '%purchasing power%')
@@ -13453,10 +13400,7 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // L30 and L60 are computed directly from shopify_order_items (Purchasing Power source) —
-        // same data source the shopify-orders page uses — so the two pages match. Previously this
-        // read from marketplace_daily_metrics which was sourced from purchasing_power_sales
-        // (manual Excel uploads), drifting out of sync with live Shopify orders.
+        // L30 and L60 are computed directly from shopify_raw_orders (same table as /shopify).
         [$l30Start, $l30End, $l60Start, $l60End] = $this->completePacificL30L60Windows();
 
         $l30 = $this->computePurchasingPowerMetricsFromShopify($l30Start, $l30End);
@@ -16381,8 +16325,7 @@ class ChannelMasterController extends Controller
     //     $l60Start = $today->copy()->subDays(60);
 
     //     // Get daily sales for last 60 days
-    //     $salesData = DB::connection('apicentral')
-    //         ->table('shopify_order_items')
+    //     $salesData = DB::table('shopify_raw_orders')
     //         ->select(
     //             DB::raw('DATE(order_date) as date'),
     //             DB::raw('SUM(quantity * price) as total_sales')
@@ -16423,8 +16366,7 @@ class ChannelMasterController extends Controller
     //     }
 
     //      // Calculate GPROFIT using Shopify order items + Product Master
-    //     $orderItems = DB::connection('apicentral')
-    //         ->table('shopify_order_items')
+    //     $orderItems = DB::table('shopify_raw_orders')
     //         ->select('sku', 'quantity', 'price', 'order_date')
     //         ->where('order_date', '>=', $l60Start)
     //         ->get();
@@ -16499,8 +16441,7 @@ class ChannelMasterController extends Controller
         $l60Start = $today->copy()->subDays(60);
 
         // Get daily sales for last 60 days
-        $salesData = DB::connection('apicentral')
-            ->table('shopify_order_items')
+        $salesData = DB::table('shopify_raw_orders')
             ->select(
                 DB::raw('DATE(order_date) as date'),
                 DB::raw('SUM(quantity * price) as total_sales')
@@ -16544,8 +16485,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::all()->keyBy(fn($item) => strtoupper($item->sku));
 
         // Get order items for last 30 days (L30)
-        $orderItems = DB::connection('apicentral')
-            ->table('shopify_order_items')
+        $orderItems = DB::table('shopify_raw_orders')
             ->select('sku', 'quantity', 'price', 'order_date')
             ->where('order_date', '>=', $l30Start)
             ->get();
@@ -17004,6 +16944,8 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => false, 'message' => 'Channel is required'], 400);
             }
 
+            $isAll = ($channel === 'all');
+
             // Map frontend metric names to summary_data keys
             $metricMap = [
                 'l60_sales' => 'l60_sales',
@@ -17048,7 +16990,6 @@ class ChannelMasterController extends Controller
             ];
 
             $metricKey = $metricMap[$metric] ?? $metric;
-            $isAll = ($channel === 'all');
 
             // Yesterday-page charts: one point per Pacific day from saved snapshots.
             // never L30 rolling snapshots (those mixed ~43k L30 with a 1.5k last day).
@@ -17145,65 +17086,6 @@ class ChannelMasterController extends Controller
 
             if (! $isAll && $metric === 'l60_sales' && $channel === 'faire') {
                 $chartData = $this->buildFaireLiveL60SalesChart($days);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'l30_sales' && $channel === 'wayfair') {
-                $chartData = $this->buildWayfairLiveRollingSalesChart($days, 30);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'l60_sales' && $channel === 'wayfair') {
-                $chartData = $this->buildWayfairLiveL60SalesChart($days);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && $metric === 'y_sales' && $channel === 'wayfair' && ! $useDailyWindow && ! $useL7Window) {
-                $chartData = $this->buildWayfairLiveDailyYSalesChart($days);
-                $chartData = ChartDatePad::fillGapsThroughYesterday($chartData, $days);
-                $chartData = $this->pinChartSeriesLastToTable(
-                    $chartData,
-                    $channel,
-                    $metric,
-                    $request->input('badge_value'),
-                    $isAll
-                );
-
-                return response()->json(['success' => true, 'data' => $chartData]);
-            }
-
-            if (! $isAll && in_array($metric, ['l7_sales', 'p_sales'], true) && $channel === 'wayfair') {
-                $chartData = $this->buildWayfairLiveRollingSalesChart($days, 7);
-                if ($metric === 'p_sales') {
-                    foreach ($chartData as &$pt) {
-                        $pt['value'] = $this->projectedSalesFromL7($pt['value'] ?? 0);
-                    }
-                    unset($pt);
-                }
                 $chartData = $this->pinChartSeriesLastToTable(
                     $chartData,
                     $channel,
@@ -19241,6 +19123,12 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
+            if ($channel === 'reverb') {
+                self::$pacificDayYSalesCache[$key] = $this->sumReverbRevenueForDate($ymd);
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
             if ($channel === 'fbmarketplace' || $channel === 'facebookmarketplace') {
                 $day = FacebookMarketplaceController::dailySalesByPacificDate($ymd, $ymd);
                 self::$pacificDayYSalesCache[$key] = (float) ($day[$ymd]['sales'] ?? 0);
@@ -19269,7 +19157,7 @@ class ChannelMasterController extends Controller
     private function overlayLiveYSalesOnChart(string $channel, array $chartData): array
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
-        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace', 'faire', 'shein', 'newegg', 'wayfair'], true) || $chartData === []) {
+        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace', 'faire', 'shein', 'newegg'], true) || $chartData === []) {
             return $chartData;
         }
 
@@ -19277,7 +19165,7 @@ class ChannelMasterController extends Controller
         $now = now($tz);
         $lastIdx = array_key_last($chartData);
         foreach ($chartData as $idx => &$pt) {
-            // Last point is pinned to the table cell — do not replace it with live orders.
+            // Last point is pinned to the saved table cell — do not replace it.
             if ($idx === $lastIdx) {
                 continue;
             }
@@ -19316,7 +19204,7 @@ class ChannelMasterController extends Controller
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
         $tz = 'America/Los_Angeles';
-        $lookback = in_array($channel, ['temu2', 'depop', 'faire', 'shein', 'newegg', 'wayfair'], true) ? 14 : 1;
+        $lookback = in_array($channel, ['temu2', 'depop', 'faire', 'shein', 'newegg', 'wayfair', 'reverb', 'ebaythree'], true) ? 14 : 1;
         $lookupKeys = $this->allMarketplaceSnapshotLookupKeys($channel);
 
         for ($offset = 0; $offset <= $lookback; $offset++) {
@@ -20123,9 +20011,6 @@ class ChannelMasterController extends Controller
         if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'depop') {
             return $this->buildDepopLiveDailyYSalesChart($span);
         }
-        if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'wayfair') {
-            return $this->buildWayfairLiveDailyYSalesChart($span);
-        }
         if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'faire') {
             return $this->buildFaireLiveDailyYSalesChart($span);
         }
@@ -20386,125 +20271,6 @@ class ChannelMasterController extends Controller
             $out[] = [
                 'date' => $cursor->format('M d'),
                 'value' => round((float) ($cell['sales'] ?? 0), 2),
-            ];
-            $cursor->addDay();
-        }
-
-        return $out;
-    }
-
-    /**
-     * Wayfair daily GMV from wayfair_daily_data (unit_price × qty by po_date).
-     * Gap days stay $0 so a stale "latest PO − 1 day" / L7 total is not copied.
-     *
-     * @return array<string, array{sales: float}>
-     */
-    private function wayfairDailySalesByDate(Carbon $start, Carbon $end): array
-    {
-        $out = [];
-        $cursor = $start->copy()->startOfDay();
-        $last = $end->copy()->startOfDay();
-        while ($cursor->lte($last)) {
-            $out[$cursor->toDateString()] = ['sales' => 0.0];
-            $cursor->addDay();
-        }
-
-        if (! Schema::hasTable('wayfair_daily_data')) {
-            return $out;
-        }
-
-        $rows = DB::table('wayfair_daily_data')
-            ->where('sku', 'not like', '%Parent%')
-            ->where('quantity', '>', 0)
-            ->whereDate('po_date', '>=', $start->toDateString())
-            ->whereDate('po_date', '<=', $end->toDateString())
-            ->selectRaw('DATE(po_date) as d, COALESCE(SUM(unit_price * quantity), 0) as revenue')
-            ->groupBy('d')
-            ->get();
-
-        foreach ($rows as $row) {
-            $d = (string) ($row->d ?? '');
-            if ($d === '' || ! isset($out[$d])) {
-                continue;
-            }
-            $out[$d] = ['sales' => round((float) ($row->revenue ?? 0), 2)];
-        }
-
-        return $out;
-    }
-
-    /**
-     * Wayfair Y Sales chart: one Pacific calendar day each. Gap days are $0.
-     *
-     * @return list<array{date: string, value: float}>
-     */
-    private function buildWayfairLiveDailyYSalesChart(int $days): array
-    {
-        $tz = 'America/Los_Angeles';
-        $end = now($tz)->subDay()->startOfDay();
-        $span = $days > 0 ? $days : 7;
-        $start = $end->copy()->subDays($span - 1);
-        $byDate = $this->wayfairDailySalesByDate($start->copy()->startOfDay(), $end->copy()->endOfDay());
-
-        $out = [];
-        $cursor = $start->copy();
-        while ($cursor->lte($end)) {
-            $ymd = $cursor->toDateString();
-            $cell = $byDate[$ymd] ?? ['sales' => 0];
-            $out[] = [
-                'date' => $cursor->format('M d'),
-                'value' => round((float) ($cell['sales'] ?? 0), 2),
-            ];
-            $cursor->addDay();
-        }
-
-        return $out;
-    }
-
-    /**
-     * Wayfair L30 Sales chart — trailing 30 po_date days through today.
-     *
-     * @return list<array{date: string, value: float}>
-     */
-    private function buildWayfairLiveRollingSalesChart(int $days, int $windowDays): array
-    {
-        $end = now('America/Los_Angeles');
-        $span = $days > 0 ? $days : 90;
-        $chartStart = $end->copy()->subDays($span - 1);
-        $dataStart = $chartStart->copy()->subDays(max(1, $windowDays) - 1);
-        $byDay = $this->wayfairDailySalesByDate($dataStart->copy()->startOfDay(), $end->copy()->endOfDay());
-
-        return TemuShopifySalesService::rollingSalesSeries($byDay, $chartStart, $end, $windowDays);
-    }
-
-    /**
-     * Wayfair L60 column: 30 days before the L30 window (D−60 … D−31).
-     *
-     * @return list<array{date: string, value: float}>
-     */
-    private function buildWayfairLiveL60SalesChart(int $days): array
-    {
-        $end = now('America/Los_Angeles');
-        $span = $days > 0 ? $days : 90;
-        $chartStart = $end->copy()->subDays($span - 1);
-        $dataStart = $chartStart->copy()->subDays(60);
-        $byDay = $this->wayfairDailySalesByDate($dataStart->copy()->startOfDay(), $end->copy()->endOfDay());
-
-        $out = [];
-        $cursor = $chartStart->copy();
-        while ($cursor->lte($end)) {
-            $sum = 0.0;
-            $winStart = $cursor->copy()->subDays(60);
-            $winEnd = $cursor->copy()->subDays(31);
-            $day = $winStart->copy();
-            while ($day->lte($winEnd)) {
-                $cell = $byDay[$day->toDateString()] ?? ['sales' => 0];
-                $sum += (float) ($cell['sales'] ?? 0);
-                $day->addDay();
-            }
-            $out[] = [
-                'date' => $cursor->format('M d'),
-                'value' => round($sum, 2),
             ];
             $cursor->addDay();
         }
@@ -21588,6 +21354,8 @@ class ChannelMasterController extends Controller
             $this->healClosedChannelYSalesSnapshot('shein');
             $this->healClosedChannelYSalesSnapshot('newegg');
             $this->healClosedChannelYSalesSnapshot('wayfair');
+            $this->healClosedChannelYSalesSnapshot('reverb');
+            $this->healClosedChannelYSalesSnapshot('ebaythree');
 
             foreach ([0, 1, 7] as $dotWindow) {
                 \Cache::forget($this->channelMetricDotTrendsCacheKey($dotWindow));

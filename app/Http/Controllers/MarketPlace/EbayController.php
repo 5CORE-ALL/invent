@@ -983,27 +983,6 @@ class EbayController extends Controller
         // PRMT%/CPN%/DSC%/Appr/Push Prc — ebay_data_view.value (Amazon-format PEF_* / PUSH_PRC_* keys)
         $ebay1PromoMap = app(ChannelPromoPricingService::class)->mapForSkus('ebay1', $skus);
 
-        // Prioritize COST_PER_SALE rows for bid_percentage (matching PMP Ads controller)
-        $campaignListings = [];
-        try {
-            $campaignListings = DB::connection('apicentral')
-                ->table('ebay_campaign_ads_listings as t')
-                ->join(DB::raw('(SELECT listing_id, 
-                                        MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
-                                        MAX(id) AS max_id
-                                 FROM ebay_campaign_ads_listings 
-                                 GROUP BY listing_id) x'), 
-                    function($join) {
-                        $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
-                    })
-                ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
-                ->get()
-                ->keyBy('listing_id')
-                ->toArray();
-        } catch (\Throwable $e) {
-            Log::warning('eBay getViewEbayData: apicentral campaign listings unavailable: ' . $e->getMessage());
-        }
-
         // Same prioritization as /ebay/campaign-ads page: latest COST_PER_SALE row per listing
         // (fallback to overall latest), source is the local `ebay_campaign_ads` table — the page's
         // own data feed — so C Bid / ES Bid / Promote here mirror that page exactly.
@@ -1337,10 +1316,9 @@ class EbayController extends Controller
             $row['eBay_item_id'] = $ebayMetric?->item_id ?? null;
             $row['views'] = $ebayMetric?->views ?? 0;
 
-            // Get bid percentage from campaign listings
-            if ($ebayMetric && isset($campaignListings[$ebayMetric->item_id])) {
-                $row['bid_percentage'] = $campaignListings[$ebayMetric->item_id]->bid_percentage ?? null;
-                $row['suggested_bid'] = $campaignListings[$ebayMetric->item_id]->suggested_bid ?? null;
+            if ($ebayMetric && isset($ebayCampaignAdsByListing[$ebayMetric->item_id])) {
+                $row['bid_percentage'] = $ebayCampaignAdsByListing[$ebayMetric->item_id]->bid_percentage ?? null;
+                $row['suggested_bid'] = $ebayCampaignAdsByListing[$ebayMetric->item_id]->suggested_bid ?? null;
             } else {
                 $row['bid_percentage'] = null;
                 $row['suggested_bid'] = null;
@@ -4902,15 +4880,14 @@ class EbayController extends Controller
             // Match ebay/pmp/ads: prefer COST_PER_SALE row per listing (EbayPMPAdsController)
             $campaignListing = null;
             try {
-                $campaignListing = DB::connection('apicentral')
-                    ->table('ebay_campaign_ads_listings')
+                $campaignListing = DB::table('ebay_campaign_ads')
                     ->where('listing_id', $itemId)
                     ->select('listing_id', 'bid_percentage', 'suggested_bid')
                     ->orderByRaw('CASE WHEN funding_strategy = "COST_PER_SALE" THEN 0 ELSE 1 END')
                     ->orderByDesc('id')
                     ->first();
             } catch (\Exception $e) {
-                // apicentral may be unavailable
+                // ebay_campaign_ads may be unavailable
             }
             $cbid = $campaignListing ? (float) ($campaignListing->bid_percentage ?? 0) : null;
             $esBid = $campaignListing ? (float) ($campaignListing->suggested_bid ?? 0) : null;

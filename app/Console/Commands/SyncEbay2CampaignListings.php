@@ -185,8 +185,7 @@ class SyncEbay2CampaignListings extends Command
                     $pendingDbRows = [];
                 };
 
-                // Connection: apicentral — stream metrics; API batches stay at 20
-                DB::connection('apicentral')->table('ebay2_metrics')
+                Ebay2Metric::query()
                     ->whereNotNull('item_id')
                     ->select('id', 'item_id', 'sku', 'ebay_price')
                     ->orderBy('id')
@@ -270,11 +269,11 @@ class SyncEbay2CampaignListings extends Command
                 $this->info("Found {$eligibleFound} listings not in any eBay 2 campaign.");
                 $this->info("✅ Eligible listings inserted/updated: {$eligibleInserted}");
             } catch (\Exception $e) {
-                $this->warn('⚠ Skipping eligible-listings step (apicentral.ebay2_metrics not accessible): ' . $e->getMessage());
+                $this->warn('⚠ Skipping eligible-listings step (ebay_2_metrics not accessible): ' . $e->getMessage());
             }
 
-            // apicentral.ebay2_metrics can lag / miss listings that already live in
-            // ebay_2_metrics (the /ebay2/campaign-ads join source). Those Eligible
+            // ebay_2_metrics can miss listings that already live in
+            // ebay2_campaign_ads (the /ebay2/campaign-ads join source). Those Eligible
             // listings never appear on the page and cannot be enrolled.
             $localInserted = $this->insertEligibleFromLocalMetrics($token);
             if ($localInserted > 0) {
@@ -412,7 +411,7 @@ class SyncEbay2CampaignListings extends Command
 
     /**
      * Insert Eligible / recommended listings that exist in ebay_2_metrics but
-     * are still missing from ebay2_campaign_ads (apicentral gap).
+     * are still missing from ebay2_campaign_ads.
      */
     private function insertEligibleFromLocalMetrics(string $token): int
     {

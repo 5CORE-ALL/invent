@@ -12,6 +12,8 @@ use App\Models\EbayThreeListingStatus;
 use App\Models\ShopifyB2CListingStatus;
 use App\Models\DobaListingStatus;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonSkuCompetitor;
+use App\Models\EbaySkuCompetitor;
 use App\Models\AmazonDataView;
 use Exception;
 use App\Models\DobaDataView;
@@ -37,6 +39,7 @@ use App\Models\Shopifyb2cDataView;
 use App\Models\TemuDataView;
 use App\Models\TemuListingStatus;
 use App\Models\WalmartListingStatus;
+use App\Models\WalmartMetrics;
 use App\Models\SheinMetric;
 use App\Models\SheinPricingPrice;
 use App\Models\SheinDailyData;
@@ -133,37 +136,23 @@ class AdsMasterController extends Controller
             : collect();
 
 
-        $dobaData = DB::connection('apicentral')
-            ->table('doba_api_data as api_doba')
-            ->select(
-                'api_doba.spu as sku',
-                'api_doba.sellPrice as doba_price',
-                DB::raw('COALESCE(doba_m.l30, 0) as l30'),
-                DB::raw('COALESCE(doba_m.l60, 0) as l60')
-            )
-            ->leftJoin('doba_metrics as doba_m', 'api_doba.spu', '=', 'doba_m.sku')
-            ->whereIn('api_doba.spu', $skus)
+        $dobaData = DobaMetric::whereIn('sku', $skus)
+            ->select([
+                'sku',
+                'self_pick_price as doba_price',
+                'quantity_l30 as l30',
+                'quantity_l60 as l60',
+            ])
             ->get()
             ->keyBy('sku');
 
-
-         $ebay2Lookup = DB::connection('apicentral')
-            ->table('ebay2_metrics')
+        $ebay2Lookup = Ebay2Metric::whereIn('sku', $skus)
             ->select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views')
-            ->whereIn('sku', $skus)
             ->get()
             ->keyBy('sku');
 
-        $walmartLookup = DB::connection('apicentral')
-            ->table('walmart_api_data as api')
-            ->select(
-                'api.sku',
-                'api.price',
-                DB::raw('COALESCE(m.l30, 0) as l30'),
-                DB::raw('COALESCE(m.l60, 0) as l60')
-            )
-            ->leftJoin('walmart_metrics as m', 'api.sku', '=', 'm.sku')
-            ->whereIn('api.sku', $skus)
+        $walmartLookup = WalmartMetrics::whereIn('sku', $skus)
+            ->select('sku', 'price', 'l30', 'l60')
             ->get()
             ->keyBy('sku');
 
@@ -199,36 +188,28 @@ class AdsMasterController extends Controller
         $bestbuyUsaLookup = BestbuyUsaProduct::whereIn('sku', $skus)->get()->keyBy('sku');
         $bestbuyUsaDataView = BestbuyUSADataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
-        // Fetch LMPA data from 5core_repricer database - get lowest price per SKU (excluding 0 prices)
         $lmpaLookup = collect();
-        try {
-            $lmpaLookup = DB::connection('repricer')
-                ->table('lmpa_data')
-                ->select('sku', DB::raw('MIN(price) as lowest_price'))
-                ->where('price', '>', 0)
-                ->whereIn('sku', $skus)
-                ->groupBy('sku')
-                ->get()
-                ->keyBy('sku');
-        } catch (Exception $e) {
-            Log::warning('Could not fetch LMPA data from repricer database: ' . $e->getMessage());
-            // Fallback to empty collection - will use Amazon's price_lmpa instead
+        if (Schema::hasTable('amazon_sku_competitors')) {
+            try {
+                $lmpaLookup = AmazonSkuCompetitor::buildGroupedLookup('amazon')['lowest']
+                    ->map(fn ($row) => (object) [
+                        'lowest_price' => $row ? (float) ($row->price ?? 0) : 0,
+                    ]);
+            } catch (Exception $e) {
+                Log::warning('Could not fetch Amazon LMP from amazon_sku_competitors: '.$e->getMessage());
+            }
         }
 
-        // Fetch LMP data from 5core_repricer database for eBay - get lowest price per SKU (excluding 0 prices)
         $lmpLookup = collect();
-        try {
-            $lmpLookup = DB::connection('repricer')
-                ->table('lmp_data')
-                ->select('sku', DB::raw('MIN(price) as lowest_price'))
-                ->where('price', '>', 0)
-                ->whereIn('sku', $skus)
-                ->groupBy('sku')
-                ->get()
-                ->keyBy('sku');
-        } catch (Exception $e) {
-            Log::warning('Could not fetch LMP data from repricer database: ' . $e->getMessage());
-            // Fallback to empty collection - will use eBay's price_lmpa instead
+        if (Schema::hasTable('ebay_sku_competitors')) {
+            try {
+                $lmpLookup = EbaySkuCompetitor::buildGroupedLookup('ebay')['lowest']
+                    ->map(fn ($row) => (object) [
+                        'lowest_price' => $row ? (float) ($row->total_price ?? $row->price ?? 0) : 0,
+                    ]);
+            } catch (Exception $e) {
+                Log::warning('Could not fetch eBay LMP from ebay_sku_competitors: '.$e->getMessage());
+            }
         }
 
 
@@ -266,8 +247,8 @@ class AdsMasterController extends Controller
             $walmart = $walmartLookup[$sku] ?? null;
             $ebay2   = $ebay2Lookup[$sku] ?? null;
             $ebay3   = $ebay3Lookup[$sku] ?? null;
-            $lmpa    = $lmpaLookup[$sku] ?? null;
-            $lmp     = $lmpLookup[$sku] ?? null;
+            $lmpa    = $lmpaLookup[AmazonSkuCompetitor::normalizeSkuKey((string) $sku)] ?? null;
+            $lmp     = $lmpLookup[EbaySkuCompetitor::normalizeSkuKey((string) $sku)] ?? null;
             $skuKey = strtoupper(trim((string) $sku));
             $sheinMetric = $sheinMetrics[$skuKey] ?? null;
             $sheinPriceRow = $sheinPricing[$skuKey] ?? null;
@@ -1320,7 +1301,7 @@ class AdsMasterController extends Controller
         $sku = $request->input('sku');
         $price = $request->input('price');
 
-        $itemId = DB::connection('apicentral')->table('walmart_api_data')->where('sku', $sku)->value('sku');
+        $itemId = WalmartMetrics::where('sku', $sku)->value('sku') ?: $sku;
         $result = $this->walmart->updatePrice($itemId, $price);
 
         if (isset($result['errors'])) {

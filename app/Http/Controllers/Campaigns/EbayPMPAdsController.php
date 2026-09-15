@@ -272,7 +272,7 @@ class EbayPMPAdsController extends Controller
 
         // Get campaign listings with bid_percentage. Prioritize COST_PER_SALE rows
         // since they have bid_percentage, but fallback to latest row if no COST_PER_SALE exists.
-        // pt_sbid: dedicated column on apicentral (if present), else suggested_bid from a second row per listing.
+        // pt_sbid: dedicated column on ebay_campaign_ads (if present), else suggested_bid from a second row per listing.
         $campaignListings = collect();
         $ptSbidAlternateByListingId = [];
         try {
@@ -281,12 +281,11 @@ class EbayPMPAdsController extends Controller
             if ($ptCol !== null && $ptCol !== '') {
                 $selectSql .= ', t.`'.$ptCol.'` as pt_sbid';
             }
-            $campaignListings = DB::connection('apicentral')
-                ->table('ebay_campaign_ads_listings as t')
+            $campaignListings = DB::table('ebay_campaign_ads as t')
                 ->join(DB::raw('(SELECT listing_id, 
                                         MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
                                         MAX(id) AS max_id
-                                 FROM ebay_campaign_ads_listings 
+                                 FROM ebay_campaign_ads 
                                  GROUP BY listing_id) x'), 
                     function ($join) {
                         $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
@@ -301,7 +300,7 @@ class EbayPMPAdsController extends Controller
                 }
             }
         } catch (\Throwable $e) {
-            Log::warning('ebay_pmp_apicentral_campaign_listings_unavailable', [
+            Log::warning('ebay_pmp_campaign_listings_unavailable', [
                 'message' => $e->getMessage(),
             ]);
         }
@@ -1189,7 +1188,7 @@ class EbayPMPAdsController extends Controller
     }
 
     /**
-     * Product-targeting suggested bid column on apicentral ebay_campaign_ads_listings (if migrated in).
+     * Product-targeting suggested bid column on ebay_campaign_ads (if present).
      */
     private function resolveEbayCampaignAdsListingPtSuggestedBidColumn(): ?string
     {
@@ -1207,7 +1206,7 @@ class EbayPMPAdsController extends Controller
             ];
             foreach ($candidates as $col) {
                 try {
-                    if (Schema::connection('apicentral')->hasColumn('ebay_campaign_ads_listings', $col)) {
+                    if (Schema::hasColumn('ebay_campaign_ads', $col)) {
                         return $col;
                     }
                 } catch (\Throwable $e) {
@@ -1215,20 +1214,20 @@ class EbayPMPAdsController extends Controller
                 }
             }
 
-            return $this->discoverPtSuggestedBidColumnFromApicentralSchema();
+            return $this->discoverPtSuggestedBidColumnFromLocalSchema();
         });
     }
 
     /**
-     * Last resort: find a column on apicentral whose name suggests PT / product-targeting suggested bid.
+     * Last resort: find a column on ebay_campaign_ads whose name suggests PT / product-targeting suggested bid.
      */
-    private function discoverPtSuggestedBidColumnFromApicentralSchema(): ?string
+    private function discoverPtSuggestedBidColumnFromLocalSchema(): ?string
     {
         try {
-            $dbName = DB::connection('apicentral')->getDatabaseName();
-            $rows = DB::connection('apicentral')->select(
+            $dbName = DB::connection()->getDatabaseName();
+            $rows = DB::select(
                 'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
-                [$dbName, 'ebay_campaign_ads_listings']
+                [$dbName, 'ebay_campaign_ads']
             );
             foreach ($rows as $r) {
                 $name = (string) ($r->COLUMN_NAME ?? '');
@@ -1240,7 +1239,7 @@ class EbayPMPAdsController extends Controller
                     continue;
                 }
                 if (preg_match('/pt|product|target|pmt|listing/', $l) && ! preg_match('/^suggested_bid$/', $l)) {
-                    if (Schema::connection('apicentral')->hasColumn('ebay_campaign_ads_listings', $name)) {
+                    if (Schema::hasColumn('ebay_campaign_ads', $name)) {
                         return $name;
                     }
                 }
@@ -1261,16 +1260,15 @@ class EbayPMPAdsController extends Controller
     {
         $map = [];
         try {
-            $conn = Schema::connection('apicentral');
-            if (! $conn->hasTable('ebay_campaign_ads_listings')) {
+            if (! Schema::hasTable('ebay_campaign_ads')) {
                 return $map;
             }
 
-            $q = DB::connection('apicentral')->table('ebay_campaign_ads_listings')
+            $q = DB::table('ebay_campaign_ads')
                 ->where('funding_strategy', 'COST_PER_SALE');
 
             $scoped = false;
-            if ($conn->hasColumn('ebay_campaign_ads_listings', 'ad_type')) {
+            if (Schema::hasColumn('ebay_campaign_ads', 'ad_type')) {
                 $q->where(function ($sub) {
                     $sub->whereIn('ad_type', [
                         'PRODUCT_TARGETING',
@@ -1283,7 +1281,7 @@ class EbayPMPAdsController extends Controller
                         ->orWhere('ad_type', 'like', '%TARGET%');
                 });
                 $scoped = true;
-            } elseif ($conn->hasColumn('ebay_campaign_ads_listings', 'listing_type')) {
+            } elseif (Schema::hasColumn('ebay_campaign_ads', 'listing_type')) {
                 $q->where(function ($sub) {
                     $sub->where('listing_type', 'like', '%PRODUCT%')
                         ->orWhere('listing_type', 'like', '%TARGET%');
@@ -1321,13 +1319,13 @@ class EbayPMPAdsController extends Controller
     {
         $map = [];
         try {
-            $rows = DB::connection('apicentral')->select('
+            $rows = DB::select('
                 SELECT t.listing_id, t.suggested_bid AS pt_sbid
-                FROM ebay_campaign_ads_listings t
+                FROM ebay_campaign_ads t
                 INNER JOIN (
                     SELECT listing_id,
                         COALESCE(MAX(CASE WHEN funding_strategy = \'COST_PER_SALE\' THEN id END), MAX(id)) AS primary_id
-                    FROM ebay_campaign_ads_listings
+                    FROM ebay_campaign_ads
                     GROUP BY listing_id
                 ) p ON t.listing_id = p.listing_id AND t.id <> p.primary_id
             ');

@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\AmazonDatasheet;
 use App\Models\EbayMetric;
+use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\MacyProduct;
 use App\Models\BestbuyUsaProduct;
@@ -1522,9 +1523,7 @@ class ApiController extends Controller
         $ebay_query = EbayMetric::where('sku', 'not like', '%Parent%');
         $ebay_l30Sales  = (clone $ebay_query)->selectRaw('SUM(ebay_l30 * ebay_price) as total')->value('total') ?? 0;        
         
-        $ebay_two_channel_query = DB::connection('apicentral')
-            ->table('ebay2_metrics')
-            ->where('sku', 'not like', '%Parent%');
+        $ebay_two_channel_query = Ebay2Metric::where('sku', 'not like', '%Parent%');
         $ebay_two_channel_l30Sales  = (clone $ebay_two_channel_query)->selectRaw('SUM(ebay_l30 * ebay_price) as total')->value('total') ?? 0;
 
         $ebay_3channel_query = Ebay3Metric::where('sku', 'not like', '%Parent%');

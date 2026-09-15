@@ -33,10 +33,7 @@ class ShopifyWholesalesController extends Controller
         $pstTimezone = 'America/Los_Angeles';
         $thirtyDaysAgo = Carbon::now($pstTimezone)->subDays(30)->startOfDay();
 
-        // Query shopify_order_items from apicentral connection
-        // Filter by source_name = 'shopify_draft_order'
-        $orders = DB::connection('apicentral')
-            ->table('shopify_order_items')
+        $orders = DB::table('shopify_raw_orders')
             ->where('order_date', '>=', $thirtyDaysAgo)
             ->where('source_name', '=', 'shopify_draft_order')
             ->orderBy('order_date', 'desc')

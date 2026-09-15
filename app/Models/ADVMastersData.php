@@ -1931,8 +1931,7 @@ class ADVMastersData extends Model
                     }
                 }
             }
-            $campaignListings = DB::connection('apicentral')
-                ->table('ebay_campaign_ads_listings')
+            $campaignListings = DB::table('ebay_campaign_ads')
                 ->select('listing_id', 'bid_percentage')
                 ->get()
                 ->keyBy('listing_id')

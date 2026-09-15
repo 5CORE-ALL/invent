@@ -2,15 +2,12 @@
 
 namespace App\Console\Commands;
 
-use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
-use App\Services\ChannelLivePriceSync;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class SyncWalmartMetrics extends Command
 {
-    use ProcessesUpdatesInChunks;
-
     /**
      * The name and signature of the console command.
      *
@@ -23,48 +20,22 @@ class SyncWalmartMetrics extends Command
      *
      * @var string
      */
-    protected $description = 'Sync Walmart metrics daily into inventory DB';
+    protected $description = 'Confirm Walmart metrics already live in local walmart_metrics';
 
     /**
      * Execute the console command.
      */
     public function handle()
     {
-        $chunkSize = $this->monitoredChunkSize();
-        $synced = 0;
-        $pushedLookup = ChannelLivePriceSync::lookupMap('walmart');
+        if (! Schema::hasTable('walmart_metrics')) {
+            $this->warn('walmart_metrics table not found.');
 
-        // Stream from apicentral; write to mysql in transactions of config chunk size.
-        // Use chunk() (not chunkById) — source table may not expose a reliable id column.
-        DB::connection('apicentral')
-            ->table('walmart_metrics')
-            ->orderBy('sku')
-            ->chunk($chunkSize, function ($rows) use (&$synced, $pushedLookup) {
-                DB::connection('mysql')->transaction(function () use ($rows, &$synced, $pushedLookup) {
-                    foreach ($rows as $row) {
-                        $incoming = is_numeric($row->price) ? (float) $row->price : null;
-                        DB::connection('mysql')->table('walmart_metrics')->updateOrInsert(
-                            ['sku' => $row->sku], // match by sku
-                            [
-                                'l30' => $row->l30,
-                                'l30_amt' => $row->l30_amt,
-                                'l60' => $row->l60,
-                                'l60_amt' => $row->l60_amt,
-                                'price' => ChannelLivePriceSync::preferIncoming(
-                                    'walmart',
-                                    (string) $row->sku,
-                                    $incoming,
-                                    $pushedLookup
-                                ) ?? $row->price,
-                                'stock' => $row->stock,
-                                'updated_at' => now(),
-                            ]
-                        );
-                        $synced++;
-                    }
-                });
-            });
+            return 0;
+        }
 
-        $this->info("Walmart metrics synced successfully! ({$synced} row(s))");
+        $count = DB::table('walmart_metrics')->count();
+        $this->info("Walmart metrics already live in walmart_metrics ({$count} row(s)).");
+
+        return 0;
     }
 }

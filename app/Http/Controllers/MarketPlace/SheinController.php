@@ -258,7 +258,7 @@ class SheinController extends Controller
 
     /**
      * Get daily data for Shein tabulator view.
-     * Source: Shein Open API sync → shein_daily_data (NOT Shopify / apicentral).
+     * Source: Shein Open API sync → shein_daily_data.
      */
     public function getDailyData(Request $request)
     {

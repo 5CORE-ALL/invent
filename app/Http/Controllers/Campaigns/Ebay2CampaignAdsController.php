@@ -1239,7 +1239,7 @@ class Ebay2CampaignAdsController extends Controller
 
     /**
      * Eligible listings live in ebay_2_metrics but were never inserted into
-     * ebay2_campaign_ads (apicentral.ebay2_metrics gap). Searching then filtering
+     * ebay2_campaign_ads. Searching then filtering
      * Eligible (RECOMMENDED) returns an empty grid. Backfill matching ACTIVE
      * listings from the Recommendation API so they show and can be enrolled.
      */

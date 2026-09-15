@@ -2827,8 +2827,7 @@ class EbayThreeController extends Controller
                 $itemIdStr = (string) $itemId;
                 
                 // Fetch all COST_PER_SALE listings and create a map (same approach as Ebay3PmtAdsController)
-                $campaignListings = DB::connection('apicentral')
-                    ->table('ebay3_campaign_ads_listings')
+                $campaignListings = DB::table('ebay3_campaign_ads')
                     ->select('listing_id', 'bid_percentage', 'suggested_bid')
                     ->where('funding_strategy', 'COST_PER_SALE')
                     ->get()
@@ -2840,9 +2839,7 @@ class EbayThreeController extends Controller
                 if ($campaignListings->has($itemIdStr)) {
                     $campaignListing = $campaignListings->get($itemIdStr);
                 } else {
-                    // Fallback: try to get any row for this listing_id (not just COST_PER_SALE)
-                    $campaignListing = DB::connection('apicentral')
-                        ->table('ebay3_campaign_ads_listings')
+                    $campaignListing = DB::table('ebay3_campaign_ads')
                         ->where('listing_id', $itemId)
                         ->orWhere('listing_id', $itemIdStr)
                         ->select('listing_id', 'bid_percentage', 'suggested_bid')
@@ -2850,7 +2847,7 @@ class EbayThreeController extends Controller
                         ->first();
                 }
             } catch (\Exception $e) {
-                // apicentral may be unavailable
+                // ebay3_campaign_ads may be unavailable
             }
             // Handle CBID and ES BID - preserve 0 values, only null if truly null or empty string
             // Same logic as Ebay3PmtAdsController: use ?? null
