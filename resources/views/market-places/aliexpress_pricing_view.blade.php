@@ -1778,6 +1778,9 @@
                 ajaxURL: "/aliexpress/pricing-data",
                 filterMode: "local",
                 paginationMode: "local",
+                sortMode: "local",
+                ajaxSorting: false,
+                headerSort: true,
                 initialFilter: function(data) { return aeRowMatchesFilters(data); },
                 ajaxResponse: function(url, params, response) {
                     const rows = Array.isArray(response) ? response : [];

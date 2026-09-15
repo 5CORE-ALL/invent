@@ -1855,9 +1855,6 @@
                                     <li>
                                         <a href="{{ route('temu3.decrease') }}">Temu 3 - Analytics</a>
                                     </li>
-                                    <li>
-                                        <a href="{{ route('temu3.tabulator') }}">Temu 3 Sales Data</a>
-                                    </li>
                                 </ul>
                             </div>
                         </li>

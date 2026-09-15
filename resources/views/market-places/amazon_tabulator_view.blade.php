@@ -3813,6 +3813,10 @@
                     return { _ts: Date.now() };
                 },
                 ajaxSorting: false,
+                sortMode: "local",
+                filterMode: "local",
+                paginationMode: "local",
+                headerSort: true,
                 headerSort: true,
                 headerSortElement: false,
                 layout: "fitData",
@@ -4693,7 +4697,7 @@
                         width: 65
                     },
                     {
-                        title: "S GPFT",
+                        title: "SGPFT",
                         field: "SGPFT",
                         hozAlign: "center",
                         headerTooltip: "Live from S PRC: ((S PRC × 0.80 − ship − LP) / S PRC) × 100. Same profit $ as SGROI.",

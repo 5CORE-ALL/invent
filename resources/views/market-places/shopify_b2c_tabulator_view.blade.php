@@ -2762,6 +2762,10 @@
         table = new Tabulator("#reverb-table", {
             ajaxURL: SHOPIFY_B2C_DATA_URL,
             ajaxSorting: false,
+            sortMode: "local",
+            filterMode: "local",
+            paginationMode: "local",
+            headerSort: true,
             layout: "fitData",
             rowHeight: 36,
             pagination: true,
@@ -3433,7 +3437,13 @@
                     title: "SGROI",
                     field: "SROI",
                     hozAlign: "center",
-                    sorter: "number",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const ad = aRow.getData();
+                        const bd = bRow.getData();
+                        return (shopifyB2cComputeSpriceMetrics(ad, shopifyB2cShownSprice(ad)).SROI || 0)
+                             - (shopifyB2cComputeSpriceMetrics(bd, shopifyB2cShownSprice(bd)).SROI || 0);
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const shown = shopifyB2cShownSprice(rowData);
@@ -3444,10 +3454,16 @@
                     width: 50
                 },
                 {
-                    title: "S GPFT",
+                    title: "SGPFT",
                     field: "SGPFT",
                     hozAlign: "center",
-                    sorter: "number",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const ad = aRow.getData();
+                        const bd = bRow.getData();
+                        return (shopifyB2cComputeSpriceMetrics(ad, shopifyB2cShownSprice(ad)).SGPFT || 0)
+                             - (shopifyB2cComputeSpriceMetrics(bd, shopifyB2cShownSprice(bd)).SGPFT || 0);
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const shown = shopifyB2cShownSprice(rowData);
@@ -3458,30 +3474,42 @@
                     width: 50
                 },
                 {
-                    title: "SNPFT",
-                    field: "SNPFT",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const shown = shopifyB2cShownSprice(rowData);
-                        if (!(shown > 0)) return '';
-                        const snpft = shopifyB2cComputeSpriceMetrics(rowData, shown).SNPFT;
-                        return `<span style="color: ${shopifyB2cGpftColor(snpft)}; font-weight: 600;">${snpft.toFixed(0)}%</span>`;
-                    },
-                    width: 50
-                },
-                {
                     title: "SNROI",
                     field: "SNROI",
                     hozAlign: "center",
-                    sorter: "number",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const ad = aRow.getData();
+                        const bd = bRow.getData();
+                        return (shopifyB2cComputeSpriceMetrics(ad, shopifyB2cShownSprice(ad)).SNROI || 0)
+                             - (shopifyB2cComputeSpriceMetrics(bd, shopifyB2cShownSprice(bd)).SNROI || 0);
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const shown = shopifyB2cShownSprice(rowData);
                         if (!(shown > 0)) return '';
                         const snroi = shopifyB2cComputeSpriceMetrics(rowData, shown).SNROI;
                         return `<span style="color: ${shopifyB2cGroiColor(snroi)}; font-weight: 600;">${snroi.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "SNPFT",
+                    field: "SNPFT",
+                    hozAlign: "center",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const ad = aRow.getData();
+                        const bd = bRow.getData();
+                        return (shopifyB2cComputeSpriceMetrics(ad, shopifyB2cShownSprice(ad)).SNPFT || 0)
+                             - (shopifyB2cComputeSpriceMetrics(bd, shopifyB2cShownSprice(bd)).SNPFT || 0);
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const shown = shopifyB2cShownSprice(rowData);
+                        if (!(shown > 0)) return '';
+                        const snpft = shopifyB2cComputeSpriceMetrics(rowData, shown).SNPFT;
+                        return `<span style="color: ${shopifyB2cGpftColor(snpft)}; font-weight: 600;">${snpft.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },

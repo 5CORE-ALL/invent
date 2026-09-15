@@ -1962,6 +1962,10 @@
                     return response.data || [];
                 },
                 ajaxSorting: false,
+                sortMode: "local",
+                filterMode: "local",
+                paginationMode: "local",
+                headerSort: true,
                 layout: "fitData",
                 layoutColumnsOnNewData: true,
                 pagination: true,
@@ -2836,7 +2840,7 @@
                         width: 80
                     },
                     {
-                        title: "SROI",
+                        title: "SGROI",
                         field: "SROI",
                         hozAlign: "center",
                         sorter: "number",
@@ -2858,7 +2862,7 @@
                         width: 80
                     },
                     {
-                        title: "S GPFT",
+                        title: "SGPFT",
                         field: "SGPFT",
                         hozAlign: "center",
                         formatter: function(cell) {

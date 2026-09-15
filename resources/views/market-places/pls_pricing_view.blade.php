@@ -1020,7 +1020,7 @@
                     width: 60
                 },
                 {
-                    title: "SGPFT%",
+                    title: "SGPFT",
                     field: "sgpft",
                     hozAlign: "center",
                     sorter: "number",

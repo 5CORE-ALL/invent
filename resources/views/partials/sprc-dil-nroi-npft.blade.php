@@ -145,56 +145,234 @@
                     + Math.round(v) + '%</span>';
             };
         }
-        function ebayDilNetColumnDef(title, field, kind) {
+        function ebayDilNum(v) {
+            const n = Number(v);
+            return isFinite(n) ? n : 0;
+        }
+        function ebayDilLiveSorter(kind) {
+            return function(a, b, aRow, bRow) {
+                const da = (aRow && aRow.getData) ? (aRow.getData() || {}) : {};
+                const db = (bRow && bRow.getData) ? (bRow.getData() || {}) : {};
+                let av = 0;
+                let bv = 0;
+                if (kind === 'sgpft') {
+                    av = ebayDilRowSgpft(da);
+                    bv = ebayDilRowSgpft(db);
+                } else if (kind === 'snpft') {
+                    av = ebayDilComputedSnpft(da);
+                    bv = ebayDilComputedSnpft(db);
+                } else if (kind === 'snroi') {
+                    av = ebayDilComputedSnroi(da);
+                    bv = ebayDilComputedSnroi(db);
+                } else {
+                    av = ebayDilRowSgroi(da);
+                    bv = ebayDilRowSgroi(db);
+                }
+                return ebayDilNum(av) - ebayDilNum(bv);
+            };
+        }
+        function ebayDilGrossColFormatter(kind) {
+            return function(cell) {
+                const d = (cell.getRow() && cell.getRow().getData) ? (cell.getRow().getData() || {}) : {};
+                if (d.is_parent || d.is_parent_summary) {
+                    return '<span style="color:#6c757d;">–</span>';
+                }
+                const v = kind === 'sgpft' ? ebayDilRowSgpft(d) : ebayDilRowSgroi(d);
+                if (!isFinite(v)) return '';
+                const color = ebayDilPctColor(v, kind === 'sgpft' ? 'gpft' : 'groi');
+                const st = (window.MetricPctColors && typeof MetricPctColors.styleForCellColor === 'function')
+                    ? MetricPctColors.styleForCellColor(color)
+                    : (color === '#ffc107'
+                        ? 'color:#000;background-color:#ffc107;font-weight:700;padding:1px 5px;border-radius:3px;'
+                        : ('color:' + color + ';font-weight:600;'));
+                const tip = kind === 'sgpft' ? 'SGPFT from S PRC' : 'SGROI from S PRC';
+                return '<span title="' + tip + '" style="' + st + '">' + Math.round(v) + '%</span>';
+            };
+        }
+        function ebayDilSColumnDef(kind) {
             const ads = (typeof ebayDilAdsPct === 'function') ? ebayDilAdsPct() : 0;
+            const isNet = kind === 'snroi' || kind === 'snpft';
+            const title = kind === 'sgpft' ? 'SGPFT' : (kind === 'snpft' ? 'SNPFT' : (kind === 'snroi' ? 'SNROI' : 'SGROI'));
             return {
                 title: title,
-                field: field,
+                field: title,
                 hozAlign: 'center',
-                sorter: 'number',
+                headerSort: true,
+                sorter: ebayDilLiveSorter(kind),
                 width: 58,
                 headerTooltip: kind === 'snpft'
                     ? (ads > 0 ? 'SNPFT = SGPFT − Ads%.' : 'SNPFT = SGPFT (this page has no Ads%).')
-                    : (ads > 0 ? 'SNROI from S PRC, net of Ads%.' : 'SNROI = SGROI (this page has no Ads%).'),
-                formatter: ebayDilNetColFormatter(kind),
+                    : (kind === 'snroi'
+                        ? (ads > 0 ? 'SNROI from S PRC, net of Ads%.' : 'SNROI = SGROI (this page has no Ads%).')
+                        : (kind === 'sgpft' ? 'SGPFT from S PRC.' : 'SGROI from S PRC.')),
+                formatter: isNet ? ebayDilNetColFormatter(kind) : ebayDilGrossColFormatter(kind),
                 accessorDownload: function(value, d) {
-                    const v = kind === 'snpft' ? ebayDilComputedSnpft(d || {}) : ebayDilComputedSnroi(d || {});
+                    let v;
+                    if (kind === 'snpft') v = ebayDilComputedSnpft(d || {});
+                    else if (kind === 'snroi') v = ebayDilComputedSnroi(d || {});
+                    else if (kind === 'sgpft') v = ebayDilRowSgpft(d || {});
+                    else v = ebayDilRowSgroi(d || {});
                     return isFinite(v) ? Math.round(v) : '';
                 },
             };
         }
+        function ebayDilNetColumnDef(title, field, kind) {
+            const def = ebayDilSColumnDef(kind);
+            if (title) def.title = title;
+            if (field) def.field = field;
+            return def;
+        }
+        function ebayDilForceLocalTableModes(tbl) {
+            try {
+                if (!tbl || !tbl.options) return;
+                tbl.options.sortMode = 'local';
+                tbl.options.filterMode = 'local';
+                tbl.options.paginationMode = 'local';
+                tbl.options.ajaxSorting = false;
+                if (tbl.modules) {
+                    if (tbl.modules.sort) tbl.modules.sort.mode = 'local';
+                    if (tbl.modules.filter) tbl.modules.filter.mode = 'local';
+                    if (tbl.modules.page) tbl.modules.page.mode = 'local';
+                }
+            } catch (e) { /* ignore */ }
+        }
+        function ebayDilMoveColumn(tbl, field, target, after) {
+            if (!field || !target || field === target) return;
+            try {
+                if (typeof tbl.moveColumn === 'function') tbl.moveColumn(field, target, !!after);
+            } catch (e) { /* ignore */ }
+        }
+        function ebayDilColumnIndex(tbl, field) {
+            if (!field) return -1;
+            let cols = [];
+            try { cols = tbl.getColumns(true) || []; } catch (e) { return -1; }
+            for (let i = 0; i < cols.length; i++) {
+                try {
+                    if ((cols[i].getField && cols[i].getField()) === field) return i;
+                } catch (e) { /* continue */ }
+            }
+            return -1;
+        }
+        function ebayDilPatchSColumn(col, kind) {
+            if (!col) return;
+            const title = kind === 'sgpft' ? 'SGPFT' : (kind === 'snpft' ? 'SNPFT' : (kind === 'snroi' ? 'SNROI' : 'SGROI'));
+            try {
+                const def = (col.getDefinition && col.getDefinition()) || {};
+                const updates = { title: title, headerSort: true };
+                if (typeof def.sorter !== 'function') {
+                    updates.sorter = ebayDilLiveSorter(kind);
+                }
+                if (typeof col.updateDefinition === 'function') {
+                    col.updateDefinition(updates);
+                } else if (def) {
+                    def.title = title;
+                    def.headerSort = true;
+                    if (typeof def.sorter !== 'function') def.sorter = ebayDilLiveSorter(kind);
+                }
+            } catch (e) { /* ignore */ }
+        }
+        function ebayDilReorderSColumns(tbl, fields, afterField) {
+            const present = (fields || []).filter(Boolean);
+            if (!present.length) return;
+            if (afterField) {
+                let prev = afterField;
+                present.forEach(function(f) {
+                    ebayDilMoveColumn(tbl, f, prev, true);
+                    prev = f;
+                });
+                return;
+            }
+            const idxs = present.map(function(f) {
+                return { f: f, i: ebayDilColumnIndex(tbl, f) };
+            }).filter(function(x) { return x.i >= 0; });
+            if (!idxs.length) return;
+            idxs.sort(function(a, b) { return a.i - b.i; });
+            if (present[0] !== idxs[0].f) {
+                ebayDilMoveColumn(tbl, present[0], idxs[0].f, false);
+            }
+            let prev = present[0];
+            for (let i = 1; i < present.length; i++) {
+                ebayDilMoveColumn(tbl, present[i], prev, true);
+                prev = present[i];
+            }
+        }
+        function ebayDilFindSCols(tbl) {
+            let cols = [];
+            try { cols = tbl.getColumns(true) || []; } catch (e) { return null; }
+            if (!cols.length) return null;
+            const infos = cols.map(ebayDilColInfo);
+            return {
+                cols: cols,
+                infos: infos,
+                sgroi: infos.find(ebayDilIsSgroiCol) || null,
+                sgpft: infos.find(ebayDilIsSgpftCol) || null,
+                snroi: infos.find(ebayDilIsSnroiCol) || null,
+                snpft: infos.find(ebayDilIsSnpftCol) || null,
+                sprice: infos.find(ebayDilIsSpriceCol) || null,
+            };
+        }
+        function ebayDilNormalizeSColumns(tbl) {
+            const found = ebayDilFindSCols(tbl);
+            if (!found) return false;
+            found.cols.forEach(function(col) {
+                const info = ebayDilColInfo(col);
+                if (ebayDilIsSnpftCol(info)) ebayDilPatchSColumn(col, 'snpft');
+                else if (ebayDilIsSnroiCol(info)) ebayDilPatchSColumn(col, 'snroi');
+                else if (ebayDilIsSgpftCol(info)) ebayDilPatchSColumn(col, 'sgpft');
+                else if (ebayDilIsSgroiCol(info)) ebayDilPatchSColumn(col, 'sgroi');
+            });
+            const ordered = ebayDilFindSCols(tbl);
+            if (!ordered) return false;
+            ebayDilReorderSColumns(
+                tbl,
+                [
+                    ordered.sgroi && ordered.sgroi.field,
+                    ordered.sgpft && ordered.sgpft.field,
+                    ordered.snroi && ordered.snroi.field,
+                    ordered.snpft && ordered.snpft.field,
+                ],
+                ordered.sprice && ordered.sprice.field
+            );
+            return true;
+        }
         function ebayDilEnsureNetColumns(tbl) {
             tbl = tbl || ((typeof table !== 'undefined') ? table : null);
             if (!tbl || typeof tbl.getColumns !== 'function') return false;
-            if (tbl._ebayDilNetColsAdded) return true;
-            let cols = [];
-            try { cols = tbl.getColumns(true) || []; } catch (e) { return false; }
-            if (!cols.length) return false;
-            const infos = cols.map(ebayDilColInfo);
-            const hasSnroi = infos.some(ebayDilIsSnroiCol);
-            const hasSnpft = infos.some(ebayDilIsSnpftCol);
-            const sgroi = infos.find(ebayDilIsSgroiCol);
-            const sgpft = infos.find(ebayDilIsSgpftCol);
-            const sprice = infos.find(ebayDilIsSpriceCol);
-            if (hasSnroi && hasSnpft) {
-                tbl._ebayDilNetColsAdded = true;
+            ebayDilForceLocalTableModes(tbl);
+            if (tbl._ebayDilNetColsAdded) {
+                ebayDilNormalizeSColumns(tbl);
                 return true;
             }
-            const after = (sgroi && sgroi.field) || (sgpft && sgpft.field) || (sprice && sprice.field);
-            if (!after) return false;
+            let found = ebayDilFindSCols(tbl);
+            if (!found) return false;
+            if (!found.sgroi && !found.sgpft && !found.sprice && !found.snroi && !found.snpft) return false;
             try {
-                if (!hasSnroi && typeof tbl.addColumn === 'function') {
-                    tbl.addColumn(ebayDilNetColumnDef('SNROI', 'SNROI', 'snroi'), false, after);
+                const addSCol = function(kind, afterField) {
+                    const def = ebayDilSColumnDef(kind);
+                    if (afterField) tbl.addColumn(def, false, afterField);
+                    else tbl.addColumn(def);
+                };
+                if (!found.sgroi && typeof tbl.addColumn === 'function') {
+                    addSCol('sgroi', (found.sprice && found.sprice.field) || (found.sgpft && found.sgpft.field));
                 }
-                if (!hasSnpft && typeof tbl.addColumn === 'function') {
-                    const npftAfter = (sgpft && sgpft.field) || 'SNROI' || after;
-                    tbl.addColumn(ebayDilNetColumnDef('SNPFT', 'SNPFT', 'snpft'), false, npftAfter);
+                found = ebayDilFindSCols(tbl) || found;
+                if (!found.sgpft && typeof tbl.addColumn === 'function') {
+                    addSCol('sgpft', (found.sgroi && found.sgroi.field) || (found.sprice && found.sprice.field));
                 }
-                tbl._ebayDilNetColsAdded = true;
-                return true;
+                found = ebayDilFindSCols(tbl) || found;
+                if (!found.snroi && typeof tbl.addColumn === 'function') {
+                    addSCol('snroi', (found.sgpft && found.sgpft.field) || (found.sgroi && found.sgroi.field));
+                }
+                found = ebayDilFindSCols(tbl) || found;
+                if (!found.snpft && typeof tbl.addColumn === 'function') {
+                    addSCol('snpft', (found.snroi && found.snroi.field) || (found.sgpft && found.sgpft.field));
+                }
             } catch (e) {
                 return false;
             }
+            if (!ebayDilNormalizeSColumns(tbl)) return false;
+            tbl._ebayDilNetColsAdded = true;
+            return true;
         }
         function ebayDilBindNetColumns() {
             if (typeof table === 'undefined' || !table || !table.on) {

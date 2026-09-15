@@ -1495,6 +1495,10 @@
                 },
                 layout: "fitDataStretch",
                 height: "calc(100vh - 260px)",
+                sortMode: "local",
+                filterMode: "local",
+                paginationMode: "local",
+                ajaxSorting: false,
                 pagination: true,
                 paginationSize: 100,
                 paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -2023,9 +2027,6 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + sprice.toFixed(2) + ' ≠ Sp. Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            if (!atOrAboveLmp && live > 0 && Math.round(live * 100) === Math.round(sprice * 100)) {
-                                return '<span style="color:#adb5bd;" title="Same as Shein Price">-</span>';
-                            }
                             const formatted = '$' + sprice.toFixed(2);
                             const priceHtml = atOrAboveLmp
                                 ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
@@ -2035,25 +2036,9 @@
                         }
                     },
                     {
-                        title: "SGPFT",
-                        field: "sgpft",
-                        sorter: function(a, b, aRow, bRow) {
-                            const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sgpft;
-                            const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sgpft;
-                            return av - bv;
-                        },
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = sheinSpriceMetrics(d).sgpft;
-                            if (isNaN(v)) return '0%';
-                            return sheinPctHtml(v, 'gpft');
-                        }
-                    },
-                    {
-                        title: "SGroi",
+                        title: "SGROI",
                         field: "sroi",
+                        headerSort: true,
                         sorter: function(a, b, aRow, bRow) {
                             const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
                             const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
@@ -2066,6 +2051,24 @@
                             const v = sheinSpriceMetrics(d).sroi;
                             if (isNaN(v)) return '0%';
                             return sheinPctHtml(v, 'groi');
+                        }
+                    },
+                    {
+                        title: "SGPFT",
+                        field: "sgpft",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sgpft;
+                            const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sgpft;
+                            return av - bv;
+                        },
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = sheinSpriceMetrics(d).sgpft;
+                            if (isNaN(v)) return '0%';
+                            return sheinPctHtml(v, 'gpft');
                         }
                     },
                 ],

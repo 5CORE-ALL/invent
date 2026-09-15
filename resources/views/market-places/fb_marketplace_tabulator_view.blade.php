@@ -459,6 +459,11 @@
                     }
                 ],
                 layout: "fitDataStretch",
+                sortMode: "local",
+                filterMode: "local",
+                paginationMode: "local",
+                ajaxSorting: false,
+                headerSort: true,
                 pagination: true,
                 paginationSize: 100,
                 placeholder: "No Data Available",
@@ -751,7 +756,7 @@
                         }
                     },
                     {
-                        title: "S GROI",
+                        title: "SGROI",
                         field: "SROI",
                         hozAlign: "center",
                         width: 70,
@@ -769,7 +774,7 @@
                         }
                     },
                     {
-                        title: "S GPFT",
+                        title: "SGPFT",
                         field: "SPFT",
                         hozAlign: "center",
                         width: 70,
