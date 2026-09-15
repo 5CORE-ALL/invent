@@ -25,6 +25,7 @@ use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\EbaySkuCompetitor;
 use App\Services\ChannelPromoPricingService;
+use App\Services\EbayChannelMetricsService;
 use App\Services\PefEbayPricePullService;
 use App\Services\LmpSkuGroupService;
 use App\Support\Marketplace\EbayListingEnded;
@@ -112,34 +113,122 @@ class EbayTwoController extends Controller
     }
 
     /**
-     * L30 Sales / Qty / PFT / COGS from ebay2_order_metrics (Ebay2SalesController::getData).
-     * Same set as /ebay2/daily-sales and master EbayTwo liveL30Sales.
+     * L30 Sales / Qty / PFT / COGS from ebay2_orders (period=l30) — same shape as
+     * EbayController::fetchEbayL30OrdersAggregate, using eBay 2 tables only.
      */
     private function fetchEbay2L30OrdersAggregate(): array
     {
         $empty = ['sales' => 0.0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0, 'gpft' => 0.0, 'groi' => 0.0];
         try {
-            $rows = app(\App\Http\Controllers\Sales\Ebay2SalesController::class)
-                ->getData(request())->getData(true);
-            if (!is_array($rows)) return $empty;
+            if (! Schema::hasTable('ebay2_orders') || ! Schema::hasTable('ebay2_order_items')) {
+                return $empty;
+            }
 
-            $qty = 0; $pft = 0.0; $cogs = 0.0; $l30Sales = 0.0; $orderSales = 0.0;
-            $seenOrders = [];
-            foreach ($rows as $r) {
-                $sku = $r['sku'] ?? '';
-                $orderId = $r['order_id'] ?? '';
-                if ($sku === '' || $orderId === '') continue;
+            $orders = Ebay2Order::with('items')->where('period', 'l30')->get();
+            $skus = [];
+            foreach ($orders as $order) {
+                foreach ($order->items as $item) {
+                    if (empty($item->sku)) {
+                        continue;
+                    }
+                    $skus[] = $item->sku;
+                    $base = EbayChannelMetricsService::normalizeEbay2LookupSku((string) $item->sku);
+                    if ($base !== '' && strcasecmp($base, (string) $item->sku) !== 0) {
+                        $skus[] = $base;
+                    }
+                }
+            }
+            $skus = array_values(array_unique($skus));
+            $productMasters = $skus !== []
+                ? ProductMaster::whereIn('sku', $skus)->get()
+                : collect();
+            $pmBySku = $productMasters->keyBy('sku');
+            $pmByLower = [];
+            foreach ($productMasters as $pm) {
+                $pmByLower[strtolower((string) $pm->sku)] = $pm;
+            }
 
-                if (!isset($seenOrders[$orderId])) {
-                    $seenOrders[$orderId] = true;
-                    $orderSales += (float) ($r['total_amount'] ?? 0);
+            $margin = $this->ebay1StyleTakeHomePercent();
+            $qty = 0;
+            $pft = 0.0;
+            $cogs = 0.0;
+            $l30Sales = 0.0;
+            $orderSales = 0.0;
+
+            foreach ($orders as $order) {
+                $raw = is_array($order->raw_data)
+                    ? $order->raw_data
+                    : json_decode((string) $order->raw_data, true);
+                if (is_array($raw)) {
+                    $cancelState = $raw['cancelStatus']['cancelState'] ?? '';
+                    $paymentStatus = $raw['orderPaymentStatus'] ?? '';
+                    if ($cancelState === 'CANCELED' || $paymentStatus === 'FULLY_REFUNDED') {
+                        continue;
+                    }
                 }
 
-                $q = (int) ($r['quantity'] ?? 0);
-                $qty += $q;
-                $pft += (float) ($r['pft'] ?? 0);
-                $cogs += (float) ($r['cogs'] ?? 0);
-                $l30Sales += $q * (float) ($r['price'] ?? 0);
+                $orderTotal = (float) ($order->total_amount ?? 0);
+                if (is_array($raw)) {
+                    $base = (float) ($raw['pricingSummary']['total']['value'] ?? 0);
+                    $carTax = 0.0;
+                    foreach (($raw['lineItems'] ?? []) as $li) {
+                        foreach (($li['ebayCollectAndRemitTaxes'] ?? []) as $t) {
+                            $carTax += (float) ($t['amount']['value'] ?? 0);
+                        }
+                    }
+                    $computed = $base + $carTax;
+                    if ($computed > 0) {
+                        $orderTotal = $computed;
+                    }
+                }
+                $orderSales += round($orderTotal, 2);
+
+                foreach ($order->items as $item) {
+                    $lookup = EbayChannelMetricsService::normalizeEbay2LookupSku((string) ($item->sku ?? ''));
+                    $pm = $pmBySku[$item->sku ?? '']
+                        ?? $pmBySku[$lookup]
+                        ?? ($lookup !== '' ? ($pmByLower[strtolower($lookup)] ?? null) : null);
+                    $lp = 0.0;
+                    $ship = 0.0;
+                    $weightAct = 0.0;
+                    if ($pm) {
+                        $values = is_array($pm->Values)
+                            ? $pm->Values
+                            : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                        if (! is_array($values)) {
+                            $values = [];
+                        }
+                        foreach ($values as $k => $v) {
+                            if (strtolower((string) $k) === 'lp') {
+                                $lp = (float) $v;
+                                break;
+                            }
+                        }
+                        if ($lp === 0.0 && isset($pm->lp)) {
+                            $lp = (float) $pm->lp;
+                        }
+                        $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
+                        $weightAct = isset($values['wt_act']) ? (float) $values['wt_act'] : 0.0;
+                    }
+
+                    $quantity = (float) ($item->quantity ?? 0);
+                    $price = (float) ($item->price ?? 0);
+                    $tWeight = $weightAct * $quantity;
+                    if ($quantity == 1) {
+                        $shipCost = $ship;
+                    } elseif ($quantity > 1 && $tWeight < 20) {
+                        $shipCost = $ship / $quantity;
+                    } else {
+                        $shipCost = $ship;
+                    }
+                    $unitPrice = $quantity > 0 ? ($price / $quantity) : 0.0;
+                    $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+
+                    $qty += (int) $quantity;
+                    $pft += $pftEach * $quantity;
+                    $cogs += $lp * $quantity;
+                    $l30Sales += $quantity * $unitPrice;
+                }
             }
 
             return [
@@ -151,7 +240,7 @@ class EbayTwoController extends Controller
                 'groi'  => $cogs > 0 ? round(($pft / $cogs) * 100, 1) : 0.0,
             ];
         } catch (\Throwable $e) {
-            \Log::warning('fetchEbay2L30OrdersAggregate failed: ' . $e->getMessage());
+            Log::warning('fetchEbay2L30OrdersAggregate failed: ' . $e->getMessage());
             return $empty;
         }
     }
@@ -188,11 +277,90 @@ class EbayTwoController extends Controller
         return response()->json($result, ($result['ok'] ?? false) ? 200 : 422);
     }
 
+    /**
+     * Tabulator feed — same wrapper as /ebay-data-json, eBay 2 rows only.
+     * Returns the row array and saves the daily snapshot after the response.
+     */
+    public function ebay2DataJson(Request $request)
+    {
+        try {
+            $obLevel = ob_get_level();
+            ob_start();
+            $request->attributes->set('skip_daily_summary', true);
+            $response = $this->getViewEbayData($request);
+            $leaked = '';
+            while (ob_get_level() > $obLevel) {
+                $leaked .= (string) ob_get_clean();
+            }
+            if ($leaked !== '') {
+                Log::warning('ebay2DataJson: discarded leaked output during data build', [
+                    'bytes' => strlen($leaked),
+                    'snippet' => substr($leaked, 0, 400),
+                ]);
+            }
+
+            $data = json_decode($response->getContent(), true);
+            if (! is_array($data)) {
+                Log::error('ebay2DataJson: getViewEbayData returned non-JSON or invalid JSON', [
+                    'snippet' => substr((string) $response->getContent(), 0, 400),
+                ]);
+                return response()->json(['error' => 'Invalid data payload from server'], 500);
+            }
+            $rows = $data['data'] ?? [];
+            if (! is_array($rows)) {
+                $rows = [];
+            }
+
+            array_walk_recursive($rows, static function (&$value) {
+                if (is_float($value) && ! is_finite($value)) {
+                    $value = null;
+                }
+            });
+
+            dispatch(function () use ($rows) {
+                $level = ob_get_level();
+                ob_start();
+                try {
+                    app(self::class)->saveDailySummaryIfNeeded($rows);
+                } catch (\Throwable $e) {
+                    Log::error('Error saving daily eBay2 summary: ' . $e->getMessage());
+                } finally {
+                    while (ob_get_level() > $level) {
+                        ob_end_clean();
+                    }
+                }
+            })->afterResponse();
+
+            $json = json_encode(
+                $rows,
+                JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+            if ($json === false) {
+                Log::error('ebay2DataJson: json_encode failed', [
+                    'error' => json_last_error_msg(),
+                ]);
+                return response()->json(['error' => 'Failed to encode data'], 500);
+            }
+
+            return response($json, 200)
+                ->header('Content-Type', 'application/json; charset=UTF-8');
+        } catch (\Throwable $e) {
+            Log::error('Error fetching eBay2 data for Tabulator: ' . $e->getMessage(), [
+                'exception' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            $message = config('app.debug') ? $e->getMessage() : 'Failed to fetch data';
+            return response()->json(['error' => $message], 500);
+        }
+    }
+
     public function getViewEbayData(Request $request)
     {
-        // 1. Base ProductMaster fetch
-        $productMasters = ProductMaster::orderBy("parent", "asc")
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+        // 1. Base ProductMaster fetch — same PARENT filter as /ebay-tabulator-view
+        $productMasters = ProductMaster::query()
+            ->whereRaw("UPPER(TRIM(sku)) NOT LIKE 'PARENT%'")
+            ->orderBy("parent", "asc")
             ->orderBy("sku", "asc")
             ->get()
             ->keyBy("sku");
@@ -204,13 +372,27 @@ class EbayTwoController extends Controller
             ->values()
             ->all();
 
-        // Fetch ALL ebay2_metrics (including Open Box items not in product_masters).
+        // eBay 2 metrics for catalog SKUs plus OPEN BOX / USED listings.
         // Key by NBSP / Unicode space–safe normalized SKU: ebay2_metrics.sku can contain
         // non-breaking spaces (U+00A0) while product_masters.sku uses normal spaces, which
         // otherwise breaks the lookup (item_id/price missing → row wrongly shows as Missing L).
-        $ebayMetrics = Ebay2Metric::select(EbayListingEnded::withStatusColumn('ebay_2_metrics', [
+        $ebayMetricsQuery = Ebay2Metric::select(EbayListingEnded::withStatusColumn('ebay_2_metrics', [
             'id', 'sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'l7_views', 'item_id', 'ebay_stock',
-        ]))
+        ]));
+        $ebayMetricsQuery->where(function ($q) use ($skus) {
+            if (! empty($skus)) {
+                foreach (array_chunk($skus, 400) as $i => $chunk) {
+                    if ($i === 0) {
+                        $q->whereIn('sku', $chunk);
+                    } else {
+                        $q->orWhereIn('sku', $chunk);
+                    }
+                }
+            }
+            $q->orWhereRaw("UPPER(sku) LIKE '%OPEN BOX%'")
+                ->orWhereRaw("UPPER(sku) LIKE '%USED%'");
+        });
+        $ebayMetrics = $ebayMetricsQuery
             ->orderBy('id')
             ->get()
             ->groupBy(function ($metric) {
@@ -221,54 +403,10 @@ class EbayTwoController extends Controller
             })
             ->filter();
 
-        // Prior-day Price / INV / OV L30 (California) for green/red/gray trend dots.
-        $todayPt = Carbon::now('America/Los_Angeles')->toDateString();
         $priceYesterdayBySku = [];
         $invYesterdayBySku = [];
         $l30YesterdayBySku = [];
-        if (Schema::hasTable('ebay2_sku_daily_data')) {
-            $latestPriorRows = DB::table('ebay2_sku_daily_data as d')
-                ->join(DB::raw('(SELECT sku, MAX(record_date) AS max_date FROM ebay2_sku_daily_data WHERE record_date < ? GROUP BY sku) as x'), function ($join) {
-                    $join->on('d.sku', '=', 'x.sku')->on('d.record_date', '=', 'x.max_date');
-                })
-                ->addBinding($todayPt, 'join')
-                ->select('d.sku', 'd.daily_data')
-                ->get();
-            foreach ($latestPriorRows as $hist) {
-                $data = is_array($hist->daily_data ?? null)
-                    ? $hist->daily_data
-                    : (json_decode($hist->daily_data ?? '{}', true) ?: []);
-                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($hist->sku ?? ''));
-                if ($norm === '') {
-                    continue;
-                }
-                $priceYesterdayBySku[$norm] = round((float) ($data['price'] ?? 0), 2);
-                if (array_key_exists('ovl30', $data)) {
-                    $l30YesterdayBySku[$norm] = (int) $data['ovl30'];
-                }
-                if (array_key_exists('inv', $data)) {
-                    $invYesterdayBySku[$norm] = (int) $data['inv'];
-                }
-            }
-        }
-        // Prefer shopifysku_inventory_history.closing_inventory for INV prior-day
-        if (Schema::hasTable('shopifysku_inventory_history')) {
-            $invHistRows = DB::table('shopifysku_inventory_history as h')
-                ->join(DB::raw('(SELECT sku, MAX(snapshot_date) AS max_date FROM shopifysku_inventory_history WHERE snapshot_date < ? GROUP BY sku) as x'), function ($join) {
-                    $join->on('h.sku', '=', 'x.sku')->on('h.snapshot_date', '=', 'x.max_date');
-                })
-                ->addBinding($todayPt, 'join')
-                ->select('h.sku', 'h.closing_inventory')
-                ->get();
-            foreach ($invHistRows as $hist) {
-                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($hist->sku ?? ''));
-                if ($norm === '') {
-                    continue;
-                }
-                $invYesterdayBySku[$norm] = (int) ($hist->closing_inventory ?? 0);
-            }
-        }
-        
+
         // Fetch Amazon prices for comparison
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)->pluck('price', 'sku');
         
@@ -332,6 +470,66 @@ class EbayTwoController extends Controller
             ->values()
             ->all();
 
+        // Prior-day Price / INV / OV L30 — same chunked lookup as /ebay-data-json
+        $todayPt = Carbon::now('America/Los_Angeles')->toDateString();
+        if (Schema::hasTable('ebay2_sku_daily_data') && ! empty($skus)) {
+            $latestPriorRows = collect();
+            foreach (array_chunk($skus, 400) as $chunk) {
+                $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                $sub = '(SELECT sku, MAX(record_date) AS max_date FROM ebay2_sku_daily_data WHERE record_date < ? AND sku IN ('.$placeholders.') GROUP BY sku) as x';
+                $latestPriorRows = $latestPriorRows->concat(
+                    DB::table('ebay2_sku_daily_data as d')
+                        ->join(DB::raw($sub), function ($join) {
+                            $join->on('d.sku', '=', 'x.sku')->on('d.record_date', '=', 'x.max_date');
+                        })
+                        ->addBinding(array_merge([$todayPt], array_values($chunk)), 'join')
+                        ->whereIn('d.sku', $chunk)
+                        ->select('d.sku', 'd.daily_data')
+                        ->get()
+                );
+            }
+            foreach ($latestPriorRows as $hist) {
+                $data = is_array($hist->daily_data ?? null)
+                    ? $hist->daily_data
+                    : (json_decode($hist->daily_data ?? '{}', true) ?: []);
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($hist->sku ?? ''));
+                if ($norm === '') {
+                    continue;
+                }
+                $priceYesterdayBySku[$norm] = round((float) ($data['price'] ?? 0), 2);
+                if (array_key_exists('ovl30', $data)) {
+                    $l30YesterdayBySku[$norm] = (int) $data['ovl30'];
+                }
+                if (array_key_exists('inv', $data)) {
+                    $invYesterdayBySku[$norm] = (int) $data['inv'];
+                }
+            }
+        }
+        if (Schema::hasTable('shopifysku_inventory_history') && ! empty($skus)) {
+            $invHistRows = collect();
+            foreach (array_chunk($skus, 400) as $chunk) {
+                $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                $sub = '(SELECT sku, MAX(snapshot_date) AS max_date FROM shopifysku_inventory_history WHERE snapshot_date < ? AND sku IN ('.$placeholders.') GROUP BY sku) as x';
+                $invHistRows = $invHistRows->concat(
+                    DB::table('shopifysku_inventory_history as h')
+                        ->join(DB::raw($sub), function ($join) {
+                            $join->on('h.sku', '=', 'x.sku')->on('h.snapshot_date', '=', 'x.max_date');
+                        })
+                        ->addBinding(array_merge([$todayPt], array_values($chunk)), 'join')
+                        ->whereIn('h.sku', $chunk)
+                        ->select('h.sku', 'h.closing_inventory')
+                        ->get()
+                );
+            }
+            foreach ($invHistRows as $hist) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($hist->sku ?? ''));
+                if ($norm === '') {
+                    continue;
+                }
+                $invYesterdayBySku[$norm] = (int) ($hist->closing_inventory ?? 0);
+            }
+        }
+
         // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
         $amazonStandardPrices = [];
         foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
@@ -391,13 +589,10 @@ class EbayTwoController extends Controller
         // Mapping: item_id → sku
         $itemIdToSku = $ebayMetrics->pluck('sku', 'item_id')->toArray();
 
-        // ✅ Fetch L30 Clicks directly from ebay2_general_reports
-        $extraClicksData = Ebay2GeneralReport::whereIn('listing_id', array_keys($itemIdToSku))
-            ->where('report_range', 'L30')
-            ->pluck('clicks', 'listing_id')
-            ->toArray();
+        $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
 
-        // 3b. Fetch KW campaign data from Ebay2PriorityReport
+        // 3b. KW + sbid from one Ebay2PriorityReport read (same filters as before)
         $normalizeSku = function ($sku) {
             if (empty($sku)) return '';
             $sku = strtoupper(trim($sku));
@@ -406,7 +601,7 @@ class EbayTwoController extends Controller
             return trim($sku);
         };
 
-        $kwCampaignReports = Ebay2PriorityReport::whereIn('report_range', ['L30', 'L7', 'L1'])
+        $priorityReports = Ebay2PriorityReport::whereIn('report_range', ['L30', 'L7', 'L1', $dayBeforeYesterday, $yesterday])
             ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
             ->where('campaign_name', 'NOT LIKE', 'Campaign %')
             ->where('campaign_name', 'NOT LIKE', 'General - %')
@@ -414,81 +609,42 @@ class EbayTwoController extends Controller
             ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->get();
 
-        // Build KW campaign map by normalized SKU
         $kwCampaignBySku = [];
-        foreach ($kwCampaignReports as $report) {
-            $campaignName = $normalizeSku($report->campaign_name ?? '');
-            if (empty($campaignName)) continue;
-
-            if (!isset($kwCampaignBySku[$campaignName])) {
-                $kwCampaignBySku[$campaignName] = [
-                    'campaign_id' => $report->campaign_id ?? '',
-                    'campaignBudgetAmount' => $report->campaignBudgetAmount ?? 0,
-                    'campaignStatus' => $report->campaignStatus ?? '',
-                    'L30' => null, 'L7' => null, 'L1' => null,
-                ];
-            }
-
-            $range = $report->report_range;
-            $kwCampaignBySku[$campaignName][$range] = $report;
-        }
-
-        // Fetch last_sbid from day-before-yesterday
-        $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
-        $yesterday = date('Y-m-d', strtotime('-1 day'));
-
         $lastSbidMap = [];
-        $lastSbidReports = Ebay2PriorityReport::where('report_range', $dayBeforeYesterday)
-            ->where('campaignStatus', 'RUNNING')
-            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
-            ->where('campaign_name', 'NOT LIKE', 'General - %')
-            ->where('campaign_name', 'NOT LIKE', 'Default%')
-            ->get();
-        foreach ($lastSbidReports as $report) {
-            if (!empty($report->campaign_id) && !empty($report->last_sbid)) {
-                $lastSbidMap[$report->campaign_id] = $report->last_sbid;
-            }
-        }
-
-        // Fetch sbid_m from yesterday or L1
         $sbidMMap = [];
-        $sbidMReports = Ebay2PriorityReport::where(function($q) use ($yesterday) {
-                $q->where('report_range', $yesterday)->orWhere('report_range', 'L1');
-            })
-            ->where('campaignStatus', 'RUNNING')
-            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
-            ->where('campaign_name', 'NOT LIKE', 'General - %')
-            ->where('campaign_name', 'NOT LIKE', 'Default%')
-            ->get()
-            ->sortBy(function($report) use ($yesterday) {
-                return $report->report_range === $yesterday ? 0 : 1;
-            })
-            ->groupBy('campaign_id');
-        foreach ($sbidMReports as $campaignId => $reports) {
-            $report = $reports->first();
-            if (!empty($report->campaign_id) && !empty($report->sbid_m)) {
-                $sbidMMap[$report->campaign_id] = $report->sbid_m;
-            }
-        }
-
-        // Fetch apprSbid
         $apprSbidMap = [];
-        $apprSbidReports = Ebay2PriorityReport::where(function($q) use ($yesterday) {
-                $q->where('report_range', $yesterday)->orWhere('report_range', 'L1');
-            })
-            ->where('campaignStatus', 'RUNNING')
-            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
-            ->where('campaign_name', 'NOT LIKE', 'General - %')
-            ->where('campaign_name', 'NOT LIKE', 'Default%')
-            ->get()
-            ->sortBy(function($report) use ($yesterday) {
-                return $report->report_range === $yesterday ? 0 : 1;
-            })
-            ->groupBy('campaign_id');
-        foreach ($apprSbidReports as $campaignId => $reports) {
-            $report = $reports->first();
-            if (!empty($report->campaign_id) && !empty($report->apprSbid)) {
-                $apprSbidMap[$report->campaign_id] = $report->apprSbid;
+        foreach ($priorityReports as $report) {
+            $range = (string) ($report->report_range ?? '');
+            $status = strtoupper((string) ($report->campaignStatus ?? ''));
+            $campaignId = $report->campaign_id ?? '';
+
+            if (in_array($range, ['L30', 'L7', 'L1'], true)) {
+                $campaignName = $normalizeSku($report->campaign_name ?? '');
+                if ($campaignName !== '') {
+                    if (! isset($kwCampaignBySku[$campaignName])) {
+                        $kwCampaignBySku[$campaignName] = [
+                            'campaign_id' => $campaignId,
+                            'campaignBudgetAmount' => $report->campaignBudgetAmount ?? 0,
+                            'campaignStatus' => $report->campaignStatus ?? '',
+                            'L30' => null, 'L7' => null, 'L1' => null,
+                        ];
+                    }
+                    $kwCampaignBySku[$campaignName][$range] = $report;
+                }
+            }
+
+            if ($status === 'RUNNING' && $campaignId !== '') {
+                if ($range === $dayBeforeYesterday && ! empty($report->last_sbid) && ! isset($lastSbidMap[$campaignId])) {
+                    $lastSbidMap[$campaignId] = $report->last_sbid;
+                }
+                if ($range === $yesterday || $range === 'L1') {
+                    if (! empty($report->sbid_m) && ($range === $yesterday || ! isset($sbidMMap[$campaignId]))) {
+                        $sbidMMap[$campaignId] = $report->sbid_m;
+                    }
+                    if (! empty($report->apprSbid) && ($range === $yesterday || ! isset($apprSbidMap[$campaignId]))) {
+                        $apprSbidMap[$campaignId] = $report->apprSbid;
+                    }
+                }
             }
         }
 
@@ -521,6 +677,7 @@ class EbayTwoController extends Controller
             ->get();
 
         $adMetricsBySku = [];
+        $extraClicksData = [];
 
         // General Reports
         foreach ($generalReports as $report) {
@@ -528,6 +685,10 @@ class EbayTwoController extends Controller
             if (!$sku) continue;
 
             $range = strtoupper($report->report_range);
+            if ($range === 'L30') {
+                $lid = $report->listing_id;
+                $extraClicksData[$lid] = ($extraClicksData[$lid] ?? 0) + (int) $report->clicks;
+            }
 
             $adMetricsBySku[$sku][$range]['GENERAL_SPENT'] =
                 ($adMetricsBySku[$sku][$range]['GENERAL_SPENT'] ?? 0) + $this->extractNumber($report->ad_fees);
@@ -1157,8 +1318,8 @@ class EbayTwoController extends Controller
             }
         }
 
-        // Auto-save daily summary in background (non-blocking); skip for filtered views
-        if (! $request->boolean('open_box_only')) {
+        // Daily snapshot runs after /ebay2-data-json responds (same as /ebay-data-json).
+        if (! $request->boolean('open_box_only') && ! $request->attributes->get('skip_daily_summary')) {
             $this->saveDailySummaryIfNeeded($result);
         }
 
@@ -2444,6 +2605,19 @@ class EbayTwoController extends Controller
                 $message = '[eBay #'.$first['ErrorCode'].'] '.$message;
             }
 
+            $ended = EbayListingEnded::looksEndedError($message)
+                || (string) ($first['ErrorCode'] ?? '') === '291';
+            if ($ended) {
+                try {
+                    if (Schema::hasColumn('ebay_2_metrics', 'listing_status')) {
+                        $ebayMetric->listing_status = 'ENDED';
+                        $ebayMetric->save();
+                    }
+                } catch (\Throwable $e) {
+                    // keep going
+                }
+            }
+
             Log::error('[EbayTwoController] eBay2 price push failed via microservice', [
                 'sku'    => $sku,
                 'price'  => $priceFloat,
@@ -2454,7 +2628,7 @@ class EbayTwoController extends Controller
                 'success' => false,
                 'message' => $message,
                 'errors'  => $errors,
-            ], 400);
+            ], $ended ? 422 : 400);
 
         } catch (\Exception $e) {
             $this->saveSpriceStatus($sku, 'failed');
@@ -2573,13 +2747,14 @@ class EbayTwoController extends Controller
      * Auto-save daily eBay 2 summary snapshot (channel-wise)
      * Matches JavaScript updateSummary() logic exactly
      */
-    private function saveDailySummaryIfNeeded($products)
+    public function saveDailySummaryIfNeeded($products)
     {
         try {
             $today = now()->toDateString();
-            
-            // No cache - always update when page loads
-            
+            $products = collect($products)->map(function ($p) {
+                return is_array($p) ? (object) $p : $p;
+            });
+
             // Filter: INV > 0 && nr_req === 'REQ' (EXACT JavaScript logic)
             $filteredData = collect($products)->filter(function($p) {
                 $invCheck = floatval($p->INV ?? 0) > 0;

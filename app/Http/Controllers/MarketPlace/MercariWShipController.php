@@ -82,11 +82,16 @@ class MercariWShipController extends Controller
 
         $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('mercari_wship', $skus);
         $dataViewSprice = [];
+        $dataViewOpSprice = [];
         foreach (MercariWShipDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $dv) {
             $val = is_array($dv->value) ? $dv->value : (json_decode((string) ($dv->value ?? ''), true) ?: []);
             $stored = $val['SPRICE'] ?? $val['sprice'] ?? null;
             if (is_numeric($stored) && (float) $stored > 0) {
                 $dataViewSprice[strtoupper(trim((string) $dv->sku))] = round((float) $stored, 2);
+            }
+            $storedOp = $val['OP_SPRICE'] ?? $val['op_sprice'] ?? null;
+            if (is_numeric($storedOp) && (float) $storedOp > 0) {
+                $dataViewOpSprice[strtoupper(trim((string) $dv->sku))] = round((float) $storedOp, 2);
             }
         }
 
@@ -136,6 +141,17 @@ class MercariWShipController extends Controller
             }
             $spft = ($sprice !== null && $sprice > 0) ? (($sprice * $factor - $lp - $ship) / $sprice) * 100 : 0;
             $sroi = ($sprice !== null && $lp > 0) ? (($sprice * $factor - $lp - $ship) / $lp) * 100 : 0;
+
+            $opSprice = isset($statusValue['op_sprice']) && $statusValue['op_sprice'] !== '' && $statusValue['op_sprice'] !== null
+                ? (float) $statusValue['op_sprice']
+                : null;
+            if ($opSprice === null || $opSprice <= 0) {
+                $fromViewOp = $dataViewOpSprice[strtoupper(trim((string) $sku))] ?? null;
+                if (is_numeric($fromViewOp) && (float) $fromViewOp > 0) {
+                    $opSprice = (float) $fromViewOp;
+                }
+            }
+            $opMetrics = $this->mercariWshipSpriceProfitMetrics($opSprice, $lp, $ship, $factor, 0.0);
             $dilPct = $inv > 0 ? round((($shopifyItem->quantity ?? 0) / $inv) * 100, 2) : 0.0;
 
             $row = [
@@ -152,6 +168,12 @@ class MercariWShipController extends Controller
                 'ROI' => round($roi, 2),
                 'sprice' => $sprice,
                 'SPRICE' => ($sprice !== null && $sprice > 0) ? $sprice : null,
+                'op_sprice' => ($opSprice !== null && $opSprice > 0) ? $opSprice : null,
+                'OP_SPRICE' => ($opSprice !== null && $opSprice > 0) ? $opSprice : null,
+                'OP_SGPFT' => $opMetrics['sgpft'],
+                'OP_SGROI' => $opMetrics['sgroi'],
+                'OP_SPFT' => $opMetrics['spft'],
+                'OP_SNROI' => $opMetrics['snroi'],
                 'percentage' => $factor,
                 'SPFT' => round($spft, 2),
                 'SROI' => round($sroi, 2),
@@ -200,7 +222,35 @@ class MercariWShipController extends Controller
     }
 
     /**
+     * Same 4 Sprice profit results used by the OP modal:
+     * SGPFT / SGROI (gross) and SPFT / SNROI (after Ads%).
+     *
+     * @return array{sgpft: float, sgroi: float, spft: float, snroi: float}
+     */
+    private function mercariWshipSpriceProfitMetrics(?float $sprice, float $lp, float $ship, float $factor, float $adsPct = 0.0): array
+    {
+        if ($sprice === null || $sprice <= 0) {
+            return ['sgpft' => 0.0, 'sgroi' => 0.0, 'spft' => 0.0, 'snroi' => 0.0];
+        }
+
+        $sgpft = (($sprice * $factor - $lp - $ship) / $sprice) * 100;
+        $sgroi = $lp > 0 ? (($sprice * $factor - $lp - $ship) / $lp) * 100 : 0.0;
+        $spft = $sgpft - $adsPct;
+        $snroi = $lp > 0
+            ? (($sprice * $factor - $lp - $ship - $sprice * ($adsPct / 100)) / $lp) * 100
+            : 0.0;
+
+        return [
+            'sgpft' => round($sgpft, 2),
+            'sgroi' => round($sgroi, 2),
+            'spft' => round($spft, 2),
+            'snroi' => round($snroi, 2),
+        ];
+    }
+
+    /**
      * Dil Apply / inline S PRC: listing status + mercari_w_ship_data_views.SPRICE.
+     * OP Sprice is stored separately as op_sprice / OP_SPRICE and never writes SPRICE.
      *
      * @param  array<string, mixed>  $fields
      */
@@ -216,25 +266,48 @@ class MercariWShipController extends Controller
                 $value[$field] = $fields[$field];
             }
         }
+        if (array_key_exists('op_sprice', $fields)) {
+            $opSprice = $fields['op_sprice'];
+            if ($opSprice === null || $opSprice === '' || ! is_numeric($opSprice) || (float) $opSprice <= 0) {
+                unset($value['op_sprice']);
+            } else {
+                $value['op_sprice'] = round((float) $opSprice, 2);
+            }
+        }
 
         $status->value = $value;
         $status->save();
 
-        if (! array_key_exists('sprice', $fields)) {
+        $needsView = array_key_exists('sprice', $fields) || array_key_exists('op_sprice', $fields);
+        if (! $needsView) {
             return;
         }
 
-        $sprice = $fields['sprice'];
         $view = MercariWShipDataView::firstOrNew(['sku' => $sku]);
         $viewVal = is_array($view->value)
             ? $view->value
             : (json_decode((string) ($view->value ?? ''), true) ?: []);
-        if ($sprice === null || $sprice === '' || ! is_numeric($sprice) || (float) $sprice <= 0) {
-            unset($viewVal['SPRICE'], $viewVal['sprice']);
-        } else {
-            $viewVal['SPRICE'] = round((float) $sprice, 2);
-            $viewVal['sprice'] = $viewVal['SPRICE'];
+
+        if (array_key_exists('sprice', $fields)) {
+            $sprice = $fields['sprice'];
+            if ($sprice === null || $sprice === '' || ! is_numeric($sprice) || (float) $sprice <= 0) {
+                unset($viewVal['SPRICE'], $viewVal['sprice']);
+            } else {
+                $viewVal['SPRICE'] = round((float) $sprice, 2);
+                $viewVal['sprice'] = $viewVal['SPRICE'];
+            }
         }
+
+        if (array_key_exists('op_sprice', $fields)) {
+            $opSprice = $fields['op_sprice'];
+            if ($opSprice === null || $opSprice === '' || ! is_numeric($opSprice) || (float) $opSprice <= 0) {
+                unset($viewVal['OP_SPRICE'], $viewVal['op_sprice']);
+            } else {
+                $viewVal['OP_SPRICE'] = round((float) $opSprice, 2);
+                $viewVal['op_sprice'] = $viewVal['OP_SPRICE'];
+            }
+        }
+
         $view->value = $viewVal;
         $view->save();
     }

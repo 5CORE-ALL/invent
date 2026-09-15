@@ -14,6 +14,7 @@ use App\Models\SheinMetric;
 use App\Models\ShopifySku;
 use App\Services\SheinShopifySalesService;
 use App\Services\SheinApiService;
+use App\Services\LmpSkuGroupService;
 use App\Services\ChannelPromoPricingService;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
@@ -649,6 +650,22 @@ class SheinController extends Controller
                 }
             }
 
+            $lmpLookupSkus = [];
+            foreach ($allNormalizedSkus as $nk) {
+                $pm = $productMasterBySku->get($nk);
+                $pr = $pricingBySku->get($nk);
+                $sku = trim((string) (($pm->sku ?? null) ?: ($pr->sku ?? $nk)));
+                if ($sku !== '') {
+                    $lmpLookupSkus[] = $sku;
+                }
+            }
+            $lmpGroupService = new LmpSkuGroupService();
+            try {
+                $lmpGroupService->prepareForSkus($lmpLookupSkus);
+            } catch (\Throwable $e) {
+                Log::warning('LmpSkuGroupService prepare failed (Shein): ' . $e->getMessage());
+            }
+
             // ── 6. Build rows
             $rows = [];
             foreach ($allNormalizedSkus as $normalizedSku) {
@@ -718,7 +735,22 @@ class SheinController extends Controller
                 // fall back to meta-derived value, then INV-based default.
                 $nrReq = $linkVal['nr_req'] ?? $nr ?? ($inv > 0 ? 'REQ' : 'NR');
 
-                $lmpEntries = $this->sheinLmpEntriesFrom($lmpBySku->get($normalizedSku));
+                // LMP competitor entries merged across Sku Link LMP group (same as ebay-tabulator-view)
+                $linkedLmpSkus = $this->sheinLinkedLmpSkusFor($lmpGroupService, (string) $displaySku);
+                $lmpEntries = [];
+                $seenLmp = [];
+                foreach ($linkedLmpSkus as $linkedSku) {
+                    $linkedNorm = $normalizeSku($linkedSku);
+                    foreach ($this->sheinLmpEntriesFrom($lmpBySku->get($linkedNorm)) as $entry) {
+                        $dedupeKey = ((string) ($entry['price'] ?? '')) . '|' . strtoupper(trim((string) ($entry['link'] ?? '')));
+                        if (isset($seenLmp[$dedupeKey])) {
+                            continue;
+                        }
+                        $seenLmp[$dedupeKey] = true;
+                        $entry['source_sku'] = $linkedSku;
+                        $lmpEntries[] = $entry;
+                    }
+                }
                 $lmpPrice = $this->sheinLowestFromEntries($lmpEntries);
                 $lmpLink = null;
                 foreach ($lmpEntries as $entry) {
@@ -732,6 +764,15 @@ class SheinController extends Controller
                 }
 
                 $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $displaySku))] ?? null;
+                if ($stdPrc === null && ! empty($linkedLmpSkus)) {
+                    foreach ($linkedLmpSkus as $linkedSku) {
+                        $linkedKey = strtoupper(trim((string) $linkedSku));
+                        if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
+                            $stdPrc = $amazonStandardPrices[$linkedKey];
+                            break;
+                        }
+                    }
+                }
 
                 $row = [
                     'sku'          => trim((string) $displaySku),
@@ -770,7 +811,7 @@ class SheinController extends Controller
                     'lmp_price'    => $lmpPrice,
                     'lmp_link'     => $lmpLink,
                     'lmp_entries'  => $lmpEntries,
-                    'linked_lmp_skus' => [],
+                    'linked_lmp_skus' => $linkedLmpSkus,
                     'STANDARD_PRICE' => $stdPrc,
                 ];
                 $rows[] = $promoService->applyToRow($row, $promoMap, (string) $displaySku);
@@ -1275,6 +1316,35 @@ class SheinController extends Controller
      *
      * @return array<int, array{slot:int, price:float, link:string|null, ignored:bool}>
      */
+    private function sheinLinkedLmpSkusFor(LmpSkuGroupService $lmpGroupService, string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        try {
+            $group = $lmpGroupService->groupContaining($sku);
+        } catch (\Throwable $e) {
+            $group = [];
+        }
+
+        $members = $group !== [] ? $group : [$sku];
+        $seen = [];
+        $out = [];
+        foreach ($members as $member) {
+            $display = trim((string) $member);
+            $norm = strtoupper($display);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $out[] = $display;
+        }
+
+        return $out;
+    }
+
     private function sheinLmpEntriesFrom($lmpRow): array
     {
         $entries = [];

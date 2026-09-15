@@ -2104,6 +2104,17 @@
             }
             rows.forEach(walk);
         }
+        function chPromoPatchRowData(row, patch) {
+            if (!patch || typeof patch !== 'object') return;
+            if (typeof window.chPushSafeRowUpdate === 'function') {
+                window.chPushSafeRowUpdate(row, patch);
+                return;
+            }
+            try {
+                const d = (row && typeof row.getData === 'function') ? row.getData() : null;
+                if (d && typeof d === 'object') Object.assign(d, patch);
+            } catch (e) { /* ignore */ }
+        }
         function applyChannelPushPrmtTaskStatusesToTable(tasks) {
             if (typeof table === 'undefined' || !table || !Array.isArray(tasks)) return;
             chPromoPushPrmtLastTasks = tasks;
@@ -3901,9 +3912,11 @@
         }
         let chPromoListingDilCache = null;
         let chPromoListingDilSrc = null;
-        function chPromoInvalidateListingDilCache() {
+        function chPromoInvalidateListingDilCache(opts) {
+            opts = opts || {};
             chPromoListingDilCache = null;
             chPromoListingDilSrc = null;
+            if (opts.skipApply) return;
             if (typeof chPromoScheduleZeroSoldDilAutoApply === 'function') {
                 chPromoScheduleZeroSoldDilAutoApply();
             }
@@ -4905,7 +4918,7 @@
                         const leftover = Number(d.cpn_pct != null && d.cpn_pct !== ''
                             ? d.cpn_pct : d._cpn_pct_applied);
                         if (isFinite(leftover) && leftover > 0) {
-                            row.update({
+                            chPromoPatchRowData(row, {
                                 cpn_pct: '0',
                                 _cpn_pct_applied: 0,
                                 PEF_CPN_PCT: 0,
@@ -4918,12 +4931,11 @@
                     const current = Number(d.cpn_pct != null && d.cpn_pct !== ''
                         ? d.cpn_pct : d._cpn_pct_applied);
                     if (isFinite(current) && current === cpn) return;
-                    row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn, PEF_CPN_PCT: cpn });
+                    chPromoPatchRowData(row, { cpn_pct: String(cpn), _cpn_pct_applied: cpn, PEF_CPN_PCT: cpn });
                 });
             } finally {
                 if (blocked) table.restoreRedraw();
             }
-            try { table.redraw(true); } catch (e) { /* ignore */ }
         }
         function chPromoSyncEbayPrmtColumnFromSlabs() {
             // Live-fill PRMT% from Dil slabs (no row selection required).
@@ -4931,7 +4943,7 @@
                 return;
             }
             if (typeof table === 'undefined' || !table) return;
-            chPromoInvalidateListingDilCache();
+            chPromoInvalidateListingDilCache({ skipApply: true });
             const blocked = typeof table.blockRedraw === 'function';
             if (blocked) table.blockRedraw();
             try {
@@ -4946,7 +4958,7 @@
                         const leftover = Number(d.prmt_pct != null && d.prmt_pct !== ''
                             ? d.prmt_pct : d._prmt_pct_applied);
                         if (isFinite(leftover) && leftover > 0) {
-                            row.update({
+                            chPromoPatchRowData(row, {
                                 prmt_pct: '0',
                                 _prmt_pct_applied: 0,
                                 PEF_PRMT_PCT: 0,
@@ -4959,12 +4971,11 @@
                     const current = Number(d.prmt_pct != null && d.prmt_pct !== ''
                         ? d.prmt_pct : d._prmt_pct_applied);
                     if (isFinite(current) && current === prmt) return;
-                    row.update({ prmt_pct: String(prmt), _prmt_pct_applied: prmt });
+                    chPromoPatchRowData(row, { prmt_pct: String(prmt), _prmt_pct_applied: prmt });
                 });
             } finally {
                 if (blocked) table.restoreRedraw();
             }
-            try { table.redraw(true); } catch (e) { /* ignore */ }
         }
         function chPromoDilColorBand(dil) {
             const n = Number(dil);
@@ -5801,7 +5812,9 @@
                     ? 'Using first-time defaults (0 Sold Red / Green / Pink). Apply to save & apply.'
                     : 'Loaded saved 0 Sold Dil color rules.');
                 chPromoSyncEbayPrmtColumnFromSlabs();
-                if (typeof chPromoScheduleDilPrmtAutoApply === 'function') {
+                if (typeof chPromoScheduleDilPrmtAutoApply === 'function'
+                    && typeof chPromoUsesAmazonStyleRuleApply === 'function'
+                    && !chPromoUsesAmazonStyleRuleApply()) {
                     chPromoScheduleDilPrmtAutoApply();
                 }
                 if (typeof chPromoMarkEbaySpriceRuleReady === 'function') {
@@ -5814,7 +5827,9 @@
                 $('#ch-promo-dil-prmt-status').text('Could not load saved rules — showing defaults.');
                 $('#ch-promo-zero-sold-prmt-status').text('Could not load saved rules — showing defaults.');
                 chPromoSyncEbayPrmtColumnFromSlabs();
-                if (typeof chPromoScheduleDilPrmtAutoApply === 'function') {
+                if (typeof chPromoScheduleDilPrmtAutoApply === 'function'
+                    && typeof chPromoUsesAmazonStyleRuleApply === 'function'
+                    && !chPromoUsesAmazonStyleRuleApply()) {
                     chPromoScheduleDilPrmtAutoApply();
                 }
                 if (typeof chPromoMarkEbaySpriceRuleReady === 'function') {
@@ -6243,7 +6258,9 @@
                         : 'Loaded saved CVR vs CPN rules for ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + '.'));
                 if (chPromoUsesAmazonCvrDisc()) chPromoSyncCvrDiscColumnFromSlabs();
                 else if (chPromoUsesLiveCvrCpnSlabs()) chPromoSyncEbayCpnColumnFromSlabs();
-                if (typeof chPromoScheduleCvrCpnAutoApply === 'function') {
+                if (typeof chPromoScheduleCvrCpnAutoApply === 'function'
+                    && typeof chPromoUsesAmazonStyleRuleApply === 'function'
+                    && !chPromoUsesAmazonStyleRuleApply()) {
                     chPromoScheduleCvrCpnAutoApply();
                 }
                 if (typeof chPromoMarkEbaySpriceRuleReady === 'function') {
@@ -7894,6 +7911,10 @@
             }
 
             const conc = (CHANNEL_PROMO_CHANNEL === 'ebay3') ? 12 : 8;
+            if (opts.persist === false) {
+                if (typeof table !== 'undefined' && table) table.redraw(true);
+                return;
+            }
             if ($progressBtn && jobs.length) {
                 chPromoSetApplyBtnProgress($progressBtn, 0, jobs.length, 'Saving');
             }
@@ -8094,7 +8115,7 @@
             }
             chPromoDilPrmtAutoBusy = true;
             try {
-                await applyChPromoDilPrmtToTargets(targets, 'dil-change', { silent: true });
+                await applyChPromoDilPrmtToTargets(targets, 'dil-change', { silent: true, persist: opts.persist !== false });
             } catch (e) {
                 /* next Dil change retries */
             } finally {
@@ -8230,7 +8251,7 @@
             }
             chPromoCvrCpnAutoBusy = true;
             try {
-                await applyChPromoCvrCpnToTargets(targets, 'cvr-change', { silent: true });
+                await applyChPromoCvrCpnToTargets(targets, 'cvr-change', { silent: true, persist: opts.persist !== false });
             } catch (e) {
                 /* next CVR change retries */
             } finally {
@@ -8375,6 +8396,10 @@
                 }
             }
             if (typeof table !== 'undefined' && table) table.redraw(true);
+
+            if (opts.persist === false) {
+                return;
+            }
 
             await chPromoMapLimit(jobs, 8, async function(job) {
                 if (!job.sku) return;
@@ -9922,26 +9947,9 @@
                 if (typeof chPromoSyncEbayCpnColumnFromSlabs === 'function') {
                     chPromoSyncEbayCpnColumnFromSlabs();
                 }
-                const clearOnce = chPromoShouldClearStoredOnce();
-                const forceSlabs = CHANNEL_PROMO_CHANNEL === 'shopify_b2c' ? !!clearOnce : false;
-                if (!chPromoHideDilPrmt() && typeof chPromoRunDilPrmtAutoApply === 'function') {
-                    await chPromoRunDilPrmtAutoApply({ force: forceSlabs, silent: true });
-                }
-                if (typeof chPromoRunCvrCpnAutoApply === 'function') {
-                    await chPromoRunCvrCpnAutoApply({ force: forceSlabs, silent: true });
-                }
-                if (CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE && typeof chPromoRunZeroSoldDilAutoApply === 'function') {
-                    await chPromoRunZeroSoldDilAutoApply({ force: true });
-                }
-                const livePushOn = chPromoPageReloadPushAllowed();
-                if (clearOnce) chPromoMarkStoredClearedOnce();
-                if (livePushOn) {
-                    if (chPromoIsTemuPromoChannel() && typeof scanAndQueueTemuListingPush === 'function') {
-                        scanAndQueueTemuListingPush(chPromoSafeTable());
-                    } else {
-                        chPromoQueueReloadSpricePush({ delay: 500 });
-                    }
-                }
+                if (chPromoShouldClearStoredOnce()) chPromoMarkStoredClearedOnce();
+                // Paint columns only. row.update() on the full catalog kills Tabulator's
+                // renderer (blank body, headers still show).
             } finally {
                 chPromoAllEbayRulesBusy = false;
             }
@@ -10002,14 +10010,7 @@
             if (typeof chPromoSyncCvrDiscColumnFromSlabs === 'function') {
                 chPromoSyncCvrDiscColumnFromSlabs();
             }
-            const livePushOn = chPromoPageReloadPushAllowed();
             if (chPromoShouldClearStoredOnce()) chPromoMarkStoredClearedOnce();
-            if (!livePushOn) return;
-            if (chPromoIsTemuPromoChannel() && typeof scanAndQueueTemuListingPush === 'function') {
-                scanAndQueueTemuListingPush(tbl);
-            } else {
-                chPromoQueueReloadSpricePush({ delay: 500 });
-            }
         }
         function bindEbaySpriceAutofill() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;

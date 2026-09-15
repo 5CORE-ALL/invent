@@ -5,7 +5,7 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+
 
     <style>
         /* ========================================
@@ -3366,31 +3366,35 @@
             }
 
             function taskFilterUserMatcher(params, data) {
-                if ($.trim(params.term || '') === '') {
+                var term = $.trim(params.term || '');
+                if (term === '') {
                     return data;
                 }
                 if (data.children && data.children.length > 0) {
-                    var filteredChildren = [];
+                    var children = [];
                     $.each(data.children, function (_i, child) {
-                        var m = taskFilterUserMatcher(params, child);
-                        if (m != null) {
-                            filteredChildren.push(m);
+                        var childMatch = taskFilterUserMatcher(params, child);
+                        if (childMatch != null) {
+                            children.push(childMatch);
                         }
                     });
-                    if (filteredChildren.length) {
-                        var mod = $.extend({}, data, true);
-                        mod.children = filteredChildren;
-                        return mod;
+                    if (!children.length) {
+                        return null;
                     }
-                    return null;
+                    return {
+                        text: data.text,
+                        children: children,
+                        disabled: data.disabled,
+                        title: data.title,
+                        element: data.element
+                    };
                 }
-                if (data.element === undefined) {
-                    return null;
-                }
-                var term = String(params.term || '').toLowerCase();
+                var needle = term.toLowerCase();
                 var text = String(data.text || '').toLowerCase();
-                var email = String($(data.element).data('email') || '').toLowerCase();
-                if (text.indexOf(term) > -1 || email.indexOf(term) > -1) {
+                var email = data.element && data.element.getAttribute
+                    ? String(data.element.getAttribute('data-email') || '').toLowerCase()
+                    : '';
+                if (text.indexOf(needle) > -1 || (email && email.indexOf(needle) > -1)) {
                     return data;
                 }
                 return null;
@@ -5050,11 +5054,19 @@
                 $('.quick-filter-chip[data-filter="overdue"]').toggleClass('active', overdueOn);
             }
 
+            function replaceTableFilters(filters) {
+                // setFilter replaces existing filters. Calling clearFilter() first
+                // on a dataTree table can leave row visibility stuck, so the next
+                // search after clearing the box does nothing until reload.
+                if (filters && filters.length) {
+                    table.setFilter(filters);
+                } else {
+                    table.clearFilter();
+                }
+            }
+
             function applyFilters() {
                 console.log('🔍 Applying filters...');
-                
-                // Clear existing filters first
-                table.clearFilter();
                 
                 // Build filter array with AND logic
                 var filters = [];
@@ -5089,7 +5101,7 @@
                         });
                         appendTaskTypeFilter(filters);
                         appendOverdueFilter(filters);
-                        table.setFilter(filters);
+                        replaceTableFilters(filters);
                         applyDuplicateTitleFilter();
                         console.log('✓ Filter applied: No Assignor');
                         applyTaskOrdering();
@@ -5130,11 +5142,10 @@
                         console.log('📊 Tasks with no assignee (-, null, empty):', noAssigneeCount);
                         
                         // Apply filter - ONLY show tasks where assignee_name is exactly "-"
-                        table.clearFilter();
                         filters.push({field:"assignee_name", type:"=", value:"-"});
                         appendTaskTypeFilter(filters);
                         appendOverdueFilter(filters);
-                        table.setFilter(filters);
+                        replaceTableFilters(filters);
                         applyDuplicateTitleFilter();
                         
                         console.log('✅ Filter applied: assignee_name = "-"');
@@ -5207,10 +5218,7 @@
                     ]);
                 }
                 
-                // Apply all filters if any exist
-                if (filters.length > 0) {
-                    table.setFilter(filters);
-                }
+                replaceTableFilters(filters);
                 applyDuplicateTitleFilter();
 
                 applyTaskOrdering();
@@ -5292,21 +5300,8 @@
                 }
             });
             
-            $('#filter-search').on('keyup', function(e) {
-                // Don't apply filters if Enter was just pressed
-                if (e.keyCode !== 13) {
-                    applyFilters();
-                }
-            });
-            $('#filter-group').on('keyup', function(e) {
-                if (e.keyCode !== 13) {
-                    applyFilters();
-                }
-            });
-            $('#filter-task').on('keyup', function(e) {
-                if (e.keyCode !== 13) {
-                    applyFilters();
-                }
+            $('#filter-search, #filter-group, #filter-task').on('input', function() {
+                applyFilters();
             });
             $('#filter-assignor, #filter-assignee').on('change', function () {
                 if (suppressAssignFilterApply) return;
