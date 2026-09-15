@@ -77,7 +77,7 @@
 
                             <div class="row">
                                 <div class="col-12 mb-2">
-                                    <label for="assignee_id" class="form-label fw-bold" style="font-size: 12px;">Assignee</label>
+                                    <label for="assignee_id" class="form-label fw-bold" style="font-size: 12px;">Assignee <span class="text-danger">*</span></label>
                                     <select class="form-select form-select-sm select2 @error('assignee_id') is-invalid @enderror"
                                             id="assignee_id" name="assignee_id" {!! $lockedAttr !!} title="{{ $lockedTitle }}">
                                         <option value="">Please Select</option>
@@ -146,7 +146,7 @@
                                         @else
                                             <input type="text" class="form-control form-control-sm" value="{{ $task->assignor->name ?? Auth::user()->name }}" readonly>
                                             @if($canEditAll)
-                                                <input type="hidden" name="assignor_id" value="{{ $task->assignor_id }}">
+                                                <input type="hidden" name="assignor_id" value="{{ $task->assignor_id ?? Auth::id() }}">
                                             @endif
                                         @endif
                                     </div>
@@ -303,8 +303,26 @@
             $('#assignee_id').select2({
                 theme: 'bootstrap-5',
                 placeholder: 'Please Select',
-                allowClear: true
+                allowClear: false
             });
+
+            @if($canEditAll)
+            $('form').on('submit', function(e) {
+                if (!$('#assignee_id').val()) {
+                    e.preventDefault();
+                    alert('Please select an assignee.');
+                    $('#assignee_id').select2('open');
+                    return false;
+                }
+                if ($('#assignor_id').is('select') && !$('#assignor_id').val()) {
+                    e.preventDefault();
+                    alert('Please select an assignor.');
+                    $('#additional-fields').slideDown();
+                    $('#assignor_id').select2('open');
+                    return false;
+                }
+            });
+            @endif
 
             // Ensure the selected values are preserved
             @if(isset($task->assignor_id) && $task->assignor_id)

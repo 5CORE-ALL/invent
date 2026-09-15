@@ -125,15 +125,23 @@
                 <label for="quick_title" class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Task <span class="text-danger">*</span></label>
                 <input type="text" class="form-control" id="quick_title" name="title" placeholder="Enter Task" required style="font-size: 15px; padding: 5px 9px; height: 39px;">
             </div>
+
+            <div style="margin-bottom: 9px;">
+                <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">
+                    <i class="mdi mdi-monitor-screenshot me-1"></i>Screenshots
+                </label>
+                <input type="file" class="form-control" name="image" accept="image/*" style="font-size: 13.5px; padding: 3px 6px; height: 39px;">
+            </div>
             
             @php
                 $quickTaskUsers = \App\Models\User::where('is_active', true)->select('id', 'name')->orderBy('name')->get();
+                $quickTaskIsAdmin = \App\Support\SuperAdminAccess::isTaskAdmin(Auth::user());
             @endphp
             <script type="application/json" id="quick-assignee-users-data">{!! json_encode($quickTaskUsers->map(fn ($u) => ['id' => (int) $u->id, 'name' => $u->name])->values()) !!}</script>
             <div style="margin-bottom: 9px;">
-                <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Assignee(s)</label>
+                <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Assignee(s) <span class="text-danger">*</span></label>
                 <div class="quick-assignee-ms position-relative" id="quick_assignee_ms" title="Select one or more people; one shared task is created with all assignees">
-                    <button type="button" class="quick-assignee-ms-trigger" id="quick_assignee_ms_trigger" aria-haspopup="listbox" aria-expanded="false">
+                    <button type="button" class="quick-assignee-ms-trigger" id="quick_assignee_ms_trigger" aria-haspopup="listbox" aria-expanded="false" aria-required="true">
                         <span class="quick-assignee-ms-label text-truncate">Select assignees</span>
                         <i class="mdi mdi-menu-down quick-assignee-ms-chevron"></i>
                     </button>
@@ -144,6 +152,21 @@
                     <div id="quick_assignee_hidden_wrap" class="quick-assignee-hidden-wrap"></div>
                 </div>
                 <small class="text-muted" style="font-size: 12px; display: block; margin-top: 3px;">One task; all selected users are assignees.</small>
+            </div>
+
+            <div style="margin-bottom: 9px;">
+                <label for="quick_assignor_id" class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Assignor <span class="text-danger">*</span></label>
+                @if($quickTaskIsAdmin)
+                    <select class="form-select" id="quick_assignor_id" name="assignor_id" required style="font-size: 15px; padding: 5px 9px; height: 39px;">
+                        <option value="">Select assignor</option>
+                        @foreach($quickTaskUsers as $user)
+                            <option value="{{ $user->id }}" {{ (int) Auth::id() === (int) $user->id ? 'selected' : '' }}>{{ $user->name }}</option>
+                        @endforeach
+                    </select>
+                @else
+                    <input type="text" class="form-control" value="{{ Auth::user()->name }}" readonly style="font-size: 15px; padding: 5px 9px; height: 39px;">
+                    <input type="hidden" id="quick_assignor_id" name="assignor_id" value="{{ Auth::id() }}">
+                @endif
             </div>
             
             <div style="margin-bottom: 9px;">
@@ -162,7 +185,6 @@
 
             <!-- Hidden Fields with Defaults -->
             <input type="hidden" name="priority" value="normal">
-            <input type="hidden" name="assignor_id" value="{{ Auth::id() }}">
             <input type="hidden" name="tid" value="{{ now()->format('Y-m-d\TH:i') }}">
 
             <!-- More Fields Toggle -->
@@ -215,10 +237,6 @@
                 <div style="margin-bottom: 9px;">
                     <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">PL</label>
                     <input type="text" class="form-control" name="pl" placeholder="PL" style="font-size: 15px; padding: 5px 9px; height: 39px;">
-                </div>
-                <div style="margin-bottom: 9px;">
-                    <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Image</label>
-                    <input type="file" class="form-control" name="image" accept="image/*" style="font-size: 13.5px; padding: 3px 6px; height: 39px;">
                 </div>
             </div>
         </form>
@@ -303,6 +321,10 @@
             border-color: #86b7fe;
             outline: 0;
             box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+        }
+        .quick-assignee-ms-trigger.is-invalid {
+            border-color: #dc3545;
+            box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.15);
         }
         .quick-assignee-ms-trigger.is-open .quick-assignee-ms-chevron {
             transform: rotate(180deg);
@@ -578,6 +600,7 @@
                         $btn.attr('title', 'Select one or more people; one shared task is created with all assignees');
                         return;
                     }
+                    $btn.removeClass('is-invalid');
                     var text = Array.from(selected.values()).join(', ');
                     $lab.text(text).addClass('has-value').removeClass('text-muted');
                     $btn.attr('title', text);
@@ -695,8 +718,43 @@
                 }
             });
 
+            function validateQuickTaskRequiredPeople() {
+                var hasAssignees = $('#quick_assignee_hidden_wrap input[name="assignee_ids[]"]').length > 0;
+                if (!hasAssignees) {
+                    alert('Please select at least one assignee.');
+                    $('#quick_assignee_ms_trigger').addClass('is-invalid');
+                    openQuickAssigneePanel();
+                    return false;
+                }
+                $('#quick_assignee_ms_trigger').removeClass('is-invalid');
+
+                var assignorId = $.trim($('#quick_assignor_id').val() || '');
+                if (!assignorId) {
+                    alert('Please select an assignor.');
+                    var $assignor = $('#quick_assignor_id');
+                    $assignor.addClass('is-invalid');
+                    if ($assignor.is('select')) {
+                        $assignor.trigger('focus');
+                    }
+                    return false;
+                }
+                $('#quick_assignor_id').removeClass('is-invalid');
+                return true;
+            }
+
+            $('#quick_assignor_id').on('change input', function () {
+                if ($.trim($(this).val() || '')) {
+                    $(this).removeClass('is-invalid');
+                }
+            });
+
             // Handle form submission
             $('#quick-task-form').on('submit', function(e) {
+                if (!validateQuickTaskRequiredPeople()) {
+                    e.preventDefault();
+                    return false;
+                }
+
                 // Override hidden fields if more fields values are provided
                 const priorityOverride = $('select[name="priority_override"]').val();
                 if (priorityOverride) {
@@ -737,6 +795,9 @@
                 if (!title) {
                     alert('Please enter a task title.');
                     $('#quick_title').trigger('focus');
+                    return;
+                }
+                if (!validateQuickTaskRequiredPeople()) {
                     return;
                 }
                 var priorityOverride = $('select[name="priority_override"]').val();

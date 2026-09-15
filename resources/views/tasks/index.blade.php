@@ -2912,8 +2912,8 @@
                             </select>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label for="bulk-task-assignee" class="form-label">Assign to</label>
-                            <select class="form-select" id="bulk-task-assignee" name="assignee_id">
+                            <label for="bulk-task-assignee" class="form-label">Assign to <span class="text-danger">*</span></label>
+                            <select class="form-select" id="bulk-task-assignee" name="assignee_id" required>
                                 <option value="">— Select assignee —</option>
                                 @foreach($users ?? [] as $u)
                                     <option value="{{ $u->id }}">{{ $u->name }}</option>
@@ -3094,8 +3094,22 @@
                 <label for="tf_title" class="form-label fw-bold" style="font-size: 12px;">Task <span class="text-danger">*</span></label>
                 <input type="text" class="form-control form-control-sm tf-lockable" id="tf_title" name="title" placeholder="Enter Task">
             </div>
+
+            <div class="mb-2 tf-image-wrap">
+                <label class="form-label fw-bold mb-1" style="font-size: 12px;">
+                    <i class="mdi mdi-monitor-screenshot me-1"></i>Screenshots
+                </label>
+                <div id="tf_screenshot_list" class="d-flex flex-wrap gap-2 mb-2"></div>
+                <div id="tf_screenshot_paste" class="rounded px-2 py-2 text-center mb-1" tabindex="0" contenteditable="true">
+                    Click here, then <strong>Ctrl+V</strong> / <strong>Cmd+V</strong> to paste.
+                    You can add multiple screenshots.
+                </div>
+                <input type="file" class="form-control form-control-sm" id="tf_screenshots" accept="image/*" multiple>
+                <div class="form-text mb-0" style="font-size:10px;">Win+Shift+S or Cmd+Shift+4, then paste. Or choose files. Max 12.</div>
+            </div>
+
             <div class="mb-2">
-                <label for="tf_assignee_id" class="form-label fw-bold" style="font-size: 12px;">Assignee</label>
+                <label for="tf_assignee_id" class="form-label fw-bold" style="font-size: 12px;">Assignee <span class="text-danger">*</span></label>
                 <select class="form-select form-select-sm tf-lockable tf-select2" id="tf_assignee_id" name="assignee_id">
                     <option value="">Please Select</option>
                     @foreach($users as $user)
@@ -3114,19 +3128,6 @@
                     <img src="{{ asset('assets/images/task-ca-icon.png') }}" alt="Corrective Action" style="width: 24px; height: 24px; object-fit: contain;">
                     <span style="font-size: 12px;">CA</span>
                 </label>
-            </div>
-
-            <div class="mb-2 tf-image-wrap">
-                <label class="form-label fw-bold mb-1" style="font-size: 12px;">
-                    <i class="mdi mdi-monitor-screenshot me-1"></i>Screenshots
-                </label>
-                <div id="tf_screenshot_list" class="d-flex flex-wrap gap-2 mb-2"></div>
-                <div id="tf_screenshot_paste" class="rounded px-2 py-2 text-center mb-1" tabindex="0" contenteditable="true">
-                    Click here, then <strong>Ctrl+V</strong> / <strong>Cmd+V</strong> to paste.
-                    You can add multiple screenshots.
-                </div>
-                <input type="file" class="form-control form-control-sm" id="tf_screenshots" accept="image/*" multiple>
-                <div class="form-text mb-0" style="font-size:10px;">Win+Shift+S or Cmd+Shift+4, then paste. Or choose files. Max 12.</div>
             </div>
 
             <div class="mb-2">
@@ -3148,6 +3149,7 @@
                     <label for="tf_assignor_id" class="form-label fw-bold" style="font-size: 12px;">Assignor <span class="text-danger">*</span></label>
                     @if($isAdmin)
                         <select class="form-select form-select-sm tf-select2" id="tf_assignor_id" name="assignor_id">
+                            <option value="">Please Select</option>
                             @foreach($users as $user)
                                 <option value="{{ $user->id }}">{{ $user->name }}</option>
                             @endforeach
@@ -3187,7 +3189,6 @@
                     <label for="tf_checklist_link" class="form-label fw-bold" style="font-size: 12px;">Checklist</label>
                     <input type="text" class="form-control form-control-sm" id="tf_checklist_link" name="checklist_link" placeholder="Checklist">
                 </div>
-                {{-- Screenshots live above More Fields so they are visible while creating --}}
             </div>
 
             <div class="mt-3">
@@ -7330,6 +7331,24 @@
                 var taskId = $('#tf_task_id').val();
                 var isEdit = $('#tf_method').val() === 'PUT';
                 var url = isEdit ? ('/tasks/' + taskId) : '{{ route('tasks.store') }}';
+                var fieldsLocked = $('#tf_assignee_id').prop('disabled');
+                if (!fieldsLocked) {
+                    if (!$('#tf_assignee_id').val()) {
+                        alert('Please select an assignee.');
+                        $('#tf_assignee_id').select2('open');
+                        return;
+                    }
+                    if (!$('#tf_assignor_id').val()) {
+                        alert('Please select an assignor.');
+                        tfSetMoreFields(true);
+                        if ($('#tf_assignor_id').hasClass('tf-select2') || $('#tf_assignor_id').hasClass('select2-hidden-accessible')) {
+                            $('#tf_assignor_id').select2('open');
+                        } else {
+                            $('#tf_assignor_id').trigger('focus');
+                        }
+                        return;
+                    }
+                }
 
                 var formData = new FormData(this);
                 if (!isEdit) formData.delete('_method');

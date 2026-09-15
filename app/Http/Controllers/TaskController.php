@@ -1561,9 +1561,9 @@ class TaskController extends Controller
             'description' => 'nullable|string',
             'group' => 'nullable|string|max:255',
             'priority' => 'required|in:low,normal,high',
-            'assignor_id' => 'nullable|exists:users,id',
-            'assignee_id' => 'nullable|exists:users,id',
-            'assignee_ids' => 'nullable|array',
+            'assignor_id' => 'required|exists:users,id',
+            'assignee_id' => 'required_without:assignee_ids|nullable|exists:users,id',
+            'assignee_ids' => 'required_without:assignee_id|nullable|array|min:1',
             'assignee_ids.*' => 'exists:users,id',
             'split_tasks' => 'nullable|boolean',
             'parent_task_id' => 'nullable|exists:tasks,id',
@@ -1584,6 +1584,11 @@ class TaskController extends Controller
             'screenshots' => 'nullable|array|max:12',
             'screenshots.*' => 'image|mimes:jpeg,png,jpg,gif,webp|max:10240',
             'is_corrective_action' => 'nullable|boolean',
+        ], [
+            'assignor_id.required' => 'Please select an assignor.',
+            'assignee_id.required_without' => 'Please select at least one assignee.',
+            'assignee_ids.required_without' => 'Please select at least one assignee.',
+            'assignee_ids.min' => 'Please select at least one assignee.',
         ]);
 
         // Map to old table field names
@@ -1982,8 +1987,8 @@ class TaskController extends Controller
                 'description' => 'nullable|string',
                 'group' => 'nullable|string|max:255',
                 'priority' => 'required|in:low,normal,high',
-                'assignor_id' => 'nullable|exists:users,id',
-                'assignee_id' => 'nullable|exists:users,id',
+                'assignor_id' => 'required|exists:users,id',
+                'assignee_id' => 'required|exists:users,id',
                 'split_tasks' => 'nullable|boolean',
                 'flag_raise' => 'nullable|boolean',
                 'is_corrective_action' => 'nullable|boolean',
@@ -2003,6 +2008,9 @@ class TaskController extends Controller
                 'screenshots.*' => 'image|mimes:jpeg,png,jpg,gif,webp|max:10240',
                 'existing_screenshots' => 'nullable|array',
                 'existing_screenshots.*' => 'nullable|string|max:255',
+            ], [
+                'assignor_id.required' => 'Please select an assignor.',
+                'assignee_id.required' => 'Please select an assignee.',
             ]);
         } else {
             // Assignee-only: links are the only thing they can change.
@@ -4898,13 +4906,17 @@ class TaskController extends Controller
         $validated = $request->validate([
             'titles' => 'required|string',
             'priority' => 'required|in:low,normal,high',
-            'assignee_id' => 'nullable|exists:users,id',
-            'assignee_ids' => 'nullable|array',
+            'assignee_id' => 'required_without:assignee_ids|nullable|exists:users,id',
+            'assignee_ids' => 'required_without:assignee_id|nullable|array|min:1',
             'assignee_ids.*' => 'exists:users,id',
             'group' => 'nullable|string|max:255',
             'link1' => 'nullable|string|max:2048',
             'tid' => 'nullable|date',
             'etc_minutes' => 'nullable|integer|min:1',
+        ], [
+            'assignee_id.required_without' => 'Please select at least one assignee.',
+            'assignee_ids.required_without' => 'Please select at least one assignee.',
+            'assignee_ids.min' => 'Please select at least one assignee.',
         ]);
 
         $titlesRaw = $validated['titles'];

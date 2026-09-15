@@ -104,7 +104,8 @@
                             </label>
                             <select class="form-select form-select-lg @error('assignee_id') is-invalid @enderror" 
                                     id="assignee_id" 
-                                    name="assignee_id">
+                                    name="assignee_id"
+                                    required>
                                 <option value="">Select Person</option>
                                 @foreach($users as $user)
                                     <option value="{{ $user->id }}" {{ old('assignee_id') == $user->id ? 'selected' : '' }}>
@@ -265,7 +266,7 @@
 
                             <div class="row">
                                 <div class="col-12 mb-2">
-                                    <label for="desktop_assignee_id" class="form-label fw-bold" style="font-size: 12px;">Assignee</label>
+                                    <label for="desktop_assignee_id" class="form-label fw-bold" style="font-size: 12px;">Assignee <span class="text-danger">*</span></label>
                                     <select class="form-select form-select-sm select2 @error('assignee_id') is-invalid @enderror" 
                                             id="desktop_assignee_id" 
                                             name="assignee_id">
@@ -795,6 +796,29 @@
                 const singleAssignee = $('#assignee_id').val() || $('#desktop_assignee_id').val();
                 const multipleAssignees = $('.multi-assignee-check:checked, .desktop-multi-assignee-check:checked')
                     .map(function() { return $(this).val(); }).get();
+                const assignorId = $('#assignor_id').val() || $('input[name="assignor_id"]').val();
+
+                if (window.innerWidth >= 768) {
+                    const desktopMultiple = $('#desktop_enable_multiple_assign').is(':checked');
+                    if (desktopMultiple && multipleAssignees.length === 0) {
+                        e.preventDefault();
+                        alert('Please select at least one assignee.');
+                        return false;
+                    }
+                    if (!desktopMultiple && !singleAssignee) {
+                        e.preventDefault();
+                        alert('Please select an assignee.');
+                        $('#desktop_assignee_id').select2('open');
+                        return false;
+                    }
+                    if (!assignorId) {
+                        e.preventDefault();
+                        alert('Please select an assignor.');
+                        $('#additional-fields').slideDown();
+                        $('#assignor_id').select2('open');
+                        return false;
+                    }
+                }
                 
                 console.log('📤 FORM SUBMITTING...');
                 console.log('Single assignee:', singleAssignee);
