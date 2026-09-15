@@ -33,6 +33,24 @@ final class MarketplacePortalInactiveCount
 
     public static bool $portalSyncIncomplete = false;
 
+    public static function resetMemos(): void
+    {
+        self::$skuMemo = [];
+        self::$activeMemo = [];
+        self::$sheetMemo = [];
+        self::$amazonReportMemo = null;
+        self::$syncDeadline = null;
+        self::$portalSyncIncomplete = false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function amazonInactiveReportSkus(): array
+    {
+        return self::amazonReportSkuSets()['inactive'];
+    }
+
     /**
      * @return list<string>
      */

@@ -1740,6 +1740,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('missing-listing:refresh-catalogs --force')
+            ->dailyAt('10:35')
+            ->timezone('Asia/Kolkata')
+            ->name('missing-listing-catalog-refresh')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         /*
         |--------------------------------------------------------------------------
         | TOPDAWG

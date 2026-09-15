@@ -51,6 +51,10 @@
                     <span class="badge bg-dark badge-mmc-stat" title="All inactive rows on this page">
                         Rows: <span id="ilc-row-count">0</span>
                     </span>
+                    <button type="button" id="ilc-sync-btn" class="btn btn-sm btn-primary" title="Pull current marketplace listing statuses and rebuild this page">
+                        <i class="fas fa-sync-alt me-1"></i> Sync
+                    </button>
+                    <span class="text-muted small" id="ilc-sync-meta"></span>
                     <span class="text-muted small">{{ $channelName }} — listed but not live on this marketplace, and Active with stock in CP Master.</span>
                     @if (!empty($listingsUrl))
                         <a href="{{ $listingsUrl }}" class="btn btn-sm btn-outline-primary">Open marketplace listings</a>
@@ -82,6 +86,85 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     let ilcTable = null;
+    let ilcSyncPolling = false;
+    const ilcSyncUrl = @json(route('inactive.listings.sync'));
+    const ilcSyncStatusUrl = @json(route('inactive.listings.sync.status'));
+    const ilcCsrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+    function formatIlcSyncTime(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return '';
+        return d.toLocaleString();
+    }
+
+    function setIlcSyncMeta(status) {
+        const el = document.getElementById('ilc-sync-meta');
+        if (!el || !status) return;
+        const state = String(status.status || 'idle');
+        if (state === 'running') {
+            el.textContent = 'Syncing listing statuses…';
+            return;
+        }
+        const when = formatIlcSyncTime(status.finished_at || status.started_at);
+        el.textContent = when ? ('Last sync: ' + when) : '';
+    }
+
+    function setIlcSyncBusy(busy, label) {
+        const $btn = $('#ilc-sync-btn');
+        $btn.prop('disabled', busy);
+        $btn.html(busy
+            ? '<span class="spinner-border spinner-border-sm me-1"></span>' + (label || 'Syncing…')
+            : '<i class="fas fa-sync-alt me-1"></i> Sync');
+    }
+
+    function pollIlcSync() {
+        if (ilcSyncPolling) return;
+        ilcSyncPolling = true;
+        setIlcSyncBusy(true, 'Syncing…');
+        const startedAt = Date.now();
+        const timer = setInterval(function() {
+            $.getJSON(ilcSyncStatusUrl).done(function(res) {
+                const status = (res && res.status) ? res.status : {};
+                setIlcSyncMeta(status);
+                if (String(status.status || '') === 'running') {
+                    return;
+                }
+                clearInterval(timer);
+                ilcSyncPolling = false;
+                if (String(status.status || '') === 'failed') {
+                    setIlcSyncBusy(false);
+                    alert(status.message || 'Sync failed.');
+                    return;
+                }
+                window.location.reload();
+            }).fail(function() {
+                if (Date.now() - startedAt > 40 * 60 * 1000) {
+                    clearInterval(timer);
+                    ilcSyncPolling = false;
+                    setIlcSyncBusy(false);
+                    alert('Sync status check failed. Refresh the page.');
+                }
+            });
+        }, 3000);
+    }
+
+    function startIlcSync() {
+        setIlcSyncBusy(true, 'Starting…');
+        $.ajax({
+            url: ilcSyncUrl,
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': ilcCsrf },
+            dataType: 'json'
+        }).done(function(res) {
+            const status = (res && res.status) ? res.status : {};
+            setIlcSyncMeta(status);
+            pollIlcSync();
+        }).fail(function(xhr) {
+            setIlcSyncBusy(false);
+            alert((xhr.responseJSON && xhr.responseJSON.message) || 'Could not start sync.');
+        });
+    }
 
     function escapeHtml(s) {
         return String(s == null ? '' : s)
@@ -196,6 +279,15 @@
                     },
                 },
             ],
+        });
+
+        $('#ilc-sync-btn').on('click', startIlcSync);
+        $.getJSON(ilcSyncStatusUrl).done(function(res) {
+            const status = (res && res.status) ? res.status : {};
+            setIlcSyncMeta(status);
+            if (String(status.status || '') === 'running') {
+                pollIlcSync();
+            }
         });
 
         $('#ilc-search').on('input', function() {

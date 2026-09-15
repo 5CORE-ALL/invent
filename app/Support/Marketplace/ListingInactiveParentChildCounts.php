@@ -35,6 +35,14 @@ class ListingInactiveParentChildCounts
     /** @var array<string, true>|null CP Master sku lookup keys */
     private static ?array $cpMasterSkuKeys = null;
 
+    public static function resetMemos(): void
+    {
+        self::$positiveInvKeys = null;
+        self::$childrenByParent = null;
+        self::$parentByChild = null;
+        self::$cpMasterSkuKeys = null;
+    }
+
     /**
      * @return array{parent: int, child: int, url: ?string}
      */

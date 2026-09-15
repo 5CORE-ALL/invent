@@ -4,10 +4,13 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
+use App\Jobs\RefreshInactiveListingsJob;
 use App\Support\Marketplace\ListingInactiveParentChildCounts;
 use App\Support\Marketplace\MappingChannelCounts;
+use App\Services\MarketplaceManager\InactiveListingsSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
+use App\Services\MarketplaceManager\MarketplacePortalInactiveCount;
 use App\Services\ShopifyPlsTokenService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -28,9 +31,15 @@ class InactiveListingsController extends Controller
     {
         try {
             @set_time_limit(400);
-            $data = collect(MappingChannelCounts::inactiveMasterRows(true))->values();
+            if ($request->boolean('fresh')) {
+                MarketplacePortalInactiveCount::resetMemos();
+                ListingInactiveParentChildCounts::resetMemos();
+            }
+            $data = collect(MappingChannelCounts::inactiveMasterRows(! $request->boolean('fresh')))->values();
             $cpTotal = (int) $data->sum(fn ($row) => (int) ($row['cp_inactive_child'] ?? 0));
             MappingChannelCounts::storeCpInactiveTotal($cpTotal);
+
+            $syncStatus = InactiveListingsSyncService::status();
 
             return response()->json([
                 'success' => true,
@@ -39,6 +48,9 @@ class InactiveListingsController extends Controller
                 'total_cp_inactive' => $cpTotal,
                 'total_cp_inactive_child' => $cpTotal,
                 'total_cp_inactive_parent' => (int) $data->sum(fn ($row) => (int) ($row['cp_inactive_parent'] ?? 0)),
+                'last_sync' => $syncStatus['finished_at'] ?? $syncStatus['started_at'] ?? null,
+                'sync_status' => $syncStatus['status'] ?? 'idle',
+                'sync_message' => $syncStatus['message'] ?? '',
             ]);
         } catch (\Throwable $e) {
             Log::error('Inactive Listings masterData failed: '.$e->getMessage());
@@ -97,6 +109,10 @@ class InactiveListingsController extends Controller
 
             $slug = $resolved['slug'];
             $cpOnly = true;
+            if ($request->boolean('fresh')) {
+                MarketplacePortalInactiveCount::resetMemos();
+                ListingInactiveParentChildCounts::resetMemos();
+            }
             $rows = ListingInactiveParentChildCounts::cpMasterListingRowsForChannel($slug);
 
             $data = collect($rows)
@@ -160,6 +176,40 @@ class InactiveListingsController extends Controller
         }
 
         return ['slug' => $slug, 'name' => $name];
+    }
+
+    public function sync(InactiveListingsSyncService $sync)
+    {
+        if ($sync->isRunning()) {
+            return response()->json([
+                'success' => true,
+                'started' => false,
+                'status' => InactiveListingsSyncService::status(),
+                'message' => 'A sync is already running.',
+            ]);
+        }
+
+        InactiveListingsSyncService::markRunning();
+        if (config('queue.default') === 'sync') {
+            RefreshInactiveListingsJob::dispatch()->afterResponse();
+        } else {
+            RefreshInactiveListingsJob::dispatch();
+        }
+
+        return response()->json([
+            'success' => true,
+            'started' => true,
+            'status' => InactiveListingsSyncService::status(),
+            'message' => 'Sync started. This page will reload when it finishes.',
+        ]);
+    }
+
+    public function syncStatus()
+    {
+        return response()->json([
+            'success' => true,
+            'status' => InactiveListingsSyncService::status(),
+        ]);
     }
 
     private function channelDisplayName(string $slug): ?string
