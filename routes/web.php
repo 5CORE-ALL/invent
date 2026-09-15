@@ -3929,6 +3929,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shopify-b2b-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'setColumnVisibility'])->name('shopify.b2b.pricing.column.set');
     Route::post('/shopify-b2b/save-sprice', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'saveSpriceToDatabase'])->name('shopify.b2b.save.sprice');
     Route::post('/shopify-b2b/push-website-sprice', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'pushSpriceToWebsite'])->name('shopify.b2b.push.website.sprice');
+    Route::post('/shopify-b2b/pull-website-prices', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'pullWebsitePrices'])->name('shopify.b2b.pull.website.prices');
 
     // eBay 2 Sales Routes
     Route::get('/ebay2/daily-sales-data', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'getData'])->name('ebay2.daily.sales.data');

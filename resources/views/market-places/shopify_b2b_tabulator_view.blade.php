@@ -256,12 +256,6 @@
         .shopify-b2b-page .shopify-b2b-toolbar > * {
             flex-shrink: 0;
         }
-        .shopify-b2b-page #discount-input-container {
-            padding: 0 !important;
-            background: transparent !important;
-            border: 0 !important;
-            flex-wrap: wrap;
-        }
 
         /* Parent summary rows (Amazon-style) */
         #reverb-table .tabulator-row.parent-row,
@@ -328,68 +322,6 @@
         .shopify-b2b-search-group #sku-search:focus,
         .shopify-b2b-search-group #parent-search:focus { outline: none; border: 0; }
 
-        /* Match Target ROI% / GPFT% height to btn-sm toolbar buttons */
-        #target-roi-controls,
-        #target-gpft-controls {
-            height: 31px;
-            padding: 0 6px !important;
-            gap: 4px !important;
-            box-sizing: border-box;
-        }
-        #target-roi-controls .form-label,
-        #target-gpft-controls .form-label {
-            font-size: 0.75rem;
-            line-height: 1;
-            margin: 0;
-        }
-        #target-roi-controls .form-control,
-        #target-gpft-controls .form-control {
-            height: 22px;
-            min-height: 22px;
-            width: 52px !important;
-            padding: 0 4px;
-            font-size: 0.75rem;
-            line-height: 1.2;
-        }
-        #target-roi-controls .btn,
-        #target-gpft-controls .btn {
-            height: 22px;
-            width: 26px;
-            padding: 0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-            line-height: 1;
-        }
-        #shopify-b2b-sprice-q-btn {
-            background: #0d6efd;
-            border-color: #0d6efd;
-            color: #fff;
-        }
-        #shopify-b2b-sprice-q-btn:hover,
-        #shopify-b2b-sprice-q-btn:focus {
-            background: #0b5ed7;
-            border-color: #0a58ca;
-            color: #fff;
-        }
-        #shopify-b2b-sprice-q-btn:disabled {
-            opacity: 0.65;
-        }
-        #shopify-b2b-push-price-btn {
-            background: #fd7e14;
-            border-color: #fd7e14;
-            color: #fff;
-        }
-        #shopify-b2b-push-price-btn:hover,
-        #shopify-b2b-push-price-btn:focus {
-            background: #e96b02;
-            border-color: #dc6502;
-            color: #fff;
-        }
-        #shopify-b2b-push-price-btn:disabled {
-            opacity: 0.65;
-        }
         .shopify-b2b-push-row-btn {
             border: 0;
             background: transparent;
@@ -660,67 +592,13 @@
                         <i class="fas fa-file-excel"></i>
                     </button>
 
+                    <button type="button" id="shopify-b2b-pull-price-btn" class="btn btn-sm btn-info"
+                            title="Pull Price, Views, and Sold from business5core.com (selected SKUs, or all if none selected)">
+                        <i class="fas fa-cloud-download-alt"></i> Pull Price
+                    </button>
+
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'shopify_b2b'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2b'])
-
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100)) / margin   (margin = 0.95 for Shopify B2B; no Ship) --}}
-                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
-                        id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100)) / 0.95 on every selected row (B2B: no Ship)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span aria-hidden="true">🎯</span> ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 90px;"
-                            title="Target ROI% applied to all selected rows">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100)) / 0.95 for every selected row (no Ship)">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = LP / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). No Ship. --}}
-                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = LP / (0.95 − Target GPFT%/100) on every selected row (B2B: no Ship)">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span aria-hidden="true">🎯</span> GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 90px;"
-                            title="Target GPFT% applied to all selected rows. Must be less than the Shopify B2B take-home margin (< 95%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
-                            title="Compute & save S PRC = LP / (0.95 − Target GPFT%/100) for every selected row (no Ship)">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    <button type="button" class="btn btn-sm" id="shopify-b2b-sprice-q-btn"
-                        title="Fill S PRC = (Std Prc × 0.75) − Ship. Uses selected SKUs if checked; otherwise all visible. Skips parent rows and Std Prc ≤ 0. Saves S PRC (no store push).">
-                        sprice ?
-                    </button>
-                    <button type="button" class="btn btn-sm" id="shopify-b2b-push-price-btn"
-                        title="Push S PRC to business5core.com as the live special / selling price. Selected SKUs if checked; otherwise all visible with S PRC > 0.">
-                        <i class="fas fa-upload"></i> Push Price
-                    </button>
-                </div>
-
-                <div id="discount-input-container" class="shopify-b2b-row shopify-b2b-row-actions">
-                    <span id="selected-skus-count" class="fw-bold">0 SKUs selected</span>
-                    <span id="discount-type-select-wrap">
-                    <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
-                        <option value="percentage">Percentage</option>
-                        <option value="value">Value ($)</option>
-                    </select>
-                    </span>
-                    <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
-                        placeholder="Enter %" step="0.01" style="width: 100px;">
-                    <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
-                    <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
-                        <i class="fas fa-eraser"></i> Clear SPRICE
-                    </button>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -1135,13 +1013,6 @@
     $(document).ready(function() {
         initSkuLinkLmpModal();
 
-        function syncDiscountInputUi() {
-            const t = $('#discount-type-select').val();
-            $('#discount-percentage-input').attr('placeholder', t === 'percentage' ? 'Enter %' : 'Enter $');
-        }
-
-        $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
-
         // Select all checkbox handler
         $(document).on('change', '#select-all-checkbox', function() {
             const isChecked = $(this).prop('checked');
@@ -1175,267 +1046,6 @@
             updateSelectAllCheckbox();
         });
 
-        // Apply discount button
-        $('#apply-discount-btn').on('click', function() {
-            applyDiscount();
-        });
-
-        // Apply discount on Enter key
-        $('#discount-percentage-input').on('keypress', function(e) {
-            if (e.which === 13) {
-                applyDiscount();
-            }
-        });
-
-        /*
-         * Target ROI% bulk apply (Shopify B2B, margin = 0.95)
-         * ---------------------------------------------------
-         * For every selected row with a usable LP, back-solve the sale price so the
-         * resulting SROI column matches Target ROI%:
-         *     SROI = ((sprice * margin − lp) / lp) * 100
-         *   → sprice = (lp * (1 + ROI%/100)) / margin  (no Ship)
-         * Optimistic SGPFT / SROI / SNPFT / SNROI are written client-side and the
-         * bulk save endpoint (/shopify-b2b/save-sprice) recomputes them server-side.
-         */
-        $('#apply-target-roi-btn').on('click', function () {
-            const rawInput = $('#target-roi-input').val();
-            const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                showToast('Please enter a Target ROI%', 'error');
-                return;
-            }
-            if (!isFinite(targetRoiPct)) {
-                showToast('Target ROI% must be a number', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                const selectColumn = table && table.getColumn ? table.getColumn('_select') : null;
-                if (selectColumn) selectColumn.show();
-                showToast('Please select at least one SKU first (use Price Mode to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const SHOPIFY_B2B_MARGIN = 0.95;
-            const roiMultiplier = 1 + (targetRoiPct / 100);
-            const updates = [];
-            let updatedCount = 0;
-            let skippedNoLp = 0;
-
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                if (rows.length === 0) return;
-                const row = rows[0];
-                const rowData = row.getData();
-                if (isShopifyB2bParentRow(rowData)) return;
-
-                const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                const ads  = shopifyChannelAdsPct();
-
-                const candidate = (lp + ship) * roiMultiplier / SHOPIFY_B2B_MARGIN;
-                const newSprice = +candidate.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                const grossProfit = (newSprice * SHOPIFY_B2B_MARGIN) - lp - ship;
-                const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
-                const snpft = sgpft - ads;
-                const sroi  = lp > 0 ? (grossProfit / lp) * 100 : 0;
-                const snroi = shopifyComputeSnroi(newSprice, lp, ship, ads);
-
-                row.update({
-                    SPRICE: newSprice,
-                    SGPFT: sgpft,
-                    SNPFT: snpft,
-                    SROI: sroi,
-                    SNROI: snroi,
-                    has_custom_sprice: true
-                });
-                updates.push({ sku: sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (updates.length === 0) {
-                showToast('No selected rows have a usable LP > 0', 'warning');
-                return;
-            }
-
-            saveSpriceUpdates(updates);
-            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-            showToast(`Target ROI ${targetRoiPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
-        });
-
-        /*
-         * Target GPFT% bulk apply (Shopify B2B, margin = 0.95)
-         * ----------------------------------------------------
-         * Mirrors Target ROI but back-solves so SGPFT = Target GPFT%:
-         *     SGPFT = ((sprice * margin − lp) / sprice) * 100
-         *   → sprice = lp / (margin − GPFT%/100)  (no Ship)
-         * Constraint: (margin − target/100) must be > 0, i.e. Target GPFT% < 95%.
-         */
-        $('#apply-target-gpft-btn').on('click', function () {
-            const rawInput = $('#target-gpft-input').val();
-            const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                showToast('Please enter a Target GPFT%', 'error');
-                return;
-            }
-            if (!isFinite(targetGpftPct)) {
-                showToast('Target GPFT% must be a number', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                const selectColumn = table && table.getColumn ? table.getColumn('_select') : null;
-                if (selectColumn) selectColumn.show();
-                showToast('Please select at least one SKU first (use Price Mode to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const SHOPIFY_B2B_MARGIN = 0.95;
-            const denom = SHOPIFY_B2B_MARGIN - (targetGpftPct / 100);
-            if (denom <= 0) {
-                showToast(`Target GPFT% ${targetGpftPct}% is too high — must be < 95% (Shopify B2B take-home).`, 'error');
-                return;
-            }
-
-            const updates = [];
-            let updatedCount = 0;
-            let skippedNoLp = 0;
-
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                if (rows.length === 0) return;
-                const row = rows[0];
-                const rowData = row.getData();
-                if (isShopifyB2bParentRow(rowData)) return;
-
-                const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                const ads  = shopifyChannelAdsPct();
-
-                const candidate = (lp + ship) / denom;
-                const newSprice = +candidate.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                const grossProfit = (newSprice * SHOPIFY_B2B_MARGIN) - lp - ship;
-                const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
-                const snpft = sgpft - ads;
-                const sroi  = lp > 0 ? (grossProfit / lp) * 100 : 0;
-                const snroi = shopifyComputeSnroi(newSprice, lp, ship, ads);
-
-                row.update({
-                    SPRICE: newSprice,
-                    SGPFT: sgpft,
-                    SNPFT: snpft,
-                    SROI: sroi,
-                    SNROI: snroi,
-                    has_custom_sprice: true
-                });
-                updates.push({ sku: sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (updates.length === 0) {
-                showToast('No selected rows have a usable LP > 0', 'warning');
-                return;
-            }
-
-            saveSpriceUpdates(updates);
-            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-            showToast(`Target GPFT ${targetGpftPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
-        });
-
-        // Enter inside Target ROI%/GPFT% inputs triggers Apply S PRC
-        $('#target-roi-input').on('keypress', function(e) {
-            if (e.which === 13) $('#apply-target-roi-btn').click();
-        });
-        $('#target-gpft-input').on('keypress', function(e) {
-            if (e.which === 13) $('#apply-target-gpft-btn').click();
-        });
-
-        /*
-         * sprice ? — S PRC = (Std Prc × 0.75) − Ship
-         * Selected SKUs if any are checked; otherwise all visible child rows.
-         */
-        $('#shopify-b2b-sprice-q-btn').on('click', function () {
-            if (!table) {
-                showToast('Load data first', 'error');
-                return;
-            }
-
-            let rows = [];
-            if (typeof selectedSkus !== 'undefined' && selectedSkus.size > 0) {
-                selectedSkus.forEach(function (sku) {
-                    const found = table.searchRows('(Child) sku', '=', sku);
-                    if (found.length) rows.push(found[0]);
-                });
-            } else {
-                rows = typeof table.getRows === 'function'
-                    ? table.getRows('visible')
-                    : table.getRows();
-            }
-
-            const $btn = $(this);
-            const html = $btn.html();
-            const updates = [];
-            let updatedCount = 0;
-            let skippedNoStd = 0;
-            let skippedBad = 0;
-
-            rows.forEach(function (row) {
-                const rowData = row.getData();
-                if (isShopifyB2bParentRow(rowData)) return;
-
-                const sku = String(rowData['(Child) sku'] || '').trim();
-                if (!sku) return;
-
-                const std = parseFloat(rowData.STANDARD_PRICE || rowData.standard_price) || 0;
-                if (!(std > 0)) {
-                    skippedNoStd++;
-                    return;
-                }
-                const ship = parseFloat(rowData.Ship_productmaster) || 0;
-                const newSprice = Math.round(((std * 0.75) - ship) * 100) / 100;
-                if (!isFinite(newSprice) || newSprice <= 0) {
-                    skippedBad++;
-                    return;
-                }
-
-                const m = shopifyB2bSpriceMetrics(newSprice, rowData.LP_productmaster);
-                row.update({
-                    SPRICE: newSprice,
-                    SGPFT: m.sgpft,
-                    SNPFT: m.snpft,
-                    SROI: m.sroi,
-                    SNROI: m.snroi,
-                    has_custom_sprice: true
-                });
-                updates.push({ sku: sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (updates.length === 0) {
-                showToast('No rows with Std Prc to fill S PRC = (Std × 0.75) − Ship', 'warning');
-                return;
-            }
-
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>…');
-            saveSpriceUpdates(updates);
-            $btn.prop('disabled', false).html(html);
-
-            const notes = [];
-            if (skippedNoStd > 0) notes.push(skippedNoStd + ' no Std Prc');
-            if (skippedBad > 0) notes.push(skippedBad + ' ≤ $0');
-            showToast(
-                'sprice ?: ' + updatedCount + ' filled'
-                    + (notes.length ? ' (' + notes.join(', ') + ')' : ''),
-                'success'
-            );
-        });
-
         function shopifyB2bPushRows() {
             if (!table) return [];
             if (typeof selectedSkus !== 'undefined' && selectedSkus.size > 0) {
@@ -1448,6 +1058,48 @@
             }
             return typeof table.getRows === 'function' ? table.getRows('visible') : table.getRows();
         }
+
+        function shopifyB2bPullWebsitePrices() {
+            const $btn = $('#shopify-b2b-pull-price-btn');
+            const skus = selectedSkus && selectedSkus.size > 0 ? Array.from(selectedSkus) : [];
+            const scope = skus.length
+                ? (skus.length + ' selected SKU' + (skus.length === 1 ? '' : 's'))
+                : 'ALL listings';
+            if (!confirm('Pull Price, Views, and Sold from business5core.com for ' + scope + '?')) {
+                return;
+            }
+            $btn.prop('disabled', true);
+            showToast('Pulling from business5core.com…', 'info');
+            $.ajax({
+                url: '/shopify-b2b/pull-website-prices',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: skus.length ? { skus: skus } : {},
+                timeout: 600000
+            }).done(function (resp) {
+                if (!resp || !resp.success) {
+                    showToast((resp && resp.message) || 'Pull failed', 'error');
+                    return;
+                }
+                const failN = Array.isArray(resp.failed) ? resp.failed.length : 0;
+                showToast(
+                    'Pulled ' + (resp.stored || 0) + ' listing(s) from site'
+                        + (resp.with_views != null ? (' · Views ' + resp.with_views) : '')
+                        + (resp.with_sold != null ? (' · Sold ' + resp.with_sold) : '')
+                        + (failN ? (' · ' + failN + ' failed') : ''),
+                    failN && !(resp.stored) ? 'error' : 'success'
+                );
+                if (table) table.replaceData();
+            }).fail(function (xhr) {
+                const msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                    || 'Pull from business5core.com failed';
+                showToast(msg, 'error');
+            }).always(function () {
+                $btn.prop('disabled', false);
+            });
+        }
+
+        $(document).on('click', '#shopify-b2b-pull-price-btn', shopifyB2bPullWebsitePrices);
 
         function shopifyB2bPushWebsiteSprice(sku, sprice, row) {
             return $.ajax({
@@ -1501,15 +1153,15 @@
             }
             if (!confirm('Push S PRC to business5core.com for ' + ready.length + ' SKU(s)?')) return;
 
-            const $btn = $('#shopify-b2b-push-price-btn');
-            const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing…');
+            const $btn = $('.shopify-b2b-push-header-btn');
+            const html = $btn.length ? $btn.html() : '';
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
             let i = 0;
             let ok = 0;
             let fail = 0;
             function next() {
                 if (i >= ready.length) {
-                    $btn.prop('disabled', false).html(html);
+                    if ($btn.length) $btn.prop('disabled', false).html(html);
                     showToast('Push Price: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : ''), fail && !ok ? 'error' : 'success');
                     return;
                 }
@@ -1527,9 +1179,6 @@
             next();
         }
 
-        $('#shopify-b2b-push-price-btn').on('click', function () {
-            shopifyB2bPushPriceBulk();
-        });
         $(document).on('click', '.shopify-b2b-push-header-btn', function (e) {
             e.preventDefault();
             e.stopPropagation();
@@ -1559,11 +1208,6 @@
             shopifyB2bPushWebsiteSprice(sku, sprice, row).always(function () {
                 $btn.prop('disabled', false);
             });
-        });
-
-        // Clear SPRICE button
-        $('#clear-sprice-btn').on('click', function() {
-            clearSpriceForSelected();
         });
 
         // Badge clicks just toggle the #sold-filter dropdown so the dropdown stays the
@@ -1635,11 +1279,7 @@
             $('.manual-dropdown-container').removeClass('show');
         });
 
-        // Update selected count display
-        function updateSelectedCount() {
-            const count = selectedSkus.size;
-            $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
-        }
+        function updateSelectedCount() {}
 
         // Update select all checkbox state
         function updateSelectAllCheckbox() {
@@ -1657,86 +1297,6 @@
                 [...filteredSkus].every(sku => selectedSkus.has(sku));
             
             $('#select-all-checkbox').prop('checked', allFilteredSelected);
-        }
-
-        // Custom price rounding function to round to .99 endings
-        function roundToRetailPrice(price) {
-            if (price < 20.99) {
-                return +price.toFixed(2);
-            }
-            // Round to the nearest dollar and subtract 0.01 to make it .99
-            const roundedDollar = Math.ceil(price);
-            return roundedDollar - 0.01;
-        }
-
-        // Apply discount / same price to selected SKUs (based on Price column).
-        function applyDiscount() {
-            const discountType = $('#discount-type-select').val();
-            const discountValue = parseFloat($('#discount-percentage-input').val());
-
-            if (isNaN(discountValue) || discountValue <= 0) {
-                showToast('Please enter a valid value', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                showToast('Please select at least one SKU', 'error');
-                return;
-            }
-
-            let updatedCount = 0;
-            const updates = []; // Store updates for backend saving
-
-            // Loop through selected SKUs
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows("(Child) sku", "=", sku);
-
-                if (rows.length > 0) {
-                    const row = rows[0];
-                    const rowData = row.getData();
-                    const currentPrice = parseFloat(rowData['Price']) || 0;
-
-                    if (currentPrice > 0) {
-                        let newSprice;
-                        if (discountType === 'percentage') {
-                            newSprice = currentPrice * (1 - discountValue / 100);
-                        } else {
-                            newSprice = currentPrice - discountValue;
-                        }
-
-                        // Apply retail price rounding (round to .99 endings)
-                        newSprice = roundToRetailPrice(newSprice);
-
-                        // Ensure minimum price
-                        newSprice = Math.max(0.99, newSprice);
-
-                        const m = shopifyB2bSpriceMetrics(newSprice, rowData['LP_productmaster']);
-                        row.update({
-                            SPRICE: newSprice,
-                            SGPFT: m.sgpft,
-                            SNPFT: m.snpft,
-                            SROI: m.sroi,
-                            SNROI: m.snroi,
-                            has_custom_sprice: true
-                        });
-
-                        // Store update for backend saving
-                        updates.push({
-                            sku: sku,
-                            sprice: newSprice
-                        });
-
-                        updatedCount++;
-                    }
-                }
-            });
-
-            // Save to backend if there are updates
-            if (updates.length > 0) {
-                saveSpriceUpdates(updates);
-            }
-
-            showToast(`Discount applied to ${updatedCount} SKU(s)`, 'success');
-            $('#discount-percentage-input').val('');
         }
 
         // Save SPRICE updates to backend (unified function for all SPRICE updates)
@@ -1790,52 +1350,6 @@
                     showToast(errorMessage, 'error');
                 }
             });
-        }
-
-        // Clear SPRICE for selected SKUs
-        function clearSpriceForSelected() {
-            if (selectedSkus.size === 0) {
-                showToast('Please select SKUs first', 'error');
-                return;
-            }
-
-            if (!confirm(`Are you sure you want to clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) {
-                return;
-            }
-
-            let clearedCount = 0;
-            const updates = [];
-
-            // Get all rows and filter by selected SKUs
-            table.getRows().forEach(row => {
-                const rowData = row.getData();
-                const sku = rowData['(Child) sku'];
-                
-                if (selectedSkus.has(sku)) {
-                    // Clear SPRICE in table
-                    row.update({
-                        SPRICE: 0,
-                        SGPFT: 0,
-                        SPFT: 0,
-                        SROI: 0
-                    });
-                    
-                    // Store update for backend saving
-                    updates.push({
-                        sku: sku,
-                        sprice: 0
-                    });
-                    
-                    clearedCount++;
-                }
-            });
-
-            // Save to backend if there are updates
-            if (updates.length > 0) {
-                saveSpriceUpdates(updates);
-            }
-
-            showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
         }
 
         // SAVE SPRICE to database with retry
