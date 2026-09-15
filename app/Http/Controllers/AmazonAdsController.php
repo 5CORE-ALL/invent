@@ -3371,12 +3371,12 @@ class AmazonAdsController extends Controller
         $parts = [];
         if (! empty($pr['enabled']) && ! empty($pr['dil_enabled'])) {
             $th = rtrim(rtrim(number_format((float) ($pr['dil_above'] ?? 100), 2, '.', ''), '0'), '.');
-            $parts[] = 'PARENT Dil% ≥ '.$th.'%';
+            $parts[] = 'Dil% ≥ '.$th.'%';
         }
         $payload = [
             'message' => (! empty($pr['enabled']) && $parts !== []
-                ? 'Pause Rule saved. PARENT campaigns matching '.implode(' or ', $parts).' will be paused. Child campaigns stay untouched.'
-                : 'Pause Rule saved. PARENT Dil% will not auto-pause campaigns.'),
+                ? 'Pause Rule saved. PARENT and child SKU campaigns matching '.implode(' or ', $parts).' will be paused. Only PARENT campaigns will activate again.'
+                : 'Pause Rule saved. Dil% will not auto-pause campaigns.'),
             'rule' => $freshRule,
             'status' => 200,
             'timestamp' => time(),
@@ -3386,7 +3386,7 @@ class AmazonAdsController extends Controller
             try {
                 $payload['apply'] = app(AmazonAdsPauseRuleApplicator::class)->applyAll(false);
                 $payload['message'] = 'Pause Rule saved and applied to Amazon.'
-                    .($parts !== [] ? ' Paused PARENT campaigns where '.implode(' or ', $parts).'.' : ' Child campaigns and Price/Reviews were not applied.');
+                    .($parts !== [] ? ' Paused PARENT and child SKU campaigns where '.implode(' or ', $parts).'. Only PARENT campaigns will activate again.' : '');
             } catch (\Throwable $e) {
                 return response()->json([
                     'message' => 'PR saved, but Amazon apply failed.',

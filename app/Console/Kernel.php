@@ -1288,7 +1288,7 @@ class Kernel extends ConsoleKernel
       
         $retryFiveTimesUntil('app:amazon-sp-keyword-reports', 'amazon-sp-keyword-reports', '18:15');
         $retryFiveTimesUntil('app:amazon-sp-negative-keywords --prune', 'amazon-sp-negative-keywords', '18:20');
-        // PARENT Dil% ≥ threshold only. No Price / Reviews. Child campaigns stay untouched.
+        // Dil% ≥ threshold pauses PARENT + child SKU campaigns. Only recently Dil-paused PARENT campaigns auto-enable.
         $retryFiveTimesUntil('amazon:ads-pause-rule', 'amazon-ads-pause-rule', '18:25');
 
         $ist($schedule->command('amazon:auto-update-over-kw-bids')

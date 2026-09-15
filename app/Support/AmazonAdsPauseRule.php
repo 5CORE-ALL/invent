@@ -9,12 +9,11 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Amazon Ads All pause/activate rule: PARENT Dil% only.
+ * Amazon Ads All pause/activate rule: Dil% only.
  *
- * Price and Reviews rules are retired. Child campaigns and product ads are never
- * paused or turned back on by this job. A PARENT campaign is PAUSED when Dil%
- * is at or above the threshold, and turned back on only after a recent Pause Rule
- * pause when Dil% no longer matches.
+ * Price and Reviews rules are retired. Dil% ≥ threshold pauses PARENT and child
+ * SKU campaigns. Only PARENT campaigns are turned back on after a recent Pause
+ * Rule pause when Dil% no longer matches. Child SKU campaigns stay paused.
  */
 final class AmazonAdsPauseRule
 {
@@ -132,7 +131,7 @@ final class AmazonAdsPauseRule
     }
 
     /**
-     * Pause / Active Again only for PARENT … KW/PT campaigns (not child SKU campaigns).
+     * PARENT … KW/PT campaigns. Child SKU campaigns can be paused but never auto-enabled.
      */
     public static function isParentCampaign(?string $campaignName): bool
     {
@@ -281,13 +280,6 @@ final class AmazonAdsPauseRule
      */
     public static function decide(?array $rule, array $metrics, ?string $campaignName = null): array
     {
-        if ($campaignName !== null && $campaignName !== '' && ! self::isParentCampaign($campaignName)) {
-            return [
-                'status' => '',
-                'reason' => 'Dil pause/activate applies to PARENT campaigns only',
-                'hits' => [],
-            ];
-        }
         $r = $rule ?? self::defaults();
         if (! self::hasBands($r)) {
             return [
@@ -334,16 +326,24 @@ final class AmazonAdsPauseRule
     }
 
     /**
-     * Re-enable only PARENT campaigns this Pause Rule paused in the last month
-     * when Dil% no longer says PAUSED. Child campaigns, Price/Reviews leftovers,
-     * and older pink-DIL / manual pauses stay off.
+     * Re-enable only a PARENT campaign this Dil Pause Rule paused recently.
+     * Manual / ACOS / pink-DIL / Price leftovers and child SKUs stay off.
      */
-    public static function shouldAutoEnable(array $decision, string $status, mixed $pausedAt, ?\DateTimeImmutable $now = null, ?string $campaignName = null): bool
-    {
+    public static function shouldAutoEnable(
+        array $decision,
+        string $status,
+        mixed $pausedAt,
+        ?\DateTimeImmutable $now = null,
+        ?string $campaignName = null,
+        ?string $pausedReason = null
+    ): bool {
         if (! self::isParentCampaign($campaignName ?? '')) {
             return false;
         }
         if (! self::isRecentPauseRuleStamp($pausedAt, $now)) {
+            return false;
+        }
+        if ($pausedReason !== null && ! self::isDilPauseReason($pausedReason)) {
             return false;
         }
         $st = strtoupper(trim($status));
@@ -352,6 +352,11 @@ final class AmazonAdsPauseRule
         }
 
         return ($decision['status'] ?? '') !== self::ACTION_PAUSED;
+    }
+
+    public static function isDilPauseReason(mixed $reason): bool
+    {
+        return stripos(trim((string) $reason), 'dil') !== false;
     }
 
     public static function isRecentPauseRuleStamp(mixed $pausedAt, ?\DateTimeImmutable $now = null): bool
@@ -390,7 +395,7 @@ final class AmazonAdsPauseRule
 
     public static function fallbackPauseReason(): string
     {
-        return 'Pause Rule (PARENT Dil% ≥ 100%)';
+        return 'Pause Rule (Dil% ≥ 100%)';
     }
 
     public static function normalizeCampaignName(string $name): string

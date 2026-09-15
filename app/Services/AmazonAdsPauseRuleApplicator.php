@@ -13,8 +13,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Evaluate PARENT Dil% against latest SP/SB campaigns and push ENABLED / PAUSED
- * to Amazon. Child campaigns and product ads are never changed by this job.
+ * Evaluate Dil% against latest SP/SB campaigns and push PAUSED to Amazon for
+ * PARENT and child SKU campaigns. Only PARENT campaigns are turned back on.
  */
 class AmazonAdsPauseRuleApplicator
 {
@@ -57,7 +57,7 @@ class AmazonAdsPauseRuleApplicator
         $rule = AmazonAdsPauseRule::resolvedRule();
         $hasCampaign = AmazonAdsPauseRule::hasCampaignBands($rule);
         if (! $hasCampaign) {
-            $stats['errors'][] = 'No PARENT Dil% pause rule configured — Amazon was not updated.';
+            $stats['errors'][] = 'No Dil% pause rule configured — Amazon was not updated.';
             Log::warning('amazon:ads-pause-rule skipped: empty pause rule (PR Dil% off).');
 
             return $stats;
@@ -199,13 +199,15 @@ class AmazonAdsPauseRuleApplicator
                 static fn ($n) => is_string($n) && trim($n) !== ''
             )));
             $metricsByName = AmazonAdsCampaignSkuMetrics::mapForCampaignNames($names);
+            $openPauses = AmazonAdsPauseRuleState::openPausesByCampaignId($channel);
             $enableIds = [];
             foreach ($rows as $row) {
                 $key = AmazonAdsPauseRule::normalizeCampaignName((string) $row['campaignName']);
                 if ($key === '' || ! isset($want[$key])) {
                     continue;
                 }
-                if (! AmazonAdsPauseRule::isParentCampaign((string) $row['campaignName'])) {
+                $campaignName = (string) $row['campaignName'];
+                if (! AmazonAdsPauseRule::isParentCampaign($campaignName)) {
                     $stats['skipped']++;
                     continue;
                 }
@@ -214,17 +216,29 @@ class AmazonAdsPauseRuleApplicator
                     $stats['skipped']++;
                     continue;
                 }
-                $this->namesByCid[$row['campaign_id']] = (string) $row['campaignName'];
+                $this->namesByCid[$row['campaign_id']] = $campaignName;
                 $m = $metricsByName[$row['campaignName']] ?? [];
                 $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
                 $decision = AmazonAdsPauseRule::decide($rule, [
                     'dil' => $gm['dil'],
-                ], (string) $row['campaignName']);
+                ], $campaignName);
                 $this->reasonsByCid[$row['campaign_id']] = ($decision['status'] ?? '') === AmazonAdsPauseRule::ACTION_PAUSED
                     ? (string) $decision['reason']
                     : AmazonAdsPauseRule::fallbackPauseReason();
                 if ($status === AmazonAdsPauseRule::ACTION_ENABLED) {
                     $stats['unchanged']++;
+                    continue;
+                }
+                $open = $openPauses[$row['campaign_id']] ?? null;
+                if (! AmazonAdsPauseRule::shouldAutoEnable(
+                    $decision,
+                    $status,
+                    is_array($open) ? ($open['paused_at'] ?? null) : null,
+                    null,
+                    $campaignName,
+                    is_array($open) ? (string) ($open['paused_reason'] ?? '') : ''
+                )) {
+                    $stats['skipped']++;
                     continue;
                 }
                 $sku = (string) ($m['sku'] ?? '');
@@ -355,15 +369,11 @@ class AmazonAdsPauseRuleApplicator
         $pauseIds = [];
         $enableIds = [];
         $this->trackRuleState = true;
-        $openPauseAt = AmazonAdsPauseRuleState::openPauseAtByCampaignId($channel);
+        $openPauses = AmazonAdsPauseRuleState::openPausesByCampaignId($channel);
         foreach ($rows as $row) {
             $status = $row['campaignStatus'];
             $campaignName = (string) $row['campaignName'];
             if ($status === 'ARCHIVED') {
-                $stats['skipped']++;
-                continue;
-            }
-            if (! AmazonAdsPauseRule::isParentCampaign($campaignName)) {
                 $stats['skipped']++;
                 continue;
             }
@@ -375,22 +385,26 @@ class AmazonAdsPauseRuleApplicator
             $desired = $decision['status'];
             $this->namesByCid[$row['campaign_id']] = $campaignName;
             $this->reasonsByCid[$row['campaign_id']] = (string) ($decision['reason'] ?? AmazonAdsPauseRule::fallbackPauseReason());
-            $pausedAt = $row['paused_at'] ?? ($openPauseAt[$row['campaign_id']] ?? null);
+            $open = $openPauses[$row['campaign_id']] ?? null;
+            $pausedAt = is_array($open) ? ($open['paused_at'] ?? null) : null;
+            $pausedReason = is_array($open) ? (string) ($open['paused_reason'] ?? '') : '';
             if ($desired === AmazonAdsPauseRule::ACTION_PAUSED) {
                 if ($status === AmazonAdsPauseRule::ACTION_PAUSED) {
-                    AmazonAdsPauseRuleState::recordPause(
-                        $channel,
-                        $row['campaign_id'],
-                        $campaignName,
-                        $this->reasonsByCid[$row['campaign_id']]
-                    );
+                    if (is_array($open)) {
+                        AmazonAdsPauseRuleState::recordPause(
+                            $channel,
+                            $row['campaign_id'],
+                            $campaignName,
+                            $this->reasonsByCid[$row['campaign_id']]
+                        );
+                    }
                     $stats['unchanged']++;
                     continue;
                 }
                 $pauseIds[] = $row['campaign_id'];
                 continue;
             }
-            if (AmazonAdsPauseRule::shouldAutoEnable($decision, $status, $pausedAt, null, $campaignName)) {
+            if (AmazonAdsPauseRule::shouldAutoEnable($decision, $status, $pausedAt, null, $campaignName, $pausedReason)) {
                 $sku = (string) ($m['sku'] ?? '');
                 if ($sku !== '' && FbaInventoryService::blocksEnableForFbaSuffixZeroFbaInv($sku)) {
                     $stats['skipped']++;

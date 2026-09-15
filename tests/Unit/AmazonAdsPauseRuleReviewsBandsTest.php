@@ -59,6 +59,7 @@ class AmazonAdsPauseRuleReviewsBandsTest extends TestCase
         ]);
 
         $parent = 'PARENT MX 4CH 2MIC PT';
+        $child = 'MX 4CH 2MIC BLK PT';
         $this->assertSame(
             AmazonAdsPauseRule::ACTION_ENABLED,
             AmazonAdsPauseRule::decide($rule, ['rating' => 1.0, 'price' => 1, 'dil' => 10], $parent)['status']
@@ -66,6 +67,10 @@ class AmazonAdsPauseRuleReviewsBandsTest extends TestCase
         $this->assertSame(
             AmazonAdsPauseRule::ACTION_PAUSED,
             AmazonAdsPauseRule::decide($rule, ['rating' => 5.0, 'price' => 99, 'dil' => 100], $parent)['status']
+        );
+        $this->assertSame(
+            AmazonAdsPauseRule::ACTION_PAUSED,
+            AmazonAdsPauseRule::decide($rule, ['dil' => 120], $child)['status']
         );
     }
 
@@ -104,16 +109,23 @@ class AmazonAdsPauseRuleReviewsBandsTest extends TestCase
         $parent = 'PARENT MS 080 1PK PT';
         $child = 'MS 080 1PK BLK PT';
 
-        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now, $parent));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now, $child));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now, null));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', null, $now, $parent));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $oldPinkDil, $now, $parent));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'ENABLED', $recent, $now, $parent));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($pause, 'PAUSED', $recent, $now, $parent));
-        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable(['status' => ''], 'PAUSED', $recent, $now, $parent));
+        $dilReason = 'Pause — PR Dil% 100% ≥ 100%';
+        $priceReason = 'Pause — PR Price $15 < $20';
+
+        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now, $parent, $dilReason));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now, $parent, $priceReason));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now, $parent, ''));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now, $child, $dilReason));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now, null, $dilReason));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', null, $now, $parent, $dilReason));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $oldPinkDil, $now, $parent, $dilReason));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'ENABLED', $recent, $now, $parent, $dilReason));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($pause, 'PAUSED', $recent, $now, $parent, $dilReason));
+        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable(['status' => ''], 'PAUSED', $recent, $now, $parent, $dilReason));
         $this->assertFalse(AmazonAdsPauseRule::isRecentPauseRuleStamp($oldPinkDil, $now));
         $this->assertTrue(AmazonAdsPauseRule::isRecentPauseRuleStamp($recent, $now));
+        $this->assertTrue(AmazonAdsPauseRule::isDilPauseReason($dilReason));
+        $this->assertFalse(AmazonAdsPauseRule::isDilPauseReason($priceReason));
     }
 
     public function test_active_again_display_uses_pause_reason_on_hover(): void

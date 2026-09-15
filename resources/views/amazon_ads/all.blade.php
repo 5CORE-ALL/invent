@@ -265,7 +265,7 @@
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtReviewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtReviewsRuleModal" title="Edit Reviews star bands and Bgt Reviews values">BGT Vs REVIEWS</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtDilRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtDilRuleModal" title="Edit Dil% bands and Bgt Dil values">BGT Vs Dil</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause PARENT campaigns when Dil% is at or above your threshold">Pause Rule</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause campaigns when Dil% is at or above your threshold. Only PARENT campaigns turn back on.">Pause Rule</button>
                             <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                             <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 5 as daily budget for the rows on this page (SP/SB only).">
                                 <i class="fa fa-cloud-upload-alt"></i> SBGT
@@ -791,17 +791,15 @@
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        Only <strong>PARENT</strong> campaigns are paused or turned back on.
-                        Child SKU campaigns and product ads are never changed by this rule.
-                        Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv) on the PARENT row.
-                        Pause when that Dil% is ≥ the threshold (default 100).
-                        Save (with auto-pause on) applies matching PARENT pauses on Amazon now.
-                        Only PARENT campaigns this Pause Rule paused in the last 31 days are turned back on when Dil% is no longer ≥ the threshold — those rows show <strong>Active Again</strong> (hover for the original pause reason).
-                        Older pauses (old pink DIL, manual, Price/Reviews leftovers on children, or older than a month) stay off. The job also runs daily at 18:25 IST.
+                        Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv).
+                        Pause when Dil% is ≥ the threshold (default 100) for <strong>PARENT and child SKU</strong> campaigns.
+                        Save (with auto-pause on) applies matching pauses on Amazon now.
+                        Only <strong>PARENT</strong> campaigns this Pause Rule paused recently (last 31 days) are turned back on when Dil% is no longer ≥ the threshold — those rows show <strong>Active Again</strong>.
+                        Child SKU campaigns stay paused. Manual, ACOS, old pink DIL, Price leftovers, and older pauses stay off. The job also runs daily at 18:25 IST.
                     </p>
                     <div class="form-check mb-1">
                         <input class="form-check-input" type="checkbox" id="amazonAdsPrDilEnabled" checked>
-                        <label class="form-check-label small" for="amazonAdsPrDilEnabled">Pause PARENT when Dil% ≥</label>
+                        <label class="form-check-label small" for="amazonAdsPrDilEnabled">Pause when Dil% ≥</label>
                     </div>
                     <div class="input-group input-group-sm mb-3" style="max-width: 220px;">
                         <input type="number" min="0" max="100000" step="1" class="form-control" id="amazonAdsPrDilAbove" value="100">
@@ -1479,7 +1477,7 @@
                     return;
                 }
                 if (c === 'campaignStatus') { col.title = 'Stat'; col.formatter = fmtCampaignStatus; col.width = 48; col.minWidth = 44; return; }
-                if (c === 'ruleStatus') { col.title = 'Rule'; col.headerTooltip = 'Rule Status — green = stay active, red = pause PARENT when Dil% ≥ threshold'; col.formatter = fmtRuleStatus; col.width = 52; col.minWidth = 48; return; }
+                if (c === 'ruleStatus') { col.title = 'Rule'; col.headerTooltip = 'Rule Status — red = pause when Dil% ≥ threshold. Only PARENT campaigns auto-activate again.'; col.formatter = fmtRuleStatus; col.width = 52; col.minWidth = 48; return; }
                 if (c === 'activeAgain') {
                     col.title = 'Active Again';
                     col.headerTooltip = 'Turned back on after a Pause Rule match. Status and original pause reason.';
@@ -3573,8 +3571,8 @@
                 btn.classList.toggle('text-white', on);
                 btn.classList.toggle('btn-outline-danger', !on);
                 btn.title = on
-                    ? ('Auto-pause PARENT campaigns when Dil% ≥ ' + pr.dil_above + '%')
-                    : 'PARENT Dil% pause rule — click to set the threshold';
+                    ? ('Auto-pause campaigns when Dil% ≥ ' + pr.dil_above + '%. Only PARENT campaigns turn back on.')
+                    : 'Dil% pause rule — click to set the threshold';
             }
             function amzFillPrModal() {
                 var pr = amzPrFromRule(window.amazonAdsPauseRule);
@@ -3675,8 +3673,8 @@
                 var on = !!(en && en.checked);
                 var dilOn = !!(dilEn && dilEn.checked);
                 var msg = on && dilOn
-                    ? ('Save Pause Rule and pause matching PARENT campaigns when Dil% ≥ ' + (dilInput ? dilInput.value : '100') + '% on Amazon now? Child campaigns will not be changed.')
-                    : 'Save Pause Rule with PARENT Dil% auto-pause off? Matching PARENT campaigns will not be auto-paused by this rule.';
+                    ? ('Save Pause Rule and pause matching PARENT and child SKU campaigns when Dil% ≥ ' + (dilInput ? dilInput.value : '100') + '% on Amazon now? Only PARENT campaigns will turn back on later.')
+                    : 'Save Pause Rule with Dil% auto-pause off? Matching campaigns will not be auto-paused by this rule.';
                 if (!window.confirm(msg)) return;
                 amzSavePrRule(true);
             });

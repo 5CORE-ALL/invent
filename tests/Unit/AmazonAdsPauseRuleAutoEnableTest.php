@@ -50,8 +50,15 @@ class AmazonAdsPauseRuleAutoEnableTest extends TestCase
             AmazonAdsPauseRule::decide($rule, ['dil' => 3.5, 'price' => 5], 'PARENT MS 080 1PK PT')['status']
         );
         $this->assertSame(
-            '',
+            AmazonAdsPauseRule::ACTION_PAUSED,
             AmazonAdsPauseRule::decide($rule, ['dil' => 150, 'price' => 5], 'MS 080 1PK BLK PT')['status']
         );
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable(
+            ['status' => AmazonAdsPauseRule::ACTION_ENABLED, 'reason' => '', 'hits' => []],
+            'PAUSED',
+            '2026-08-27 13:09:13',
+            new \DateTimeImmutable('2026-09-12 18:00:00'),
+            'MS 080 1PK BLK PT'
+        ));
     }
 }
