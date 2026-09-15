@@ -274,7 +274,7 @@
                     <ul class="small text-muted ebay-dg-rules">
 @if($ebaySprcDilZeroSoldUsesMinGroi)
                         <li>
-                            <strong>When</strong> {{ $ebaySprcDilSoldLabel }} = 0 (0 Sold) and INV &gt; 0:
+                            <strong>When</strong> {{ $ebaySprcDilSoldLabel }} = 0 (0 Sold){{ in_array($ebaySprcDilChannel, ['mercari_wship', 'mercari_woship'], true) ? '' : ' and INV &gt; 0' }}:
                             take the <strong>minimum Target {{ $ebaySprcDilTargetLabel }} from the slabs</strong>
                             (not the Dil-matching slab).
                         </li>
@@ -518,6 +518,10 @@
         }
         function ebayDgIsShopifyB2c() {
             return EBAY_DIL_GROI_CHANNEL === 'shopify_b2c';
+        }
+        function ebayDgIsMercari() {
+            return EBAY_DIL_GROI_CHANNEL === 'mercari_wship'
+                || EBAY_DIL_GROI_CHANNEL === 'mercari_woship';
         }
         function ebayDgUsesClearThenApply() {
             return ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
@@ -854,6 +858,12 @@
                 if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
                 return !(Number(d && d.temu_l30) > 0);
             }
+            // Mercari Dil column is 0% when INV is 0. Still apply the 0 Sold
+            // min Target NROI so S PRC is not left at Std.
+            if (ebayDgIsMercari()) {
+                if (!ebayDgIsChild(d)) return false;
+                return !(Number(d && d.sold) > 0);
+            }
             if (typeof chPromoIsZeroSoldRow === 'function') return chPromoIsZeroSoldRow(d);
             if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
             const sold = Number(d && (d['eBay L30'] != null ? d['eBay L30'] : d.ebay_l30)) || 0;
@@ -1063,7 +1073,10 @@
             return (isFinite(price) && price > 0) ? ebayDgRound2(price) : 0;
         }
         function ebayDilGroiMetaForRow(d) {
-            if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return null;
+            if (!ebayDgIsChild(d)) return null;
+            // Mercari: Dil 0% + L30 = 0 still gets the 0 Sold / nearest-slab S PRC
+            // even when INV is 0 (Dil column is forced to 0% whenever INV is 0).
+            if (!(ebayDgInv(d) > 0) && !ebayDgIsMercari()) return null;
             const dil = ebayDgDil(d);
             let groi = null;
             let label = '';

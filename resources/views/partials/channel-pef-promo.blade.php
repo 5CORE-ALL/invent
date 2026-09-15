@@ -13,7 +13,7 @@
     $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace'], true);
+    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'mercari_wship', 'mercari_woship'], true);
     $channelPromoShowZeroSoldDilRule = !$channelPromoUsesSprcDil;
     $channelPromoZeroSoldDilColorSlabs = true;
     $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['temu', 'temu2', 'temu3'], true) && empty($channelPromoUsesSprcDil);
@@ -5461,7 +5461,10 @@
             if (!d || d.is_parent_summary || !chPromoIsChildRow(d) || d.is_parent) return false;
             const inv = chPromoInv(d);
             const ebayStock = chPromoIsEbayChannel() ? chPromoEbayStockQty(d) : 0;
-            if (!(inv > 0) && !(ebayStock > 0)) return false;
+            const isMercari = CHANNEL_PROMO_CHANNEL === 'mercari_wship'
+                || CHANNEL_PROMO_CHANNEL === 'mercari_woship';
+            // Mercari Dil is 0% when INV is 0; still treat L30 = 0 as 0 Sold.
+            if (!(inv > 0) && !(ebayStock > 0) && !isMercari) return false;
             if (chPromoIsEbayChannel()) {
                 return !(chPromoEbaySaleQty(d) > 0);
             }
