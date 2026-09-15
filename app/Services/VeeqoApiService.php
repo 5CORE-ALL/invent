@@ -235,7 +235,8 @@ class VeeqoApiService
         $method = strtoupper($method);
 
         try {
-            $pending = Http::timeout($this->timeout)
+            $pending = Http::withoutVerifying()
+                ->timeout($this->timeout)
                 ->acceptJson()
                 ->withHeaders([
                     'x-api-key' => $this->apiKey,

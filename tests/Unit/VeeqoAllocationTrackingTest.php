@@ -59,4 +59,26 @@ class VeeqoAllocationTrackingTest extends TestCase
 
         $this->assertNull($hit);
     }
+
+    public function test_second_same_sku_label_uses_sku_code_and_exclude(): void
+    {
+        $order = [
+            'allocations' => [
+                [
+                    'sellable' => ['sku_code' => 'HOME10 2-MIC'],
+                    'shipment' => ['tracking_number' => ['tracking_number' => '933461099037030819954']],
+                ],
+                [
+                    'sellable' => ['sku_code' => 'HOME10 2-MIC'],
+                    'shipment' => ['tracking_number' => ['tracking_number' => '933461099037030838415']],
+                ],
+            ],
+        ];
+
+        $first = VeeqoAllocationTracking::pick($order, 'HOME10 2-MIC');
+        $this->assertSame('933461099037030819954', $first['tracking'] ?? null);
+
+        $second = VeeqoAllocationTracking::pick($order, 'HOME10 2-MIC', ['933461099037030819954']);
+        $this->assertSame('933461099037030838415', $second['tracking'] ?? null);
+    }
 }
