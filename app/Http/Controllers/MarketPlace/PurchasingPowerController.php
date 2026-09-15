@@ -18,6 +18,7 @@ use App\Services\PurchasingPowerApiService;
 use App\Support\MacysAmazonPriceCap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -30,7 +31,39 @@ class PurchasingPowerController extends Controller
 
     public static function purchasingPowerLineRevenueSql(): string
     {
-        return 'COALESCE(NULLIF(unit_price, 0) * NULLIF(quantity, 0), NULLIF(amount, 0), 0)';
+        // Same dollars as /purchasing-power-sales badges: amount, else unit × qty.
+        return 'COALESCE(NULLIF(amount, 0), NULLIF(unit_price, 0) * NULLIF(quantity, 0), 0)';
+    }
+
+    /**
+     * Format a Pacific (or any TZ) window as naive UTC strings.
+     * Do not bind Carbon — app timezone America/Los_Angeles would convert
+     * UTC instants back to PT clock time and collapse consecutive days.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function purchasingPowerUtcRange(Carbon $start, Carbon $end): array
+    {
+        return [
+            $start->copy()->timezone('UTC')->format('Y-m-d H:i:s'),
+            $end->copy()->timezone('UTC')->format('Y-m-d H:i:s'),
+        ];
+    }
+
+    public static function sumSalesBetween(Carbon $start, Carbon $end): float
+    {
+        if (! Schema::hasTable('purchasing_power_sales')) {
+            return 0.0;
+        }
+
+        [$fromUtc, $toUtc] = self::purchasingPowerUtcRange($start, $end);
+
+        return round((float) DB::table('purchasing_power_sales')
+            ->where(fn ($q) => self::applyPurchasingPowerSaleFilter($q))
+            ->where('date_created', '>=', $fromUtc)
+            ->where('date_created', '<=', $toUtc)
+            ->selectRaw('COALESCE(SUM('.self::purchasingPowerLineRevenueSql().'), 0) as revenue')
+            ->value('revenue'), 2);
     }
 
     public function pricingView(Request $request)

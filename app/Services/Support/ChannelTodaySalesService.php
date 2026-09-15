@@ -407,18 +407,14 @@ class ChannelTodaySalesService
 
     private function tiktok2(Carbon $start, Carbon $end): ?float
     {
-        if (Tiktok2Order::tableReady() && Tiktok2Order::query()->whereNotNull('order_created_at')->exists()) {
-            return round(Tiktok2Order::salesAmountBetween($start, $end), 2);
-        }
-
         if (! Schema::hasTable('tiktok_sales_two')) {
             return null;
         }
 
         return round((float) DB::table('tiktok_sales_two')
-            ->where('order_date', '>=', $start)
-            ->where('order_date', '<=', $end)
-            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
+            ->whereDate('order_date', '>=', $start->toDateString())
+            ->whereDate('order_date', '<=', $end->toDateString())
+            ->selectRaw('COALESCE(SUM(unit_price * GREATEST(COALESCE(quantity, 1), 1)), 0) as revenue')
             ->value('revenue'), 2);
     }
 
@@ -597,13 +593,7 @@ class ChannelTodaySalesService
         }
 
         try {
-            return round((float) DB::table('purchasing_power_sales')
-                ->where(fn ($q) => PurchasingPowerController::applyPurchasingPowerSaleFilter($q))
-                ->where('date_created', '>=', $start)
-                ->where('date_created', '<=', $end)
-                ->where('quantity', '>', 0)
-                ->selectRaw('COALESCE(SUM('.PurchasingPowerController::purchasingPowerLineRevenueSql().'), 0) as revenue')
-                ->value('revenue'), 2);
+            return PurchasingPowerController::sumSalesBetween($start, $end);
         } catch (\Throwable $e) {
             return null;
         }

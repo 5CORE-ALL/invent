@@ -4,6 +4,7 @@
         'overview' => ['label' => 'Overview', 'route' => route('marketplace.manager.show', 'alibaba')],
         'connect' => ['label' => 'Connect', 'route' => route('marketplace.manager.alibaba.connect')],
         'products' => ['label' => 'Listings', 'route' => route('marketplace.products', 'alibaba')],
+        'analytics' => ['label' => 'Alibaba Analytics', 'route' => route('alibaba.analytics')],
         'orders' => ['label' => 'Orders', 'route' => route('marketplace.orders', 'alibaba')],
         'settings' => ['label' => 'Settings', 'route' => route('marketplace.settings', 'alibaba')],
     ];
