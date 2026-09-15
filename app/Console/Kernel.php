@@ -851,12 +851,12 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
      
-        // 24/7 hourly — do not wrap in $ist() (that window stops after 20:00 IST).
+        // 24/7 every 5 min + --force — do not wrap in $ist() (that window stops after 20:00 IST).
         $schedule->command('channel:calculate-data --force')
-            ->hourly()
+            ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('channel-master-calculate-data')
-            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
             ->runInBackground()
             ->appendOutputTo($log);
 

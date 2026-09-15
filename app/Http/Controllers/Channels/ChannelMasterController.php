@@ -2168,8 +2168,6 @@ class ChannelMasterController extends Controller
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
-            // Temu 2 GPFT / GROI from /temu2-tabulator (base_price_total + R Price GPFT$).
-            $rows = $this->overlayLiveTemuSalesOnChannelRows($rows);
             $rows = $this->overlayLiveTemu2AdsOnChannelRows($rows);
             $rows = $this->overlayLiveTemuViewsOnChannelRows($rows);
         } catch (\Throwable $e) {
@@ -2262,7 +2260,8 @@ class ChannelMasterController extends Controller
             $name = (string) ($row['Channel '] ?? $row['Channel'] ?? '');
             $raw = $this->allMarketplaceYSalesLookupKey($name);
             $snap = $this->allMarketplaceSnapshotKey($name);
-            if ($raw === 'faire' || $snap === 'faire') {
+            if (in_array($raw, ['faire', 'temu', 'temu2', 'temu3', 'temuthree'], true)
+                || in_array($snap, ['faire', 'temu', 'temu2', 'temu3', 'temuthree'], true)) {
                 continue;
             }
             if (isset($computers[$raw])) {
@@ -7138,7 +7137,7 @@ class ChannelMasterController extends Controller
         }
 
         foreach ($this->livePacificYSalesByLookupKey() as $key => $value) {
-            if ($value !== null && $key !== 'faire') {
+            if ($value !== null && ! in_array($key, ['faire', 'temu', 'temu2', 'temu3', 'temuthree'], true)) {
                 $sales[$key] = (float) $value;
             }
         }
@@ -7687,7 +7686,7 @@ class ChannelMasterController extends Controller
                     'Miss' => $channel->miss,
                     'NMap' => $channel->nmap,
                     'Total Views' => $channel->total_views,
-                    // Listing CVR persisted by channel:calculate-data (every 10 minutes).
+                    // Listing CVR persisted by channel:calculate-data (every 5 minutes).
                     'CVR' => $channel->listing_cvr !== null ? (float) $channel->listing_cvr : null,
                     
                     'NR' => $channel->nr,
@@ -8471,7 +8470,6 @@ class ChannelMasterController extends Controller
         $finalData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($finalData);
         // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
         $finalData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($finalData);
-        $finalData = $this->overlayLiveTemuSalesOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemu2AdsOnChannelRows($finalData);
         $finalData = $this->overlayLiveTemuViewsOnChannelRows($finalData);
 

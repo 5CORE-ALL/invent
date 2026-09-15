@@ -40,8 +40,8 @@ class CalculateChannelMasterData extends Command
 
     protected string $monitorJobName = 'Channel Calculate Data';
 
-    /** Expire before the next hourly tick so a crashed run cannot block all night. */
-    protected int $monitorLockTtlSeconds = 3300;
+    /** Expire before the 15-min every-5-min mutex so a crashed run cannot block the next ticks. */
+    protected int $monitorLockTtlSeconds = 840;
 
     public function handle(): int
     {
