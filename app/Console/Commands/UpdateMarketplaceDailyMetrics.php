@@ -773,15 +773,15 @@ class UpdateMarketplaceDailyMetrics extends Command
     }
 
     /**
-     * Temu 2: Temu Price L30 (same as /temu2-tabulator). Prefer temu2_orders,
+     * Temu 2: L30 = same API dollars as Y Sales (base + freight). Prefer temu2_orders,
      * then the last sheet upload. Ad spend from temu2_campaign_reports.
      */
     private function calculateTemu2Metrics($date)
     {
         [$liveStart, $liveEnd] = TemuShopifySalesService::channelMasterL30Window();
         $live = TemuShopifySalesService::computeMetricsFromOrders($liveStart, $liveEnd, true);
-        if ((float) ($live['sales'] ?? 0) > 0 || (int) ($live['qty'] ?? 0) > 0) {
-            $totalL30Sales = (float) $live['sales'];
+        if ((float) ($live['base_sales'] ?? $live['sales'] ?? 0) > 0 || (int) ($live['qty'] ?? 0) > 0) {
+            $totalL30Sales = (float) ($live['base_sales'] ?? $live['sales'] ?? 0);
             $totalPft = (float) $live['pft'];
             $totalCogs = (float) $live['cogs'];
             $pftPercentage = $totalL30Sales > 0 ? ($totalPft / $totalL30Sales) * 100 : 0;

@@ -1564,7 +1564,7 @@ class Temu2AdsController extends Controller
             $start = Carbon::now()->subDays(30)->startOfDay();
             $end = Carbon::now()->endOfDay();
             $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
-            $sales = (float) ($m['sales'] ?? 0);
+            $sales = (float) ($m['base_sales'] ?? $m['sales'] ?? 0);
             if ($sales > 0) {
                 return round($sales, 2);
             }

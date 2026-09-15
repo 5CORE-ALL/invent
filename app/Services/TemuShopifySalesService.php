@@ -483,16 +483,16 @@ class TemuShopifySalesService
      * Same L30/L60 totals as /temu2-tabulator summary badges.
      * SKU match is the same as /new-temu2: normalize (PCS→PC, spaces) then no-space
      * fallback onto Product Master. Parent-column "PARENT …" is the family name, not a skip.
-     * Base = base_price_total (no −$2.99, not line_sales/qty).
+     * sales / base_sales = official line sales (base + freight) — same dollars as Y Sales.
+     * full_sales = Temu Price × Qty (×1.1364).
      * GPFT$ = (R Price × margin − LP − Temu Ship) × Qty
-     * GPFT% = GPFT$ ÷ Σ (Temu Price × Qty)
      * GROI% = GPFT$ ÷ Σ (LP × Qty)
      *
-     * @return array{sales: float, base_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
+     * @return array{sales: float, base_sales: float, full_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
      */
     public static function computeTemu2TabulatorMetrics(Carbon $startDate, Carbon $endDate): array
     {
-        $empty = ['sales' => 0.0, 'base_sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'gpft' => 0.0, 'cogs' => 0.0];
+        $empty = ['sales' => 0.0, 'base_sales' => 0.0, 'full_sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'gpft' => 0.0, 'cogs' => 0.0];
         $rows = self::getTemu2OrdersTableRows($startDate, $endDate);
         if (empty($rows)) {
             return $empty;
@@ -536,9 +536,14 @@ class TemuShopifySalesService
             $orderSet[$orderId] = true;
         }
 
+        $reported = round($totalBaseSales, 2);
+
         return [
-            'sales' => round($totalSales, 2),
-            'base_sales' => round($totalBaseSales, 2),
+            // L30 / channel Sales = same dollars as Y Sales (API base + freight).
+            // Temu Price (×1.1364) stays in full_sales for GPFT% / Full Price badges.
+            'sales' => $reported,
+            'base_sales' => $reported,
+            'full_sales' => round($totalSales, 2),
             'orders' => count($orderSet),
             'qty' => $totalQty,
             'pft' => round($totalPft, 2),
@@ -616,7 +621,7 @@ class TemuShopifySalesService
     }
 
     /**
-     * Per Pacific-day Temu Price sales from temu2_orders (no −$2.99 on Base).
+     * Per Pacific-day Temu 2 sales from temu2_orders — same dollars as Y Sales (API line).
      *
      * @return array<string, array{sales: float, base_sales: float, qty: int, orders: int}>
      */
@@ -643,10 +648,9 @@ class TemuShopifySalesService
                 $out[$d] = ['sales' => 0.0, 'base_sales' => 0.0, 'qty' => 0, 'oids' => []];
             }
             $lineSales = (float) ($r['line_sales'] ?? 0);
-            $rawUnit = ($lineSales > 0 && $qty > 0) ? ($lineSales / $qty) : $base;
-            $calc = self::temuPriceSalesAndProfit($rawUnit, $qty, self::temuMarginDecimal(), 0.0, 0.0, false);
-            $out[$d]['sales'] += $calc['sales'];
-            $out[$d]['base_sales'] += $calc['base'] * $qty;
+            $line = $lineSales > 0 ? $lineSales : ($base * $qty);
+            $out[$d]['sales'] += $line;
+            $out[$d]['base_sales'] += $line;
             $out[$d]['qty'] += $qty;
             $oid = trim((string) ($r['order_id'] ?? ''));
             if ($oid !== '') {

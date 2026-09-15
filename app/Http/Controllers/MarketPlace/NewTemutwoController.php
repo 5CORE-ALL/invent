@@ -87,7 +87,7 @@ class NewTemutwoController extends Controller
         }
 
         try {
-            $cached = Cache::get('newtemutwo_channel_ads_summary_v2');
+            $cached = Cache::get('newtemutwo_channel_ads_summary_v3');
             if (is_array($cached)) {
                 return $memo = $cached;
             }
@@ -110,7 +110,8 @@ class NewTemutwoController extends Controller
         try {
             [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
             $window = substr((string) $start, 0, 10).' → '.substr((string) $end, 0, 10);
-            $sales = (float) (TemuShopifySalesService::computeMetricsFromOrders($start, $end, true)['sales'] ?? 0);
+            $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
+            $sales = (float) ($m['base_sales'] ?? $m['sales'] ?? 0);
         } catch (\Throwable $e) {
             Log::warning('New Temu Two ads sales failed: '.$e->getMessage());
         }
@@ -123,7 +124,7 @@ class NewTemutwoController extends Controller
         ];
 
         try {
-            Cache::put('newtemutwo_channel_ads_summary_v2', $summary, now()->addMinutes(10));
+            Cache::put('newtemutwo_channel_ads_summary_v3', $summary, now()->addMinutes(10));
         } catch (\Throwable $e) {
             // Cache unavailable — value is still correct for this request.
         }

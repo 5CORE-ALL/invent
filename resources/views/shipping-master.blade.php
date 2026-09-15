@@ -2260,7 +2260,8 @@
                 const handling = parseChargeAmount(item && (item.handling_charge ?? (item.Values && item.Values.handling_charge)));
                 const oSize = parseChargeAmount(item && (item.o_size_charge ?? (item.Values && item.Values.o_size_charge)));
                 const pr = parseChargeAmount(item && (item.pr_charge ?? (item.Values && item.Values.pr_charge)));
-                return Math.round((n + handling + oSize + pr) * 100) / 100;
+                const single = Math.round((n + handling + oSize + pr) * 100) / 100;
+                return applyComboLabelQtyShip(item, single);
             }
 
             /** Implied slab base from stored Ship (ship_base, else legacy ship). */
@@ -2270,6 +2271,11 @@
                 if (baseRaw !== null && baseRaw !== undefined && baseRaw !== '') {
                     const b = parseFloat(baseRaw);
                     if (Number.isFinite(b)) return Math.round(b * 100) / 100;
+                }
+                // Combo + Label Qty 2+ stores the multi-package total in ship — not a slab base.
+                if (typeof isComboSkuItem === 'function' && isComboSkuItem(item)
+                    && getLabelQtyNumber(item) >= 2) {
+                    return null;
                 }
                 const raw = item.ship;
                 if (raw === null || raw === undefined || raw === '') return null;
@@ -2327,6 +2333,57 @@
                     .split('+')
                     .map(part => part.replace(/\u00a0/g, ' ').trim())
                     .filter(Boolean);
+            }
+
+            /**
+             * Combo + Label Qty >= 2: persist/show multi-package Ship.
+             * A + B → sum of component ships; otherwise single-package × Label Qty (2 = double).
+             */
+            function applyComboLabelQtyShip(item, singleTotal) {
+                if (!item || typeof isComboSkuItem !== 'function' || !isComboSkuItem(item)) {
+                    return singleTotal;
+                }
+                const qty = getLabelQtyNumber(item);
+                if (!Number.isFinite(qty) || qty < 2) return singleTotal;
+                const components = parseComboComponentSkus(item.SKU);
+                if (components.length >= 2 && typeof findProductBySkuKey === 'function') {
+                    let sum = 0;
+                    let found = 0;
+                    components.slice(0, qty).forEach(sku => {
+                        const comp = findProductBySkuKey(sku);
+                        const n = parseFloat(comp && comp.ship);
+                        if (comp && Number.isFinite(n)) {
+                            sum += n;
+                            found++;
+                        }
+                    });
+                    if (found > 0) return Math.round(sum * 100) / 100;
+                }
+                const n = parseFloat(singleTotal);
+                if (!Number.isFinite(n)) return singleTotal;
+                return Math.round(n * qty * 100) / 100;
+            }
+
+            function displayedSourceShip(item, isParentRow) {
+                if (!isParentRow && isComboSkuItem(item) && getLabelQtyNumber(item) >= 2) {
+                    const stored = parseFloat(item.ship);
+                    if (Number.isFinite(stored)) return stored;
+                    return applyComboLabelQtyShip(item, calcTotalShip(item, false));
+                }
+                return calcTotalShip(item, isParentRow);
+            }
+
+            function comboShipTooltip(item, isParentRow) {
+                if (!isParentRow && isComboSkuItem(item) && getLabelQtyNumber(item) >= 2) {
+                    const qty = getLabelQtyNumber(item);
+                    const total = displayedSourceShip(item, false);
+                    const components = parseComboComponentSkus(item.SKU);
+                    if (components.length >= 2) {
+                        return `Combo Label Qty ${qty}: Ship ${formatNumber(total, 2)} = sum of package ships`;
+                    }
+                    return `Combo Label Qty ${qty}: Ship ${formatNumber(total, 2)} = single-package × ${qty}`;
+                }
+                return totalShipTooltip(item, isParentRow);
             }
 
             function findProductBySkuKey(sku) {
@@ -2806,13 +2863,19 @@
                     };
 
                     // Ship column shows Total Ship (Ship + Handling + O-Size)
+                    // Combo + Label Qty 2+ on the primary row uses the saved multi-package Ship.
                     const shipSource = pkg.isExtraPackage ? item : sourceItem;
                     const shipPmCell = document.createElement('td');
-                    setShippingNumericCell(shipPmCell, calcTotalShip(shipSource, isParentRow), isParentRow);
+                    const shipDisplay = pkg.isExtraPackage
+                        ? calcTotalShip(shipSource, isParentRow)
+                        : displayedSourceShip(shipSource, isParentRow);
+                    setShippingNumericCell(shipPmCell, shipDisplay, isParentRow);
                     shipPmCell.classList.add('shipping-ship-col');
                     shipPmCell.setAttribute('data-sku', sourceItem.SKU || item.SKU || '');
                     if (!isParentRow) {
-                        shipPmCell.title = totalShipTooltip(shipSource, false);
+                        shipPmCell.title = pkg.isExtraPackage
+                            ? totalShipTooltip(shipSource, false)
+                            : comboShipTooltip(shipSource, false);
                     }
                     row.appendChild(shipPmCell);
 
@@ -5859,7 +5922,10 @@
                             handling_charge: baseFormData.handling_charge,
                             o_size_charge: baseFormData.o_size_charge,
                             pr_charge: baseFormData.pr_charge,
-                            label_type: baseFormData.label_type
+                            label_type: baseFormData.label_type,
+                            label_qty: baseFormData.label_qty !== undefined
+                                ? baseFormData.label_qty
+                                : editItemForShip.label_qty
                         });
                         if (typeof shipWriteRate === 'function') {
                             const slab = parseFloat(getOuterCarrierDisplayRate(draft, 'ship', false));
@@ -6018,6 +6084,8 @@
                             pr_charge: baseFormData.pr_charge
                         };
                         if (baseFormData.label_qty !== undefined) comboPayload.label_qty = baseFormData.label_qty;
+                        if (baseFormData.ship !== undefined) comboPayload.ship = baseFormData.ship;
+                        if (baseFormData.ship_base !== undefined) comboPayload.ship_base = baseFormData.ship_base;
                         if (baseFormData.fba_ship_calculation !== undefined) {
                             comboPayload.fba_ship_calculation = baseFormData.fba_ship_calculation;
                         }
@@ -6382,8 +6450,8 @@
                 if (!sku || !Array.isArray(tableData)) return;
                 const product = tableData.find(d => d.SKU === sku);
                 if (!product) return;
-                const total = calcTotalShip(product, false);
-                const tip = totalShipTooltip(product, false);
+                const total = displayedSourceShip(product, false);
+                const tip = comboShipTooltip(product, false);
                 document.querySelectorAll(`.shipping-ship-col[data-sku="${CSS.escape(String(sku))}"]`).forEach(td => {
                     td.textContent = formatNumber(total, 2);
                     td.title = tip;
@@ -6827,6 +6895,12 @@
                     }
                     // Ship stored value is the column total; compare ship_base / legacy slab.
                     if (carrierKey === 'ship') {
+                        // A + B combo totals are package sums, not slab rates.
+                        if (isComboSkuItem(it) && getLabelQtyNumber(it) >= 2
+                            && parseComboComponentSkus(it.SKU).length >= 2) {
+                            missing++;
+                            return;
+                        }
                         const base = shipStoredBase(it);
                         if (base === null) { missing++; return; }
                         n = base;

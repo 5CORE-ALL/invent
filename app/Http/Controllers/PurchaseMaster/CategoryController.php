@@ -23,6 +23,7 @@ use App\Models\ShippingSlabRateHistory;
 use App\Models\ShopifySku;
 use App\Models\BadgeData;
 use App\Services\AmazonSpApiService;
+use App\Services\ComboMultiLabelShipService;
 use App\Services\LinkedSkuGroupService;
 use App\Services\EbayApiService;
 use App\Services\WalmartApiService;
@@ -1213,10 +1214,20 @@ class CategoryController extends Controller
             $this->syncShippingMasterShipTotal($values, $validated, $oldValues);
             $this->syncShippingMasterTemuShipTotal($values, $validated, $oldValues);
             $this->syncShippingMasterShipBbTotal($values, $validated, $oldValues);
+            $comboShipService = app(ComboMultiLabelShipService::class);
+            $comboShipService->syncValidated($product, $values, $validated);
 
             // Save the updated Values
             $product->Values = $values;
             $product->save();
+
+            if (array_key_exists('ship', $validated) || array_key_exists('label_qty', $validated)) {
+                try {
+                    $comboShipService->persistCombosContainingSku((string) $product->sku);
+                } catch (\Throwable $comboErr) {
+                    Log::warning('Combo label-qty ship sync failed: '.$comboErr->getMessage());
+                }
+            }
 
             // Capture FBA old values (separate table) before syncing
             $fbaOldShip = null;
@@ -2086,6 +2097,12 @@ class CategoryController extends Controller
             unset($row);
         }
 
+        try {
+            $result = app(ComboMultiLabelShipService::class)->applyAndPersistRows($result);
+        } catch (\Throwable $e) {
+            Log::warning('Shipping Master combo label-qty ship backfill failed: '.$e->getMessage());
+        }
+
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
@@ -2214,6 +2231,8 @@ class CategoryController extends Controller
                 $values['label_qty'] = $validated['label_qty'] !== null && $validated['label_qty'] !== '' ? (int) $validated['label_qty'] : null;
             }
 
+            app(ComboMultiLabelShipService::class)->syncValidated($product, $values, $validated);
+
             // Save updated Values
             $product->Values = $values;
             $product->save();
@@ -2317,6 +2336,8 @@ class CategoryController extends Controller
             if (isset($validated['label_qty'])) {
                 $values['label_qty'] = $validated['label_qty'] !== null && $validated['label_qty'] !== '' ? (int) $validated['label_qty'] : null;
             }
+
+            app(ComboMultiLabelShipService::class)->syncValidated($product, $values, $validated);
 
             // Save updated Values
             $product->Values = $values;
@@ -2489,6 +2510,8 @@ class CategoryController extends Controller
 
                 // Update product if there are changes
                 if ($hasChanges) {
+                    $values = app(ComboMultiLabelShipService::class)
+                        ->applyToValues((string) $product->sku, (string) ($product->parent ?? ''), $values);
                     $product->Values = $values;
                     $product->save();
                     $updated++;

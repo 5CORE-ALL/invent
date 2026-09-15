@@ -549,6 +549,9 @@ class ShippingSlabRateService
         $counts = [];
         foreach ($items as $item) {
             $raw = $item[$carrierKey] ?? null;
+            if ($carrierKey === 'ship' && isset($item['ship_base']) && $item['ship_base'] !== '' && is_numeric($item['ship_base'])) {
+                $raw = $item['ship_base'];
+            }
             if ($raw === null || $raw === '') {
                 $missing++;
                 continue;

@@ -601,7 +601,7 @@
                     @endphp
                     <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
                         style="color: white; font-weight: bold;"
-                        title="L30 Sales = Σ Temu Price × Qty on matched temu2_orders — same total as /temu2-tabulator and the Temu 2 row on /channel-master ({{ $temuAds['window'] ?? 'L30' }}). SKU match = /new-temu2 (normalize + no-space). Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99. This badge is the channel total, not the filtered rows.">
+                        title="L30 Sales = Σ official line sales (base + freight) — same dollars as Y Sales / Temu Seller Central and /temu2-tabulator ({{ $temuAds['window'] ?? 'L30' }}). SKU match = normalize + no-space. Channel total, not the filtered rows.">
                         L30 Sales: ${{ number_format($l30Sales, 0) }}<a
                             href="{{ url('temu2-tabulator') }}" target="_blank" rel="noopener noreferrer"
                             style="color: white; margin-left: 4px;" title="Open Temu 2 sales data"

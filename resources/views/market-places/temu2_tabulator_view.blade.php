@@ -140,7 +140,7 @@
                             title="GPFT$ = Σ (R Price × margin − LP − Temu Ship) × Qty">GPFT$: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
                             style="color: white; font-weight: bold;"
-                            title="L30 Sales = Σ Temu Price × Qty for orders whose SKU matches CP Master the same way as /new-temu2 (normalize + no-space). Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">L30 Sales: $0</span>
+                            title="L30 Sales = Σ official line sales (base + freight) — same dollars as Y Sales / Temu Seller Central. SKU match = /new-temu2 (normalize + no-space).">L30 Sales: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="temu-full-price-sales-badge"
                             style="color: white; font-weight: bold;"
                             title="Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">Temu Full Price Sales: $0</span>
@@ -217,6 +217,14 @@
     function temuRowRPrice(row) {
         const qty = parseInt(row && row.quantity_purchased) || 0;
         return temuFbPrice(temuRowBase(row), qty);
+    }
+    /** Same dollars as Y Sales: API line_sales (base + freight), else Base × Qty. */
+    function temu2LineSales(row) {
+        const line = parseFloat(row && row.line_sales) || 0;
+        if (line > 0) return line;
+        const qty = parseInt(row && row.quantity_purchased) || 0;
+        const base = temuRowBase(row);
+        return (qty > 0 && base > 0) ? qty * base : 0;
     }
     /** Per-unit profit on R Price — GPFT$ / GPFT % / GROI %. */
     function temuRowRPriceProfit(row) {
@@ -676,7 +684,7 @@
                     totalWeightedPrice += basePrice * quantity;
                     totalQuantityForPrice += quantity;
                     totalPft += temuRowRPriceProfit(row) * quantity;
-                    totalL30Sales += quantity * temuPrice;
+                    totalL30Sales += temu2LineSales(row);
                     totalTemuFullPriceSales += quantity * temuPrice;
                     totalCogs += lp * quantity;
                 }

@@ -310,7 +310,8 @@
                 }
             },
             rowFormatter: function(row) {
-                if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
+                const sku = String(row.getData().contribution_sku || '');
+                if (sku.toUpperCase().indexOf('PARENT') !== -1) {
                     row.getElement().style.backgroundColor = "#fffef2";
                 }
             },
@@ -347,12 +348,8 @@
                     formatter: function(cell) {
                         const sku = cell.getValue();
                         const rowData = cell.getRow().getData();
-                        const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
-                        
-                        if (isParent) {
-                            return '';
-                        }
-                        
+                        const isParentSku = String(rowData.contribution_sku || '').toUpperCase().indexOf('PARENT') !== -1;
+                        if (isParentSku) return '';
                         return sku || '';
                     }
                 },
@@ -674,8 +671,10 @@
             let totalWeightedPrice = 0, totalQuantityForPrice = 0, totalCogs = 0;
 
             data.forEach(row => {
-                if (row.Parent && row.Parent.startsWith('PARENT')) return;
-                if (!row.contribution_sku || row.contribution_sku === '' || !row.order_id || row.order_id === '') return;
+                const sku = String(row.contribution_sku || '');
+                if (!sku || !row.order_id || row.order_id === '') return;
+                if (sku.toUpperCase().indexOf('PARENT') !== -1) return;
+                if (row.pm_matched === false) return;
                 totalOrders++;
                 const quantity = parseInt(row.quantity_purchased) || 0;
                 const basePrice = temuRowBase(row);
