@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\AlibabaMetric;
 use App\Models\AlibabaPricingPrice;
 use App\Models\AlibabaSheetPrice;
+use App\Models\ProductMaster;
+use App\Models\ShopifySku;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -24,35 +26,76 @@ class AlibabaAnalyticsController extends Controller
 
     public function data(): JsonResponse
     {
-        $rows = AlibabaSheetPrice::query()
+        $sheetRows = AlibabaSheetPrice::query()
             ->orderBy('sku')
             ->orderBy('product_id')
-            ->get()
-            ->map(function (AlibabaSheetPrice $row) {
-                return [
-                    'product_id' => (string) $row->product_id,
-                    'sku' => (string) $row->sku,
-                    'status' => $row->status,
-                    'sku_price' => $row->sku_price !== null ? (float) $row->sku_price : null,
-                    'soh' => $row->soh !== null ? (int) $row->soh : null,
-                    'inv_update' => $row->inv_update,
-                ];
-            })
-            ->values();
+            ->get();
 
-        $active = $rows->where(fn ($r) => strcasecmp((string) $r['status'], 'Active') === 0)->count();
-        $bulk = $rows->where(fn ($r) => strcasecmp((string) $r['inv_update'], 'Bulk') === 0)->count();
-        $manual = $rows->where(fn ($r) => strcasecmp((string) $r['inv_update'], 'Manual') === 0)->count();
+        $skus = $sheetRows->pluck('sku')->filter()->unique()->values()->all();
+        $shopifyData = $skus === [] ? collect() : ShopifySku::mapByProductSkus($skus);
+        $pmByNorm = $this->productMasterByNormalizedSku($skus);
+
+        $children = [];
+        foreach ($sheetRows as $row) {
+            $sku = (string) $row->sku;
+            $pm = $pmByNorm[strtoupper(trim($sku))] ?? null;
+            $shopify = $shopifyData->get($sku);
+            $inv = (int) ($shopify->inv ?? 0);
+            $ovL30 = (int) ($shopify->quantity ?? 0);
+            $dil = $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0.0;
+            $parent = trim((string) ($pm->parent ?? ''));
+
+            $children[] = [
+                'Parent' => $parent,
+                'sku' => $sku,
+                '(Child) sku' => $sku,
+                'product_id' => (string) $row->product_id,
+                'status' => $row->status,
+                'sku_price' => $row->sku_price !== null ? (float) $row->sku_price : null,
+                'soh' => $row->soh !== null ? (int) $row->soh : null,
+                'inv_update' => $row->inv_update,
+                'INV' => $inv,
+                'L30' => $ovL30,
+                'ov_l30' => $ovL30,
+                'dil_percent' => $dil,
+                'is_parent' => false,
+                'is_parent_summary' => false,
+                'is_parent_row' => false,
+            ];
+        }
+
+        usort($children, function (array $a, array $b): int {
+            $p = strcasecmp((string) $a['Parent'], (string) $b['Parent']);
+            if ($p !== 0) {
+                return $p;
+            }
+            $s = strcasecmp((string) $a['sku'], (string) $b['sku']);
+            if ($s !== 0) {
+                return $s;
+            }
+
+            return strcasecmp((string) $a['product_id'], (string) $b['product_id']);
+        });
+
+        $rows = collect($this->insertAlibabaParentRows($children));
+        $childRows = $rows->where(fn ($r) => empty($r['is_parent_summary']));
+
+        $active = $childRows->where(fn ($r) => strcasecmp((string) ($r['status'] ?? ''), 'Active') === 0)->count();
+        $bulk = $childRows->where(fn ($r) => strcasecmp((string) ($r['inv_update'] ?? ''), 'Bulk') === 0)->count();
+        $manual = $childRows->where(fn ($r) => strcasecmp((string) ($r['inv_update'] ?? ''), 'Manual') === 0)->count();
 
         return response()->json([
             'message' => 'Data fetched successfully',
-            'data' => $rows,
+            'data' => $rows->values(),
             'stats' => [
-                'total' => $rows->count(),
+                'total' => $childRows->count(),
+                'parents' => $rows->where(fn ($r) => ! empty($r['is_parent_summary']))->count(),
                 'active' => $active,
                 'bulk' => $bulk,
                 'manual' => $manual,
-                'soh' => (int) $rows->sum(fn ($r) => (int) ($r['soh'] ?? 0)),
+                'soh' => (int) $childRows->sum(fn ($r) => (int) ($r['soh'] ?? 0)),
+                'inv' => (int) $childRows->sum(fn ($r) => (int) ($r['INV'] ?? 0)),
+                'ov_l30' => (int) $childRows->sum(fn ($r) => (int) ($r['L30'] ?? 0)),
             ],
             'status' => 200,
         ]);
@@ -115,6 +158,132 @@ class AlibabaAnalyticsController extends Controller
         }
 
         return $this->downloadXlsx('Alibaba_Analytics_Sample.xlsx', $rows);
+    }
+
+    /**
+     * @param  array<int, string>  $skus
+     * @return array<string, ProductMaster>
+     */
+    protected function productMasterByNormalizedSku(array $skus): array
+    {
+        $upper = array_values(array_unique(array_filter(array_map(
+            fn ($s) => strtoupper(trim((string) $s)),
+            $skus
+        ))));
+        if ($upper === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($upper), '?'));
+        $map = [];
+        ProductMaster::query()
+            ->whereRaw('UPPER(TRIM(sku)) IN ('.$placeholders.')', $upper)
+            ->get(['sku', 'parent'])
+            ->each(function (ProductMaster $pm) use (&$map) {
+                $map[strtoupper(trim((string) $pm->sku))] = $pm;
+            });
+
+        return $map;
+    }
+
+    /**
+     * Insert parent summary rows after each Product Master parent group.
+     * Parent INV / OV L30 / Dil match /bestbuy-pricing: Dil = OV L30 ÷ INV.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    protected function insertAlibabaParentRows(array $rows): array
+    {
+        $result = [];
+        $group = [];
+        $currentParent = null;
+
+        foreach ($rows as $row) {
+            $parent = trim((string) ($row['Parent'] ?? ''));
+            $parent = $parent !== '' ? $parent : null;
+
+            if ($parent === null) {
+                if ($group !== []) {
+                    foreach ($group as $child) {
+                        $result[] = $child;
+                    }
+                    $result[] = $this->buildAlibabaParentRow((string) $currentParent, $group);
+                    $group = [];
+                    $currentParent = null;
+                }
+                $result[] = $row;
+                continue;
+            }
+
+            if ($parent !== $currentParent) {
+                if ($group !== []) {
+                    foreach ($group as $child) {
+                        $result[] = $child;
+                    }
+                    $result[] = $this->buildAlibabaParentRow((string) $currentParent, $group);
+                    $group = [];
+                }
+                $currentParent = $parent;
+            }
+            $group[] = $row;
+        }
+
+        if ($group !== []) {
+            foreach ($group as $child) {
+                $result[] = $child;
+            }
+            $result[] = $this->buildAlibabaParentRow((string) $currentParent, $group);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $childRows
+     * @return array<string, mixed>
+     */
+    protected function buildAlibabaParentRow(string $parentName, array $childRows): array
+    {
+        $sumInv = 0;
+        $sumOvL30 = 0;
+        $sumSoh = 0;
+        $seenSku = [];
+
+        foreach ($childRows as $row) {
+            $skuKey = strtoupper(trim((string) ($row['sku'] ?? '')));
+            if ($skuKey !== '' && isset($seenSku[$skuKey])) {
+                $sumSoh += (int) ($row['soh'] ?? 0);
+                continue;
+            }
+            if ($skuKey !== '') {
+                $seenSku[$skuKey] = true;
+            }
+            $sumInv += (int) ($row['INV'] ?? 0);
+            $sumOvL30 += (int) ($row['L30'] ?? 0);
+            $sumSoh += (int) ($row['soh'] ?? 0);
+        }
+
+        $dil = $sumInv > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0.0;
+        $key = 'PARENT '.$parentName;
+
+        return [
+            'Parent' => $key,
+            'sku' => $key,
+            '(Child) sku' => $key,
+            'product_id' => '',
+            'status' => '',
+            'sku_price' => null,
+            'soh' => $sumSoh,
+            'inv_update' => '',
+            'INV' => $sumInv,
+            'L30' => $sumOvL30,
+            'ov_l30' => $sumOvL30,
+            'dil_percent' => $dil,
+            'is_parent' => true,
+            'is_parent_summary' => true,
+            'is_parent_row' => true,
+        ];
     }
 
     /**
