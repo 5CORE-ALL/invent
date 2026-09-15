@@ -831,26 +831,13 @@ class YesterdayMarketplaceMetricsService
      */
     private function tiktok2(Carbon $start, Carbon $end): array
     {
-        $latestPacific = Tiktok2Order::tableReady() ? Tiktok2Order::latestActiveCreatedAt() : null;
-        if ($latestPacific) {
-            $endDay = $latestPacific->copy()->subDay();
-            $end = $endDay->copy()->endOfDay();
-            $start = $endDay->copy()->subDays(max(1, $this->windowDays) - 1)->startOfDay();
-        } elseif (Schema::hasTable('tiktok_sales_two')) {
-            $latest = DB::table('tiktok_sales_two')->whereNotNull('order_date')->max('order_date');
-            $window = $this->latestCompleteDay($latest, 'to_pacific');
-            if ($window !== null) {
-                [$start, $end] = $window;
-            }
-        }
-
         $items = Tiktok2Order::linesInWindow($start, $end);
         $sales = 0.0;
         if (Schema::hasTable('tiktok_sales_two')) {
             $sales = (float) DB::table('tiktok_sales_two')
-                ->where('order_date', '>=', $start)
-                ->where('order_date', '<=', $end)
-                ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
+                ->whereDate('order_date', '>=', $start->toDateString())
+                ->whereDate('order_date', '<=', $end->toDateString())
+                ->selectRaw('COALESCE(SUM(unit_price * GREATEST(COALESCE(quantity, 1), 1)), 0) as revenue')
                 ->value('revenue');
         }
         $pft = 0.0;
@@ -877,7 +864,7 @@ class YesterdayMarketplaceMetricsService
             $pft += (($unitPrice * $margin) - $pm['lp'] - $shipCost) * $quantity;
         }
 
-        if ($sales <= 0) {
+        if ($sales <= 0 && ! Schema::hasTable('tiktok_sales_two')) {
             $sales = $lineSales;
         }
 
@@ -1126,13 +1113,7 @@ class YesterdayMarketplaceMetricsService
         }
 
         try {
-            return (float) DB::table('purchasing_power_sales')
-                ->where(fn ($q) => PurchasingPowerController::applyPurchasingPowerSaleFilter($q))
-                ->where('date_created', '>=', $start)
-                ->where('date_created', '<=', $end)
-                ->where('quantity', '>', 0)
-                ->selectRaw('COALESCE(SUM('.PurchasingPowerController::purchasingPowerLineRevenueSql().'), 0) as revenue')
-                ->value('revenue');
+            return PurchasingPowerController::sumSalesBetween($start, $end);
         } catch (\Throwable $e) {
             return 0.0;
         }

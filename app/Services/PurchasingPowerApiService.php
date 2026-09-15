@@ -155,8 +155,8 @@ class PurchasingPowerApiService extends BestBuyApiService
                     continue;
                 }
 
-                $qty = max(0, (int) ($line['stock'] ?? 0));
-                $linePrice = (float) ($line['price'] ?? 0);
+                $qty = max(0, (int) ($line['quantity'] ?? $line['quantity_sold'] ?? $line['stock'] ?? 0));
+                $linePrice = (float) ($line['price'] ?? $line['price_amount'] ?? 0);
                 $unitPrice = isset($line['price_unit']) && is_numeric($line['price_unit'])
                     ? (float) $line['price_unit']
                     : ($qty > 0 ? $linePrice / $qty : $linePrice);
@@ -178,6 +178,7 @@ class PurchasingPowerApiService extends BestBuyApiService
                     'status' => $line['order_line_state'] ?? ($order['order_state'] ?? ''),
                     'sku' => $sku,
                     'product_name' => $line['product_title'] ?? null,
+                    'quantity' => $qty,
                     'stock' => $qty,
                     'unit_price' => $unitPrice,
                     'amount' => $totalPrice,

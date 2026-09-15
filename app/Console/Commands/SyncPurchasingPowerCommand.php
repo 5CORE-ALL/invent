@@ -84,7 +84,7 @@ class SyncPurchasingPowerCommand extends Command
                             [
                                 'order_number' => $line->order_number ?? $orderId,
                                 'date_created' => $dateCreated,
-                                'quantity' => (int) ($line->quantity ?? 0),
+                                'quantity' => (int) ($line->quantity ?? $line->stock ?? 0),
                                 'product_name' => $line->product_name ?? null,
                                 'status' => $line->status ?? null,
                                 'amount' => $line->amount ?? null,

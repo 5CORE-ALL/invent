@@ -2183,7 +2183,6 @@ class ChannelMasterController extends Controller
         // Last: Pacific yesterday Y Sales including $0/NYS so stale calculated
         // yesterday_sales cannot stay on the grid after a quiet day.
         $rows = $this->overlayLivePacificYSalesOnChannelRows($rows);
-        $rows = $this->overlayLiveNeweggMetricsOnChannelRows($rows);
 
         return $rows;
     }
@@ -2790,112 +2789,14 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Fast-path Newegg L30 / L60 / L7 / Y from newegg_orders — same rows as
-     * /newegg/daily-sales. Calculated_data and Pacific-yesterday overlay stay $0
-     * on gap days even when daily-sales still has recent orders.
+     * Newegg grid/chart use saved snapshots only. Live overlay used to copy the
+     * last order day onto quiet days so Sep 13 and Sep 14 both showed $123.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
     private function overlayLiveNeweggMetricsOnChannelRows(array $rows): array
     {
-        $hasNewegg = false;
-        foreach ($rows as $row) {
-            if ($this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? '')) === 'newegg') {
-                $hasNewegg = true;
-                break;
-            }
-        }
-        if (! $hasNewegg || ! Schema::hasTable('newegg_orders')) {
-            return $rows;
-        }
-
-        try {
-            $mp = MarketplacePercentage::where('marketplace', 'Neweggb2c')->first();
-            $percentage = $mp ? (float) $mp->percentage : 85;
-            $adUpdates = $mp ? (float) $mp->ad_updates : 0;
-            $margin = $percentage - $adUpdates;
-            $factor = $margin > 0 ? $margin / 100 : 0.85;
-            $productMasters = ProductMaster::all()->keyBy(function ($item) {
-                return ShopifySku::normalizeSkuForShopifyLookup($item->sku);
-            });
-
-            $now = Carbon::now();
-            $l30 = $this->computeNeweggWindow($now->copy()->subDays(30), $now, $productMasters, $factor);
-            $l60 = $this->computeNeweggWindow($now->copy()->subDays(60), $now->copy()->subDays(30), $productMasters, $factor);
-            $l7 = $this->computeNeweggWindow($now->copy()->subDays(7), $now, $productMasters, $factor);
-            $y = $this->computeNeweggWindow(
-                $now->copy()->subDay()->startOfDay(),
-                $now->copy()->subDay()->endOfDay(),
-                $productMasters,
-                $factor
-            );
-            if (($l30['sales'] ?? 0) <= 0) {
-                $latestRaw = DB::table('newegg_orders')
-                    ->whereNotNull('order_date')
-                    ->where(function ($q) {
-                        $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
-                    })
-                    ->max('order_date');
-                if ($latestRaw) {
-                    $anchor = Carbon::parse($latestRaw);
-                    $l30 = $this->computeNeweggWindow($anchor->copy()->subDays(30), $anchor, $productMasters, $factor);
-                    $l60 = $this->computeNeweggWindow($anchor->copy()->subDays(60), $anchor->copy()->subDays(30), $productMasters, $factor);
-                    $l7 = $this->computeNeweggWindow($anchor->copy()->subDays(7), $anchor, $productMasters, $factor);
-                }
-            }
-            if (($l30['sales'] ?? 0) <= 0) {
-                $l30 = $this->computeNeweggWindow(
-                    Carbon::parse('2000-01-01')->startOfDay(),
-                    $now->copy()->endOfDay(),
-                    $productMasters,
-                    $factor
-                );
-            }
-            if (($y['sales'] ?? 0) <= 0) {
-                $y = $this->computeNeweggLatestSalesDayWindow($productMasters, $factor);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Fast-path Newegg sales overlay failed: '.$e->getMessage());
-
-            return $rows;
-        }
-
-        $l30Sales = (float) ($l30['sales'] ?? 0);
-        $l60Sales = (float) ($l60['sales'] ?? 0);
-        $totalPft = (float) ($l30['profit'] ?? 0);
-        $totalCogs = (float) ($l30['cogs'] ?? 0);
-        $gpftPct = $l30Sales > 0 ? ($totalPft / $l30Sales) * 100 : 0.0;
-        $groi = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
-
-        foreach ($rows as &$row) {
-            if ($this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? '')) !== 'newegg') {
-                continue;
-            }
-
-            $row['L30 Sales'] = (int) round($l30Sales);
-            $row['L30 Orders'] = (int) ($l30['orders'] ?? 0);
-            $row['Qty'] = (int) ($l30['qty'] ?? 0);
-            $row['L-60 Sales'] = (int) round($l60Sales);
-            $row['L60 Orders'] = (int) ($l60['orders'] ?? 0);
-            $row['L7 Sales'] = round((float) ($l7['sales'] ?? 0), 2);
-            $row['Total PFT'] = round($totalPft, 2);
-            $row['cogs'] = round($totalCogs, 2);
-            $row['Gprofit%'] = round($gpftPct, 1).'%';
-            $row['G Roi'] = round($groi, 1);
-            $row['N PFT'] = round($gpftPct, 1).'%';
-            $row['N ROI'] = round($groi, 1);
-            $row['Total Ad Spend'] = 0;
-            $row['Ads%'] = '0%';
-            $row['TACOS %'] = '0%';
-            if ($l60Sales > 0) {
-                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
-            }
-            $this->applyLiveYSalesIfPositive($row, $y['sales'] ?? 0);
-            $row = $this->withYProfitColumns($row);
-        }
-        unset($row);
-
         return $rows;
     }
 
@@ -3039,7 +2940,7 @@ class ChannelMasterController extends Controller
 
             $ySales = $this->computePurchasingPowerYSalesLikeAmazon();
             if ($ySales !== null) {
-                $this->applyLiveYSalesIfPositive($row, $ySales);
+                $this->applyLiveYSalesAllowZero($row, $ySales);
             }
 
             $l7Sales = $this->computePurchasingPowerL7SalesLikeAmazon();
@@ -3766,7 +3667,7 @@ class ChannelMasterController extends Controller
             $row['Ads%'] = '0%';
             $row['TACOS %'] = '0%';
             if ($ySales !== null) {
-                $this->applyLiveYSalesIfPositive($row, $ySales);
+                $this->applyLiveYSalesAllowZero($row, $ySales);
             }
             if ($l7Sales !== null) {
                 $row['L7 Sales'] = $l7Sales;
@@ -7523,7 +7424,7 @@ class ChannelMasterController extends Controller
             $query = \App\Models\ChannelMasterCalculatedData::query()
                 ->orderBy('l30_sales', 'desc');
             
-            if ($section && in_array($section, ['B2C', 'B2B', 'Dropship'])) {
+            if ($section && in_array($section, ['B2C', 'B2B', 'Dropship', 'Wholesale'], true)) {
                 $query->where('type', $section);
             }
 
@@ -8256,14 +8157,14 @@ class ChannelMasterController extends Controller
         foreach ($channels as $channelRow) {
             $channel = $channelRow->channel;
 
-            // Base row - normalize type to only B2C, B2B, Dropship
+            // Base row - normalize type to B2C, B2B, Dropship, or Wholesale
             $rawType = $channelRow->type ?? '';
-            $normalizedType = 'B2C'; // default
-            if (strtolower(trim($rawType)) === 'b2b') {
-                $normalizedType = 'B2B';
-            } elseif (strtolower(trim($rawType)) === 'dropship') {
-                $normalizedType = 'Dropship';
-            }
+            $normalizedType = [
+                'b2c' => 'B2C',
+                'b2b' => 'B2B',
+                'dropship' => 'Dropship',
+                'wholesale' => 'Wholesale',
+            ][strtolower(trim($rawType))] ?? 'B2C';
             
             $row = [
                 'Channel '       => ucfirst($channel),
@@ -8774,23 +8675,44 @@ class ChannelMasterController extends Controller
      */
     private function computeTiktokTwoYSalesLikeAmazon(): ?float
     {
-        [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
-
-        if (Tiktok2Order::tableReady() && Tiktok2Order::query()->whereNotNull('order_created_at')->exists()) {
-            return round(Tiktok2Order::salesAmountBetween($yStartPacific, $yEndPacific), 2);
-        }
-
         if (! Schema::hasTable('tiktok_sales_two')) {
             return null;
         }
 
-        $sum = (float) DB::table('tiktok_sales_two')
-            ->where('order_date', '>=', $yStartPacific)
-            ->where('order_date', '<=', $yEndPacific)
-            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
-            ->value('revenue');
+        return $this->sumTiktokTwoSheetSalesForPacificDate(
+            Carbon::yesterday('America/Los_Angeles')->toDateString()
+        );
+    }
 
-        return round($sum, 2);
+    /**
+     * /tiktok-two/daily-sales dollars for one Pacific calendar day (order_date).
+     */
+    private function sumTiktokTwoSheetSalesForPacificDate(string $ymd): float
+    {
+        if ($ymd === '' || ! Schema::hasTable('tiktok_sales_two')) {
+            return 0.0;
+        }
+
+        return round((float) DB::table('tiktok_sales_two')
+            ->whereDate('order_date', $ymd)
+            ->selectRaw('COALESCE(SUM(unit_price * GREATEST(COALESCE(quantity, 1), 1)), 0) as revenue')
+            ->value('revenue'), 2);
+    }
+
+    /**
+     * /tiktok-two/daily-sales dollars between two Pacific calendar dates (inclusive).
+     */
+    private function sumTiktokTwoSheetSalesBetween(Carbon $start, Carbon $end): float
+    {
+        if (! Schema::hasTable('tiktok_sales_two')) {
+            return 0.0;
+        }
+
+        return round((float) DB::table('tiktok_sales_two')
+            ->whereDate('order_date', '>=', $start->toDateString())
+            ->whereDate('order_date', '<=', $end->toDateString())
+            ->selectRaw('COALESCE(SUM(unit_price * GREATEST(COALESCE(quantity, 1), 1)), 0) as revenue')
+            ->value('revenue'), 2);
     }
 
     /**
@@ -9097,19 +9019,7 @@ class ChannelMasterController extends Controller
 
     private function sumPurchasingPowerApiSalesBetween(Carbon $start, Carbon $end): ?float
     {
-        if (! Schema::hasTable('purchasing_power_sales')) {
-            return 0.0;
-        }
-
-        $sum = (float) DB::table('purchasing_power_sales')
-            ->where(fn ($q) => PurchasingPowerController::applyPurchasingPowerSaleFilter($q))
-            ->where('date_created', '>=', $start)
-            ->where('date_created', '<=', $end)
-            ->where('quantity', '>', 0)
-            ->selectRaw('COALESCE(SUM('.PurchasingPowerController::purchasingPowerLineRevenueSql().'), 0) as revenue')
-            ->value('revenue');
-
-        return round($sum, 2);
+        return PurchasingPowerController::sumSalesBetween($start, $end);
     }
 
     /**
@@ -9318,25 +9228,15 @@ class ChannelMasterController extends Controller
 
     private function computeTiktokTwoL7SalesLikeAmazon(): ?float
     {
-        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
-            Carbon::now('America/Los_Angeles')
-        );
-
-        if (Tiktok2Order::tableReady() && Tiktok2Order::query()->whereNotNull('order_created_at')->exists()) {
-            return round(Tiktok2Order::salesAmountBetween($l7StartPacific, $l7EndPacific), 2);
-        }
-
         if (! Schema::hasTable('tiktok_sales_two')) {
             return null;
         }
 
-        $sum = (float) DB::table('tiktok_sales_two')
-            ->where('order_date', '>=', $l7StartPacific)
-            ->where('order_date', '<=', $l7EndPacific)
-            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
-            ->value('revenue');
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
 
-        return round($sum, 2);
+        return $this->sumTiktokTwoSheetSalesBetween($l7StartPacific, $l7EndPacific);
     }
 
     /**
@@ -12500,11 +12400,13 @@ class ChannelMasterController extends Controller
             return ShopifySku::normalizeSkuForShopifyLookup($item->sku);
         });
 
-        $now = Carbon::now();
-        $l30 = $this->computeNeweggWindow($now->copy()->subDays(30), $now, $productMasters, $factor);
-        $l60 = $this->computeNeweggWindow($now->copy()->subDays(60), $now->copy()->subDays(30), $productMasters, $factor);
-        $l7  = $this->computeNeweggWindow($now->copy()->subDays(7), $now, $productMasters, $factor);
-        $y   = $this->computeNeweggWindow($now->copy()->subDay()->startOfDay(), $now->copy()->subDay()->endOfDay(), $productMasters, $factor);
+        [$l30Start, $l30End, $l60Start, $l60End] = $this->completePacificL30L60Windows();
+        [$l7Start, $l7End] = $this->pacificL7WindowEndingYesterday(Carbon::now('America/Los_Angeles'));
+        [$yStart, $yEnd] = $this->pacificYesterdayBounds();
+        $l30 = $this->computeNeweggWindow($l30Start, $l30End, $productMasters, $factor);
+        $l60 = $this->computeNeweggWindow($l60Start, $l60End, $productMasters, $factor);
+        $l7  = $this->computeNeweggWindow($l7Start, $l7End, $productMasters, $factor);
+        $y   = $this->computeNeweggWindow($yStart, $yEnd, $productMasters, $factor);
 
         $growth     = $l60['sales'] > 0 ? (($l30['sales'] - $l60['sales']) / $l60['sales']) * 100 : 0;
         $gProfitPct = $l30['sales'] > 0 ? ($l30['profit'] / $l30['sales']) * 100 : 0;
@@ -13281,8 +13183,10 @@ class ChannelMasterController extends Controller
             return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
         }
 
+        [$fromUtc, $toUtc] = PurchasingPowerController::purchasingPowerUtcRange($startDate, $endDate);
         $rows = DB::table('purchasing_power_sales')
-            ->whereBetween('date_created', [$startDate, $endDate])
+            ->where('date_created', '>=', $fromUtc)
+            ->where('date_created', '<=', $toUtc)
             ->where(fn ($q) => PurchasingPowerController::applyPurchasingPowerSaleFilter($q))
             ->get(['order_number', 'offer_sku', 'product_sku', 'quantity', 'unit_price', 'amount']);
 
@@ -13307,9 +13211,14 @@ class ChannelMasterController extends Controller
         foreach ($rows as $r) {
             $sku      = strtoupper(trim((string) ($r->offer_sku ?: $r->product_sku)));
             $quantity = (int) ($r->quantity ?? 0);
+            $amount   = (float) ($r->amount ?? 0);
             $price    = (float) ($r->unit_price ?? 0);
             if ($price <= 0 && $quantity > 0) {
-                $price = ((float) ($r->amount ?? 0)) / $quantity;
+                $price = $amount / $quantity;
+            }
+            if ($quantity <= 0 && $amount > 0) {
+                $quantity = 1;
+                $price = $amount;
             }
             if ($quantity <= 0) continue;
 
@@ -13332,7 +13241,8 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            $totalSales += $price * $quantity;
+            $lineSales = $amount > 0 ? $amount : ($price * $quantity);
+            $totalSales += $lineSales;
             $totalQty   += $quantity;
             $totalCogs  += $lp * $quantity;
             // Ship intentionally excluded to match /purchasing-power-pricing.
@@ -13388,6 +13298,8 @@ class ChannelMasterController extends Controller
             'Channel '   => 'Purchasing Power',
             'L-60 Sales' => intval($l60Sales),
             'L30 Sales'  => intval($l30Sales),
+            'Y Sales'    => $this->computePurchasingPowerYSalesLikeAmazon() ?? 0.0,
+            'L7 Sales'   => $this->computePurchasingPowerL7SalesLikeAmazon() ?? 0.0,
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
@@ -18914,6 +18826,22 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
+            if ($channel === 'purchasingpower') {
+                $day = Carbon::parse($ymd, 'America/Los_Angeles');
+                self::$pacificDayYSalesCache[$key] = $this->sumPurchasingPowerApiSalesBetween(
+                    $day->copy()->startOfDay(),
+                    $day->copy()->endOfDay()
+                );
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
+            if ($channel === 'tiktokshop2' || $channel === 'tiktok2') {
+                self::$pacificDayYSalesCache[$key] = $this->sumTiktokTwoSheetSalesForPacificDate($ymd);
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
             if ($channel === 'wayfair') {
                 self::$pacificDayYSalesCache[$key] = $this->sumWayfairRevenueForPacificDate($ymd);
 
@@ -18965,11 +18893,140 @@ class ChannelMasterController extends Controller
         $this->healClosedChannelYSalesSnapshot('amazon');
     }
 
+    /**
+     * Snapshot D stores Temu 2 L30 for the 30 Pacific days ending D−1.
+     * A mid-sync save froze Sep 13 at ~$26k while temu2_orders for that
+     * window is ~$31k. Rewrite the last 14 snapshots from the same
+     * computeTemu2TabulatorMetrics math as /temu2-tabulator.
+     */
+    private function healClosedTemu2L30Snapshots(): void
+    {
+        if (! Schema::hasTable('temu2_orders')) {
+            return;
+        }
+
+        $tz = 'America/Los_Angeles';
+        $lookupKeys = $this->allMarketplaceSnapshotLookupKeys('temu2');
+
+        for ($offset = 0; $offset <= 14; $offset++) {
+            $snapshotDate = now($tz)->subDays($offset)->toDateString();
+            $asOf = now($tz)->subDays($offset + 1);
+            $start = $asOf->copy()->subDays(29)->startOfDay();
+            $end = $asOf->copy()->endOfDay();
+
+            try {
+                $m = TemuShopifySalesService::computeTemu2TabulatorMetrics($start, $end);
+            } catch (\Throwable $e) {
+                Log::warning('Temu 2 L30 snapshot heal failed for '.$snapshotDate.': '.$e->getMessage());
+                continue;
+            }
+
+            $live = round((float) ($m['sales'] ?? 0), 2);
+            $rows = \App\Models\ChannelMasterSummary::query()
+                ->whereIn('channel', $lookupKeys)
+                ->whereDate('snapshot_date', $snapshotDate)
+                ->get();
+
+            foreach ($rows as $row) {
+                $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data);
+                if (array_key_exists('l30_sales', $sd) && abs((float) $sd['l30_sales'] - $live) < 1) {
+                    continue;
+                }
+                $sd['l30_sales'] = $live;
+                if (isset($m['orders'])) {
+                    $sd['l30_orders'] = (int) $m['orders'];
+                }
+                if (isset($m['qty'])) {
+                    $sd['qty'] = (int) $m['qty'];
+                }
+                $row->summary_data = $sd;
+                $row->notes = 'Temu 2 L30 healed from temu2_orders ending '.$asOf->toDateString();
+                $row->save();
+            }
+        }
+    }
+
+    /**
+     * Snapshot D stores TikTok 2 L30 for the 30 Pacific days ending D−1,
+     * from tiktok_sales_two (same table as /tiktok-two/daily-sales).
+     */
+    private function healClosedTiktokTwoL30Snapshots(): void
+    {
+        if (! Schema::hasTable('tiktok_sales_two')) {
+            return;
+        }
+
+        $tz = 'America/Los_Angeles';
+        $lookupKeys = $this->allMarketplaceSnapshotLookupKeys('tiktokshop2');
+
+        for ($offset = 0; $offset <= 14; $offset++) {
+            $snapshotDate = now($tz)->subDays($offset)->toDateString();
+            $asOf = now($tz)->subDays($offset + 1);
+            $start = $asOf->copy()->subDays(29)->startOfDay();
+            $end = $asOf->copy()->endOfDay();
+            $live = $this->sumTiktokTwoSheetSalesBetween($start, $end);
+
+            $rows = \App\Models\ChannelMasterSummary::query()
+                ->whereIn('channel', $lookupKeys)
+                ->whereDate('snapshot_date', $snapshotDate)
+                ->get();
+
+            foreach ($rows as $row) {
+                $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data);
+                if (array_key_exists('l30_sales', $sd) && abs((float) $sd['l30_sales'] - $live) < 1) {
+                    continue;
+                }
+                $sd['l30_sales'] = $live;
+                $row->summary_data = $sd;
+                $row->notes = 'TikTok 2 L30 healed from tiktok_sales_two ending '.$asOf->toDateString();
+                $row->save();
+            }
+        }
+    }
+
+    /**
+     * Snapshot D stores Purchasing Power L30 for the 30 Pacific days ending D−1.
+     * date_created is UTC; use string UTC bounds so app TZ cannot collapse days.
+     */
+    private function healClosedPurchasingPowerL30Snapshots(): void
+    {
+        if (! Schema::hasTable('purchasing_power_sales')) {
+            return;
+        }
+
+        $tz = 'America/Los_Angeles';
+        $lookupKeys = $this->allMarketplaceSnapshotLookupKeys('purchasingpower');
+
+        for ($offset = 0; $offset <= 14; $offset++) {
+            $snapshotDate = now($tz)->subDays($offset)->toDateString();
+            $asOf = now($tz)->subDays($offset + 1);
+            $start = $asOf->copy()->subDays(29)->startOfDay();
+            $end = $asOf->copy()->endOfDay();
+            $live = (float) $this->sumPurchasingPowerApiSalesBetween($start, $end);
+
+            $rows = \App\Models\ChannelMasterSummary::query()
+                ->whereIn('channel', $lookupKeys)
+                ->whereDate('snapshot_date', $snapshotDate)
+                ->get();
+
+            foreach ($rows as $row) {
+                $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data);
+                if (array_key_exists('l30_sales', $sd) && abs((float) $sd['l30_sales'] - $live) < 1) {
+                    continue;
+                }
+                $sd['l30_sales'] = $live;
+                $row->summary_data = $sd;
+                $row->notes = 'Purchasing Power L30 healed from purchasing_power_sales ending '.$asOf->toDateString();
+                $row->save();
+            }
+        }
+    }
+
     private function healClosedChannelYSalesSnapshot(string $channel): void
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
         $tz = 'America/Los_Angeles';
-        $lookback = in_array($channel, ['temu2', 'depop', 'faire', 'shein', 'newegg', 'wayfair', 'reverb', 'ebaythree'], true) ? 14 : 1;
+        $lookback = in_array($channel, ['temu2', 'depop', 'faire', 'shein', 'newegg', 'wayfair', 'reverb', 'ebaythree', 'purchasingpower', 'tiktokshop2'], true) ? 14 : 1;
         $lookupKeys = $this->allMarketplaceSnapshotLookupKeys($channel);
 
         for ($offset = 0; $offset <= $lookback; $offset++) {
@@ -19791,6 +19848,10 @@ class ChannelMasterController extends Controller
 
         $byDate = [];
         foreach ($query->get() as $row) {
+            $rawCh = strtolower(str_replace([' ', '-', '&', '/'], '', (string) $row->channel));
+            if ($rawCh === 'tiktok2') {
+                continue;
+            }
             $key = $this->allMarketplaceSnapshotKey((string) $row->channel);
             if ($key === '') {
                 continue;
@@ -21097,6 +21158,7 @@ class ChannelMasterController extends Controller
 
             $this->healClosedAmazonYSalesSnapshot();
             $this->healClosedChannelYSalesSnapshot('temu2');
+            $this->healClosedTemu2L30Snapshots();
             $this->healClosedChannelYSalesSnapshot('temu3');
             $this->healClosedChannelYSalesSnapshot('depop');
             $this->healClosedChannelYSalesSnapshot('faire');
@@ -21105,6 +21167,10 @@ class ChannelMasterController extends Controller
             $this->healClosedChannelYSalesSnapshot('wayfair');
             $this->healClosedChannelYSalesSnapshot('reverb');
             $this->healClosedChannelYSalesSnapshot('ebaythree');
+            $this->healClosedChannelYSalesSnapshot('purchasingpower');
+            $this->healClosedPurchasingPowerL30Snapshots();
+            $this->healClosedChannelYSalesSnapshot('tiktokshop2');
+            $this->healClosedTiktokTwoL30Snapshots();
 
             foreach ([0, 1, 7] as $dotWindow) {
                 \Cache::forget($this->channelMetricDotTrendsCacheKey($dotWindow));

@@ -265,7 +265,7 @@
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtReviewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtReviewsRuleModal" title="Edit Reviews star bands and Bgt Reviews values">BGT Vs REVIEWS</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtDilRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtDilRuleModal" title="Edit Dil% bands and Bgt Dil values">BGT Vs Dil</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause when Dil% is high, price is below your threshold, or reviews are below your star rating">Pause Rule</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause campaigns when Dil% is at or above your threshold. Only PARENT campaigns turn back on.">Pause Rule</button>
                             <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                             <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 5 as daily budget for the rows on this page (SP/SB only).">
                                 <i class="fa fa-cloud-upload-alt"></i> SBGT
@@ -791,13 +791,12 @@
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        Dil%, Price, and Reviews are <strong>separate</strong> rules. If <strong>any</strong> matches, ads are paused (OR).
-                        Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv) and pauses the <strong>campaign</strong>.
-                        Price uses the <strong>price</strong> column (including grey LMP) and pauses the <strong>campaign</strong>.
-                        Reviews uses each advertised SKU’s star rating and pauses only that <strong>product ad</strong> (campaign stays on).
+                        Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv).
+                        Pause when Dil% is ≥ the threshold (default 100) for PARENT campaigns, and for <strong>child SKU</strong> campaigns when their Dil or the <strong>PARENT family Dil</strong> is ≥ the threshold.
                         Save (with auto-pause on) applies matching pauses on Amazon now.
-                        Only campaigns this Pause Rule paused in the last 31 days are turned back on when Dil% / Price no longer match — those rows show <strong>Active Again</strong> (hover for the original pause reason).
-                        Older pauses (old pink DIL, manual, or older than a month) stay off. The job also runs daily at 18:25 IST.
+                        Only <strong>PARENT</strong> campaigns this Dil Pause Rule paused recently (last 31 days) are turned back on when Dil% is no longer ≥ the threshold — those rows show <strong>Active Again</strong>.
+                        Child SKU campaigns that show <strong>Active Again</strong> are paused again (PARENT Active Again stays on).
+                        Old ads stay paused: Price leftovers, Reviews, ACOS, old pink DIL, and anything paused before this Dil rule or older than 31 days are never turned back on. The job also runs daily at 18:25 IST.
                     </p>
                     <div class="form-check mb-1">
                         <input class="form-check-input" type="checkbox" id="amazonAdsPrDilEnabled" checked>
@@ -806,22 +805,6 @@
                     <div class="input-group input-group-sm mb-3" style="max-width: 220px;">
                         <input type="number" min="0" max="100000" step="1" class="form-control" id="amazonAdsPrDilAbove" value="100">
                         <span class="input-group-text">%</span>
-                    </div>
-                    <div class="form-check mb-1">
-                        <input class="form-check-input" type="checkbox" id="amazonAdsPrPriceEnabled" checked>
-                        <label class="form-check-label small" for="amazonAdsPrPriceEnabled">Pause when Price &lt;</label>
-                    </div>
-                    <div class="input-group input-group-sm mb-3" style="max-width: 220px;">
-                        <span class="input-group-text">$</span>
-                        <input type="number" min="0" max="1000000" step="0.01" class="form-control" id="amazonAdsPrPriceBelow" value="20">
-                    </div>
-                    <div class="form-check mb-1">
-                        <input class="form-check-input" type="checkbox" id="amazonAdsPrReviewsEnabled" checked>
-                        <label class="form-check-label small" for="amazonAdsPrReviewsEnabled">Pause when Reviews &lt;</label>
-                    </div>
-                    <div class="input-group input-group-sm mb-3" style="max-width: 220px;">
-                        <input type="number" min="1" max="5" step="0.01" class="form-control" id="amazonAdsPrReviewsBelow" value="2.99">
-                        <span class="input-group-text">★</span>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="amazonAdsPrEnabled" checked>
@@ -1326,11 +1309,13 @@
                 var v = cell.getValue();
                 var raw = (v === null || v === undefined) ? '' : String(v).trim();
                 if (raw === '') return '<span class="amz-raw-status-cell text-muted" title="—">—</span>';
-                var enabled = raw.toUpperCase() === 'ENABLED';
-                var color = enabled ? '#16a34a' : '#dc2626';
-                var tip = amzEsc(raw);
-                return '<span class="amz-raw-status-cell" title="' + tip + '" style="display:inline-flex;align-items:center;justify-content:center;">'
-                     + '<span class="d-inline-block rounded-circle" style="width:10px;height:10px;background-color:' + color + ';"></span></span>';
+                var up = raw.toUpperCase();
+                var enabled = up === 'ENABLED';
+                var paused = up === 'PAUSED';
+                var color = enabled ? '#16a34a' : (paused ? '#dc2626' : '#6b7280');
+                var label = paused ? 'P' : (enabled ? 'E' : raw.charAt(0).toUpperCase());
+                return '<span class="amz-raw-status-cell" title="' + amzEsc(raw) + '" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:11px;font-weight:700;color:' + color + ';">'
+                     + '<span class="d-inline-block rounded-circle" style="width:8px;height:8px;background-color:' + color + ';"></span>' + amzEsc(label) + '</span>';
             }
             function fmtRuleStatus(cell) {
                 var v = cell.getValue();
@@ -1338,10 +1323,13 @@
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var tipRaw = (row && row.ruleStatusTip) ? String(row.ruleStatusTip) : (raw || '—');
                 if (raw === '') return '<span class="amz-raw-status-cell text-muted" title="' + amzEsc(tipRaw) + '">—</span>';
-                var enabled = raw.toUpperCase() === 'ENABLED';
-                var color = enabled ? '#16a34a' : '#dc2626';
-                return '<span class="amz-raw-status-cell" title="' + amzEsc(tipRaw) + '" style="display:inline-flex;align-items:center;justify-content:center;">'
-                     + '<span class="d-inline-block rounded-circle" style="width:10px;height:10px;background-color:' + color + ';"></span></span>';
+                var up = raw.toUpperCase();
+                var enabled = up === 'ENABLED';
+                var paused = up === 'PAUSED';
+                var color = enabled ? '#16a34a' : (paused ? '#dc2626' : '#6b7280');
+                var label = paused ? 'P' : (enabled ? 'E' : raw.charAt(0).toUpperCase());
+                return '<span class="amz-raw-status-cell" title="' + amzEsc(tipRaw) + '" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:11px;font-weight:700;color:' + color + ';">'
+                     + '<span class="d-inline-block rounded-circle" style="width:8px;height:8px;background-color:' + color + ';"></span>' + amzEsc(label) + '</span>';
             }
             function fmtActiveAgain(cell) {
                 var v = cell.getValue();
@@ -1495,7 +1483,7 @@
                     return;
                 }
                 if (c === 'campaignStatus') { col.title = 'Stat'; col.formatter = fmtCampaignStatus; col.width = 48; col.minWidth = 44; return; }
-                if (c === 'ruleStatus') { col.title = 'Rule'; col.headerTooltip = 'Rule Status — green = stay active, red = pause (PR Dil% / Price)'; col.formatter = fmtRuleStatus; col.width = 52; col.minWidth = 48; return; }
+                if (c === 'ruleStatus') { col.title = 'Rule'; col.headerTooltip = 'Rule Status — red = pause when Dil% ≥ threshold. Only PARENT campaigns auto-activate again.'; col.formatter = fmtRuleStatus; col.width = 52; col.minWidth = 48; return; }
                 if (c === 'activeAgain') {
                     col.title = 'Active Again';
                     col.headerTooltip = 'Turned back on after a Pause Rule match. Status and original pause reason.';
@@ -3572,19 +3560,11 @@
 
             function amzPrFromRule(rule) {
                 var pr = (rule && rule.pr) ? rule.pr : {};
-                var rev = (rule && rule.reviews && !Array.isArray(rule.reviews)) ? rule.reviews : {};
                 var dil = Number(pr.dil_above);
-                var price = Number(pr.price_below);
-                var reviewsBelow = Number(rev.below != null ? rev.below : pr.reviews_below);
-                var reviewsEnabled = (rev.enabled != null) ? !!rev.enabled : !!pr.reviews_enabled;
                 return {
                     enabled: !!pr.enabled,
                     dil_above: isFinite(dil) ? dil : 100,
-                    dil_enabled: pr.dil_enabled !== false,
-                    price_below: isFinite(price) ? price : 20,
-                    price_enabled: pr.price_enabled !== false,
-                    reviews_enabled: reviewsEnabled,
-                    reviews_below: isFinite(reviewsBelow) ? reviewsBelow : 2.99
+                    dil_enabled: pr.dil_enabled !== false
                 };
             }
             function amzRefreshPrBtn() {
@@ -3592,33 +3572,21 @@
                 if (!btn) return;
                 var pr = amzPrFromRule(window.amazonAdsPauseRule);
                 btn.textContent = 'Pause Rule';
-                var on = pr.enabled || pr.reviews_enabled;
+                var on = pr.enabled && pr.dil_enabled;
                 btn.classList.toggle('btn-danger', on);
                 btn.classList.toggle('text-white', on);
                 btn.classList.toggle('btn-outline-danger', !on);
-                var tips = [];
-                if (pr.dil_enabled) tips.push('Dil% ≥ ' + pr.dil_above + '%');
-                if (pr.price_enabled) tips.push('Price < $' + pr.price_below);
-                if (pr.reviews_enabled) tips.push('Reviews < ' + pr.reviews_below + '★');
-                btn.title = (pr.enabled || pr.reviews_enabled) && tips.length
-                    ? ('Auto-pause when ' + tips.join(' or '))
-                    : 'Dil% / price / reviews pause rule — click to set thresholds';
+                btn.title = on
+                    ? ('Auto-pause campaigns when Dil% ≥ ' + pr.dil_above + '%. Only PARENT campaigns turn back on.')
+                    : 'Dil% pause rule — click to set the threshold';
             }
             function amzFillPrModal() {
                 var pr = amzPrFromRule(window.amazonAdsPauseRule);
                 var dilInput = document.getElementById('amazonAdsPrDilAbove');
-                var priceInput = document.getElementById('amazonAdsPrPriceBelow');
-                var reviewsInput = document.getElementById('amazonAdsPrReviewsBelow');
                 var dilEn = document.getElementById('amazonAdsPrDilEnabled');
-                var priceEn = document.getElementById('amazonAdsPrPriceEnabled');
-                var reviewsEn = document.getElementById('amazonAdsPrReviewsEnabled');
                 var en = document.getElementById('amazonAdsPrEnabled');
                 if (dilInput) dilInput.value = String(pr.dil_above);
-                if (priceInput) priceInput.value = String(pr.price_below);
-                if (reviewsInput) reviewsInput.value = String(pr.reviews_below);
                 if (dilEn) dilEn.checked = pr.dil_enabled;
-                if (priceEn) priceEn.checked = pr.price_enabled;
-                if (reviewsEn) reviewsEn.checked = pr.reviews_enabled;
                 if (en) en.checked = pr.enabled;
             }
             function amzSavePrRule(apply) {
@@ -3627,25 +3595,11 @@
                 if (err) { err.classList.add('d-none'); err.textContent = ''; }
                 if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
                 var dilInput = document.getElementById('amazonAdsPrDilAbove');
-                var priceInput = document.getElementById('amazonAdsPrPriceBelow');
-                var reviewsInput = document.getElementById('amazonAdsPrReviewsBelow');
                 var dilEn = document.getElementById('amazonAdsPrDilEnabled');
-                var priceEn = document.getElementById('amazonAdsPrPriceEnabled');
-                var reviewsEn = document.getElementById('amazonAdsPrReviewsEnabled');
                 var en = document.getElementById('amazonAdsPrEnabled');
                 var dil = dilInput ? parseFloat(String(dilInput.value).trim()) : NaN;
-                var price = priceInput ? parseFloat(String(priceInput.value).trim()) : NaN;
-                var reviewsBelow = reviewsInput ? parseFloat(String(reviewsInput.value).trim()) : NaN;
                 if (!isFinite(dil) || dil < 0) {
                     if (err) { err.textContent = 'Enter a Dil% threshold (0 or higher).'; err.classList.remove('d-none'); }
-                    return;
-                }
-                if (!isFinite(price) || price < 0) {
-                    if (err) { err.textContent = 'Enter a price threshold (0 or higher).'; err.classList.remove('d-none'); }
-                    return;
-                }
-                if (!isFinite(reviewsBelow) || reviewsBelow < 1 || reviewsBelow > 5) {
-                    if (err) { err.textContent = 'Enter a Reviews threshold from 1 to 5.'; err.classList.remove('d-none'); }
                     return;
                 }
                 var saveBtn = document.getElementById('amazonAdsPrRuleSaveBtn');
@@ -3660,11 +3614,9 @@
                         enabled: !!(en && en.checked),
                         dil_above: dil,
                         dil_enabled: !!(dilEn && dilEn.checked),
-                        price_below: price,
-                        price_enabled: !!(priceEn && priceEn.checked),
-                        reviews_enabled: !!(reviewsEn && reviewsEn.checked),
-                        reviews_below: reviewsBelow,
-                        apply: !!apply || !!(en && en.checked) || !!(reviewsEn && reviewsEn.checked)
+                        price_enabled: false,
+                        reviews_enabled: false,
+                        apply: !!apply || !!(en && en.checked)
                     })
                 })
                     .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
@@ -3680,10 +3632,19 @@
                         if (b.apply) {
                             msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
                                 + ', unchanged ' + (b.apply.unchanged || 0) + ', failed ' + (b.apply.failed || 0) + '.';
+                            var pausedNames = Array.isArray(b.apply.paused_names) ? b.apply.paused_names.filter(Boolean) : [];
+                            if (pausedNames.length) {
+                                msg += ' Stat will show P (Paused): ' + pausedNames.slice(0, 12).join(', ')
+                                    + (pausedNames.length > 12 ? ' …' : '') + '.';
+                            }
                             var prErrs = Array.isArray(b.apply.errors) ? b.apply.errors.filter(Boolean) : [];
                             if (prErrs.length && err) {
                                 err.textContent = prErrs.slice(0, 8).join(' | ');
                                 err.classList.remove('d-none');
+                            }
+                            var statSel = document.getElementById('amazonAdsFilterCampaignStatus');
+                            if (statSel && (b.apply.paused || 0) > 0) {
+                                statSel.value = '';
                             }
                         }
                         if (ok) { ok.textContent = msg; ok.classList.remove('d-none'); }
@@ -3722,27 +3683,13 @@
             var prApplyBtn = document.getElementById('amazonAdsPrRuleApplyBtn');
             if (prApplyBtn) prApplyBtn.addEventListener('click', function () {
                 var dilInput = document.getElementById('amazonAdsPrDilAbove');
-                var priceInput = document.getElementById('amazonAdsPrPriceBelow');
-                var reviewsInput = document.getElementById('amazonAdsPrReviewsBelow');
                 var dilEn = document.getElementById('amazonAdsPrDilEnabled');
-                var priceEn = document.getElementById('amazonAdsPrPriceEnabled');
-                var reviewsEn = document.getElementById('amazonAdsPrReviewsEnabled');
                 var en = document.getElementById('amazonAdsPrEnabled');
                 var on = !!(en && en.checked);
-                var revOn = !!(reviewsEn && reviewsEn.checked);
-                var bits = [];
-                if (dilEn && dilEn.checked) bits.push('Dil% ≥ ' + (dilInput ? dilInput.value : '100') + '%');
-                if (priceEn && priceEn.checked) bits.push('Price < $' + (priceInput ? priceInput.value : '20'));
-                var parts = [];
-                if (on) {
-                    parts.push('pause matching SP + SB campaigns when ' + (bits.join(' or ') || 'no Dil%/Price conditions'));
-                }
-                if (revOn) {
-                    parts.push('pause product ads rated below ' + (reviewsInput ? reviewsInput.value : '2.99') + '★ (campaign stays on)');
-                }
-                var msg = parts.length
-                    ? ('Save Pause Rule and ' + parts.join(', and ') + ' on Amazon now?')
-                    : 'Save Pause Rule with campaign auto-pause and Reviews off? Matching campaigns / product ads will not be auto-paused by this rule.';
+                var dilOn = !!(dilEn && dilEn.checked);
+                var msg = on && dilOn
+                    ? ('Save Pause Rule and pause matching PARENT and child SKU campaigns when Dil% ≥ ' + (dilInput ? dilInput.value : '100') + '% on Amazon now? Only PARENT campaigns will turn back on later.')
+                    : 'Save Pause Rule with Dil% auto-pause off? Matching campaigns will not be auto-paused by this rule.';
                 if (!window.confirm(msg)) return;
                 amzSavePrRule(true);
             });

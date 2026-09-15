@@ -229,6 +229,11 @@
             color: white;
         }
 
+        .type-wholesale {
+            background: linear-gradient(135deg, #e67e22 0%, #f39c12 100%);
+            color: white;
+        }
+
         /* Toast container */
         .toast-container {
             position: fixed;
@@ -549,6 +554,7 @@
                         <option value="B2C">🛒 B2C</option>
                         <option value="B2B">🏢 B2B</option>
                         <option value="Dropship">📦 Dropship</option>
+                        <option value="Wholesale">🏬 Wholesale</option>
                     </select>
 
                     <!-- Column Visibility Dropdown -->
@@ -802,6 +808,7 @@
                                 <option value="B2B">B2B</option>
                                 <option value="B2C">B2C</option>
                                 <option value="Dropship">Dropship</option>
+                                <option value="Wholesale">Wholesale</option>
                             </select>
                         </div>
                         <div class="mb-3">
@@ -896,6 +903,7 @@
                                 <option value="B2B">B2B</option>
                                 <option value="B2C">B2C</option>
                                 <option value="Dropship">Dropship</option>
+                                <option value="Wholesale">Wholesale</option>
                             </select>
                         </div>
                         <div class="mb-3">
@@ -2105,6 +2113,31 @@
                                 : `<span>${channel}</span>`;
 
                             return `<div>${channelDisplay}</div>`;
+                        }
+                    },
+                    {
+                        title: "Type",
+                        field: "type",
+                        frozen: true,
+                        responsive: 0,
+                        hozAlign: "center",
+                        width: 96,
+                        headerTooltip: "Channel type (B2C, B2B, Dropship, Wholesale).",
+                        formatter: function(cell) {
+                            const type = (cell.getValue() || '').toString().trim();
+                            if (!type) {
+                                return '<span style="color:#adb5bd;">-</span>';
+                            }
+                            const slug = type.toLowerCase().replace(/[^a-z0-9]+/g, '');
+                            const known = {
+                                b2c: 'type-b2c',
+                                b2b: 'type-b2b',
+                                dropship: 'type-dropship',
+                                wholesale: 'type-wholesale',
+                            };
+                            const cls = known[slug] || 'type-b2c';
+                            const safe = type.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                            return `<span class="type-badge ${cls}">${safe}</span>`;
                         }
                     },
                     {
@@ -5009,7 +5042,7 @@
                 setBadgeExact($revBadge, reviewsSum);
             }
 
-            // Combine channel search and type (B2C/B2B/Dropship) filters
+            // Combine channel search and type (B2C/B2B/Dropship/Wholesale) filters
             function applyMasterFilters() {
                 if (!table || typeof table.clearFilter !== 'function') return;
                 const q = ($('#channel-search').val() || '').trim().toLowerCase();

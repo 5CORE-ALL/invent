@@ -44,7 +44,7 @@ class TikTokSalesController extends Controller
      * Live L30 / L60 / GPFT / ROI from tiktok_sales_two — shared by
      * /tiktok-two/daily-sales and /all-marketplace-master (TikTok 2 row).
      *
-     * Window: 30 days ending on the latest order_date (same as getTikTokTwoChannelData).
+     * Window: 30 Pacific calendar days ending yesterday (same clock as Amazon).
      * Profit: (unit_price × margin) − LP − shipCost, × qty.
      * Margin from marketplace_percentages.marketplace = TiktokShop (same as TikTok 1).
      *
@@ -72,16 +72,11 @@ class TikTokSalesController extends Controller
         ];
 
         try {
-            $latestOrderDate = TiktokSalesTwo::whereNotNull('order_date')->max('order_date');
-            if (! $latestOrderDate) {
+            if (! TiktokSalesTwo::whereNotNull('order_date')->exists()) {
                 return $defaults;
             }
 
-            $latestCarbon = Carbon::parse($latestOrderDate);
-            $closed = Carbon::yesterday('America/Los_Angeles')->endOfDay();
-            if ($latestCarbon->gt($closed)) {
-                $latestCarbon = $closed;
-            }
+            $latestCarbon = Carbon::yesterday('America/Los_Angeles')->endOfDay();
             $l60StartDate = $latestCarbon->copy()->subDays(59)->startOfDay();
             $l60EndDate = $latestCarbon->copy()->subDays(30)->endOfDay();
             $l30StartDate = $latestCarbon->copy()->subDays(29)->startOfDay();

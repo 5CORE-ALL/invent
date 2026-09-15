@@ -1551,6 +1551,21 @@
                                     </ul>
                                 </div>
                             </li>
+                            <!-- Alibaba -->
+                            <li class="side-nav-item">
+                                <a data-bs-toggle="collapse" href="#sidebarAlibaba" aria-expanded="false"
+                                    aria-controls="sidebarAlibaba">
+                                    <span>Alibaba</span>
+                                    <span class="menu-arrow"></span>
+                                </a>
+                                <div class="collapse" id="sidebarAlibaba">
+                                    <ul class="side-nav-third-level">
+                                        <li>
+                                            <a href="{{ route('alibaba.analytics') }}">Alibaba Analytics</a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </li>
                             <!-- eBay Variation -->
                             {{-- <li class="side-nav-item">
                                 <a data-bs-toggle="collapse" href="#sidebarEbayVariation" aria-expanded="false"

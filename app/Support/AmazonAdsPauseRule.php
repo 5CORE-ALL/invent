@@ -9,14 +9,15 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Amazon Ads All pause/activate rule: dynamic Pricing / Dil% / ACOS% bands.
+ * Amazon Ads All pause/activate rule: Dil% only.
  *
- * Default desired state is ENABLED. A campaign is PAUSED only when it matches
- * at least one band whose action is PAUSED. First matching band per section wins.
+ * Price and Reviews rules are retired. Dil% ≥ threshold pauses PARENT and child
+ * SKU campaigns. Only PARENT campaigns are turned back on after a recent Pause
+ * Rule pause when Dil% no longer matches. Child SKU campaigns stay paused.
  */
 final class AmazonAdsPauseRule
 {
-    public const CACHE_KEY = 'amazon_ads_pause_rule_resolved_v9';
+    public const CACHE_KEY = 'amazon_ads_pause_rule_resolved_v10';
 
     public const ACTION_PAUSED = 'PAUSED';
 
@@ -49,7 +50,7 @@ final class AmazonAdsPauseRule
     }
 
     /**
-     * Pause product ads (not the campaign) when that ad's SKU rating is below this star value.
+     * Reviews product-ad pause is retired and always stored off.
      *
      * @return array{enabled: bool, below: float}
      */
@@ -71,7 +72,7 @@ final class AmazonAdsPauseRule
             'dil_above' => 100.0,
             'dil_enabled' => true,
             'price_below' => 20.0,
-            'price_enabled' => true,
+            'price_enabled' => false,
             'reviews_enabled' => false,
             'reviews_below' => 2.99,
         ];
@@ -84,7 +85,7 @@ final class AmazonAdsPauseRule
     {
         $r = $rule ?? [];
 
-        return self::hasCampaignBands($r) || self::reviewsEnabled($r);
+        return self::hasCampaignBands($r);
     }
 
     /**
@@ -105,9 +106,7 @@ final class AmazonAdsPauseRule
      */
     public static function reviewsEnabled(?array $rule): bool
     {
-        $reviews = is_array($rule['reviews'] ?? null) ? $rule['reviews'] : [];
-
-        return ! empty($reviews['enabled']);
+        return false;
     }
 
     /**
@@ -128,14 +127,17 @@ final class AmazonAdsPauseRule
      */
     public static function ratingBelowReviewsThreshold(?array $rule, mixed $rating): bool
     {
-        if (! self::reviewsEnabled($rule)) {
-            return false;
-        }
-        if ($rating === null || $rating === '' || ! is_numeric($rating) || ! is_finite((float) $rating)) {
-            return false;
-        }
+        return false;
+    }
 
-        return (float) $rating < self::reviewsBelow($rule);
+    /**
+     * PARENT … KW/PT campaigns. Child SKU campaigns can be paused but never auto-enabled.
+     */
+    public static function isParentCampaign(?string $campaignName): bool
+    {
+        $key = AmazonAdsCampaignSkuMetrics::skuKeyFromCampaignName($campaignName);
+
+        return str_starts_with($key, 'PARENT ');
     }
 
     /**
@@ -249,12 +251,7 @@ final class AmazonAdsPauseRule
         $current = self::loadResolvedRule();
         $normalizedPr = self::normalizePr($pr);
         $current['pr'] = $normalizedPr;
-        if (array_key_exists('reviews_enabled', $pr) || array_key_exists('reviews_below', $pr)) {
-            $current['reviews'] = self::normalizeReviews([
-                'enabled' => ! empty($normalizedPr['reviews_enabled']),
-                'below' => $normalizedPr['reviews_below'],
-            ]);
-        }
+        $current['reviews'] = self::defaultReviews();
         self::persistRule($current);
     }
 
@@ -263,12 +260,11 @@ final class AmazonAdsPauseRule
      */
     public static function persistReviews(array $reviews): void
     {
+        unset($reviews);
         $current = self::loadResolvedRule();
-        $normalized = self::normalizeReviews($reviews);
-        $current['reviews'] = $normalized;
+        $current['reviews'] = self::defaultReviews();
         $pr = is_array($current['pr'] ?? null) ? $current['pr'] : self::defaultPr();
-        $pr['reviews_enabled'] = ! empty($normalized['enabled']);
-        $pr['reviews_below'] = $normalized['below'];
+        $pr['reviews_enabled'] = false;
         $current['pr'] = $pr;
         self::persistRule($current);
     }
@@ -282,7 +278,7 @@ final class AmazonAdsPauseRule
      * @param  array{price?: float|null, dil?: float|null, acos?: float|null, rating?: float|null}  $metrics
      * @return array{status: string, reason: string, hits: list<string>}
      */
-    public static function decide(?array $rule, array $metrics): array
+    public static function decide(?array $rule, array $metrics, ?string $campaignName = null): array
     {
         $r = $rule ?? self::defaults();
         if (! self::hasBands($r)) {
@@ -295,33 +291,24 @@ final class AmazonAdsPauseRule
         $hits = [];
 
         $pr = is_array($r['pr'] ?? null) ? $r['pr'] : self::defaultPr();
-        if (! empty($pr['enabled'])) {
-            // Dil% and Price are independent: either matching condition pauses the campaign (OR).
-            if (! empty($pr['dil_enabled'])) {
-                $dilVal = $metrics['dil'] ?? null;
-                $threshold = (float) ($pr['dil_above'] ?? 100);
-                if ($dilVal !== null && $dilVal !== '' && is_finite((float) $dilVal) && is_finite($threshold)
-                    && (float) $dilVal >= $threshold) {
-                    $shown = rtrim(rtrim(number_format((float) $dilVal, 2, '.', ''), '0'), '.');
-                    $th = rtrim(rtrim(number_format($threshold, 2, '.', ''), '0'), '.');
-                    $hits[] = [
-                        'action' => self::ACTION_PAUSED,
-                        'reason' => 'PR Dil% '.$shown.'% ≥ '.$th.'%',
-                    ];
-                }
+        if (! empty($pr['enabled']) && ! empty($pr['dil_enabled'])) {
+            $ownDil = self::finiteDil($metrics['dil'] ?? null);
+            $parentDil = self::finiteDil($metrics['parent_dil'] ?? null);
+            $dilVal = $ownDil;
+            $fromParent = false;
+            if ($parentDil !== null && ($dilVal === null || $parentDil > $dilVal)) {
+                $dilVal = $parentDil;
+                $fromParent = true;
             }
-            if (! empty($pr['price_enabled'])) {
-                $priceVal = $metrics['price'] ?? null;
-                $priceMax = (float) ($pr['price_below'] ?? 20);
-                if ($priceVal !== null && $priceVal !== '' && is_finite((float) $priceVal) && is_finite($priceMax)
-                    && (float) $priceVal < $priceMax) {
-                    $shown = rtrim(rtrim(number_format((float) $priceVal, 2, '.', ''), '0'), '.');
-                    $th = rtrim(rtrim(number_format($priceMax, 2, '.', ''), '0'), '.');
-                    $hits[] = [
-                        'action' => self::ACTION_PAUSED,
-                        'reason' => 'PR Price $'.$shown.' < $'.$th,
-                    ];
-                }
+            $threshold = (float) ($pr['dil_above'] ?? 100);
+            if ($dilVal !== null && is_finite($threshold) && $dilVal >= $threshold) {
+                $shown = rtrim(rtrim(number_format($dilVal, 2, '.', ''), '0'), '.');
+                $th = rtrim(rtrim(number_format($threshold, 2, '.', ''), '0'), '.');
+                $hits[] = [
+                    'action' => self::ACTION_PAUSED,
+                    'reason' => 'PR Dil% '.$shown.'% ≥ '.$th.'%'
+                        .($fromParent ? ' (PARENT family)' : ''),
+                ];
             }
         }
 
@@ -346,11 +333,25 @@ final class AmazonAdsPauseRule
     }
 
     /**
-     * Re-enable only when the Pause Rule paused this campaign in the last month
-     * and Dil% / Price no longer say PAUSED. Older pink-DIL / manual pauses stay off.
+     * Re-enable only a PARENT campaign this Dil Pause Rule paused recently.
+     * Old ads stay off: Price, Reviews, ACOS, pink-DIL, empty reason, and
+     * pauses older than 31 days or before PAUSE_RULE_STARTED_AT never enable.
+     * Child SKUs never enable.
      */
-    public static function shouldAutoEnable(array $decision, string $status, mixed $pausedAt, ?\DateTimeImmutable $now = null): bool
-    {
+    public static function shouldAutoEnable(
+        array $decision,
+        string $status,
+        mixed $pausedAt,
+        ?\DateTimeImmutable $now = null,
+        ?string $campaignName = null,
+        ?string $pausedReason = null
+    ): bool {
+        if (! self::isParentCampaign($campaignName ?? '')) {
+            return false;
+        }
+        if (! self::isDilPauseReason($pausedReason)) {
+            return false;
+        }
         if (! self::isRecentPauseRuleStamp($pausedAt, $now)) {
             return false;
         }
@@ -360,6 +361,30 @@ final class AmazonAdsPauseRule
         }
 
         return ($decision['status'] ?? '') !== self::ACTION_PAUSED;
+    }
+
+    /**
+     * Current Dil Pause Rule wording only. "pink DIL" / Price leftovers do not match.
+     */
+    public static function isDilPauseReason(mixed $reason): bool
+    {
+        $r = strtolower(trim((string) $reason));
+        if ($r === '') {
+            return false;
+        }
+
+        return str_contains($r, 'pr dil%')
+            || str_contains($r, 'pr dil ')
+            || str_contains($r, 'pause rule (dil');
+    }
+
+    private static function finiteDil(mixed $value): ?float
+    {
+        if ($value === null || $value === '' || ! is_numeric($value) || ! is_finite((float) $value)) {
+            return null;
+        }
+
+        return (float) $value;
     }
 
     public static function isRecentPauseRuleStamp(mixed $pausedAt, ?\DateTimeImmutable $now = null): bool
@@ -398,7 +423,7 @@ final class AmazonAdsPauseRule
 
     public static function fallbackPauseReason(): string
     {
-        return 'Pause Rule (Dil% ≥ 100% or Price < $20)';
+        return 'Pause Rule (Dil% ≥ 100%)';
     }
 
     public static function normalizeCampaignName(string $name): string
@@ -525,8 +550,8 @@ final class AmazonAdsPauseRule
             'dil_above' => $dil,
             'dil_enabled' => self::normalizePrBool($pr['dil_enabled'] ?? $pr['dilEnabled'] ?? true),
             'price_below' => $price,
-            'price_enabled' => self::normalizePrBool($pr['price_enabled'] ?? $pr['priceEnabled'] ?? true),
-            'reviews_enabled' => self::normalizePrBool($pr['reviews_enabled'] ?? $pr['reviewsEnabled'] ?? false),
+            'price_enabled' => false,
+            'reviews_enabled' => false,
             'reviews_below' => $reviewsBelow,
         ];
     }
@@ -567,7 +592,7 @@ final class AmazonAdsPauseRule
         }
         if (array_key_exists('enabled', $reviews) || array_key_exists('below', $reviews)) {
             return [
-                'enabled' => self::normalizePrBool($reviews['enabled'] ?? false),
+                'enabled' => false,
                 'below' => self::normalizePrNumber($reviews['below'] ?? $base['below'], 'Reviews below', 1, 5),
             ];
         }
@@ -591,7 +616,7 @@ final class AmazonAdsPauseRule
         }
 
         return [
-            'enabled' => true,
+            'enabled' => false,
             'below' => $below,
         ];
     }

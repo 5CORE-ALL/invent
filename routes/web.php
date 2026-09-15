@@ -121,6 +121,7 @@ use App\Http\Controllers\MarketingMaster\VideoPostedController;
 use App\Http\Controllers\MarketingMaster\YoutubeAdsManagerController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Http\Controllers\MarketPlace\ACOSControl\EbayACOSController;
+use App\Http\Controllers\MarketPlace\AlibabaAnalyticsController;
 use App\Http\Controllers\MarketPlace\AliexpressController;
 use App\Http\Controllers\MarketPlace\AmazonFbaInvController;
 use App\Http\Controllers\MarketPlace\Business5coreController;
@@ -5694,6 +5695,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/aliexpress-listing-variation-verify', [AliexpressListingVariationVerifyController::class, 'index'])->name('aliexpress.listing.variation.verify');
     Route::get('/aliexpress-listing-variation-verify/data', [AliexpressListingVariationVerifyController::class, 'data'])->name('aliexpress.listing.variation.verify.data');
     Route::post('/aliexpress-listing-variation-verify/pull-listings', [AliexpressListingVariationVerifyController::class, 'pullListings'])->name('aliexpress.listing.variation.verify.pull');
+
+    Route::get('/alibaba-analytics', [AlibabaAnalyticsController::class, 'index'])->name('alibaba.analytics');
+    Route::get('/alibaba-analytics/data', [AlibabaAnalyticsController::class, 'data'])->name('alibaba.analytics.data');
+    Route::post('/alibaba-analytics/import', [AlibabaAnalyticsController::class, 'import'])->name('alibaba.analytics.import');
+    Route::get('/alibaba-analytics/export', [AlibabaAnalyticsController::class, 'export'])->name('alibaba.analytics.export');
+    Route::get('/alibaba-analytics/sample', [AlibabaAnalyticsController::class, 'downloadSample'])->name('alibaba.analytics.sample');
 
     Route::get('/aliexpress-pricing', [AliexpressController::class, 'aliexpressPricingView'])->name('aliexpress.pricing.view');
     Route::get('/aliexpress/pricing-data', [AliexpressController::class, 'getPricingData'])->name('aliexpress.pricing.data');

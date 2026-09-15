@@ -12,7 +12,7 @@ class ApplyAmazonAdsPauseRule extends Command
                             {--dry-run : Evaluate pause/enable without calling Amazon}
                             {--enable-name=* : Campaign name to turn back on if still paused}';
 
-    protected $description = 'Pause matching Dil%/Price campaigns; re-enable only Pause Rule pauses from the last 31 days; pause low-review product ads';
+    protected $description = 'Pause Dil matches and Active Again child SKUs. Old ads stay off. Only recently Dil-paused PARENT campaigns auto-enable.';
 
     public function handle(AmazonAdsPauseRuleApplicator $applicator): int
     {
@@ -35,6 +35,15 @@ class ApplyAmazonAdsPauseRule extends Command
             $stats['skipped'],
             $stats['failed']
         ));
+        foreach (array_slice($stats['paused_names'] ?? [], 0, 50) as $name) {
+            $this->line('  PAUSED  '.$name);
+        }
+        if (count($stats['paused_names'] ?? []) > 50) {
+            $this->line('  … and '.(count($stats['paused_names']) - 50).' more');
+        }
+        foreach (array_slice($stats['enabled_names'] ?? [], 0, 20) as $name) {
+            $this->line('  ENABLED '.$name);
+        }
         foreach (array_slice($stats['errors'], 0, 20) as $err) {
             $this->warn('  '.$err);
         }

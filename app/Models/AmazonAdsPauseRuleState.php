@@ -51,11 +51,11 @@ class AmazonAdsPauseRuleState extends Model
     }
 
     /**
-     * Open Pause Rule pauses: campaign_id => paused_at (Y-m-d H:i:s).
+     * Open Pause Rule pauses this job created (not yet reactivated).
      *
-     * @return array<string, string>
+     * @return array<string, array{paused_at: string, paused_reason: string}>
      */
-    public static function openPauseAtByCampaignId(string $channel): array
+    public static function openPausesByCampaignId(string $channel): array
     {
         self::ensureTable();
         $out = [];
@@ -63,13 +63,29 @@ class AmazonAdsPauseRuleState extends Model
             ->where('channel', $channel)
             ->whereNotNull('paused_at')
             ->whereNull('reactivated_at')
-            ->get(['campaign_id', 'paused_at']) as $row
+            ->get(['campaign_id', 'paused_at', 'paused_reason']) as $row
         ) {
             $cid = trim((string) $row->campaign_id);
             if ($cid === '' || $row->paused_at === null) {
                 continue;
             }
-            $out[$cid] = $row->paused_at->format('Y-m-d H:i:s');
+            $out[$cid] = [
+                'paused_at' => $row->paused_at->format('Y-m-d H:i:s'),
+                'paused_reason' => trim((string) ($row->paused_reason ?? '')),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function openPauseAtByCampaignId(string $channel): array
+    {
+        $out = [];
+        foreach (self::openPausesByCampaignId($channel) as $cid => $row) {
+            $out[$cid] = $row['paused_at'];
         }
 
         return $out;
@@ -151,12 +167,14 @@ class AmazonAdsPauseRuleState extends Model
         }
         $reason = trim($reason) !== '' ? trim($reason) : AmazonAdsPauseRule::fallbackPauseReason();
         $existing = self::query()->where('channel', $channel)->where('campaign_id', $cid)->first();
+        $reopen = $existing !== null && $existing->reactivated_at !== null;
+        $fresh = $existing === null || $existing->paused_at === null || $reopen;
         self::query()->updateOrCreate(
             ['channel' => $channel, 'campaign_id' => $cid],
             [
                 'campaign_name' => $campaignName !== '' ? $campaignName : ($existing?->campaign_name),
                 'paused_reason' => $reason,
-                'paused_at' => $existing?->paused_at ?? now(),
+                'paused_at' => $fresh ? now() : $existing->paused_at,
                 'reactivated_at' => null,
             ]
         );
