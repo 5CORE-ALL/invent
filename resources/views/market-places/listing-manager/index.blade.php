@@ -881,7 +881,7 @@
                     </div>
 
                     <div class="mb-2 lc-mp-category-selected">
-                        <label class="form-label mb-1">Category <span class="lc-req lc-tiktok-only d-none">*</span></label>
+                        <label class="form-label mb-1">Category <span class="lc-req lc-category-star d-none">*</span></label>
                         <span id="lc-category-path" class="lc-primary-path ms-2">Select a category</span>
                         <span class="text-muted small" id="lc-category-id-chip"></span>
                         <span class="lc-suggested" id="lc-category-suggested" style="display:none">Suggested</span>
@@ -2480,6 +2480,7 @@
         }
         const isTiktok = /tiktok/.test(channel);
         const isTemu = /temu/.test(channel);
+        const isNewegg = ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'newegg') || /newegg/.test(channel);
         const isReverb = ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'reverb') || /reverb/.test(channel);
         if (isReverb) {
             if (!d.primary_category_id) errors.category.push('Category');
@@ -2507,6 +2508,9 @@
             if (!String(d.country_of_origin || '').trim()) errors.identifiers.push('Country of Origin');
             if (!String(d.dangerous_goods_regulations || '').trim()) errors.identifiers.push('Dangerous Goods');
             if (!(parseFloat(d.list_price) > 0) && !(price > 0)) errors.pricing.push('List Price');
+        }
+        if (isNewegg) {
+            if (!d.primary_category_id || !/^\d+$/.test(String(d.primary_category_id))) errors.category.push('Category');
         }
         if (isTiktok || isTemu) {
             if (!d.primary_category_id) errors.category.push('Category');
@@ -2553,7 +2557,7 @@
         const family = (serverDraft && serverDraft.editor && serverDraft.editor.family) || '';
         const banners = [];
         if (err.identifiers && err.identifiers.length) banners.push(['danger', 'Product Identifiers tab is missing required information. Please fill in those required fields.']);
-        if (err.category.length) banners.push(['danger', (family === 'amazon' ? 'Product Type' : (family === 'tiktok' ? 'TikTok Category' : (family === 'temu' ? 'Temu Category' : (family === 'reverb' ? 'Reverb Details' : 'Category')))) + ' tab is missing required information. Please fill in those required fields.']);
+        if (err.category.length) banners.push(['danger', (family === 'amazon' ? 'Product Type' : (family === 'tiktok' ? 'TikTok Category' : (family === 'temu' ? 'Temu Category' : (family === 'newegg' ? 'Newegg Category' : (family === 'reverb' ? 'Reverb Details' : 'Category'))))) + ' tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'ebay') banners.push(['danger', 'Business Policies tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'tiktok') banners.push(['danger', 'Warehouse & Package tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'temu') banners.push(['danger', 'Package tab is missing required information. Please fill in those required fields.']);
@@ -2572,7 +2576,7 @@
         $('#lc-banners').html(banners.map(([t, m]) => `<div class="lc-banner lc-banner-${t}">${escapeHtml(m)}</div>`).join(''));
 
         const catOk = catId !== '' && (family !== 'tiktok' || /^\d+$/.test(catId));
-        $('#lc-category-id-warn').toggleClass('d-none', !['ebay', 'tiktok', 'temu', 'reverb'].includes(family) || catOk);
+        $('#lc-category-id-warn').toggleClass('d-none', !['ebay', 'tiktok', 'temu', 'reverb', 'newegg'].includes(family) || catOk);
         $('#lc-reverb-condition-warn').toggleClass('d-none', family !== 'reverb' || !!$('#lc-reverb-condition').val());
         $('#lc-condition-warn').toggleClass('d-none', family !== 'ebay' || !!$('#lc-condition').val());
         $('#lc-shipping-warn').toggle(family === 'ebay' && !$('#lc-shipping-policy').val());
@@ -2692,7 +2696,7 @@
         const family = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
         const channel = (currentDraft && currentDraft.channel) || '';
         const title = String($('#lc-title').val() || (currentDraft && currentDraft.title) || '').trim();
-        if (family !== 'tiktok' && family !== 'reverb' && family !== 'amazon' && family !== 'temu' && (!q || q.length < 2)) {
+        if (family !== 'tiktok' && family !== 'reverb' && family !== 'amazon' && family !== 'temu' && family !== 'newegg' && (!q || q.length < 2)) {
             $box.html('<div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>');
             return;
         }
@@ -2708,9 +2712,13 @@
             $box.html('<div class="text-muted small p-3">Type a keyword such as light stand to load Temu category suggestions.</div>');
             return;
         }
+        if (family === 'newegg' && (!q || q.length < 2) && !title) {
+            $box.html('<div class="text-muted small p-3">Type a keyword such as speaker or stand to load Newegg Seller Portal subcategories.</div>');
+            return;
+        }
         const searchingLabel = family === 'tiktok'
             ? 'Searching TikTok Shop categories…'
-            : (family === 'reverb' ? 'Searching Reverb categories…' : (family === 'amazon' ? 'Searching Amazon product types…' : (family === 'temu' ? 'Searching Temu categories…' : 'Searching…')));
+            : (family === 'reverb' ? 'Searching Reverb categories…' : (family === 'amazon' ? 'Searching Amazon product types…' : (family === 'temu' ? 'Searching Temu categories…' : (family === 'newegg' ? 'Searching Newegg subcategories…' : 'Searching…'))));
         $box.html('<div class="text-muted small p-3">' + searchingLabel + '</div>');
         const desc = String(getDescriptionValue() || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
         if (window._lcCatXhr && window._lcCatXhr.abort) {
@@ -2744,7 +2752,8 @@
                 const timeoutMsg = family === 'amazon'
                     ? 'Amazon product type search timed out. Try again.'
                     : (family === 'temu' ? 'Temu category search timed out. Try again.'
-                    : (family === 'tiktok' ? 'TikTok category search timed out. Try again.' : 'Category search timed out. Try again.'));
+                    : (family === 'newegg' ? 'Newegg subcategory search timed out. Try again.'
+                    : (family === 'tiktok' ? 'TikTok category search timed out. Try again.' : 'Category search timed out. Try again.')));
                 const msg = (xhr.responseJSON && xhr.responseJSON.message)
                     || (status === 'timeout' ? timeoutMsg : 'Category search failed.');
                 $box.html(`<div class="text-danger small p-3">${escapeHtml(msg)}</div>`);
@@ -2780,12 +2789,13 @@
         $('.lc-temu-only').toggleClass('d-none', !ed.temu);
         $('.lc-reverb-only').toggleClass('d-none', !ed.reverb);
         $('.lc-amazon-only').toggleClass('d-none', !ed.amazon);
-        $('.lc-mp-category-manual').toggleClass('d-none', !ed.temu);
-        $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.reverb || ed.amazon || ed.temu));
-        $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon));
+        $('.lc-mp-category-manual').toggleClass('d-none', !(ed.temu || ed.newegg));
+        $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.reverb || ed.amazon || ed.temu || ed.newegg));
+        $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon || ed.newegg));
+        $('.lc-category-star').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.newegg));
         $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
-        $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.reverb ? 'Reverb Category' : 'Category'))));
+        $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.newegg ? 'Newegg Subcategory' : (ed.reverb ? 'Reverb Category' : 'Category')))));
         $('#lc-category-id-visible').attr('placeholder', ed.category_placeholder || 'Category ID');
         $('#lc-category-search').attr('placeholder', ed.category_placeholder || 'Search categories');
         $('#lc-optimize-desc-label').text(ed.optimize_label || 'Optimize Description');
@@ -2936,7 +2946,7 @@
             const family = (draft.editor && draft.editor.family) || '';
             if ((family === 'tiktok' || family === 'reverb') && !String($('#lc-category-id').val() || '').trim()) {
                 searchCategories(family === 'reverb' ? String($('#lc-title').val() || '').trim() : '');
-            } else if (family === 'reverb' || family === 'amazon' || family === 'temu') {
+            } else if (family === 'reverb' || family === 'amazon' || family === 'temu' || family === 'newegg') {
                 const amazonQ = String($('#lc-category-search').val() || $('#lc-amazon-product-type').val() || $('#lc-title').val() || '').trim();
                 searchCategories(family === 'amazon' ? amazonQ : String($('#lc-category-search').val() || $('#lc-title').val() || '').trim());
             }
@@ -3959,8 +3969,8 @@
             $(this).addClass('active');
             $('#lmListingEditorModal .lc-pane').removeClass('active');
             $(`#lmListingEditorModal .lc-pane[data-pane="${pane}"]`).addClass('active');
-            if (pane === 'category' && currentDraft && currentDraft.editor && (currentDraft.editor.tiktok || currentDraft.editor.reverb || currentDraft.editor.amazon || currentDraft.editor.temu)) {
-                const q = String($('#lc-category-search').val() || (currentDraft.editor.amazon ? ($('#lc-amazon-product-type').val() || $('#lc-title').val() || '') : (currentDraft.editor.temu ? ($('#lc-title').val() || '') : '')) || '').trim();
+            if (pane === 'category' && currentDraft && currentDraft.editor && (currentDraft.editor.tiktok || currentDraft.editor.reverb || currentDraft.editor.amazon || currentDraft.editor.temu || currentDraft.editor.newegg)) {
+                const q = String($('#lc-category-search').val() || (currentDraft.editor.amazon ? ($('#lc-amazon-product-type').val() || $('#lc-title').val() || '') : ((currentDraft.editor.temu || currentDraft.editor.newegg) ? ($('#lc-title').val() || '') : '')) || '').trim();
                 searchCategories(q);
             }
         });

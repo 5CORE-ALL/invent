@@ -19,6 +19,7 @@ class ListingManagerEditorProfile
      *   temu: bool,
      *   faire: bool,
      *   reverb: bool,
+     *   newegg: bool,
      *   category_placeholder: string,
      *   optimize_label: string,
      *   header_quick: string,
@@ -142,6 +143,28 @@ class ListingManagerEditorProfile
                 'category_help' => '',
                 'policies_help' => '',
             ],
+            'newegg' => [
+                'tabs' => [
+                    ['id' => 'identifiers', 'label' => 'Product Identifiers'],
+                    ['id' => 'variations', 'label' => 'Variations'],
+                    ['id' => 'title', 'label' => 'Title & Description'],
+                    ['id' => 'images', 'label' => 'Images'],
+                    ['id' => 'pricing', 'label' => 'Price & Stock'],
+                    ['id' => 'category', 'label' => 'Newegg Category'],
+                    ['id' => 'policies', 'label' => 'Package'],
+                ],
+                'identifier_fields' => ['sku', 'asin', 'brand', 'manufacturer', 'upc'],
+                'category_placeholder' => 'Search Newegg categories (e.g. speaker)',
+                'optimize_label' => 'Optimize Description for Newegg',
+                'header_quick' => 'Quick/Auto List to Newegg',
+                'header_import' => 'Import from Newegg',
+                'pricing_title' => 'Price & Stock',
+                'title_heading' => 'Title & Description',
+                'identifier_help' => 'Brand is always 5 Core. Model/MPN is the SKU. Condition is New. UPC helps Newegg match an existing catalog item.',
+                'images_help' => 'Load photos from Image Master. First image is Primary.',
+                'category_help' => 'Search Newegg Seller Portal subcategories and pick a leaf. The Subcategory ID is what Newegg uses to create the listing. You can also type a numeric Subcategory ID.',
+                'policies_help' => 'Package size and weight come from Dim/Wt Master.',
+            ],
             'amazon' => [
                 'tabs' => [
                     ['id' => 'identifiers', 'label' => 'Product Identifiers'],
@@ -201,6 +224,7 @@ class ListingManagerEditorProfile
             'faire' => $family === 'faire',
             'reverb' => $family === 'reverb',
             'amazon' => $family === 'amazon',
+            'newegg' => $family === 'newegg',
             'category_placeholder' => $base['category_placeholder'],
             'optimize_label' => $base['optimize_label'],
             'header_quick' => $base['header_quick'],
@@ -234,6 +258,9 @@ class ListingManagerEditorProfile
         }
         if (in_array($normalizedKey, ['amazon', 'amazonfba', 'amz', 'amzfbm'], true)) {
             return 'amazon';
+        }
+        if (in_array($normalizedKey, ['newegg', 'neweggb2c', 'neweggb2b'], true)) {
+            return 'newegg';
         }
         if ($normalizedKey === 'shein') {
             return 'shein';

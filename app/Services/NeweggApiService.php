@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
@@ -2168,5 +2169,225 @@ class NeweggApiService
         $value = $value > 0 ? $value : 1.0;
 
         return number_format($value, 2, '.', '');
+    }
+
+    /**
+     * Search Newegg Seller Portal subcategories (same Subcategory IDs used to create a listing).
+     *
+     * @return array{success: bool, categories: list<array{id: string, path: string, name: string, suggested?: bool}>, message?: string}
+     */
+    public function searchListingCategories(string $query, string $title = '', string $platform = 'b2c'): array
+    {
+        $q = trim($query !== '' ? $query : $title);
+        try {
+            $leaves = $this->listingCategoryLeaves($platform);
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'categories' => self::numericCategoryFallback($q),
+                'message' => 'Newegg subcategory list failed: '.$e->getMessage(),
+            ];
+        }
+
+        if ($leaves === []) {
+            $fallback = self::numericCategoryFallback($q);
+            if ($fallback !== []) {
+                return ['success' => true, 'categories' => $fallback];
+            }
+
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => 'Newegg returned no enabled subcategories. Confirm Seller Management API access, or type a Subcategory ID from Seller Portal.',
+            ];
+        }
+
+        $out = self::filterListingCategoryLeaves($leaves, $q);
+        if ($out === [] && $q !== '') {
+            $out = self::numericCategoryFallback($q);
+        }
+        if ($out !== [] && trim($query) === '' && trim($title) !== '') {
+            $out[0]['suggested'] = true;
+        }
+
+        return ['success' => true, 'categories' => $out];
+    }
+
+    /**
+     * @return list<array{id: string, path: string, name: string}>
+     */
+    public function listingCategoryLeaves(string $platform = 'b2c'): array
+    {
+        $platform = strtolower(trim($platform)) === 'b2b' ? 'b2b' : 'b2c';
+        $seller = trim((string) $this->sellerId);
+        $cacheKey = 'newegg.listing_subcategories.v1.'.$platform.'.'.($seller !== '' ? $seller : 'none');
+
+        return Cache::remember($cacheKey, now()->addHours(6), function () use ($platform) {
+            return $this->fetchSellerSubcategories($platform);
+        });
+    }
+
+    /**
+     * @param  list<array{id: string, path: string, name: string}>  $leaves
+     * @return list<array{id: string, path: string, name: string}>
+     */
+    public static function filterListingCategoryLeaves(array $leaves, string $query): array
+    {
+        $q = trim($query);
+        if ($q === '') {
+            return array_slice($leaves, 0, 25);
+        }
+
+        if (preg_match('/^\d+$/', $q) === 1) {
+            $exact = [];
+            $rest = [];
+            foreach ($leaves as $leaf) {
+                $id = (string) ($leaf['id'] ?? '');
+                if ($id === $q) {
+                    $exact[] = $leaf;
+                    continue;
+                }
+                if (str_contains($id, $q) || str_contains(mb_strtolower((string) ($leaf['path'] ?? '')), $q)) {
+                    $rest[] = $leaf;
+                }
+            }
+
+            return array_slice(array_merge($exact, $rest), 0, 25);
+        }
+
+        $qLower = mb_strtolower($q);
+        $words = preg_split('/\s+/', $qLower) ?: [];
+        $scored = [];
+        foreach ($leaves as $leaf) {
+            $hay = mb_strtolower(trim((string) ($leaf['path'] ?? '').' '.(string) ($leaf['name'] ?? '')));
+            if ($hay === '') {
+                continue;
+            }
+            $score = 0;
+            if (str_contains($hay, $qLower)) {
+                $score += 12;
+            }
+            foreach ($words as $word) {
+                if ($word !== '' && str_contains($hay, $word)) {
+                    $score += 2;
+                }
+            }
+            if ($score > 0) {
+                $scored[] = $leaf + ['_score' => $score];
+            }
+        }
+        usort($scored, static fn ($a, $b) => ($b['_score'] ?? 0) <=> ($a['_score'] ?? 0));
+
+        $out = [];
+        foreach (array_slice($scored, 0, 25) as $row) {
+            unset($row['_score']);
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{id: string, path: string, name: string}>
+     */
+    private function fetchSellerSubcategories(string $platform): array
+    {
+        if (! $this->isConfigured()) {
+            return [];
+        }
+
+        $path = $platform === 'b2b'
+            ? '/marketplace/b2b/sellermgmt/seller/subcategory'
+            : '/marketplace/sellermgmt/seller/subcategory';
+        $body = [
+            'OperationType' => 'GetSellerSubcategoryRequest',
+            'RequestBody' => [
+                'GetItemSubcategory' => [
+                    'Enabled' => '1',
+                ],
+            ],
+        ];
+        $res = $this->request('PUT', $path, [], $body);
+        if (! empty($res['blocked_by_cloudflare'])) {
+            throw new \RuntimeException('Blocked by Cloudflare. Whitelist this server IP in Newegg Seller Portal.');
+        }
+        $rows = $this->subcategoryRowsFromResponse(is_array($res['json'] ?? null) ? $res['json'] : null);
+        if ($rows === [] && ! ($res['ok'] ?? false)) {
+            $error = trim((string) ($res['error'] ?? ''));
+            if ($error !== '') {
+                throw new \RuntimeException($error);
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $json
+     * @return list<array{id: string, path: string, name: string}>
+     */
+    private function subcategoryRowsFromResponse(?array $json): array
+    {
+        if (! is_array($json) || $json === []) {
+            return [];
+        }
+
+        $list = data_get($json, 'ResponseBody.SubcategoryList')
+            ?? data_get($json, 'NeweggAPIResponse.ResponseBody.SubcategoryList')
+            ?? data_get($json, 'SubcategoryList');
+        if ($list === null) {
+            return [];
+        }
+        if (isset($list['Subcategory']) && is_array($list['Subcategory'])) {
+            $list = $list['Subcategory'];
+        }
+        if (isset($list['SubcategoryID'])) {
+            $list = [$list];
+        }
+        if (! is_array($list)) {
+            return [];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $id = trim((string) ($row['SubcategoryID'] ?? $row['subcategory_id'] ?? ''));
+            if ($id === '' || $id === '0' || isset($seen[$id])) {
+                continue;
+            }
+            $name = trim((string) ($row['SubcategoryName'] ?? $row['subcategory_name'] ?? ''));
+            $industry = trim((string) ($row['IndustryName'] ?? $row['industry_name'] ?? ''));
+            $path = $industry !== '' && $name !== ''
+                ? $industry.' > '.$name
+                : ($name !== '' ? $name : ('Subcategory '.$id));
+            $seen[$id] = true;
+            $out[] = [
+                'id' => $id,
+                'path' => $path,
+                'name' => $name !== '' ? $name : ('Subcategory '.$id),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{id: string, path: string, name: string}>
+     */
+    private static function numericCategoryFallback(string $query): array
+    {
+        $query = trim($query);
+        if (preg_match('/^\d+$/', $query) !== 1) {
+            return [];
+        }
+
+        return [[
+            'id' => $query,
+            'path' => 'Newegg Subcategory '.$query,
+            'name' => 'Subcategory '.$query,
+        ]];
     }
 }
