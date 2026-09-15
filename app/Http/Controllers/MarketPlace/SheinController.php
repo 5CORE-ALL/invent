@@ -19,7 +19,6 @@ use App\Services\ChannelPromoPricingService;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
 use App\Models\ChannelMasterCalculatedData;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -125,13 +124,20 @@ class SheinController extends Controller
             return new SupportCollection;
         }
 
+        $pmCols = ['sku', 'parent', 'Values'];
+        foreach (['lp', 'ship'] as $col) {
+            if (Schema::hasColumn($pm->getTable(), $col)) {
+                $pmCols[] = $col;
+            }
+        }
+
         return SupportCollection::make(
             ProductMaster::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
-                ->get()
+                ->get($pmCols)
                 ->all()
-        )->keyBy(fn(ProductMaster $r) => $this->normalizeSheinSkuExact((string) $r->sku));
+        )->keyBy(fn (ProductMaster $r) => $this->normalizeSheinSkuExact((string) $r->sku));
     }
 
     // Save NR value for a SKU
@@ -477,36 +483,60 @@ class SheinController extends Controller
                 )->keyBy(fn ($r) => $normalizeSku($r->sku));
             }
 
-            // ── 3. Shein sales → al30 / sales from API-synced shein_daily_data
+            // ── 3. Shein sales — live SQL aggregates (same idea as ebay_metrics, no cache)
+            $percentage = $this->sheinMarketplaceMarginPercent();
+            $margin = $percentage / 100;
             $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
-            $salesAgg = SupportCollection::make(
-                Cache::remember('shein_pricing_sales_agg', 120, function () use ($excludedStatuses, $normalizeSku) {
-                    $agg = [];
-                    SheinDailyData::query()
-                        ->whereNotNull('seller_sku')->where('seller_sku', '!=', '')
-                        ->where(function ($q) use ($excludedStatuses) {
-                            foreach ($excludedStatuses as $s) {
-                                $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
-                            }
-                        })
-                        ->get(['seller_sku', 'quantity', 'product_price'])
-                        ->each(function ($row) use (&$agg, $normalizeSku) {
-                            $key = $normalizeSku($row->seller_sku);
-                            if ($key === '') {
-                                return;
-                            }
-                            $qty = max(1, (int) ($row->quantity ?? 0));
-                            $rev = (float) ($row->product_price ?? 0) * $qty;
-                            if (! isset($agg[$key])) {
-                                $agg[$key] = ['al30' => 0, 'sales' => 0.0];
-                            }
-                            $agg[$key]['al30'] += $qty;
-                            $agg[$key]['sales'] += $rev;
-                        });
-
-                    return $agg;
-                })
-            )->map(fn ($a) => (object) $a);
+            $dailyQuery = SheinDailyData::query()
+                ->whereNotNull('seller_sku')->where('seller_sku', '!=', '')
+                ->where(function ($q) use ($excludedStatuses) {
+                    foreach ($excludedStatuses as $s) {
+                        $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
+                    }
+                });
+            $groupedSales = (clone $dailyQuery)
+                ->selectRaw('seller_sku, SUM(GREATEST(COALESCE(quantity, 0), 1)) as al30, SUM(COALESCE(product_price, 0) * GREATEST(COALESCE(quantity, 0), 1)) as sales')
+                ->groupBy('seller_sku')
+                ->get();
+            $salesAggArr = [];
+            $spCogs = 0.0;
+            $spPft = 0.0;
+            foreach ($groupedSales as $row) {
+                $key = $normalizeSku($row->seller_sku);
+                $qty = (float) ($row->al30 ?? 0);
+                $rev = (float) ($row->sales ?? 0);
+                if ($key === '') {
+                    continue;
+                }
+                if (! isset($salesAggArr[$key])) {
+                    $salesAggArr[$key] = ['al30' => 0, 'sales' => 0.0];
+                }
+                $salesAggArr[$key]['al30'] += $qty;
+                $salesAggArr[$key]['sales'] += $rev;
+                $pm = $productMasterBySku->get($key);
+                $resolved = $this->lpAndShipFromProductMaster(
+                    $pm instanceof ProductMaster ? $pm : null
+                );
+                $spCogs += $resolved['lp'] * $qty;
+                $spPft += ($rev * $margin) - (($resolved['lp'] + $resolved['ship']) * $qty);
+            }
+            $salesAgg = SupportCollection::make($salesAggArr)->map(fn ($a) => (object) $a);
+            $totals = (clone $dailyQuery)
+                ->selectRaw('COUNT(*) as total_orders, SUM(GREATEST(COALESCE(quantity, 0), 1)) as total_quantity, SUM(COALESCE(product_price, 0) * GREATEST(COALESCE(quantity, 0), 1)) as total_sales, SUM(COALESCE(commission, 0)) as total_commission')
+                ->first();
+            $spSales = (float) ($totals->total_sales ?? 0);
+            $spQty = (float) ($totals->total_quantity ?? 0);
+            $salesPage = [
+                'total_orders' => (int) ($totals->total_orders ?? 0),
+                'total_quantity' => (int) $spQty,
+                'total_sales' => round($spSales, 2),
+                'total_cogs' => round($spCogs, 2),
+                'total_pft' => round($spPft, 2),
+                'pft_percentage' => round($spSales > 0 ? ($spPft / $spSales) * 100 : 0.0, 1),
+                'roi_percentage' => round($spCogs > 0 ? ($spPft / $spCogs) * 100 : 0.0, 1),
+                'avg_price' => round($spQty > 0 ? $spSales / $spQty : 0.0, 2),
+                'total_commission' => round((float) ($totals->total_commission ?? 0), 2),
+            ];
 
             // ── 4. Shopify → INV / OV L30
             // Load full tables and key in PHP — SQL UPPER(TRIM(sku)) does not fold NBSP / multi-space variants.
@@ -626,11 +656,7 @@ class SheinController extends Controller
                 Log::warning('LmpSkuGroupService prepare failed (Shein): ' . $e->getMessage());
             }
 
-            // ── 6. Margin from marketplace_percentages
-            $percentage = $this->sheinMarketplaceMarginPercent();
-            $margin = $percentage / 100;
-
-            // ── 7. Build rows
+            // ── 6. Build rows
             $rows = [];
             foreach ($allNormalizedSkus as $normalizedSku) {
                 $priceRow   = $pricingBySku->get($normalizedSku);
@@ -795,12 +821,23 @@ class SheinController extends Controller
             });
 
             $rows = $this->insertSheinParentRows($rows);
-            $rows = $this->sanitizeUtf8Recursive($rows);
+            foreach ($rows as $i => $row) {
+                foreach (['sku', 'parent', 'image', 'B Link', 'S Link'] as $field) {
+                    if (isset($row[$field]) && is_string($row[$field])) {
+                        $rows[$i][$field] = $this->sanitizeUtf8String($row[$field]);
+                    }
+                }
+            }
 
-            $salesPage = Cache::remember('shein_pricing_sales_page_totals', 120, function () {
-                return SheinShopifySalesService::computeSalesPageTotals();
-            });
-            $this->saveSheinPricingSnapshotIfFresh($rows, $salesPage);
+            $snapshotRows = $rows;
+            $snapshotSales = $salesPage;
+            dispatch(function () use ($snapshotRows, $snapshotSales) {
+                try {
+                    app(self::class)->persistSheinPricingSnapshot($snapshotRows, $snapshotSales);
+                } catch (\Throwable $e) {
+                    Log::error('Shein pricing snapshot afterResponse failed: '.$e->getMessage());
+                }
+            })->afterResponse();
 
             $jsonFlags = JSON_INVALID_UTF8_SUBSTITUTE;
             if (defined('JSON_UNESCAPED_UNICODE')) {
@@ -1039,13 +1076,8 @@ class SheinController extends Controller
      * @param  array<int, array<string, mixed>>  $rows
      * @param  array<string, mixed>  $salesPage
      */
-    private function saveSheinPricingSnapshotIfFresh(array $rows, array $salesPage = []): void
+    public function persistSheinPricingSnapshot(array $rows, array $salesPage = []): void
     {
-        $today = now()->toDateString();
-        $lockKey = 'shein_pricing_snapshot_saved_'.$today;
-        if (! Cache::add($lockKey, 1, now()->endOfDay())) {
-            return;
-        }
         $this->saveSheinPricingSnapshot($rows, $salesPage);
     }
 
