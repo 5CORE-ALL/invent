@@ -2893,6 +2893,10 @@
                     return response;
                 },
                 ajaxSorting: false,
+                sortMode: "local",
+                filterMode: "local",
+                paginationMode: "local",
+                headerSort: true,
                 layout: "fitDataStretch",
                 pagination: true,
                 paginationSize: 100,
@@ -4184,7 +4188,7 @@
                         }
                     },
                     {
-                        title: "SGPFT%",
+                        title: "SGPFT",
                         field: "SGPFT",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
@@ -4205,7 +4209,7 @@
                         width: 50
                     },
                     {
-                        title: "SNROI%",
+                        title: "SNROI",
                         field: "SNROI",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
@@ -4228,7 +4232,7 @@
                         width: 58
                     },
                     {
-                        title: "SNPFT%",
+                        title: "SNPFT",
                         field: "SNPFT",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {

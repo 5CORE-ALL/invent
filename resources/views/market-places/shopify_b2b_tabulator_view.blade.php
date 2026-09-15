@@ -1895,6 +1895,10 @@
         table = new Tabulator("#reverb-table", {
             ajaxURL: "/shopify-b2b-data-json",
             ajaxSorting: false,
+            sortMode: "local",
+            filterMode: "local",
+            paginationMode: "local",
+            headerSort: true,
             layout: "fitData",
             layoutColumnsOnNewData: true,
             columnDefaults: {
@@ -2472,10 +2476,14 @@
                     }
                 },
                 {
-                    title: "Sroi",
+                    title: "SGROI",
                     field: "SROI",
                     hozAlign: "center",
-                    sorter: "number",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        return (shopifyB2bRowSMetrics(aRow.getData()).sroi || 0)
+                             - (shopifyB2bRowSMetrics(bRow.getData()).sroi || 0);
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) return '';
@@ -2490,10 +2498,14 @@
                     width: 50
                 },
                 {
-                    title: "S GPFT",
+                    title: "SGPFT",
                     field: "SGPFT",
                     hozAlign: "center",
-                    sorter: "number",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        return (shopifyB2bRowSMetrics(aRow.getData()).sgpft || 0)
+                             - (shopifyB2bRowSMetrics(bRow.getData()).sgpft || 0);
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) return '';
@@ -2509,10 +2521,36 @@
                     width: 50
                 },
                 {
+                    title: "SNROI",
+                    field: "SNROI",
+                    hozAlign: "center",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        return (shopifyB2bRowSMetrics(aRow.getData()).snroi || 0)
+                             - (shopifyB2bRowSMetrics(bRow.getData()).snroi || 0);
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isShopifyB2bParentRow(rowData)) return '';
+                        const snroi = shopifyB2bRowSMetrics(rowData).snroi;
+                        let color = '';
+                        if (snroi < 50) color = '#a00211';
+                        else if (snroi >= 50 && snroi < 75) color = '#ffc107';
+                        else if (snroi >= 75 && snroi <= 125) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color: ${color}; font-weight: 600;">${snroi.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
                     title: "SNPFT",
                     field: "SNPFT",
                     hozAlign: "center",
-                    sorter: "number",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        return (shopifyB2bRowSMetrics(aRow.getData()).snpft || 0)
+                             - (shopifyB2bRowSMetrics(bRow.getData()).snpft || 0);
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) return '';
@@ -2524,24 +2562,6 @@
                         else if (snpft >= 30 && snpft < 50) color = '#28a745';
                         else color = '#e83e8c';
                         return `<span style="color: ${color}; font-weight: 600;">${snpft.toFixed(0)}%</span>`;
-                    },
-                    width: 50
-                },
-                {
-                    title: "SNROI",
-                    field: "SNROI",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (isShopifyB2bParentRow(rowData)) return '';
-                        const snroi = shopifyB2bRowSMetrics(rowData).snroi;
-                        let color = '';
-                        if (snroi < 50) color = '#a00211';
-                        else if (snroi >= 50 && snroi < 75) color = '#ffc107';
-                        else if (snroi >= 75 && snroi <= 125) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="color: ${color}; font-weight: 600;">${snroi.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },

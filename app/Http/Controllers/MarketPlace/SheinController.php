@@ -14,7 +14,6 @@ use App\Models\SheinMetric;
 use App\Models\ShopifySku;
 use App\Services\SheinShopifySalesService;
 use App\Services\SheinApiService;
-use App\Services\LmpSkuGroupService;
 use App\Services\ChannelPromoPricingService;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
@@ -124,13 +123,20 @@ class SheinController extends Controller
             return new SupportCollection;
         }
 
+        $pmCols = ['sku', 'parent', 'Values'];
+        foreach (['lp', 'ship'] as $col) {
+            if (Schema::hasColumn($pm->getTable(), $col)) {
+                $pmCols[] = $col;
+            }
+        }
+
         return SupportCollection::make(
             ProductMaster::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
-                ->get()
+                ->get($pmCols)
                 ->all()
-        )->keyBy(fn(ProductMaster $r) => $this->normalizeSheinSkuExact((string) $r->sku));
+        )->keyBy(fn (ProductMaster $r) => $this->normalizeSheinSkuExact((string) $r->sku));
     }
 
     // Save NR value for a SKU
@@ -446,60 +452,102 @@ class SheinController extends Controller
             $normalizeSku = fn($v) => $this->normalizeSheinSkuExact((string) $v);
 
             // ── 1. All uploaded prices (base SKU list)
-            $pricingRows  = \App\Models\SheinPricingPrice::all();
-            $pricingBySku = $pricingRows->keyBy(fn($r) => $normalizeSku($r->sku));
+            $pricingBySku = SupportCollection::make(
+                \App\Models\SheinPricingPrice::query()
+                    ->get(['sku', 'price', 'original_price', 'special_offer_price', 'shein_stock'])
+                    ->all()
+            )->keyBy(fn ($r) => $normalizeSku($r->sku));
 
             // ── 2. Product master → LP / Ship (Support Collection keyed by normalized SKU)
             $pmTable = (new ProductMaster)->getTable();
             $productMasterBySku = new SupportCollection();
+            $pmHasLpCol = false;
+            $pmHasShipCol = false;
             if (Schema::hasTable($pmTable)) {
+                $pmHasLpCol = Schema::hasColumn($pmTable, 'lp');
+                $pmHasShipCol = Schema::hasColumn($pmTable, 'ship');
+                $pmLiteCols = ['id', 'sku', 'parent'];
+                if ($pmHasLpCol) {
+                    $pmLiteCols[] = 'lp';
+                }
+                if ($pmHasShipCol) {
+                    $pmLiteCols[] = 'ship';
+                }
                 $productMasterBySku = SupportCollection::make(
                     ProductMaster::query()
                         ->whereNotNull('sku')->where('sku', '!=', '')
                         ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
-                        ->get()
+                        ->get($pmLiteCols)
                         ->all()
-                )->keyBy(fn($r) => $normalizeSku($r->sku));
+                )->keyBy(fn ($r) => $normalizeSku($r->sku));
             }
 
-            // ── 3. Shein sales → al30 / sales from API-synced shein_daily_data
+            // ── 3. Shein sales — one live GROUP BY (no second daily-data scan)
+            $percentage = $this->sheinMarketplaceMarginPercent();
+            $margin = $percentage / 100;
             $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
-            $salesAgg = new SupportCollection();
-            SheinDailyData::query()
+            $groupedSales = SheinDailyData::query()
                 ->whereNotNull('seller_sku')->where('seller_sku', '!=', '')
                 ->where(function ($q) use ($excludedStatuses) {
                     foreach ($excludedStatuses as $s) {
                         $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
                     }
                 })
-                ->get(['seller_sku', 'quantity', 'product_price', 'estimated_merchandise_revenue'])
-                ->each(function ($row) use ($salesAgg, $normalizeSku) {
-                    $key = $normalizeSku($row->seller_sku);
-                    if ($key === '') {
-                        return;
-                    }
-                    $qty = max(1, (int) ($row->quantity ?? 0));
-                    $price = (float) ($row->product_price ?? 0);
-                    // Sales = Product Price × qty (Seller Hub GMV)
-                    $rev = $price * $qty;
-                    $existing = $salesAgg->get($key);
-                    if ($existing) {
-                        $existing->al30 += $qty;
-                        $existing->sales += $rev;
-                    } else {
-                        $salesAgg->put($key, (object) [
-                            'al30' => $qty,
-                            'sales' => $rev,
-                        ]);
-                    }
-                });
+                ->selectRaw('seller_sku, SUM(GREATEST(COALESCE(quantity, 0), 1)) as al30, SUM(COALESCE(product_price, 0) * GREATEST(COALESCE(quantity, 0), 1)) as sales, SUM(COALESCE(commission, 0)) as commission, COUNT(*) as orders')
+                ->groupBy('seller_sku')
+                ->get();
+            $salesAggArr = [];
+            $spCogs = 0.0;
+            $spPft = 0.0;
+            $spOrders = 0;
+            $spQty = 0.0;
+            $spSales = 0.0;
+            $spCommission = 0.0;
+            foreach ($groupedSales as $row) {
+                $key = $normalizeSku($row->seller_sku);
+                $qty = (float) ($row->al30 ?? 0);
+                $rev = (float) ($row->sales ?? 0);
+                $spOrders += (int) ($row->orders ?? 0);
+                $spQty += $qty;
+                $spSales += $rev;
+                $spCommission += (float) ($row->commission ?? 0);
+                if ($key === '') {
+                    continue;
+                }
+                if (! isset($salesAggArr[$key])) {
+                    $salesAggArr[$key] = ['al30' => 0, 'sales' => 0.0];
+                }
+                $salesAggArr[$key]['al30'] += $qty;
+                $salesAggArr[$key]['sales'] += $rev;
+                $pm = $productMasterBySku->get($key);
+                $resolved = $this->lpAndShipFromProductMaster(
+                    $pm instanceof ProductMaster ? $pm : null
+                );
+                $spCogs += $resolved['lp'] * $qty;
+                $spPft += ($rev * $margin) - (($resolved['lp'] + $resolved['ship']) * $qty);
+            }
+            $salesAgg = SupportCollection::make($salesAggArr)->map(fn ($a) => (object) $a);
+            $salesPage = [
+                'total_orders' => $spOrders,
+                'total_quantity' => (int) $spQty,
+                'total_sales' => round($spSales, 2),
+                'total_cogs' => round($spCogs, 2),
+                'total_pft' => round($spPft, 2),
+                'pft_percentage' => round($spSales > 0 ? ($spPft / $spSales) * 100 : 0.0, 1),
+                'roi_percentage' => round($spCogs > 0 ? ($spPft / $spCogs) * 100 : 0.0, 1),
+                'avg_price' => round($spQty > 0 ? $spSales / $spQty : 0.0, 2),
+                'total_commission' => round($spCommission, 2),
+            ];
 
             // ── 4. Shopify → INV / OV L30
             // Load full tables and key in PHP — SQL UPPER(TRIM(sku)) does not fold NBSP / multi-space variants.
-            $shopifyBySku = ShopifySku::all()->keyBy(fn($r) => $normalizeSku($r->sku));
+            $shopifyBySku = SupportCollection::make(
+                ShopifySku::query()->get(['sku', 'inv', 'quantity', 'image_src'])->all()
+            )->keyBy(fn ($r) => $normalizeSku($r->sku));
 
-            // ── 5. SPRICE from shein_data_views
-            $viewMetaBySku = SheinDataView::all()->keyBy(fn($r) => $normalizeSku($r->sku));
+            $viewMetaBySku = SupportCollection::make(
+                SheinDataView::query()->get(['sku', 'value'])->all()
+            )->keyBy(fn ($r) => $normalizeSku($r->sku));
 
             // ── 5a. API page views from shein_metrics (FetchSheinData / shein:sync)
             $viewsBySku = [];
@@ -517,66 +565,94 @@ class SheinController extends Controller
             }
 
             // ── 5b. Buyer / Seller links from shein_listing_statuses
-            $linksBySku = \App\Models\SheinListingStatus::all()->keyBy(fn($r) => $normalizeSku($r->sku));
+            $linksBySku = SupportCollection::make(
+                \App\Models\SheinListingStatus::query()->get(['sku', 'value'])->all()
+            )->keyBy(fn ($r) => $normalizeSku($r->sku));
 
             // ── 5c. LMP competitor prices/links from shein_lmp
             $lmpBySku = new SupportCollection();
             if (Schema::hasTable('shein_lmp')) {
-                $lmpBySku = SupportCollection::make(\App\Models\SheinLmp::all()->all())
-                    ->keyBy(fn($r) => $normalizeSku($r->sku));
+                $lmpCols = ['sku', 'price_1', 'url_1', 'price_2', 'url_2', 'price_3', 'url_3', 'price_4', 'url_4'];
+                if (Schema::hasColumn('shein_lmp', 'ignored_1')) {
+                    $lmpCols = array_merge($lmpCols, ['ignored_1', 'ignored_2', 'ignored_3', 'ignored_4']);
+                }
+                $lmpBySku = SupportCollection::make(
+                    \App\Models\SheinLmp::query()->get($lmpCols)->all()
+                )->keyBy(fn ($r) => $normalizeSku($r->sku));
             }
 
-            $allNormalizedSkus = collect(array_merge(
-                $pricingBySku->keys()->all(),
-                $productMasterBySku->keys()->all()
-            ))->unique()->values();
-
-            $sheinPmSkus = collect($productMasterBySku->map(fn ($pm) => $pm->sku ?? '')->all())
-                ->merge($pricingBySku->map(fn ($pr) => $pr->sku ?? '')->all())
-                ->filter()
-                ->unique()
-                ->values()
-                ->all();
-            $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('shein', $sheinPmSkus);
-            $amazonStandardPrices = [];
-            foreach (AmazonDataView::whereIn('sku', $sheinPmSkus)->get(['sku', 'value']) as $adv) {
-                $val = is_array($adv->value)
-                    ? $adv->value
-                    : (json_decode((string) ($adv->value ?? ''), true) ?: []);
-                $std = $val['STANDARD_PRICE'] ?? null;
-                if (is_numeric($std) && (float) $std > 0) {
-                    $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            // Listed Shein SKUs + in-stock catalog only. Zero-INV SKUs that are not
+            // on Shein were forcing /shein-pricing to ship the entire product_master.
+            $skuSet = [];
+            foreach ($pricingBySku->keys() as $k) {
+                $skuSet[(string) $k] = true;
+            }
+            foreach ($productMasterBySku->keys() as $k) {
+                $shopifyRow = $shopifyBySku->get($k);
+                if ($shopifyRow && (int) ($shopifyRow->inv ?? 0) > 0) {
+                    $skuSet[(string) $k] = true;
                 }
             }
+            $allNormalizedSkus = collect(array_keys($skuSet));
 
-            // Sku Link LMP — same shared lmp_sku_links groups as /ebay-tabulator-view
-            $lmpGroupService = new LmpSkuGroupService();
-            try {
-                $prepSkus = [];
+            if (! $pmHasLpCol || ! $pmHasShipCol) {
+                $neededPmIds = [];
+                foreach ($allNormalizedSkus as $nk) {
+                    $pm = $productMasterBySku->get($nk);
+                    if ($pm && isset($pm->id)) {
+                        $neededPmIds[] = (int) $pm->id;
+                    }
+                }
+                $valuesById = [];
+                foreach (array_chunk(array_values(array_unique($neededPmIds)), 400) as $chunk) {
+                    foreach (ProductMaster::query()->whereIn('id', $chunk)->get(['id', 'Values']) as $pm) {
+                        $valuesById[(int) $pm->id] = $pm->Values;
+                    }
+                }
                 foreach ($productMasterBySku as $pm) {
-                    if ($pm && trim((string) ($pm->sku ?? '')) !== '') {
-                        $prepSkus[] = (string) $pm->sku;
-                    }
+                    $pm->Values = $valuesById[(int) ($pm->id ?? 0)] ?? [];
                 }
-                foreach ($pricingBySku as $pr) {
-                    if ($pr && trim((string) ($pr->sku ?? '')) !== '') {
-                        $prepSkus[] = (string) $pr->sku;
-                    }
-                }
-                $lmpGroupService->prepareForSkus($prepSkus);
-            } catch (\Throwable $e) {
-                Log::warning('LmpSkuGroupService prepare failed (Shein): ' . $e->getMessage());
             }
 
-            // ── 6. Margin from marketplace_percentages
-            $percentage = $this->sheinMarketplaceMarginPercent();
-            $margin = $percentage / 100;
+            $promoService = app(ChannelPromoPricingService::class);
+            $decodedPromo = [];
+            foreach ($viewMetaBySku as $rec) {
+                $meta = $rec->value ?? [];
+                if (! is_array($meta)) {
+                    $meta = is_string($meta) ? (json_decode($meta, true) ?: []) : [];
+                }
+                $key = strtoupper(trim((string) ($rec->sku ?? '')));
+                if ($key !== '' && $meta !== []) {
+                    $decodedPromo[$key] = $meta;
+                }
+            }
+            $promoMap = $promoService->mapFromDecodedValues($decodedPromo);
 
-            // ── 7. Build rows
+            // Std Prc only for listed Shein SKUs — skip the full-catalog amazon_data_view scan.
+            $amazonStandardPrices = [];
+            $listedSkus = [];
+            foreach ($pricingBySku as $pr) {
+                $s = trim((string) ($pr->sku ?? ''));
+                if ($s !== '') {
+                    $listedSkus[] = $s;
+                }
+            }
+            foreach (array_chunk(array_values(array_unique($listedSkus)), 400) as $chunk) {
+                foreach (AmazonDataView::query()->whereIn('sku', $chunk)->get(['sku', 'value']) as $adv) {
+                    $val = is_array($adv->value)
+                        ? $adv->value
+                        : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                    $std = $val['STANDARD_PRICE'] ?? null;
+                    if (is_numeric($std) && (float) $std > 0) {
+                        $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+                    }
+                }
+            }
+
+            // ── 6. Build rows
             $rows = [];
             foreach ($allNormalizedSkus as $normalizedSku) {
                 $priceRow   = $pricingBySku->get($normalizedSku);
-                $price      = $priceRow ? (float) $priceRow->price              : 0;
                 $origPrice  = $priceRow ? (float) ($priceRow->original_price      ?? 0) : 0;
                 $spOffer    = $priceRow ? (float) ($priceRow->special_offer_price  ?? 0) : 0;
                 $sheinStock = $priceRow ? (int)   ($priceRow->shein_stock          ?? 0) : 0;
@@ -642,45 +718,20 @@ class SheinController extends Controller
                 // fall back to meta-derived value, then INV-based default.
                 $nrReq = $linkVal['nr_req'] ?? $nr ?? ($inv > 0 ? 'REQ' : 'NR');
 
-                // LMP competitor entries merged across Sku Link LMP group (same as ebay-tabulator-view)
-                $linkedLmpSkus = $this->sheinLinkedLmpSkusFor($lmpGroupService, (string) $displaySku);
-                $lmpEntries = [];
-                $seenLmp = [];
-                foreach ($linkedLmpSkus as $linkedSku) {
-                    $linkedNorm = $normalizeSku($linkedSku);
-                    foreach ($this->sheinLmpEntriesFrom($lmpBySku->get($linkedNorm)) as $entry) {
-                        $dedupeKey = ((string) ($entry['price'] ?? '')) . '|' . strtoupper(trim((string) ($entry['link'] ?? '')));
-                        if (isset($seenLmp[$dedupeKey])) {
-                            continue;
-                        }
-                        $seenLmp[$dedupeKey] = true;
-                        $entry['source_sku'] = $linkedSku;
-                        $lmpEntries[] = $entry;
-                    }
-                }
-                $lmpPrice = null;
-                $lmpLink  = null;
+                $lmpEntries = $this->sheinLmpEntriesFrom($lmpBySku->get($normalizedSku));
+                $lmpPrice = $this->sheinLowestFromEntries($lmpEntries);
+                $lmpLink = null;
                 foreach ($lmpEntries as $entry) {
                     if (! empty($entry['ignored'])) {
                         continue;
                     }
-                    if ($lmpPrice === null || $entry['price'] < $lmpPrice) {
-                        $lmpPrice = $entry['price'];
-                        $lmpLink  = $entry['link'];
+                    if ($lmpPrice !== null && (float) ($entry['price'] ?? 0) === (float) $lmpPrice) {
+                        $lmpLink = $entry['link'] ?? null;
+                        break;
                     }
                 }
 
-                // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
                 $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $displaySku))] ?? null;
-                if ($stdPrc === null && ! empty($linkedLmpSkus)) {
-                    foreach ($linkedLmpSkus as $linkedSku) {
-                        $linkedKey = strtoupper(trim((string) $linkedSku));
-                        if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
-                            $stdPrc = $amazonStandardPrices[$linkedKey];
-                            break;
-                        }
-                    }
-                }
 
                 $row = [
                     'sku'          => trim((string) $displaySku),
@@ -719,10 +770,10 @@ class SheinController extends Controller
                     'lmp_price'    => $lmpPrice,
                     'lmp_link'     => $lmpLink,
                     'lmp_entries'  => $lmpEntries,
-                    'linked_lmp_skus' => $linkedLmpSkus,
+                    'linked_lmp_skus' => [],
                     'STANDARD_PRICE' => $stdPrc,
                 ];
-                $rows[] = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $displaySku);
+                $rows[] = $promoService->applyToRow($row, $promoMap, (string) $displaySku);
             }
 
             // Sort by parent groups then by SKU
@@ -736,11 +787,23 @@ class SheinController extends Controller
                 return $cmp !== 0 ? $cmp : strnatcasecmp($a['sku'], $b['sku']);
             });
 
-            $rows = $this->insertSheinParentRows($rows);
-            $rows = $this->sanitizeUtf8Recursive($rows);
+            foreach ($rows as $i => $row) {
+                foreach (['sku', 'parent', 'image', 'B Link', 'S Link'] as $field) {
+                    if (isset($row[$field]) && is_string($row[$field])) {
+                        $rows[$i][$field] = $this->sanitizeUtf8String($row[$field]);
+                    }
+                }
+            }
 
-            $salesPage = SheinShopifySalesService::computeSalesPageTotals();
-            $this->saveSheinPricingSnapshot($rows, $salesPage);
+            $snapshotRows = $rows;
+            $snapshotSales = $salesPage;
+            dispatch(function () use ($snapshotRows, $snapshotSales) {
+                try {
+                    app(self::class)->persistSheinPricingSnapshot($snapshotRows, $snapshotSales);
+                } catch (\Throwable $e) {
+                    Log::error('Shein pricing snapshot afterResponse failed: '.$e->getMessage());
+                }
+            })->afterResponse();
 
             $jsonFlags = JSON_INVALID_UTF8_SUBSTITUTE;
             if (defined('JSON_UNESCAPED_UNICODE')) {
@@ -758,38 +821,6 @@ class SheinController extends Controller
 
             return response()->json(['error' => $msg], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
-    }
-
-    private function insertSheinParentRows(array $rows): array
-    {
-        $result = []; $group = []; $currentParent = null;
-        foreach ($rows as $row) {
-            $p = $row['parent'] ?? null;
-            $p = ($p !== null && $p !== '') ? (string) $p : null;
-            if ($p === null) {
-                if (!empty($group)) {
-                    foreach ($group as $r) $result[] = $r;
-                    $result[] = $this->buildSheinParentRow($currentParent, $group);
-                    $group = []; $currentParent = null;
-                }
-                $result[] = $row;
-                continue;
-            }
-            if ($p !== $currentParent) {
-                if (!empty($group)) {
-                    foreach ($group as $r) $result[] = $r;
-                    $result[] = $this->buildSheinParentRow($currentParent, $group);
-                    $group = [];
-                }
-                $currentParent = $p;
-            }
-            $group[] = $row;
-        }
-        if (!empty($group)) {
-            foreach ($group as $r) $result[] = $r;
-            $result[] = $this->buildSheinParentRow($currentParent, $group);
-        }
-        return $result;
     }
 
     /**
@@ -979,6 +1010,11 @@ class SheinController extends Controller
      * @param  array<int, array<string, mixed>>  $rows
      * @param  array<string, mixed>  $salesPage
      */
+    public function persistSheinPricingSnapshot(array $rows, array $salesPage = []): void
+    {
+        $this->saveSheinPricingSnapshot($rows, $salesPage);
+    }
+
     private function saveSheinPricingSnapshot(array $rows, array $salesPage = []): void
     {
         try {
@@ -1058,71 +1094,6 @@ class SheinController extends Controller
         } catch (\Exception $e) {
             Log::error('Shein daily snapshot save failed: '.$e->getMessage());
         }
-    }
-
-    private function buildSheinParentRow(string $parentName, array $childRows): array
-    {
-        $sumInv = $sumOvL30 = $sumSheinStock = $sumAl30 = $sumSales = $sumProfit = $sumViews = 0;
-        foreach ($childRows as $r) {
-            $sumInv        += (float) ($r['inv']         ?? 0);
-            $sumOvL30      += (float) ($r['ov_l30']       ?? 0);
-            $sumSheinStock += (float) ($r['shein_stock']  ?? 0);
-            $sumAl30       += (float) ($r['al30']         ?? 0);
-            $sumSales      += (float) ($r['sales']        ?? 0);
-            $sumProfit     += (float) ($r['al30'] ?? 0) * (float) ($r['profit'] ?? 0);
-            $sumViews      += (int) ($r['views'] ?? 0);
-        }
-        $key = 'PARENT ' . $parentName;
-        return [
-            'sku'         => $key,  'parent' => $key,  'is_parent' => true,
-            'image'       => null,  'price'  => '-',   'missing'   => '-',
-            'map'         => '-',   'gpft'   => $sumSales > 0 ? round(($sumProfit / $sumSales) * 100, 2) : 0,
-            'groi'        => '-',   'profit' => round($sumProfit, 2),
-            'sales'       => round($sumSales, 2),       'al30'      => (int) round($sumAl30),
-            'lp'          => '-',   'ship'   => '-',   'sprice'    => '-',
-            'sgpft'       => '-',   'sroi'   => '-',   '_margin'   => '-',
-            'inv'         => (int) $sumInv,  'shein_stock' => (int) $sumSheinStock,
-            'ov_l30'      => (int) $sumOvL30,
-            'views'       => (int) $sumViews,
-            'cvr'         => $sumViews > 0 ? round(($sumAl30 / $sumViews) * 100, 2) : 0,
-            'dil_percent' => $sumInv > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0,
-            'lmp_price'   => null, 'lmp_link' => null, 'lmp_entries' => [],
-            'linked_lmp_skus' => [],
-        ];
-    }
-
-    /**
-     * Sku Link LMP group for a Shein row — same shared service as /ebay-tabulator-view.
-     *
-     * @return list<string>
-     */
-    private function sheinLinkedLmpSkusFor(LmpSkuGroupService $lmpGroupService, string $sku): array
-    {
-        $sku = trim($sku);
-        if ($sku === '') {
-            return [];
-        }
-
-        try {
-            $group = $lmpGroupService->groupContaining($sku);
-        } catch (\Throwable $e) {
-            $group = [];
-        }
-
-        $members = $group !== [] ? $group : [$sku];
-        $seen = [];
-        $out = [];
-        foreach ($members as $member) {
-            $display = trim((string) $member);
-            $norm = strtoupper($display);
-            if ($norm === '' || isset($seen[$norm])) {
-                continue;
-            }
-            $seen[$norm] = true;
-            $out[] = $display;
-        }
-
-        return $out;
     }
 
     public function saveSheinSpriceUpdates(Request $request)

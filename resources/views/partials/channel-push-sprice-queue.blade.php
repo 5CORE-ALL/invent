@@ -113,6 +113,30 @@
             function chPushSpriceCsrf() {
                 return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
             }
+            function chPushSafeRowUpdate(row, patch) {
+                if (!row || typeof row.update !== 'function' || !patch) return;
+                try {
+                    if (typeof row.getTable === 'function' && !row.getTable()) return;
+                    if (typeof row.getElement === 'function') {
+                        const el = row.getElement();
+                        if (el && el.isConnected === false) {
+                            const d = typeof row.getData === 'function' ? row.getData() : null;
+                            if (d) Object.assign(d, patch);
+                            return;
+                        }
+                    }
+                    const ret = row.update(patch);
+                    if (ret && typeof ret.then === 'function') {
+                        ret.catch(function() { /* Tabulator renderer not ready */ });
+                    }
+                } catch (e) {
+                    try {
+                        const d = typeof row.getData === 'function' ? row.getData() : null;
+                        if (d) Object.assign(d, patch);
+                    } catch (e2) { /* ignore */ }
+                }
+            }
+            global.chPushSafeRowUpdate = chPushSafeRowUpdate;
             function chPushSpriceRound2(n) {
                 return Math.round((Number(n) || 0) * 100) / 100;
             }
@@ -652,7 +676,7 @@
                     if (!item) return;
                     const sku = String(item.sku || '').trim();
                     const price = chPushSpriceRound2(item.price);
-                    if (!sku || !(price > 0)) return;
+                    if (!sku || !(price > 0) || sku.toUpperCase().indexOf('PARENT') !== -1) return;
                     chPushSpriceBuf[sku.toUpperCase()] = { sku: sku, price: price };
                 });
                 const n = Object.keys(chPushSpriceBuf).length;
@@ -687,15 +711,14 @@
                 }
                 p = chPushSpriceCapMacysToAmz(d, p);
                 if (!sku || !(p > 0)) return false;
+                if (String(sku).toUpperCase().indexOf('PARENT') !== -1) return false;
                 if (chPushSpriceRowBlocked(d)) return false;
                 if (!CH_PUSH_SPRICE_CAN_LIVE) return false;
                 if (!chPushSpriceAutoPushAllowed()) {
                     try {
-                        if (row && typeof row.update === 'function') {
-                            const status = String(d.SPRICE_STATUS || '');
-                            if (status === 'queued' || status === 'processing') {
-                                row.update({ SPRICE_STATUS: 'saved' });
-                            }
+                        const status = String(d.SPRICE_STATUS || '');
+                        if (status === 'queued' || status === 'processing') {
+                            chPushSafeRowUpdate(row, { SPRICE_STATUS: 'saved' });
                         }
                     } catch (e) { /* ignore */ }
                     return false;
@@ -709,9 +732,7 @@
                     if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return false;
                 }
                 try {
-                    if (row && typeof row.update === 'function') {
-                        row.update({ SPRICE_STATUS: 'queued', push_status: 'queued' });
-                    }
+                    chPushSafeRowUpdate(row, { SPRICE_STATUS: 'queued', push_status: 'queued' });
                 } catch (e) { /* ignore */ }
                 if (chPushSpriceUsesClientPump()) {
                     enqueueChannelPushSpriceClient([{ sku: sku, price: p, row: row }]);
@@ -790,8 +811,7 @@
                     return;
                 }
                 if (row && typeof row.update === 'function') {
-                    try { row.update(patch); } catch (e) { Object.assign(d, patch); }
-                    try { row.reformat(); } catch (e) { /* ignore */ }
+                    chPushSafeRowUpdate(row, patch);
                 } else if (d) {
                     Object.assign(d, patch);
                 }
@@ -815,7 +835,7 @@
                     if (!item) return;
                     const sku = String(item.sku || '').trim();
                     const price = chPushSpriceRound2(item.price);
-                    if (!sku || !(price > 0)) return;
+                    if (!sku || !(price > 0) || sku.toUpperCase().indexOf('PARENT') !== -1) return;
                     const key = sku.toUpperCase();
                     const dedupe = key + '|' + price.toFixed(2);
                     if (opts.force) chPushClientPushed.delete(dedupe);
@@ -843,9 +863,7 @@
                 while (chPushClientInflight < CH_PUSH_SPRICE_CLIENT_MAX && chPushClientQ.length) {
                     const item = chPushClientQ.shift();
                     chPushClientInflight++;
-                    if (item.row && typeof item.row.update === 'function') {
-                        try { item.row.update({ SPRICE_STATUS: 'queued', push_status: 'queued' }); } catch (e) { /* ignore */ }
-                    }
+                    chPushSafeRowUpdate(item.row, { SPRICE_STATUS: 'queued', push_status: 'queued' });
                     chPushClientSetProgress(true);
                     $.ajax({
                         url: CH_PUSH_SPRICE_PUSH_URL,
@@ -853,8 +871,8 @@
                         headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
                         data: {
                             _token: chPushSpriceCsrf(),
-                            sku: item.sku,
-                            price: item.price,
+                            sku: String(item.sku || '').trim(),
+                            price: Number(item.price).toFixed(2),
                         },
                     }).done(function(resp) {
                         if (resp && resp.success) {

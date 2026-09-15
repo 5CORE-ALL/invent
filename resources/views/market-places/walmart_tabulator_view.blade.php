@@ -388,6 +388,10 @@
             table = new Tabulator("#walmart-table", {
                 ajaxURL: "/walmart-data-json",
                 ajaxSorting: false,
+                sortMode: "local",
+                filterMode: "local",
+                paginationMode: "local",
+                headerSort: true,
                 layout: "fitDataStretch",
                 pagination: true,
                 paginationSize: 100,
@@ -914,7 +918,7 @@
                         width: 92
                     },
                     {
-                        title: "SROI",
+                        title: "SGROI",
                         field: "SROI",
                         hozAlign: "center",
                         formatter: function(cell) {
@@ -935,7 +939,7 @@
                         width: 80
                     },
                     {
-                        title: "S GPFT",
+                        title: "SGPFT",
                         field: "SGPFT",
                         hozAlign: "center",
                         formatter: function(cell) {

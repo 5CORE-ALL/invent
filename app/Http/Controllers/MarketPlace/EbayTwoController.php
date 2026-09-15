@@ -2338,8 +2338,16 @@ class EbayTwoController extends Controller
 
     public function pushEbay2Price(Request $request)
     {
-        $sku   = $this->resolveCanonicalEbayTwoSku((string) $request->input('sku'));
+        $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', (string) $request->input('sku'));
+        $sku = trim((string) preg_replace('/\s+/u', ' ', $sku));
+        if ($sku !== '' && stripos($sku, 'PARENT') !== false) {
+            return response()->json(['success' => false, 'message' => 'Parent rows cannot be pushed'], 422);
+        }
+        $sku = $this->resolveCanonicalEbayTwoSku($sku);
         $price = $request->input('price');
+        if (is_string($price)) {
+            $price = str_replace([',', '$', '£', '€', ' '], '', trim($price));
+        }
 
         if ($sku === '') {
             $this->saveSpriceStatus($sku, 'failed');
@@ -2347,7 +2355,7 @@ class EbayTwoController extends Controller
         }
 
         $priceFloat = floatval($price);
-        if (!is_numeric($price) || $priceFloat <= 0) {
+        if ($price === null || $price === '' || ! is_numeric($price) || $priceFloat <= 0) {
             $this->saveSpriceStatus($sku, 'failed');
             return response()->json(['success' => false, 'message' => 'Invalid price value'], 400);
         }

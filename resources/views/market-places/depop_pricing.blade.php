@@ -287,6 +287,11 @@
                 return data;
             },
             layout: "fitDataStretch",
+            sortMode: "local",
+            filterMode: "local",
+            paginationMode: "local",
+            ajaxSorting: false,
+            headerSort: true,
             pagination: true,
             paginationSize: 50,
             paginationSizeSelector: [25, 50, 100, 200, 500],

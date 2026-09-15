@@ -1253,6 +1253,20 @@
         let samePriceModeActive = false;
         let selectedSkus = new Set(); // Track selected SKUs across all pages
 
+        function ebay2SafeRowUpdate(row, patch) {
+            if (typeof window.chPushSafeRowUpdate === 'function') {
+                window.chPushSafeRowUpdate(row, patch);
+                return;
+            }
+            if (!row || typeof row.update !== 'function' || !patch) return;
+            try {
+                const ret = row.update(patch);
+                if (ret && typeof ret.then === 'function') {
+                    ret.catch(function() { /* Tabulator renderer not ready */ });
+                }
+            } catch (e) { /* ignore */ }
+        }
+
         /** Average L7 views (rows with E Stock > 0) — drives L7 View colours + Sbid (Views). */
         let avgL7ViewsGlobal = 0;
 
@@ -2872,7 +2886,7 @@
                 }
                 if (!skipClear && retryCount === 0 && Number(sprice) > 0) {
                     if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
-                    else if (row) row.update({ SPRICE: 0, has_custom_sprice: false, SGPFT: 0, SGROI: 0 });
+                    else if (row) ebay2SafeRowUpdate(row, { SPRICE: 0, has_custom_sprice: false, SGPFT: 0, SGROI: 0 });
                     return new Promise((resolve, reject) => {
                         $.ajax({
                             url: '/save-ebay2-sprice',
@@ -2886,7 +2900,7 @@
                 return new Promise((resolve, reject) => {
                     // Update status to processing
                     if (row) {
-                        row.update({ SPRICE_STATUS: 'processing' });
+                        ebay2SafeRowUpdate(row, { SPRICE_STATUS: 'processing' });
                     }
                     
                     $.ajax({
@@ -2901,16 +2915,13 @@
                         success: function(response) {
                             // Update calculated fields instantly
                             if (row) {
-                                row.update({
+                                ebay2SafeRowUpdate(row, {
                                     SPRICE: sprice,
                                     SPFT: response.spft_percent,
                                     SROI: response.sroi_percent,
                                     SGPFT: response.sgpft_percent,
                                     SPRICE_STATUS: 'saved'
                                 });
-                                // Re-render the row so the Accept button's data-price
-                                // reflects the NEW SPRICE (otherwise push uses the old value).
-                                row.reformat();
                             }
                             if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
                                 enqueueChannelPushSpriceAfterSave(sku, sprice, row);
@@ -2933,7 +2944,7 @@
                                 console.error(`Max retries reached for SKU ${sku}`);
                                 // Update status to error
                                 if (row) {
-                                    row.update({ SPRICE_STATUS: 'error' });
+                                    ebay2SafeRowUpdate(row, { SPRICE_STATUS: 'error' });
                                 }
                                 reject({ error: true, xhr: xhr });
                             }
@@ -3194,6 +3205,10 @@
                     return response.data || [];
                 },
                 ajaxSorting: false,
+                sortMode: "local",
+                filterMode: "local",
+                paginationMode: "local",
+                headerSort: true,
                 layout: "fitDataStretch",
                 rowHeight: 36,
                 height: "100%",
@@ -4048,11 +4063,17 @@
                     },
 
                     {
-                        title: "SGROI%",
+                        title: "SGROI",
                         field: "SGROI",
                         hozAlign: "center",
-                        sorter: "number",
+                        headerSort: true,
                         headerTooltip: "SGROI from the visible S PRC. LMP cap (when SGROI at LMP ≥ 20%) can lower the shown %.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = ebay2ComputeSgroiFromSprice(aRow.getData());
+                            const bv = ebay2ComputeSgroiFromSprice(bRow.getData());
+                            return ((av == null || !isFinite(av)) ? 0 : av)
+                                 - ((bv == null || !isFinite(bv)) ? 0 : bv);
+                        },
                         formatter: function(cell) {
                             const percent = ebay2ComputeSgroiFromSprice(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';
@@ -4063,9 +4084,31 @@
                         width: 80
                     },
                     {
-                        title: "SNROI%",
+                        title: "SGPFT",
+                        field: "SGPFT",
+                        hozAlign: "center",
+                        headerSort: true,
+                        headerTooltip: "SGPFT from S PRC (SPRICE), eBay 1 take-home formula.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = ebay2ComputeSgpftFromSprice(aRow.getData());
+                            const bv = ebay2ComputeSgpftFromSprice(bRow.getData());
+                            return ((av == null || !isFinite(av)) ? 0 : av)
+                                 - ((bv == null || !isFinite(bv)) ? 0 : bv);
+                        },
+                        formatter: function(cell) {
+                            const percent = ebay2ComputeSgpftFromSprice(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '';
+
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "SNROI",
                         field: "SROI",
                         hozAlign: "center",
+                        headerSort: true,
                         headerTooltip: "SNROI from S PRC using eBay 2 Ads%.",
                         sorter: function(a, b, aRow, bRow) {
                             const aNet = ebay2ComputeNetRoi(aRow.getData(), 'SPRICE');
@@ -4083,25 +4126,20 @@
                         width: 80
                     },
                     {
-                        title: "S GPFT",
-                        field: "SGPFT",
-                        hozAlign: "center",
-                        headerTooltip: "S GPFT from S PRC (SPRICE), eBay 1 take-home formula.",
-                        formatter: function(cell) {
-                            const percent = ebay2ComputeSgpftFromSprice(cell.getRow().getData());
-                            if (percent === null || !isFinite(percent)) return '';
-
-                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        },
-                        width: 80
-                    },
-                    {
                         title: "SNPFT",
                         field: "SPFT",
                         hozAlign: "center",
-                        sorter: "number",
-                        headerTooltip: "SNPFT = S GPFT − eBay 2 Ads%, with S GPFT from S PRC.",
+                        headerSort: true,
+                        visible: true,
+                        headerTooltip: "SNPFT = SGPFT − eBay 2 Ads%, with SGPFT from S PRC.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const ads = parseFloat(EBAY2_CHANNEL_ADS_PCT) || 0;
+                            const av = ebay2ComputeSgpftFromSprice(aRow.getData());
+                            const bv = ebay2ComputeSgpftFromSprice(bRow.getData());
+                            const an = (av == null || !isFinite(av)) ? 0 : (av - ads);
+                            const bn = (bv == null || !isFinite(bv)) ? 0 : (bv - ads);
+                            return an - bn;
+                        },
                         formatter: function(cell) {
                             const sgpft = ebay2ComputeSgpftFromSprice(cell.getRow().getData());
                             if (sgpft === null || !isFinite(sgpft)) return '';
@@ -4425,7 +4463,7 @@
                 if (field === 'SPRICE') {
                     // Save SPRICE and recalculate SPFT, SROI
                     const row = cell.getRow();
-                    row.update({ SPRICE_STATUS: 'processing' });
+                    ebay2SafeRowUpdate(row, { SPRICE_STATUS: 'processing' });
                     
                     saveSpriceWithRetry(data['(Child) sku'], value, row)
                         .then((response) => {

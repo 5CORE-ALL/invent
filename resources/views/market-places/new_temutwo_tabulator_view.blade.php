@@ -2879,6 +2879,10 @@
         table = new Tabulator('#new-temu2-table', {
             ajaxURL: '{{ route("newtemutwo.data.json") }}',
             ajaxSorting: false,
+            sortMode: "local",
+            filterMode: "local",
+            paginationMode: "local",
+            headerSort: true,
             layout: 'fitData',
             layoutColumnsOnNewData: true,
             pagination: true,
@@ -3449,11 +3453,14 @@
                     }
                 },
                 {
-                    title: 'SGROI%',
+                    title: 'SGROI',
                     field: 'sgroi_percent',
                     hozAlign: 'center',
                     width: 65,
-                    sorter: 'number',
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        return (temuSgroiPercent(aRow.getData()) || 0) - (temuSgroiPercent(bRow.getData()) || 0);
+                    },
                     headerTooltip: 'SGROI% is the saved Dil + CVR Target GROI (Dil 100 + CVR 10 = 110 exactly). Recalculated only when Dil, CVR, or a pricing input changes. If S PRC was capped to eBay / Amazon / LMP, it shows the actual SPFT ÷ LP instead.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3474,11 +3481,14 @@
                     }
                 },
                 {
-                    title: 'SGPFT%',
+                    title: 'SGPFT',
                     field: 'sgpft_percent',
                     hozAlign: 'center',
                     width: 65,
-                    sorter: 'number',
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        return (temuSgpftPercent(aRow.getData()) || 0) - (temuSgpftPercent(bRow.getData()) || 0);
+                    },
                     headerTooltip: 'SGPFT% = SPFT ÷ S PRC. SPFT = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as Sprc Dil / /temu2-decrease.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3492,11 +3502,14 @@
                     }
                 },
                 {
-                    title: 'SGNROI%',
+                    title: 'SNROI',
                     field: 'snroi_percent',
                     hozAlign: 'center',
                     width: 70,
-                    sorter: 'number',
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        return (temuSnroiPercent(aRow.getData()) || 0) - (temuSnroiPercent(bRow.getData()) || 0);
+                    },
                     headerTooltip: 'SGNROI% = SNPFT ÷ LP. SNPFT = SPFT − (S PRC × Ads%). Same formula as /temu2-decrease.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3510,11 +3523,14 @@
                     }
                 },
                 {
-                    title: 'SNPFT%',
+                    title: 'SNPFT',
                     field: 'snpft_percent',
                     hozAlign: 'center',
                     width: 65,
-                    sorter: 'number',
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        return (temuSnpftPercent(aRow.getData()) || 0) - (temuSnpftPercent(bRow.getData()) || 0);
+                    },
                     headerTooltip: 'SNPFT% = SNPFT ÷ S PRC. SNPFT = SPFT − (S PRC × Ads%). Same formula as /temu2-decrease.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();

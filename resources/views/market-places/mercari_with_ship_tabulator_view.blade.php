@@ -370,6 +370,11 @@
                     return payload;
                 },
                 layout: "fitDataStretch",
+                sortMode: "local",
+                filterMode: "local",
+                paginationMode: "local",
+                ajaxSorting: false,
+                headerSort: true,
                 pagination: true,
                 paginationSize: 100,
                 placeholder: "No Data Available",
@@ -655,7 +660,7 @@
                         }
                     },
                     {
-                        title: "SROI",
+                        title: "SGROI",
                         field: "SROI",
                         hozAlign: "center",
                         width: 70,

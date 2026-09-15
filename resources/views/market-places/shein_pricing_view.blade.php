@@ -7,6 +7,23 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .tabulator { border: 1px solid #dee2e6; border-radius: 8px; font-size: 12px; }
+        #shein-pricing-table .tabulator-row {
+            height: 36px !important;
+            max-height: 36px !important;
+            min-height: 36px !important;
+        }
+        #shein-pricing-table .tabulator-row .tabulator-cell {
+            font-size: 13px !important;
+            line-height: 1.2 !important;
+            height: 36px !important;
+            max-height: 36px !important;
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            vertical-align: middle !important;
+        }
         .tabulator .tabulator-header { background: #f8f9fa; border-bottom: 1px solid #dee2e6; }
         .tabulator-col .tabulator-col-sorter { display: none !important; }
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
@@ -979,14 +996,38 @@
         let shPlayUniqueParents = [];
         let isShPlayActive = false;
         let currentShPlayParentIndex = -1;
+        function sheinIsParentRow(d) {
+            if (!d) return false;
+            if (typeof d.getData === 'function') {
+                try { d = d.getData() || {}; } catch (e) { /* use original */ }
+            }
+            if (!d) return false;
+            if (d.is_parent === true || d.is_parent === 1 || d.is_parent === '1' || d.is_parent === 'true') return true;
+            if (d.is_parent_summary === true || d.is_parent_row === true) return true;
+            const sku = String(d.sku || d.SKU || d['(Child) sku'] || '').trim().toUpperCase();
+            return /^PARENT\b/.test(sku);
+        }
+
+        function sheinCurrentRowType() {
+            return $('#ae-row-type-filter').val() || 'skus';
+        }
+
+        function sheinMarkParentFlags(rows) {
+            (Array.isArray(rows) ? rows : []).forEach(function(r) {
+                if (!r || typeof r !== 'object') return;
+                if (sheinIsParentRow(r)) r.is_parent = true;
+            });
+            return rows;
+        }
 
         function normalizeShParentKey(val) {
             if (val == null || val === '') return '';
             return String(val).trim().replace(/\s+/g, ' ').replace(/^PARENT\s+/i, '');
         }
         function buildShUniqueParents() {
-            if (!table) return [];
-            const allRows = table.getData('all') || [];
+            const allRows = (allTableData && allTableData.length)
+                ? allTableData
+                : (table ? (table.getData('all') || []) : []);
             const seen = {};
             const list = [];
             allRows.forEach(function(r) {
@@ -1044,23 +1085,16 @@
                 return;
             }
             if (!table) return;
-            table.clearFilter();
+            applyMetricFilters();
+        }
 
-            // Play navigation: only show current parent's group
-            if (isShPlayActive && shPlayUniqueParents.length > 0 && currentShPlayParentIndex >= 0) {
-                const currentKey = shPlayUniqueParents[currentShPlayParentIndex];
-                if (currentKey) {
-                    table.addFilter(function(d) {
-                        const p = normalizeShParentKey(d.parent);
-                        return p === currentKey || p === ('PARENT ' + currentKey);
-                    });
-                }
-                return;
-            }
+        function applyMetricFilters() {
+            if (!table) return;
+            table.clearFilter();
 
             const skuSearch  = ($('#pricing-sku-search').val() || '').toLowerCase().trim();
             const parentSearch = ($('#pricing-parent-search').val() || '').toLowerCase().trim();
-            const rowType    = $('#ae-row-type-filter').val();
+            const rowType    = sheinCurrentRowType();
             const invFilter  = $('#ae-inv-filter').val();
             const stockFilter= $('#ae-stock-filter').val();
             const gpftFilter = $('#ae-gpft-filter').val();
@@ -1070,6 +1104,16 @@
             const spriceFilter = $('#ae-sprice-filter').val() || 'all';
             const dilColor   = $('#ae-dil-filter').val() || 'all';
 
+            if (isShPlayActive && shPlayUniqueParents.length > 0 && currentShPlayParentIndex >= 0) {
+                const currentKey = shPlayUniqueParents[currentShPlayParentIndex];
+                if (currentKey) {
+                    table.addFilter(function(d) {
+                        const p = normalizeShParentKey(d.parent);
+                        return p === currentKey || p === ('PARENT ' + currentKey);
+                    });
+                }
+            }
+
             if (skuSearch) {
                 table.addFilter(d => (d.sku || '').toLowerCase().includes(skuSearch));
             }
@@ -1077,36 +1121,43 @@
                 table.addFilter(d => String(d.parent || '').toLowerCase().includes(parentSearch));
             }
 
-            // Row type filter (All / Parents / SKUs) – same as Amazon
             if (rowType === 'parents') {
-                table.addFilter(d => d.is_parent === true);
+                table.addFilter(function(d) { return sheinIsParentRow(d); });
             } else if (rowType === 'skus') {
-                table.addFilter(d => !d.is_parent);
+                table.addFilter(function(d) { return !sheinIsParentRow(d); });
             }
 
-            // Inventory filter
             if (invFilter === 'zero') {
-                table.addFilter(d => (parseInt(d.inv, 10) || 0) === 0);
+                table.addFilter(function(d) {
+                    if (sheinIsParentRow(d)) return rowType !== 'skus';
+                    return (parseInt(d.inv, 10) || 0) === 0;
+                });
             } else if (invFilter === 'more') {
-                table.addFilter(d => (parseInt(d.inv, 10) || 0) > 0);
+                table.addFilter(function(d) {
+                    if (sheinIsParentRow(d)) return rowType !== 'skus';
+                    return (parseInt(d.inv, 10) || 0) > 0;
+                });
             }
 
-            // Shein Stock filter
             if (stockFilter === 'zero') {
-                table.addFilter(d => (parseInt(d.shein_stock, 10) || 0) === 0);
+                table.addFilter(function(d) {
+                    if (sheinIsParentRow(d)) return rowType !== 'skus';
+                    return (parseInt(d.shein_stock, 10) || 0) === 0;
+                });
             } else if (stockFilter === 'more') {
-                table.addFilter(d => (parseInt(d.shein_stock, 10) || 0) > 0);
+                table.addFilter(function(d) {
+                    if (sheinIsParentRow(d)) return rowType !== 'skus';
+                    return (parseInt(d.shein_stock, 10) || 0) > 0;
+                });
             }
 
-            // Status NR/REQ (matches /ebay2-tabulator-view)
             if (nrlFilter === 'REQ' || nrlFilter === 'NR') {
                 table.addFilter(function(d) {
-                    if (d.is_parent) return true;
+                    if (sheinIsParentRow(d)) return rowType !== 'skus';
                     return sheinNrReq(d) === nrlFilter;
                 });
             }
 
-            // GPFT filter — slabs match ebay-tabulator-view
             if (gpftFilter !== 'all') {
                 table.addFilter(function(d) {
                     const gpft = parseFloat(d.gpft) || 0;
@@ -1120,10 +1171,9 @@
                 });
             }
 
-            // ROI% filter
             if (roiFilter !== 'all') {
                 table.addFilter(function(d) {
-                    if (d.is_parent) return true;
+                    if (sheinIsParentRow(d)) return rowType !== 'skus';
                     const roi = parseFloat(d.groi) || 0;
                     if (roiFilter === 'lt40')    return roi < 40;
                     if (roiFilter === '40-75')   return roi >= 40 && roi < 75;
@@ -1133,9 +1183,9 @@
                 });
             }
 
-            // AL30 filter (excludes 0 inventory rows, same as TikTok T L30)
             if (al30Filter !== 'all') {
                 table.addFilter(function(d) {
+                    if (sheinIsParentRow(d)) return rowType !== 'skus';
                     if ((parseInt(d.inv, 10) || 0) <= 0) return false;
                     const al30 = parseFloat(d.al30) || 0;
                     if (al30Filter === '0')    return al30 === 0;
@@ -1144,18 +1194,17 @@
                 });
             }
 
-            // Blank SPRICE only (matches /ebay2-tabulator-view)
             if (spriceFilter === 'blank') {
                 table.addFilter(function(d) {
-                    if (d.is_parent) return true;
+                    if (sheinIsParentRow(d)) return rowType !== 'skus';
                     const sp = sheinVisibleSprice(d);
                     return !(sp > 0);
                 });
             }
 
-            // DIL% filter — slabs match /ebay2-tabulator-view: red <25, green 25-50, pink 50+
             if (dilColor !== 'all') {
                 table.addFilter(function(d) {
+                    if (sheinIsParentRow(d)) return rowType !== 'skus';
                     const inv   = parseFloat(d.inv)    || 0;
                     const ovL30 = parseFloat(d.ov_l30) || 0;
                     const dil   = inv === 0 ? 0 : (ovL30 / inv) * 100;
@@ -1166,7 +1215,6 @@
                 });
             }
 
-            // Badge-click filters
             if (aeZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (aeMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
             if (blueTriangleFilterActive) {
@@ -1487,7 +1535,9 @@
                         salesPageTotals = null;
                         rows = response;
                     }
-                    // Keep parent rows so ParentExpand "P" column can expand a parent to its SKUs
+                    sheinMarkParentFlags(rows);
+                    allTableData = rows;
+                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     summaryDataCache = normalizeRows(rows);
                     updateSummary(summaryDataCache);
                     setTimeout(aeApplyBadgeFilterFromUrl, 0);
@@ -1495,6 +1545,11 @@
                 },
                 layout: "fitDataStretch",
                 height: "calc(100vh - 260px)",
+                rowHeight: 36,
+                sortMode: "local",
+                filterMode: "local",
+                paginationMode: "local",
+                ajaxSorting: false,
                 pagination: true,
                 paginationSize: 100,
                 paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -1507,7 +1562,7 @@
                 },
                 initialSort: [],
                 rowFormatter: function(row) {
-                    if (row.getData().is_parent === true) {
+                    if (sheinIsParentRow(row.getData())) {
                         row.getElement().classList.add('ae-parent-row');
                     }
                 },
@@ -2023,9 +2078,6 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + sprice.toFixed(2) + ' ≠ Sp. Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            if (!atOrAboveLmp && live > 0 && Math.round(live * 100) === Math.round(sprice * 100)) {
-                                return '<span style="color:#adb5bd;" title="Same as Shein Price">-</span>';
-                            }
                             const formatted = '$' + sprice.toFixed(2);
                             const priceHtml = atOrAboveLmp
                                 ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
@@ -2035,25 +2087,9 @@
                         }
                     },
                     {
-                        title: "SGPFT",
-                        field: "sgpft",
-                        sorter: function(a, b, aRow, bRow) {
-                            const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sgpft;
-                            const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sgpft;
-                            return av - bv;
-                        },
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = sheinSpriceMetrics(d).sgpft;
-                            if (isNaN(v)) return '0%';
-                            return sheinPctHtml(v, 'gpft');
-                        }
-                    },
-                    {
-                        title: "SGroi",
+                        title: "SGROI",
                         field: "sroi",
+                        headerSort: true,
                         sorter: function(a, b, aRow, bRow) {
                             const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
                             const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
@@ -2068,23 +2104,35 @@
                             return sheinPctHtml(v, 'groi');
                         }
                     },
+                    {
+                        title: "SGPFT",
+                        field: "sgpft",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sgpft;
+                            const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sgpft;
+                            return av - bv;
+                        },
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = sheinSpriceMetrics(d).sgpft;
+                            if (isNaN(v)) return '0%';
+                            return sheinPctHtml(v, 'gpft');
+                        }
+                    },
                 ],
                 dataLoaded: function(data) {
-                    allTableData = Array.isArray(data) ? data : [];
-                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
-                    updateSummary(data);
-                    // Honor the dropdown defaults on first load (e.g. INV "More than 0")
-                    // so the table doesn't render every row before the user touches a filter.
-                    applyFilters();
-                    if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                        ebayScheduleSprcDilAutoApply();
+                    if (!allTableData.length && Array.isArray(data)) {
+                        sheinMarkParentFlags(data);
+                        allTableData = data;
+                        if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     }
-                    setTimeout(function() {
-                        try { sheinPersistVisibleSprices(); } catch (e) { /* ignore */ }
-                    }, 400);
-                    setTimeout(function() {
-                        try { sheinPersistVisibleSprices(); } catch (e) { /* ignore */ }
-                    }, 2000);
+                    updateSummary(allTableData.length ? allTableData : data);
+                    if (typeof applyFilters === 'function') {
+                        applyFilters();
+                    }
                 },
                 dataFiltered: function(filters, rows) {
                     updateSummary(rows);

@@ -2095,6 +2095,10 @@
                 height: 'calc(100vh - 260px)',
                 pagination: true,
                 paginationSize: 100,
+                sortMode: "local",
+                filterMode: "local",
+                paginationMode: "local",
+                ajaxSorting: false,
                 headerSort: true,
                 initialSort: [],
                 rowFormatter: function(row) {
@@ -2449,7 +2453,14 @@
                         }
                     },
                     {
-                        title: 'SGROI', field: 'sroi', sorter: 'number', headerSort: true, hozAlign: 'right',
+                        title: 'SGROI', field: 'sroi', headerSort: true, hozAlign: 'right',
+                        sorter: function(a, b, aRow, bRow) {
+                            const ad = aRow && aRow.getData ? aRow.getData() : {};
+                            const bd = bRow && bRow.getData ? bRow.getData() : {};
+                            const av = frFaireSpriceMetrics(ad, frRowSpriceForAlert(ad)).sroi;
+                            const bv = frFaireSpriceMetrics(bd, frRowSpriceForAlert(bd)).sroi;
+                            return (Number(av) || 0) - (Number(bv) || 0);
+                        },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2466,7 +2477,14 @@
                         }
                     },
                     {
-                        title: 'SGPFT', field: 'sgpft', sorter: 'number', headerSort: true, hozAlign: 'right',
+                        title: 'SGPFT', field: 'sgpft', headerSort: true, hozAlign: 'right',
+                        sorter: function(a, b, aRow, bRow) {
+                            const ad = aRow && aRow.getData ? aRow.getData() : {};
+                            const bd = bRow && bRow.getData ? bRow.getData() : {};
+                            const av = frFaireSpriceMetrics(ad, frRowSpriceForAlert(ad)).sgpft;
+                            const bv = frFaireSpriceMetrics(bd, frRowSpriceForAlert(bd)).sgpft;
+                            return (Number(av) || 0) - (Number(bv) || 0);
+                        },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
