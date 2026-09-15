@@ -3302,6 +3302,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::redirect('/inactive-listing', '/inactive-listings');
     Route::get('/inactive-listings', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'index'])->name('inactive.listings');
     Route::get('/inactive-listings/channels-data', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'masterData'])->name('inactive.listings.channels');
+    Route::post('/inactive-listings/sync', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'sync'])->name('inactive.listings.sync');
+    Route::get('/inactive-listings/sync/status', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'syncStatus'])->name('inactive.listings.sync.status');
     Route::get('/inactive-listings/channel/{channel}', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'channel'])->name('inactive.listings.channel');
     Route::get('/inactive-listings/channel/{channel}/data', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'channelData'])->name('inactive.listings.channel.data');
 

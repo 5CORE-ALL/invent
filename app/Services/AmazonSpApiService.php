@@ -6157,6 +6157,20 @@ class AmazonSpApiService
     }
 
     /**
+     * @param  list<string>  $skus
+     */
+    public function forgetSellerCentralListingStates(array $skus): void
+    {
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            Cache::forget(self::sellerCentralStateCacheKey($sku));
+        }
+    }
+
+    /**
      * @return 'live'|'inactive'|'missing'|'unknown'|null
      */
     public static function cachedSellerCentralState(string $sku): ?string

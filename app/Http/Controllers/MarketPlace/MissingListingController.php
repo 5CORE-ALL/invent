@@ -68,6 +68,14 @@ class MissingListingController extends Controller
                     ->values()
                 : collect();
 
+            @set_time_limit(600);
+            try {
+                app(\App\Services\MarketplaceManager\MissingListingCatalogRefresh::class)
+                    ->refreshApiChannelsFromCpMaster();
+            } catch (\Throwable $e) {
+                Log::warning('Missing Listing catalog refresh failed: '.$e->getMessage());
+            }
+
             $cpMasterCounts = CpMasterCounts::counts(false);
             $cpSkuCount = (int) ($cpMasterCounts['SKU'] ?? 0);
             $cpZeroInv = (int) ($cpMasterCounts['ZeroInv'] ?? 0);

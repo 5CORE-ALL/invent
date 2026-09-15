@@ -22,35 +22,57 @@ class TopDawgOrderDetailService
             return ['success' => false, 'message' => 'Order id missing or table unavailable.'];
         }
 
-        // TopDawg list API has no single-order endpoint — refresh from recent list.
+        $existing = TopDawgOrderMetric::query()
+            ->where(function ($q) use ($orderId) {
+                $q->where('order_id', $orderId)->orWhere('order_number', $orderId);
+            })
+            ->orderByDesc('id')
+            ->first();
+        $cached = is_array($existing?->raw_payload) ? $existing->raw_payload : [];
+
+        // TopDawg has no single-order endpoint. Refresh only the last 3 days,
+        // then upsert the matching order — never re-sync 60 days per push.
         try {
-            $result = $this->topdawgApi->fetchOrders(now()->subDays(60)->toIso8601String());
+            $result = $this->topdawgApi->fetchOrders(now('America/Los_Angeles')->subDays(3)->startOfDay()->toIso8601String());
             $orders = $result['data'] ?? [];
         } catch (\Throwable $e) {
+            if ($cached !== []) {
+                return ['success' => true, 'message' => 'Using stored TopDawg order payload.'];
+            }
+
             return ['success' => false, 'message' => $e->getMessage()];
         }
 
         $match = null;
+        $wanted = array_values(array_filter(array_unique([
+            strtoupper($orderId),
+            strtoupper(trim((string) ($existing?->order_number ?? ''))),
+            strtoupper(trim((string) ($existing?->order_id ?? ''))),
+        ])));
         foreach ($orders as $order) {
             if (! is_array($order)) {
                 continue;
             }
-            $num = trim((string) ($order['order_number'] ?? $order['orderNumber'] ?? $order['id'] ?? ''));
-            if ($num === $orderId) {
-                $match = $order;
-                break;
+            foreach (['order_number', 'orderNumber', 'order_id', 'id'] as $key) {
+                $num = strtoupper(trim((string) ($order[$key] ?? '')));
+                if ($num !== '' && in_array($num, $wanted, true)) {
+                    $match = $order;
+                    break 2;
+                }
             }
         }
 
-        if ($match === null) {
-            return ['success' => false, 'message' => 'Order not found in recent TopDawg API results.'];
+        if ($match !== null) {
+            app(TopDawgOrderSyncService::class)->upsertSingleOrder($match);
+
+            return ['success' => true, 'message' => 'Order refreshed from TopDawg API.'];
         }
 
-        app(TopDawgOrderSyncService::class)->fetchAndStoreFromDate(
-            now()->subDays(60)->toDateString()
-        );
+        if ($cached !== []) {
+            return ['success' => true, 'message' => 'Using stored TopDawg order payload.'];
+        }
 
-        return ['success' => true, 'message' => 'Order refreshed from TopDawg API.'];
+        return ['success' => false, 'message' => 'Order not found in recent TopDawg API results.'];
     }
 
     /**

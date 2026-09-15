@@ -35,7 +35,8 @@ class ShopifyFulfillmentTrackingMatcher
         string $marketplaceOrderId,
         string $sku,
         array $extraOrderIds = [],
-        string $logContext = 'ShopifyFulfillmentTrackingMatcher'
+        string $logContext = 'ShopifyFulfillmentTrackingMatcher',
+        array $excludeTrackings = []
     ): array {
         $empty = [
             'tracking' => null,
@@ -125,6 +126,17 @@ class ShopifyFulfillmentTrackingMatcher
                 }
                 $number = $this->trackingFromFulfillment($fulfillment);
                 if ($number === null) {
+                    continue;
+                }
+                $numberKey = strtoupper(preg_replace('/\s+/', '', $number) ?? $number);
+                $skip = false;
+                foreach ($excludeTrackings as $exclude) {
+                    if ($this->trackingNumbersEqual($number, (string) $exclude) || $numberKey === strtoupper(preg_replace('/\s+/', '', (string) $exclude) ?? '')) {
+                        $skip = true;
+                        break;
+                    }
+                }
+                if ($skip) {
                     continue;
                 }
                 if (! $this->fulfillmentMatchesSku($fulfillment, $sku, $orderLines)) {
@@ -436,7 +448,7 @@ class ShopifyFulfillmentTrackingMatcher
      * @param  array<string, mixed>  $fulfillment
      * @param  list<array<string, mixed>>  $orderLines
      */
-    protected function fulfillmentMatchesSku(array $fulfillment, string $sku, array $orderLines): bool
+    public function fulfillmentMatchesSku(array $fulfillment, string $sku, array $orderLines): bool
     {
         $lines = is_array($fulfillment['line_items'] ?? null) ? $fulfillment['line_items'] : [];
         foreach ($lines as $line) {

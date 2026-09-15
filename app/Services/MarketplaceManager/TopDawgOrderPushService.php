@@ -214,6 +214,20 @@ class TopDawgOrderPushService
         ];
     }
 
+    public function isWithinShopifyImportWindow(TopDawgOrderMetric $order): bool
+    {
+        $cutoff = app(TopDawgOrderSyncService::class)->shopifyImportCutoff();
+        $raw = $order->order_date ?? $order->created_at ?? null;
+        if ($raw === null || $raw === '') {
+            return false;
+        }
+        try {
+            return \Illuminate\Support\Carbon::parse($raw)->gte($cutoff);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     public static function canAutoSyncAddress(?array $settings = null): bool
     {
         $settings ??= MarketplaceSyncSettings::getFor('topdawg');
@@ -229,6 +243,12 @@ class TopDawgOrderPushService
             $this->fulfillShopifyForImportedMarketplaceOrder('topdawg', (int) $order->id, ['order_id' => (string) $order->order_id]);
 
             return (string) $order->shopify_order_id;
+        }
+
+        if (! $this->isWithinShopifyImportWindow($order)) {
+            $this->lastFailureReason = 'Only TopDawg orders from the last 2 days are pushed to Shopify.';
+
+            return null;
         }
 
         $orderId = trim((string) $order->order_id);
@@ -400,7 +420,7 @@ class TopDawgOrderPushService
         $cachedRoot = $this->orderDetailService->resolveOrderRoot($order);
 
         $detailResult = $this->orderDetailService->fetchAndPersistOrderDetail($orderId);
-        if (empty($detailResult['success'])) {
+        if (empty($detailResult['success']) && $cachedRoot === []) {
             return [
                 'success' => false,
                 'message' => $detailResult['message'] ?? 'Could not load TopDawg order details before Shopify push.',

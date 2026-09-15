@@ -500,7 +500,7 @@ class ListingChannelCounts
             }
         }
 
-        $cacheKey = 'listing_channel_counts_v1:'.($requirePositiveInv ? 'inv' : 'cp').':'.$key;
+        $cacheKey = 'listing_channel_counts_v2:'.($requirePositiveInv ? 'inv' : 'cp').':'.$key;
 
         try {
             return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($key, $empty, $requirePositiveInv) {

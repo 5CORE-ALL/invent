@@ -12,7 +12,6 @@ use App\Models\MacyProduct;
 use App\Models\NeweggItem;
 use App\Models\NeweggMetric;
 use App\Models\NeweggPricing;
-use App\Models\PLSProduct;
 use App\Models\ReverbListingStatus;
 use App\Models\ShopifyCatalogVariant;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
@@ -413,6 +412,12 @@ class ChannelListingRegistry
         $cfg = self::get($key);
         if ($cfg === null) {
             return ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0, 'MissingL' => 0];
+        }
+
+        try {
+            app(\App\Services\MarketplaceManager\MissingListingCatalogRefresh::class)->refreshChannel($key);
+        } catch (\Throwable $e) {
+            // Count from whatever catalog we already have.
         }
 
         $skus = ListingCountsEngine::countUniverseSkus($requirePositiveInv);
@@ -911,6 +916,12 @@ class ChannelListingRegistry
      */
     public static function listedPls(array $skus): array
     {
+        try {
+            app(\App\Services\MarketplaceManager\MissingListingCatalogRefresh::class)->refreshChannel('pls');
+        } catch (\Throwable $e) {
+            // use current catalog
+        }
+
         $wantedNorm = self::wantedNormalizedSkus($skus);
         if ($wantedNorm === []) {
             return [];
@@ -941,32 +952,6 @@ class ChannelListingRegistry
                 });
         }
 
-        if (class_exists(PLSProduct::class) && \Illuminate\Support\Facades\Schema::hasTable('pls_products')) {
-            $fromPrice = ListingCountsEngine::listedIdsFromPrice(PLSProduct::class, $skus, 'price');
-            foreach ($fromPrice as $key => $id) {
-                self::putListedId($byNorm, $wantedNorm, (string) $key, (string) $id);
-            }
-        }
-
-        try {
-            $cached = app(\App\Services\MarketplaceManager\PlsLiveListingsService::class)->peekCached();
-            if (is_array($cached)) {
-                foreach ($cached as $row) {
-                    if (! is_array($row)) {
-                        continue;
-                    }
-                    $sku = trim((string) ($row['sku'] ?? ''));
-                    if (ListingCountsEngine::isPendingOrReviewListingState($row['state'] ?? null)) {
-                        continue;
-                    }
-                    $id = trim((string) ($row['sku_id'] ?? $row['product_id'] ?? ''));
-                    self::putListedId($byNorm, $wantedNorm, $sku, $id !== '' ? $id : $sku);
-                }
-            }
-        } catch (\Throwable $e) {
-            // ignore cache misses
-        }
-
         return self::listedMapFromByNorm($skus, $byNorm);
     }
 
@@ -979,6 +964,12 @@ class ChannelListingRegistry
      */
     public static function listedTopDawg(array $skus): array
     {
+        try {
+            app(\App\Services\MarketplaceManager\MissingListingCatalogRefresh::class)->refreshChannel('topdawg');
+        } catch (\Throwable $e) {
+            // use current catalog
+        }
+
         $wantedNorm = self::wantedNormalizedSkus($skus);
         if ($wantedNorm === []) {
             return [];

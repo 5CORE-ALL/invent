@@ -893,4 +893,84 @@ class BestBuyApiService
             'message' => 'Mirakl Connect quantity push is not wired yet — updated local bestbuy_usa_products.stock only.',
         ];
     }
+
+    /**
+     * One shipment / one tracking for one Best Buy order line.
+     *
+     * @return array{success: bool, message: string, status?: int}
+     */
+    public function createOrderShipment(
+        string $connectOrderId,
+        string $orderLineId,
+        string $trackingNumber,
+        string $carrier = 'USPS',
+        int $quantity = 1,
+        string $sku = ''
+    ): array {
+        $connectOrderId = trim($connectOrderId);
+        $orderLineId = trim($orderLineId);
+        $trackingNumber = strtoupper(preg_replace('/\s+/', '', $trackingNumber) ?? $trackingNumber);
+        if ($connectOrderId === '' || $orderLineId === '' || $trackingNumber === '') {
+            return ['success' => false, 'message' => 'Best Buy order id, line id, and tracking are required.'];
+        }
+
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'Best Buy / Mirakl Connect is not connected.'];
+        }
+
+        $item = [
+            'order_line_id' => $orderLineId,
+            'quantity' => max(1, $quantity),
+        ];
+        $sku = trim($sku);
+        if ($sku !== '') {
+            $item['id'] = $sku;
+        }
+
+        try {
+            $response = Http::withoutVerifying()
+                ->withToken($token)
+                ->timeout(45)
+                ->post('https://miraklconnect.com/api/v2/orders/'.rawurlencode($connectOrderId).'/shipments', [
+                    'tracking_number' => $trackingNumber,
+                    'carrier' => $carrier !== '' ? $carrier : 'USPS',
+                    'items' => [$item],
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('BestBuyApiService: createOrderShipment failed', [
+                'order_id' => $connectOrderId,
+                'order_line_id' => $orderLineId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $status = $response->status();
+        $body = strtolower((string) $response->body());
+        if ($response->successful() || in_array($status, [201, 202], true)) {
+            return ['success' => true, 'message' => 'Best Buy shipment created.', 'status' => $status];
+        }
+        if (
+            str_contains($body, 'already')
+            || str_contains($body, 'shipped')
+            || str_contains($body, 'duplicate')
+        ) {
+            return ['success' => true, 'message' => 'Best Buy already has this shipment.', 'status' => $status];
+        }
+
+        Log::warning('BestBuyApiService: createOrderShipment rejected', [
+            'order_id' => $connectOrderId,
+            'order_line_id' => $orderLineId,
+            'status' => $status,
+            'body' => mb_substr((string) $response->body(), 0, 400),
+        ]);
+
+        return [
+            'success' => false,
+            'message' => 'Best Buy shipment failed (HTTP '.$status.').',
+            'status' => $status,
+        ];
+    }
 }

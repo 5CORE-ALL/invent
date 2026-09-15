@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 class SyncTopDawgManagerOrders extends Command
 {
     protected $signature = 'topdawg:sync-orders
-                            {--days=7 : Days of order history}
+                            {--days=2 : Days of order history}
                             {--from= : Fetch orders from this date onward (YYYY-MM-DD); overrides --days}
                             {--import : Dispatch import jobs for new orders after fetch}
                             {--force : Run even if Fetch orders setting is Off}';

@@ -94,6 +94,10 @@
                     <span class="badge bg-warning text-dark badge-il-stat" id="stat-cp-inactive-listings" title="CP Master SKUs that are also inactive on the marketplace. Zero-inventory SKUs are excluded.">
                         Inactive Child SKUs: <span id="total-cp-inactive-listings">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedCpInactiveTotalOrZero()) }}</span>
                     </span>
+                    <button type="button" id="il-sync-btn" class="btn btn-sm btn-primary" title="Pull current marketplace listing statuses and rebuild this page">
+                        <i class="fas fa-sync-alt me-1"></i> Sync
+                    </button>
+                    <span class="text-muted small" id="il-sync-meta"></span>
                     <span class="text-muted small">Inactive Listing = listed on the marketplace but not live there, and Active with stock in CP Master. Zero does not mean every CP Master SKU is live on every channel — missing / never-listed SKUs are on Missing Listing.</span>
                 </div>
             </div>
@@ -112,6 +116,85 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     let table = null;
+    let ilSyncPolling = false;
+    const ilSyncUrl = @json(route('inactive.listings.sync'));
+    const ilSyncStatusUrl = @json(route('inactive.listings.sync.status'));
+    const ilCsrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+    function formatIlSyncTime(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return '';
+        return d.toLocaleString();
+    }
+
+    function setIlSyncMeta(status) {
+        const el = document.getElementById('il-sync-meta');
+        if (!el || !status) return;
+        const state = String(status.status || 'idle');
+        if (state === 'running') {
+            el.textContent = 'Syncing listing statuses…';
+            return;
+        }
+        const when = formatIlSyncTime(status.finished_at || status.started_at);
+        el.textContent = when ? ('Last sync: ' + when) : '';
+    }
+
+    function setIlSyncBusy(busy, label) {
+        const $btn = $('#il-sync-btn');
+        $btn.prop('disabled', busy);
+        $btn.html(busy
+            ? '<span class="spinner-border spinner-border-sm me-1"></span>' + (label || 'Syncing…')
+            : '<i class="fas fa-sync-alt me-1"></i> Sync');
+    }
+
+    function pollIlSync(started) {
+        if (ilSyncPolling) return;
+        ilSyncPolling = true;
+        setIlSyncBusy(true, 'Syncing…');
+        const startedAt = started || Date.now();
+        const timer = setInterval(function() {
+            $.getJSON(ilSyncStatusUrl).done(function(res) {
+                const status = (res && res.status) ? res.status : {};
+                setIlSyncMeta(status);
+                if (String(status.status || '') === 'running') {
+                    return;
+                }
+                clearInterval(timer);
+                ilSyncPolling = false;
+                if (String(status.status || '') === 'failed') {
+                    setIlSyncBusy(false);
+                    alert(status.message || 'Sync failed.');
+                    return;
+                }
+                window.location.reload();
+            }).fail(function() {
+                if (Date.now() - startedAt > 40 * 60 * 1000) {
+                    clearInterval(timer);
+                    ilSyncPolling = false;
+                    setIlSyncBusy(false);
+                    alert('Sync status check failed. Refresh the page.');
+                }
+            });
+        }, 3000);
+    }
+
+    function startIlSync() {
+        setIlSyncBusy(true, 'Starting…');
+        $.ajax({
+            url: ilSyncUrl,
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': ilCsrf },
+            dataType: 'json'
+        }).done(function(res) {
+            const status = (res && res.status) ? res.status : {};
+            setIlSyncMeta(status);
+            pollIlSync();
+        }).fail(function(xhr) {
+            setIlSyncBusy(false);
+            alert((xhr.responseJSON && xhr.responseJSON.message) || 'Could not start sync.');
+        });
+    }
 
     function updateSidebarInactiveCount(n) {
         const $b = $('.inactive-listings-badge');
@@ -178,6 +261,17 @@
                 updateStats(data, {
                     cp: response && (response.total_cp_inactive_child != null ? response.total_cp_inactive_child : response.total_cp_inactive),
                 });
+                if (response && (response.last_sync || response.sync_status)) {
+                    setIlSyncMeta({
+                        status: response.sync_status || 'idle',
+                        finished_at: response.last_sync || null,
+                        started_at: response.last_sync || null,
+                        message: response.sync_message || '',
+                    });
+                    if (String(response.sync_status || '') === 'running') {
+                        pollIlSync();
+                    }
+                }
                 return data;
             },
             layout: "fitDataStretch",
@@ -296,6 +390,8 @@
                 },
             ],
         });
+
+        $('#il-sync-btn').on('click', startIlSync);
 
         $('#inactive-listings-search').on('input', function() {
             const q = $(this).val().trim().toLowerCase();

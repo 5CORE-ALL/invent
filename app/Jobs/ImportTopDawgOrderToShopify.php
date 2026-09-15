@@ -54,6 +54,12 @@ class ImportTopDawgOrderToShopify implements ShouldQueue
             return;
         }
 
+        if (! $pushService->isWithinShopifyImportWindow($order)) {
+            $order->update(['import_status' => 'skipped_old']);
+
+            return;
+        }
+
         $shopifyOrderId = $pushService->importToShopify($order);
 
         if ($shopifyOrderId) {
