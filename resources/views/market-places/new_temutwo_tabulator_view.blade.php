@@ -596,6 +596,16 @@
                     <span class="badge fs-6 p-2" id="total-l30-badge"
                         style="background-color: #6f42c1; color: white; font-weight: bold;"
                         title="Σ Temu L30 qty of the rows shown">L30: 0</span>
+                    @php
+                        $l30Sales = (float) ($temuAds['sales'] ?? 0);
+                    @endphp
+                    <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
+                        style="color: white; font-weight: bold;"
+                        title="L30 Sales = Σ Temu Price × Qty on matched temu2_orders — same total as /temu2-tabulator and the Temu 2 row on /channel-master ({{ $temuAds['window'] ?? 'L30' }}). SKU match = /new-temu2 (normalize + no-space). Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99. This badge is the channel total, not the filtered rows.">
+                        L30 Sales: ${{ number_format($l30Sales, 0) }}<a
+                            href="{{ url('temu2-tabulator') }}" target="_blank" rel="noopener noreferrer"
+                            style="color: white; margin-left: 4px;" title="Open Temu 2 sales data"
+                            onclick="event.stopPropagation();"><i class="fas fa-arrow-up-right-from-square"></i></a></span>
                     <span class="badge bg-info fs-6 p-2" id="total-views-badge"
                         style="color: black; font-weight: bold;"
                         title="Σ Views of the rows shown">Views: 0</span>
@@ -3025,7 +3035,7 @@
                     hozAlign: 'center',
                     width: 50,
                     sorter: 'number',
-                    headerTooltip: 'Temu L30 qty from temu_orders — same sales table and Pacific L30 window as /temu-tabulator Qty Purchased'
+                    headerTooltip: 'Temu L30 qty from temu2_orders — same sales table, Pacific L30 window, and SKU match (normalize + no-space) as /temu2-tabulator'
                 },
                 {
                     title: 'Views',

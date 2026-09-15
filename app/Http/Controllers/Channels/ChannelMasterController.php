@@ -1054,6 +1054,7 @@ class ChannelMasterController extends Controller
 
     /**
      * Temu 2 L30 for Active / all-marketplace-master — same source as /temu2-tabulator.
+     * SKU match is the same as /new-temu2 (normalize + no-space onto Product Master).
      * Base = base_price_total. GPFT$ from R Price. GPFT% = GPFT$ / Temu Price. GROI% = GPFT$ / LP.
      *
      * @return array{total_orders: int, total_quantity: int, total_revenue: float, total_pft: float, total_cogs: float, gpft_percent: float, groi_percent: float}|null

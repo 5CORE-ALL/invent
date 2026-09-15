@@ -140,7 +140,7 @@
                             title="GPFT$ = Σ (R Price × margin − LP − Temu Ship) × Qty">GPFT$: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
                             style="color: white; font-weight: bold;"
-                            title="L30 Sales = Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">L30 Sales: $0</span>
+                            title="L30 Sales = Σ Temu Price × Qty for orders whose SKU matches CP Master the same way as /new-temu2 (normalize + no-space). Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">L30 Sales: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="temu-full-price-sales-badge"
                             style="color: white; font-weight: bold;"
                             title="Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">Temu Full Price Sales: $0</span>
@@ -313,7 +313,8 @@
                 }
             },
             rowFormatter: function(row) {
-                if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
+                const sku = String(row.getData().contribution_sku || '');
+                if (sku.toUpperCase().indexOf('PARENT') !== -1) {
                     row.getElement().style.backgroundColor = "#fffef2";
                 }
             },
@@ -354,8 +355,8 @@
                     formatter: function(cell) {
                         const sku = cell.getValue();
                         const rowData = cell.getRow().getData();
-                        const isParent = rowData.Parent && rowData.Parent.startsWith('PARENT');
-                        if (isParent) return '';
+                        const isParentSku = String(rowData.contribution_sku || '').toUpperCase().indexOf('PARENT') !== -1;
+                        if (isParentSku) return '';
                         return sku || '';
                     }
                 },
@@ -661,8 +662,10 @@
             let totalWeightedPrice = 0, totalQuantityForPrice = 0, totalCogs = 0;
 
             data.forEach(row => {
-                if (row.Parent && row.Parent.startsWith('PARENT')) return;
-                if (!row.contribution_sku || row.contribution_sku === '' || !row.order_id || row.order_id === '') return;
+                const sku = String(row.contribution_sku || '');
+                if (!sku || !row.order_id || row.order_id === '') return;
+                if (sku.toUpperCase().indexOf('PARENT') !== -1) return;
+                if (row.pm_matched === false) return;
                 totalOrders++;
                 const quantity = parseInt(row.quantity_purchased) || 0;
                 const basePrice = temuRowBase(row);

@@ -32,6 +32,9 @@ class TemuShopifySalesService
 {
     public const PST = 'America/Los_Angeles';
 
+    /** @var array{0: array<string, true>, 1: array<string, string>}|null */
+    private static ?array $productMasterSkuSetsCache = null;
+
     /** L30: 30 complete Pacific days ending yesterday (no partial today). */
     public static function channelMasterL30Window(): array
     {
@@ -478,6 +481,8 @@ class TemuShopifySalesService
 
     /**
      * Same L30/L60 totals as /temu2-tabulator summary badges.
+     * SKU match is the same as /new-temu2: normalize (PCS→PC, spaces) then no-space
+     * fallback onto Product Master. Parent-column "PARENT …" is the family name, not a skip.
      * Base = base_price_total (no −$2.99, not line_sales/qty).
      * GPFT$ = (R Price × margin − LP − Temu Ship) × Qty
      * GPFT% = GPFT$ ÷ Σ (Temu Price × Qty)
@@ -493,6 +498,7 @@ class TemuShopifySalesService
             return $empty;
         }
 
+        [$pmSet, $noSpaceToNormalized] = self::temu3ProductMasterSkuSets();
         $margin = self::temuMarginDecimal();
         $totalSales = 0.0;
         $totalBaseSales = 0.0;
@@ -502,13 +508,12 @@ class TemuShopifySalesService
         $orderSet = [];
 
         foreach ($rows as $r) {
-            $parent = (string) ($r['Parent'] ?? '');
-            if ($parent !== '' && str_starts_with($parent, 'PARENT')) {
-                continue;
-            }
             $sku = trim((string) ($r['contribution_sku'] ?? ''));
             $orderId = trim((string) ($r['order_id'] ?? ''));
-            if ($sku === '' || $orderId === '') {
+            if ($sku === '' || $orderId === '' || self::isParentProductSku($sku)) {
+                continue;
+            }
+            if (! self::temuSkuMatchesProductMaster($sku, $pmSet, $noSpaceToNormalized)) {
                 continue;
             }
 
@@ -618,7 +623,13 @@ class TemuShopifySalesService
     public static function temu2DailySalesByDate(Carbon $startDate, Carbon $endDate): array
     {
         $out = [];
+        [$pmSet, $noSpaceToNormalized] = self::temu3ProductMasterSkuSets();
         foreach (self::getTemu2OrdersTableRows($startDate, $endDate) as $r) {
+            $sku = trim((string) ($r['contribution_sku'] ?? ''));
+            if ($sku === '' || self::isParentProductSku($sku)
+                || ! self::temuSkuMatchesProductMaster($sku, $pmSet, $noSpaceToNormalized)) {
+                continue;
+            }
             $qty = (int) ($r['quantity_purchased'] ?? 0);
             $base = (float) ($r['base_price_total'] ?? 0);
             if ($qty <= 0 || $base <= 0) {
@@ -924,6 +935,38 @@ class TemuShopifySalesService
         return (string) $sku;
     }
 
+    /** Same SKU normalize as /new-temu2 and /temu2-decrease (alias of normalizeTemu3Sku). */
+    public static function normalizeTemuSku(string $sku): string
+    {
+        return self::normalizeTemu3Sku($sku);
+    }
+
+    public static function isParentProductSku(string $sku): bool
+    {
+        return stripos($sku, 'PARENT') !== false;
+    }
+
+    /**
+     * /new-temu2 L30 match: normalized key, then space-stripped fallback.
+     *
+     * @param  array<string, true>  $pmSet
+     * @param  array<string, string>  $noSpaceToNormalized
+     */
+    public static function temuSkuMatchesProductMaster(string $sku, array $pmSet, array $noSpaceToNormalized): bool
+    {
+        $n = self::normalizeTemu3Sku($sku);
+        if ($n === '' || self::isParentProductSku($n)) {
+            return false;
+        }
+        if (isset($pmSet[$n])) {
+            return true;
+        }
+
+        $nNoSpace = str_replace(' ', '', $n);
+
+        return $nNoSpace !== '' && isset($noSpaceToNormalized[$nNoSpace]);
+    }
+
     /**
      * Per Pacific-day Full Temu Price sales from temu3_orders (same SKU filter as L30).
      *
@@ -1103,10 +1146,14 @@ class TemuShopifySalesService
      */
     private static function temu3ProductMasterSkuSets(): array
     {
+        if (self::$productMasterSkuSetsCache !== null) {
+            return self::$productMasterSkuSetsCache;
+        }
+
         $pmSet = [];
         $noSpaceToNormalized = [];
         foreach (ProductMaster::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
-            if (stripos((string) $sku, 'PARENT') !== false) {
+            if (self::isParentProductSku((string) $sku)) {
                 continue;
             }
             $n = self::normalizeTemu3Sku((string) $sku);
@@ -1120,7 +1167,7 @@ class TemuShopifySalesService
             }
         }
 
-        return [$pmSet, $noSpaceToNormalized];
+        return self::$productMasterSkuSetsCache = [$pmSet, $noSpaceToNormalized];
     }
 
     public static function computeYSalesFromTemu3Orders(): ?float
@@ -1316,26 +1363,23 @@ class TemuShopifySalesService
 
             return $sku;
         });
-        $productMasters = self::productMastersForSkus($skus);
-
         $skuList = $skus->filter()->unique()->values()->toArray();
-        $metricsTable = $isTemu2 ? 'temu2_metrics' : 'temu_metrics';
-        $metricsModel = $isTemu2 ? Temu2Metric::class : TemuMetric::class;
-        $priceBySku = collect();
-        if (! empty($skuList) && Schema::hasTable($metricsTable)) {
-            $metricRows = $metricsModel::whereIn('sku', $skuList)->get();
-            foreach ($metricRows as $metricRow) {
-                $priceBySku[$metricRow->sku] = self::resolveListingBasePrice(
-                    $metricRow->base_price ?? null,
-                    $metricRow->recommended_base_price ?? null
-                );
-            }
-        }
-        if ($isTemu2 && ! empty($skuList) && Schema::hasTable('temu2_pricing')) {
-            $pricingBySku = Temu2Pricing::whereIn('sku', $skuList)->pluck('base_price', 'sku');
-            foreach ($pricingBySku as $skuKey => $unit) {
-                if ((float) ($priceBySku[$skuKey] ?? 0) <= 0 && (float) $unit > 0) {
-                    $priceBySku[$skuKey] = $unit;
+        $pmSet = [];
+        $noSpaceToNormalized = [];
+        if ($isTemu2) {
+            [$pmSet, $noSpaceToNormalized] = self::temu3ProductMasterSkuSets();
+            $productMasters = self::productMastersMatchedForSkus($skus);
+            $priceBySku = self::temu2ListingPricesByOrderSku($skuList);
+        } else {
+            $productMasters = self::productMastersForSkus($skus);
+            $priceBySku = collect();
+            if (! empty($skuList) && Schema::hasTable('temu_metrics')) {
+                $metricRows = TemuMetric::whereIn('sku', $skuList)->get();
+                foreach ($metricRows as $metricRow) {
+                    $priceBySku[$metricRow->sku] = self::resolveListingBasePrice(
+                        $metricRow->base_price ?? null,
+                        $metricRow->recommended_base_price ?? null
+                    );
                 }
             }
         }
@@ -1377,6 +1421,9 @@ class TemuShopifySalesService
             $mapped = [
                 'Parent' => $parent,
                 'contribution_sku' => $sku,
+                'pm_matched' => $isTemu2
+                    ? self::temuSkuMatchesProductMaster($sku, $pmSet, $noSpaceToNormalized)
+                    : true,
                 'order_id' => $o->parent_order_sn ?: ($o->order_sn ?? ''),
                 'product_name_by_customer_order' => $o->goods_name ?? '',
                 'variation' => $o->spec ?? '',
@@ -1447,6 +1494,125 @@ class TemuShopifySalesService
         return ! empty($list)
             ? ProductMaster::whereIn('sku', $list)->get()->keyBy('sku')
             : collect();
+    }
+
+    /**
+     * Product Master rows keyed by the raw order SKU, using /new-temu2 matching
+     * (normalize then no-space). PARENT SKUs are excluded from the lookup universe.
+     *
+     * @return Collection<string, ProductMaster>
+     */
+    private static function productMastersMatchedForSkus(Collection $skus): Collection
+    {
+        $list = $skus->filter()->unique()->values();
+        if ($list->isEmpty()) {
+            return collect();
+        }
+
+        $byExact = [];
+        $byNorm = [];
+        $byNoSpace = [];
+        foreach (ProductMaster::query()->whereNotNull('sku')->where('sku', '!=', '')->get() as $pm) {
+            $raw = trim((string) ($pm->sku ?? ''));
+            if ($raw === '' || self::isParentProductSku($raw)) {
+                continue;
+            }
+            $byExact[$raw] = $pm;
+            $n = self::normalizeTemu3Sku($raw);
+            if ($n !== '' && ! isset($byNorm[$n])) {
+                $byNorm[$n] = $pm;
+            }
+            $ns = str_replace(' ', '', $n);
+            if ($ns !== '' && ! isset($byNoSpace[$ns])) {
+                $byNoSpace[$ns] = $pm;
+            }
+        }
+
+        $out = collect();
+        foreach ($list as $sku) {
+            $raw = trim((string) $sku);
+            if ($raw === '') {
+                continue;
+            }
+            $n = self::normalizeTemu3Sku($raw);
+            $ns = str_replace(' ', '', $n);
+            $pm = $byExact[$raw] ?? $byNorm[$n] ?? $byNoSpace[$ns] ?? null;
+            if ($pm) {
+                $out[$raw] = $pm;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * temu2_metrics / temu2_pricing base keyed by the raw order SKU (same normalize + no-space).
+     *
+     * @param  list<string>  $orderSkus
+     * @return Collection<string, float>
+     */
+    private static function temu2ListingPricesByOrderSku(array $orderSkus): Collection
+    {
+        $byNorm = [];
+        $byNoSpace = [];
+
+        $remember = static function (string $sku, float $price) use (&$byNorm, &$byNoSpace): void {
+            if ($price <= 0) {
+                return;
+            }
+            $n = self::normalizeTemu3Sku($sku);
+            if ($n === '') {
+                return;
+            }
+            if (! isset($byNorm[$n])) {
+                $byNorm[$n] = $price;
+            }
+            $ns = str_replace(' ', '', $n);
+            if ($ns !== '' && ! isset($byNoSpace[$ns])) {
+                $byNoSpace[$ns] = $price;
+            }
+        };
+
+        if (Schema::hasTable('temu2_metrics')) {
+            foreach (Temu2Metric::query()->get(['sku', 'base_price', 'recommended_base_price']) as $row) {
+                $remember(
+                    (string) ($row->sku ?? ''),
+                    self::resolveListingBasePrice($row->base_price ?? null, $row->recommended_base_price ?? null)
+                );
+            }
+        }
+        if (Schema::hasTable('temu2_pricing')) {
+            foreach (Temu2Pricing::query()->get(['sku', 'base_price']) as $row) {
+                $n = self::normalizeTemu3Sku((string) ($row->sku ?? ''));
+                $price = (float) ($row->base_price ?? 0);
+                if ($n === '' || $price <= 0) {
+                    continue;
+                }
+                if ((float) ($byNorm[$n] ?? 0) <= 0) {
+                    $byNorm[$n] = $price;
+                }
+                $ns = str_replace(' ', '', $n);
+                if ($ns !== '' && (float) ($byNoSpace[$ns] ?? 0) <= 0) {
+                    $byNoSpace[$ns] = $price;
+                }
+            }
+        }
+
+        $priceBySku = collect();
+        foreach ($orderSkus as $sku) {
+            $raw = trim((string) $sku);
+            if ($raw === '') {
+                continue;
+            }
+            $n = self::normalizeTemu3Sku($raw);
+            $ns = str_replace(' ', '', $n);
+            $price = (float) ($byNorm[$n] ?? $byNoSpace[$ns] ?? 0);
+            if ($price > 0) {
+                $priceBySku[$raw] = $price;
+            }
+        }
+
+        return $priceBySku;
     }
 
     /** @return array{0: float, 1: float} [lp, temu_ship] */

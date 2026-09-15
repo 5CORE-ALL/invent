@@ -87,7 +87,7 @@ class NewTemutwoController extends Controller
         }
 
         try {
-            $cached = Cache::get('newtemutwo_channel_ads_summary');
+            $cached = Cache::get('newtemutwo_channel_ads_summary_v2');
             if (is_array($cached)) {
                 return $memo = $cached;
             }
@@ -123,7 +123,7 @@ class NewTemutwoController extends Controller
         ];
 
         try {
-            Cache::put('newtemutwo_channel_ads_summary', $summary, now()->addMinutes(10));
+            Cache::put('newtemutwo_channel_ads_summary_v2', $summary, now()->addMinutes(10));
         } catch (\Throwable $e) {
             // Cache unavailable — value is still correct for this request.
         }
@@ -158,11 +158,7 @@ class NewTemutwoController extends Controller
                 });
 
             $normalizeSku = static function ($sku) {
-                $sku = strtoupper(trim((string) $sku));
-                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-                $sku = preg_replace('/\s+/', ' ', $sku);
-
-                return $sku;
+                return TemuShopifySalesService::normalizeTemuSku((string) $sku);
             };
 
             $temuMetricsBySku = [];

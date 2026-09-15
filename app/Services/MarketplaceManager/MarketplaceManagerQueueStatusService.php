@@ -2,7 +2,9 @@
 
 namespace App\Services\MarketplaceManager;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -98,6 +100,44 @@ final class MarketplaceManagerQueueStatusService
     public function snapshot(?string $marketplace = null): array
     {
         $slug = $marketplace !== null ? strtolower(trim($marketplace)) : null;
+        $cacheKey = 'mm.queue.snapshot.'.($slug ?: 'all');
+
+        try {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached)) {
+                return $cached;
+            }
+
+            $payload = Cache::lock($cacheKey.'.lock', 20)->block(5, function () use ($cacheKey, $slug) {
+                $cached = Cache::get($cacheKey);
+                if (is_array($cached)) {
+                    return $cached;
+                }
+                $payload = $this->buildSnapshot($slug);
+                Cache::put($cacheKey, $payload, now()->addSeconds(10));
+
+                return $payload;
+            });
+
+            return is_array($payload) ? $payload : $this->buildSnapshot($slug);
+        } catch (\Throwable $e) {
+            try {
+                $cached = Cache::get($cacheKey);
+                if (is_array($cached)) {
+                    return $cached;
+                }
+            } catch (\Throwable $ignored) {
+            }
+
+            return $this->buildSnapshot($slug);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildSnapshot(?string $slug): array
+    {
         $queue = $slug ? MarketplaceManagerRegistry::queueFor($slug) : MarketplaceManagerRegistry::QUEUE;
         // Only this marketplace's dedicated queue — do not mix legacy shared failures into the UI.
         $queues = [$queue];
@@ -306,18 +346,75 @@ final class MarketplaceManagerQueueStatusService
     }
 
     /**
+     * Recent failures for the badge. A COUNT on failed_jobs with no usable
+     * index holds Apache workers for minutes and 504s the whole site when
+     * marketplace pages poll /queue-status every few seconds.
+     *
      * @param  list<string>  $queues
      */
     private function failedCount(array $queues): int
     {
-        if (! Schema::hasTable('failed_jobs') || $queues === []) {
+        if ($queues === [] || ! $this->failedJobsTableExists()) {
             return 0;
         }
 
-        return (int) DB::table('failed_jobs')
-            ->whereIn('queue', $queues)
-            ->where('failed_at', '>=', now()->subDay())
-            ->count();
+        $cacheKey = 'mm.queue.failed_24h.'.md5(implode(',', $queues));
+        try {
+            $cached = Cache::get($cacheKey);
+            if (is_int($cached) || is_numeric($cached)) {
+                return (int) $cached;
+            }
+        } catch (\Throwable $e) {
+            // Cache unavailable — compute below.
+        }
+
+        try {
+            $cutoff = now()->subDay()->toDateTimeString();
+            $wanted = array_fill_keys($queues, true);
+            $count = 0;
+            // PK tail only — failed_jobs.queue is TEXT and unindexed, so a
+            // WHERE queue/failed_at COUNT is a full table scan of longtext rows.
+            foreach (DB::table('failed_jobs')->orderByDesc('id')->limit(400)->get(['queue', 'failed_at']) as $row) {
+                $queue = (string) ($row->queue ?? '');
+                if (! isset($wanted[$queue])) {
+                    continue;
+                }
+                $at = (string) ($row->failed_at ?? '');
+                if ($at !== '' && $at >= $cutoff) {
+                    $count++;
+                }
+            }
+            try {
+                Cache::put($cacheKey, $count, now()->addSeconds(60));
+            } catch (\Throwable $e) {
+            }
+
+            return $count;
+        } catch (\Throwable $e) {
+            Log::warning('MM failed_jobs count skipped: '.$e->getMessage());
+
+            return 0;
+        }
+    }
+
+    private function failedJobsTableExists(): bool
+    {
+        static $exists = null;
+        if ($exists !== null) {
+            return $exists;
+        }
+
+        try {
+            $exists = (bool) Cache::remember(
+                'mm.queue.has_failed_jobs_table',
+                now()->addHours(12),
+                static fn () => Schema::hasTable('failed_jobs')
+            );
+        } catch (\Throwable $e) {
+            $exists = Schema::hasTable('failed_jobs');
+        }
+
+        return $exists;
     }
 
     /**

@@ -63,8 +63,9 @@
     var linkMapPct = document.getElementById('mm-queue-linkmap-pct');
     var linkMapBar = document.getElementById('mm-queue-linkmap-bar');
     var checkedEl = document.getElementById('mm-queue-checked');
-    var pollMs = 5000;
+    var pollMs = 15000;
     var timer = null;
+    var inflight = false;
 
     function workerClass(state) {
         if (state === 'running') return 'text-primary';
@@ -185,6 +186,8 @@
     }
 
     function poll() {
+        if (inflight) return;
+        inflight = true;
         fetch(url, { headers: { 'Accept': 'application/json' }, cache: 'no-store' })
             .then(function (r) { return r.json(); })
             .then(function (payload) {
@@ -192,7 +195,8 @@
                     render(payload.status || {});
                 }
             })
-            .catch(function () { /* silent */ });
+            .catch(function () { /* silent */ })
+            .then(function () { inflight = false; });
     }
 
     poll();
