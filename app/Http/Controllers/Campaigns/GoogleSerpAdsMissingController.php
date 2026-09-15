@@ -38,7 +38,7 @@ class GoogleSerpAdsMissingController extends Controller
      * In-stock parents with no manually linked Google SERP campaign.
      * Cached briefly for the left-sidebar badge.
      */
-    public static function missingTotalCount(): int
+    public static function missingTotalCount(bool $computeIfMissing = false): int
     {
         try {
             $cached = Cache::get(self::SIDEBAR_COUNT_CACHE_KEY);
@@ -47,6 +47,10 @@ class GoogleSerpAdsMissingController extends Controller
             }
         } catch (\Throwable $e) {
             // File cache dirs may be missing mid-request after optimize:clear.
+        }
+
+        if (! $computeIfMissing) {
+            return 0;
         }
 
         try {

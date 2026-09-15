@@ -2145,12 +2145,12 @@ class AdvertisementMasterController extends Controller
         );
         $put(
             ['shopifygoogleshopping'],
-            $safeCount(static fn () => GoogleShoppingAdsMissingController::missingTotalCount()),
+            $safeCount(static fn () => GoogleShoppingAdsMissingController::missingTotalCount(true)),
             $this->namedHref('google.shopping.ads.missing')
         );
         $put(
             ['shopifygoogleserp'],
-            $safeCount(static fn () => GoogleSerpAdsMissingController::missingTotalCount()),
+            $safeCount(static fn () => GoogleSerpAdsMissingController::missingTotalCount(true)),
             $this->namedHref('google.serp.ads.missing')
         );
         $put(

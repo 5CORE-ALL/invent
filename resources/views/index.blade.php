@@ -222,18 +222,19 @@
         ? number_format((float) $amm['cvr_pct'], 2).'%'
         : '-';
 
-    // Listing Catalogue scores (same sources as sidebar / listing pages)
-    $lcMissingL = \App\Support\Marketplace\ListingChannelCounts::totalMissingL(true);
-    $lcNmap = \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::nmapCountForSidebar();
-    $lcVariationsMismatch = \App\Http\Controllers\MarketPlace\VariationsVerifyMasterController::totalMismatchCountForSidebar();
-    try {
-        \App\Http\Controllers\MarketPlace\ListingCatalogueController::persistTodaySnapshot((int) $lcVariationsMismatch);
-    } catch (\Throwable $e) {
-        // ignore snapshot failures on dashboard render
+    // Listing Catalogue scores — cached / badge snapshots only (never live-scan on /home).
+    $lcMissingL = (int) ($amm['missing_l'] ?? 0);
+    if ($lcMissingL <= 0) {
+        $lcMissingL = \App\Support\Marketplace\ListingChannelCounts::totalMissingL(true);
     }
+    $lcNmap = (int) ($amm['nmap'] ?? 0);
+    if ($lcNmap <= 0) {
+        $lcNmap = \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::nmapCountForSidebar();
+    }
+    $lcVariationsMismatch = \App\Http\Controllers\MarketPlace\VariationsVerifyMasterController::totalMismatchCountForSidebar();
     $lcUpdatedAt = now('America/Los_Angeles');
 
-    $amzAdsMissingCount = \App\Http\Controllers\AmazonAdsMissingController::missingTotalCount();
+    $amzAdsMissingCount = \App\Http\Controllers\AmazonAdsMissingController::missingTotalCount(false);
     $adm = \App\Http\Controllers\AdvertisementMaster\AdvertisementMasterController::dashboardBadgeTotals();
     $fmtAdmDollar = static fn ($value): string => '$'.number_format((int) round((float) $value));
     $fmtAdmInt = static fn ($value): string => number_format((int) round((float) $value));
@@ -243,10 +244,6 @@
         try {
             $page = $calculatorClass::pageName();
             $row = BadgeData::forPage($page);
-            if (! $row || empty($row->data)) {
-                BadgeData::saveForCalculator($calculatorClass);
-                $row = BadgeData::forPage($page);
-            }
 
             return [
                 'row' => $row,
@@ -403,25 +400,6 @@
         $kpi('MISSING L:', 'all-marketplace-master', 'missing_l', $amm['missing_l'] ?? null, 'Missing L'),
     ];
 
-    // Seed today's history from live dashboard values (so dots/charts work even before cron)
-    try {
-        $historyBuckets = [];
-        foreach ($dashKpiAutoMap as $row) {
-            if ($row['value'] === null) {
-                continue;
-            }
-            $parsed = \App\Support\Badges\BadgeDataCatalog::parseKey($row['key']);
-            if (! $parsed) {
-                continue;
-            }
-            $historyBuckets[$parsed['page']][$parsed['field']] = $row['value'];
-        }
-        foreach ($historyBuckets as $page => $fields) {
-            \App\Models\BadgeDataHistory::recordPage($page, $fields);
-        }
-    } catch (\Throwable $e) {
-        // ignore history seed failures
-    }
 @endphp
 
 @include('partials.dashboard-card-playback')
