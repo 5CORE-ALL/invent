@@ -243,6 +243,7 @@ class YesterdayMarketplaceMetricsService
             'depop' => $this->salesOnly($this->depopSales($date)),
             'vinted' => $this->salesOnly($this->vintedSales($date)),
             'faire' => $this->faire($start, $end),
+            'newegg' => $this->newegg($start, $end),
             'purchasingpower' => $this->salesOnly($this->purchasingPowerSales($start, $end)),
             'reverb' => $this->reverb($date),
             default => $this->fallback($name),
@@ -1088,6 +1089,37 @@ class YesterdayMarketplaceMetricsService
             ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
             ->selectRaw('COALESCE(SUM(quantity), 0) as qty')
             ->selectRaw('COUNT(DISTINCT COALESCE(NULLIF(TRIM(order_number), ""), CAST(order_id AS CHAR))) as orders')
+            ->first();
+
+        $m = $this->salesOnly((float) ($row->revenue ?? 0));
+        $m['qty'] = (int) ($row->qty ?? 0);
+        $m['orders'] = (int) ($row->orders ?? 0);
+
+        return $m;
+    }
+
+    /**
+     * Newegg 1-day sales from newegg_orders + items. Use the requested calendar
+     * window — shifting to latest-order−1 copied one day's GMV onto every graph point.
+     *
+     * @return array<string, mixed>
+     */
+    private function newegg(Carbon $start, Carbon $end): array
+    {
+        if (! Schema::hasTable('newegg_orders') || ! Schema::hasTable('newegg_order_items')) {
+            return $this->salesOnly(0.0);
+        }
+
+        $row = DB::table('newegg_orders as o')
+            ->join('newegg_order_items as i', 'o.order_number', '=', 'i.order_number')
+            ->where('o.order_date', '>=', $start)
+            ->where('o.order_date', '<=', $end)
+            ->where(function ($q) {
+                $q->whereNull('o.order_status')->orWhere('o.order_status', '!=', 4);
+            })
+            ->selectRaw('COALESCE(SUM(i.unit_price * i.ordered_qty), 0) as revenue')
+            ->selectRaw('COALESCE(SUM(i.ordered_qty), 0) as qty')
+            ->selectRaw('COUNT(DISTINCT o.order_number) as orders')
             ->first();
 
         $m = $this->salesOnly((float) ($row->revenue ?? 0));

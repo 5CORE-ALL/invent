@@ -2073,7 +2073,7 @@
                 },
                 pagination: "local",
                 paginationSize: 50,
-                paginationSizeSelector: [25, 50, 100, 200],
+                paginationSizeSelector: [25, 50, 100, 200, true], // true = All
                 layout: "fitData",
                 responsiveLayout: "hide",
                 placeholder: "No Data Available",
@@ -3059,6 +3059,18 @@
                 // pft-total-badge is hidden; preserved for parity with the
                 // controller-response handler above (and easy re-enable later).
                 $('#pft-total-badge').text('L30 GPFT: $' + Math.round(l30Profit).toLocaleString());
+
+                let dilOvL30 = 0, dilShopInv = 0, dilDInv = 0;
+                (allTableData || []).forEach(function(row) {
+                    if (isDobaParentRow(row)) return;
+                    dilOvL30 += parseFloat(row.L30 || 0) || 0;
+                    dilShopInv += parseFloat(row.shopify_inv || 0) || 0;
+                    dilDInv += parseFloat(row.INV || 0) || 0;
+                });
+                const dilInv = dilShopInv > 0 ? dilShopInv : dilDInv;
+                if (window.AnalyticsDilBadge) {
+                    AnalyticsDilBadge.set(dilInv > 0 ? (dilOvL30 / dilInv) * 100 : 0, dilOvL30, dilInv);
+                }
             }
 
             /**
@@ -3209,6 +3221,9 @@
             // Wait for table to be built
             table.on('tableBuilt', function() {
                 Promise.resolve(applyColumnVisibilityFromServer());
+                if (window.AnalyticsDilBadge) {
+                    AnalyticsDilBadge.init({ getRows: function() { return allTableData || []; } });
+                }
                 updateSummary();
                 applyFilters(); // Apply default INV > 0 filter
             });

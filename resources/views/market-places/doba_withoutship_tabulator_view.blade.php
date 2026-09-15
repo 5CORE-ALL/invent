@@ -1632,7 +1632,7 @@
                 },
                 pagination: "local",
                 paginationSize: 50,
-                paginationSizeSelector: [25, 50, 100, 200, 500, 1000],
+                paginationSizeSelector: [25, 50, 100, 200, 500, 1000, true], // true = All
                 layout: "fitColumns",
                 responsiveLayout: false,
                 placeholder: "No Data Available",
@@ -2503,6 +2503,18 @@
                 );
                 if (typeof syncDobaWithoutshipTriangleBadgeState === 'function') syncDobaWithoutshipTriangleBadgeState();
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
+
+                let dilOvL30 = 0, dilShopInv = 0, dilDInv = 0;
+                (allTableData || []).forEach(function(row) {
+                    if (isDobaWithoutshipParentRow(row)) return;
+                    dilOvL30 += parseFloat(row.L30 || 0) || 0;
+                    dilShopInv += parseFloat(row.shopify_inv || 0) || 0;
+                    dilDInv += parseFloat(row.INV || 0) || 0;
+                });
+                const dilInv = dilShopInv > 0 ? dilShopInv : dilDInv;
+                if (window.AnalyticsDilBadge) {
+                    AnalyticsDilBadge.set(dilInv > 0 ? (dilOvL30 / dilInv) * 100 : 0, dilOvL30, dilInv);
+                }
             }
 
             function dwsColumnField(col) {
@@ -2682,6 +2694,9 @@
             table.on('tableBuilt', function() {
                 ensureFooterVisibleRowsLabel();
                 Promise.resolve(applyColumnVisibilityFromServer());
+                if (window.AnalyticsDilBadge) {
+                    AnalyticsDilBadge.init({ getRows: function() { return allTableData || []; } });
+                }
                 updateSummary();
                 fetchDobaWithoutShipSummaryMetrics();
                 applyFilters(); // Default: > 0 inventory

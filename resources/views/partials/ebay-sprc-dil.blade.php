@@ -1339,12 +1339,52 @@
                     ebayDgHistChart.destroy();
                     ebayDgHistChart = null;
                 }
+                const allValues = rows.map(function(r) { return Number(r[band]) || 0; });
+                let startIdx = 0;
+                while (startIdx < allValues.length - 1 && allValues[startIdx] <= 0) startIdx++;
+                const plotRows = rows.slice(startIdx);
+                const values = allValues.slice(startIdx);
+                if (!values.length) return;
+                const dataMin = Math.min.apply(null, values);
+                const dataMax = Math.max.apply(null, values);
+                const range = dataMax - dataMin;
+                const yMin = range < 1e-9
+                    ? Math.max(0, dataMin - Math.max(2, Math.round(dataMin * 0.02)))
+                    : Math.max(0, dataMin - Math.max(1, Math.ceil(range * 0.35)));
+                const yMax = range < 1e-9
+                    ? dataMax + Math.max(2, Math.round(dataMax * 0.02) || 2)
+                    : dataMax + Math.max(1, Math.ceil(range * 0.45));
+                const valueLabelsPlugin = {
+                    id: 'ebayDgHistValueLabels',
+                    afterDraw: function(chart) {
+                        const dataset = chart.data.datasets[0];
+                        const meta = chart.getDatasetMeta(0);
+                        const c = chart.ctx;
+                        if (!dataset || !meta || !meta.data) return;
+                        meta.data.forEach(function(point, i) {
+                            const val = dataset.data[i];
+                            if (val == null || !point) return;
+                            const txt = String(Math.round(Number(val)));
+                            c.save();
+                            c.font = 'bold 11px Inter, system-ui, sans-serif';
+                            c.fillStyle = '#111';
+                            c.strokeStyle = 'rgba(255,255,255,0.95)';
+                            c.lineWidth = 3;
+                            c.lineJoin = 'round';
+                            c.textAlign = 'center';
+                            c.textBaseline = 'bottom';
+                            c.strokeText(txt, point.x, point.y - 6);
+                            c.fillText(txt, point.x, point.y - 6);
+                            c.restore();
+                        });
+                    }
+                };
                 ebayDgHistChart = new Chart(canvas.getContext('2d'), {
                     type: 'line',
                     data: {
-                        labels: rows.map(function(r) { return r.label || r.date; }),
+                        labels: plotRows.map(function(r) { return r.label || r.date; }),
                         datasets: [{
-                            data: rows.map(function(r) { return Number(r[band]) || 0; }),
+                            data: values,
                             borderColor: spec.color,
                             backgroundColor: spec.color + '22',
                             fill: true,
@@ -1359,12 +1399,19 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        layout: { padding: { top: 16, right: 8 } },
                         plugins: { legend: { display: false } },
                         scales: {
-                            y: { beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 } },
+                            y: {
+                                min: yMin,
+                                max: yMax,
+                                beginAtZero: false,
+                                ticks: { font: { size: 9 }, precision: 0 },
+                            },
                             x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } },
                         },
                     },
+                    plugins: [valueLabelsPlugin],
                 });
             });
         }

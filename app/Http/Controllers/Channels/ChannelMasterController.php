@@ -1864,84 +1864,128 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Rewrite EbayTwo chart history so listing_cvr matches /ebay2-tabulator-view
-     * (ACS cvr_percent = eBay L30 ÷ views). Master used to recompute Qty ÷ views
-     * against a frozen then exploding views series, which crashed CVR after Aug 7.
+     * Rewrite EbayTwo chart history so listing_cvr = Sold Qty ÷ Views
+     * (same as /ebay2-tabulator-view). Older rows stored eBay L30 ÷ Views (~5%)
+     * which left a cliff vs the live ~1.4% point.
      */
     private function backfillEbayTwoListingCvrHistory(): void
     {
         try {
-            $cached = \Cache::get('ebaytwo_listing_cvr_backfill_v1');
+            $cached = \Cache::get('ebaytwo_soldqty_cvr_backfill_v2');
             if ($cached) {
                 return;
             }
+            \Cache::forget('ebaytwo_listing_cvr_backfill_v1');
 
-            $acsRows = AmazonChannelSummary::query()
-                ->where('channel', 'ebay2')
+            $from = now('America/Los_Angeles')->subDays(130)->toDateString();
+            $dailyQty = $this->ebayTwoDailySoldQtyMap($from);
+
+            $rows = \App\Models\ChannelMasterSummary::query()
+                ->whereIn('channel', $this->allMarketplaceSnapshotLookupKeys('ebaytwo'))
                 ->whereDate('snapshot_date', '>=', now('America/Los_Angeles')->subDays(90)->toDateString())
                 ->orderBy('snapshot_date')
                 ->get();
 
-            $acsByDate = [];
-            $carryCvr = null;
             $carryViews = null;
             $carryQty = null;
-            foreach ($acsRows as $acs) {
-                $date = Carbon::parse($acs->snapshot_date)->toDateString();
-                $sd = is_array($acs->summary_data) ? $acs->summary_data : [];
+            $carryCvr = null;
+            foreach ($rows as $row) {
+                $snapshotYmd = Carbon::parse($row->snapshot_date)->toDateString();
+                $asOf = Carbon::parse($snapshotYmd, 'America/Los_Angeles')->subDay()->toDateString();
+                $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
                 $views = (float) ($sd['total_views'] ?? 0);
-                $qty = (float) ($sd['total_ebay_listing_l30'] ?? $sd['total_ebay_l30'] ?? 0);
-                $cvr = array_key_exists('cvr_percent', $sd) && $sd['cvr_percent'] !== null && $sd['cvr_percent'] !== ''
-                    ? round((float) $sd['cvr_percent'], 2)
-                    : ($views > 0 ? round(($qty / $views) * 100, 2) : null);
+                $qty = $this->ebayTwoRollingSoldQtyAsOf($dailyQty, $asOf);
+                if ($qty <= 0) {
+                    $qty = (float) ($sd['orders_l30_qty'] ?? $sd['total_quantity'] ?? $sd['l30_orders'] ?? 0);
+                }
 
+                $cvr = null;
                 if ($carryViews !== null && ChannelMasterViewsGuard::isCollapsed($views, $carryViews, $qty, $carryQty ?? 0.0)) {
                     $cvr = $carryCvr;
+                    $views = $carryViews;
                 } elseif ($views > 0) {
+                    $cvr = round(($qty / $views) * 100, 2);
                     $carryViews = $views;
                     $carryQty = $qty;
                     $carryCvr = $cvr;
+                } else {
+                    $cvr = $carryCvr;
                 }
 
-                if ($cvr !== null) {
-                    $acsByDate[$date] = $cvr;
-                }
-            }
-
-            if ($acsByDate === []) {
-                \Cache::put('ebaytwo_listing_cvr_backfill_v1', 1, 3600);
-
-                return;
-            }
-
-            $rows = \App\Models\ChannelMasterSummary::query()
-                ->where('channel', 'ebaytwo')
-                ->whereDate('snapshot_date', '>=', now('America/Los_Angeles')->subDays(90)->toDateString())
-                ->orderBy('snapshot_date')
-                ->get();
-
-            $lastCvr = null;
-            foreach ($rows as $row) {
-                $date = Carbon::parse($row->snapshot_date)->toDateString();
-                $cvr = $acsByDate[$date] ?? $lastCvr;
                 if ($cvr === null) {
                     continue;
                 }
-                $lastCvr = $cvr;
-                $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+
                 $existing = $sd['listing_cvr'] ?? null;
-                if ($existing !== null && $existing !== '' && abs((float) $existing - (float) $cvr) < 0.005) {
+                $sameCvr = $existing !== null && $existing !== '' && abs((float) $existing - (float) $cvr) < 0.005;
+                $sameQty = abs((float) ($sd['orders_l30_qty'] ?? 0) - $qty) < 0.5;
+                if ($sameCvr && $sameQty) {
                     continue;
                 }
+
                 $sd['listing_cvr'] = round((float) $cvr, 2);
+                $sd['orders_l30_qty'] = round($qty, 2);
+                $sd['total_views'] = $views;
                 $row->summary_data = $sd;
                 $row->save();
             }
 
-            \Cache::put('ebaytwo_listing_cvr_backfill_v1', 1, 86400);
+            foreach ([0, 1, 7] as $dotWindow) {
+                \Cache::forget($this->channelMetricDotTrendsCacheKey($dotWindow));
+            }
+            \Cache::put('ebaytwo_soldqty_cvr_backfill_v2', 1, 86400);
         } catch (\Throwable $e) {
             Log::warning('backfillEbayTwoListingCvrHistory failed: '.$e->getMessage());
         }
+    }
+
+    /**
+     * Sold units by Pacific calendar day from ebay2_order_metrics.
+     *
+     * @return array<string, int>
+     */
+    private function ebayTwoDailySoldQtyMap(string $fromYmd): array
+    {
+        $map = [];
+        if (! Schema::hasTable('ebay2_order_metrics')) {
+            return $map;
+        }
+
+        $rows = \App\Models\Ebay2OrderMetric::query()
+            ->where('order_date', '>=', $fromYmd.' 00:00:00')
+            ->get(['order_date', 'quantity', 'status']);
+
+        foreach ($rows as $row) {
+            $status = strtoupper((string) ($row->status ?? ''));
+            if (in_array($status, ['CANCELED', 'CANCELLED', 'FULLY_REFUNDED'], true)) {
+                continue;
+            }
+            $d = Carbon::parse($row->order_date)->timezone('America/Los_Angeles')->toDateString();
+            $map[$d] = ($map[$d] ?? 0) + (int) ($row->quantity ?? 0);
+        }
+
+        return $map;
+    }
+
+    /**
+     * Rolling 30 complete Pacific days ending $asOfYmd.
+     *
+     * @param  array<string, int|float>  $dailyQty
+     */
+    private function ebayTwoRollingSoldQtyAsOf(array $dailyQty, string $asOfYmd): float
+    {
+        if ($asOfYmd === '' || $dailyQty === []) {
+            return 0.0;
+        }
+        $start = Carbon::parse($asOfYmd, 'America/Los_Angeles')->subDays(29)->toDateString();
+        $sum = 0.0;
+        foreach ($dailyQty as $d => $q) {
+            if ($d >= $start && $d <= $asOfYmd) {
+                $sum += (float) $q;
+            }
+        }
+
+        return $sum;
     }
 
     /**
@@ -2142,6 +2186,7 @@ class ChannelMasterController extends Controller
         // Last: Pacific yesterday Y Sales including $0/NYS so stale calculated
         // yesterday_sales cannot stay on the grid after a quiet day.
         $rows = $this->overlayLivePacificYSalesOnChannelRows($rows);
+        $rows = $this->overlayLiveNeweggMetricsOnChannelRows($rows);
 
         return $rows;
     }
@@ -2186,7 +2231,6 @@ class ChannelMasterController extends Controller
             'macys' => fn () => $this->computeMiraklYSalesLikeAmazon("Macy's, Inc."),
             'macysinc' => fn () => $this->computeMiraklYSalesLikeAmazon("Macy's, Inc."),
             'purchasingpower' => fn () => $this->computePurchasingPowerYSalesLikeAmazon(),
-            'newegg' => fn () => $this->computeNeweggYSalesLikeAmazon(),
         ];
     }
 
@@ -2743,6 +2787,144 @@ class ChannelMasterController extends Controller
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * Fast-path Newegg L30 / L60 / L7 / Y from newegg_orders — same rows as
+     * /newegg/daily-sales. Calculated_data and Pacific-yesterday overlay stay $0
+     * on gap days even when daily-sales still has recent orders.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveNeweggMetricsOnChannelRows(array $rows): array
+    {
+        $hasNewegg = false;
+        foreach ($rows as $row) {
+            if ($this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? '')) === 'newegg') {
+                $hasNewegg = true;
+                break;
+            }
+        }
+        if (! $hasNewegg || ! Schema::hasTable('newegg_orders')) {
+            return $rows;
+        }
+
+        try {
+            $mp = MarketplacePercentage::where('marketplace', 'Neweggb2c')->first();
+            $percentage = $mp ? (float) $mp->percentage : 85;
+            $adUpdates = $mp ? (float) $mp->ad_updates : 0;
+            $margin = $percentage - $adUpdates;
+            $factor = $margin > 0 ? $margin / 100 : 0.85;
+            $productMasters = ProductMaster::all()->keyBy(function ($item) {
+                return ShopifySku::normalizeSkuForShopifyLookup($item->sku);
+            });
+
+            $now = Carbon::now();
+            $l30 = $this->computeNeweggWindow($now->copy()->subDays(30), $now, $productMasters, $factor);
+            $l60 = $this->computeNeweggWindow($now->copy()->subDays(60), $now->copy()->subDays(30), $productMasters, $factor);
+            $l7 = $this->computeNeweggWindow($now->copy()->subDays(7), $now, $productMasters, $factor);
+            $y = $this->computeNeweggWindow(
+                $now->copy()->subDay()->startOfDay(),
+                $now->copy()->subDay()->endOfDay(),
+                $productMasters,
+                $factor
+            );
+            if (($l30['sales'] ?? 0) <= 0) {
+                $latestRaw = DB::table('newegg_orders')
+                    ->whereNotNull('order_date')
+                    ->where(function ($q) {
+                        $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
+                    })
+                    ->max('order_date');
+                if ($latestRaw) {
+                    $anchor = Carbon::parse($latestRaw);
+                    $l30 = $this->computeNeweggWindow($anchor->copy()->subDays(30), $anchor, $productMasters, $factor);
+                    $l60 = $this->computeNeweggWindow($anchor->copy()->subDays(60), $anchor->copy()->subDays(30), $productMasters, $factor);
+                    $l7 = $this->computeNeweggWindow($anchor->copy()->subDays(7), $anchor, $productMasters, $factor);
+                }
+            }
+            if (($l30['sales'] ?? 0) <= 0) {
+                $l30 = $this->computeNeweggWindow(
+                    Carbon::parse('2000-01-01')->startOfDay(),
+                    $now->copy()->endOfDay(),
+                    $productMasters,
+                    $factor
+                );
+            }
+            if (($y['sales'] ?? 0) <= 0) {
+                $y = $this->computeNeweggLatestSalesDayWindow($productMasters, $factor);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Newegg sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        $l30Sales = (float) ($l30['sales'] ?? 0);
+        $l60Sales = (float) ($l60['sales'] ?? 0);
+        $totalPft = (float) ($l30['profit'] ?? 0);
+        $totalCogs = (float) ($l30['cogs'] ?? 0);
+        $gpftPct = $l30Sales > 0 ? ($totalPft / $l30Sales) * 100 : 0.0;
+        $groi = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+
+        foreach ($rows as &$row) {
+            if ($this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? '')) !== 'newegg') {
+                continue;
+            }
+
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L30 Orders'] = (int) ($l30['orders'] ?? 0);
+            $row['Qty'] = (int) ($l30['qty'] ?? 0);
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L60 Orders'] = (int) ($l60['orders'] ?? 0);
+            $row['L7 Sales'] = round((float) ($l7['sales'] ?? 0), 2);
+            $row['Total PFT'] = round($totalPft, 2);
+            $row['cogs'] = round($totalCogs, 2);
+            $row['Gprofit%'] = round($gpftPct, 1).'%';
+            $row['G Roi'] = round($groi, 1);
+            $row['N PFT'] = round($gpftPct, 1).'%';
+            $row['N ROI'] = round($groi, 1);
+            $row['Total Ad Spend'] = 0;
+            $row['Ads%'] = '0%';
+            $row['TACOS %'] = '0%';
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
+            }
+            $this->applyLiveYSalesIfPositive($row, $y['sales'] ?? 0);
+            $row = $this->withYProfitColumns($row);
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Most recent Newegg calendar day that actually has orders (same source as daily-sales).
+     *
+     * @return array{sales:float,orders:int,qty:float,profit:float,cogs:float}
+     */
+    private function computeNeweggLatestSalesDayWindow($productMasters, float $factor): array
+    {
+        $empty = ['sales' => 0.0, 'orders' => 0, 'qty' => 0.0, 'profit' => 0.0, 'cogs' => 0.0];
+        $latestRaw = DB::table('newegg_orders')
+            ->whereNotNull('order_date')
+            ->where(function ($q) {
+                $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
+            })
+            ->max('order_date');
+        if (! $latestRaw) {
+            return $empty;
+        }
+
+        $latest = Carbon::parse($latestRaw);
+
+        return $this->computeNeweggWindow(
+            $latest->copy()->startOfDay(),
+            $latest->copy()->endOfDay(),
+            $productMasters,
+            $factor
+        );
     }
 
     /**
@@ -12429,16 +12611,23 @@ class ChannelMasterController extends Controller
             foreach ($order->items as $item) {
                 $quantity  = (float) ($item->ordered_qty ?? 0);
                 $unitPrice = (float) ($item->unit_price ?? 0);
-                if ($quantity <= 0) {
+                if ($quantity <= 0 && (float) ($item->extend_unit_price ?? 0) <= 0) {
                     continue;
                 }
 
                 [$lp, $ship] = $this->neweggItemCosts($item->seller_part_number, $productMasters);
 
-                $sales  += $unitPrice * $quantity;
+                // Same sales $ as /newegg/daily-sales (extend_unit_price, else unit × qty).
+                $lineSales = (float) ($item->extend_unit_price ?? 0);
+                if ($lineSales <= 0) {
+                    $lineSales = $unitPrice * $quantity;
+                }
+                $qtyForCost = $quantity > 0 ? $quantity : 1;
+
+                $sales  += $lineSales;
                 $qty    += $quantity;
-                $profit += (($unitPrice * $factor) - $lp - $ship) * $quantity;
-                $cogs   += $lp * $quantity;
+                $profit += (($unitPrice * $factor) - $lp - $ship) * $qtyForCost;
+                $cogs   += $lp * $qtyForCost;
             }
         }
 
@@ -12481,50 +12670,40 @@ class ChannelMasterController extends Controller
     /**
      * Newegg Y Sales for /all-marketplace-master.
      *
-     * Same clock as Amazon: revenue (unit_price × ordered_qty) for the Pacific calendar day
-     * before the latest newegg_orders.order_date. Voided orders (order_status 4) are excluded.
+     * Same clock as Amazon: Pacific wall-clock yesterday (unit_price × ordered_qty).
+     * Do not use "day before latest order_date" — when the Newegg sync stalls, that
+     * freezes the same complete day onto every snapshot and the graph repeats.
+     * Voided orders (order_status 4) are excluded.
      */
     private function computeNeweggYSalesLikeAmazon(): ?float
     {
-        $latestRaw = DB::table('newegg_orders')
-            ->whereNotNull('order_date')
-            ->where(function ($q) {
-                $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
-            })
-            ->max('order_date');
-
-        if (!$latestRaw) {
+        if (! Schema::hasTable('newegg_orders')) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+        $yesterdayPacific = Carbon::now('America/Los_Angeles')->subDay();
 
-        return $this->sumNeweggRevenueBetween($yStartPacific, $yEndPacific);
+        return $this->sumNeweggRevenueBetween(
+            $yesterdayPacific->copy()->startOfDay(),
+            $yesterdayPacific->copy()->endOfDay()
+        );
     }
 
     /**
      * Newegg L7 Sales for /all-marketplace-master.
      *
-     * Seven-day window ending on the Y-Sales "yesterday" (day before latest order_date),
-     * revenue = unit_price × ordered_qty, voided orders excluded.
+     * Seven Pacific days ending on wall-clock yesterday (same clock as Y Sales).
+     * Voided orders (order_status 4) are excluded.
      */
     private function computeNeweggL7SalesLikeAmazon(): ?float
     {
-        $latestRaw = DB::table('newegg_orders')
-            ->whereNotNull('order_date')
-            ->where(function ($q) {
-                $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
-            })
-            ->max('order_date');
-
-        if (!$latestRaw) {
+        if (! Schema::hasTable('newegg_orders')) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
 
         return $this->sumNeweggRevenueBetween($l7StartPacific, $l7EndPacific);
     }
@@ -12542,7 +12721,7 @@ class ChannelMasterController extends Controller
             ->where(function ($q) {
                 $q->whereNull('o.order_status')->orWhere('o.order_status', '!=', 4);
             })
-            ->selectRaw('COALESCE(SUM(i.unit_price * i.ordered_qty), 0) as revenue')
+            ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(i.extend_unit_price, 0), i.unit_price * i.ordered_qty)), 0) as revenue')
             ->value('revenue');
 
         return round($sum, 2);
@@ -16939,6 +17118,13 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => $chartData]);
             }
 
+            if (! $isAll && $metric === 'y_sales' && $channel === 'newegg' && ! $useDailyWindow && ! $useL7Window) {
+                $chartData = $this->buildNeweggLiveDailyYSalesChart($days);
+                $chartData = ChartDatePad::fillGapsThroughYesterday($chartData, $days);
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
             if (! $isAll && $metric === 'l30_sales' && $channel === 'depop') {
                 $chartData = $this->buildDepopLiveRollingSalesChart($days, 30);
                 $chartData = $this->pinChartSeriesLastToTable(
@@ -17136,7 +17322,14 @@ class ChannelMasterController extends Controller
                             // Prefer listing_cvr (Shopify OV L30 ÷ Views). Otherwise qty/views.
                             // Derive implied units from listing_cvr × views so Σ still works.
                             $viewsForCvr = floatval($sd['total_views'] ?? 0);
-                            if (array_key_exists('listing_cvr', $sd) && $sd['listing_cvr'] !== null && $sd['listing_cvr'] !== '' && $viewsForCvr > 0) {
+                            $chName = (string) ($row->channel ?? '');
+                            if ($this->ebayWhichFromChannelName($chName) === 2) {
+                                $cvr2 = $this->resolveListingCvrPercentFromSummary($sd, $chName, false);
+                                if ($cvr2 !== null && $viewsForCvr > 0) {
+                                    $totalQtyCvr += ($cvr2 / 100.0) * $viewsForCvr;
+                                    $totalViewsCvr += $viewsForCvr;
+                                }
+                            } elseif (array_key_exists('listing_cvr', $sd) && $sd['listing_cvr'] !== null && $sd['listing_cvr'] !== '' && $viewsForCvr > 0) {
                                 $totalQtyCvr += (floatval($sd['listing_cvr']) / 100.0) * $viewsForCvr;
                                 $totalViewsCvr += $viewsForCvr;
                             } else {
@@ -18167,7 +18360,14 @@ class ChannelMasterController extends Controller
                 $hasMetric = true;
             } elseif ($metric === 'cvr') {
                 $views = (float) ($sd['total_views'] ?? 0);
-                if (array_key_exists('listing_cvr', $sd) && $sd['listing_cvr'] !== null && $sd['listing_cvr'] !== '' && $views > 0) {
+                if ($this->ebayWhichFromChannelName((string) $channel) === 2) {
+                    $cvr2 = $this->resolveListingCvrPercentFromSummary($sd, (string) $channel, false);
+                    if ($cvr2 !== null && $views > 0) {
+                        $totalQtyCvr += ($cvr2 / 100.0) * $views;
+                        $totalViewsCvr += $views;
+                        $hasMetric = true;
+                    }
+                } elseif (array_key_exists('listing_cvr', $sd) && $sd['listing_cvr'] !== null && $sd['listing_cvr'] !== '' && $views > 0) {
                     $totalQtyCvr += ((float) $sd['listing_cvr'] / 100.0) * $views;
                     $totalViewsCvr += $views;
                     $hasMetric = true;
@@ -18341,6 +18541,22 @@ class ChannelMasterController extends Controller
      */
     private function resolveListingCvrPercentFromSummary(array $sd, ?string $channel = null, bool $strictListingCvr = true): ?float
     {
+        if ($this->ebayWhichFromChannelName((string) $channel) === 2) {
+            $views = floatval($sd['total_views'] ?? 0);
+            $qty = floatval($sd['orders_l30_qty'] ?? 0);
+            if ($qty <= 0) {
+                $qty = floatval($sd['total_quantity'] ?? 0);
+            }
+            if ($qty <= 0) {
+                $qty = floatval($sd['l30_orders'] ?? 0);
+            }
+            if ($views <= 0) {
+                return $strictListingCvr ? null : 0.0;
+            }
+
+            return round(($qty / $views) * 100, 2);
+        }
+
         if (array_key_exists('listing_cvr', $sd) && $sd['listing_cvr'] !== null && $sd['listing_cvr'] !== '') {
             return round(floatval($sd['listing_cvr']), 2);
         }
@@ -18882,6 +19098,16 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
+            if ($channel === 'newegg') {
+                $day = Carbon::parse($ymd, 'America/Los_Angeles');
+                self::$pacificDayYSalesCache[$key] = $this->sumNeweggRevenueBetween(
+                    $day->copy()->startOfDay(),
+                    $day->copy()->endOfDay()
+                );
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
             if ($channel === 'fbmarketplace' || $channel === 'facebookmarketplace') {
                 $day = FacebookMarketplaceController::dailySalesByPacificDate($ymd, $ymd);
                 self::$pacificDayYSalesCache[$key] = (float) ($day[$ymd]['sales'] ?? 0);
@@ -18910,7 +19136,7 @@ class ChannelMasterController extends Controller
     private function overlayLiveYSalesOnChart(string $channel, array $chartData): array
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
-        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace', 'faire', 'shein'], true) || $chartData === []) {
+        if (! in_array($channel, ['amazon', 'temu2', 'depop', 'fbmarketplace', 'faire', 'shein', 'newegg'], true) || $chartData === []) {
             return $chartData;
         }
 
@@ -18957,7 +19183,7 @@ class ChannelMasterController extends Controller
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
         $tz = 'America/Los_Angeles';
-        $lookback = in_array($channel, ['temu2', 'depop', 'faire', 'shein'], true) ? 14 : 1;
+        $lookback = in_array($channel, ['temu2', 'depop', 'faire', 'shein', 'newegg'], true) ? 14 : 1;
         $lookupKeys = $this->allMarketplaceSnapshotLookupKeys($channel);
 
         for ($offset = 0; $offset <= $lookback; $offset++) {
@@ -19770,6 +19996,9 @@ class ChannelMasterController extends Controller
         if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'shein') {
             return $this->buildSheinLiveDailyYSalesChart($span);
         }
+        if (! $isAll && $this->allMarketplaceSnapshotKey($channel) === 'newegg') {
+            return $this->buildNeweggLiveDailyYSalesChart($span);
+        }
         $startDate = now($tz)->subDays($span + 1)->toDateString();
         $want = $isAll ? null : $this->allMarketplaceSnapshotKey($channel);
 
@@ -19941,6 +20170,88 @@ class ChannelMasterController extends Controller
 
         foreach ($out as $d => $cell) {
             $out[$d]['sales'] = round((float) ($cell['sales'] ?? 0), 2);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Newegg daily GMV from newegg_orders + items (unit_price × ordered_qty).
+     * Voided orders (order_status 4) are excluded. Gap days stay $0 so a stale
+     * "latest order − 1 day" total is not copied across the graph.
+     *
+     * @return array<string, array{sales: float}>
+     */
+    private function neweggDailySalesByDate(Carbon $start, Carbon $end): array
+    {
+        $out = [];
+        $cursor = $start->copy()->startOfDay();
+        $last = $end->copy()->startOfDay();
+        while ($cursor->lte($last)) {
+            $out[$cursor->toDateString()] = ['sales' => 0.0];
+            $cursor->addDay();
+        }
+
+        if (! Schema::hasTable('newegg_orders') || ! Schema::hasTable('newegg_order_items')) {
+            return $out;
+        }
+
+        $rows = DB::table('newegg_orders as o')
+            ->join('newegg_order_items as i', 'o.order_number', '=', 'i.order_number')
+            ->where('o.order_date', '>=', $start)
+            ->where('o.order_date', '<=', $end)
+            ->where(function ($q) {
+                $q->whereNull('o.order_status')->orWhere('o.order_status', '!=', 4);
+            })
+            ->select(['o.order_date', 'i.unit_price', 'i.ordered_qty', 'i.extend_unit_price'])
+            ->get();
+
+        foreach ($rows as $row) {
+            try {
+                $d = Carbon::parse((string) $row->order_date)->timezone('America/Los_Angeles')->toDateString();
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if (! isset($out[$d])) {
+                continue;
+            }
+            $line = (float) ($row->extend_unit_price ?? 0);
+            if ($line <= 0) {
+                $line = ((float) ($row->unit_price ?? 0)) * ((float) ($row->ordered_qty ?? 0));
+            }
+            $out[$d]['sales'] += $line;
+        }
+
+        foreach ($out as $d => $cell) {
+            $out[$d]['sales'] = round((float) ($cell['sales'] ?? 0), 2);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Newegg Y Sales chart: one Pacific calendar day each. Gap days are $0.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildNeweggLiveDailyYSalesChart(int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = now($tz)->subDay()->startOfDay();
+        $span = $days > 0 ? $days : 7;
+        $start = $end->copy()->subDays($span - 1);
+        $byDate = $this->neweggDailySalesByDate($start->copy()->startOfDay(), $end->copy()->endOfDay());
+
+        $out = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $ymd = $cursor->toDateString();
+            $cell = $byDate[$ymd] ?? ['sales' => 0];
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round((float) ($cell['sales'] ?? 0), 2),
+            ];
+            $cursor->addDay();
         }
 
         return $out;
@@ -20981,6 +21292,7 @@ class ChannelMasterController extends Controller
             $this->healClosedChannelYSalesSnapshot('depop');
             $this->healClosedChannelYSalesSnapshot('faire');
             $this->healClosedChannelYSalesSnapshot('shein');
+            $this->healClosedChannelYSalesSnapshot('newegg');
 
             foreach ([0, 1, 7] as $dotWindow) {
                 \Cache::forget($this->channelMetricDotTrendsCacheKey($dotWindow));
