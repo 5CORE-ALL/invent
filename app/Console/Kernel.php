@@ -1732,6 +1732,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('inactive-listings:sync')
+            ->dailyAt('10:20')
+            ->timezone('Asia/Kolkata')
+            ->name('inactive-listings-daily-sync')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         /*
         |--------------------------------------------------------------------------
         | TOPDAWG

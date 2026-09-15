@@ -871,6 +871,14 @@ class TopDawgSyncController extends Controller
             ]);
         }
 
+        $push = app(TopDawgOrderPushService::class);
+        if (! $push->isWithinShopifyImportWindow($order)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only TopDawg orders from the last 2 days are pushed to Shopify.',
+            ], 422);
+        }
+
         if (MarketplaceOrderPaidFilter::blocksUnpaidPush('topdawg', $order)) {
             return response()->json([
                 'success' => false,
@@ -879,7 +887,6 @@ class TopDawgSyncController extends Controller
         }
 
         // Manual push is synchronous — only auto-import uses the queue.
-        $push = app(TopDawgOrderPushService::class);
         try {
             $shopifyOrderId = $push->importToShopify($order);
         } catch (\Throwable $e) {

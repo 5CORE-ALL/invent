@@ -88,7 +88,7 @@ class TopDawgOrderSyncService
     /**
      * @return array{success: bool, message: string, upserted: int, pages: int, fetched?: int, stored?: int}
      */
-    public function fetchAndStore(int $days = 7): array
+    public function fetchAndStore(int $days = 2): array
     {
         $from = Carbon::now()->subDays(max(0, $days))->toDateString();
 
@@ -97,72 +97,30 @@ class TopDawgOrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        if (! MarketplaceSyncSettings::canAutoImportToShopify('topdawg')) {
-            return 0;
-        }
+        $since = $this->shopifyImportCutoff();
 
-        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('topdawg');
-        $queue = MarketplaceManagerRegistry::queueFor('topdawg');
-        MarketplaceShopifyImportQueue::prepareForDispatch(TopDawgOrderMetric::class, $queue);
-
-        $orders = TopDawgOrderMetric::query()
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->where(function ($q) {
-                $q->whereNull('import_status')
-                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
-            })
-            ->orderByDesc('order_date')
-            ->orderBy('id')
-            ->limit(400)
-            ->get();
-
-        $seen = [];
-        $dispatched = 0;
-        foreach ($orders as $row) {
-            $orderId = trim((string) $row->order_id);
-            if ($orderId === '' || isset($seen[$orderId])) {
-                continue;
+        return MarketplaceShopifyImportQueue::dispatchLatestUnpushed(
+            'topdawg',
+            TopDawgOrderMetric::class,
+            static fn (int $id) => new ImportTopDawgOrderToShopify($id),
+            'order_id',
+            function ($q) use ($since) {
+                $q->where('order_date', '>=', $since->toDateString());
             }
-            $seen[$orderId] = true;
+        );
+    }
 
-            $alreadyImported = TopDawgOrderMetric::query()
-                ->where('order_id', $orderId)
-                ->whereNotNull('shopify_order_id')
-                ->where('shopify_order_id', '!=', '')
-                ->value('shopify_order_id');
-            if ($alreadyImported) {
-                TopDawgOrderMetric::query()
-                    ->where('order_id', $orderId)
-                    ->whereNull('shopify_order_id')
-                    ->update([
-                        'shopify_order_id' => (string) $alreadyImported,
-                        'import_status' => 'imported',
-                    ]);
-                continue;
-            }
+    public function shopifyImportCutoff(): Carbon
+    {
+        return Carbon::now('America/Los_Angeles')->subDays(2)->startOfDay();
+    }
 
-            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('topdawg', $row)) {
-                TopDawgOrderMetric::query()
-                    ->where('order_id', $orderId)
-                    ->whereNull('shopify_order_id')
-                    ->update(['import_status' => 'skipped_unpaid']);
-                continue;
-            }
-
-            $row->update(['import_status' => 'queued']);
-            MarketplaceShopifyImportQueue::push(
-                new ImportTopDawgOrderToShopify((int) $row->id),
-                $queue
-            );
-            $dispatched++;
-            if ($dispatched >= 200) {
-                break;
-            }
-        }
-
-        return $dispatched;
+    /**
+     * @param  array<string, mixed>  $order
+     */
+    public function upsertSingleOrder(array $order): int
+    {
+        return $this->upsertOrder($order, $this->shopifyImportCutoff());
     }
 
     /**
