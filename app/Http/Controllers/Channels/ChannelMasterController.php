@@ -17926,7 +17926,8 @@ class ChannelMasterController extends Controller
         // v9: last graph point + table dot v2 = saved table row.
         // v11: All badges keep the blended pair; eBay 3 included from calculated_data.
         // v14: Amazon / Temu 2 last point follows the table cell, not live orders.
-        return 'amm_dot_trends_v14_w'.$window;
+        // v15: Temu 2 L30 Sales dot = last two live rolling points (same as the graph).
+        return 'amm_dot_trends_v15_w'.$window;
     }
 
     /**
@@ -18213,6 +18214,7 @@ class ChannelMasterController extends Controller
 
             if (! $useDailyWindow && ! $useL7Window) {
                 $this->pinLiveDotTrendsFromCalculatedData($out);
+                $this->overlayLiveTemu2L30SalesDotTrend($out);
                 $this->pinAllDotTrendsFromChannelPairs($out);
             }
 
@@ -20911,6 +20913,45 @@ class ChannelMasterController extends Controller
      *
      * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $out
      */
+    /**
+     * Temu 2 L30 Sales graph is live rolling temu2_orders. The table dot used
+     * saved snapshots (old Temu Price ~$29k vs live ~$26k) and stayed red
+     * while the last chart point was green. Use the same last two live points.
+     *
+     * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $out
+     */
+    private function overlayLiveTemu2L30SalesDotTrend(array &$out): void
+    {
+        if (! isset($out['temu2'])) {
+            return;
+        }
+
+        try {
+            $chart = $this->buildTemu2LiveRollingSalesChart(8, 30);
+            if (count($chart) < 2) {
+                return;
+            }
+            $last = $chart[array_key_last($chart)];
+            $prev = $chart[array_key_last($chart) - 1];
+            $v1 = isset($prev['value']) ? (float) $prev['value'] : null;
+            $v2 = isset($last['value']) ? (float) $last['value'] : null;
+            if ($v1 === null || $v2 === null) {
+                return;
+            }
+
+            $live = $this->getTemu2TabulatorSalesSummary();
+            $table = is_array($live) ? (float) ($live['total_revenue'] ?? 0) : 0.0;
+            $out['temu2']['l30_sales'] = ChannelMetricDotPair::pinLatest(
+                $v1,
+                $v2,
+                $table > 0 ? $table : $v2,
+                $this->metricDotEpsilon('l30_sales')
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Temu 2 L30 sales dot overlay failed: '.$e->getMessage());
+        }
+    }
+
     private function overlayLiveAmazonDotTrends(array &$out): void
     {
         if (! isset($out['amazon'])) {
