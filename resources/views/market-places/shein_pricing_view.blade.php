@@ -996,8 +996,6 @@
         let shPlayUniqueParents = [];
         let isShPlayActive = false;
         let currentShPlayParentIndex = -1;
-        let sheinSyncingRowType = false;
-
         function sheinIsParentRow(d) {
             if (!d) return false;
             if (typeof d.getData === 'function') {
@@ -1012,14 +1010,6 @@
 
         function sheinCurrentRowType() {
             return $('#ae-row-type-filter').val() || 'skus';
-        }
-
-        function sheinRowsForRowType(rows, rowType) {
-            rowType = rowType || sheinCurrentRowType();
-            if (!Array.isArray(rows)) return [];
-            if (rowType === 'parents') return rows.filter(sheinIsParentRow);
-            if (rowType === 'skus') return rows.filter(function(d) { return !sheinIsParentRow(d); });
-            return rows.slice();
         }
 
         function sheinMarkParentFlags(rows) {
@@ -2142,9 +2132,6 @@
                     updateSummary(allTableData.length ? allTableData : data);
                     if (typeof applyFilters === 'function') {
                         applyFilters();
-                    }
-                    if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                        ebayScheduleSprcDilAutoApply({ delay: 500 });
                     }
                 },
                 dataFiltered: function(filters, rows) {

@@ -1253,6 +1253,20 @@
         let samePriceModeActive = false;
         let selectedSkus = new Set(); // Track selected SKUs across all pages
 
+        function ebay2SafeRowUpdate(row, patch) {
+            if (typeof window.chPushSafeRowUpdate === 'function') {
+                window.chPushSafeRowUpdate(row, patch);
+                return;
+            }
+            if (!row || typeof row.update !== 'function' || !patch) return;
+            try {
+                const ret = row.update(patch);
+                if (ret && typeof ret.then === 'function') {
+                    ret.catch(function() { /* Tabulator renderer not ready */ });
+                }
+            } catch (e) { /* ignore */ }
+        }
+
         /** Average L7 views (rows with E Stock > 0) — drives L7 View colours + Sbid (Views). */
         let avgL7ViewsGlobal = 0;
 
@@ -2872,7 +2886,7 @@
                 }
                 if (!skipClear && retryCount === 0 && Number(sprice) > 0) {
                     if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
-                    else if (row) row.update({ SPRICE: 0, has_custom_sprice: false, SGPFT: 0, SGROI: 0 });
+                    else if (row) ebay2SafeRowUpdate(row, { SPRICE: 0, has_custom_sprice: false, SGPFT: 0, SGROI: 0 });
                     return new Promise((resolve, reject) => {
                         $.ajax({
                             url: '/save-ebay2-sprice',
@@ -2886,7 +2900,7 @@
                 return new Promise((resolve, reject) => {
                     // Update status to processing
                     if (row) {
-                        row.update({ SPRICE_STATUS: 'processing' });
+                        ebay2SafeRowUpdate(row, { SPRICE_STATUS: 'processing' });
                     }
                     
                     $.ajax({
@@ -2901,16 +2915,13 @@
                         success: function(response) {
                             // Update calculated fields instantly
                             if (row) {
-                                row.update({
+                                ebay2SafeRowUpdate(row, {
                                     SPRICE: sprice,
                                     SPFT: response.spft_percent,
                                     SROI: response.sroi_percent,
                                     SGPFT: response.sgpft_percent,
                                     SPRICE_STATUS: 'saved'
                                 });
-                                // Re-render the row so the Accept button's data-price
-                                // reflects the NEW SPRICE (otherwise push uses the old value).
-                                row.reformat();
                             }
                             if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
                                 enqueueChannelPushSpriceAfterSave(sku, sprice, row);
@@ -2933,7 +2944,7 @@
                                 console.error(`Max retries reached for SKU ${sku}`);
                                 // Update status to error
                                 if (row) {
-                                    row.update({ SPRICE_STATUS: 'error' });
+                                    ebay2SafeRowUpdate(row, { SPRICE_STATUS: 'error' });
                                 }
                                 reject({ error: true, xhr: xhr });
                             }
@@ -4452,7 +4463,7 @@
                 if (field === 'SPRICE') {
                     // Save SPRICE and recalculate SPFT, SROI
                     const row = cell.getRow();
-                    row.update({ SPRICE_STATUS: 'processing' });
+                    ebay2SafeRowUpdate(row, { SPRICE_STATUS: 'processing' });
                     
                     saveSpriceWithRetry(data['(Child) sku'], value, row)
                         .then((response) => {

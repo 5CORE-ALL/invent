@@ -14,7 +14,6 @@ use App\Models\SheinMetric;
 use App\Models\ShopifySku;
 use App\Services\SheinShopifySalesService;
 use App\Services\SheinApiService;
-use App\Services\LmpSkuGroupService;
 use App\Services\ChannelPromoPricingService;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
@@ -483,28 +482,35 @@ class SheinController extends Controller
                 )->keyBy(fn ($r) => $normalizeSku($r->sku));
             }
 
-            // ── 3. Shein sales — live SQL aggregates (same idea as ebay_metrics, no cache)
+            // ── 3. Shein sales — one live GROUP BY (no second daily-data scan)
             $percentage = $this->sheinMarketplaceMarginPercent();
             $margin = $percentage / 100;
             $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
-            $dailyQuery = SheinDailyData::query()
+            $groupedSales = SheinDailyData::query()
                 ->whereNotNull('seller_sku')->where('seller_sku', '!=', '')
                 ->where(function ($q) use ($excludedStatuses) {
                     foreach ($excludedStatuses as $s) {
                         $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
                     }
-                });
-            $groupedSales = (clone $dailyQuery)
-                ->selectRaw('seller_sku, SUM(GREATEST(COALESCE(quantity, 0), 1)) as al30, SUM(COALESCE(product_price, 0) * GREATEST(COALESCE(quantity, 0), 1)) as sales')
+                })
+                ->selectRaw('seller_sku, SUM(GREATEST(COALESCE(quantity, 0), 1)) as al30, SUM(COALESCE(product_price, 0) * GREATEST(COALESCE(quantity, 0), 1)) as sales, SUM(COALESCE(commission, 0)) as commission, COUNT(*) as orders')
                 ->groupBy('seller_sku')
                 ->get();
             $salesAggArr = [];
             $spCogs = 0.0;
             $spPft = 0.0;
+            $spOrders = 0;
+            $spQty = 0.0;
+            $spSales = 0.0;
+            $spCommission = 0.0;
             foreach ($groupedSales as $row) {
                 $key = $normalizeSku($row->seller_sku);
                 $qty = (float) ($row->al30 ?? 0);
                 $rev = (float) ($row->sales ?? 0);
+                $spOrders += (int) ($row->orders ?? 0);
+                $spQty += $qty;
+                $spSales += $rev;
+                $spCommission += (float) ($row->commission ?? 0);
                 if ($key === '') {
                     continue;
                 }
@@ -521,13 +527,8 @@ class SheinController extends Controller
                 $spPft += ($rev * $margin) - (($resolved['lp'] + $resolved['ship']) * $qty);
             }
             $salesAgg = SupportCollection::make($salesAggArr)->map(fn ($a) => (object) $a);
-            $totals = (clone $dailyQuery)
-                ->selectRaw('COUNT(*) as total_orders, SUM(GREATEST(COALESCE(quantity, 0), 1)) as total_quantity, SUM(COALESCE(product_price, 0) * GREATEST(COALESCE(quantity, 0), 1)) as total_sales, SUM(COALESCE(commission, 0)) as total_commission')
-                ->first();
-            $spSales = (float) ($totals->total_sales ?? 0);
-            $spQty = (float) ($totals->total_quantity ?? 0);
             $salesPage = [
-                'total_orders' => (int) ($totals->total_orders ?? 0),
+                'total_orders' => $spOrders,
                 'total_quantity' => (int) $spQty,
                 'total_sales' => round($spSales, 2),
                 'total_cogs' => round($spCogs, 2),
@@ -535,7 +536,7 @@ class SheinController extends Controller
                 'pft_percentage' => round($spSales > 0 ? ($spPft / $spSales) * 100 : 0.0, 1),
                 'roi_percentage' => round($spCogs > 0 ? ($spPft / $spCogs) * 100 : 0.0, 1),
                 'avg_price' => round($spQty > 0 ? $spSales / $spQty : 0.0, 2),
-                'total_commission' => round((float) ($totals->total_commission ?? 0), 2),
+                'total_commission' => round($spCommission, 2),
             ];
 
             // ── 4. Shopify → INV / OV L30
@@ -627,17 +628,16 @@ class SheinController extends Controller
             }
             $promoMap = $promoService->mapFromDecodedValues($decodedPromo);
 
-            $lookupSkus = [];
-            foreach ($allNormalizedSkus as $nk) {
-                $pm = $productMasterBySku->get($nk);
-                $pr = $pricingBySku->get($nk);
-                $sku = trim((string) (($pm->sku ?? null) ?: ($pr->sku ?? $nk)));
-                if ($sku !== '') {
-                    $lookupSkus[] = $sku;
+            // Std Prc only for listed Shein SKUs — skip the full-catalog amazon_data_view scan.
+            $amazonStandardPrices = [];
+            $listedSkus = [];
+            foreach ($pricingBySku as $pr) {
+                $s = trim((string) ($pr->sku ?? ''));
+                if ($s !== '') {
+                    $listedSkus[] = $s;
                 }
             }
-            $amazonStandardPrices = [];
-            foreach (array_chunk(array_values(array_unique($lookupSkus)), 400) as $chunk) {
+            foreach (array_chunk(array_values(array_unique($listedSkus)), 400) as $chunk) {
                 foreach (AmazonDataView::query()->whereIn('sku', $chunk)->get(['sku', 'value']) as $adv) {
                     $val = is_array($adv->value)
                         ? $adv->value
@@ -649,18 +649,10 @@ class SheinController extends Controller
                 }
             }
 
-            $lmpGroupService = new LmpSkuGroupService();
-            try {
-                $lmpGroupService->prepareForSkus($lookupSkus);
-            } catch (\Throwable $e) {
-                Log::warning('LmpSkuGroupService prepare failed (Shein): ' . $e->getMessage());
-            }
-
             // ── 6. Build rows
             $rows = [];
             foreach ($allNormalizedSkus as $normalizedSku) {
                 $priceRow   = $pricingBySku->get($normalizedSku);
-                $price      = $priceRow ? (float) $priceRow->price              : 0;
                 $origPrice  = $priceRow ? (float) ($priceRow->original_price      ?? 0) : 0;
                 $spOffer    = $priceRow ? (float) ($priceRow->special_offer_price  ?? 0) : 0;
                 $sheinStock = $priceRow ? (int)   ($priceRow->shein_stock          ?? 0) : 0;
@@ -726,45 +718,20 @@ class SheinController extends Controller
                 // fall back to meta-derived value, then INV-based default.
                 $nrReq = $linkVal['nr_req'] ?? $nr ?? ($inv > 0 ? 'REQ' : 'NR');
 
-                // LMP competitor entries merged across Sku Link LMP group (same as ebay-tabulator-view)
-                $linkedLmpSkus = $this->sheinLinkedLmpSkusFor($lmpGroupService, (string) $displaySku);
-                $lmpEntries = [];
-                $seenLmp = [];
-                foreach ($linkedLmpSkus as $linkedSku) {
-                    $linkedNorm = $normalizeSku($linkedSku);
-                    foreach ($this->sheinLmpEntriesFrom($lmpBySku->get($linkedNorm)) as $entry) {
-                        $dedupeKey = ((string) ($entry['price'] ?? '')) . '|' . strtoupper(trim((string) ($entry['link'] ?? '')));
-                        if (isset($seenLmp[$dedupeKey])) {
-                            continue;
-                        }
-                        $seenLmp[$dedupeKey] = true;
-                        $entry['source_sku'] = $linkedSku;
-                        $lmpEntries[] = $entry;
-                    }
-                }
-                $lmpPrice = null;
-                $lmpLink  = null;
+                $lmpEntries = $this->sheinLmpEntriesFrom($lmpBySku->get($normalizedSku));
+                $lmpPrice = $this->sheinLowestFromEntries($lmpEntries);
+                $lmpLink = null;
                 foreach ($lmpEntries as $entry) {
                     if (! empty($entry['ignored'])) {
                         continue;
                     }
-                    if ($lmpPrice === null || $entry['price'] < $lmpPrice) {
-                        $lmpPrice = $entry['price'];
-                        $lmpLink  = $entry['link'];
+                    if ($lmpPrice !== null && (float) ($entry['price'] ?? 0) === (float) $lmpPrice) {
+                        $lmpLink = $entry['link'] ?? null;
+                        break;
                     }
                 }
 
-                // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
                 $stdPrc = $amazonStandardPrices[strtoupper(trim((string) $displaySku))] ?? null;
-                if ($stdPrc === null && ! empty($linkedLmpSkus)) {
-                    foreach ($linkedLmpSkus as $linkedSku) {
-                        $linkedKey = strtoupper(trim((string) $linkedSku));
-                        if ($linkedKey !== '' && isset($amazonStandardPrices[$linkedKey])) {
-                            $stdPrc = $amazonStandardPrices[$linkedKey];
-                            break;
-                        }
-                    }
-                }
 
                 $row = [
                     'sku'          => trim((string) $displaySku),
@@ -803,7 +770,7 @@ class SheinController extends Controller
                     'lmp_price'    => $lmpPrice,
                     'lmp_link'     => $lmpLink,
                     'lmp_entries'  => $lmpEntries,
-                    'linked_lmp_skus' => $linkedLmpSkus,
+                    'linked_lmp_skus' => [],
                     'STANDARD_PRICE' => $stdPrc,
                 ];
                 $rows[] = $promoService->applyToRow($row, $promoMap, (string) $displaySku);
@@ -820,7 +787,6 @@ class SheinController extends Controller
                 return $cmp !== 0 ? $cmp : strnatcasecmp($a['sku'], $b['sku']);
             });
 
-            $rows = $this->insertSheinParentRows($rows);
             foreach ($rows as $i => $row) {
                 foreach (['sku', 'parent', 'image', 'B Link', 'S Link'] as $field) {
                     if (isset($row[$field]) && is_string($row[$field])) {
@@ -855,38 +821,6 @@ class SheinController extends Controller
 
             return response()->json(['error' => $msg], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
-    }
-
-    private function insertSheinParentRows(array $rows): array
-    {
-        $result = []; $group = []; $currentParent = null;
-        foreach ($rows as $row) {
-            $p = $row['parent'] ?? null;
-            $p = ($p !== null && $p !== '') ? (string) $p : null;
-            if ($p === null) {
-                if (!empty($group)) {
-                    foreach ($group as $r) $result[] = $r;
-                    $result[] = $this->buildSheinParentRow($currentParent, $group);
-                    $group = []; $currentParent = null;
-                }
-                $result[] = $row;
-                continue;
-            }
-            if ($p !== $currentParent) {
-                if (!empty($group)) {
-                    foreach ($group as $r) $result[] = $r;
-                    $result[] = $this->buildSheinParentRow($currentParent, $group);
-                    $group = [];
-                }
-                $currentParent = $p;
-            }
-            $group[] = $row;
-        }
-        if (!empty($group)) {
-            foreach ($group as $r) $result[] = $r;
-            $result[] = $this->buildSheinParentRow($currentParent, $group);
-        }
-        return $result;
     }
 
     /**
@@ -1160,71 +1094,6 @@ class SheinController extends Controller
         } catch (\Exception $e) {
             Log::error('Shein daily snapshot save failed: '.$e->getMessage());
         }
-    }
-
-    private function buildSheinParentRow(string $parentName, array $childRows): array
-    {
-        $sumInv = $sumOvL30 = $sumSheinStock = $sumAl30 = $sumSales = $sumProfit = $sumViews = 0;
-        foreach ($childRows as $r) {
-            $sumInv        += (float) ($r['inv']         ?? 0);
-            $sumOvL30      += (float) ($r['ov_l30']       ?? 0);
-            $sumSheinStock += (float) ($r['shein_stock']  ?? 0);
-            $sumAl30       += (float) ($r['al30']         ?? 0);
-            $sumSales      += (float) ($r['sales']        ?? 0);
-            $sumProfit     += (float) ($r['al30'] ?? 0) * (float) ($r['profit'] ?? 0);
-            $sumViews      += (int) ($r['views'] ?? 0);
-        }
-        $key = 'PARENT ' . $parentName;
-        return [
-            'sku'         => $key,  'parent' => $key,  'is_parent' => true,
-            'image'       => null,  'price'  => '-',   'missing'   => '-',
-            'map'         => '-',   'gpft'   => $sumSales > 0 ? round(($sumProfit / $sumSales) * 100, 2) : 0,
-            'groi'        => '-',   'profit' => round($sumProfit, 2),
-            'sales'       => round($sumSales, 2),       'al30'      => (int) round($sumAl30),
-            'lp'          => '-',   'ship'   => '-',   'sprice'    => '-',
-            'sgpft'       => '-',   'sroi'   => '-',   '_margin'   => '-',
-            'inv'         => (int) $sumInv,  'shein_stock' => (int) $sumSheinStock,
-            'ov_l30'      => (int) $sumOvL30,
-            'views'       => (int) $sumViews,
-            'cvr'         => $sumViews > 0 ? round(($sumAl30 / $sumViews) * 100, 2) : 0,
-            'dil_percent' => $sumInv > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0,
-            'lmp_price'   => null, 'lmp_link' => null, 'lmp_entries' => [],
-            'linked_lmp_skus' => [],
-        ];
-    }
-
-    /**
-     * Sku Link LMP group for a Shein row — same shared service as /ebay-tabulator-view.
-     *
-     * @return list<string>
-     */
-    private function sheinLinkedLmpSkusFor(LmpSkuGroupService $lmpGroupService, string $sku): array
-    {
-        $sku = trim($sku);
-        if ($sku === '') {
-            return [];
-        }
-
-        try {
-            $group = $lmpGroupService->groupContaining($sku);
-        } catch (\Throwable $e) {
-            $group = [];
-        }
-
-        $members = $group !== [] ? $group : [$sku];
-        $seen = [];
-        $out = [];
-        foreach ($members as $member) {
-            $display = trim((string) $member);
-            $norm = strtoupper($display);
-            if ($norm === '' || isset($seen[$norm])) {
-                continue;
-            }
-            $seen[$norm] = true;
-            $out[] = $display;
-        }
-
-        return $out;
     }
 
     public function saveSheinSpriceUpdates(Request $request)

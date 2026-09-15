@@ -431,7 +431,10 @@ class Ebay2ApiService
             || str_contains($blob, '21916587')
             || str_contains($blob, '21916613')
             || str_contains($blob, '21916317')
-            || str_contains($blob, '21916635');
+            || str_contains($blob, '21916635')
+            || str_contains($blob, '21916664')
+            || str_contains($blob, '21916750')
+            || str_contains($blob, '21919188');
     }
 
     /**
