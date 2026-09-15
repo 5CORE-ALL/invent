@@ -3319,7 +3319,7 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Current Pricing / Dil% / ACOS% pause-or-activate rule (Amazon Ads Pause Rule modal).
+     * Current PARENT Dil% pause-or-activate rule (Amazon Ads Pause Rule modal).
      */
     public function getPauseRule(): JsonResponse
     {
@@ -3343,10 +3343,8 @@ class AmazonAdsController extends Controller
                 'enabled' => $request->boolean('enabled', true),
                 'dil_above' => $request->input('dil_above', 100),
                 'dil_enabled' => $request->boolean('dil_enabled', true),
-                'price_below' => $request->input('price_below', 20),
-                'price_enabled' => $request->boolean('price_enabled', true),
-                'reviews_enabled' => $request->boolean('reviews_enabled', false),
-                'reviews_below' => $request->input('reviews_below', 2.99),
+                'price_enabled' => false,
+                'reviews_enabled' => false,
             ]);
             AmazonAdsPauseRule::forgetResolvedCache();
         } catch (\InvalidArgumentException $e) {
@@ -3371,27 +3369,14 @@ class AmazonAdsController extends Controller
         $freshRule = AmazonAdsPauseRule::resolvedRule();
         $pr = $freshRule['pr'] ?? AmazonAdsPauseRule::defaultPr();
         $parts = [];
-        if (! empty($pr['enabled'])) {
-            if (! empty($pr['dil_enabled'])) {
-                $th = rtrim(rtrim(number_format((float) ($pr['dil_above'] ?? 100), 2, '.', ''), '0'), '.');
-                $parts[] = 'Dil% ≥ '.$th.'%';
-            }
-            if (! empty($pr['price_enabled'])) {
-                $th = rtrim(rtrim(number_format((float) ($pr['price_below'] ?? 20), 2, '.', ''), '0'), '.');
-                $parts[] = 'Price < $'.$th;
-            }
-        }
-        $rev = $freshRule['reviews'] ?? AmazonAdsPauseRule::defaultReviews();
-        $revPart = '';
-        if (! empty($rev['enabled'])) {
-            $revTh = rtrim(rtrim(number_format((float) ($rev['below'] ?? 2.99), 2, '.', ''), '0'), '.');
-            $revPart = ' Product ads rated below '.$revTh.'★ will be paused (campaign stays on).';
+        if (! empty($pr['enabled']) && ! empty($pr['dil_enabled'])) {
+            $th = rtrim(rtrim(number_format((float) ($pr['dil_above'] ?? 100), 2, '.', ''), '0'), '.');
+            $parts[] = 'PARENT Dil% ≥ '.$th.'%';
         }
         $payload = [
             'message' => (! empty($pr['enabled']) && $parts !== []
-                ? 'Pause Rule saved. Campaigns matching '.implode(' or ', $parts).' will be paused.'
-                : 'Pause Rule saved. Dil% / price will not auto-pause campaigns.')
-                .$revPart,
+                ? 'Pause Rule saved. PARENT campaigns matching '.implode(' or ', $parts).' will be paused. Child campaigns stay untouched.'
+                : 'Pause Rule saved. PARENT Dil% will not auto-pause campaigns.'),
             'rule' => $freshRule,
             'status' => 200,
             'timestamp' => time(),
@@ -3401,8 +3386,7 @@ class AmazonAdsController extends Controller
             try {
                 $payload['apply'] = app(AmazonAdsPauseRuleApplicator::class)->applyAll(false);
                 $payload['message'] = 'Pause Rule saved and applied to Amazon.'
-                    .($parts !== [] ? ' Paused campaigns where '.implode(' or ', $parts).'.' : '')
-                    .$revPart;
+                    .($parts !== [] ? ' Paused PARENT campaigns where '.implode(' or ', $parts).'.' : ' Child campaigns and Price/Reviews were not applied.');
             } catch (\Throwable $e) {
                 return response()->json([
                     'message' => 'PR saved, but Amazon apply failed.',
@@ -4162,17 +4146,9 @@ class AmazonAdsController extends Controller
                 $cnRule = trim((string) ($rowArr['campaignName'] ?? ''));
                 $mRule = $skuMetricsByCampaign[$cnRule] ?? ['price' => null, 'dil' => null];
                 $gmRule = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($mRule);
-                $acosForRule = $arr['ACOS'] ?? null;
-                if ($acosForRule === null && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))) {
-                    $acosForRule = self::computedAcosPercentFromReportRow($acosCalcRow, $dbColumns);
-                }
-                $cidRule = preg_replace('/\D+/', '', trim((string) ($rowArr['campaign_id'] ?? ''))) ?: '';
                 $decision = AmazonAdsPauseRule::decide($pauseRule, [
-                    'price' => $gmRule['price'],
                     'dil' => $gmRule['dil'],
-                    'acos' => is_numeric($acosForRule) ? (float) $acosForRule : null,
-                    'rating' => $ratingsByCid[$cidRule]['rating'] ?? $gmRule['rating'] ?? null,
-                ]);
+                ], $cnRule);
                 $arr['ruleStatus'] = $decision['status'];
                 $arr['ruleStatusTip'] = $decision['reason'];
             }

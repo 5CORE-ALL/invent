@@ -8,56 +8,7 @@ use PHPUnit\Framework\TestCase;
 
 class AmazonAdsPauseRuleReviewsBandsTest extends TestCase
 {
-    public function test_reviews_is_a_below_threshold_not_bands(): void
-    {
-        $rule = AmazonAdsPauseRule::normalizeRule([
-            'reviews' => ['enabled' => true, 'below' => 3],
-        ]);
-
-        $this->assertTrue($rule['reviews']['enabled']);
-        $this->assertSame(3.0, $rule['reviews']['below']);
-        $this->assertTrue(AmazonAdsPauseRule::reviewsEnabled($rule));
-        $this->assertFalse(AmazonAdsPauseRule::hasCampaignBands($rule));
-    }
-
-    public function test_legacy_bands_become_below_threshold(): void
-    {
-        $rule = AmazonAdsPauseRule::normalizeRule([
-            'reviews' => [
-                ['from' => 1, 'to' => 3, 'action' => 'PAUSED', 'label' => 'Low'],
-            ],
-        ]);
-
-        $this->assertTrue($rule['reviews']['enabled']);
-        $this->assertSame(3.0, $rule['reviews']['below']);
-    }
-
-    public function test_campaign_decide_ignores_reviews_rating(): void
-    {
-        $rule = AmazonAdsPauseRule::normalizeRule([
-            'reviews' => ['enabled' => true, 'below' => 3],
-        ]);
-
-        $decision = AmazonAdsPauseRule::decide($rule, ['rating' => 1.5]);
-        $this->assertSame(AmazonAdsPauseRule::ACTION_ENABLED, $decision['status']);
-        $this->assertTrue(AmazonAdsPauseRule::ratingBelowReviewsThreshold($rule, 2.5));
-        $this->assertFalse(AmazonAdsPauseRule::ratingBelowReviewsThreshold($rule, 4.6));
-    }
-
-    public function test_reviews_below_default_is_dynamic_2_99(): void
-    {
-        $defaults = AmazonAdsPauseRule::defaultReviews();
-        $this->assertSame(2.99, $defaults['below']);
-
-        $rule = AmazonAdsPauseRule::normalizeRule([
-            'reviews' => ['enabled' => true, 'below' => 2.99],
-        ]);
-        $this->assertTrue(AmazonAdsPauseRule::ratingBelowReviewsThreshold($rule, 2.98));
-        $this->assertFalse(AmazonAdsPauseRule::ratingBelowReviewsThreshold($rule, 2.99));
-        $this->assertFalse(AmazonAdsPauseRule::ratingBelowReviewsThreshold($rule, 3.0));
-    }
-
-    public function test_pr_normalize_keeps_reviews_threshold(): void
+    public function test_reviews_and_price_cannot_be_turned_on(): void
     {
         $rule = AmazonAdsPauseRule::normalizeRule([
             'pr' => [
@@ -69,14 +20,53 @@ class AmazonAdsPauseRuleReviewsBandsTest extends TestCase
                 'reviews_enabled' => true,
                 'reviews_below' => 2.99,
             ],
-            'reviews' => ['enabled' => true, 'below' => 2.99],
+            'reviews' => ['enabled' => true, 'below' => 3],
         ]);
 
-        $this->assertTrue($rule['pr']['reviews_enabled']);
-        $this->assertSame(2.99, $rule['pr']['reviews_below']);
-        $this->assertTrue($rule['reviews']['enabled']);
-        $this->assertSame(2.99, $rule['reviews']['below']);
-        $this->assertSame(AmazonAdsPauseRule::ACTION_ENABLED, AmazonAdsPauseRule::decide($rule, ['rating' => 1.0])['status']);
+        $this->assertFalse($rule['reviews']['enabled']);
+        $this->assertFalse($rule['pr']['reviews_enabled']);
+        $this->assertFalse($rule['pr']['price_enabled']);
+        $this->assertFalse(AmazonAdsPauseRule::reviewsEnabled($rule));
+        $this->assertFalse(AmazonAdsPauseRule::ratingBelowReviewsThreshold($rule, 1.0));
+        $this->assertTrue(AmazonAdsPauseRule::hasCampaignBands($rule));
+    }
+
+    public function test_legacy_review_bands_stay_disabled(): void
+    {
+        $rule = AmazonAdsPauseRule::normalizeRule([
+            'reviews' => [
+                ['from' => 1, 'to' => 3, 'action' => 'PAUSED', 'label' => 'Low'],
+            ],
+        ]);
+
+        $this->assertFalse($rule['reviews']['enabled']);
+        $this->assertFalse(AmazonAdsPauseRule::reviewsEnabled($rule));
+    }
+
+    public function test_campaign_decide_ignores_reviews_and_price(): void
+    {
+        $rule = AmazonAdsPauseRule::normalizeRule([
+            'pr' => [
+                'enabled' => true,
+                'dil_enabled' => true,
+                'dil_above' => 100,
+                'price_enabled' => true,
+                'price_below' => 99,
+                'reviews_enabled' => true,
+                'reviews_below' => 5,
+            ],
+            'reviews' => ['enabled' => true, 'below' => 5],
+        ]);
+
+        $parent = 'PARENT MX 4CH 2MIC PT';
+        $this->assertSame(
+            AmazonAdsPauseRule::ACTION_ENABLED,
+            AmazonAdsPauseRule::decide($rule, ['rating' => 1.0, 'price' => 1, 'dil' => 10], $parent)['status']
+        );
+        $this->assertSame(
+            AmazonAdsPauseRule::ACTION_PAUSED,
+            AmazonAdsPauseRule::decide($rule, ['rating' => 5.0, 'price' => 99, 'dil' => 100], $parent)['status']
+        );
     }
 
     public function test_amazon_ad_ref_from_stored_ids(): void
@@ -95,7 +85,7 @@ class AmazonAdsPauseRuleReviewsBandsTest extends TestCase
         );
     }
 
-    public function test_should_auto_enable_only_leftover_rule_pauses(): void
+    public function test_should_auto_enable_only_parent_leftover_rule_pauses(): void
     {
         $clear = [
             'status' => AmazonAdsPauseRule::ACTION_ENABLED,
@@ -111,13 +101,17 @@ class AmazonAdsPauseRuleReviewsBandsTest extends TestCase
         $now = new \DateTimeImmutable('2026-09-12 18:00:00');
         $recent = '2026-08-27 13:09:13';
         $oldPinkDil = '2026-02-25 12:40:51';
+        $parent = 'PARENT MS 080 1PK PT';
+        $child = 'MS 080 1PK BLK PT';
 
-        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', null, $now));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $oldPinkDil, $now));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'ENABLED', $recent, $now));
-        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($pause, 'PAUSED', $recent, $now));
-        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable(['status' => ''], 'PAUSED', $recent, $now));
+        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now, $parent));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now, $child));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $recent, $now, null));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', null, $now, $parent));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'PAUSED', $oldPinkDil, $now, $parent));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($clear, 'ENABLED', $recent, $now, $parent));
+        $this->assertFalse(AmazonAdsPauseRule::shouldAutoEnable($pause, 'PAUSED', $recent, $now, $parent));
+        $this->assertTrue(AmazonAdsPauseRule::shouldAutoEnable(['status' => ''], 'PAUSED', $recent, $now, $parent));
         $this->assertFalse(AmazonAdsPauseRule::isRecentPauseRuleStamp($oldPinkDil, $now));
         $this->assertTrue(AmazonAdsPauseRule::isRecentPauseRuleStamp($recent, $now));
     }

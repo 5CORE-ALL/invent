@@ -19,7 +19,16 @@ class AmazonAdsPauseRuleAutoEnableTest extends TestCase
         );
     }
 
-    public function test_pr_pause_still_matches_dil_or_price(): void
+    public function test_parent_campaign_detection_ignores_kw_pt_suffix(): void
+    {
+        $this->assertTrue(AmazonAdsPauseRule::isParentCampaign('PARENT MS 080 1PK PT'));
+        $this->assertTrue(AmazonAdsPauseRule::isParentCampaign('PARENT MS 080 1PK KW'));
+        $this->assertFalse(AmazonAdsPauseRule::isParentCampaign('MS 080 1PK BLK PT'));
+        $this->assertFalse(AmazonAdsPauseRule::isParentCampaign(''));
+        $this->assertFalse(AmazonAdsPauseRule::isParentCampaign(null));
+    }
+
+    public function test_pr_pause_matches_parent_dil_only_never_price(): void
     {
         $rule = AmazonAdsPauseRule::normalizeRule([
             'pr' => [
@@ -31,13 +40,18 @@ class AmazonAdsPauseRuleAutoEnableTest extends TestCase
             ],
         ]);
 
+        $this->assertFalse($rule['pr']['price_enabled']);
         $this->assertSame(
             AmazonAdsPauseRule::ACTION_PAUSED,
-            AmazonAdsPauseRule::decide($rule, ['dil' => 100, 'price' => 50])['status']
+            AmazonAdsPauseRule::decide($rule, ['dil' => 100, 'price' => 50], 'PARENT MS 080 1PK PT')['status']
         );
         $this->assertSame(
             AmazonAdsPauseRule::ACTION_ENABLED,
-            AmazonAdsPauseRule::decide($rule, ['dil' => 3.5, 'price' => 59.99])['status']
+            AmazonAdsPauseRule::decide($rule, ['dil' => 3.5, 'price' => 5], 'PARENT MS 080 1PK PT')['status']
+        );
+        $this->assertSame(
+            '',
+            AmazonAdsPauseRule::decide($rule, ['dil' => 150, 'price' => 5], 'MS 080 1PK BLK PT')['status']
         );
     }
 }

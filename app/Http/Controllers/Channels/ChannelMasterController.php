@@ -18873,6 +18873,59 @@ class ChannelMasterController extends Controller
         $this->healClosedChannelYSalesSnapshot('amazon');
     }
 
+    /**
+     * Snapshot D stores Temu 2 L30 for the 30 Pacific days ending D−1.
+     * A mid-sync save froze Sep 13 at ~$26k while temu2_orders for that
+     * window is ~$31k. Rewrite the last 14 snapshots from the same
+     * computeTemu2TabulatorMetrics math as /temu2-tabulator.
+     */
+    private function healClosedTemu2L30Snapshots(): void
+    {
+        if (! Schema::hasTable('temu2_orders')) {
+            return;
+        }
+
+        $tz = 'America/Los_Angeles';
+        $lookupKeys = $this->allMarketplaceSnapshotLookupKeys('temu2');
+
+        for ($offset = 0; $offset <= 14; $offset++) {
+            $snapshotDate = now($tz)->subDays($offset)->toDateString();
+            $asOf = now($tz)->subDays($offset + 1);
+            $start = $asOf->copy()->subDays(29)->startOfDay();
+            $end = $asOf->copy()->endOfDay();
+
+            try {
+                $m = TemuShopifySalesService::computeTemu2TabulatorMetrics($start, $end);
+            } catch (\Throwable $e) {
+                Log::warning('Temu 2 L30 snapshot heal failed for '.$snapshotDate.': '.$e->getMessage());
+                continue;
+            }
+
+            $live = round((float) ($m['sales'] ?? 0), 2);
+            $rows = \App\Models\ChannelMasterSummary::query()
+                ->whereIn('channel', $lookupKeys)
+                ->whereDate('snapshot_date', $snapshotDate)
+                ->get();
+
+            foreach ($rows as $row) {
+                $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data);
+                if (array_key_exists('l30_sales', $sd) && abs((float) $sd['l30_sales'] - $live) < 1) {
+                    continue;
+                }
+                $sd['l30_sales'] = $live;
+                if (isset($m['orders'])) {
+                    $sd['l30_orders'] = (int) $m['orders'];
+                }
+                if (isset($m['qty'])) {
+                    $sd['qty'] = (int) $m['qty'];
+                }
+                $row->summary_data = $sd;
+                $row->notes = 'Temu 2 L30 healed from temu2_orders ending '.$asOf->toDateString();
+                $row->save();
+            }
+        }
+    }
+
     private function healClosedChannelYSalesSnapshot(string $channel): void
     {
         $channel = $this->allMarketplaceSnapshotKey($channel);
@@ -21005,6 +21058,7 @@ class ChannelMasterController extends Controller
 
             $this->healClosedAmazonYSalesSnapshot();
             $this->healClosedChannelYSalesSnapshot('temu2');
+            $this->healClosedTemu2L30Snapshots();
             $this->healClosedChannelYSalesSnapshot('temu3');
             $this->healClosedChannelYSalesSnapshot('depop');
             $this->healClosedChannelYSalesSnapshot('faire');

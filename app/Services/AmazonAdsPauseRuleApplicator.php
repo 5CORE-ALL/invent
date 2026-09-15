@@ -2,21 +2,19 @@
 
 namespace App\Services;
 
-use App\Models\AmazonAdsCampaignSku;
 use App\Models\AmazonAdsPauseRuleState;
 use App\Models\AmazonSbCampaignReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Services\FbaInventoryService;
 use App\Support\AmazonAcosSbgtRule;
 use App\Support\AmazonAdsCampaignSkuMetrics;
-use App\Support\AmazonAdsCampaignSkuSync;
 use App\Support\AmazonAdsPauseRule;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Evaluate the Amazon Ads pause rule against latest SP/SB campaigns and push
- * ENABLED / PAUSED to Amazon. Campaigns stay ENABLED unless a Pause band matches.
+ * Evaluate PARENT Dil% against latest SP/SB campaigns and push ENABLED / PAUSED
+ * to Amazon. Child campaigns and product ads are never changed by this job.
  */
 class AmazonAdsPauseRuleApplicator
 {
@@ -58,41 +56,23 @@ class AmazonAdsPauseRuleApplicator
 
         $rule = AmazonAdsPauseRule::resolvedRule();
         $hasCampaign = AmazonAdsPauseRule::hasCampaignBands($rule);
-        $hasReviews = AmazonAdsPauseRule::reviewsEnabled($rule);
-        if (! $hasCampaign && ! $hasReviews) {
-            $stats['errors'][] = 'No pause/activate bands, PR Dil%, or Reviews rule configured — Amazon was not updated.';
-            Log::warning('amazon:ads-pause-rule skipped: empty pause rule (no bands / PR off / Reviews off).');
+        if (! $hasCampaign) {
+            $stats['errors'][] = 'No PARENT Dil% pause rule configured — Amazon was not updated.';
+            Log::warning('amazon:ads-pause-rule skipped: empty pause rule (PR Dil% off).');
 
             return $stats;
         }
-        if ($hasCampaign) {
-            $sp = $this->collectLatestCampaigns('sp');
-            $sb = $this->collectLatestCampaigns('sb');
-            $names = array_values(array_unique(array_filter(array_merge(
-                array_column($sp, 'campaignName'),
-                array_column($sb, 'campaignName')
-            ), static fn ($n) => is_string($n) && trim($n) !== '')));
-            $metricsByName = AmazonAdsCampaignSkuMetrics::mapForCampaignNames($names);
-            $ratingsByCid = AmazonAdsCampaignSkuMetrics::minRatingForCampaignIds(array_merge(
-                array_column($sp, 'campaign_id'),
-                array_column($sb, 'campaign_id')
-            ));
 
-            $this->applyChannel('sp', $sp, $rule, $metricsByName, $ratingsByCid, $dryRun, $stats);
-            $this->applyChannel('sb', $sb, $rule, $metricsByName, $ratingsByCid, $dryRun, $stats);
-        }
-        if ($hasReviews) {
-            $adStats = $this->applyReviewsProductAds($dryRun);
-            $stats['paused'] += (int) ($adStats['paused'] ?? 0);
-            $stats['enabled'] += (int) ($adStats['enabled'] ?? 0);
-            $stats['unchanged'] += (int) ($adStats['unchanged'] ?? 0);
-            $stats['skipped'] += (int) ($adStats['skipped'] ?? 0);
-            $stats['failed'] += (int) ($adStats['failed'] ?? 0);
-            foreach ($adStats['errors'] ?? [] as $err) {
-                $stats['errors'][] = $err;
-            }
-            $stats['ads_paused'] = (int) ($adStats['paused'] ?? 0);
-        }
+        $sp = $this->collectLatestCampaigns('sp');
+        $sb = $this->collectLatestCampaigns('sb');
+        $names = array_values(array_unique(array_filter(array_merge(
+            array_column($sp, 'campaignName'),
+            array_column($sb, 'campaignName')
+        ), static fn ($n) => is_string($n) && trim($n) !== '')));
+        $metricsByName = AmazonAdsCampaignSkuMetrics::mapForCampaignNames($names);
+
+        $this->applyChannel('sp', $sp, $rule, $metricsByName, $dryRun, $stats);
+        $this->applyChannel('sb', $sb, $rule, $metricsByName, $dryRun, $stats);
 
         return $stats;
     }
@@ -225,6 +205,10 @@ class AmazonAdsPauseRuleApplicator
                 if ($key === '' || ! isset($want[$key])) {
                     continue;
                 }
+                if (! AmazonAdsPauseRule::isParentCampaign((string) $row['campaignName'])) {
+                    $stats['skipped']++;
+                    continue;
+                }
                 $status = strtoupper(trim((string) $row['campaignStatus']));
                 if ($status === 'ARCHIVED') {
                     $stats['skipped']++;
@@ -234,11 +218,8 @@ class AmazonAdsPauseRuleApplicator
                 $m = $metricsByName[$row['campaignName']] ?? [];
                 $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
                 $decision = AmazonAdsPauseRule::decide($rule, [
-                    'price' => $gm['price'],
                     'dil' => $gm['dil'],
-                    'acos' => $row['acos'],
-                    'rating' => $gm['rating'] ?? null,
-                ]);
+                ], (string) $row['campaignName']);
                 $this->reasonsByCid[$row['campaign_id']] = ($decision['status'] ?? '') === AmazonAdsPauseRule::ACTION_PAUSED
                     ? (string) $decision['reason']
                     : AmazonAdsPauseRule::fallbackPauseReason();
@@ -264,244 +245,21 @@ class AmazonAdsPauseRuleApplicator
     }
 
     /**
-     * Pause product ads (SP) / SB ads whose SKU rating is below the Reviews threshold.
-     * Campaigns stay ENABLED.
+     * Reviews product-ad pause is retired. Child ads are never paused or re-enabled here.
      *
      * @return array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>, scope: string}
      */
     public function applyReviewsProductAds(bool $dryRun = false): array
     {
-        $stats = [
+        return [
             'paused' => 0,
             'enabled' => 0,
             'unchanged' => 0,
             'skipped' => 0,
             'failed' => 0,
-            'errors' => [],
+            'errors' => ['Reviews product-ad pause was removed. Only PARENT Dil% is applied.'],
             'scope' => 'product_ads',
         ];
-        $rule = AmazonAdsPauseRule::resolvedRule();
-        if (! AmazonAdsPauseRule::reviewsEnabled($rule)) {
-            $stats['errors'][] = 'Reviews rule is off — product ads were not updated.';
-
-            return $stats;
-        }
-        if (! Schema::hasTable('amazon_ads_campaign_skus')) {
-            $stats['errors'][] = 'Campaign SKU table is missing. Run amazon:ads-pull-product-ads.';
-
-            return $stats;
-        }
-
-        $rows = AmazonAdsCampaignSku::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->whereNotNull('ad_id')
-            ->where('ad_id', '!=', '')
-            ->where('ad_id', 'not like', AmazonAdsCampaignSkuSync::NAME_AD_PREFIX.'%')
-            ->get(['ad_id', 'campaign_id', 'sku', 'state']);
-
-        $reviews = AmazonAdsCampaignSkuMetrics::reviewsBySkus($rows->pluck('sku')->all());
-        $spPause = [];
-        $sbPause = [];
-        foreach ($rows as $row) {
-            $sku = trim((string) ($row->sku ?? ''));
-            $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
-            $hit = $reviews[$key] ?? null;
-            $rating = is_array($hit) && $hit['rating'] !== null ? (float) $hit['rating'] : null;
-            if (! AmazonAdsPauseRule::ratingBelowReviewsThreshold($rule, $rating)) {
-                if ($rating === null) {
-                    $stats['skipped']++;
-                } else {
-                    $stats['unchanged']++;
-                }
-                continue;
-            }
-            $ref = AmazonAdsCampaignSkuSync::amazonAdRef((string) ($row->ad_id ?? ''));
-            if ($ref['channel'] === null || $ref['ad_id'] === '') {
-                $stats['skipped']++;
-                continue;
-            }
-            $state = strtoupper(trim((string) ($row->state ?? '')));
-            if ($state === AmazonAdsPauseRule::ACTION_PAUSED) {
-                $stats['unchanged']++;
-                continue;
-            }
-            if ($state === 'ARCHIVED') {
-                $stats['skipped']++;
-                continue;
-            }
-            if ($ref['channel'] === 'sb') {
-                $sbPause[$ref['ad_id']] = true;
-            } else {
-                $spPause[$ref['ad_id']] = true;
-            }
-        }
-
-        $spIds = array_keys($spPause);
-        $sbIds = array_keys($sbPause);
-        if ($dryRun) {
-            $stats['paused'] = count($spIds) + count($sbIds);
-
-            return $stats;
-        }
-
-        $this->pushAdState('sp', $spIds, AmazonAdsPauseRule::ACTION_PAUSED, $stats);
-        $this->pushAdState('sb', $sbIds, AmazonAdsPauseRule::ACTION_PAUSED, $stats);
-
-        return $stats;
-    }
-
-    /**
-     * @param  'sp'|'sb'  $channel
-     * @param  list<string>  $adIds
-     * @param  array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>}  $stats
-     */
-    private function pushAdState(string $channel, array $adIds, string $state, array &$stats): void
-    {
-        $adIds = array_values(array_unique(array_filter($adIds, static fn ($id) => trim((string) $id) !== '')));
-        if ($adIds === []) {
-            return;
-        }
-        foreach (array_chunk($adIds, 10) as $chunk) {
-            $this->pushAdStateChunk($channel, $chunk, $state, $stats, true);
-        }
-    }
-
-    /**
-     * @param  'sp'|'sb'  $channel
-     * @param  list<string>  $chunk
-     * @param  array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>}  $stats
-     */
-    private function pushAdStateChunk(string $channel, array $chunk, string $state, array &$stats, bool $retrySingles): void
-    {
-        try {
-            $payload = [];
-            foreach ($chunk as $id) {
-                $payload[] = [
-                    'adId' => (string) $id,
-                    'state' => $state,
-                ];
-            }
-            $result = $channel === 'sb'
-                ? $this->ads->updateSbAds($payload)
-                : $this->ads->updateProductAds($payload);
-            $this->recordAdPushResult($channel, $chunk, $state, $result, $stats);
-        } catch (\Throwable $e) {
-            if ($retrySingles && count($chunk) > 1) {
-                foreach ($chunk as $id) {
-                    $this->pushAdStateChunk($channel, [$id], $state, $stats, false);
-                }
-
-                return;
-            }
-            $decoded = self::decodeThrownAmazonBody($e);
-            if (is_array($decoded)) {
-                $this->recordAdPushResult($channel, $chunk, $state, $decoded, $stats);
-
-                return;
-            }
-            $stats['failed'] += count($chunk);
-            $stats['errors'][] = self::shortAmazonError($e->getMessage());
-            Log::error('Amazon Ads reviews product-ad push failed', [
-                'channel' => $channel,
-                'state' => $state,
-                'count' => count($chunk),
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
-     * @param  'sp'|'sb'  $channel
-     * @param  list<string>  $chunk
-     * @param  array<string, mixed>  $result
-     * @param  array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>}  $stats
-     */
-    private function recordAdPushResult(string $channel, array $chunk, string $state, array $result, array &$stats): void
-    {
-        $blockKey = $channel === 'sb' ? 'ads' : 'productAds';
-        $block = is_array($result[$blockKey] ?? null) ? $result[$blockKey] : $result;
-        $success = is_array($block['success'] ?? null) ? $block['success'] : [];
-        $errors = is_array($block['error'] ?? null) ? $block['error'] : (is_array($block['errors'] ?? null) ? $block['errors'] : []);
-        $ok = [];
-        foreach ($success as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            if (isset($row['adId']) && (string) $row['adId'] !== '') {
-                $ok[] = (string) $row['adId'];
-            } elseif (isset($row['index']) && isset($chunk[(int) $row['index']])) {
-                $ok[] = (string) $chunk[(int) $row['index']];
-            }
-        }
-        $failMsgs = [];
-        foreach ($errors as $row) {
-            if (! is_array($row)) {
-                if (is_string($row) && $row !== '') {
-                    $failMsgs[] = $row;
-                }
-                continue;
-            }
-            $aid = trim((string) ($row['adId'] ?? ''));
-            if ($aid === '' && isset($row['index']) && isset($chunk[(int) $row['index']])) {
-                $aid = (string) $chunk[(int) $row['index']];
-            }
-            $err = data_get($row, 'errors.0.errorValue.message')
-                ?? data_get($row, 'errors.0.message')
-                ?? data_get($row, 'errorValue.message')
-                ?? ($row['message'] ?? null);
-            $err = is_string($err) && $err !== '' ? $err : 'Amazon rejected product ad';
-            if (self::isAlreadyInDesiredStateMessage($err, $state)) {
-                $ok[] = $aid !== '' ? $aid : ($chunk[0] ?? '');
-                continue;
-            }
-            $failMsgs[] = $aid !== '' ? $aid.': '.$err : $err;
-        }
-        $ok = array_values(array_unique(array_filter($ok)));
-        if ($ok === [] && $failMsgs === []) {
-            $ok = $chunk;
-        }
-        $this->updateLocalAdStatus($channel, $ok, $state);
-        if ($state === AmazonAdsPauseRule::ACTION_PAUSED) {
-            $stats['paused'] += count($ok);
-        } else {
-            $stats['enabled'] += count($ok);
-        }
-        $stats['failed'] += count($failMsgs);
-        foreach ($failMsgs as $msg) {
-            $stats['errors'][] = $msg;
-        }
-    }
-
-    /**
-     * @param  'sp'|'sb'  $channel
-     * @param  list<string>  $adIds
-     */
-    private function updateLocalAdStatus(string $channel, array $adIds, string $state): void
-    {
-        if ($adIds === [] || ! Schema::hasTable('amazon_ads_campaign_skus')) {
-            return;
-        }
-        try {
-            foreach ($adIds as $id) {
-                $id = trim((string) $id);
-                if ($id === '') {
-                    continue;
-                }
-                $q = AmazonAdsCampaignSku::query();
-                if ($channel === 'sb') {
-                    $q->where('ad_id', 'like', AmazonAdsCampaignSkuSync::SB_AD_PREFIX.$id.':%');
-                } else {
-                    $q->where('ad_id', $id);
-                }
-                $q->update(['state' => $state]);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Amazon Ads reviews: local product-ad status update failed', [
-                'channel' => $channel,
-                'error' => $e->getMessage(),
-            ]);
-        }
     }
 
     /**
@@ -584,7 +342,6 @@ class AmazonAdsPauseRuleApplicator
      * @param  list<array{campaign_id: string, campaignName: string, campaignStatus: string, acos: ?float}>  $rows
      * @param  array<string, mixed>  $rule
      * @param  array<string, array{sku: string, price: ?float, dil: ?float, inv: ?float, l30: ?float, rating?: ?float}>  $metricsByName
-     * @param  array<string, array{rating: float|null, review_count: int|null, sku: string}>  $ratingsByCid
      * @param  array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>}  $stats
      */
     private function applyChannel(
@@ -592,7 +349,6 @@ class AmazonAdsPauseRuleApplicator
         array $rows,
         array $rule,
         array $metricsByName,
-        array $ratingsByCid,
         bool $dryRun,
         array &$stats
     ): void {
@@ -602,21 +358,22 @@ class AmazonAdsPauseRuleApplicator
         $openPauseAt = AmazonAdsPauseRuleState::openPauseAtByCampaignId($channel);
         foreach ($rows as $row) {
             $status = $row['campaignStatus'];
+            $campaignName = (string) $row['campaignName'];
             if ($status === 'ARCHIVED') {
                 $stats['skipped']++;
                 continue;
             }
-            $m = $metricsByName[$row['campaignName']] ?? ['price' => null, 'dil' => null, 'sku' => ''];
+            if (! AmazonAdsPauseRule::isParentCampaign($campaignName)) {
+                $stats['skipped']++;
+                continue;
+            }
+            $m = $metricsByName[$campaignName] ?? ['price' => null, 'dil' => null, 'sku' => ''];
             $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
-            $cidRating = $ratingsByCid[$row['campaign_id']]['rating'] ?? null;
             $decision = AmazonAdsPauseRule::decide($rule, [
-                'price' => $gm['price'],
                 'dil' => $gm['dil'],
-                'acos' => $row['acos'],
-                'rating' => $cidRating ?? $gm['rating'] ?? null,
-            ]);
+            ], $campaignName);
             $desired = $decision['status'];
-            $this->namesByCid[$row['campaign_id']] = (string) $row['campaignName'];
+            $this->namesByCid[$row['campaign_id']] = $campaignName;
             $this->reasonsByCid[$row['campaign_id']] = (string) ($decision['reason'] ?? AmazonAdsPauseRule::fallbackPauseReason());
             $pausedAt = $row['paused_at'] ?? ($openPauseAt[$row['campaign_id']] ?? null);
             if ($desired === AmazonAdsPauseRule::ACTION_PAUSED) {
@@ -624,7 +381,7 @@ class AmazonAdsPauseRuleApplicator
                     AmazonAdsPauseRuleState::recordPause(
                         $channel,
                         $row['campaign_id'],
-                        (string) $row['campaignName'],
+                        $campaignName,
                         $this->reasonsByCid[$row['campaign_id']]
                     );
                     $stats['unchanged']++;
@@ -633,7 +390,7 @@ class AmazonAdsPauseRuleApplicator
                 $pauseIds[] = $row['campaign_id'];
                 continue;
             }
-            if (AmazonAdsPauseRule::shouldAutoEnable($decision, $status, $pausedAt)) {
+            if (AmazonAdsPauseRule::shouldAutoEnable($decision, $status, $pausedAt, null, $campaignName)) {
                 $sku = (string) ($m['sku'] ?? '');
                 if ($sku !== '' && FbaInventoryService::blocksEnableForFbaSuffixZeroFbaInv($sku)) {
                     $stats['skipped']++;
