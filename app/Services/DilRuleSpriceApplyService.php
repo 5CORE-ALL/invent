@@ -319,7 +319,8 @@ class DilRuleSpriceApplyService
         $dil = (float) ($row['dil'] ?? 0);
         $groi = null;
 
-        if (! empty($cfg['zero_sold_min_groi']) && $sold <= 0) {
+        $isZeroSold = ! empty($cfg['zero_sold_min_groi']) && $sold <= 0;
+        if ($isZeroSold) {
             $groi = AmazonDilGroiRule::minTarget($dilRules);
         } elseif (! empty($cfg['match_or_nearest'])) {
             $rule = AmazonDilGroiRule::matchOrNearest($dil, $dilRules);
@@ -332,7 +333,9 @@ class DilRuleSpriceApplyService
             return null;
         }
 
-        if (! empty($cfg['cvr_adj'])) {
+        $skipTiktokZeroSoldCvr = $isZeroSold
+            && in_array($this->channel, ['tiktok', 'tiktok2'], true);
+        if (! empty($cfg['cvr_adj']) && ! $skipTiktokZeroSoldCvr) {
             $views = (float) ($row['views'] ?? 0);
             if (empty($cfg['cvr_adj_requires_views']) || $views > 0) {
                 $groi = AmazonDilGroiRule::adjustGroiForCvrArrow(

@@ -1591,6 +1591,7 @@
             mercari_wship: {
                 label: 'Mercari w Ship',
                 saveSpriceUrl: '/mercari-with-ship-tabulator/save-status',
+                saveSpriceBatchUrl: '/mercari-with-ship-tabulator/save-status',
                 pushPriceUrl: null,
                 priceField: 'price',
                 cvrField: 'CVR%',

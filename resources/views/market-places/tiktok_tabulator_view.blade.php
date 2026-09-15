@@ -1378,6 +1378,10 @@
         }
         function ttDisplayedSprice(rowData) {
             if (!rowData || ttIsParentRow(rowData)) return 0;
+            if (typeof ebaySprcDilForRow === 'function') {
+                const dil = Number(ebaySprcDilForRow(rowData)) || 0;
+                if (dil > 0) return dil;
+            }
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(rowData)) || 0;
                 if (saved > 0) return saved;
@@ -1406,29 +1410,41 @@
             const live = ttDisplayedSprice(rowData);
             return live > 0 ? live : ttSavedSpriceAmount(rowData);
         }
-        /** SNROI = (gross PFT$ − S PRC × Ads%/100) / LP × 100 — Ads% matches Sprc Dil. */
-        function ttComputeSnroi(rowData) {
+        /** SGROI = live gross PFT$ / LP at the displayed S PRC (not the stored Dil target). */
+        function ttComputeSgroi(rowData) {
             const price = ttSnroiPrice(rowData);
             const lp = parseFloat(rowData && rowData.LP_productmaster);
             if (!(price > 0) || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const margin = getRowMarginFactor(rowData);
+            return (((price * margin) - ship - lp) / lp) * 100;
+        }
+        /** SNROI = (gross PFT$ − S PRC × Ads%/100) / LP × 100 — Ads% matches Sprc Dil. */
+        function ttComputeSnroi(rowData) {
+            const sgroi = ttComputeSgroi(rowData);
+            if (sgroi == null || !isFinite(sgroi)) return null;
             const ads = ttDilAdsPct(rowData);
-            const grossPft = (price * margin) - ship - lp;
-            const adSpend = price * (ads / 100);
-            return ((grossPft - adSpend) / lp) * 100;
+            if (!(ads > 0)) return sgroi;
+            const price = ttSnroiPrice(rowData);
+            const lp = parseFloat(rowData && rowData.LP_productmaster);
+            if (!(price > 0) || !isFinite(lp) || lp <= 0) return sgroi;
+            return sgroi - (price * (ads / 100) / lp) * 100;
         }
         /** SNPFT = live S GPFT − Dil Ads% (TikTok 2 Ads% = 0 → SNPFT = SGPFT). */
-        function ttComputeSnpft(rowData) {
+        function ttComputeSgpft(rowData) {
             const price = ttSnroiPrice(rowData);
             if (!(price > 0)) return null;
             const lp = parseFloat(rowData && rowData.LP_productmaster) || 0;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const margin = getRowMarginFactor(rowData);
-            const ads = ttDilAdsPct(rowData);
             const sgpft = ((price * margin) - ship - lp) / price * 100;
-            if (!isFinite(sgpft)) return null;
-            return sgpft - ads;
+            return isFinite(sgpft) ? sgpft : null;
+        }
+        function ttComputeSnpft(rowData) {
+            const sgpft = ttComputeSgpft(rowData);
+            if (sgpft == null || !isFinite(sgpft)) return null;
+            const ads = ttDilAdsPct(rowData);
+            return sgpft - (ads > 0 ? ads : 0);
         }
 
         /** GROI standard as 3 colors: red <60, gray 60-90, green >=90 (yellow->gray, pink->green). */
@@ -4039,7 +4055,7 @@
                         editable: false,
                         sorter: "number",
                         headerTooltip: @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
-                            "S PRC from Sprc Dil when Dil matches and TT L30 > 0; 0 Sold uses the lowest Target GROI. CVR overlay (editable) adjusts Target GROI. Otherwise Std × (1 − CVR%/100). S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP."
+                            "S PRC = Dil Target NROI back-solve: (LP × (1 + Target%/100) + Ship) / margin. 0 Sold (TT L30 = 0) uses the min slab (no CVR −10). Sold rows use Dil slab + CVR overlay. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP."
                         @else
                             "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price."
                         @endif,
@@ -4146,17 +4162,21 @@
                         title: "SGROI",
                         field: "SROI",
                         hozAlign: "center",
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aGross = ttComputeSgroi(aRow.getData());
+                            const bGross = ttComputeSgroi(bRow.getData());
+                            return ((aGross == null || !isFinite(aGross)) ? 0 : aGross)
+                                 - ((bGross == null || !isFinite(bGross)) ? 0 : bGross);
+                        },
                         width: 50,
                         minWidth: 50,
                         maxWidth: 50,
+                        headerTooltip: "SGROI from displayed S PRC: (S PRC × margin − Ship − LP) / LP. Live — not the stored Dil target. TikTok 2 Ads% = 0, so SNROI = SGROI.",
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined || value === '' || value === '-') {
+                            const percent = ttComputeSgroi(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) {
                                 return '<span style="color:#6c757d;">-</span>';
                             }
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '<span style="color:#6c757d;">-</span>';
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         }
@@ -4165,15 +4185,18 @@
                         title: "SGPFT%",
                         field: "SGPFT",
                         hozAlign: "center",
-                        sorter: "number",
-                        headerTooltip: "S GPFT from saved S PRC.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aPct = ttComputeSgpft(aRow.getData());
+                            const bPct = ttComputeSgpft(bRow.getData());
+                            return ((aPct == null || !isFinite(aPct)) ? 0 : aPct)
+                                 - ((bPct == null || !isFinite(bPct)) ? 0 : bPct);
+                        },
+                        headerTooltip: "S GPFT from Dil S PRC: (S PRC × margin − Ship − LP) / S PRC.",
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined || value === '' || value === '-') {
+                            const percent = ttComputeSgpft(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) {
                                 return '<span style="color:#6c757d;">-</span>';
                             }
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '<span style="color:#6c757d;">-</span>';
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
                         return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },

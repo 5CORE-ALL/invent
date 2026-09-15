@@ -81,6 +81,14 @@ class MercariWShipController extends Controller
         }
 
         $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('mercari_wship', $skus);
+        $dataViewSprice = [];
+        foreach (MercariWShipDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $dv) {
+            $val = is_array($dv->value) ? $dv->value : (json_decode((string) ($dv->value ?? ''), true) ?: []);
+            $stored = $val['SPRICE'] ?? $val['sprice'] ?? null;
+            if (is_numeric($stored) && (float) $stored > 0) {
+                $dataViewSprice[strtoupper(trim((string) $dv->sku))] = round((float) $stored, 2);
+            }
+        }
 
         $data = [];
         foreach ($productMasterRows as $productMaster) {
@@ -120,8 +128,15 @@ class MercariWShipController extends Controller
             $sprice = isset($statusValue['sprice']) && $statusValue['sprice'] !== '' && $statusValue['sprice'] !== null
                 ? (float) $statusValue['sprice']
                 : null;
+            if ($sprice === null || $sprice <= 0) {
+                $fromView = $dataViewSprice[strtoupper(trim((string) $sku))] ?? null;
+                if (is_numeric($fromView) && (float) $fromView > 0) {
+                    $sprice = (float) $fromView;
+                }
+            }
             $spft = ($sprice !== null && $sprice > 0) ? (($sprice * $factor - $lp - $ship) / $sprice) * 100 : 0;
             $sroi = ($sprice !== null && $lp > 0) ? (($sprice * $factor - $lp - $ship) / $lp) * 100 : 0;
+            $dilPct = $inv > 0 ? round((($shopifyItem->quantity ?? 0) / $inv) * 100, 2) : 0.0;
 
             $row = [
                 'Parent' => $productMaster->parent ?? null,
@@ -129,11 +144,15 @@ class MercariWShipController extends Controller
                 'sku' => $sku,
                 'INV' => $shopifyItem->inv ?? 0,
                 'L30' => $shopifyItem->quantity ?? 0,
+                'Dil%' => $dilPct,
+                'Dil' => $dilPct,
                 'price' => $price,
                 'sold' => $soldL30,
                 'PFT' => round($pft, 2),
                 'ROI' => round($roi, 2),
                 'sprice' => $sprice,
+                'SPRICE' => ($sprice !== null && $sprice > 0) ? $sprice : null,
+                'percentage' => $factor,
                 'SPFT' => round($spft, 2),
                 'SROI' => round($sroi, 2),
                 'nr_req' => $nrReq,
@@ -153,28 +172,71 @@ class MercariWShipController extends Controller
 
     public function saveMercariWshipStatus(Request $request)
     {
+        $updates = $request->input('updates');
+        if (is_array($updates) && $updates !== []) {
+            $saved = 0;
+            foreach ($updates as $u) {
+                if (! is_array($u)) {
+                    continue;
+                }
+                $sku = trim((string) ($u['sku'] ?? ''));
+                if ($sku === '' || stripos($sku, 'PARENT') === 0) {
+                    continue;
+                }
+                $this->persistMercariWshipStatusRow($sku, $u);
+                $saved++;
+            }
+
+            return response()->json(['success' => true, 'updated' => $saved]);
+        }
+
         $request->validate([
             'sku' => 'required|string',
         ]);
 
-        $sku = $request->input('sku');
+        $this->persistMercariWshipStatusRow((string) $request->input('sku'), $request->all());
 
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Dil Apply / inline S PRC: listing status + mercari_w_ship_data_views.SPRICE.
+     *
+     * @param  array<string, mixed>  $fields
+     */
+    private function persistMercariWshipStatusRow(string $sku, array $fields): void
+    {
         $status = MercariWShipListingStatus::firstOrNew(['sku' => $sku]);
         $value = is_array($status->value)
             ? $status->value
-            : (json_decode($status->value, true) ?: []);
+            : (json_decode((string) $status->value, true) ?: []);
 
-        // Only update fields present in the request
         foreach (['sprice', 'nr_req', 'approved'] as $field) {
-            if ($request->has($field)) {
-                $value[$field] = $request->input($field);
+            if (array_key_exists($field, $fields)) {
+                $value[$field] = $fields[$field];
             }
         }
 
         $status->value = $value;
         $status->save();
 
-        return response()->json(['success' => true]);
+        if (! array_key_exists('sprice', $fields)) {
+            return;
+        }
+
+        $sprice = $fields['sprice'];
+        $view = MercariWShipDataView::firstOrNew(['sku' => $sku]);
+        $viewVal = is_array($view->value)
+            ? $view->value
+            : (json_decode((string) ($view->value ?? ''), true) ?: []);
+        if ($sprice === null || $sprice === '' || ! is_numeric($sprice) || (float) $sprice <= 0) {
+            unset($viewVal['SPRICE'], $viewVal['sprice']);
+        } else {
+            $viewVal['SPRICE'] = round((float) $sprice, 2);
+            $viewVal['sprice'] = $viewVal['SPRICE'];
+        }
+        $view->value = $viewVal;
+        $view->save();
     }
 
     public function importMercariWshipPriceSold(Request $request)

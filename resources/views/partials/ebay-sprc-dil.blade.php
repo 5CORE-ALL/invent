@@ -29,7 +29,7 @@
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'shein'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
-        ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein'], true);
+        ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'mercari_wship', 'mercari_woship'], true);
@@ -1097,8 +1097,12 @@
                 return null;
             }
             const slabGroi = groi;
-            const cvrAdj = ebayDilGroiCvrAdj(d);
-            groi = ebayDilGroiApplyCvrAdj(slabGroi, d);
+            // TikTok 0 Sold: keep the min Target NROI. CVR 0% (1 view, no L60) is
+            // treated as a down-arrow (−10) and was pinning S PRC to the listing
+            // 40% price instead of back-solving the 50% slab.
+            const skipCvr = ebayDgIsTiktok() && zeroSoldMin;
+            const cvrAdj = skipCvr ? 0 : ebayDilGroiCvrAdj(d);
+            groi = skipCvr ? slabGroi : ebayDilGroiApplyCvrAdj(slabGroi, d);
             const rawSprc = ebaySpriceFromGroi(d, groi);
             if (!(rawSprc > 0)) return null;
             let sprc = rawSprc;
