@@ -4772,6 +4772,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay2/save-links', [EbayTwoController::class, 'saveLinks'])->name('ebay2.save.links');
     Route::get('/ebay2op-tabulator-view', [EbayTwoController::class, 'ebay2opTabulatorView'])->name('ebay2op.tabulator.view');
     Route::get('/ebay2-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2.data');
+    Route::get('/ebay2-data-json', [EbayTwoController::class, 'ebay2DataJson'])->name('ebay2.data.json');
     Route::get('/ebay2op-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2op.data');
     Route::get('/get-ebay2op-column-visibility', [EbayTwoController::class, 'getEbay2opColumnVisibility'])->name('ebay2op.column.visibility.get');
     Route::post('/set-ebay2op-column-visibility', [EbayTwoController::class, 'setEbay2opColumnVisibility'])->name('ebay2op.column.visibility.set');

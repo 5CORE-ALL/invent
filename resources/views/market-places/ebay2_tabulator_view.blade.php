@@ -668,7 +668,7 @@
                             style="font-size: 13px; color: #555; white-space: nowrap;"></span>
                     </div>
                     <!-- Table body (scrollable section) -->
-                    <div id="ebay2-table" style="flex: 1; min-height: 0;"></div>
+                    <div id="ebay2-table" style="flex: 1; min-height: 360px;"></div>
                 </div>
             </div>
         </div>
@@ -1216,6 +1216,28 @@
             const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY2_TAKEHOME;
             return ((price * margin - lp - ship) / lp) * 100;
         }
+        const EBAY2_DATA_JSON_URL = @json(url('/ebay2-data-json'));
+        function ebay2ParseAjaxJson(text) {
+            const raw = String(text == null ? '' : text);
+            try {
+                return JSON.parse(raw);
+            } catch (e) {
+                const msg = String((e && e.message) || '');
+                const m = msg.match(/position\s+(\d+)/i);
+                if (m) {
+                    const pos = Number(m[1]);
+                    if (pos > 0) {
+                        try {
+                            return JSON.parse(raw.slice(0, pos));
+                        } catch (e2) { /* fall through */ }
+                    }
+                }
+                throw e;
+            }
+        }
+        function ebay2TableDataUrl() {
+            return EBAY2_DATA_JSON_URL + (String(EBAY2_DATA_JSON_URL).indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now();
+        }
         let skuMetricsChart = null;
         let currentSkuChartMetric = 'price'; // 'price' | 'cvr' | 'views' | 'l7_views'
         let currentSku = null;
@@ -1438,7 +1460,7 @@
                 row.update({ linked_lmp_skus: bySku[sku] });
             });
             // Re-fetch /ebay2-data so LMP recomputes across the linked group
-            table.replaceData('/ebay2-data?_=' + Date.now());
+            table.replaceData(ebay2TableDataUrl());
         }
 
         function removeLinkedSkuFromRow(rowData, linkedSku) {
@@ -1664,7 +1686,7 @@
                 ebay2EndedPullDone = true;
                 const n = (res && res.pulled) ? parseInt(res.pulled, 10) : 0;
                 if (n > 0 && table && typeof table.replaceData === 'function') {
-                    table.replaceData('/ebay2-data?_=' + Date.now());
+                    table.replaceData(ebay2TableDataUrl());
                     if (typeof showToast === 'function') {
                         showToast('Pulled ' + n + ' relisted SKU(s) with a new item ID', 'success');
                     }
@@ -3176,31 +3198,36 @@
             }
             
             table = new Tabulator("#ebay2-table", {
-                ajaxURL: "/ebay2-data",
+                ajaxURL: EBAY2_DATA_JSON_URL,
+                ajaxRequestFunc: function(url, config, params) {
+                    const qs = params ? new URLSearchParams(params).toString() : '';
+                    const href = qs ? (url + (String(url).indexOf('?') >= 0 ? '&' : '?') + qs) : url;
+                    return fetch(href, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin'
+                    }).then(function(res) {
+                        return res.text().then(function(text) {
+                            if (!res.ok) {
+                                throw new Error('Data load failed (' + res.status + ')');
+                            }
+                            return ebay2ParseAjaxJson(text);
+                        });
+                    });
+                },
                 ajaxResponse: function(url, params, response) {
-                    // Extract the data array from the response object
-                    allTableData = response.data || []; // Store unfiltered data
+                    var payload = (response && response.data) ? response.data : response;
+                    if (!Array.isArray(payload)) payload = [];
+                    allTableData = payload;
                     if (window.LmpIgnore) LmpIgnore.applyDataset(allTableData);
                     window.allTableData = allTableData;
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
-                    console.log('API Response - Total rows:', allTableData.length);
-                    
-                    // Calculate total L30 for verification
-                    let totalL30 = 0;
-                    let parentCount = 0;
-                    allTableData.forEach(row => {
-                        const sku = row['(Child) sku'] || '';
-                        if (sku.toUpperCase().includes('PARENT')) {
-                            parentCount++;
-                        } else {
-                            totalL30 += parseFloat(row['eBay L30'] || 0);
-                        }
-                    });
-                    console.log('Total eBay L30 from API:', totalL30, '(excluding', parentCount, 'PARENT rows)');
                     setTimeout(function() {
                         if (typeof ebay2PullEndedListings === 'function') ebay2PullEndedListings();
                     }, 400);
-                    return response.data || [];
+                    return payload;
                 },
                 ajaxSorting: false,
                 sortMode: "local",
@@ -5167,7 +5194,9 @@
                 } else if (allTableData.length) {
                     applyFilters();
                 }
-                if (typeof chPromoInvalidateListingDilCache === 'function') chPromoInvalidateListingDilCache();
+                if (typeof chPromoInvalidateListingDilCache === 'function') {
+                    chPromoInvalidateListingDilCache({ skipApply: true });
+                }
                 updateCalcValues();
                 updateSummary();
                 $(document).trigger('ebay2-tabulator-data-loaded');
@@ -5183,6 +5212,13 @@
                     tooltipTriggerList.forEach(function (tooltipTriggerEl) {
                         new bootstrap.Tooltip(tooltipTriggerEl);
                     });
+                    try {
+                        var painted = document.querySelectorAll('#ebay2-table .tabulator-row:not(.tabulator-calcs)').length;
+                        var count = typeof table.getDataCount === 'function' ? table.getDataCount('active') : 0;
+                        if (count > 0 && painted === 0) {
+                            table.redraw(true);
+                        }
+                    } catch (e) { /* ignore */ }
                 }, 100);
             });
 
@@ -5459,7 +5495,7 @@
                         
                         // Reload table data
                         setTimeout(() => {
-                            table.setData('/ebay2-data?_=' + Date.now());
+                            table.setData(ebay2TableDataUrl());
                         }, 1000);
                     },
                     error: function(xhr) {
@@ -5486,7 +5522,7 @@
                 const holder = table.element ? table.element.querySelector('.tabulator-tableHolder') : null;
                 const scrollLeft = holder ? holder.scrollLeft : 0;
 
-                table.replaceData('/ebay2-data?_=' + Date.now()).then(function() {
+                table.replaceData(ebay2TableDataUrl()).then(function() {
                     const h = table.element ? table.element.querySelector('.tabulator-tableHolder') : null;
                     if (h) h.scrollLeft = scrollLeft;
                 }).catch(function() {});
