@@ -692,6 +692,18 @@ class Ebay2InventorySyncService
             if ($this->isEbayUsageLimit($msg)) {
                 return ['ok' => false, 'rate_limited' => true, 'message' => $msg];
             }
+            if (empty($result['success']) && self::looksLikeMissingNameValueList($msg)) {
+                $itemLevel = $this->ebay2Api->reviseInventoryStatus($itemId, $qty, null, null);
+                $itemMsg = (string) ($itemLevel['message'] ?? '');
+                if ($this->isEbayUsageLimit($itemMsg)) {
+                    return ['ok' => false, 'rate_limited' => true, 'message' => $itemMsg];
+                }
+                if (! empty($itemLevel['success'])) {
+                    $result = $itemLevel;
+                    $msg = $itemMsg;
+                    $row['price'] = null;
+                }
+            }
             if (empty($result['success']) && self::looksLikeSkuMismatch($msg)) {
                 foreach (self::skuAliasesForPush($sku) as $alias) {
                     if (strcasecmp($alias, $sku) === 0) {
@@ -860,8 +872,19 @@ class Ebay2InventorySyncService
             || str_contains($m, 'invalid sku')
             || str_contains($m, 'no variation')
             || str_contains($m, '21916626')
-            || str_contains($m, '21919188')
-            || str_contains($m, '21916587');
+            || str_contains($m, '21919188');
+    }
+
+    public static function looksLikeMissingNameValueList(?string $message): bool
+    {
+        $m = strtolower((string) $message);
+        if ($m === '') {
+            return false;
+        }
+
+        return str_contains($m, '21916587')
+            || str_contains($m, 'missing name in name-value')
+            || str_contains($m, 'missing name in name value');
     }
 
     /**

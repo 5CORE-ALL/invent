@@ -60,6 +60,49 @@ class Ebay2MismatchInventoryRulesTest extends TestCase
         $this->assertSame('C10BP 20 10 R', ShopifySku::normalizeSkuForShopifyLookup('C10BP 20 10 R'));
     }
 
+    public function test_missing_name_value_list_is_not_a_sku_mismatch(): void
+    {
+        $this->assertTrue(Ebay2InventorySyncService::looksLikeMissingNameValueList(
+            'Missing name in name-value list. (eBay code: 21916587)'
+        ));
+        $this->assertFalse(Ebay2InventorySyncService::looksLikeSkuMismatch(
+            'Missing name in name-value list. (eBay code: 21916587)'
+        ));
+    }
+
+    public function test_variation_specifics_are_read_for_matching_sku(): void
+    {
+        $item = [
+            'Variations' => [
+                'Variation' => [
+                    [
+                        'SKU' => 'CS CHI BLU HTSY-L',
+                        'Quantity' => 0,
+                        'VariationSpecifics' => [
+                            'NameValueList' => [
+                                ['Name' => 'Color', 'Value' => 'Blue'],
+                                ['Name' => 'Size', 'Value' => 'L'],
+                            ],
+                        ],
+                    ],
+                    [
+                        'SKU' => 'OTHER',
+                        'VariationSpecifics' => [
+                            'NameValueList' => ['Name' => 'Color', 'Value' => 'Red'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $this->assertSame(
+            ['Color' => 'Blue', 'Size' => 'L'],
+            EbayLiveListingMapper::variationSpecificsForSku($item, 'CS CHI BLU HTSY L')
+        );
+        $this->assertSame([], EbayLiveListingMapper::variationSpecificsForSku($item, 'CDC11'));
+        $this->assertSame([], EbayLiveListingMapper::variationSpecificsForSku(['Quantity' => 26], 'CDC11'));
+    }
+
     public function test_mismatch_batch_leaves_remaining_skus_for_next_run(): void
     {
         $skus = [];
