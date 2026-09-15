@@ -630,6 +630,7 @@ class TopDawgSyncController extends Controller
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('topdawg'),
             'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('topdawg'),
+            'shopifyImportCutoff' => app(TopDawgOrderSyncService::class)->shopifyImportCutoff()->toDateString(),
         ]);
     }
 
@@ -736,22 +737,26 @@ class TopDawgSyncController extends Controller
 
         $fromDate = trim((string) $request->input('from_date', ''));
         $sync = app(TopDawgOrderSyncService::class);
+        $cutoff = $sync->shopifyImportCutoff()->toDateString();
 
         if ($fromDate !== '') {
+            // Never pull the July-7 / full-history dump — Shopify only gets the last 2 days.
+            if ($fromDate < $cutoff) {
+                $fromDate = $cutoff;
+            }
             $result = $sync->fetchAndStoreFromDate($fromDate);
         } else {
-            $daysInput = $request->input('days', 0);
-            $days = $daysInput === 'all' || (int) $daysInput === 0
-                ? 0
-                : max(1, min(730, (int) $daysInput));
+            $daysInput = $request->input('days', TopDawgOrderSyncService::SHOPIFY_IMPORT_LOOKBACK_DAYS);
+            $days = $daysInput === 'all'
+                ? TopDawgOrderSyncService::SHOPIFY_IMPORT_LOOKBACK_DAYS
+                : max(1, min(TopDawgOrderSyncService::SHOPIFY_IMPORT_LOOKBACK_DAYS, (int) $daysInput));
             $result = $sync->fetchAndStore($days);
         }
 
-        // Only auto-queue Shopify imports when explicitly requested.
-        // Prefer from_date fetches without import when older orders already exist on Shopify.
         if ($request->boolean('import') || MarketplaceSyncSettings::canAutoImportToShopify('topdawg')) {
             $dispatched = $sync->dispatchImportsForNewOrders();
-            $result['message'] .= " Dispatched {$dispatched} import job(s).";
+            $imported = $sync->importUnpushedInline(25);
+            $result['message'] .= " Dispatched {$dispatched} import job(s). Imported {$imported} to Shopify.";
         }
 
         return response()->json([
