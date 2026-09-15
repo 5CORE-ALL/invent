@@ -298,7 +298,10 @@ final class ShopifyLiveVerifiedCatalogService
                 $linkedMismatch[] = $canonical;
             } elseif ($shopifyQty <= 0) {
                 $zero[] = $canonical;
-            } elseif ($mpQty !== null && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($shopifyQty, $mpQty, $marketplace)) {
+            } elseif ($mpQty === null) {
+                // No marketplace qty (unlinked / Hub row without a platform id) is not a qty mismatch.
+                continue;
+            } elseif (MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($shopifyQty, $mpQty, $marketplace)) {
                 $matched[] = $canonical;
             } else {
                 $mismatch[] = $canonical;

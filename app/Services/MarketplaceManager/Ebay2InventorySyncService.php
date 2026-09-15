@@ -19,6 +19,10 @@ class Ebay2InventorySyncService
 
     public const PROGRESS_CACHE_KEY = 'mm.ebay2.inv.sync.progress';
 
+    public const MISMATCH_TRIED_KEY = 'mm.ebay2.mismatch.tried';
+
+    public const MISMATCH_BATCH = 16;
+
     /**
      * @param  array{state?: string, qty_percent?: int, message?: string, updated?: int, failed?: int, skipped?: int}  $data
      */
@@ -115,24 +119,7 @@ class Ebay2InventorySyncService
 
         $this->ensureMetricsForSkus($skus, false);
 
-        $metrics = Ebay2Metric::query()
-            ->whereNotNull('item_id')
-            ->where('sku', '!=', '')
-            ->whereColumn('sku', '!=', 'item_id')
-            ->get()
-            ->filter(function (Ebay2Metric $metric) use ($wantedNorms, $wantedUppers, $skus) {
-                $raw = (string) $metric->sku;
-                if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($raw)) {
-                    return false;
-                }
-                if (in_array($raw, $skus, true) || isset($wantedUppers[strtoupper(trim($raw))])) {
-                    return true;
-                }
-                $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
-
-                return $norm !== '' && isset($wantedNorms[$norm]);
-            })
-            ->values();
+        $metrics = $this->metricsForRequestedSkus($skus, $wantedNorms, $wantedUppers);
 
         $liveMpQty = $this->ebay2QtyMapForSkip($metrics->pluck('sku')->all());
         $inventoryRows = [];
@@ -303,6 +290,29 @@ class Ebay2InventorySyncService
                 'rate_limited' => true,
                 'message' => $blocked,
             ]);
+        }
+
+        // Inv SKU Mismatch first. A full catalog crawl burns Trading API 518
+        // before those SKUs get Shopify qty.
+        if (! $dryRun && ($settings['inventory']['inventory_sync'] ?? false)) {
+            $priority = app(MarketplaceMismatchInventoryPass::class)->run('ebay2', self::MISMATCH_BATCH);
+            $remaining = (int) ($priority['remaining'] ?? 0);
+            $rateLimited = ! empty($priority['rate_limited']);
+            if ($rateLimited || $remaining > 0) {
+                $message = trim((string) ($priority['message'] ?? 'Pushed Inv SKU Mismatch first.'));
+                if ($remaining > 0) {
+                    $message .= ' Full eBay 2 catalog crawl skipped until remaining mismatch SKUs are pushed.';
+                }
+
+                return $finish([
+                    'updated' => (int) ($priority['updated'] ?? 0),
+                    'failed' => (int) ($priority['failed'] ?? 0),
+                    'skipped' => (int) ($priority['skipped'] ?? 0),
+                    'price_updated' => 0,
+                    'rate_limited' => $rateLimited,
+                    'message' => $message,
+                ]);
+            }
         }
 
         if (! Schema::hasTable('ebay_2_metrics')) {
@@ -517,10 +527,6 @@ class Ebay2InventorySyncService
         if ($invNote !== '' && ($updated === 0 || $failed > 0 || $rateLimited)) {
             $message .= ' '.$invNote;
         }
-        $message .= $this->appendMismatchPass(
-            ! $dryRun && ($settings['inventory']['inventory_sync'] ?? false),
-            $rateLimited
-        );
 
         return $finish([
             'updated' => $updated,
@@ -686,6 +692,25 @@ class Ebay2InventorySyncService
             if ($this->isEbayUsageLimit($msg)) {
                 return ['ok' => false, 'rate_limited' => true, 'message' => $msg];
             }
+            if (empty($result['success']) && self::looksLikeSkuMismatch($msg)) {
+                foreach (self::skuAliasesForPush($sku) as $alias) {
+                    if (strcasecmp($alias, $sku) === 0) {
+                        continue;
+                    }
+                    $aliasResult = $this->ebay2Api->reviseInventoryStatus($itemId, $qty, $alias, $price);
+                    $aliasMsg = (string) ($aliasResult['message'] ?? '');
+                    if ($this->isEbayUsageLimit($aliasMsg)) {
+                        return ['ok' => false, 'rate_limited' => true, 'message' => $aliasMsg];
+                    }
+                    if (! empty($aliasResult['success'])) {
+                        $result = $aliasResult;
+                        $msg = $aliasMsg;
+                        $row['sku_code'] = $alias;
+                        $sku = $alias;
+                        break;
+                    }
+                }
+            }
             if (empty($result['success']) && (! empty($result['ended']) || $this->ebay2Api->listingLooksEnded($msg))) {
                 if ($allowRelist) {
                     $relist = $this->ebay2Api->relistFixedPriceItem($itemId, $sku, $qty);
@@ -794,21 +819,91 @@ class Ebay2InventorySyncService
         }
     }
 
-    protected function isEbayUsageLimit(?string $message): bool
+    /**
+     * True eBay Trading API daily cap — not a random "518" inside an ItemID.
+     */
+    public static function looksLikeTradingLimit(?string $message): bool
     {
         $m = strtolower((string) $message);
         if ($m === '') {
             return false;
         }
 
-        $hit = str_contains($m, 'usage limit')
+        if (str_contains($m, 'usage limit')
             || str_contains($m, 'call usage')
             || str_contains($m, 'apiaccessrules')
             || str_contains($m, 'getapiaccessrules')
             || str_contains($m, 'ebay #518')
-            || (str_contains($m, 'exceeded') && str_contains($m, 'limit'))
-            || preg_match('/\b518\b/', $m) === 1;
+            || str_contains($m, 'error #518')
+            || str_contains($m, 'error 518')
+            || str_contains($m, 'errorcode 518')
+            || str_contains($m, 'errorcode>518')
+            || str_contains($m, 'errorcode":518')
+            || str_contains($m, '#518')) {
+            return true;
+        }
 
+        return str_contains($m, 'exceeded')
+            && str_contains($m, 'limit')
+            && (str_contains($m, 'call') || str_contains($m, 'usage'));
+    }
+
+    public static function looksLikeSkuMismatch(?string $message): bool
+    {
+        $m = strtolower((string) $message);
+        if ($m === '') {
+            return false;
+        }
+
+        return str_contains($m, 'sku does not exist')
+            || str_contains($m, 'variation not found')
+            || str_contains($m, 'invalid sku')
+            || str_contains($m, 'no variation')
+            || str_contains($m, '21916626')
+            || str_contains($m, '21919188')
+            || str_contains($m, '21916587');
+    }
+
+    /**
+     * Hyphen / space / compact SKU forms eBay listings often store instead of Shopify.
+     *
+     * @return list<string>
+     */
+    public static function skuAliasesForPush(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        $hyphen = $norm !== '' ? str_replace(' ', '-', $norm) : '';
+        $out = [];
+        foreach ([$sku, $norm, $hyphen, $compact] as $alias) {
+            $alias = trim((string) $alias);
+            if ($alias !== '') {
+                $out[$alias] = $alias;
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * Rotate through mismatch SKUs so one failing batch cannot block the rest.
+     *
+     * @param  list<string>  $skus
+     * @return array{batch: list<string>, remaining: int}
+     */
+    public static function takeMismatchBatch(array $skus, ?int $limit = null): array
+    {
+        return MarketplaceMismatchBatch::take('ebay2', $skus, $limit);
+    }
+
+    protected function isEbayUsageLimit(?string $message): bool
+    {
+        $hit = self::looksLikeTradingLimit($message);
         if ($hit) {
             self::markTradingLimited();
         }
@@ -859,6 +954,64 @@ class Ebay2InventorySyncService
         } catch (\Throwable $e) {
             // ignore
         }
+    }
+
+    /**
+     * Linked eBay 2 rows for the SKUs we are about to push. Prefer ACTIVE listings
+     * when the same SKU has ended duplicates.
+     *
+     * @param  list<string>  $skus
+     * @param  array<string, true>  $wantedNorms
+     * @param  array<string, true>  $wantedUppers
+     * @return \Illuminate\Support\Collection<int, Ebay2Metric>
+     */
+    protected function metricsForRequestedSkus(array $skus, array $wantedNorms, array $wantedUppers)
+    {
+        $query = Ebay2Metric::query()
+            ->whereNotNull('item_id')
+            ->where('sku', '!=', '')
+            ->whereColumn('sku', '!=', 'item_id')
+            ->where(function ($q) use ($skus, $wantedUppers) {
+                $q->whereIn('sku', $skus);
+                foreach (array_keys($wantedUppers) as $upper) {
+                    $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$upper]);
+                }
+            });
+
+        $hasStatus = Schema::hasColumn('ebay_2_metrics', 'listing_status');
+
+        return $query->get()
+            ->filter(function (Ebay2Metric $metric) use ($wantedNorms, $wantedUppers, $skus) {
+                $raw = (string) $metric->sku;
+                if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($raw)) {
+                    return false;
+                }
+                if (in_array($raw, $skus, true) || isset($wantedUppers[strtoupper(trim($raw))])) {
+                    return true;
+                }
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+
+                return $norm !== '' && isset($wantedNorms[$norm]);
+            })
+            ->groupBy(function (Ebay2Metric $metric) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $metric->sku);
+
+                return $norm !== '' ? $norm : strtoupper(trim((string) $metric->sku));
+            })
+            ->map(function ($group) use ($hasStatus) {
+                if ($hasStatus) {
+                    $active = $group->first(function (Ebay2Metric $metric) {
+                        return in_array(strtoupper(trim((string) ($metric->listing_status ?? ''))), ['ACTIVE', 'LIVE'], true);
+                    });
+                    if ($active) {
+                        return $active;
+                    }
+                }
+
+                return $group->sortByDesc('id')->first();
+            })
+            ->filter()
+            ->values();
     }
 
     /**

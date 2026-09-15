@@ -70,10 +70,18 @@ class SheinInventorySyncService
         );
 
         // Match Shein rows by normalized SKU (Shopify often stores NBSP; Shein uses normal spaces).
+        $wantedUppers = array_keys($wantedNorms);
         $metrics = SheinMmMetric::query()
             ->whereNotNull('product_id')
             ->where('sku', '!=', '')
             ->whereColumn('sku', '!=', 'product_id')
+            ->where(function ($q) use ($skus, $wantedUppers) {
+                $q->whereIn('sku', $skus);
+                foreach (array_chunk($wantedUppers, 80) as $chunk) {
+                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                    $q->orWhereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', $chunk);
+                }
+            })
             ->get()
             ->filter(function (SheinMmMetric $metric) use ($wantedNorms, $skus) {
                 $raw = (string) $metric->sku;
@@ -258,6 +266,19 @@ class SheinInventorySyncService
                 'price_updated' => 0,
                 'message' => 'Shein API credentials missing.',
             ];
+        }
+
+        if (! $dryRun && ($settings['inventory']['inventory_sync'] ?? false)) {
+            $priority = app(MarketplaceMismatchInventoryPass::class)->runAndStopIfMore('shein');
+            if ($priority !== null) {
+                return [
+                    'updated' => (int) ($priority['updated'] ?? 0),
+                    'failed' => (int) ($priority['failed'] ?? 0),
+                    'skipped' => (int) ($priority['skipped'] ?? 0),
+                    'price_updated' => 0,
+                    'message' => (string) ($priority['message'] ?? ''),
+                ];
+            }
         }
 
         if (! Schema::hasTable('shein_metric')) {
@@ -494,8 +515,7 @@ class SheinInventorySyncService
             'failed' => $failed,
             'skipped' => $skipped,
             'price_updated' => $priceUpdated,
-            'message' => "Updated {$updated} inventory, {$priceUpdated} price(s); failed {$failed}; skipped {$skipped}."
-                .$this->appendMismatchPass(!$dryRun && ($settings['inventory']['inventory_sync'] ?? false)),
+            'message' => "Updated {$updated} inventory, {$priceUpdated} price(s); failed {$failed}; skipped {$skipped}.",
         ];
     }
 

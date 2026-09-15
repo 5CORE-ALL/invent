@@ -25,9 +25,9 @@ use Illuminate\Support\Facades\Schema;
 final class MarketplaceMismatchInventoryPass
 {
     /**
-     * @return array{attempted: int, updated: int, failed: int, skipped: int, message: string}
+     * @return array{attempted: int, updated: int, failed: int, skipped: int, remaining: int, rate_limited: bool, message: string}
      */
-    public function run(string $channel): array
+    public function run(string $channel, ?int $limit = null): array
     {
         $channel = strtolower(trim($channel));
         $empty = [
@@ -35,6 +35,8 @@ final class MarketplaceMismatchInventoryPass
             'updated' => 0,
             'failed' => 0,
             'skipped' => 0,
+            'remaining' => 0,
+            'rate_limited' => false,
             'message' => 'Mismatch pass skipped.',
         ];
 
@@ -81,9 +83,23 @@ final class MarketplaceMismatchInventoryPass
             return array_merge($empty, ['message' => 'Mismatch pass: no qty-mismatch SKUs remaining.']);
         }
 
+        $remaining = 0;
+        if (in_array($channel, ['ebay2', 'tiktok', 'tiktok2', 'shein', 'topdawg'], true)) {
+            $sliced = MarketplaceMismatchBatch::take($channel, $mismatch, $limit);
+            $remaining = (int) ($sliced['remaining'] ?? 0);
+            $mismatch = $sliced['batch'] ?? [];
+            if ($mismatch === []) {
+                return array_merge($empty, [
+                    'remaining' => $remaining,
+                    'message' => 'Mismatch pass: no qty-mismatch SKUs remaining.',
+                ]);
+            }
+        }
+
         Log::info('MarketplaceMismatchInventoryPass: pushing mismatch SKUs', [
             'channel' => $channel,
             'count' => count($mismatch),
+            'remaining' => $remaining,
         ]);
 
         $result = match ($channel) {
@@ -122,6 +138,9 @@ final class MarketplaceMismatchInventoryPass
             $failed,
             $skipped
         );
+        if ($remaining > 0) {
+            $message .= ' '.$remaining.' mismatch SKU(s) left for the next run.';
+        }
         if ($detail !== '' && ($updated === 0 || ! empty($result['rate_limited']))) {
             $message .= ' '.$detail;
         }
@@ -131,8 +150,32 @@ final class MarketplaceMismatchInventoryPass
             'updated' => $updated,
             'failed' => $failed,
             'skipped' => $skipped,
+            'remaining' => $remaining,
+            'rate_limited' => ! empty($result['rate_limited']),
             'message' => $message,
         ];
+    }
+
+    /**
+     * Push a mismatch batch first. Non-null means the caller should skip the
+     * full catalog crawl (more mismatch SKUs remain, or the channel is rate-limited).
+     *
+     * @return array{attempted: int, updated: int, failed: int, skipped: int, remaining: int, rate_limited: bool, message: string}|null
+     */
+    public function runAndStopIfMore(string $channel, int $limit = MarketplaceMismatchBatch::DEFAULT_LIMIT): ?array
+    {
+        $priority = $this->run($channel, $limit);
+        if (empty($priority['rate_limited']) && (int) ($priority['remaining'] ?? 0) === 0) {
+            return null;
+        }
+
+        $message = trim((string) ($priority['message'] ?? 'Pushed Inv SKU Mismatch first.'));
+        if ((int) ($priority['remaining'] ?? 0) > 0) {
+            $message .= ' Full catalog crawl skipped until remaining mismatch SKUs are pushed.';
+        }
+        $priority['message'] = $message;
+
+        return $priority;
     }
 
     /**

@@ -124,7 +124,6 @@ final class EbayLiveListingMapper
      */
     public static function quantityFromGetItem(array $item, string $sku): ?int
     {
-        $skuNorm = strtoupper(trim($sku));
         $vars = $item['Variations']['Variation'] ?? null;
         if (is_array($vars) && $vars !== []) {
             if (isset($vars['SKU']) || isset($vars['Quantity']) || isset($vars['QuantityAvailable'])) {
@@ -134,8 +133,8 @@ final class EbayLiveListingMapper
                 if (! is_array($variation)) {
                     continue;
                 }
-                $vSku = strtoupper(trim((string) ($variation['SKU'] ?? '')));
-                if ($vSku === '' || $vSku !== $skuNorm) {
+                $vSku = trim((string) ($variation['SKU'] ?? ''));
+                if ($vSku === '' || ! self::skuEquals($vSku, $sku)) {
                     continue;
                 }
                 foreach (['Quantity', 'QuantityAvailable'] as $key) {
@@ -157,5 +156,26 @@ final class EbayLiveListingMapper
         }
 
         return null;
+    }
+
+    public static function skuEquals(string $left, string $right): bool
+    {
+        $left = trim($left);
+        $right = trim($right);
+        if ($left === '' || $right === '') {
+            return false;
+        }
+        if (strcasecmp($left, $right) === 0) {
+            return true;
+        }
+        $ln = ShopifySku::normalizeSkuForShopifyLookup($left);
+        $rn = ShopifySku::normalizeSkuForShopifyLookup($right);
+        if ($ln !== '' && $ln === $rn) {
+            return true;
+        }
+        $lc = ShopifySku::compactSkuForLookup($left);
+        $rc = ShopifySku::compactSkuForLookup($right);
+
+        return $lc !== '' && $lc === $rc;
     }
 }

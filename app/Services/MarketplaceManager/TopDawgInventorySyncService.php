@@ -76,10 +76,18 @@ class TopDawgInventorySyncService
             ->all();
         $exactSet = array_flip($exactMetricSkus);
 
+        $wantedUppers = array_keys($wantedNorms);
         $metrics = TopDawgProduct::query()
             ->whereNotNull('topdawg_listing_id')
             ->where('sku', '!=', '')
             ->whereColumn('sku', '!=', 'topdawg_listing_id')
+            ->where(function ($q) use ($skus, $wantedUppers) {
+                $q->whereIn('sku', $skus);
+                foreach (array_chunk($wantedUppers, 80) as $chunk) {
+                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                    $q->orWhereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', $chunk);
+                }
+            })
             ->get()
             ->filter(function (TopDawgProduct $metric) use ($wantedNorms, $skus, $exactSet) {
                 $raw = (string) $metric->sku;
@@ -127,7 +135,12 @@ class TopDawgInventorySyncService
                 continue;
             }
 
-            $pushQty = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            $pushQty = MarketplaceLiveInventoryRules::qtyForMismatchPush(
+                $shopifyStock,
+                $exactShopifyQty,
+                $qtyPercent,
+                $maxQty
+            );
 
             $inventoryRows[] = [
                 'product_id' => $productId,
@@ -223,11 +236,17 @@ class TopDawgInventorySyncService
             ];
         }
 
-        $result = $this->syncSkusFromShopify($skus);
-        $pass = app(MarketplaceMismatchInventoryPass::class)->run('topdawg');
-        $result['message'] = ($result['message'] ?? '').' '.($pass['message'] ?? '');
+        $priority = app(MarketplaceMismatchInventoryPass::class)->runAndStopIfMore('topdawg');
+        if ($priority !== null) {
+            return [
+                'updated' => (int) ($priority['updated'] ?? 0),
+                'failed' => (int) ($priority['failed'] ?? 0),
+                'skipped' => (int) ($priority['skipped'] ?? 0),
+                'message' => (string) ($priority['message'] ?? ''),
+            ];
+        }
 
-        return $result;
+        return $this->syncSkusFromShopify($skus);
     }
 
     /**

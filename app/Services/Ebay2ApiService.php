@@ -2563,12 +2563,14 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         $vars = $item['Variations']['Variation'] ?? null;
         if (is_array($vars) && $sku !== '') {
             $list = isset($vars['SKU']) || isset($vars['Quantity']) ? [$vars] : $vars;
-            $needle = strtoupper($sku);
             foreach ($list as $v) {
                 if (! is_array($v)) {
                     continue;
                 }
-                if (strtoupper(trim((string) ($v['SKU'] ?? ''))) !== $needle) {
+                if (! \App\Services\MarketplaceManager\EbayLiveListingMapper::skuEquals(
+                    (string) ($v['SKU'] ?? ''),
+                    $sku
+                )) {
                     continue;
                 }
 

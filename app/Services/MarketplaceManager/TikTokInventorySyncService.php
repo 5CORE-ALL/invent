@@ -128,6 +128,18 @@ class TikTokInventorySyncService
             ];
         }
 
+        if (! $dryRun) {
+            $priority = app(MarketplaceMismatchInventoryPass::class)->runAndStopIfMore('tiktok');
+            if ($priority !== null) {
+                return [
+                    'updated' => (int) ($priority['updated'] ?? 0),
+                    'failed' => (int) ($priority['failed'] ?? 0),
+                    'skipped' => (int) ($priority['skipped'] ?? 0),
+                    'message' => (string) ($priority['message'] ?? ''),
+                ];
+            }
+        }
+
         if (! Schema::hasTable('tiktok_products')) {
             return [
                 'updated' => 0,
@@ -237,15 +249,12 @@ class TikTokInventorySyncService
             );
         }
 
-        $pass = $this->appendMismatchPass();
-
         return $this->resultMessage(
             "Updated {$updated} inventory; failed {$failed}; skipped {$skipped}.",
             $updated,
             $failed,
             $skipped,
-            $errorSamples,
-            $pass
+            $errorSamples
         );
     }
 
@@ -343,12 +352,21 @@ class TikTokInventorySyncService
             return collect();
         }
 
+        $uppers = array_keys($wanted);
+
         return TikTokProduct::query()
             ->whereNotNull('product_id')
             ->whereNotNull('sku_id')
             ->where('sku', '!=', '')
             ->where('product_id', '!=', '')
             ->where('sku_id', '!=', '')
+            ->where(function ($q) use ($skus, $uppers) {
+                $q->whereIn('sku', $skus);
+                foreach (array_chunk($uppers, 80) as $chunk) {
+                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                    $q->orWhereRaw('UPPER(TRIM(sku)) in ('.$placeholders.')', $chunk);
+                }
+            })
             ->get()
             ->filter(fn (TikTokProduct $metric) => $this->skuIsWanted((string) $metric->sku, $wanted))
             ->values();

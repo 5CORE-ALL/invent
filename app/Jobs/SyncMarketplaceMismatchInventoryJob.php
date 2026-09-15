@@ -42,6 +42,10 @@ class SyncMarketplaceMismatchInventoryJob implements ShouldQueue, ShouldBeUnique
                 $this->timeout = 1200;
                 $this->uniqueFor = 1500;
             }
+            if (in_array($this->marketplace, ['ebay2', 'shein', 'topdawg'], true)) {
+                $this->timeout = 1800;
+                $this->uniqueFor = 1800;
+            }
         }
     }
 
