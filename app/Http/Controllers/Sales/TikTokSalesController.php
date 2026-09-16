@@ -60,6 +60,7 @@ class TikTokSalesController extends Controller
     public static function computeLiveMetricsTwo(): array
     {
         $defaults = [
+            'ok' => false,
             'l30_sales' => 0.0,
             'l30_orders' => 0,
             'qty' => 0,
@@ -94,11 +95,16 @@ class TikTokSalesController extends Controller
             $orderIds = [];
             foreach ($mapped as $row) {
                 $orderId = trim((string) ($row['order_id'] ?? ''));
-                if ($orderId !== '') {
-                    $orderIds[$orderId] = true;
+                $sku = trim((string) ($row['sku'] ?? ''));
+                if ($sku === '' || $orderId === '') {
+                    continue;
                 }
                 $quantity = (float) ($row['quantity'] ?? 0);
-                $l30Sales += (float) ($row['sale_amount'] ?? 0);
+                if ($quantity <= 0) {
+                    continue;
+                }
+                $orderIds[$orderId] = true;
+                $l30Sales += (float) ($row['price'] ?? 0) * $quantity;
                 $totalQuantity += $quantity;
                 $totalCogs += (float) ($row['cogs'] ?? 0);
                 $totalProfit += (float) ($row['t_pft'] ?? 0);
@@ -108,6 +114,7 @@ class TikTokSalesController extends Controller
             $roi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0.0;
 
             return [
+                'ok' => true,
                 'l30_sales' => round($l30Sales, 2),
                 'l30_orders' => count($orderIds),
                 'qty' => (int) round($totalQuantity),

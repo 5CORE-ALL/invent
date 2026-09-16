@@ -2170,6 +2170,12 @@ class ChannelMasterController extends Controller
         $rows = $this->overlayLiveMiraklTodaySalesOnChannelRows($rows);
         // FB Marketplace L30/L60/Y/L7 from /facebook-marketplace uploads (not stale sheet cache)
         $rows = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($rows);
+        // TikTok 2 L30 = /tiktok-two/daily-sales Total Sales (tiktok2_orders), not cached sheet.
+        try {
+            $rows = $this->overlayLiveTiktokTwoMetricsOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path TikTok 2 overlay failed: '.$e->getMessage());
+        }
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
@@ -3632,6 +3638,10 @@ class ChannelMasterController extends Controller
         } catch (\Throwable $e) {
             Log::warning('TikTok 2 live metrics overlay failed: ' . $e->getMessage());
 
+            return $rows;
+        }
+
+        if (empty($live['ok'])) {
             return $rows;
         }
 
