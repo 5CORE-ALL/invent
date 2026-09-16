@@ -2442,6 +2442,9 @@ class OverallAmazonController extends Controller
             $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
             if ($status === 'pushed' && $canonicalPrice !== null && $canonicalPrice > 0) {
                 $existing = AmazonSpApiService::stampPushedSaleBusinessMin($existing, $canonicalPrice);
+                $existing['PUSH_PRC_STATUS'] = 'pushed';
+                $existing['PUSH_PRC_VALUE'] = round($canonicalPrice, 2);
+                $existing['PUSH_PRC_PUSHED_AT'] = now()->toDateTimeString();
             } elseif ($status === 'error') {
                 $existing = AmazonSpApiService::stampPushError($existing, 'Amazon push failed');
             }

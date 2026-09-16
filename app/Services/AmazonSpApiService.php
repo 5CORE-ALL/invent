@@ -44,6 +44,13 @@ class AmazonSpApiService
         $this->awsSecretKey = config('services.amazon_sp.aws_secret_key');
         $this->endpoint = 'https://sellingpartnerapi-na.amazon.com';
     }
+
+    /**
+     * Last successful Listings Item GET, keyed by normalized seller SKU.
+     *
+     * @var array<string, array{amazon_sku: string, product_type: ?string, asin: ?string}>
+     */
+    private array $listingTargetCache = [];
     
     /**
      * Force refresh access token by clearing cache and getting new one
@@ -424,6 +431,7 @@ class AmazonSpApiService
     {
         $existing['SPRICE_STATUS'] = 'error';
         $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+        $existing['PUSH_PRC_STATUS'] = 'error';
         $existing['AMAZON_PUSH_ERROR'] = mb_substr($error, 0, 500);
 
         return $existing;
@@ -612,6 +620,9 @@ class AmazonSpApiService
                 // Get product type (only on first attempt)
                 if ($productType === null) {
                     $productType = $this->getAmazonProductType($sku, $amazonSku, $accessToken);
+                    if (empty($productType)) {
+                        $productType = $this->fallbackProductTypeForPricePatch($sku, $amazonSku, $accessToken);
+                    }
                     if (empty($productType)) {
                         Log::error("Amazon Price Update: Product type not found", [
                             'sku' => $sku,
@@ -1458,6 +1469,14 @@ class AmazonSpApiService
                     'Content-Type' => 'application/json',
                 ])->timeout(30)->get($url);
 
+                if ($response->status() === 429) {
+                    usleep(400000);
+                    $response = Http::withHeaders([
+                        'x-amz-access-token' => $accessToken,
+                        'Content-Type' => 'application/json',
+                    ])->timeout(30)->get($url);
+                }
+
                 if (in_array($response->status(), [401, 403], true)) {
                     Log::error('Listings Items API: access denied (fix LWA token refresh or add Listings role)', [
                         'status' => $response->status(),
@@ -1484,11 +1503,17 @@ class AmazonSpApiService
                     $hasFulfillment = ! empty($data['fulfillmentAvailability']);
                     if ($hasSummaries || $hasAttributes || $hasProductTypes || $hasSkuField
                         || $hasOffers || $hasFulfillment) {
+                        $foundType = $this->extractProductTypeFromListingJson($data);
+                        $foundAsin = $this->extractAsinFromListingJson($data);
+                        $this->rememberListingTarget($sku, $skuVariation, $foundType, $foundAsin);
+                        $this->rememberListingTarget($skuVariation, $skuVariation, $foundType, $foundAsin);
                         Log::info('Found matching SKU format in Amazon', [
                             'original_sku' => $sku,
                             'amazon_sku' => $skuVariation,
                             'has_summaries' => $hasSummaries,
                             'has_attributes' => $hasAttributes,
+                            'product_type' => $foundType,
+                            'asin' => $foundAsin,
                         ]);
                         return $skuVariation;
                     }
@@ -1583,7 +1608,13 @@ class AmazonSpApiService
         }
 
         if ($bestSku && empty($bestType)) {
-            $asin = $this->lookupAsinFromListingsReport($internalSku);
+            $bestType = $this->resolveProductTypeFromCaches($internalSku, $bestSku);
+        }
+
+        if ($bestSku && empty($bestType)) {
+            $asin = ($this->cachedListingTarget($bestSku) ?? [])['asin']
+                ?? ($this->cachedListingTarget($internalSku) ?? [])['asin']
+                ?? $this->lookupAsinFromListingsReport($internalSku);
             if ($asin) {
                 $catalog = $this->getCatalogItemByAsin($asin);
                 $bestType = $this->extractProductTypeFromListingJson(is_array($catalog) ? $catalog : []);
@@ -1613,7 +1644,9 @@ class AmazonSpApiService
             return null;
         }
 
-        $marketplaceId = rawurlencode((string) (config('services.amazon_sp.marketplace_id') ?: 'ATVPDKIKX0DER'));
+        // Price PATCH always uses ATVPDKIKX0DER. A different .env marketplace here
+        // 404s the listing even when findAmazonSkuFormat already found it on US.
+        $marketplaceId = rawurlencode('ATVPDKIKX0DER');
         $included = rawurlencode('summaries,productTypes,attributes');
         $url = $this->endpoint.'/listings/2021-08-01/items/'.$sellerId.'/'.rawurlencode($amazonSku)
             .'?marketplaceIds='.$marketplaceId.'&includedData='.$included;
@@ -1624,13 +1657,40 @@ class AmazonSpApiService
                 'Content-Type' => 'application/json',
             ])->timeout(30)->get($url);
 
+            if ($response->status() === 429) {
+                usleep(400000);
+                $response = Http::withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->get($url);
+            }
+
             if (! $response->successful()) {
+                Log::warning('fetchListingProductType: listings GET failed', [
+                    'amazon_sku' => $amazonSku,
+                    'status' => $response->status(),
+                    'body' => $response->json(),
+                ]);
+
                 return null;
             }
 
-            return $this->extractProductTypeFromListingJson($response->json() ?? []);
+            $data = $response->json() ?? [];
+            $type = $this->extractProductTypeFromListingJson(is_array($data) ? $data : []);
+            $asin = $this->extractAsinFromListingJson(is_array($data) ? $data : []);
+            $this->rememberListingTarget($amazonSku, $amazonSku, $type, $asin);
+            if (! $type) {
+                Log::warning('fetchListingProductType: listing has no productType', [
+                    'amazon_sku' => $amazonSku,
+                    'asin' => $asin,
+                    'summary_keys' => array_keys($data['summaries'][0] ?? []),
+                    'has_productTypes' => ! empty($data['productTypes']),
+                ]);
+            }
+
+            return $type;
         } catch (\Throwable $e) {
-            Log::debug('fetchListingProductType failed', ['amazon_sku' => $amazonSku, 'error' => $e->getMessage()]);
+            Log::warning('fetchListingProductType failed', ['amazon_sku' => $amazonSku, 'error' => $e->getMessage()]);
 
             return null;
         }
@@ -1641,41 +1701,229 @@ class AmazonSpApiService
      */
     private function extractProductTypeFromListingJson(array $data): ?string
     {
-        $fromSummary = trim((string) ($data['summaries'][0]['productType'] ?? ''));
-        if ($fromSummary !== '') {
-            return $fromSummary;
+        foreach ($data['summaries'] ?? [] as $summary) {
+            if (! is_array($summary)) {
+                continue;
+            }
+            foreach (['productType', 'product_type'] as $key) {
+                $fromSummary = trim((string) ($summary[$key] ?? ''));
+                if ($fromSummary !== '') {
+                    return $fromSummary;
+                }
+            }
         }
 
-        $fromTypes = trim((string) ($data['productTypes'][0]['productType'] ?? ''));
-        if ($fromTypes !== '') {
-            return $fromTypes;
+        foreach ($data['productTypes'] ?? [] as $pt) {
+            if (is_string($pt) && trim($pt) !== '') {
+                return trim($pt);
+            }
+            if (! is_array($pt)) {
+                continue;
+            }
+            $fromTypes = trim((string) ($pt['productType'] ?? $pt['product_type'] ?? ''));
+            if ($fromTypes !== '') {
+                return $fromTypes;
+            }
+        }
+
+        $attrs = $data['attributes'] ?? [];
+        if (is_array($attrs)) {
+            $fromAttr = $this->scalarFromAmazonAttribute(
+                $attrs['product_type'] ?? $attrs['productType'] ?? null
+            );
+            if ($fromAttr !== null && $fromAttr !== '') {
+                return $fromAttr;
+            }
         }
 
         return null;
     }
 
+    private function extractAsinFromListingJson(array $data): ?string
+    {
+        foreach ($data['summaries'] ?? [] as $summary) {
+            if (! is_array($summary)) {
+                continue;
+            }
+            $asin = trim((string) ($summary['asin'] ?? $summary['asin1'] ?? ''));
+            if ($asin !== '') {
+                return $asin;
+            }
+        }
+
+        foreach ($data['identifiers'] ?? [] as $block) {
+            if (! is_array($block)) {
+                continue;
+            }
+            foreach ($block['identifiers'] ?? [] as $id) {
+                if (! is_array($id)) {
+                    continue;
+                }
+                $type = strtoupper((string) ($id['identifierType'] ?? $id['type'] ?? ''));
+                $value = trim((string) ($id['identifier'] ?? $id['value'] ?? ''));
+                if ($type === 'ASIN' && $value !== '') {
+                    return $value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function scalarFromAmazonAttribute(mixed $raw): ?string
+    {
+        if (is_string($raw)) {
+            $trim = trim($raw);
+
+            return $trim !== '' ? $trim : null;
+        }
+        if (! is_array($raw) || $raw === []) {
+            return null;
+        }
+        if (isset($raw['value']) && is_scalar($raw['value'])) {
+            $trim = trim((string) $raw['value']);
+
+            return $trim !== '' ? $trim : null;
+        }
+        $first = $raw[0] ?? null;
+        if (is_string($first)) {
+            $trim = trim($first);
+
+            return $trim !== '' ? $trim : null;
+        }
+        if (is_array($first) && isset($first['value']) && is_scalar($first['value'])) {
+            $trim = trim((string) $first['value']);
+
+            return $trim !== '' ? $trim : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{amazon_sku: string, product_type: ?string, asin: ?string}|null
+     */
+    private function cachedListingTarget(string $sku): ?array
+    {
+        $key = strtoupper($this->normalizeListingsSellerSku($sku));
+
+        return $key !== '' ? ($this->listingTargetCache[$key] ?? null) : null;
+    }
+
+    private function rememberListingTarget(string $key, string $amazonSku, ?string $productType, ?string $asin): void
+    {
+        $norm = strtoupper($this->normalizeListingsSellerSku($key));
+        if ($norm === '') {
+            return;
+        }
+        $prev = $this->listingTargetCache[$norm] ?? [];
+        $this->listingTargetCache[$norm] = [
+            'amazon_sku' => $amazonSku,
+            'product_type' => $productType ?: ($prev['product_type'] ?? null),
+            'asin' => $asin ?: ($prev['asin'] ?? null),
+        ];
+    }
+
+    private function resolveProductTypeFromCaches(string $internalSku, ?string $amazonSku = null): ?string
+    {
+        foreach (array_filter([$amazonSku, $internalSku]) as $key) {
+            $cached = $this->cachedListingTarget((string) $key);
+            if (! empty($cached['product_type'])) {
+                return $cached['product_type'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Last-resort product type for a price-only Listings PATCH.
+     */
+    private function fallbackProductTypeForPricePatch(string $sku, string $amazonSku, string $accessToken): ?string
+    {
+        $fromCache = $this->resolveProductTypeFromCaches($sku, $amazonSku);
+        if ($fromCache) {
+            return $fromCache;
+        }
+
+        foreach (array_filter([$amazonSku, $sku]) as $key) {
+            $fromReport = $this->lookupListingMetaFromReport((string) $key)['product_type'] ?? null;
+            if ($fromReport && preg_match('/^[A-Z][A-Z0-9_]+$/', $fromReport)) {
+                return $fromReport;
+            }
+        }
+
+        $asin = ($this->cachedListingTarget($amazonSku) ?? [])['asin']
+            ?? ($this->cachedListingTarget($sku) ?? [])['asin']
+            ?? $this->lookupAsinFromListingsReport($amazonSku)
+            ?? $this->lookupAsinFromListingsReport($sku);
+        if ($asin) {
+            $catalog = $this->getCatalogItemByAsin($asin);
+            $fromCatalog = $this->extractProductTypeFromListingJson(is_array($catalog) ? $catalog : []);
+            if ($fromCatalog) {
+                $this->rememberListingTarget($sku, $amazonSku, $fromCatalog, $asin);
+                $this->rememberListingTarget($amazonSku, $amazonSku, $fromCatalog, $asin);
+
+                return $fromCatalog;
+            }
+        }
+
+        Log::warning('Amazon Price Update: using PRODUCT fallback for price PATCH', [
+            'sku' => $sku,
+            'amazon_sku' => $amazonSku,
+            'asin' => $asin,
+        ]);
+
+        return 'PRODUCT';
+    }
+
+    /**
+     * @return array{asin: ?string, product_type: ?string}
+     */
+    private function lookupListingMetaFromReport(string $sku): array
+    {
+        $empty = ['asin' => null, 'product_type' => null];
+        if (! Schema::hasTable('amazon_listings_raw') || ! Schema::hasColumn('amazon_listings_raw', 'seller_sku')) {
+            return $empty;
+        }
+
+        $sku = $this->normalizeListingsSellerSku($sku);
+        if ($sku === '') {
+            return $empty;
+        }
+
+        $noSpace = str_replace([' ', "\xc2\xa0", '-', '_'], '', $sku);
+        $query = DB::table('amazon_listings_raw')
+            ->where(function ($q) use ($sku, $noSpace) {
+                $q->where('seller_sku', $sku)
+                    ->orWhere('seller_sku', $sku.' FBA')
+                    ->orWhere('seller_sku', $sku.' FBM')
+                    ->orWhere('seller_sku', 'like', $sku.' %')
+                    ->orWhereRaw('REPLACE(REPLACE(REPLACE(seller_sku, " ", ""), "-", ""), "_", "") = ?', [$noSpace]);
+            })
+            ->orderByRaw('CASE WHEN seller_sku = ? THEN 0 WHEN seller_sku = ? THEN 1 ELSE 2 END', [$sku, $sku.' FBA']);
+
+        $select = ['asin1'];
+        if (Schema::hasColumn('amazon_listings_raw', 'product_type')) {
+            $select[] = 'product_type';
+        }
+        $row = $query->first($select);
+        if (! $row) {
+            return $empty;
+        }
+
+        $asin = trim((string) ($row->asin1 ?? ''));
+        $type = trim((string) ($row->product_type ?? ''));
+
+        return [
+            'asin' => $asin !== '' ? $asin : null,
+            'product_type' => $type !== '' ? $type : null,
+        ];
+    }
+
     private function lookupAsinFromListingsReport(string $sku): ?string
     {
-        if (! Schema::hasTable('amazon_listings_raw') || ! Schema::hasColumn('amazon_listings_raw', 'seller_sku')) {
-            return null;
-        }
-
-        $sku = trim($sku);
-        if ($sku === '') {
-            return null;
-        }
-
-        $row = DB::table('amazon_listings_raw')
-            ->where('seller_sku', $sku)
-            ->orWhere('seller_sku', $sku.' FBA')
-            ->orWhere('seller_sku', $sku.' FBM')
-            ->orWhere('seller_sku', 'like', $sku.' %')
-            ->orderByRaw('CASE WHEN seller_sku = ? THEN 0 WHEN seller_sku = ? THEN 1 ELSE 2 END', [$sku, $sku.' FBA'])
-            ->value('asin1');
-
-        $asin = trim((string) $row);
-
-        return $asin !== '' ? $asin : null;
+        return $this->lookupListingMetaFromReport($sku)['asin'];
     }
 
     public function getAmazonProductType($sku, $amazonSku = null, $accessToken = null)
@@ -1686,6 +1934,11 @@ class AmazonSpApiService
                 Log::warning('getAmazonProductType: Empty SKU provided');
 
                 return null;
+            }
+
+            $fromCache = $this->resolveProductTypeFromCaches($sku, $amazonSku);
+            if ($fromCache) {
+                return $fromCache;
             }
 
             if (empty($accessToken)) {
@@ -1705,8 +1958,11 @@ class AmazonSpApiService
             }
 
             $resolved = $this->resolveAmazonListingTarget($sku, $accessToken);
+            if (! empty($resolved['product_type'])) {
+                return $resolved['product_type'];
+            }
 
-            return $resolved['product_type'] ?: null;
+            return $this->resolveProductTypeFromCaches($sku, $amazonSku ?: ($resolved['amazon_sku'] ?? null));
         } catch (\Exception $e) {
             Log::error('getAmazonProductType: Exception', [
                 'sku' => $sku,

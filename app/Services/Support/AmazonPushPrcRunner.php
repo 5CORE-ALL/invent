@@ -4,6 +4,7 @@ namespace App\Services\Support;
 
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonDataView;
 use App\Services\AmazonSpApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -148,7 +149,6 @@ class AmazonPushPrcRunner
                         'sku' => $sku,
                         'sprice' => $task['effective'] ?? $task['std'],
                         'prmt_pct' => $task['prmt'] ?? 0,
-                        'record_push_prc' => 1,
                     ]);
                     $saveRes = $controller->saveSpriceToDatabase($saveReq);
                     if (method_exists($saveRes, 'getStatusCode') && $saveRes->getStatusCode() >= 400) {
@@ -191,6 +191,10 @@ class AmazonPushPrcRunner
                 }
             }
 
+            if ($ok) {
+                $this->recordPushPrcLocal($sku, (float) $target);
+            }
+
             $this->store->update(function (array $state) use ($index, $sku, $ok, $error, $skipMsg) {
                 if (! isset($state['tasks'][$index]) || ! is_array($state['tasks'][$index])) {
                     return $state;
@@ -227,6 +231,32 @@ class AmazonPushPrcRunner
 
             // Brief pause between Amazon API calls
             usleep(400000);
+        }
+    }
+
+    private function recordPushPrcLocal(string $sku, float $value): void
+    {
+        if ($value <= 0) {
+            return;
+        }
+        try {
+            $view = AmazonDataView::firstOrNew(['sku' => strtoupper(trim($sku))]);
+            $existing = is_array($view->value)
+                ? $view->value
+                : (json_decode($view->value ?? '{}', true) ?? []);
+            $existing['PUSH_PRC_STATUS'] = 'pushed';
+            $existing['PUSH_PRC_VALUE'] = round($value, 2);
+            $existing['PUSH_PRC_PUSHED_AT'] = now()->toDateTimeString();
+            if (! $view->exists) {
+                $view->sku = strtoupper(trim($sku));
+            }
+            $view->value = $existing;
+            $view->save();
+        } catch (\Throwable $e) {
+            Log::warning('Amazon Push Prc: could not stamp PUSH_PRC_STATUS', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
