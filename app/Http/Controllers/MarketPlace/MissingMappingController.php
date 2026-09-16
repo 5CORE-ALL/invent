@@ -95,6 +95,7 @@ class MissingMappingController extends Controller
             $slug === 'temu2' => 'Temu 2 Inv',
             $slug === 'shein' => 'Shein Inv',
             $slug === 'pls' => 'PLS Inv',
+            in_array($slug, ['b5cb2b', 'business5coreb2b'], true) => 'B2B Inv',
             default => 'Channel Inv',
         };
 
