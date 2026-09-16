@@ -29,6 +29,7 @@ use App\Models\WayfairListingStatus;
 use App\Models\AlibabaMetric;
 use App\Models\AliexpressMetric;
 use App\Models\ProductMaster;
+use App\Models\B5cB2bProduct;
 use App\Models\PurchasingPowerProduct;
 use App\Models\TopDawgProduct;
 
@@ -377,6 +378,14 @@ class ChannelListingRegistry
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
             ],
+            'b5cb2b' => [
+                'dataView' => null,
+                'status' => null,
+                'listed' => ['type' => 'custom', 'method' => 'listedB5cB2b'],
+                'id_field' => 'listing_id',
+                'buyer_tpl' => null,
+                'seller_tpl' => null,
+            ],
         ];
     }
 
@@ -398,6 +407,9 @@ class ChannelListingRegistry
             'shopifyb2b' => 'shopifywholesale',
             'shopifywholesaleds' => 'shopifywholesale',
             'newegg' => 'neweggb2c',
+            'b5cb2b' => 'b5cb2b',
+            'business5coreb2b' => 'b5cb2b',
+            'business5core(b2b)' => 'b5cb2b',
         ];
         $resolved = $aliases[$normalized] ?? $normalized;
 
@@ -951,6 +963,46 @@ class ChannelListingRegistry
                     }
                 });
         }
+
+        return self::listedMapFromByNorm($skus, $byNorm);
+    }
+
+    /**
+     * Business 5 Core (B2B) Listed = SKU on the Laravel store catalog (b5c_b2b_products).
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedB5cB2b(array $skus): array
+    {
+        try {
+            app(\App\Services\MarketplaceManager\MissingListingCatalogRefresh::class)->refreshChannel('b5cb2b');
+        } catch (\Throwable $e) {
+            // use current catalog
+        }
+
+        $wantedNorm = self::wantedNormalizedSkus($skus);
+        if ($wantedNorm === [] || ! class_exists(B5cB2bProduct::class) || ! \Illuminate\Support\Facades\Schema::hasTable('b5c_b2b_products')) {
+            return [];
+        }
+
+        $byNorm = [];
+        B5cB2bProduct::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(500, function ($rows) use (&$byNorm, $wantedNorm) {
+                foreach ($rows as $row) {
+                    $sku = trim((string) $row->sku);
+                    if ($sku === '' || MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
+                        continue;
+                    }
+                    $id = $row->listing_id !== null && (string) $row->listing_id !== ''
+                        ? (string) $row->listing_id
+                        : $sku;
+                    self::putListedId($byNorm, $wantedNorm, $sku, $id);
+                }
+            });
 
         return self::listedMapFromByNorm($skus, $byNorm);
     }

@@ -31,8 +31,9 @@ final class MarketplaceListingQtyMatchService
             'tiktok', 'tiktokshop' => 'tiktok',
             'tiktok2', 'tiktokshop2' => 'tiktok2',
             'newegg', 'neweggb2c' => 'newegg',
+            'b5cb2b', 'business5coreb2b' => 'b5cb2b',
             'temu', 'temu2', 'shein', 'aliexpress', 'pls', 'wayfair', 'faire',
-            'topdawg', 'amazon', 'reverb', 'doba', 'purchasingpower', 'alibaba', 'b5cb2b' => $slug,
+            'topdawg', 'amazon', 'reverb', 'doba', 'purchasingpower', 'alibaba' => $slug,
             default => null,
         };
     }
