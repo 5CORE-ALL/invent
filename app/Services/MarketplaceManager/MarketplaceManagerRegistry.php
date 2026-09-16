@@ -302,6 +302,14 @@ class MarketplaceManagerRegistry
         return array_column(self::channels(), 'slug');
     }
 
+    /**
+     * Route where() pattern for Marketplace Manager / marketplace/{slug} URLs.
+     */
+    public static function routePattern(): string
+    {
+        return implode('|', self::slugs());
+    }
+
     public static function find(string $slug): ?array
     {
         foreach (self::channels() as $channel) {

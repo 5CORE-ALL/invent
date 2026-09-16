@@ -827,16 +827,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/b5cb2b/sync-inventory', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'syncInventoryNow'])->name('b5cb2b.sync.inventory');
         Route::post('/b5cb2b/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'syncMismatchInventoryNow'])->name('b5cb2b.sync.mismatch.inventory');
         Route::post('/b5cb2b/sync-tracking', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'syncTrackingNow'])->name('b5cb2b.sync.tracking');
+        Route::get('/b5cb2b', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
+            ->defaults('marketplace', 'b5cb2b');
         Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
             ->name('show')
-            ->where('marketplace', 'amazon|aliexpress|alibaba|reverb|newegg|shein|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|ebay1|ebay2|ebay3|faire|tiktok|tiktok2|pls|b5cb2b');
+            ->where('marketplace', \App\Services\MarketplaceManager\MarketplaceManagerRegistry::routePattern());
     });
 
     // Faire OAuth redirect (must match FAIRE_REDIRECT_URL)
     Route::get('/faire/callback', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'oauthCallback'])->name('faire.oauth.callback');
 
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg, shein, ebay2, ebay3, faire)
-    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|aliexpress|alibaba|newegg|shein|ebay1|ebay2|ebay3|faire|tiktok|tiktok2|pls|b5cb2b'])->group(function () {
+    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => \App\Services\MarketplaceManager\MarketplaceManagerRegistry::routePattern().'|ebay|walmart'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/products/shopify-search', [\App\Http\Controllers\MarketplaceController::class, 'searchShopifySkus'])->name('marketplace.products.shopify.search');
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');
