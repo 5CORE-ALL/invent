@@ -60,6 +60,9 @@ class VeeqoShopifyFulfillmentService
 
     protected int $fulfillNest = 0;
 
+    /** Current Shopify REST order id so 13-digit TikTok/Doba ids are not dropped. */
+    protected string $shopifyOrderRestId = '';
+
     public function __construct(
         protected VeeqoApiService $veeqo,
         protected GofoExpressService $gofo,
@@ -292,6 +295,7 @@ class VeeqoShopifyFulfillmentService
         string $marketplace = ''
     ): array {
         $shopifyOrderId = trim($shopifyOrderId);
+        $this->rememberShopifyOrderRestId($shopifyOrderId);
         if ($shopifyOrderId === '' || str_starts_with($shopifyOrderId, 'manual')) {
             return [
                 'success' => false,
@@ -1099,7 +1103,7 @@ class VeeqoShopifyFulfillmentService
                 }
                 $skuPasses = $skus !== [] ? $skus : [''];
                 $checked++;
-                $cacheKey = 'mm_fetch_tracking_shopify_v3:'.$shopifyId;
+                $cacheKey = 'mm_fetch_tracking_shopify_v4:'.$shopifyId;
                 $orderLabel = trim((string) ($order['name'] ?? '')).' '.($marketplace !== '' ? $marketplace : 'marketplace');
                 $isRecent = $this->shopifyOrderIsRecent($order);
                 if (! $fresh && ! $isRecent && Cache::has($cacheKey)) {
@@ -1554,6 +1558,9 @@ class VeeqoShopifyFulfillmentService
      */
     protected function marketplaceIdentityFromShopifyOrder(array $order): array
     {
+        if (! empty($order['id'])) {
+            $this->rememberShopifyOrderRestId((string) $order['id']);
+        }
         $tagsRaw = (string) ($order['tags'] ?? '');
         $note = (string) ($order['note'] ?? '');
         $rawHay = $tagsRaw.' '.$note;
@@ -2618,22 +2625,36 @@ class VeeqoShopifyFulfillmentService
         return $n !== '' && (bool) preg_match('/^\d{5,10}$/', $n);
     }
 
+    protected function rememberShopifyOrderRestId(string $shopifyOrderId): void
+    {
+        $this->shopifyOrderRestId = preg_match('/^\d{13}$/', trim($shopifyOrderId)) === 1
+            ? trim($shopifyOrderId)
+            : '';
+    }
+
     /**
      * Shopify Admin REST ids are 13 digits (e.g. 7159464132845).
-     * Doba order nos are 14 digits (YYMMDD…) and must not be dropped.
+     * TikTok / Doba marketplace ids are also 13 digits and must be kept unless
+     * they are this order's own Shopify REST id.
      */
     protected function isShopifyInternalIdRef(string $ref): bool
     {
-        $n = $this->normalizeOrderRef($ref);
-        if ($n === '') {
+        return self::isShopifyAdminRestId($ref, $this->shopifyOrderRestId);
+    }
+
+    public static function isShopifyAdminRestId(string $ref, string $shopifyOrderId = ''): bool
+    {
+        $n = strtolower(preg_replace('/\s+/', '', ltrim(trim($ref), '#')) ?? '');
+        if ($n === '' || preg_match('/^\d{13}$/', $n) !== 1) {
             return false;
         }
         // Doba / dated marketplace ids: 26083068732127
-        if (preg_match('/^2\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{4,}$/', $n)) {
+        if (preg_match('/^2\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{4,}$/', $n) === 1) {
             return false;
         }
+        $shopifyId = preg_replace('/\D+/', '', $shopifyOrderId) ?? '';
 
-        return (bool) preg_match('/^\d{13}$/', $n);
+        return strlen($shopifyId) === 13 && $n === $shopifyId;
     }
 
     /**
@@ -3438,15 +3459,32 @@ class VeeqoShopifyFulfillmentService
                 continue;
             }
             $status = strtolower((string) ($fo['status'] ?? ''));
-            if (! in_array($status, ['open', 'in_progress', 'scheduled', 'incomplete'], true)) {
+            if (! in_array($status, ['open', 'in_progress', 'scheduled', 'incomplete', 'on_hold'], true)) {
                 continue;
             }
             $actions = $this->shopifyFulfillmentActions($fo);
             $canCreate = $actions === [] || in_array('create_fulfillment', $actions, true);
             $canMove = in_array('move', $actions, true);
             $foId = (int) $fo['id'];
+            $didCancelRequest = false;
 
-            if ($forceMove || (! $canCreate && $canMove)) {
+            if (! $canCreate && in_array('cancel_fulfillment_request', $actions, true)) {
+                $cancelled = $this->cancelShopifyFulfillmentRequest($storeUrl, $token, $foId);
+                if (is_array($cancelled) && ! empty($cancelled['id'])) {
+                    $fo = $cancelled;
+                    $foId = (int) $fo['id'];
+                    $actions = $this->shopifyFulfillmentActions($fo);
+                    $canCreate = $actions === [] || in_array('create_fulfillment', $actions, true);
+                    $canMove = in_array('move', $actions, true);
+                    $status = strtolower((string) ($fo['status'] ?? $status));
+                    $didCancelRequest = true;
+                } elseif ($cancelled !== null) {
+                    $didCancelRequest = true;
+                    $canMove = true;
+                }
+            }
+
+            if ($forceMove || (! $canCreate && ($canMove || $didCancelRequest))) {
                 if ($locationId === null) {
                     $locationId = $this->shopifyMerchantLocationId($storeUrl, $token, $fo);
                 }
@@ -3457,8 +3495,19 @@ class VeeqoShopifyFulfillmentService
                         $foId = (int) $fo['id'];
                         $actions = $this->shopifyFulfillmentActions($fo);
                         $canCreate = $actions === [] || in_array('create_fulfillment', $actions, true);
+                        $status = strtolower((string) ($fo['status'] ?? $status));
                     }
                 }
+            }
+
+            if ($status === 'on_hold' || in_array('release_hold', $actions, true)) {
+                if ($this->releaseShopifyFulfillmentHold($storeUrl, $token, $foId)) {
+                    $status = 'open';
+                }
+            }
+
+            if ($status === 'on_hold' && ! $canCreate) {
+                continue;
             }
 
             if (! $canCreate && $actions !== []) {
@@ -3612,6 +3661,48 @@ class VeeqoShopifyFulfillmentService
     /**
      * @return array<string, mixed>|null
      */
+    /**
+     * Pull a TikTok/Mirakl (or other 3PL) request back so Admin can fulfill it.
+     *
+     * @return array<string, mixed>|null  Reloaded FO, empty array if cancel succeeded without payload, null on failure
+     */
+    protected function cancelShopifyFulfillmentRequest(string $storeUrl, string $token, int $fulfillmentOrderId): ?array
+    {
+        if ($fulfillmentOrderId < 1) {
+            return null;
+        }
+
+        try {
+            $res = $this->shopifyApi(
+                $storeUrl,
+                $token,
+                'POST',
+                "fulfillment_orders/{$fulfillmentOrderId}/fulfillment_request/cancel.json"
+            );
+            if ($res->successful()) {
+                $replacement = $res->json('replacement_fulfillment_order');
+                if (is_array($replacement) && ! empty($replacement['id'])) {
+                    return $replacement;
+                }
+                $fo = $res->json('fulfillment_order');
+
+                return is_array($fo) && ! empty($fo['id']) ? $fo : [];
+            }
+            Log::info('VeeqoShopifyFulfillmentService: fulfillment request cancel failed', [
+                'fulfillment_order_id' => $fulfillmentOrderId,
+                'status' => $res->status(),
+                'body' => mb_substr((string) $res->body(), 0, 200),
+            ]);
+        } catch (\Throwable $e) {
+            Log::info('VeeqoShopifyFulfillmentService: fulfillment request cancel exception', [
+                'fulfillment_order_id' => $fulfillmentOrderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
+    }
+
     protected function moveShopifyFulfillmentOrder(string $storeUrl, string $token, int $fulfillmentOrderId, int $locationId): ?array
     {
         if ($fulfillmentOrderId < 1 || $locationId < 1) {
@@ -4514,7 +4605,7 @@ class VeeqoShopifyFulfillmentService
 
     protected function autoFetchCacheKey(string $marketplace, int $orderId, string $kind): string
     {
-        return 'mm_fetch_tracking_v3_'.$kind.':'.$marketplace.':'.$orderId;
+        return 'mm_fetch_tracking_v4_'.$kind.':'.$marketplace.':'.$orderId;
     }
 
     /**
