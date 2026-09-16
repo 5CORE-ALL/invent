@@ -192,6 +192,69 @@ class ChannelPushSpriceJobStore
         return ['state' => $state, 'mode' => 'create'];
     }
 
+    /**
+     * Catalog reload: keep already-finished / in-flight tasks, drop leftover
+     * pending SKUs that are no longer pushable (INV=0, Price = S PRC, etc.).
+     *
+     * @param  list<array<string, mixed>>  $tasks
+     * @return array{state: array, mode: string}
+     */
+    public function replacePendingWith(array $tasks, string $source = 'catalog'): array
+    {
+        $normalized = $this->normalizeTasks($tasks);
+        $current = $this->load();
+        if ($this->isActive($current) && $this->isStale($current, 180)) {
+            $this->forceStop('Cleared a stale S PRC push job (no worker was processing it).');
+            $current = $this->load();
+        }
+
+        if (! $this->isActive($current)) {
+            $state = $this->create($normalized, $source !== '' ? $source : 'catalog');
+
+            return ['state' => $state, 'mode' => 'create'];
+        }
+
+        $state = $this->update(function (array $state) use ($normalized) {
+            $keep = [];
+            $seen = [];
+            foreach ($state['tasks'] ?? [] as $existing) {
+                if (! is_array($existing)) {
+                    continue;
+                }
+                $st = (string) ($existing['status'] ?? 'pending');
+                if (in_array($st, ['pending', 'queued'], true)) {
+                    continue;
+                }
+                $keep[] = $existing;
+                $key = strtoupper((string) ($existing['sku'] ?? ''));
+                if ($key !== '') {
+                    $seen[$key] = true;
+                }
+            }
+
+            $added = 0;
+            foreach ($normalized as $task) {
+                $key = strtoupper((string) ($task['sku'] ?? ''));
+                if ($key === '' || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $keep[] = $task;
+                $added++;
+            }
+
+            $state['tasks'] = $keep;
+            $state['total'] = count($keep);
+            $state['status'] = 'running';
+            $state['finished_at'] = null;
+            $state['last_message'] = 'Reload queue: kept finished, queued '.$added.' current S PRC ≠ Price SKU(s)';
+
+            return $state;
+        });
+
+        return ['state' => $state, 'mode' => 'replace'];
+    }
+
     public function update(callable $callback): array
     {
         $this->ensureDirectory();

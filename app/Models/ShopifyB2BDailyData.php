@@ -47,4 +47,9 @@ class ShopifyB2BDailyData extends Model
         'total_amount' => 'decimal:2',
         'quantity' => 'integer',
     ];
+
+    public function scopeCountableSales($query)
+    {
+        return $query->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled']);
+    }
 }

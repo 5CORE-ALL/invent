@@ -281,7 +281,7 @@ class ChannelTodaySalesService
             // DATE() so timestamp rows are not dropped when Carbon is bound as UTC.
             $daily = (float) DB::table($table)
                 ->whereRaw('DATE(order_date) = ?', [$ymd])
-                ->where('financial_status', '!=', 'refunded')
+                ->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled'])
                 ->selectRaw('COALESCE(SUM(total_amount), 0) as revenue')
                 ->value('revenue');
         } elseif ($isB2b) {

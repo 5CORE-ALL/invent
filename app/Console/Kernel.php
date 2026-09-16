@@ -638,7 +638,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('b5cb2b', '', true, 14))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('b5cb2b', '', true, 60))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('b5cb2b-sync-orders')

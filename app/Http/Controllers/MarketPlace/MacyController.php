@@ -18,6 +18,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\MacySkuCompetitor;
 use App\Models\LmpCompetitorHistory;
+use App\Services\ChannelLivePriceSync;
 use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
 use Illuminate\Http\Request;
@@ -1387,6 +1388,8 @@ class MacyController extends Controller
             'message' => (string) ($result['message'] ?? ''),
             'status_code' => $result['status_code'] ?? null,
             'price' => $result['price'] ?? null,
+            'pulled' => (bool) ($result['pulled'] ?? false),
+            'pulled_price' => $result['pulled_price'] ?? null,
             'capped' => (bool) ($result['capped'] ?? false),
             'amazon_price' => $result['amazon_price'] ?? null,
         ], ($result['success'] ?? false) ? 200 : 422);
@@ -1430,6 +1433,16 @@ class MacyController extends Controller
             if ($ok && $applied['capped']) {
                 $result['message'] = trim((string) ($result['message'] ?? 'Price pushed'))
                     .' (raised to Amazon $'.number_format($sprice, 2).')';
+            }
+            if ($ok) {
+                ChannelLivePriceSync::confirmAfterPush('macys', $sku, $sprice);
+                $live = app(MacysApiService::class)->pullLiveListedPrice($sku, $sprice);
+                $pulled = is_array($live) ? (float) ($live['price'] ?? 0) : 0.0;
+                $result['pulled_price'] = $pulled > 0 ? $pulled : null;
+                $result['pulled'] = $pulled > 0 && empty($live['stale']);
+                if ($result['pulled']) {
+                    $result['price'] = $pulled;
+                }
             }
 
             return $result;

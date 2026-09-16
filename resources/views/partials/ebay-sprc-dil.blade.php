@@ -29,7 +29,7 @@
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'shein'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
-        ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship'], true);
+        ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2b'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'mercari_wship', 'mercari_woship'], true);
@@ -519,12 +519,16 @@
         function ebayDgIsShopifyB2c() {
             return EBAY_DIL_GROI_CHANNEL === 'shopify_b2c';
         }
+        function ebayDgIsShopifyB2b() {
+            return EBAY_DIL_GROI_CHANNEL === 'shopify_b2b';
+        }
         function ebayDgIsMercari() {
             return EBAY_DIL_GROI_CHANNEL === 'mercari_wship'
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship';
         }
         function ebayDgUsesClearThenApply() {
             return ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
+                || ebayDgIsShopifyB2b()
                 || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsTopdawg()
                 || ebayDgIsMacys() || ebayDgIsMercari();
         }
@@ -543,7 +547,6 @@
                 || ebayDgIsFaire() || ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
                 || ebayDgIsBestbuy() || ebayDgIsNewegg() || ebayDgIsTopdawg()
                 || EBAY_DIL_GROI_CHANNEL === 'walmart'
-                || EBAY_DIL_GROI_CHANNEL === 'shopify_b2b'
                 || EBAY_DIL_GROI_CHANNEL === 'pls'
                 || EBAY_DIL_GROI_CHANNEL === 'depop'
                 || EBAY_DIL_GROI_CHANNEL === 'vinted'
@@ -797,6 +800,19 @@
                 const views = Number(d && (d.Views != null ? d.Views : d.views)) || 0;
                 return views > 0 ? (l30 / views) * 100 : 0;
             }
+            if (EBAY_DIL_GROI_CHANNEL === 'shopify_b2b') {
+                if (d && d.SCVR != null && d.SCVR !== '') {
+                    const n = Number(d.SCVR);
+                    if (isFinite(n) && n >= 0) return n;
+                }
+                if (d && d['CVR%'] != null && d['CVR%'] !== '') {
+                    const n = Number(d['CVR%']);
+                    if (isFinite(n) && n >= 0) return n;
+                }
+                const l30 = Number(d && d['B2B L30']) || 0;
+                const views = Number(d && (d.Views != null ? d.Views : d.views)) || 0;
+                return views > 0 ? (l30 / views) * 100 : 0;
+            }
             if (d && d.cvr_30 != null && d.cvr_30 !== '') {
                 const n = Number(d.cvr_30);
                 if (isFinite(n) && n >= 0) return n;
@@ -814,6 +830,11 @@
         }
         function ebayDgCvrTrend(d) {
             const cvr = ebayDgCvr30(d);
+            const hasCvr60 = !!(d && ((d.CVR_60 != null && d.CVR_60 !== '')
+                || (d.cvr_60 != null && d.cvr_60 !== '')
+                || (d.CVR_45 != null && d.CVR_45 !== '')
+                || (d.cvr_45 != null && d.cvr_45 !== '')));
+            if (ebayDgIsShopifyB2b() && !hasCvr60) return 'flat';
             const cvr60 = ebayDgCvr60(d);
             const tol = 0.1;
             if (cvr === 0 || cvr < cvr60 - tol) return 'down';

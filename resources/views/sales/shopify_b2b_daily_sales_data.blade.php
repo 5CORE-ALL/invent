@@ -85,13 +85,14 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Shopify B2B Daily Sales Data',
-        'sub_title' => 'Shopify B2B Daily Sales Data Analysis (L30)',
+        'sub_title' => 'business5core.com B2B orders (L30)',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <h4>Shopify B2B Daily Sales Data (L30)</h4>
+                <p class="text-muted small mb-2">Live orders from business5core.com /api/orders</p>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">

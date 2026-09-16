@@ -223,11 +223,17 @@ class ChannelPromoPricingController extends Controller
         }
 
         $store = ChannelPushSpriceJobStore::for($channel);
+        $replacePending = $request->boolean('replace_pending')
+            || $request->input('source') === 'catalog';
         $exclusive = $request->boolean('exclusive')
             || $request->input('source') === 'after_save';
-        $result = $exclusive
-            ? $store->createOrAppendEdited($tasks)
-            : $store->createOrAppend($tasks, (string) $request->input('source', 'manual'));
+        if ($replacePending) {
+            $result = $store->replacePendingWith($tasks, (string) $request->input('source', 'catalog'));
+        } elseif ($exclusive) {
+            $result = $store->createOrAppendEdited($tasks);
+        } else {
+            $result = $store->createOrAppend($tasks, (string) $request->input('source', 'manual'));
+        }
         $state = $result['state'];
         $mode = $result['mode'];
         if ((int) ($state['total'] ?? 0) === 0) {
@@ -404,7 +410,12 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'skus required'], 422);
         }
 
-        $results = app(\App\Services\ChannelPushedPricePullService::class)->pullSkus($channel, $skus);
+        $expected = $request->input('expected', []);
+        if (! is_array($expected)) {
+            $expected = [];
+        }
+
+        $results = app(\App\Services\ChannelPushedPricePullService::class)->pullSkus($channel, $skus, $expected);
         $ok = 0;
         $skipped = 0;
         foreach ($results as $row) {

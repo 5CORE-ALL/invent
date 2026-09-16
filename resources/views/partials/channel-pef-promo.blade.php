@@ -1326,6 +1326,7 @@
             shopify_b2b: {
                 label: 'Shopify B2B',
                 saveSpriceUrl: '/shopify-b2b/save-sprice',
+                saveSpriceBatchUrl: '/shopify-b2b/save-sprice',
                 pushPriceUrl: '/cvr-master-push-price',
                 priceField: 'Price',
                 cvrField: 'CVR%',
@@ -1334,7 +1335,7 @@
                 skuField: '(Child) sku',
                 soldField: 'B2B L30',
                 soldFieldLabel: 'B2B L30',
-                saveSpriceMode: 'sku',
+                saveSpriceMode: 'updates',
             },
             macys: {
                 label: 'Macys',
@@ -3994,8 +3995,12 @@
                 || CHANNEL_PROMO_CHANNEL === 'fb_marketplace') {
                 return chPromoSkuDil(d);
             }
-            // Shopify Dil column = (OV L30 / INV) × 100 — already stored as DIL%
-            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c' || CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
+            // Shopify B2B Dil = listing Dil (Σ OV L30 ÷ Σ INV by Parent), same as /ebay-tabulator-view.
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
+                return chPromoListingDil(d);
+            }
+            // Shopify B2C Dil column = (OV L30 / INV) × 100 — already stored as DIL%
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
                 let dil = Number(d['DIL%'] != null ? d['DIL%'] : d[chPromoCfg.dilField]);
                 if (isFinite(dil)) return dil;
                 if (inv <= 0) return 0;

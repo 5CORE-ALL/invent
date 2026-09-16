@@ -481,10 +481,11 @@ class MacysApiService
 
     /**
      * OF21 — pull the live listed price for one SKU and write macy_products / macys_price_data.
+     * If $expected is set and MCM still has the old price, keep the pushed amount locally.
      *
-     * @return array{price: float, stock: int, shop_sku: string}|null
+     * @return array{price: float, stock: int, shop_sku: string, stale?: bool}|null
      */
-    public function pullLiveListedPrice(string $sku): ?array
+    public function pullLiveListedPrice(string $sku, ?float $expected = null): ?array
     {
         $sku = trim($sku);
         $apiKey = $this->miraklMcmApiKey();
@@ -493,50 +494,14 @@ class MacysApiService
             return null;
         }
 
-        $offerSku = $this->resolveMcmOfferSkuFromOffersApi($sku, $apiKey, $baseUrl);
-        if ($offerSku === null || $offerSku === '') {
-            $offerSku = $sku;
-        }
-
-        $params = ['shop_sku' => $offerSku, 'max' => 20];
-        $shopId = config('services.macy.shop_id');
-        if ($shopId !== null && $shopId !== '') {
-            $params['shop_id'] = (int) $shopId;
-        }
-
-        $response = $this->miraklMcmGetOffers($apiKey, $baseUrl, $params);
-        if ($response !== null && $response->status() === 404 && isset($params['shop_id'])) {
-            unset($params['shop_id']);
-            $response = $this->miraklMcmGetOffers($apiKey, $baseUrl, $params);
-        }
-        if ($response === null || ! $response->successful()) {
-            $params = ['sku' => $offerSku, 'max' => 20];
-            if ($shopId !== null && $shopId !== '') {
-                $params['shop_id'] = (int) $shopId;
-            }
-            $response = $this->miraklMcmGetOffers($apiKey, $baseUrl, $params);
-        }
-        if ($response === null || ! $response->successful()) {
-            return null;
-        }
-
-        $wanted = strtoupper(trim($offerSku));
-        $skuU = strtoupper(trim($sku));
-        $match = null;
-        foreach ($response->json('offers') ?? [] as $offer) {
-            if (! is_array($offer)) {
-                continue;
-            }
-            $shop = strtoupper(trim((string) ($offer['shop_sku'] ?? '')));
-            $product = strtoupper(trim((string) ($offer['product_sku'] ?? '')));
-            if ($shop === $wanted || $shop === $skuU || $product === $wanted || $product === $skuU) {
-                $match = $offer;
-                break;
-            }
-        }
+        $match = $this->findMcmOfferForSku($sku, $apiKey, $baseUrl);
+        $offerSku = $sku;
         if ($match === null) {
-            $first = $response->json('offers.0');
-            $match = is_array($first) ? $first : null;
+            $resolved = $this->resolveMcmOfferSkuFromOffersApi($sku, $apiKey, $baseUrl);
+            if ($resolved !== null && $resolved !== '' && strcasecmp($resolved, $sku) !== 0) {
+                $offerSku = $resolved;
+                $match = $this->findMcmOfferForSku($offerSku, $apiKey, $baseUrl, $sku);
+            }
         }
         if ($match === null) {
             return null;
@@ -552,7 +517,12 @@ class MacysApiService
         $stock = isset($match['quantity']) && is_numeric($match['quantity'])
             ? (int) $match['quantity']
             : 0;
-        $listedPrice = $active ? $price : 0;
+        if ($expected === null || $expected <= 0) {
+            $expected = ChannelLivePriceSync::lookupPushed('macys', $sku);
+        }
+        $stale = $expected !== null && $expected > 0 && abs($price - (float) $expected) >= 0.05;
+        $listedPrice = $active ? ($stale ? round((float) $expected, 2) : $price) : 0;
+        $persistPrice = $stale ? round((float) $expected, 2) : $price;
         $listingStatus = $active ? 'active' : 'inactive';
 
         try {
@@ -576,8 +546,8 @@ class MacysApiService
                             ->orWhere('offer_sku', $sku);
                     })
                     ->update([
-                        'price' => $price,
-                        'original_price' => $price,
+                        'price' => $persistPrice,
+                        'original_price' => $persistPrice,
                         'activated' => $active,
                     ]);
             }
@@ -597,7 +567,54 @@ class MacysApiService
             'price' => $price,
             'stock' => $stock,
             'shop_sku' => $liveSku !== '' ? $liveSku : $sku,
+            'stale' => $stale,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function findMcmOfferForSku(string $sku, string $apiKey, string $baseUrl, ?string $alsoMatch = null): ?array
+    {
+        $params = ['shop_sku' => $sku, 'max' => 20];
+        $shopId = config('services.macy.shop_id');
+        if ($shopId !== null && $shopId !== '') {
+            $params['shop_id'] = (int) $shopId;
+        }
+
+        $response = $this->miraklMcmGetOffers($apiKey, $baseUrl, $params);
+        if ($response !== null && $response->status() === 404 && isset($params['shop_id'])) {
+            unset($params['shop_id']);
+            $response = $this->miraklMcmGetOffers($apiKey, $baseUrl, $params);
+        }
+        if ($response === null || ! $response->successful()) {
+            $params = ['sku' => $sku, 'max' => 20];
+            if ($shopId !== null && $shopId !== '') {
+                $params['shop_id'] = (int) $shopId;
+            }
+            $response = $this->miraklMcmGetOffers($apiKey, $baseUrl, $params);
+        }
+        if ($response === null || ! $response->successful()) {
+            return null;
+        }
+
+        $wanted = [strtoupper(trim($sku))];
+        if ($alsoMatch) {
+            $wanted[] = strtoupper(trim($alsoMatch));
+        }
+        foreach ($response->json('offers') ?? [] as $offer) {
+            if (! is_array($offer)) {
+                continue;
+            }
+            $shop = strtoupper(trim((string) ($offer['shop_sku'] ?? '')));
+            $product = strtoupper(trim((string) ($offer['product_sku'] ?? '')));
+            if (in_array($shop, $wanted, true) || in_array($product, $wanted, true)) {
+                return $offer;
+            }
+        }
+        $first = $response->json('offers.0');
+
+        return is_array($first) ? $first : null;
     }
 
     /**

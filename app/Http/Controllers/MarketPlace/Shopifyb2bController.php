@@ -69,8 +69,9 @@ class Shopifyb2bController extends Controller
      */
     private function getShopifyB2bL30Snapshot(): array
     {
-        $orders = ShopifyB2BDailyData::where('period', 'l30')
-            ->where('financial_status', '!=', 'refunded')
+        $orders = ShopifyB2BDailyData::query()
+            ->where('period', 'l30')
+            ->countableSales()
             ->get();
 
         if ($orders->isEmpty()) {
@@ -183,7 +184,7 @@ class Shopifyb2bController extends Controller
         // Same source as /shopify-b2b/daily-sales
         $shopifyB2BOrders = ShopifyB2BDailyData::whereIn('sku', $skus)
             ->where('period', 'l30')
-            ->where('financial_status', '!=', 'refunded')
+            ->countableSales()
             ->selectRaw('sku, SUM(quantity) as total_quantity')
             ->groupBy('sku')
             ->get()
@@ -209,10 +210,9 @@ class Shopifyb2bController extends Controller
             }
         }
 
-        $googleLmpDetails = collect();
+        $googleLmpDetails = [];
         try {
-            $googleLmpLookups = GoogleSkuCompetitor::buildGroupedLookup('google');
-            $googleLmpDetails = $googleLmpLookups['details'];
+            $googleLmpDetails = GoogleSkuCompetitor::buildLeanOfferLookup('google');
         } catch (\Throwable $e) {
             Log::warning('Shopify B2B Google LMP lookup failed: '.$e->getMessage());
         }
@@ -324,6 +324,7 @@ class Shopifyb2bController extends Controller
 
             $views = $processedItem['Views'];
             $processedItem['CVR%'] = $views > 0 ? ($b2bL30 / $views) * 100 : 0;
+            $processedItem['SCVR'] = $processedItem['CVR%'];
 
             $processedItem['googleSpent'] = 0;
             $salesL30 = $processedItem['Sales L30'];
@@ -389,49 +390,32 @@ class Shopifyb2bController extends Controller
 
             $processedItem = app(ChannelPromoPricingService::class)->applyToRow($processedItem, $promoMap, (string) $sku);
 
-            $mergedLmpEntries = collect();
             $seenLmp = [];
+            $lmpCount = 0;
+            $lowestLmpPrice = null;
             $skusForLmp = $linkedLmpSkus !== [] ? $linkedLmpSkus : [$sku];
             foreach ($skusForLmp as $linkedSku) {
                 $linkedKey = GoogleSkuCompetitor::normalizeSkuKey((string) $linkedSku);
-                $groupEntries = $googleLmpDetails->get($linkedKey);
-                if (! $groupEntries instanceof \Illuminate\Support\Collection) {
+                $groupEntries = $googleLmpDetails[$linkedKey] ?? [];
+                if ($groupEntries === []) {
                     continue;
                 }
                 foreach ($groupEntries as $comp) {
-                    $dedupeKey = GoogleSkuCompetitor::offerDedupeKey($comp);
-                    if (isset($seenLmp[$dedupeKey])) {
+                    $dedupeKey = (string) ($comp['d'] ?? '');
+                    if ($dedupeKey === '' || isset($seenLmp[$dedupeKey])) {
                         continue;
                     }
                     $seenLmp[$dedupeKey] = true;
-                    $mergedLmpEntries->push($comp);
+                    $lmpCount++;
+                    $offerPrice = (float) ($comp['p'] ?? 0);
+                    if ($offerPrice > 0 && ($lowestLmpPrice === null || $offerPrice < $lowestLmpPrice)) {
+                        $lowestLmpPrice = $offerPrice;
+                    }
                 }
             }
-            $mergedLmpEntries = GoogleSkuCompetitor::sortCollectionByNumericPrice($mergedLmpEntries);
-            $lowestLmp = GoogleSkuCompetitor::lowestFromCollection($mergedLmpEntries);
 
-            $processedItem['lmp_price'] = ($lowestLmp && is_numeric($lowestLmp->price))
-                ? round((float) $lowestLmp->price, 2)
-                : null;
-            $processedItem['lmp_link'] = $lowestLmp->product_link ?? null;
-            $processedItem['lmp_source'] = $lowestLmp->source ?? null;
-            $processedItem['lmp_title'] = $lowestLmp->product_title ?? null;
-            $processedItem['lmp_entries'] = $mergedLmpEntries->map(static function ($comp) {
-                return [
-                    'id' => $comp->id,
-                    'product_id' => $comp->product_id,
-                    'source' => $comp->source,
-                    'price' => isset($comp->price) ? round((float) $comp->price, 2) : null,
-                    'link' => $comp->product_link,
-                    'product_link' => $comp->product_link,
-                    'title' => $comp->product_title,
-                    'product_title' => $comp->product_title,
-                    'image' => $comp->image,
-                    'rating' => $comp->rating !== null ? (float) $comp->rating : null,
-                    'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
-                ];
-            })->values()->all();
-            $processedItem['lmp_entries_total'] = $mergedLmpEntries->count();
+            $processedItem['lmp_price'] = $lowestLmpPrice !== null ? round($lowestLmpPrice, 2) : null;
+            $processedItem['lmp_entries_total'] = $lmpCount;
 
             $processedItem['is_parent_summary'] = false;
             $processedItems[] = $processedItem;
@@ -495,6 +479,7 @@ class Shopifyb2bController extends Controller
                 'Sales L30' => round($sales, 2),
                 'DIL%' => $inv > 0 ? ($ovL30 / $inv) * 100 : 0,
                 'CVR%' => $views > 0 ? ($b2bL30 / $views) * 100 : 0,
+                'SCVR' => $views > 0 ? ($b2bL30 / $views) * 100 : 0,
                 'googleSpent' => $adSpend,
                 'ADS%' => $sales > 0 ? ($adSpend / $sales) * 100 : 0,
                 'SPRICE' => 0,
@@ -505,13 +490,30 @@ class Shopifyb2bController extends Controller
                 'SPRICE_STATUS' => null,
                 'linked_lmp_skus' => [],
                 'lmp_price' => null,
-                'lmp_link' => null,
-                'lmp_source' => null,
-                'lmp_title' => null,
-                'lmp_entries' => [],
                 'lmp_entries_total' => 0,
             ];
         }
+
+        $listingDilByParent = [];
+        foreach ($groupedByParent as $parent => $rows) {
+            $parentKey = trim((string) $parent);
+            if ($parentKey === '') {
+                continue;
+            }
+            $listingInv = (float) $rows->sum(fn ($r) => floatval($r['INV'] ?? 0));
+            $listingOv = (float) $rows->sum(fn ($r) => floatval($r['L30'] ?? 0));
+            $listingDilByParent[$parentKey] = $listingInv > 0 ? ($listingOv / $listingInv) * 100 : 0;
+        }
+        foreach ($finalItems as &$item) {
+            if (! empty($item['is_parent_summary'])) {
+                continue;
+            }
+            $parentKey = trim((string) ($item['Parent'] ?? ''));
+            if ($parentKey !== '' && isset($listingDilByParent[$parentKey])) {
+                $item['DIL%'] = $listingDilByParent[$parentKey];
+            }
+        }
+        unset($item);
 
         return $finalItems;
     }

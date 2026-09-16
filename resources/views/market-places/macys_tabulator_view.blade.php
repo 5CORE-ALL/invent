@@ -787,12 +787,31 @@
             return found;
         }
 
+        function macysApplyLivePriceToRow(row, price) {
+            if (!row || typeof row.getData !== 'function') return;
+            const live = Number(price) || 0;
+            if (!(live > 0)) return;
+            const patch = {
+                SPRICE_STATUS: 'pushed',
+                push_status: 'pushed',
+                SPRICE_PUSHED_VALUE: live,
+            };
+            patch['MC Price'] = live;
+            patch.price = live;
+            patch.is_missing_macy = false;
+            try { row.update(patch); } catch (e) { /* ignore */ }
+            try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
+        }
+        window.macysApplyLivePriceToRow = macysApplyLivePriceToRow;
+
         function macysApplyPushResults(results) {
+            const okSkus = [];
             (results || []).forEach(function(r) {
                 if (!r || !r.sku) return;
+                const ok = !!r.success;
+                if (ok) okSkus.push(r.sku);
                 const row = macysFindRowBySku(r.sku);
                 if (!row) return;
-                const ok = !!r.success;
                 const live = Number(r.price) || 0;
                 const patch = {
                     SPRICE_STATUS: ok ? 'pushed' : 'error',
@@ -800,14 +819,17 @@
                 };
                 if (ok && live > 0) {
                     patch.SPRICE_PUSHED_VALUE = live;
-                    if (isMacysListed(row.getData() || {})) {
-                        patch['MC Price'] = live;
-                    }
+                    patch['MC Price'] = live;
+                    patch.price = live;
+                    patch.is_missing_macy = false;
                 }
                 try { row.update(patch); } catch (e) { /* ignore */ }
                 try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
             });
             if (typeof updateSummary === 'function') updateSummary();
+            if (okSkus.length && typeof chPushSpricePullAfterPush === 'function') {
+                chPushSpricePullAfterPush(okSkus);
+            }
         }
 
         function macysPushPriceForRow(row) {

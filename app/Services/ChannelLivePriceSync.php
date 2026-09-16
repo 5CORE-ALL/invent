@@ -226,6 +226,40 @@ class ChannelLivePriceSync
         return $map;
     }
 
+    public static function lookupPushed(string $channel, string $sku): ?float
+    {
+        $channel = self::normalize($channel);
+        $key = strtoupper(trim(str_replace("\xc2\xa0", ' ', $sku)));
+        if ($key === '') {
+            return null;
+        }
+        $viewClass = self::viewClass($channel);
+        if ($viewClass === null || ! class_exists($viewClass)) {
+            return null;
+        }
+        try {
+            $row = $viewClass::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$key])
+                ->first(['value']);
+            if (! $row) {
+                return null;
+            }
+            $val = is_array($row->value)
+                ? $row->value
+                : (json_decode((string) ($row->value ?? ''), true) ?: []);
+
+            return PushedListingPrice::fromValue(is_array($val) ? $val : []);
+        } catch (Throwable $e) {
+            Log::warning('ChannelLivePriceSync lookupPushed failed', [
+                'channel' => $channel,
+                'sku' => $key,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
     /**
      * @param  array<string, float>|null  $lookup
      */

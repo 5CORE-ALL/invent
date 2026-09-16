@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Schema;
 use App\Models\MacyProduct;
 use App\Models\MacysPriceData;
 use App\Models\PurchasingPowerProduct;
+use App\Services\ChannelLivePriceSync;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -396,6 +397,7 @@ class FetchMacyProducts extends Command
         $totalUpdated = 0;
         $page = 1;
         $seenNormSkus = [];
+        $pushedLookup = ChannelLivePriceSync::lookupMap('macys');
 
         try {
             do {
@@ -459,6 +461,10 @@ class FetchMacyProducts extends Command
                     $price = $this->extractMcmOfferPrice($offer);
                     if ($price === null) {
                         continue;
+                    }
+                    $kept = ChannelLivePriceSync::preferIncoming('macys', $sku, $price, $pushedLookup);
+                    if ($kept !== null) {
+                        $price = $kept;
                     }
 
                     $inactivity = $offer['inactivity_reasons'] ?? '';

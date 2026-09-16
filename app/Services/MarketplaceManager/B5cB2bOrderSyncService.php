@@ -4,14 +4,17 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\B5cB2bOrder;
 use App\Services\Business5CoreB2bApiService;
+use App\Services\ShopifyB2BStoreOrderIngestService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class B5cB2bOrderSyncService
 {
-    public function __construct(protected Business5CoreB2bApiService $api)
-    {
+    public function __construct(
+        protected Business5CoreB2bApiService $api,
+        protected ShopifyB2BStoreOrderIngestService $dailyIngest
+    ) {
     }
 
     /**
@@ -29,7 +32,7 @@ class B5cB2bOrderSyncService
         $from = Carbon::parse($fromDate)->startOfDay()->toDateString();
 
         try {
-            $orders = $this->api->fetchAllOrders(['since' => $from]);
+            $orders = $this->fetchOrdersSince($from);
         } catch (\Throwable $e) {
             Log::warning('B5C B2B order fetch failed', ['error' => $e->getMessage()]);
 
@@ -42,6 +45,7 @@ class B5cB2bOrderSyncService
         }
 
         $upserted = 0;
+        $lines = 0;
         foreach ($orders as $order) {
             $id = (int) ($order['id'] ?? 0);
             if ($id <= 0) {
@@ -52,7 +56,7 @@ class B5cB2bOrderSyncService
                 $detail = $this->api->fetchOrder($id);
             } catch (\Throwable) {
             }
-            B5cB2bOrder::query()->updateOrCreate(
+            $row = B5cB2bOrder::query()->updateOrCreate(
                 ['store_order_id' => $id],
                 [
                     'status' => $detail['status'] ?? $order['status'] ?? null,
@@ -65,16 +69,58 @@ class B5cB2bOrderSyncService
                     'payload' => $detail,
                 ]
             );
+            $lines += $this->dailyIngest->flattenOrder($row);
             $upserted++;
         }
 
+        $this->dailyIngest->refreshPeriodLabels();
+
         return [
             'success' => true,
-            'message' => "Synced {$upserted} Business 5 Core B2B order(s).",
+            'message' => "Synced {$upserted} Business 5 Core B2B order(s), {$lines} sales line(s).",
             'upserted' => $upserted,
             'pages' => 1,
             'fetched' => $upserted,
             'stored' => $upserted,
         ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function fetchOrdersSince(string $from): array
+    {
+        $orders = $this->api->fetchAllOrders(['since' => $from]);
+        if ($orders !== []) {
+            return $orders;
+        }
+
+        $all = $this->api->fetchAllOrders();
+        if ($all === []) {
+            return [];
+        }
+
+        $fromTs = Carbon::parse($from)->startOfDay();
+        $filtered = [];
+        foreach ($all as $order) {
+            if (! is_array($order)) {
+                continue;
+            }
+            $created = $order['created_at'] ?? $order['ordered_at'] ?? null;
+            if ($created === null || $created === '') {
+                $filtered[] = $order;
+                continue;
+            }
+            try {
+                if (Carbon::parse($created)->gte($fromTs)) {
+                    $filtered[] = $order;
+                }
+            } catch (\Throwable) {
+                $filtered[] = $order;
+            }
+        }
+
+        // Store list endpoint may omit dates; keep the full catalog so sales is not empty.
+        return $filtered !== [] ? $filtered : $all;
     }
 }

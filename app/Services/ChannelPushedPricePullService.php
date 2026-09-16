@@ -23,9 +23,10 @@ class ChannelPushedPricePullService
 {
     /**
      * @param  list<string>  $skus
+     * @param  array<string, float|int|string>  $expectedBySku
      * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string,skipped?:bool}>
      */
-    public function pullSkus(string $channel, array $skus): array
+    public function pullSkus(string $channel, array $skus, array $expectedBySku = []): array
     {
         $channel = strtolower(trim($channel));
         $skus = array_values(array_unique(array_filter(array_map(static function ($s) {
@@ -34,6 +35,13 @@ class ChannelPushedPricePullService
         $skus = array_slice($skus, 0, 100);
         if ($skus === []) {
             return [];
+        }
+        $expected = [];
+        foreach ($expectedBySku as $key => $value) {
+            $skuKey = strtoupper(trim((string) $key));
+            if ($skuKey !== '' && is_numeric($value) && (float) $value > 0) {
+                $expected[$skuKey] = round((float) $value, 2);
+            }
         }
 
         if (in_array($channel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true)) {
@@ -68,7 +76,7 @@ class ChannelPushedPricePullService
         }
 
         if (in_array($channel, ['macys', 'macy'], true)) {
-            return $this->pullMacys($skus);
+            return $this->pullMacys($skus, $expected);
         }
 
         return array_map(static fn ($sku) => [
@@ -210,16 +218,19 @@ class ChannelPushedPricePullService
      * Live Macy listed price via MCM OF21 (same source as /macys-pricing MC Price).
      *
      * @param  list<string>  $skus
+     * @param  array<string, float>  $expectedBySku
      * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string}>
      */
-    private function pullMacys(array $skus): array
+    private function pullMacys(array $skus, array $expectedBySku = []): array
     {
         $api = app(MacysApiService::class);
         $out = [];
         foreach ($skus as $i => $sku) {
             try {
-                $live = $api->pullLiveListedPrice($sku);
+                $expected = $expectedBySku[strtoupper(trim($sku))] ?? null;
+                $live = $api->pullLiveListedPrice($sku, $expected);
                 $price = is_array($live) ? (float) ($live['price'] ?? 0) : 0.0;
+                $stale = is_array($live) && ! empty($live['stale']);
                 if (! ($price > 0)) {
                     $out[] = [
                         'success' => false,
@@ -228,6 +239,15 @@ class ChannelPushedPricePullService
                         'price' => null,
                         'sprice' => null,
                         'message' => 'Live Macy MCM price not returned',
+                    ];
+                } elseif ($stale) {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $sku,
+                        'marketplace' => 'macys',
+                        'price' => $price,
+                        'sprice' => null,
+                        'message' => 'MCM still catching up',
                     ];
                 } else {
                     $out[] = [

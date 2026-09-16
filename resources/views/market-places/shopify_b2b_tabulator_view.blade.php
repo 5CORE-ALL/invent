@@ -222,6 +222,39 @@
         }
         .shopify-b2b-page .card { border-radius: 10px; }
         .shopify-b2b-page .card-body { padding: 12px 14px; }
+        #lmpModal .lmp-modal-sp-box,
+        #lmpModal .lmp-sp-col-th,
+        #lmpModal .lmp-sp-cell {
+            display: none !important;
+        }
+        #lmpModal .lmp-add-one-line {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: flex-end;
+            gap: 8px;
+        }
+        #lmpModal .lmp-add-one-line .lmp-field {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+        #lmpModal .lmp-add-one-line .lmp-field-sku { flex: 0 0 130px; }
+        #lmpModal .lmp-add-one-line .lmp-field-price { flex: 0 0 90px; }
+        #lmpModal .lmp-add-one-line .lmp-field-actions {
+            display: flex;
+            gap: 4px;
+            flex: 0 0 auto;
+        }
+        #lmpModal .lmp-add-one-line .form-label {
+            font-size: 11px;
+            margin-bottom: 2px;
+        }
+        #lmpModal .lmp-add-one-line .form-control {
+            height: 32px;
+            font-size: 12px;
+        }
+        #lmpModal .lmp-add-one-line .btn {
+            height: 32px;
+        }
         .shopify-b2b-page #summary-stats {
             order: 0;
             padding: 0 !important;
@@ -378,59 +411,53 @@
         </div>
     </div>
 
-    {{-- Google LMP Competitors Modal (data from /repricer/google-search → google_sku_competitors) --}}
-    <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
+    {{-- Google LMP Competitors Modal (same as /shopify-b2c-pricing) --}}
+    <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true" data-skip-lmp-sp="1">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title">
                         <i class="fa fa-shopping-cart"></i> Google LMP Competitors for SKU: <span id="lmpSku"></span>
                     </h5>
+                    <a href="#" id="lmpOpenGoogleSearch" class="btn btn-sm btn-outline-light ms-auto me-2" target="_blank" rel="noopener">
+                        <i class="fa fa-search"></i> Open Google Search
+                    </a>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="d-flex flex-wrap gap-2 mb-3">
-                        <a href="#" id="lmpOpenGoogleSearch" class="btn btn-sm btn-outline-success" target="_blank" rel="noopener">
-                            <i class="fa fa-search"></i> Open Google Search
-                        </a>
-                    </div>
-
                     <div class="card mb-3 border-success">
-                        <div class="card-header bg-success text-white">
-                            <strong><i class="fa fa-plus-circle"></i> Add Competitor Manually</strong>
-                        </div>
-                        <div class="card-body">
-                            <form id="addGoogleLmpForm" class="row g-3">
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>SKU</strong></label>
-                                    <input type="text" class="form-control" id="addLmpSku" readonly>
+                        <div class="card-body py-2">
+                            <form id="addGoogleLmpForm" class="lmp-add-one-line">
+                                <div class="lmp-field lmp-field-sku">
+                                    <label class="form-label mb-0" for="addLmpSku">SKU</label>
+                                    <input type="text" class="form-control form-control-sm" id="addLmpSku" readonly>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>Product ID</strong> <span class="text-danger">*</span></label>
-                                    <input type="text" class="form-control" id="addLmpProductId" placeholder="Google product id" required>
+                                <div class="lmp-field">
+                                    <label class="form-label mb-0" for="addLmpProductId">Product ID <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control form-control-sm" id="addLmpProductId" placeholder="Google product id" required>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>Source</strong></label>
-                                    <input type="text" class="form-control" id="addLmpSource" placeholder="e.g. Walmart">
+                                <div class="lmp-field">
+                                    <label class="form-label mb-0" for="addLmpSource">Source</label>
+                                    <input type="text" class="form-control form-control-sm" id="addLmpSource" placeholder="e.g. Walmart">
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
-                                    <input type="number" class="form-control" id="addLmpPrice" placeholder="29.99" step="0.01" min="0.01" required>
+                                <div class="lmp-field lmp-field-price">
+                                    <label class="form-label mb-0" for="addLmpPrice">Price <span class="text-danger">*</span></label>
+                                    <input type="number" class="form-control form-control-sm" id="addLmpPrice" placeholder="29.99" step="0.01" min="0.01" required>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>Title</strong></label>
-                                    <input type="text" class="form-control" id="addLmpTitle" placeholder="Product title">
+                                <div class="lmp-field">
+                                    <label class="form-label mb-0" for="addLmpTitle">Title</label>
+                                    <input type="text" class="form-control form-control-sm" id="addLmpTitle" placeholder="Product title">
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>Link</strong></label>
-                                    <input type="url" class="form-control" id="addLmpLink" placeholder="https://...">
+                                <div class="lmp-field">
+                                    <label class="form-label mb-0" for="addLmpLink">Link</label>
+                                    <input type="url" class="form-control form-control-sm" id="addLmpLink" placeholder="https://...">
                                 </div>
-                                <div class="col-12">
-                                    <button type="submit" class="btn btn-success">
-                                        <i class="fa fa-plus"></i> Add Competitor
+                                <div class="lmp-field-actions">
+                                    <button type="submit" class="btn btn-success btn-sm" title="Add competitor">
+                                        <i class="fa fa-plus"></i>
                                     </button>
-                                    <button type="reset" class="btn btn-secondary">
-                                        <i class="fa fa-undo"></i> Clear
+                                    <button type="reset" class="btn btn-secondary btn-sm" title="Clear">
+                                        <i class="fa fa-undo"></i>
                                     </button>
                                 </div>
                             </form>
@@ -620,6 +647,10 @@
     /** Stored in DB table channel_tabulator_column_settings (shared across all users — same as Amazon). */
     const TABULATOR_COLUMN_CHANNEL = 'shopify_b2b_tabulator';
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+    const GOOGLE_LMP_DATA_URL = @json(route('google.lmp.data'));
+    const GOOGLE_LMP_ADD_URL = @json(route('google.lmp.add'));
+    const GOOGLE_LMP_DELETE_URL = @json(route('google.lmp.delete'));
+    const GOOGLE_SEARCH_URL = @json(route('repricer.google-search.index'));
     /** L30 sales + distinct order count from /shopify (shopify_b2b_daily_data with
      *  marketplace exclusions). Page-level totals — used to drive the Total
      *  Sales and Orders badges so this page agrees with /shopify and the
@@ -685,6 +716,17 @@
     }
     function shopifyB2bRowSpriceForAlert(data) {
         return shopifyB2bDisplayedSprice(data);
+    }
+    function shopifyB2bSpricePending(data) {
+        const shown = shopifyB2bDisplayedSprice(data);
+        const price = parseFloat(data && data.Price) || 0;
+        return shown > 0 && price > 0 && Math.round(shown * 100) !== Math.round(price * 100);
+    }
+    function shopifyB2bDiffComparePrice(data) {
+        const shown = shopifyB2bDisplayedSprice(data);
+        if (shopifyB2bSpricePending(data)) return shown;
+        const price = parseFloat(data && data.Price) || 0;
+        return price > 0 ? price : shown;
     }
     /** Std Prc vs B2B Price: reduce / increase → red / green. */
     function shopifyB2bStdPrcChangeDotMeta(stdPrc, comparePrice) {
@@ -1549,22 +1591,25 @@
                     field: "DIL%",
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "Listing Dil (Σ OV L30 ÷ Σ INV by Parent). Same Dil Sprc Dil uses on /ebay-tabulator-view. Red <25% · Green 25–50% · Pink 50%+.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const INV = parseFloat(rowData.INV) || 0;
-                        const OVL30 = parseFloat(rowData['L30']) || 0;
-                        
-                        if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
-                        
-                        const dil = (OVL30 / INV) * 100;
-                        let color = '';
+                        const dil = (typeof chPromoListingDil === 'function')
+                            ? chPromoListingDil(rowData)
+                            : (function() {
+                                const INV = parseFloat(rowData.INV) || 0;
+                                const OVL30 = parseFloat(rowData['L30']) || 0;
+                                return INV === 0 ? 0 : (OVL30 / INV) * 100;
+                            })();
 
-                        // Same DIL color slabs as Amazon filter: Red <25 / Green 25-50 / Pink 50%+
+                        if (!(dil > 0)) return '<span style="color: #6c757d;">0%</span>';
+
+                        let color = '';
                         if (dil < 25) color = '#a00211';
                         else if (dil >= 25 && dil < 50) color = '#28a745';
                         else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+
+                        return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as Sprc Dil">${Math.round(dil)}%</span>`;
                     },
                     width: 64,
                     minWidth: 64
@@ -1574,26 +1619,37 @@
                     field: "CVR%",
                     hozAlign: "center",
                     sorter: "number",
-                    width: 72,
+                    width: 80,
                     minWidth: 72,
+                    headerTooltip: "CVR 30 = B2B L30 ÷ Views. Arrow vs CVR 60 (same overlay rule as /ebay-tabulator-view).",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        // CVR% = B2B L30 ÷ Views (not OV L30)
                         const l30 = parseFloat(rowData['B2B L30']) || 0;
                         const views = parseFloat(rowData['Views']) || 0;
-
-                        if (views === 0) return '<span style="color: #6c757d;">0%</span>';
-
-                        const cvr = (l30 / views) * 100;
+                        const cvr = views > 0 ? (l30 / views) * 100 : (parseFloat(rowData['CVR%']) || parseFloat(rowData.SCVR) || 0);
+                        const cvr60 = parseFloat(rowData.CVR_60);
+                        const hasCvr60 = isFinite(cvr60);
+                        let arrowHtml = '';
+                        if (!isShopifyB2bParentRow(rowData) && hasCvr60) {
+                            const tol = 0.1;
+                            let arrowColor = '#ffc107';
+                            let arrowIcon = 'fa-minus';
+                            if (cvr === 0 || cvr < cvr60 - tol) {
+                                arrowColor = '#a00211';
+                                arrowIcon = 'fa-arrow-down';
+                            } else if (cvr > cvr60 + tol) {
+                                arrowColor = '#28a745';
+                                arrowIcon = 'fa-arrow-up';
+                            }
+                            arrowHtml = ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align:middle;"><i class="fas ${arrowIcon}" style="color:${arrowColor};font-size:12px;"></i></span>`;
+                        }
+                        if (!(cvr > 0) && !hasCvr60) return '<span style="color: #6c757d;">0%</span>';
                         let color = '';
-
-                        // Same CVR color slabs as Amazon CVR L30
                         if (cvr <= 4) color = '#a00211';
                         else if (cvr > 4 && cvr <= 7) color = '#ffc107';
                         else if (cvr > 7 && cvr <= 13) color = '#28a745';
                         else color = '#e83e8c';
-
-                        return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="color:${color};font-weight:600;">${cvr.toFixed(1)}%</span>${arrowHtml}</span>`;
                     }
                 },
                 {
@@ -1675,7 +1731,6 @@
                     title: "LMP",
                     field: "lmp_price",
                     hozAlign: "center",
-                    minWidth: 88,
                     sorter: "number",
                     width: 100,
                     headerTooltip: "Google LMP from /repricer/google-search (manual add supported)",
@@ -1690,41 +1745,75 @@
                         if (isShopifyB2bParentRow(rowData)) return '';
 
                         const sku = String(rowData['(Child) sku'] || '');
-                        const skuEnc = encodeURIComponent(sku);
                         const lmpPrice = parseFloat(cell.getValue());
                         const totalCompetitors = parseInt(rowData.lmp_entries_total, 10) || 0;
                         const ourPrice = parseFloat(rowData.Price) || 0;
                         const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
                         const linkedSkusAttr = escLmpAttr(JSON.stringify(linkedSkus));
                         const skuAttr = escLmpAttr(sku);
+                        const countHtml = totalCompetitors > 0
+                            ? ' <a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"'
+                                + ' title="View ' + totalCompetitors + ' competitor' + (totalCompetitors === 1 ? '' : 's') + '"'
+                                + ' style="color:#007bff;text-decoration:none;cursor:pointer;font-weight:600;">('
+                                + totalCompetitors + ')</a>'
+                            : '';
 
-                        if ((!lmpPrice || lmpPrice <= 0) && totalCompetitors === 0) {
-                            const url = '/repricer/google-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                            return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">' +
-                                '<a href="' + url + '" target="_blank" rel="noopener" title="No Google LMP — open Google Search">' +
-                                '<i class="fas fa-circle" style="color:#ff9c00;font-size:10px;"></i></a>' +
-                                '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"' +
-                                ' style="color:#6c757d;text-decoration:none;cursor:pointer;font-size:11px;" title="Add competitor manually">' +
-                                '<i class="fa fa-plus"></i> Add</a></div>';
-                        }
-
-                        const color = (lmpPrice > 0 && ourPrice > 0 && lmpPrice < ourPrice) ? '#dc3545' : '#28a745';
-                        let label = '';
                         if (lmpPrice > 0) {
-                            label = '$' + lmpPrice.toFixed(2);
+                            const priceColor = (ourPrice > 0 && lmpPrice < ourPrice) ? '#dc3545' : '#28a745';
+                            return '<span style="white-space:nowrap;"><span style="color:' + priceColor + ';font-weight:600;">$'
+                                + lmpPrice.toFixed(2) + '</span>' + countHtml + '</span>';
                         }
+
                         if (totalCompetitors > 0) {
-                            label += (label ? ' ' : '') + '(' + totalCompetitors + ')';
+                            return '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"'
+                                + ' title="View ' + totalCompetitors + ' competitor' + (totalCompetitors === 1 ? '' : 's') + '"'
+                                + ' style="color:#007bff;text-decoration:none;cursor:pointer;font-weight:600;">('
+                                + totalCompetitors + ')</a>';
                         }
-                        if (label) {
-                            return '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"' +
-                                ' title="View ' + totalCompetitors + ' competitor' + (totalCompetitors === 1 ? '' : 's') + '"' +
-                                ' style="color:' + color + ';font-weight:600;text-decoration:none;cursor:pointer;white-space:nowrap;">' +
-                                label + '</a>';
+
+                        if (!sku) {
+                            return '<span style="color:#999;">N/A</span>';
                         }
-                        return '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"' +
-                            ' style="color:#6c757d;text-decoration:none;cursor:pointer;font-size:11px;" title="Add competitor manually">' +
-                            '<i class="fa fa-plus"></i> Add</a>';
+
+                        return '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"'
+                            + ' title="Add Google LMP competitor"'
+                            + ' style="color:#0d6efd;text-decoration:none;cursor:pointer;font-size:14px;line-height:1;">'
+                            + '<i class="fas fa-plus"></i></a>';
+                    }
+                },
+                {
+                    title: "Diff",
+                    field: "lmp_diff_pct",
+                    hozAlign: "center",
+                    width: 70,
+                    headerTooltip: "(Google LMP − Price) / LMP × 100. When S PRC ≠ Price, Diff previews S PRC (what push will use).",
+                    sorter: function(a, b, aRow, bRow) {
+                        const calc = function(rd) {
+                            if (isShopifyB2bParentRow(rd)) return -Infinity;
+                            const lmp = parseFloat(rd.lmp_price || 0);
+                            const price = shopifyB2bDiffComparePrice(rd);
+                            if (!lmp || lmp <= 0) return -Infinity;
+                            return ((lmp - price) / lmp) * 100;
+                        };
+                        return calc(aRow.getData()) - calc(bRow.getData());
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isShopifyB2bParentRow(rowData)) return '';
+
+                        const lmp = parseFloat(rowData.lmp_price || 0);
+                        const livePrice = parseFloat(rowData.Price || 0);
+                        const compare = shopifyB2bDiffComparePrice(rowData);
+                        if (!lmp || lmp <= 0) {
+                            return '<span style="color: #999;">N/A</span>';
+                        }
+                        const diff = ((lmp - compare) / lmp) * 100;
+                        const color = diff < 0 ? '#dc3545' : '#28a745';
+                        const pending = shopifyB2bSpricePending(rowData);
+                        const tip = pending
+                            ? ('S PRC $' + compare.toFixed(2) + ' vs LMP (live Price $' + livePrice.toFixed(2) + ')')
+                            : ('Price $' + compare.toFixed(2) + ' vs LMP');
+                        return '<span title="' + tip + '" style="color:' + color + ';font-weight:600;">' + diff.toFixed(1) + '%</span>';
                     }
                 },
                 {
@@ -1915,12 +2004,43 @@
                 },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
+                    title: "Sprc Dil",
+                    field: "SPRC_DIL",
+                    hozAlign: "center",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            return (typeof ebaySprcDilForRow === 'function')
+                                ? (ebaySprcDilForRow(row) || 0)
+                                : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2B L30 > 0; 0 Sold uses the lowest Target NROI. Dil outside the table uses the nearest slab. CVR overlay adjusts Target NROI when CVR 60 exists. B2B formula excludes Ship.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isShopifyB2bParentRow(rowData)) return '';
+                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                        const meta = ebayDilGroiMetaForRow(rowData);
+                        if (!meta || !(meta.sprc > 0)) return '';
+                        const tip = (typeof ebayDilGroiTipText === 'function')
+                            ? ebayDilGroiTipText(meta)
+                            : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                + ' → ' + meta.label
+                                + ' → NROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2));
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                            + meta.sprc.toFixed(2) + '</span>';
+                    },
+                    width: 78
+                },
+                {
                     title: "S PRC",
                     field: "SPRICE",
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. Suggested price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab when B2B L30 > 0; 0 Sold = min Target NROI). CVR overlay when CVR 60 exists. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) {
@@ -2731,17 +2851,12 @@
                 : (active.length
                     ? Math.min.apply(null, active.map(c => parseFloat(c.price) || 0).filter(p => p > 0))
                     : null);
-            const lowestLink = active.find(c => Math.abs((parseFloat(c.price) || 0) - (lowest || 0)) < 0.01) || active[0] || null;
 
             table.getRows().forEach(function(row) {
                 const d = row.getData();
                 if (String(d['(Child) sku'] || '') !== String(sku)) return;
                 row.update({
                     lmp_price: lowest && lowest > 0 ? Math.round(lowest * 100) / 100 : null,
-                    lmp_link: lowestLink ? (lowestLink.product_link || lowestLink.link || null) : null,
-                    lmp_source: lowestLink ? (lowestLink.source || null) : null,
-                    lmp_title: lowestLink ? (lowestLink.product_title || lowestLink.title || null) : null,
-                    lmp_entries: list,
                     lmp_entries_total: list.length,
                 });
             });
@@ -2753,7 +2868,7 @@
                 $('#lmpDataList').html(
                     '<div class="alert alert-info mb-0">' +
                     '<i class="fa fa-info-circle"></i> No Google competitors found yet. Add one manually above, or ' +
-                    '<a href="/repricer/google-search?sku=' + encodeURIComponent(sku) + '" target="_blank" rel="noopener">search on Google</a>.' +
+                    '<a href="' + GOOGLE_SEARCH_URL + '?sku=' + encodeURIComponent(sku) + '" target="_blank" rel="noopener">search on Google</a>.' +
                     '</div>'
                 );
                 return;
@@ -2848,7 +2963,7 @@
             $('#addLmpPrice').val('');
             $('#addLmpTitle').val('');
             $('#addLmpLink').val('');
-            $('#lmpOpenGoogleSearch').attr('href', '/repricer/google-search?sku=' + encodeURIComponent(sku));
+            $('#lmpOpenGoogleSearch').attr('href', GOOGLE_SEARCH_URL + '?sku=' + encodeURIComponent(sku));
             $('#lmpModal').data('linked-lmp-skus', Array.isArray(linkedLmpSkus) ? linkedLmpSkus : []);
 
             const modalEl = document.getElementById('lmpModal');
@@ -2868,7 +2983,7 @@
             });
 
             $.ajax({
-                url: '/google-lmp-data',
+                url: GOOGLE_LMP_DATA_URL,
                 method: 'GET',
                 traditional: true,
                 data: ajaxData,
@@ -2907,6 +3022,13 @@
             if (sku) loadGoogleLmpModal(String(sku), linkedSkus);
         });
 
+        $('#addGoogleLmpForm').on('reset', function() {
+            const sku = ($('#addLmpSku').val() || '').trim();
+            setTimeout(function() {
+                $('#addLmpSku').val(sku);
+            }, 0);
+        });
+
         $('#addGoogleLmpForm').on('submit', function(e) {
             e.preventDefault();
 
@@ -2932,10 +3054,10 @@
 
             const $submitBtn = $(this).find('button[type="submit"]');
             const originalHtml = $submitBtn.html();
-            $submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+            $submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
 
             $.ajax({
-                url: '/google-lmp-add',
+                url: GOOGLE_LMP_ADD_URL,
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                 data: {
@@ -2991,7 +3113,7 @@
             $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
 
             $.ajax({
-                url: '/google-lmp-delete',
+                url: GOOGLE_LMP_DELETE_URL,
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                 data: { id: id },

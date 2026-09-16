@@ -4421,7 +4421,7 @@ class CvrMasterController extends Controller
             $sb2bL30 = (int) (DB::table('shopify_b2b_daily_data')
                 ->where('sku', $fullSku)
                 ->where('period', 'l30')
-                ->where('financial_status', '!=', 'refunded')
+                ->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled'])
                 ->sum('quantity') ?? 0);
             
             $sb2bMarketplace = MarketplacePercentage::where('marketplace', 'ShopifyB2B')->first()

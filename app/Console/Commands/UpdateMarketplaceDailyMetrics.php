@@ -1847,7 +1847,7 @@ class UpdateMarketplaceDailyMetrics extends Command
     {
         // Get L30 orders data (period = 'l30' and not refunded)
         $orders = ShopifyB2BDailyData::where('period', 'l30')
-            ->where('financial_status', '!=', 'refunded')
+            ->countableSales()
             ->get();
 
         if ($orders->isEmpty()) {
