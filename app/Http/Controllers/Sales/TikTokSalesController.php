@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
+use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
 use App\Models\TiktokSalesTwo;
 
@@ -41,11 +42,11 @@ class TikTokSalesController extends Controller
     }
 
     /**
-     * Live L30 / L60 / GPFT / ROI from tiktok_sales_two — shared by
-     * /tiktok-two/daily-sales and /all-marketplace-master (TikTok 2 row).
+     * Live L30 / L60 / GPFT / ROI from tiktok2_orders (same Shop API as TikTok 1).
+     * Shared by /tiktok-two/daily-sales and /all-marketplace-master (TikTok 2 row).
      *
-     * Window: 30 Pacific calendar days ending yesterday (same clock as Amazon).
-     * Profit: (unit_price × margin) − LP − shipCost, × qty.
+     * Window: last 30 California calendar days ending today (same as /tiktok/daily-sales).
+     * Profit: (sale_price × margin) − LP − shipCost, × qty.
      * Margin from marketplace_percentages.marketplace = TiktokShop (same as TikTok 1).
      *
      * @return array{
@@ -72,82 +73,35 @@ class TikTokSalesController extends Controller
         ];
 
         try {
-            if (! TiktokSalesTwo::whereNotNull('order_date')->exists()) {
+            if (! Tiktok2Order::tableReady()) {
                 return $defaults;
             }
 
-            $latestCarbon = Carbon::yesterday('America/Los_Angeles')->endOfDay();
-            $l60StartDate = $latestCarbon->copy()->subDays(59)->startOfDay();
-            $l60EndDate = $latestCarbon->copy()->subDays(30)->endOfDay();
-            $l30StartDate = $latestCarbon->copy()->subDays(29)->startOfDay();
-            $l30EndDate = $latestCarbon->copy()->endOfDay();
+            [$l30StartDate, $l30EndDate] = Tiktok2Order::californiaDaysWindow(30);
+            $l60EndDate = $l30StartDate->copy()->subDay()->endOfDay();
+            $l60StartDate = $l30StartDate->copy()->subDays(30)->startOfDay();
 
-            $l60Rows = TiktokSalesTwo::whereBetween('order_date', [$l60StartDate, $l60EndDate])->get();
-            $l60Orders = $l60Rows->pluck('order_id')->unique()->filter()->count();
-            $l60Sales = (float) $l60Rows->sum(fn ($r) => (float) $r->unit_price * (float) ($r->quantity ?: 1));
+            $l60Sales = Tiktok2Order::salesAmountBetween($l60StartDate, $l60EndDate);
+            $l60Orders = Tiktok2Order::orderCountBetween($l60StartDate, $l60EndDate);
+            $mapped = self::mapTikTokOrderLinesToSalesRows(
+                Tiktok2Order::linesInWindow($l30StartDate, $l30EndDate)
+            );
 
-            $l30Rows = TiktokSalesTwo::whereBetween('order_date', [$l30StartDate, $l30EndDate])->get();
-            $productMasters = ProductMaster::query()
-                ->get(['sku', 'Values'])
-                ->keyBy(fn ($item) => strtoupper((string) $item->sku));
-
-            $margin = self::marginFactorFromMarketplace(['TiktokShop']);
             $l30Sales = 0.0;
             $totalQuantity = 0.0;
             $totalProfit = 0.0;
             $totalCogs = 0.0;
             $orderIds = [];
-
-            foreach ($l30Rows as $row) {
-                $orderId = trim((string) ($row->order_id ?? ''));
+            foreach ($mapped as $row) {
+                $orderId = trim((string) ($row['order_id'] ?? ''));
                 if ($orderId !== '') {
                     $orderIds[$orderId] = true;
                 }
-                $quantity = (float) ($row->quantity ?: 1);
-                if ($quantity <= 0) {
-                    continue;
-                }
-                $unitPrice = (float) $row->unit_price;
-                $l30Sales += $unitPrice * $quantity;
-
-                $sku = strtoupper((string) ($row->seller_sku ?? ''));
-                $lp = 0.0;
-                $ship = 0.0;
-                $weightAct = 0.0;
-                $pm = $sku !== '' ? $productMasters->get($sku) : null;
-                if ($pm) {
-                    $values = is_array($pm->Values)
-                        ? $pm->Values
-                        : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
-                    if (is_array($values)) {
-                        foreach ($values as $k => $v) {
-                            if (strtolower((string) $k) === 'lp') {
-                                $lp = (float) $v;
-                                break;
-                            }
-                        }
-                        if (isset($values['ship'])) {
-                            $ship = (float) $values['ship'];
-                        }
-                        if (isset($values['wt_act'])) {
-                            $weightAct = (float) $values['wt_act'];
-                        }
-                    }
-                }
-
-                $tWeight = $weightAct * $quantity;
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $ship / $quantity;
-                } else {
-                    $shipCost = $ship;
-                }
-                $cogs = $lp * $quantity;
-                $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+                $quantity = (float) ($row['quantity'] ?? 0);
+                $l30Sales += (float) ($row['sale_amount'] ?? 0);
                 $totalQuantity += $quantity;
-                $totalCogs += $cogs;
-                $totalProfit += $pftEach * $quantity;
+                $totalCogs += (float) ($row['cogs'] ?? 0);
+                $totalProfit += (float) ($row['t_pft'] ?? 0);
             }
 
             $gpft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0.0;
@@ -163,7 +117,7 @@ class TikTokSalesController extends Controller
                 'total_cogs' => round($totalCogs, 2),
                 'gpft_percent' => round($gpft, 1),
                 'roi_percent' => round($roi, 1),
-                'latest_order_date' => $latestCarbon->toDateString(),
+                'latest_order_date' => $l30EndDate->toDateString(),
             ];
         } catch (\Throwable $e) {
             Log::warning('TikTok 2 computeLiveMetricsTwo failed: ' . $e->getMessage());
@@ -189,105 +143,10 @@ class TikTokSalesController extends Controller
     {
         try {
             [$startDate, $endDate] = TiktokOrder::californiaDaysWindow(30);
-            $orderItems = TiktokOrder::linesInWindow($startDate, $endDate);
 
-            if ($orderItems->isEmpty()) {
-                return response()->json([]);
-            }
-
-            $skus = $orderItems->pluck('seller_sku')->filter()->unique()->values()->toArray();
-            $productMasters = ProductMaster::whereIn('sku', $skus)
-                ->get()
-                ->keyBy(fn ($item) => strtoupper($item->sku));
-
-            $margin = self::marginFactorFromMarketplace(['TiktokShop']);
-            $data = [];
-
-            foreach ($orderItems as $item) {
-                $sku = strtoupper(trim((string) ($item->seller_sku ?? '')));
-                $quantity = (float) ($item->quantity ?? 1);
-                if ($quantity <= 0) {
-                    continue;
-                }
-
-                $unitPrice = (float) ($item->sale_price ?? 0);
-                $saleAmount = $unitPrice * $quantity;
-                $orderAmount = (float) ($item->order_amount ?? $saleAmount);
-
-                $lp = 0;
-                $ship = 0;
-                $weightAct = 0;
-
-                if ($sku && isset($productMasters[$sku])) {
-                    $pm = $productMasters[$sku];
-                    $values = is_array($pm->Values) ? $pm->Values :
-                            (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                    if (is_array($values)) {
-                        foreach ($values as $k => $v) {
-                            $key = strtolower((string) $k);
-                            if ($key === 'lp') {
-                                $lp = floatval($v);
-                            } elseif ($key === 'ship') {
-                                // Normal ship — same as /price-increase /tiktok-pricing (not tt_ship)
-                                $ship = floatval($v);
-                            } elseif ($key === 'wt_act') {
-                                $weightAct = floatval($v);
-                            }
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-                    if ($ship === 0 && isset($pm->ship)) {
-                        $ship = floatval($pm->ship);
-                    }
-                }
-
-                $tWeight = $weightAct * $quantity;
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $ship / $quantity;
-                } else {
-                    $shipCost = $ship;
-                }
-
-                $cogs = $lp * $quantity;
-                $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-                $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-                $pft = $pftEach * $quantity;
-                $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0;
-
-                $data[] = [
-                    'order_id' => $item->order_id,
-                    'asin' => null,
-                    'sku' => $item->seller_sku,
-                    'quantity' => $item->quantity,
-                    'sale_amount' => round($saleAmount, 2),
-                    'price' => round($unitPrice, 2),
-                    'total_amount' => round($orderAmount, 2),
-                    'currency' => $item->currency,
-                    'order_date' => $item->order_created_at
-                        ? \Carbon\Carbon::parse($item->order_created_at, 'UTC')->timezone(TiktokOrder::TZ)->toDateTimeString()
-                        : null,
-                    'status' => $item->order_status,
-                    'period' => 'L30',
-                    'lp' => round($lp, 2),
-                    'ship' => round($ship, 2),
-                    'ship_cost' => round($shipCost, 2),
-                    'weight_act' => round($weightAct, 2),
-                    't_weight' => round($tWeight, 2),
-                    'cogs' => round($cogs, 2),
-                    'pft_each' => round($pftEach, 2),
-                    'pft_each_pct' => round($pftEachPct, 2),
-                    't_pft' => round($pft, 2),
-                    'roi' => round($roi, 2),
-                    'margin' => round($margin * 100, 2),
-                ];
-            }
-
-            return response()->json($data);
+            return response()->json(self::mapTikTokOrderLinesToSalesRows(
+                TiktokOrder::linesInWindow($startDate, $endDate)
+            ));
         } catch (\Exception $e) {
             Log::error('TikTok Sales Data Error: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
@@ -307,10 +166,10 @@ class TikTokSalesController extends Controller
         return response()->json(['success' => true]);
     }
 
-    // ---- TikTok Sales Two (upload-based) ----
+    // ---- TikTok 2 (Shop Orders API → tiktok2_orders) ----
 
     /**
-     * Display TikTok 2 daily sales page (upload-based data)
+     * Display TikTok 2 daily sales page (Shop Orders API → tiktok2_orders, same as TikTok 1).
      */
     public function indexTwo()
     {
@@ -321,106 +180,125 @@ class TikTokSalesController extends Controller
     }
 
     /**
-     * Get TikTok 2 sales data from tiktok_sales_two.
-     * Margin from marketplace_percentages.marketplace = TiktokShop (same as TikTok 1).
+     * Get TikTok 2 sales from tiktok2_orders (tiktok:fetch-orders --channel=tiktok2).
+     * Same L30 California window + profit math as /tiktok/daily-sales.
      */
     public function getDataTwo(Request $request)
     {
         try {
-            $rows = TiktokSalesTwo::orderBy('order_date', 'desc')->get();
-            if ($rows->isEmpty()) {
-                return response()->json([]);
-            }
+            [$startDate, $endDate] = Tiktok2Order::californiaDaysWindow(30);
 
-            $margin = self::marginFactorFromMarketplace(['TiktokShop']);
-            $skus = $rows->pluck('seller_sku')->filter()->unique()->map(function ($s) {
-                return strtoupper($s);
-            })->values()->toArray();
-            $productMasters = ProductMaster::whereIn('sku', $skus)
-                ->get()
-                ->keyBy(function ($item) {
-                    return strtoupper($item->sku);
-                });
-
-            $data = [];
-            foreach ($rows as $row) {
-                $sku = strtoupper($row->seller_sku ?? '');
-                $quantity = floatval($row->quantity);
-                $unitPrice = floatval($row->unit_price);
-                $saleAmount = $unitPrice * $quantity;
-                if ($quantity <= 0) {
-                    continue;
-                }
-
-                $lp = 0;
-                $ship = 0;
-                $weightAct = 0;
-                if ($sku && isset($productMasters[$sku])) {
-                    $pm = $productMasters[$sku];
-                    $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === 'lp') {
-                            $lp = floatval($v);
-                            break;
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-                    if (isset($values['ship'])) {
-                        $ship = floatval($values['ship']);
-                    } elseif (isset($pm->ship)) {
-                        $ship = floatval($pm->ship);
-                    }
-                    if (isset($values['wt_act'])) {
-                        $weightAct = floatval($values['wt_act']);
-                    }
-                }
-
-                $tWeight = $weightAct * $quantity;
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $ship / $quantity;
-                } else {
-                    $shipCost = $ship;
-                }
-                $cogs = $lp * $quantity;
-                $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-                $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-                $pft = $pftEach * $quantity;
-                $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0;
-
-                $data[] = [
-                    'order_id' => $row->order_id,
-                    'asin' => '',
-                    'sku' => $row->seller_sku,
-                    'quantity' => $row->quantity,
-                    'sale_amount' => round($saleAmount, 2),
-                    'price' => round($unitPrice, 2),
-                    'total_amount' => round(floatval($row->order_amount), 2),
-                    'currency' => 'USD',
-                    'order_date' => $row->order_date?->toIso8601String(),
-                    'status' => $row->order_status,
-                    'period' => 'L30',
-                    'lp' => round($lp, 2),
-                    'ship' => round($ship, 2),
-                    'ship_cost' => round($shipCost, 2),
-                    'weight_act' => round($weightAct, 2),
-                    't_weight' => round($tWeight, 2),
-                    'cogs' => round($cogs, 2),
-                    'pft_each' => round($pftEach, 2),
-                    'pft_each_pct' => round($pftEachPct, 2),
-                    't_pft' => round($pft, 2),
-                    'roi' => round($roi, 2),
-                    'margin' => round($margin * 100, 2),
-                ];
-            }
-            return response()->json($data);
+            return response()->json(self::mapTikTokOrderLinesToSalesRows(
+                Tiktok2Order::linesInWindow($startDate, $endDate)
+            ));
         } catch (\Exception $e) {
             Log::error('TikTok Sales Two Data Error: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, TiktokOrder>  $orderItems
+     * @return list<array<string, mixed>>
+     */
+    private static function mapTikTokOrderLinesToSalesRows($orderItems): array
+    {
+        if ($orderItems->isEmpty()) {
+            return [];
+        }
+
+        $skus = $orderItems->pluck('seller_sku')->filter()->unique()->values()->toArray();
+        $productMasters = ProductMaster::whereIn('sku', $skus)
+            ->get()
+            ->keyBy(fn ($item) => strtoupper((string) $item->sku));
+
+        $margin = self::marginFactorFromMarketplace(['TiktokShop']);
+        $data = [];
+
+        foreach ($orderItems as $item) {
+            $sku = strtoupper(trim((string) ($item->seller_sku ?? '')));
+            $quantity = (float) ($item->quantity ?? 1);
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $unitPrice = (float) ($item->sale_price ?? 0);
+            $saleAmount = $unitPrice * $quantity;
+            $orderAmount = (float) ($item->order_amount ?? $saleAmount);
+
+            $lp = 0;
+            $ship = 0;
+            $weightAct = 0;
+
+            if ($sku && isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values) ? $pm->Values
+                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+                if (is_array($values)) {
+                    foreach ($values as $k => $v) {
+                        $key = strtolower((string) $k);
+                        if ($key === 'lp') {
+                            $lp = floatval($v);
+                        } elseif ($key === 'ship') {
+                            $ship = floatval($v);
+                        } elseif ($key === 'wt_act') {
+                            $weightAct = floatval($v);
+                        }
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                if ($ship === 0 && isset($pm->ship)) {
+                    $ship = floatval($pm->ship);
+                }
+            }
+
+            $tWeight = $weightAct * $quantity;
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            $cogs = $lp * $quantity;
+            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+            $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
+            $pft = $pftEach * $quantity;
+            $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0;
+
+            $data[] = [
+                'order_id' => $item->order_id,
+                'asin' => null,
+                'sku' => $item->seller_sku,
+                'quantity' => $item->quantity,
+                'sale_amount' => round($saleAmount, 2),
+                'price' => round($unitPrice, 2),
+                'total_amount' => round($orderAmount, 2),
+                'currency' => $item->currency,
+                'order_date' => $item->order_created_at
+                    ? Carbon::parse($item->order_created_at, 'UTC')->timezone(TiktokOrder::TZ)->toDateTimeString()
+                    : null,
+                'status' => $item->order_status,
+                'period' => 'L30',
+                'lp' => round($lp, 2),
+                'ship' => round($ship, 2),
+                'ship_cost' => round($shipCost, 2),
+                'weight_act' => round($weightAct, 2),
+                't_weight' => round($tWeight, 2),
+                'cogs' => round($cogs, 2),
+                'pft_each' => round($pftEach, 2),
+                'pft_each_pct' => round($pftEachPct, 2),
+                't_pft' => round($pft, 2),
+                'roi' => round($roi, 2),
+                'margin' => round($margin * 100, 2),
+            ];
+        }
+
+        return $data;
     }
 
     /**

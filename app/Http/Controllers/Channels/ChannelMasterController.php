@@ -121,7 +121,6 @@ use App\Support\TemuGoodsIdHelper;
 use App\Models\TiktokCampaignReport;
 use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
-use App\Models\TiktokSalesTwo;
 use App\Models\TiktokShopListingStatus;
 use App\Models\DepopSalesData;
 use App\Models\VintedSalesData;
@@ -8671,12 +8670,11 @@ class ChannelMasterController extends Controller
 
     /**
      * TikTok 2: tiktok2_orders line sales for Pacific calendar yesterday
-     * (same clock as Amazon / Faire). Do not use latest-order−1 — that skipped
-     * a real Aug 28 $39.99 order because the latest row was already yesterday.
+     * (same Shop API + clock as TikTok 1 / Amazon).
      */
     private function computeTiktokTwoYSalesLikeAmazon(): ?float
     {
-        if (! Schema::hasTable('tiktok_sales_two')) {
+        if (! Tiktok2Order::tableReady()) {
             return null;
         }
 
@@ -8686,18 +8684,18 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * /tiktok-two/daily-sales dollars for one Pacific calendar day (order_date).
+     * /tiktok-two/daily-sales dollars for one Pacific calendar day.
      */
     private function sumTiktokTwoSheetSalesForPacificDate(string $ymd): float
     {
-        if ($ymd === '' || ! Schema::hasTable('tiktok_sales_two')) {
+        if ($ymd === '' || ! Tiktok2Order::tableReady()) {
             return 0.0;
         }
 
-        return round((float) DB::table('tiktok_sales_two')
-            ->whereDate('order_date', $ymd)
-            ->selectRaw('COALESCE(SUM(unit_price * GREATEST(COALESCE(quantity, 1), 1)), 0) as revenue')
-            ->value('revenue'), 2);
+        $start = Carbon::parse($ymd, 'America/Los_Angeles')->startOfDay();
+        $end = Carbon::parse($ymd, 'America/Los_Angeles')->endOfDay();
+
+        return round(Tiktok2Order::salesAmountBetween($start, $end), 2);
     }
 
     /**
@@ -8705,15 +8703,11 @@ class ChannelMasterController extends Controller
      */
     private function sumTiktokTwoSheetSalesBetween(Carbon $start, Carbon $end): float
     {
-        if (! Schema::hasTable('tiktok_sales_two')) {
+        if (! Tiktok2Order::tableReady()) {
             return 0.0;
         }
 
-        return round((float) DB::table('tiktok_sales_two')
-            ->whereDate('order_date', '>=', $start->toDateString())
-            ->whereDate('order_date', '<=', $end->toDateString())
-            ->selectRaw('COALESCE(SUM(unit_price * GREATEST(COALESCE(quantity, 1), 1)), 0) as revenue')
-            ->value('revenue'), 2);
+        return round(Tiktok2Order::salesAmountBetween($start, $end), 2);
     }
 
     /**
@@ -9229,7 +9223,7 @@ class ChannelMasterController extends Controller
 
     private function computeTiktokTwoL7SalesLikeAmazon(): ?float
     {
-        if (! Schema::hasTable('tiktok_sales_two')) {
+        if (! Tiktok2Order::tableReady()) {
             return null;
         }
 
@@ -18934,11 +18928,11 @@ class ChannelMasterController extends Controller
 
     /**
      * Snapshot D stores TikTok 2 L30 for the 30 Pacific days ending D−1,
-     * from tiktok_sales_two (same table as /tiktok-two/daily-sales).
+     * from tiktok2_orders (same Shop API as /tiktok-two/daily-sales).
      */
     private function healClosedTiktokTwoL30Snapshots(): void
     {
-        if (! Schema::hasTable('tiktok_sales_two')) {
+        if (! Tiktok2Order::tableReady()) {
             return;
         }
 
@@ -18964,7 +18958,7 @@ class ChannelMasterController extends Controller
                 }
                 $sd['l30_sales'] = $live;
                 $row->summary_data = $sd;
-                $row->notes = 'TikTok 2 L30 healed from tiktok_sales_two ending '.$asOf->toDateString();
+                $row->notes = 'TikTok 2 L30 healed from tiktok2_orders ending '.$asOf->toDateString();
                 $row->save();
             }
         }

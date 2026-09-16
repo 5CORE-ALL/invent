@@ -17,7 +17,7 @@ use App\Models\AliexpressDailyData;
 use App\Models\ShopifyB2CDailyData;
 use App\Models\ShopifyB2BDailyData;
 use App\Models\TikTokDailyData;
-use App\Models\TiktokSalesTwo;
+use App\Models\Tiktok2Order;
 use App\Models\DepopSheetData;
 use App\Http\Controllers\MarketPlace\VintedController;
 use App\Models\DepopSalesData;
@@ -2078,12 +2078,11 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateTikTokTwoMetrics($date)
     {
-        // L30 from tiktok_sales_two: order_date in last 30 days ending on $date
-        $endDate = Carbon::parse($date)->endOfDay();
-        $startDate = Carbon::parse($date)->subDays(29)->startOfDay();
+        // L30 from tiktok2_orders — last 30 California calendar days (same Shop API as TikTok 1)
+        [$startDate, $endDate] = Tiktok2Order::californiaDaysWindow(30);
+        $orderItems = Tiktok2Order::linesInWindow($startDate, $endDate);
 
-        $rows = TiktokSalesTwo::whereBetween('order_date', [$startDate, $endDate])->get();
-        if ($rows->isEmpty()) {
+        if ($orderItems->isEmpty()) {
             return null;
         }
 
@@ -2091,7 +2090,6 @@ class UpdateMarketplaceDailyMetrics extends Command
             return strtoupper($item->sku);
         });
 
-        $margin = 0.80; // 80% margin (same as TikTok)
         $totalOrders = 0;
         $totalQuantity = 0;
         $totalRevenue = 0;
@@ -2099,36 +2097,44 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalPft = 0;
         $totalWeightedPrice = 0;
         $totalQuantityForPrice = 0;
+        $margin = 0.80;
+        $seenOrders = [];
 
-        foreach ($rows as $row) {
-            $quantity = (int) ($row->quantity ?: 1);
-            $unitPrice = (float) $row->unit_price;
-            $saleAmount = $unitPrice * $quantity;
-
+        foreach ($orderItems as $item) {
+            $seenOrders[$item->order_id] = true;
             $totalOrders++;
-            $totalQuantity += $quantity;
-            $totalRevenue += $saleAmount;
 
-            if ($quantity > 0 && $unitPrice > 0) {
+            $quantity = (int) ($item->quantity ?? 1);
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $unitPrice = (float) ($item->sale_price ?? 0);
+            $totalPrice = $unitPrice * $quantity;
+
+            $totalQuantity += $quantity;
+            $totalRevenue += $totalPrice;
+
+            if ($unitPrice > 0) {
                 $totalWeightedPrice += $unitPrice * $quantity;
                 $totalQuantityForPrice += $quantity;
             }
 
-            $sku = strtoupper($row->seller_sku ?? '');
+            $sku = strtoupper(trim((string) ($item->seller_sku ?? '')));
             $lp = 0;
             $ship = 0;
             $weightAct = 0;
 
             if ($sku && isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
-                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
                 foreach ($values as $k => $v) {
                     if (strtolower($k) === 'lp') {
                         $lp = floatval($v);
                         break;
                     }
-
-
                 }
                 if ($lp === 0 && isset($pm->lp)) {
                     $lp = floatval($pm->lp);
@@ -2153,11 +2159,9 @@ class UpdateMarketplaceDailyMetrics extends Command
             }
 
             $cogs = $lp * $quantity;
-            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-            $pft = $pftEach * $quantity;
-
             $totalCogs += $cogs;
-            $totalPft += $pft;
+            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+            $totalPft += $pftEach * $quantity;
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
@@ -2165,7 +2169,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
         return [
-            'total_orders' => $totalOrders,
+            'total_orders' => count($seenOrders),
             'total_quantity' => $totalQuantity,
             'total_revenue' => $totalRevenue,
             'total_sales' => $totalRevenue,
