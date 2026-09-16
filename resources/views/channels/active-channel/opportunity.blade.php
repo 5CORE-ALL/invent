@@ -290,7 +290,7 @@
                                     data-id="${opportunityID}"
                                     data-field="type">
                                     <option value="">Select</option>
-                                    <option value="Dropship" ${value === 'Dropship' ? 'selected' : ''}>Dropship</option>
+                                    <option value="Dropship" ${value === 'Dropship' || value === 'DS' ? 'selected' : ''}>DS</option>
                                     <option value="B2B" ${value === 'B2B' ? 'selected' : ''}>B2B</option>
                                     <option value="B2C" ${value === 'B2C' ? 'selected' : ''}>B2C</option>
                                     <option value="C2C" ${value === 'C2C' ? 'selected' : ''}>C2C</option>

@@ -3927,10 +3927,6 @@
                     });
                 },
                 ajaxSorting: false,
-                sortMode: "local",
-                filterMode: "local",
-                paginationMode: "local",
-                headerSort: true,
                 layout: "fitDataStretch",
                 rowHeight: 36,
                 pagination: true,
@@ -5049,7 +5045,7 @@
                     },
 
                     {
-                        title: "SGROI",
+                        title: "S GROI",
                         field: "SGROI",
                         hozAlign: "center",
                         sorter: "number",
@@ -5064,9 +5060,9 @@
                         width: 80
                     },
                     {
-                        title: "SGPFT",
+                        title: "S GPFT",
                         field: "SGPFT",
-                        headerSort: true,
+                        visible: false,
                         hozAlign: "center",
                         headerTooltip: "S GPFT from saved S PRC (same $ as the S PRC cell / DB).",
                         formatter: function(cell) {
@@ -5101,7 +5097,7 @@
                     {
                         title: "SNPFT",
                         field: "SPFT",
-                        headerSort: true,
+                        visible: false,
                         hozAlign: "center",
                         sorter: "number",
                         headerTooltip: "SNPFT = S GPFT − Ads%, with S GPFT from S PRC.",

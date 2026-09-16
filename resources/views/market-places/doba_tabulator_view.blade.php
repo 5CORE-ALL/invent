@@ -2072,11 +2072,6 @@
                     return [];
                 },
                 pagination: "local",
-                sortMode: "local",
-                filterMode: "local",
-                paginationMode: "local",
-                ajaxSorting: false,
-                headerSort: true,
                 paginationSize: 50,
                 paginationSizeSelector: [25, 50, 100, 200, true], // true = All
                 layout: "fitData",
@@ -2480,7 +2475,7 @@
                         }
                     },
                     {
-                        title: "SGROI",
+                        title: "SGROI %",
                         field: "sroi",
                         width: 70,
                         sorter: dobaNumberSorter,
@@ -2493,7 +2488,7 @@
                         }
                     },
                     {
-                        title: "SGPFT",
+                        title: "SGPFT%",
                         field: "spft",
                         width: 70,
                         sorter: dobaNumberSorter,

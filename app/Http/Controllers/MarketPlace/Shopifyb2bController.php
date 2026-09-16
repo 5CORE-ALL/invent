@@ -827,4 +827,81 @@ class Shopifyb2bController extends Controller
 
         return response()->json(['success' => true]);
     }
+
+    /**
+     * Pull Price / Views / Sold from business5core.com into store_listing_prices
+     * (same store API as push-website-sprice).
+     */
+    public function pullWebsitePrices(Request $request, StorePriceSyncService $sync)
+    {
+        @set_time_limit(600);
+
+        $sku = trim((string) $request->input('sku', ''));
+        $skus = $request->input('skus');
+        $list = [];
+        if (is_array($skus) && $skus !== []) {
+            $list = array_values(array_unique(array_filter(array_map(
+                static fn ($value) => trim((string) $value),
+                $skus
+            ))));
+        } elseif ($sku !== '') {
+            $list = [$sku];
+        }
+
+        try {
+            $totals = [
+                'fetched' => 0,
+                'stored' => 0,
+                'matched' => 0,
+                'with_views' => 0,
+                'with_sold' => 0,
+                'failed' => [],
+            ];
+
+            if ($list !== []) {
+                foreach ($list as $one) {
+                    $result = $sync->sync($one);
+                    $totals['fetched'] += (int) ($result['fetched'] ?? 0);
+                    $totals['stored'] += (int) ($result['stored'] ?? 0);
+                    $totals['matched'] += (int) ($result['matched'] ?? 0);
+                    $totals['with_views'] += (int) ($result['with_views'] ?? 0);
+                    $totals['with_sold'] += (int) ($result['with_sold'] ?? 0);
+                    if (! empty($result['failed']) && is_array($result['failed'])) {
+                        $totals['failed'] = array_merge($totals['failed'], $result['failed']);
+                    }
+                }
+            } else {
+                $result = $sync->sync(null);
+                $totals = [
+                    'fetched' => (int) ($result['fetched'] ?? 0),
+                    'stored' => (int) ($result['stored'] ?? 0),
+                    'matched' => (int) ($result['matched'] ?? 0),
+                    'with_views' => (int) ($result['with_views'] ?? 0),
+                    'with_sold' => (int) ($result['with_sold'] ?? 0),
+                    'failed' => is_array($result['failed'] ?? null) ? $result['failed'] : [],
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'sku' => $list !== [] ? implode(', ', $list) : null,
+                'fetched' => $totals['fetched'],
+                'stored' => $totals['stored'],
+                'matched' => $totals['matched'],
+                'with_views' => $totals['with_views'],
+                'with_sold' => $totals['with_sold'],
+                'failed' => $totals['failed'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Shopify B2B website price pull failed', [
+                'sku' => $list !== [] ? $list : null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
 }

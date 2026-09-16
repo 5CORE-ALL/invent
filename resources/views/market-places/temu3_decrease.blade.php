@@ -3565,10 +3565,6 @@
                 timeout: 180000,
             },
             ajaxSorting: false,
-            sortMode: "local",
-            filterMode: "local",
-            paginationMode: "local",
-            headerSort: true,
             layout: "fitData",
             layoutColumnsOnNewData: true,
             movableColumns: true,
@@ -4250,17 +4246,16 @@
                     }
                 },
                 {
-                    title: "SGROI",
+                    title: "SGROI%",
                     field: "sgroi_percent",
                     hozAlign: "center",
-                    headerSort: true,
                     sorter: temuSortBy(function(d) { return temuExportSgroi(d); }),
                     download: true,
-                    downloadTitle: "SGROI",
+                    downloadTitle: "SGROI%",
                     accessorDownload: function(value, data) {
                         return temuExportSgroi(data);
                     },
-                    headerTooltip: "SGROI = S Profit ÷ LP. S Profit = S R prc × margin − LP − Temu Ship. Sprc Dil back-solves S PRC so this matches the Dil target.",
+                    headerTooltip: "SGROI% = S Profit ÷ LP. S Profit = S R prc × margin − LP − Temu Ship. Sprc Dil back-solves S PRC so this matches the Dil target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof chPromoZeroSoldDisplayGroi === 'function') {
@@ -4280,12 +4275,29 @@
                     }
                 },
                 {
-                    title: "SGPFT",
+                    title: "SNROI%",
+                    field: "sroi_percent",
+                    visible: false,
+                    hozAlign: "center",
+                    sorter: temuSortBy(function(d) { return temuExportSnroi(d); }),
+                    headerTooltip: "SNROI% = SNPFT / LP. SNPFT = SPFT − (S PRC × Ads%)",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const lp = parseFloat(rowData['lp']) || 0;
+                        const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(rowData) : 0;
+                        const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(rowData, sprice) : null;
+                        if (snpft == null || !(lp > 0)) return '';
+                        const snroi = (snpft / lp) * 100;
+                        const colorClass = getRoiColor(snroi);
+                        return `<span class="dil-percent-value ${colorClass}">${Math.round(snroi)}%</span>`;
+                    }
+                },
+                {
+                    title: "SGPRFT%",
                     field: "sgprft_percent",
                     hozAlign: "center",
-                    headerSort: true,
                     sorter: temuSortBy(function(d) { return temuExportSgpft(d); }),
-                    headerTooltip: "SGPFT = S Profit ÷ S PRC. S Profit = S R prc × margin − LP − Temu Ship",
+                    headerTooltip: "SGPRFT% = S Profit ÷ S PRC. S Profit = S R prc × margin − LP − Temu Ship",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = typeof temuDisplayedSprice === 'function'
@@ -4299,35 +4311,17 @@
                     }
                 },
                 {
-                    title: "SNROI",
-                    field: "sroi_percent",
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: temuSortBy(function(d) { return temuExportSnroi(d); }),
-                    headerTooltip: "SNROI = SNPFT / LP. SNPFT = SPFT − (S PRC × Ads%)",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const lp = parseFloat(rowData['lp']) || 0;
-                        const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(rowData) : 0;
-                        const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(rowData, sprice) : null;
-                        if (snpft == null || !(lp > 0)) return '';
-                        const snroi = (snpft / lp) * 100;
-                        const colorClass = getRoiColor(snroi);
-                        return `<span class="dil-percent-value ${colorClass}">${Math.round(snroi)}%</span>`;
-                    }
-                },
-                {
-                    title: "SNPFT",
+                    title: "SPFT%",
                     field: "spft_percent",
+                    visible: false,
                     hozAlign: "center",
-                    headerSort: true,
                     sorter: temuSortBy(function(d) { return temuExportSpft(d); }),
                     download: true,
-                    downloadTitle: "SNPFT",
+                    downloadTitle: "SPFT%",
                     accessorDownload: function(value, data) {
                         return temuExportSpft(data);
                     },
-                    headerTooltip: "SNPFT = SNPFT / S PRC. SNPFT $ = SPFT − (S PRC × Ads%)",
+                    headerTooltip: "SPFT% = SNPFT / S PRC. SNPFT = SPFT − (S PRC × Ads%)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = typeof temuDisplayedSprice === 'function'

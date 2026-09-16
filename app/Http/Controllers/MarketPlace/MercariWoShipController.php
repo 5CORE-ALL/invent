@@ -23,6 +23,8 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class MercariWoShipController extends Controller
 {
+    private const SOP_SHEET_SKU = '__MERC_WOS_SOP_SHEET__';
+
     protected $apiController;
 
     public function __construct(ApiController $apiController)
@@ -32,7 +34,50 @@ class MercariWoShipController extends Controller
 
     public function mercariWoShipTabulatorView(Request $request)
     {
-        return view('market-places.mercari_without_ship_tabulator_view');
+        return view('market-places.mercari_without_ship_tabulator_view', [
+            'sopSheetUrl' => $this->loadSopSheetUrl(),
+        ]);
+    }
+
+    public function saveMercariWoShipSopSheet(Request $request)
+    {
+        $url = trim((string) $request->input('url', ''));
+        if ($url !== '' && ! filter_var($url, FILTER_VALIDATE_URL)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enter a valid Google Sheet or Doc URL.',
+            ], 422);
+        }
+
+        $view = MercariWoShipDataView::firstOrNew(['sku' => self::SOP_SHEET_SKU]);
+        $value = is_array($view->value)
+            ? $view->value
+            : (json_decode((string) ($view->value ?? ''), true) ?: []);
+        if ($url === '') {
+            unset($value['sop_sheet_url']);
+        } else {
+            $value['sop_sheet_url'] = $url;
+        }
+        $view->value = $value;
+        $view->save();
+
+        return response()->json([
+            'success' => true,
+            'url' => $url,
+        ]);
+    }
+
+    private function loadSopSheetUrl(): string
+    {
+        $view = MercariWoShipDataView::where('sku', self::SOP_SHEET_SKU)->first();
+        if (! $view) {
+            return '';
+        }
+        $value = is_array($view->value)
+            ? $view->value
+            : (json_decode((string) ($view->value ?? ''), true) ?: []);
+
+        return trim((string) ($value['sop_sheet_url'] ?? ''));
     }
 
     public function getMercariWoShipTabulatorData(Request $request)
@@ -80,6 +125,19 @@ class MercariWoShipController extends Controller
         }
 
         $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('mercari_woship', $skus);
+        $dataViewSprice = [];
+        $dataViewOpSprice = [];
+        foreach (MercariWoShipDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $dv) {
+            $val = is_array($dv->value) ? $dv->value : (json_decode((string) ($dv->value ?? ''), true) ?: []);
+            $stored = $val['SPRICE'] ?? $val['sprice'] ?? null;
+            if (is_numeric($stored) && (float) $stored > 0) {
+                $dataViewSprice[strtoupper(trim((string) $dv->sku))] = round((float) $stored, 2);
+            }
+            $storedOp = $val['OP_SPRICE'] ?? $val['op_sprice'] ?? null;
+            if (is_numeric($storedOp) && (float) $storedOp > 0) {
+                $dataViewOpSprice[strtoupper(trim((string) $dv->sku))] = round((float) $storedOp, 2);
+            }
+        }
 
         $data = [];
         foreach ($productMasterRows as $productMaster) {
@@ -119,8 +177,25 @@ class MercariWoShipController extends Controller
             $sprice = isset($statusValue['sprice']) && $statusValue['sprice'] !== '' && $statusValue['sprice'] !== null
                 ? (float) $statusValue['sprice']
                 : null;
+            if ($sprice === null || $sprice <= 0) {
+                $fromView = $dataViewSprice[strtoupper(trim((string) $sku))] ?? null;
+                if (is_numeric($fromView) && (float) $fromView > 0) {
+                    $sprice = (float) $fromView;
+                }
+            }
             $spft = ($sprice !== null && $sprice > 0) ? (($sprice * $factor - $lp) / $sprice) * 100 : 0;
             $sroi = ($sprice !== null && $lp > 0) ? (($sprice * $factor - $lp) / $lp) * 100 : 0;
+
+            $opSprice = isset($statusValue['op_sprice']) && $statusValue['op_sprice'] !== '' && $statusValue['op_sprice'] !== null
+                ? (float) $statusValue['op_sprice']
+                : null;
+            if ($opSprice === null || $opSprice <= 0) {
+                $fromViewOp = $dataViewOpSprice[strtoupper(trim((string) $sku))] ?? null;
+                if (is_numeric($fromViewOp) && (float) $fromViewOp > 0) {
+                    $opSprice = (float) $fromViewOp;
+                }
+            }
+            $opMetrics = $this->mercariWoshipSpriceProfitMetrics($opSprice, $lp, $factor, 0.0);
 
             $row = [
                 'Parent' => $productMaster->parent ?? null,
@@ -133,6 +208,13 @@ class MercariWoShipController extends Controller
                 'PFT' => round($pft, 2),
                 'ROI' => round($roi, 2),
                 'sprice' => $sprice,
+                'SPRICE' => ($sprice !== null && $sprice > 0) ? $sprice : null,
+                'op_sprice' => ($opSprice !== null && $opSprice > 0) ? $opSprice : null,
+                'OP_SPRICE' => ($opSprice !== null && $opSprice > 0) ? $opSprice : null,
+                'OP_SGPFT' => $opMetrics['sgpft'],
+                'OP_SGROI' => $opMetrics['sgroi'],
+                'OP_SPFT' => $opMetrics['spft'],
+                'OP_SNROI' => $opMetrics['snroi'],
                 'SPFT' => round($spft, 2),
                 'SROI' => round($sroi, 2),
                 'nr_req' => $nrReq,
@@ -169,11 +251,71 @@ class MercariWoShipController extends Controller
                 $value[$field] = $request->input($field);
             }
         }
+        if ($request->has('op_sprice')) {
+            $opSprice = $request->input('op_sprice');
+            if ($opSprice === null || $opSprice === '' || ! is_numeric($opSprice) || (float) $opSprice <= 0) {
+                unset($value['op_sprice']);
+            } else {
+                $value['op_sprice'] = round((float) $opSprice, 2);
+            }
+        }
 
         $status->value = $value;
         $status->save();
 
+        if ($request->has('sprice') || $request->has('op_sprice')) {
+            $view = MercariWoShipDataView::firstOrNew(['sku' => $sku]);
+            $viewVal = is_array($view->value)
+                ? $view->value
+                : (json_decode((string) ($view->value ?? ''), true) ?: []);
+            if ($request->has('sprice')) {
+                $sprice = $request->input('sprice');
+                if ($sprice === null || $sprice === '' || ! is_numeric($sprice) || (float) $sprice <= 0) {
+                    unset($viewVal['SPRICE'], $viewVal['sprice']);
+                } else {
+                    $viewVal['SPRICE'] = round((float) $sprice, 2);
+                    $viewVal['sprice'] = $viewVal['SPRICE'];
+                }
+            }
+            if ($request->has('op_sprice')) {
+                $opSprice = $request->input('op_sprice');
+                if ($opSprice === null || $opSprice === '' || ! is_numeric($opSprice) || (float) $opSprice <= 0) {
+                    unset($viewVal['OP_SPRICE'], $viewVal['op_sprice']);
+                } else {
+                    $viewVal['OP_SPRICE'] = round((float) $opSprice, 2);
+                    $viewVal['op_sprice'] = $viewVal['OP_SPRICE'];
+                }
+            }
+            $view->value = $viewVal;
+            $view->save();
+        }
+
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Without-ship Sprice results (no Ship): SGPFT / SGROI and SPFT / SNROI.
+     *
+     * @return array{sgpft: ?float, sgroi: ?float, spft: ?float, snroi: ?float}
+     */
+    private function mercariWoshipSpriceProfitMetrics(?float $sprice, float $lp, float $factor, float $adsPct = 0.0): array
+    {
+        if ($sprice === null || $sprice <= 0) {
+            return ['sgpft' => null, 'sgroi' => null, 'spft' => null, 'snroi' => null];
+        }
+        $sgpft = (($sprice * $factor - $lp) / $sprice) * 100;
+        $sgroi = $lp > 0 ? (($sprice * $factor - $lp) / $lp) * 100 : 0.0;
+        $spft = $sgpft - $adsPct;
+        $snroi = $lp > 0
+            ? (($sprice * $factor - $lp - $sprice * ($adsPct / 100)) / $lp) * 100
+            : 0.0;
+
+        return [
+            'sgpft' => round($sgpft, 2),
+            'sgroi' => round($sgroi, 2),
+            'spft' => round($spft, 2),
+            'snroi' => round($snroi, 2),
+        ];
     }
 
     /**

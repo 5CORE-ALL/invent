@@ -2257,10 +2257,6 @@
                 return rows;
             },
             ajaxSorting: false,
-            sortMode: "local",
-            filterMode: "local",
-            paginationMode: "local",
-            headerSort: true,
             layout: "fitDataStretch",
             rowHeight: 36,
             height: "100%",
@@ -2836,7 +2832,7 @@
                     width: 80
                 },
                 {
-                    title: "SGROI",
+                    title: "S GROI",
                     field: "SGROI",
                     hozAlign: "center",
                     headerTooltip: "S GROI from the visible S PRC. LMP cap (when SGROI at LMP ≥ 20%) can lower the shown %.",
@@ -2870,7 +2866,7 @@
                     width: 80
                 },
                 {
-                    title: "SGPFT",
+                    title: "S GPFT",
                     field: "SGPFT",
                     hozAlign: "center",
                     headerTooltip: "S GPFT from S PRC (SPRICE).",

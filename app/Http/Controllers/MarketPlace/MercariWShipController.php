@@ -24,6 +24,8 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class MercariWShipController extends Controller
 {
+    private const SOP_SHEET_SKU = '__MERC_WS_SOP_SHEET__';
+
     protected $apiController;
 
     public function __construct(ApiController $apiController)
@@ -33,7 +35,50 @@ class MercariWShipController extends Controller
 
     public function mercariWshipTabulatorView(Request $request)
     {
-        return view('market-places.mercari_with_ship_tabulator_view');
+        return view('market-places.mercari_with_ship_tabulator_view', [
+            'sopSheetUrl' => $this->loadSopSheetUrl(),
+        ]);
+    }
+
+    public function saveMercariWshipSopSheet(Request $request)
+    {
+        $url = trim((string) $request->input('url', ''));
+        if ($url !== '' && ! filter_var($url, FILTER_VALIDATE_URL)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enter a valid Google Sheet or Doc URL.',
+            ], 422);
+        }
+
+        $view = MercariWShipDataView::firstOrNew(['sku' => self::SOP_SHEET_SKU]);
+        $value = is_array($view->value)
+            ? $view->value
+            : (json_decode((string) ($view->value ?? ''), true) ?: []);
+        if ($url === '') {
+            unset($value['sop_sheet_url']);
+        } else {
+            $value['sop_sheet_url'] = $url;
+        }
+        $view->value = $value;
+        $view->save();
+
+        return response()->json([
+            'success' => true,
+            'url' => $url,
+        ]);
+    }
+
+    private function loadSopSheetUrl(): string
+    {
+        $view = MercariWShipDataView::where('sku', self::SOP_SHEET_SKU)->first();
+        if (! $view) {
+            return '';
+        }
+        $value = is_array($view->value)
+            ? $view->value
+            : (json_decode((string) ($view->value ?? ''), true) ?: []);
+
+        return trim((string) ($value['sop_sheet_url'] ?? ''));
     }
 
     public function getMercariWshipTabulatorData(Request $request)

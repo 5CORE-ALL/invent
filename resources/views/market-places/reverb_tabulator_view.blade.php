@@ -2627,10 +2627,6 @@
         table = new Tabulator("#reverb-table", {
             ajaxURL: "/reverb-data-json",
             ajaxSorting: false,
-            sortMode: "local",
-            filterMode: "local",
-            paginationMode: "local",
-            headerSort: true,
             ajaxResponse: function(url, params, response) {
                 if (response && Array.isArray(response.data)) {
                     allTableData = response.data;
@@ -3302,7 +3298,7 @@
                     width: 96
                 },
                 {
-                    title: "SGROI",
+                    title: "Sroi",
                     field: "SROI",
                     hozAlign: "center",
                     headerTooltip: "SGROI from SPRICE.",
@@ -3340,23 +3336,6 @@
                     width: 50
                 },
                 {
-                    title: "SNROI",
-                    field: "SNROI",
-                    hozAlign: "center",
-                    sorter: function(a, b, aRow, bRow) {
-                        const aNet = reverbComputeNetSroi(aRow.getData());
-                        const bNet = reverbComputeNetSroi(bRow.getData());
-                        return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
-                             - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
-                    },
-                    formatter: function(cell) {
-                        const percent = reverbComputeNetSroi(cell.getRow().getData());
-                        if (percent === null || !isFinite(percent)) return '';
-                        return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
-                    },
-                    width: 50
-                },
-                {
                     title: "SNPFT",
                     field: "SNPFT",
                     hozAlign: "center",
@@ -3367,9 +3346,28 @@
                              - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
                     },
                     formatter: function(cell) {
+                        // Same calculate-data as PFT% / NPFT: SGPFT − Ads%
                         const percent = reverbComputeSnpft(cell.getRow().getData());
                         if (percent === null || !isFinite(percent)) return '';
                         return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GPFT%', percent)) || ('color:'+reverbPftColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "SNROI",
+                    field: "SNROI",
+                    hozAlign: "center",
+                    sorter: function(a, b, aRow, bRow) {
+                        const aNet = reverbComputeNetSroi(aRow.getData());
+                        const bNet = reverbComputeNetSroi(bRow.getData());
+                        return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
+                             - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
+                    },
+                    formatter: function(cell) {
+                        // Amazon-style: (gross $ − Ads%×SPRICE) / LP × 100
+                        const percent = reverbComputeNetSroi(cell.getRow().getData());
+                        if (percent === null || !isFinite(percent)) return '';
+                        return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },

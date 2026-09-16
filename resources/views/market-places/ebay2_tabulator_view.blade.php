@@ -3234,10 +3234,6 @@
                     return viewRows;
                 },
                 ajaxSorting: false,
-                sortMode: "local",
-                filterMode: "local",
-                paginationMode: "local",
-                headerSort: true,
                 layout: "fitDataStretch",
                 rowHeight: 36,
                 height: "100%",
@@ -4092,17 +4088,11 @@
                     },
 
                     {
-                        title: "SGROI",
+                        title: "SGROI%",
                         field: "SGROI",
                         hozAlign: "center",
-                        headerSort: true,
+                        sorter: "number",
                         headerTooltip: "SGROI from the visible S PRC. LMP cap (when SGROI at LMP ≥ 20%) can lower the shown %.",
-                        sorter: function(a, b, aRow, bRow) {
-                            const av = ebay2ComputeSgroiFromSprice(aRow.getData());
-                            const bv = ebay2ComputeSgroiFromSprice(bRow.getData());
-                            return ((av == null || !isFinite(av)) ? 0 : av)
-                                 - ((bv == null || !isFinite(bv)) ? 0 : bv);
-                        },
                         formatter: function(cell) {
                             const percent = ebay2ComputeSgroiFromSprice(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';
@@ -4113,31 +4103,9 @@
                         width: 80
                     },
                     {
-                        title: "SGPFT",
-                        field: "SGPFT",
-                        hozAlign: "center",
-                        headerSort: true,
-                        headerTooltip: "SGPFT from S PRC (SPRICE), eBay 1 take-home formula.",
-                        sorter: function(a, b, aRow, bRow) {
-                            const av = ebay2ComputeSgpftFromSprice(aRow.getData());
-                            const bv = ebay2ComputeSgpftFromSprice(bRow.getData());
-                            return ((av == null || !isFinite(av)) ? 0 : av)
-                                 - ((bv == null || !isFinite(bv)) ? 0 : bv);
-                        },
-                        formatter: function(cell) {
-                            const percent = ebay2ComputeSgpftFromSprice(cell.getRow().getData());
-                            if (percent === null || !isFinite(percent)) return '';
-
-                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        },
-                        width: 80
-                    },
-                    {
-                        title: "SNROI",
+                        title: "SNROI%",
                         field: "SROI",
                         hozAlign: "center",
-                        headerSort: true,
                         headerTooltip: "SNROI from S PRC using eBay 2 Ads%.",
                         sorter: function(a, b, aRow, bRow) {
                             const aNet = ebay2ComputeNetRoi(aRow.getData(), 'SPRICE');
@@ -4155,20 +4123,25 @@
                         width: 80
                     },
                     {
+                        title: "S GPFT",
+                        field: "SGPFT",
+                        hozAlign: "center",
+                        headerTooltip: "S GPFT from S PRC (SPRICE), eBay 1 take-home formula.",
+                        formatter: function(cell) {
+                            const percent = ebay2ComputeSgpftFromSprice(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '';
+
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 80
+                    },
+                    {
                         title: "SNPFT",
                         field: "SPFT",
                         hozAlign: "center",
-                        headerSort: true,
-                        visible: true,
-                        headerTooltip: "SNPFT = SGPFT − eBay 2 Ads%, with SGPFT from S PRC.",
-                        sorter: function(a, b, aRow, bRow) {
-                            const ads = parseFloat(EBAY2_CHANNEL_ADS_PCT) || 0;
-                            const av = ebay2ComputeSgpftFromSprice(aRow.getData());
-                            const bv = ebay2ComputeSgpftFromSprice(bRow.getData());
-                            const an = (av == null || !isFinite(av)) ? 0 : (av - ads);
-                            const bn = (bv == null || !isFinite(bv)) ? 0 : (bv - ads);
-                            return an - bn;
-                        },
+                        sorter: "number",
+                        headerTooltip: "SNPFT = S GPFT − eBay 2 Ads%, with S GPFT from S PRC.",
                         formatter: function(cell) {
                             const sgpft = ebay2ComputeSgpftFromSprice(cell.getRow().getData());
                             if (sgpft === null || !isFinite(sgpft)) return '';
