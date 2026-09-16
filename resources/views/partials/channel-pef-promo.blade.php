@@ -5257,13 +5257,16 @@
             if (!(lp > 0)) return 0;
             const ship = chPromoShipCost(d);
             const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
-            // Temu 3: SGROI = (S R prc × margin − ship − LP) / LP, S R prc = S PRC × 0.88
+            // Temu 3: SNROI = (S PRC × 0.88 × margin − ship − LP − S PRC × Ads%) / LP
             if (typeof temuSpriceCalcParts === 'function') {
                 const margin = (typeof temuSpriceMargin === 'function') ? temuSpriceMargin(d) : 0;
                 const rate = (typeof TEMU2_S_RECOVERY_RATE === 'number' && TEMU2_S_RECOVERY_RATE > 0)
                     ? TEMU2_S_RECOVERY_RATE : 0.88;
-                if (margin > 0 && rate > 0) {
-                    let out = (lp * (1 + roi / 100) + ship) / (rate * margin);
+                const ads = (typeof temuAdsPercentForNet === 'function')
+                    ? (parseFloat(temuAdsPercentForNet()) || 0) : 0;
+                const denom = (rate * margin) - (ads / 100);
+                if (margin > 0 && rate > 0 && denom > 0) {
+                    let out = (lp * (1 + roi / 100) + ship) / denom;
                     if (isFinite(out) && out > 0) {
                         out = chPromoRound2(out);
                         if (typeof temuClampSpriceBand2699 === 'function') {

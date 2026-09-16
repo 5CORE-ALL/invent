@@ -352,6 +352,7 @@ class NewTemuoneController extends Controller
                         'temu_l30' => $temuL30,
                         'cvr' => $cvrPercent,
                         'cvr60' => $cvr60,
+                        'ads' => $adsPercent,
                         'ebay' => $this->temuEbayRefPrice($ebayPrice, $ebay2Price),
                         'amz' => $amazonPrice,
                         'lmp' => $lmpInfo['raw'],
@@ -370,8 +371,8 @@ class NewTemuoneController extends Controller
                 ];
 
                 // GPFT / GROI on the listing R Price (marketplace Temu margin).
-                // SPFT / SGROI use the same 0.95 take-home as Sprc Dil. SGROI is the
-                // persisted Dil+CVR rule number (110), never the inverted 111.
+                // SPFT / SGROI use the same 0.95 take-home as Sprc Dil. Dil + CVR
+                // set SNROI; SGROI is live SPFT ÷ LP at that S PRC.
                 $gpftDollars = TemuShopifySalesService::computeGroiProfit($rPrice, $percentage, $lp, $temuShip);
                 $gpftPercent = ($rPrice > 0 && $tPrice > 0) ? round(($gpftDollars / $tPrice) * 100, 2) : 0.0;
                 $groiPercent = ($rPrice > 0 && $lp > 0) ? round(($gpftDollars / $lp) * 100, 2) : 0.0;

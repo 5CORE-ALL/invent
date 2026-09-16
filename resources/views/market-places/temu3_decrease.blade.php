@@ -1215,7 +1215,7 @@
         const ship = parseFloat(rowData && rowData.temu_ship) || 0;
         return recovery * temuSpriceMargin(rowData) - ship - lp;
     }
-    /** Used by Sprc Dil back-solve so Target GROI matches on-page SGROI% (S Profit ÷ LP). */
+    /** Live SGROI at a candidate S PRC (S Profit ÷ LP). Dil + CVR invert SNROI, not this. */
     function temuSpriceCalcParts(rowData, spriceOverride) {
         const recovery = temu2SRecovery(temu2RowSpriceValue(rowData, spriceOverride));
         const lp = parseFloat(rowData && rowData.lp) || 0;
@@ -1231,6 +1231,21 @@
         if (spft == null) return null;
         const sprice = temu2RowSpriceValue(rowData, spriceOverride);
         return spft - ((sprice > 0 ? sprice : 0) * (temuAdsPercentForNet() / 100));
+    }
+    /** Dil + CVR Target NROI when S PRC is the Dil price (not eBay / Amazon / LMP capped). */
+    function temuSnroiFromRule(row) {
+        if (typeof ebayDilGroiTargetGroi !== 'function') return null;
+        const rule = ebayDilGroiTargetGroi(row);
+        if (rule == null || !isFinite(rule)) return null;
+        const cap = typeof temuSpriceCapResult === 'function' ? temuSpriceCapResult(row) : null;
+        if (cap && ((cap.labels && cap.labels.length) || cap.lmpAlert)) return null;
+        const meta = typeof ebayDilGroiMetaForRow === 'function' ? ebayDilGroiMetaForRow(row) : null;
+        const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(row) : 0;
+        if (meta && meta.sprc > 0 && sprice > 0
+            && Math.round(sprice * 100) !== Math.round(Number(meta.sprc) * 100)) {
+            return null;
+        }
+        return rule;
     }
     // S Recovery rate = 0.88 (S Profit / SROI). S Temu B Prc inverts Temu Price.
     const TEMU2_S_RECOVERY_RATE = 0.88;
@@ -1314,10 +1329,6 @@
     }
     function temuExportSgroi(row) {
         if (!row || (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(row))) return '';
-        if (typeof chPromoZeroSoldDisplayGroi === 'function') {
-            const target = chPromoZeroSoldDisplayGroi(row);
-            if (target != null) return Math.round(Number(target));
-        }
         const lp = parseFloat(row.lp) || 0;
         const sprice = temuExportRowSprice(row);
         const spft = typeof temu2SpftDollars === 'function' ? temu2SpftDollars(row, sprice) : null;
@@ -1340,6 +1351,10 @@
     }
     function temuExportSnroi(row) {
         if (!row || (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(row))) return '';
+        if (typeof temuSnroiFromRule === 'function') {
+            const target = temuSnroiFromRule(row);
+            if (target != null) return Math.round(Number(target));
+        }
         const lp = parseFloat(row.lp) || 0;
         const sprice = temuExportRowSprice(row);
         const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(row, sprice) : null;
@@ -1886,6 +1901,28 @@
     }
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'temu3'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'temu3'])
+    /** Back-solve S PRC so SNROI (Dil + CVR Target NROI) matches: recovery 0.88 × margin − Ads%. */
+    function chPromoSpriceFromTargetRoi(d, roiPct) {
+        const lp = parseFloat(d && (d.lp != null ? d.lp : d.LP_productmaster)) || 0;
+        if (!(lp > 0)) return 0;
+        const ship = parseFloat(d && (d.temu_ship != null ? d.temu_ship : d.Ship_productmaster)) || 0;
+        const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
+        const margin = (typeof temuSpriceMargin === 'function') ? temuSpriceMargin(d) : TEMU_MARGIN;
+        const rate = (typeof TEMU2_S_RECOVERY_RATE === 'number' && TEMU2_S_RECOVERY_RATE > 0)
+            ? TEMU2_S_RECOVERY_RATE : 0.88;
+        const ads = (typeof temuAdsPercentForNet === 'function') ? (parseFloat(temuAdsPercentForNet()) || 0) : 0;
+        const denom = (rate * margin) - (ads / 100);
+        if (!(denom > 0)) return 0;
+        let out = (lp * (1 + roi / 100) + ship) / denom;
+        if (!(isFinite(out) && out > 0)) return 0;
+        out = (typeof chPromoRound2 === 'function') ? chPromoRound2(out) : Math.round(out * 100) / 100;
+        if (typeof temuClampSpriceBand2699 === 'function') {
+            const clamped = temuClampSpriceBand2699(out);
+            out = (typeof chPromoRound2 === 'function') ? chPromoRound2(clamped) : Math.round(clamped * 100) / 100;
+        }
+        return out;
+    }
+    window.chPromoSpriceFromTargetRoi = chPromoSpriceFromTargetRoi;
     function temu2RowSpriceForAlert(data) {
         return typeof temuDiscountedPrice === 'function' ? temuDiscountedPrice(data) : 0;
     }
@@ -2082,7 +2119,8 @@
             ? temuSpriceCapResult(row)
             : { sprice: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
         const stored = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
-        const value = stored > 0 ? +stored.toFixed(2) : 0;
+        const value = (cap && cap.sprice > 0) ? +Number(cap.sprice).toFixed(2)
+            : (stored > 0 ? +stored.toFixed(2) : 0);
         return {
             value: value,
             labels: (cap && cap.labels) || [],
@@ -2095,6 +2133,8 @@
     window.temuSpriceCellModel = temuSpriceCellModel;
 
     function temuDisplayedSprice(row) {
+        const cap = typeof temuSpriceCapResult === 'function' ? temuSpriceCapResult(row) : null;
+        if (cap && cap.sprice > 0) return +Number(cap.sprice).toFixed(2);
         const stored = parseFloat(row && (row.SPRICE != null ? row.SPRICE : row.sprice)) || 0;
         return stored > 0 ? +stored.toFixed(2) : 0;
     }
@@ -4117,19 +4157,21 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "Suggested price from Dil → Target GROI% slabs. Every INV > 0 SKU uses the Dil-matching slab (including Temu L30 = 0). S PRC is back-solved so SGROI matches the target.",
+                    headerTooltip: "Suggested price from Dil → Target NROI% slabs. Every INV > 0 SKU uses the Dil-matching slab (including Temu L30 = 0). S PRC is back-solved so SNROI matches the Dil + CVR target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(rowData)) return '';
                         if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                         const meta = ebayDilGroiMetaForRow(rowData);
                         if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = (meta.zeroSoldMin
-                                ? '0 Sold Temu L30 → min Target GROI'
+                        const tip = (typeof ebayDilGroiTipText === 'function')
+                            ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold Temu L30 → min Target NROI' })
+                            : ((meta.zeroSoldMin
+                                ? '0 Sold Temu L30 → min Target NROI'
                                 : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
                             + ' → ' + meta.label
-                            + ' → GROI ' + meta.groi + '%'
-                            + ' → $' + meta.sprc.toFixed(2);
+                            + ' → NROI ' + meta.groi + '%'
+                            + ' → $' + meta.sprc.toFixed(2));
                         return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                             + meta.sprc.toFixed(2) + '</span>';
                     },
@@ -4255,16 +4297,9 @@
                     accessorDownload: function(value, data) {
                         return temuExportSgroi(data);
                     },
-                    headerTooltip: "SGROI% = S Profit ÷ LP. S Profit = S R prc × margin − LP − Temu Ship. Sprc Dil back-solves S PRC so this matches the Dil target.",
+                    headerTooltip: "SGROI% = S Profit ÷ LP. S Profit = S Recovery × margin − LP − Temu Ship. Live at S PRC — Dil + CVR set SNROI, not this column.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        if (typeof chPromoZeroSoldDisplayGroi === 'function') {
-                            const target = chPromoZeroSoldDisplayGroi(rowData);
-                            if (target != null) {
-                                const colorClass = getRoiColor(target);
-                                return `<span class="dil-percent-value ${colorClass}">${Math.round(Number(target))}%</span>`;
-                            }
-                        }
                         const lp = parseFloat(rowData['lp']) || 0;
                         const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(rowData) : 0;
                         const spft = typeof temu2SpftDollars === 'function' ? temu2SpftDollars(rowData, sprice) : null;
@@ -4277,12 +4312,18 @@
                 {
                     title: "SNROI%",
                     field: "sroi_percent",
-                    visible: false,
                     hozAlign: "center",
                     sorter: temuSortBy(function(d) { return temuExportSnroi(d); }),
-                    headerTooltip: "SNROI% = SNPFT / LP. SNPFT = SPFT − (S PRC × Ads%)",
+                    headerTooltip: "SNROI% = Dil + CVR Target NROI. S PRC is back-solved so this matches the slab (same as eBay / Amazon). If S PRC was capped to eBay / Amazon / LMP, it shows live SNPFT ÷ LP instead.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
+                        if (typeof temuSnroiFromRule === 'function') {
+                            const target = temuSnroiFromRule(rowData);
+                            if (target != null) {
+                                const colorClass = getRoiColor(target);
+                                return `<span class="dil-percent-value ${colorClass}">${Math.round(Number(target))}%</span>`;
+                            }
+                        }
                         const lp = parseFloat(rowData['lp']) || 0;
                         const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(rowData) : 0;
                         const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(rowData, sprice) : null;

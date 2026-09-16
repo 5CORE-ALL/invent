@@ -277,6 +277,103 @@ class TemuShopifySalesService
     }
 
     /**
+     * Live SNROI at S PRC: SGROI − (S PRC × Ads%) / LP.
+     */
+    public static function snroiAtSprice(
+        float $sprice,
+        float $lp,
+        float $ship,
+        float $adsPercent = 0.0,
+        float $listingBase = 0.0
+    ): ?float {
+        $sgroi = self::sgroiAtSprice($sprice, $lp, $ship, $listingBase);
+        if ($sgroi === null) {
+            return null;
+        }
+        if (! ($adsPercent > 0) || ! ($sprice > 0) || ! ($lp > 0)) {
+            return $sgroi;
+        }
+
+        return $sgroi - (($sprice * $adsPercent / 100) / $lp) * 100;
+    }
+
+    /**
+     * Back-solve S PRC so snroiAtSprice equals Dil + CVR Target NROI.
+     */
+    public static function spriceFromTargetSnroi(
+        float $lp,
+        float $ship,
+        float $nroiPct,
+        float $adsPercent = 0.0,
+        float $listingBase = 0.0
+    ): float {
+        if (! ($lp > 0) || ! is_finite($lp) || ! is_finite($nroiPct)) {
+            return 0.0;
+        }
+        if (! is_finite($ship)) {
+            $ship = 0.0;
+        }
+        if (! is_finite($adsPercent) || $adsPercent < 0) {
+            $adsPercent = 0.0;
+        }
+        $seed = self::spriceFromTargetSgroi($lp, $ship, $nroiPct, $listingBase);
+        if ($adsPercent > 0 && $seed > 0) {
+            $seed = $seed / max(0.2, 1 - $adsPercent / 95);
+        }
+        $seed = round($seed, 2);
+        $invert = static function (float $price) use ($lp, $ship, $adsPercent, $listingBase): ?float {
+            return self::snroiAtSprice($price, $lp, $ship, $adsPercent, $listingBase);
+        };
+        $seedRoi = $invert($seed);
+        if ($seedRoi !== null && abs($seedRoi - $nroiPct) <= 1.5) {
+            return $seed;
+        }
+        $lo = max(0.01, $seed * 0.35);
+        $hi = max($seed * 2.8, $seed + 20);
+        for ($expand = 0; $expand < 10; $expand++) {
+            $gLo = $invert($lo);
+            $gHi = $invert($hi);
+            if ($gLo === null || $gHi === null) {
+                break;
+            }
+            if ($gLo <= $nroiPct && $nroiPct <= $gHi) {
+                break;
+            }
+            if ($nroiPct < $gLo) {
+                $hi = $lo;
+                $lo = max(0.01, $lo * 0.5);
+            } else {
+                $lo = $hi;
+                $hi = $hi * 1.8;
+            }
+        }
+        $best = $seed;
+        $bestErr = INF;
+        for ($i = 0; $i < 40; $i++) {
+            $mid = ($lo + $hi) / 2;
+            $g = $invert($mid);
+            if ($g === null) {
+                break;
+            }
+            $err = abs($g - $nroiPct);
+            if ($err < $bestErr) {
+                $bestErr = $err;
+                $best = $mid;
+            }
+            if ($g < $nroiPct) {
+                $lo = $mid;
+            } else {
+                $hi = $mid;
+            }
+        }
+        if (! is_finite($best) || ! ($best > 0)) {
+            return 0.0;
+        }
+
+        return round($best, 2);
+    }
+
+    /**
      * Invert Full Temu Price back to listing base (S Temu B Prc / push base).
      */
     public static function computeBaseFromFullTemuPrice(float $fullPrice): float
