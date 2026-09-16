@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Models\ShopifySku;
 use App\Services\MarketplaceManager\Ebay2InventorySyncService;
+use App\Services\MarketplaceManager\Ebay2LiveListingsService;
 use App\Services\MarketplaceManager\EbayLiveListingMapper;
 use App\Services\MarketplaceManager\MarketplaceMismatchBatch;
 use PHPUnit\Framework\TestCase;
@@ -104,6 +105,38 @@ class Ebay2MismatchInventoryRulesTest extends TestCase
         );
         $this->assertSame([], EbayLiveListingMapper::variationSpecificsForSku($item, 'CDC11'));
         $this->assertSame([], EbayLiveListingMapper::variationSpecificsForSku(['Quantity' => 26], 'CDC11'));
+    }
+
+    public function test_pushed_qty_does_not_stamp_sibling_variations(): void
+    {
+        $cached = [
+            ['product_id' => '111', 'sku' => '5C-WL-CHARGE', 'inventory' => 4],
+            ['product_id' => '111', 'sku' => '5C-WL-CHARGE-BLK', 'inventory' => 18],
+        ];
+
+        $next = Ebay2LiveListingsService::applyPushedQtyToLiveRows($cached, [
+            ['product_id' => '111', 'sku_code' => '5C-WL-CHARGE', 'inventory' => 24],
+        ]);
+
+        $this->assertSame(24, $next[0]['inventory']);
+        $this->assertSame(18, $next[1]['inventory']);
+    }
+
+    public function test_variation_listing_is_detected_so_parent_qty_is_not_used(): void
+    {
+        $item = [
+            'Quantity' => 40,
+            'Variations' => [
+                'Variation' => [
+                    ['SKU' => '5C-WL-CHARGE', 'Quantity' => 4],
+                    ['SKU' => '5C-WL-CHARGE-BLK', 'Quantity' => 18],
+                ],
+            ],
+        ];
+
+        $this->assertTrue(EbayLiveListingMapper::listingHasVariations($item));
+        $this->assertFalse(EbayLiveListingMapper::listingHasVariations(['Quantity' => 26]));
+        $this->assertSame(4, EbayLiveListingMapper::quantityFromGetItem($item, '5C-WL-CHARGE'));
     }
 
     public function test_mismatch_batch_leaves_remaining_skus_for_next_run(): void

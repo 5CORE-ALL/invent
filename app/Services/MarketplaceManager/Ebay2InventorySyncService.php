@@ -745,15 +745,6 @@ class Ebay2InventorySyncService
             if ($preferFixedPrice || empty($result['success']) || (isset($result['quantity_confirmed']) && $result['quantity_confirmed'] === false)) {
                 $fallback = $this->ebay2Api->reviseVariationQuantity($itemId, $sku, $qty);
                 $fallbackMsg = (string) ($fallback['message'] ?? '');
-                if (empty($fallback['success'])) {
-                    $itemQty = $this->ebay2Api->reviseItemQuantity($itemId, $qty);
-                    if (! empty($itemQty['success'])) {
-                        $fallback = $itemQty;
-                        $fallbackMsg = (string) ($itemQty['message'] ?? '');
-                    } else {
-                        $fallbackMsg = trim($fallbackMsg.' '.(string) ($itemQty['message'] ?? ''));
-                    }
-                }
                 if (self::looksLikeTradingLimit($fallbackMsg)) {
                     self::markTradingLimited();
 
@@ -1234,19 +1225,18 @@ class Ebay2InventorySyncService
             }
             $qty = (int) $row['inventory'];
 
-            if ($itemId !== '') {
-                Ebay2Metric::query()->where('item_id', $itemId)->update(['ebay_stock' => $qty]);
-            }
-
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            Ebay2Metric::query()
+            $query = Ebay2Metric::query()
                 ->where(function ($q) use ($sku, $norm) {
                     $q->where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
                     if ($norm !== '' && $norm !== strtoupper(trim($sku))) {
                         $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$norm]);
                     }
-                })
-                ->update(['ebay_stock' => $qty]);
+                });
+            if ($itemId !== '') {
+                $query->where('item_id', $itemId);
+            }
+            $query->update(['ebay_stock' => $qty]);
         }
     }
 

@@ -2410,18 +2410,37 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         }
 
         $specifics = [];
+        $hasVariations = false;
+        $matchedSku = $sku;
         $raw = $this->getItem($itemId);
         $item = is_array($raw['Item'] ?? null) ? $raw['Item'] : [];
         if ($item !== []) {
-            $specifics = \App\Services\MarketplaceManager\EbayLiveListingMapper::variationSpecificsForSku($item, $sku);
+            $hasVariations = \App\Services\MarketplaceManager\EbayLiveListingMapper::listingHasVariations($item);
+            foreach (\App\Services\MarketplaceManager\Ebay2InventorySyncService::skuAliasesForPush($sku) as $alias) {
+                $found = \App\Services\MarketplaceManager\EbayLiveListingMapper::variationSpecificsForSku($item, $alias);
+                if ($found !== []) {
+                    $specifics = $found;
+                    $matchedSku = $alias;
+                    break;
+                }
+            }
+        }
+
+        // Multi-SKU listing: never write Item.Quantity — that stamps every variation
+        // and the mismatch tab then balloons after Refresh live.
+        if ($hasVariations && $specifics === []) {
+            return [
+                'success' => false,
+                'message' => 'Variation SKU '.$sku.' was not found on eBay item '.$itemId.'.',
+            ];
         }
 
         // Single-SKU listings have no VariationSpecifics — do not send a Variations node
-        // (eBay 21916587 "Missing name in name-value list"). Use item-level
-        // ReviseFixedPriceItem so a ReviseInventoryStatus 518 cooldown cannot block qty.
+        // (eBay 21916587 "Missing name in name-value list").
         if ($specifics === []) {
             return $this->reviseItemQuantity($itemId, $quantity);
         }
+        $sku = $matchedSku;
 
         try {
             $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
@@ -2472,8 +2491,11 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
                 ? $data['Errors']
                 : (isset($data['Errors']) && is_array($data['Errors']) ? [$data['Errors']] : []);
             if (
-                str_contains($msg, '21916587')
-                || $this->ebayErrorLooksLikeNonVariationListing($errors, $msg)
+                ! $hasVariations
+                && (
+                    str_contains($msg, '21916587')
+                    || $this->ebayErrorLooksLikeNonVariationListing($errors, $msg)
+                )
             ) {
                 return $this->reviseItemQuantity($itemId, $quantity);
             }

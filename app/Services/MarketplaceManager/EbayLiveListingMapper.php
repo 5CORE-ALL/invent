@@ -117,6 +117,18 @@ final class EbayLiveListingMapper
     }
 
     /**
+     * True when GetItem has a Variations node (multi-SKU listing).
+     *
+     * @param  array<string, mixed>  $item
+     */
+    public static function listingHasVariations(array $item): bool
+    {
+        $vars = $item['Variations']['Variation'] ?? null;
+
+        return is_array($vars) && $vars !== [];
+    }
+
+    /**
      * Per-SKU qty from GetItem. Variation listings must not use parent Quantity
      * (often a sum or another sibling) for this seller SKU.
      *

@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\Ebay2Metric;
+use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -92,57 +93,73 @@ final class Ebay2LiveListingsService
     /**
      * Write pushed qty onto the warm listings cache so mismatch tabs
      * drop those SKUs immediately (do not wait for the next Refresh live).
+     * Never stamp a parent item_id — sibling variations share that id.
      *
      * @param  array<int, array{product_id?: string, sku_code?: string, inventory?: int}>  $rows
      */
     public function applyPushedInventory(array $rows): void
     {
-        $byId = [];
-        $bySku = [];
-        foreach ($rows as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            $qty = (int) ($row['inventory'] ?? 0);
-            $itemId = trim((string) ($row['product_id'] ?? ''));
-            $sku = strtoupper(trim((string) ($row['sku_code'] ?? '')));
-            if ($itemId !== '') {
-                $byId[$itemId] = $qty;
-            }
-            if ($sku !== '') {
-                $bySku[$sku] = $qty;
-            }
-        }
-        if ($byId === [] && $bySku === []) {
-            return;
-        }
-
         try {
             $cached = Cache::get(self::CACHE_KEY);
             if (! is_array($cached) || $cached === []) {
                 return;
             }
-            $changed = false;
-            foreach ($cached as $i => $row) {
-                if (! is_array($row)) {
-                    continue;
-                }
-                $itemId = trim((string) ($row['product_id'] ?? ''));
-                $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
-                if ($itemId !== '' && array_key_exists($itemId, $byId)) {
-                    $cached[$i]['inventory'] = $byId[$itemId];
-                    $changed = true;
-                } elseif ($sku !== '' && array_key_exists($sku, $bySku)) {
-                    $cached[$i]['inventory'] = $bySku[$sku];
-                    $changed = true;
-                }
-            }
-            if ($changed) {
-                Cache::put(self::CACHE_KEY, $cached, self::CACHE_TTL_SECONDS);
+            $next = self::applyPushedQtyToLiveRows($cached, $rows);
+            if ($next !== $cached) {
+                Cache::put(self::CACHE_KEY, $next, self::CACHE_TTL_SECONDS);
             }
         } catch (\Throwable $e) {
             // ignore
         }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $cached
+     * @param  array<int, array{product_id?: string, sku_code?: string, inventory?: int}>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    public static function applyPushedQtyToLiveRows(array $cached, array $rows): array
+    {
+        $bySku = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku_code'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $qty = (int) ($row['inventory'] ?? 0);
+            foreach ([$sku, strtoupper($sku), ShopifySku::normalizeSkuForShopifyLookup($sku)] as $key) {
+                $key = trim((string) $key);
+                if ($key !== '') {
+                    $bySku[$key] = $qty;
+                }
+            }
+        }
+        if ($bySku === []) {
+            return $cached;
+        }
+
+        foreach ($cached as $i => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if (array_key_exists($sku, $bySku)) {
+                $cached[$i]['inventory'] = $bySku[$sku];
+            } elseif (array_key_exists(strtoupper($sku), $bySku)) {
+                $cached[$i]['inventory'] = $bySku[strtoupper($sku)];
+            } elseif ($norm !== '' && array_key_exists($norm, $bySku)) {
+                $cached[$i]['inventory'] = $bySku[$norm];
+            }
+        }
+
+        return $cached;
     }
 
     /**
@@ -160,16 +177,7 @@ final class Ebay2LiveListingsService
             return [];
         }
 
-        $all = $this->all();
-        $out = [];
-        foreach ($all as $row) {
-            if (in_array($row['product_id'], $ids, true) || in_array($row['sku'], $ids, true)) {
-                $out[$row['product_id']] = $row;
-                $out[$row['sku']] = $row;
-            }
-        }
-
-        return $out;
+        return EbayLiveListingMapper::indexDetailsForIds($this->all(), $ids);
     }
 
     /**
