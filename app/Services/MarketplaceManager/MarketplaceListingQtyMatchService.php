@@ -32,7 +32,7 @@ final class MarketplaceListingQtyMatchService
             'tiktok2', 'tiktokshop2' => 'tiktok2',
             'newegg', 'neweggb2c' => 'newegg',
             'temu', 'temu2', 'shein', 'aliexpress', 'pls', 'wayfair', 'faire',
-            'topdawg', 'amazon', 'reverb', 'doba', 'purchasingpower', 'alibaba' => $slug,
+            'topdawg', 'amazon', 'reverb', 'doba', 'purchasingpower', 'alibaba', 'b5cb2b' => $slug,
             default => null,
         };
     }
@@ -464,6 +464,18 @@ final class MarketplaceListingQtyMatchService
             return [$linked, $mpStock];
         }
 
+        if ($mmChannel === 'b5cb2b') {
+            $builder = app(B5cB2bListingsPageBuilder::class);
+            $linked = $builder->linkedSkus();
+            $verified = $catalog->filterLinkedToVerified($linked);
+            $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
+                app(B5cB2bLiveListingsService::class)->peekCached(),
+                $builder->stockMapForSkus($verified)
+            );
+
+            return [$linked, $mpStock];
+        }
+
         $pass = app(MarketplaceMismatchInventoryPass::class);
         $linked = $pass->linkedSkus($mmChannel);
         $verified = $catalog->filterLinkedToVerified($linked);
@@ -480,6 +492,9 @@ final class MarketplaceListingQtyMatchService
     {
         if ($mmChannel === 'pls') {
             return app(PlsListingsPageBuilder::class)->stockMapForSkus($skus);
+        }
+        if ($mmChannel === 'b5cb2b') {
+            return app(B5cB2bListingsPageBuilder::class)->stockMapForSkus($skus);
         }
 
         $resolverChannel = match ($mmChannel) {

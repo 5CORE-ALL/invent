@@ -423,21 +423,6 @@ final class MarketplaceMismatchInventoryPass
             return $this->alibabaLocalStockMap($skus);
         }
 
-        if ($channel === 'b5cb2b') {
-            if (! Schema::hasTable('b5c_b2b_products') || $skus === []) {
-                return [];
-            }
-            $map = [];
-            foreach (\App\Models\B5cB2bProduct::query()->whereIn('sku', $skus)->get(['sku', 'qty']) as $row) {
-                $sku = trim((string) $row->sku);
-                if ($sku !== '') {
-                    $map[$sku] = (int) $row->qty;
-                }
-            }
-
-            return $map;
-        }
-
         $resolverChannel = match ($channel) {
             'newegg' => MarketplaceListingStockResolver::CHANNEL_NEWEGG,
             'shein' => MarketplaceListingStockResolver::CHANNEL_SHEIN,
@@ -459,6 +444,7 @@ final class MarketplaceMismatchInventoryPass
             'tiktok' => MarketplaceListingStockResolver::CHANNEL_TIKTOK,
             'tiktok2' => MarketplaceListingStockResolver::CHANNEL_TIKTOK2,
             'pls' => MarketplaceListingStockResolver::CHANNEL_PLS,
+            'b5cb2b' => MarketplaceListingStockResolver::CHANNEL_B5CB2B,
             default => $channel,
         };
 
@@ -501,6 +487,7 @@ final class MarketplaceMismatchInventoryPass
             'tiktok' => app(TikTokLiveListingsService::class)->peekCached(),
             'tiktok2' => app(TikTok2LiveListingsService::class)->peekCached(),
             'pls' => app(PlsLiveListingsService::class)->peekCached(),
+            'b5cb2b' => app(B5cB2bLiveListingsService::class)->peekCached(),
             default => null,
         };
     }
@@ -568,6 +555,7 @@ final class MarketplaceMismatchInventoryPass
                 'tiktok' => app(TikTokLiveListingsService::class)->all(),
                 'tiktok2' => app(TikTok2LiveListingsService::class)->all(),
                 'pls' => app(PlsLiveListingsService::class)->all(),
+                'b5cb2b' => app(B5cB2bLiveListingsService::class)->all(),
                 default => [],
             };
         } catch (\Throwable $e) {

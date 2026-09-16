@@ -1,22 +1,123 @@
-@extends('layouts.vertical', ['title' => $title ?? 'B5C B2B listing', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $title ?? 'Business 5 Core (B2B) — Product', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('content')
 <div class="row">
     <div class="col-12">
-        <a href="{{ route('marketplace.products', 'b5cb2b') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Listings</a>
-        @include('marketplace._page-heading', ['slug' => 'b5cb2b', 'heading' => $product->sku])
+        <a href="{{ route('marketplace.products', 'b5cb2b') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Business 5 Core (B2B) Listings</a>
+        @include('marketplace._page-heading', ['slug' => 'b5cb2b', 'heading' => $sku, 'mb' => 'mb-3'])
         @include('marketplace.b5cb2b._nav', ['active' => 'products'])
+
+        @php
+            $inventoryMismatch = $linked
+                && $shopifyQty !== null
+                && $b5cQty !== null
+                && (int) $shopifyQty !== (int) $b5cQty;
+        @endphp
+
         <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>
+                    @if($linked)
+                        <span class="badge bg-success-subtle text-success">Linked on B2B</span>
+                    @else
+                        <span class="badge bg-light text-muted">Not linked</span>
+                    @endif
+                    @if(!empty($b5cState))
+                        <span class="badge bg-secondary-subtle text-secondary">{{ $b5cState }}</span>
+                    @endif
+                </span>
+                <div class="d-flex gap-2">
+                    @if($connected)
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btn-pull-b5c" data-id="{{ $shopifySkuId }}">
+                            <i class="ri-download-cloud-line"></i> Pull from B2B
+                        </button>
+                    @endif
+                    @if($linked)
+                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-inventory" data-id="{{ $shopifySkuId }}">
+                            <i class="ri-upload-2-line"></i> Push inventory now
+                        </button>
+                    @endif
+                </div>
+            </div>
             <div class="card-body">
-                <table class="table table-sm">
-                    <tr><th>SKU</th><td>{{ $product->sku }}</td></tr>
-                    <tr><th>Title</th><td>{{ $product->title }}</td></tr>
-                    <tr><th>Qty</th><td>{{ $product->qty }}</td></tr>
-                    <tr><th>Listing ID</th><td>{{ $product->listing_id }}</td></tr>
-                    <tr><th>Slug</th><td>{{ $product->slug }}</td></tr>
-                </table>
+                @if(!empty($inventoryMismatch))
+                    <div class="alert alert-warning py-2 small mb-3">
+                        Inventory mismatch: Shopify <strong>{{ (int) $shopifyQty }}</strong> vs B2B <strong>{{ (int) $b5cQty }}</strong>.
+                        Click <strong>Push inventory now</strong> to set B2B qty from B2C Shopify.
+                    </div>
+                @endif
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <h6>Shopify (B2C)</h6>
+                        <table class="table table-sm table-bordered">
+                            <tr><th>SKU</th><td><code>{{ $sku }}</code></td></tr>
+                            <tr><th>Title</th><td>{{ $shopify->product_title ?? '—' }} {{ $shopify->variant_title ? '— '.$shopify->variant_title : '' }}</td></tr>
+                            <tr><th>Qty</th><td>{{ $shopifyQty !== null ? $shopifyQty : '—' }}</td></tr>
+                            <tr><th>Price</th><td>{{ isset($shopify->b2c_price) || isset($shopify->price) ? number_format((float)($shopify->b2c_price ?? $shopify->price), 2) : '—' }}</td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Business 5 Core (B2B)</h6>
+                        <table class="table table-sm table-bordered">
+                            <tr><th>Listing ID</th><td class="small">{{ $metric->product_id ?? '—' }}</td></tr>
+                            <tr><th>SKU</th><td class="small">{{ $metric->sku_id ?? '—' }}</td></tr>
+                            <tr><th>Title</th><td>{{ $metric->title ?? '—' }}</td></tr>
+                            <tr><th>Qty</th><td>{{ $b5cQty !== null ? $b5cQty : '—' }}</td></tr>
+                            <tr><th>Price</th><td>{{ isset($metric->price) ? number_format((float)$metric->price, 2) : '—' }}</td></tr>
+                        </table>
+                    </div>
+                </div>
+                <div id="push-status" class="small text-muted mt-2"></div>
             </div>
         </div>
     </div>
 </div>
+@endsection
+
+@section('script')
+<script>
+document.getElementById('btn-pull-b5c')?.addEventListener('click', function () {
+    var btn = this;
+    var id = btn.getAttribute('data-id');
+    var out = document.getElementById('push-status');
+    btn.disabled = true;
+    out.textContent = 'Pulling from B2B…';
+    fetch('{{ url('marketplace/b5cb2b/products') }}/' + id + '/pull', {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+    }).then(function (r) { return r.json(); }).then(function (data) {
+        out.className = 'small mt-2 ' + (data.success ? 'text-success' : 'text-danger');
+        out.textContent = data.message || (data.success ? 'Done' : 'Failed');
+        if (data.success) setTimeout(function () { location.reload(); }, 800);
+        else btn.disabled = false;
+    }).catch(function (e) {
+        out.className = 'small mt-2 text-danger';
+        out.textContent = e.message || 'Request failed';
+        btn.disabled = false;
+    });
+});
+
+document.getElementById('btn-sync-inventory')?.addEventListener('click', function () {
+    var btn = this;
+    var id = btn.getAttribute('data-id');
+    var out = document.getElementById('push-status');
+    if (!confirm('Push live Shopify quantity to Business 5 Core B2B for this SKU now (no queue)?')) return;
+    btn.disabled = true;
+    out.textContent = 'Pushing inventory…';
+    fetch('{{ url('marketplace/b5cb2b/products') }}/' + id + '/sync-inventory', {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+    }).then(function (r) { return r.json(); }).then(function (data) {
+        out.className = 'small mt-2 ' + (data.success ? 'text-success' : 'text-danger');
+        out.textContent = data.message || (data.success ? 'Done' : 'Failed');
+        if (data.success) setTimeout(function () { location.reload(); }, 800);
+        else btn.disabled = false;
+    }).catch(function (e) {
+        out.className = 'small mt-2 text-danger';
+        out.textContent = e.message || 'Request failed';
+        btn.disabled = false;
+    });
+});
+</script>
 @endsection

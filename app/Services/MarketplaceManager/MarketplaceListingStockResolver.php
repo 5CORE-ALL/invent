@@ -62,6 +62,8 @@ final class MarketplaceListingStockResolver
 
     public const CHANNEL_PLS = 'pls';
 
+    public const CHANNEL_B5CB2B = 'b5cb2b';
+
     public static function shopifyQtyFromRow(?ShopifySku $row): ?int
     {
         if (! $row) {
@@ -1163,6 +1165,8 @@ final class MarketplaceListingStockResolver
             self::hydrateFromPricing($map, $keys, 'faire');
         } elseif ($channel === self::CHANNEL_PLS) {
             self::hydrateFromPlsCatalog($map, $keys);
+        } elseif ($channel === self::CHANNEL_B5CB2B) {
+            self::hydrateFromB5cB2bProducts($map, $keys);
         }
 
         return $map;
@@ -1681,6 +1685,47 @@ final class MarketplaceListingStockResolver
      * @param  array<string, int>  $map
      * @param  list<string>  $keys
      */
+    protected static function hydrateFromB5cB2bProducts(array &$map, array $keys): void
+    {
+        if ($keys === [] || ! Schema::hasTable('b5c_b2b_products')) {
+            return;
+        }
+
+        $wanted = [];
+        foreach ($keys as $key) {
+            $trim = strtoupper(trim((string) $key));
+            if ($trim === '') {
+                continue;
+            }
+            $wanted[$trim] = true;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $key);
+            if ($norm !== '') {
+                $wanted[$norm] = true;
+                $wanted[strtoupper($norm)] = true;
+            }
+        }
+
+        \App\Models\B5cB2bProduct::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'qty'])
+            ->each(function ($row) use (&$map, $wanted) {
+                $sku = trim((string) $row->sku);
+                if ($sku === '') {
+                    return;
+                }
+                $upper = strtoupper($sku);
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($wanted !== []
+                    && ! isset($wanted[$upper])
+                    && ($norm === '' || (! isset($wanted[$norm]) && ! isset($wanted[strtoupper($norm)])))
+                ) {
+                    return;
+                }
+                self::put($map, $sku, (int) $row->qty);
+            });
+    }
+
     protected static function hydrateFromPlsCatalog(array &$map, array $keys): void
     {
         if ($keys === [] || ! Schema::hasTable('shopify_catalog_variants')) {

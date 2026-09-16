@@ -162,6 +162,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'pls') {
             return app(PlsSyncController::class)->pullProductFromPls($shopifySku);
         }
+        if ($marketplace === 'b5cb2b') {
+            return app(B5cB2bSyncController::class)->pullProductFromB5cB2b($shopifySku);
+        }
 
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
     }
@@ -231,6 +234,9 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'pls') {
             return app(PlsSyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'b5cb2b') {
+            return app(B5cB2bSyncController::class)->pushProductInventory($shopifySku);
         }
 
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);

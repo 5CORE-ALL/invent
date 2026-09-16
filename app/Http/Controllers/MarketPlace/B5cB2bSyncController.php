@@ -4,12 +4,12 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\RunMarketplaceInventorySyncJob;
-use App\Jobs\SyncMarketplaceMismatchInventoryJob;
 use App\Jobs\SyncMarketplaceOrdersJob;
 use App\Models\B5cB2bOrder;
 use App\Models\B5cB2bProduct;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\Business5CoreB2bApiService;
+use App\Services\MarketplaceManager\B5cB2bListingsPageBuilder;
 use App\Services\MarketplaceManager\B5cB2bLiveListingsService;
 use App\Services\MarketplaceManager\B5cB2bTrackingSyncService;
 use App\Services\Support\MarketplaceApiConfigService;
@@ -109,15 +109,18 @@ class B5cB2bSyncController extends Controller
         ]);
     }
 
-    public function syncMismatchInventoryNow(): JsonResponse
+    public function syncMismatchInventoryNow(Request $request): JsonResponse
     {
-        SyncMarketplaceMismatchInventoryJob::dispatch('b5cb2b');
+        try {
+            $result = app(B5cB2bListingsPageBuilder::class)->syncMismatchInventoryNow($request);
 
-        return response()->json([
-            'success' => true,
-            'queued' => true,
-            'message' => 'Business 5 Core B2B mismatch inventory sync queued.',
-        ]);
+            return response()->json($result, ! empty($result['success']) ? 200 : 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Mismatch sync failed: '.$e->getMessage(),
+            ], 500);
+        }
     }
 
     public function syncTrackingNow(): JsonResponse
@@ -129,24 +132,21 @@ class B5cB2bSyncController extends Controller
 
     public function syncProducts(Request $request): View
     {
-        $search = trim((string) $request->input('q', ''));
-        $query = B5cB2bProduct::query()->orderBy('sku');
-        if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('sku', 'like', '%'.$search.'%')
-                    ->orWhere('title', 'like', '%'.$search.'%');
-            });
-        }
-        $products = Schema::hasTable('b5c_b2b_products')
-            ? $query->paginate(50)->appends($request->query())
-            : new LengthAwarePaginator([], 0, 50);
+        return app(B5cB2bListingsPageBuilder::class)->syncProducts($request);
+    }
 
-        return view('marketplace.b5cb2b.products', [
-            'title' => 'Business 5 Core (B2B) — Listings',
-            'products' => $products,
-            'search' => $search,
-            'connected' => $this->apiConfig->isConfigured('b5cb2b'),
-        ]);
+    public function pushProductInventory(int $shopifySkuId): JsonResponse
+    {
+        $result = app(B5cB2bListingsPageBuilder::class)->pushProductInventory($shopifySkuId);
+
+        return response()->json($result, ! empty($result['success']) ? 200 : 422);
+    }
+
+    public function pullProductFromB5cB2b(int $shopifySkuId): JsonResponse
+    {
+        $result = app(B5cB2bListingsPageBuilder::class)->pullProductFromB5cB2b($shopifySkuId);
+
+        return response()->json($result, ! empty($result['success']) ? 200 : 422);
     }
 
     public function syncOrders(Request $request): View
@@ -175,14 +175,7 @@ class B5cB2bSyncController extends Controller
 
     public function showProduct(int $shopifySku): View
     {
-        $row = B5cB2bProduct::query()->find($shopifySku)
-            ?: B5cB2bProduct::query()->where('listing_id', $shopifySku)->first();
-        abort_if(! $row, 404);
-
-        return view('marketplace.b5cb2b.product-show', [
-            'title' => 'B5C B2B — '.$row->sku,
-            'product' => $row,
-        ]);
+        return app(B5cB2bListingsPageBuilder::class)->showProduct($shopifySku);
     }
 
     public function showOrder(int $order): View

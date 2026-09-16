@@ -37,6 +37,7 @@ use App\Models\TikTokProductTwo;
 use App\Models\TiktokShopListingStatus;
 use App\Models\TiktokTwoShopListingStatus;
 use App\Models\TopDawgProduct;
+use App\Models\B5cB2bProduct;
 use App\Models\WayfairListingStatus;
 use App\Models\WayfairPricingPrice;
 use Illuminate\Support\Facades\DB;
@@ -411,6 +412,19 @@ class MarketplaceListingInstantMapService
                 ],
                 'writes' => [],
             ],
+            'b5cb2b' => [
+                'label' => 'Business 5 Core (B2B)',
+                'id_label' => 'Listing ID',
+                'id_key' => 'listing_id',
+                'status_model' => null,
+                'sku_only' => true,
+                'lookups' => [
+                    ['table' => 'b5c_b2b_products', 'sku' => 'sku', 'id' => 'listing_id'],
+                ],
+                'writes' => [
+                    ['table' => 'b5c_b2b_products', 'sku' => 'sku', 'id' => 'listing_id', 'model' => B5cB2bProduct::class],
+                ],
+            ],
             default => null,
         };
     }
@@ -643,6 +657,7 @@ class MarketplaceListingInstantMapService
                 'macy' => app(MacyInventorySyncService::class)->syncSkusFromShopify([$sku]),
                 'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify([$sku]),
                 'pls' => app(PlsInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'b5cb2b' => app(B5cB2bInventorySyncService::class)->syncSkusFromShopify([$sku], null, true),
                 default => null,
             };
         } catch (\Throwable $e) {
