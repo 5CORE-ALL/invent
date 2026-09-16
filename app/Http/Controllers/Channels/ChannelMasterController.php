@@ -3417,7 +3417,7 @@ class ChannelMasterController extends Controller
             $sum = (float) DB::table($table)
                 ->where('order_date', '>=', $day->copy()->startOfDay())
                 ->where('order_date', '<=', $day->copy()->endOfDay())
-                ->where('financial_status', '!=', 'refunded')
+                ->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled'])
                 ->selectRaw('COALESCE(SUM(total_amount), 0) as revenue')
                 ->value('revenue');
         } elseif ($isB2b) {
@@ -8536,7 +8536,7 @@ class ChannelMasterController extends Controller
         if (! Schema::hasTable($table)) {
             return null;
         }
-        if (! DB::table($table)->where('financial_status', '!=', 'refunded')->exists()) {
+        if (! DB::table($table)->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled'])->exists()) {
             return null;
         }
 
@@ -9162,7 +9162,7 @@ class ChannelMasterController extends Controller
         $table = $isB2b ? 'shopify_b2b_daily_data' : 'shopify_b2c_daily_data';
 
         if (! Schema::hasTable($table)
-            || ! DB::table($table)->where('financial_status', '!=', 'refunded')->exists()) {
+            || ! DB::table($table)->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled'])->exists()) {
             return null;
         }
 
@@ -9173,7 +9173,7 @@ class ChannelMasterController extends Controller
         $sum = (float) DB::table($table)
             ->where('order_date', '>=', $l7StartPacific)
             ->where('order_date', '<=', $l7EndPacific)
-            ->where('financial_status', '!=', 'refunded')
+            ->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled'])
             ->selectRaw('COALESCE(SUM(total_amount), 0) as revenue')
             ->value('revenue');
 

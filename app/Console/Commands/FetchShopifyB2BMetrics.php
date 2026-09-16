@@ -28,7 +28,7 @@ class FetchShopifyB2BMetrics extends Command
      *
      * @var string
      */
-    protected $description = 'Fetch Shopify B2B order data (wsaio-app tagged orders only)';
+    protected $description = 'Fetch Shopify B2B order data from business5core.com /api/orders (fallback: Shopify wsaio-app tags)';
 
     private $shopifyStoreUrl;
     private $shopifyApiKey;
@@ -49,6 +49,36 @@ class FetchShopifyB2BMetrics extends Command
     {
         Log::info('Starting FetchShopifyB2BMetrics command');
         $this->info('Starting FetchShopifyB2BMetrics command');
+
+        $days = (int) $this->option('days');
+        $fromDate = $this->option('from')
+            ? Carbon::parse($this->option('from'))
+            : Carbon::now()->subDays($days);
+        $toDate = $this->option('to')
+            ? Carbon::parse($this->option('to'))->endOfDay()
+            : Carbon::now();
+
+        $storeApi = app(\App\Services\Business5CoreB2bApiService::class);
+        if ($storeApi->isConfigured()) {
+            $this->info('Using business5core.com B2B /api/orders (real store sales)');
+            $this->info("Fetching orders from {$fromDate->format('Y-m-d')} to {$toDate->format('Y-m-d')}");
+            if ($this->option('fresh')) {
+                $this->info('Clearing existing data...');
+                ShopifyB2BDailyData::truncate();
+                $this->info('✅ Existing data cleared');
+            }
+            $result = app(\App\Services\MarketplaceManager\B5cB2bOrderSyncService::class)
+                ->sync($fromDate->toDateString(), false);
+            if (empty($result['success'])) {
+                $this->error($result['message'] ?? 'Store order sync failed');
+
+                return 1;
+            }
+            $this->info($result['message'] ?? 'Store orders synced');
+            $this->debugStatus();
+
+            return 0;
+        }
 
         // Initialize Shopify B2B credentials (Business 5Core store)
         $this->shopifyStoreUrl = $this->normalizeStoreUrl(config('services.shopify_b5c.domain'));

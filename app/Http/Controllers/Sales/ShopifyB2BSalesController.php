@@ -19,8 +19,9 @@ class ShopifyB2BSalesController extends Controller
     {
         \Log::info('ShopifyB2BSalesController getData called');
 
-        $orders = ShopifyB2BDailyData::where('period', 'l30')
-            ->where('financial_status', '!=', 'refunded')
+        $orders = ShopifyB2BDailyData::query()
+            ->where('period', 'l30')
+            ->countableSales()
             ->orderBy('order_date', 'desc')
             ->get();
 

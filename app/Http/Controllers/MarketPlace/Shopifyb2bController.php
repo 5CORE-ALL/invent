@@ -69,8 +69,9 @@ class Shopifyb2bController extends Controller
      */
     private function getShopifyB2bL30Snapshot(): array
     {
-        $orders = ShopifyB2BDailyData::where('period', 'l30')
-            ->where('financial_status', '!=', 'refunded')
+        $orders = ShopifyB2BDailyData::query()
+            ->where('period', 'l30')
+            ->countableSales()
             ->get();
 
         if ($orders->isEmpty()) {
@@ -183,7 +184,7 @@ class Shopifyb2bController extends Controller
         // Same source as /shopify-b2b/daily-sales
         $shopifyB2BOrders = ShopifyB2BDailyData::whereIn('sku', $skus)
             ->where('period', 'l30')
-            ->where('financial_status', '!=', 'refunded')
+            ->countableSales()
             ->selectRaw('sku, SUM(quantity) as total_quantity')
             ->groupBy('sku')
             ->get()
