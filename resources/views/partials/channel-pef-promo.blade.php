@@ -5343,15 +5343,16 @@
             if (!(margin > 0)) return 0;
             const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
             if (CHANNEL_PROMO_CHANNEL === 'doba_withoutship') {
+                const ads = (typeof ebayDilAdsPct === 'function') ? (parseFloat(ebayDilAdsPct()) || 0) : 0;
+                const denom = margin - (ads / 100);
+                if (denom > 0) {
+                    const price = (lp * (1 + roi / 100)) / denom;
+                    if (isFinite(price) && price > 0) return chPromoRound2(price);
+                }
                 const copied = Number(d && (d.doba_tabulator_s_pick != null
                     ? d.doba_tabulator_s_pick
                     : d.DOBA_TABULATOR_S_PICK)) || 0;
-                if (copied > 0) return chPromoRound2(copied);
-                const ship = chPromoShipCost(d);
-                const delivery = (lp * (1 + roi / 100) + ship) / margin;
-                return (isFinite(delivery) && delivery > 0)
-                    ? chPromoRound2(Math.max(0, delivery - ship))
-                    : 0;
+                return copied > 0 ? chPromoRound2(copied) : 0;
             }
             const ship = (CHANNEL_PROMO_CHANNEL === 'faire'
                 || CHANNEL_PROMO_CHANNEL === 'purchasing_power'

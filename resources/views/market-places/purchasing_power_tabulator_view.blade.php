@@ -540,10 +540,12 @@
         function isPpListed(rowData) {
             if (!rowData || ppIsParentRow(rowData)) return false;
             if (rowData.is_pp_inactive === true) return false;
+            const price = parseFloat(rowData['PP Price']) || 0;
+            if (price > 0) return true;
             if (typeof rowData.is_missing_pp !== 'undefined') {
-                return !rowData.is_missing_pp;
+                return rowData.is_missing_pp === false || rowData.is_missing_pp === 0 || rowData.is_missing_pp === 'false';
             }
-            return (parseFloat(rowData['PP Price']) || 0) > 0;
+            return false;
         }
         function isPpInactive(rowData) {
             if (!rowData) return false;

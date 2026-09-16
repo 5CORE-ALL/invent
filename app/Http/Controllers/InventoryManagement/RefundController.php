@@ -12,6 +12,7 @@ use App\Models\Supplier;
 use App\Models\ChannelMaster;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 
@@ -439,6 +440,7 @@ class RefundController extends Controller
                 'sku' => $rec->sku,
                 'verified_stock' => (int) $rec->qty,
                 'refund_amt' => (float) $rec->refund_amt,
+                'recovered_cost' => $this->recoveredCostForSku((string) $rec->sku, (int) $rec->qty),
                 'reason' => $rec->reason,
                 'remarks' => $rec->comment,
                 'person_responsible' => $rec->person_responsible,
@@ -576,16 +578,19 @@ class RefundController extends Controller
         }
 
         $items = $query->latest('created_at')->get();
+        $pmByLower = $this->productMastersByLowerSku($items->pluck('sku'));
 
-        $data = $items->map(function ($item) {
+        $data = $items->map(function ($item) use ($pmByLower) {
             $qty = (int) $item->qty;
             $refundAmt = (float) $item->refund_amt;
             $archived = (bool) $item->is_archived;
+            $pm = $pmByLower->get(strtolower(trim((string) $item->sku)));
             return [
                 'id' => $item->id,
                 'sku' => $item->sku,
                 'verified_stock' => $qty,
                 'refund_amt' => $refundAmt,
+                'recovered_cost' => ProductMaster::recoveredCostUsd($pm, $qty, 2),
                 'reason' => $item->reason,
                 'remarks' => $item->comment,
                 'person_responsible' => $item->person_responsible ?? '',
@@ -775,5 +780,50 @@ class RefundController extends Controller
             'success' => true,
             'message' => $updated . ' row(s) archived.',
         ]);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, string|null>  $skus
+     * @return \Illuminate\Support\Collection<string, ProductMaster>
+     */
+    private function productMastersByLowerSku($skus)
+    {
+        $keys = collect($skus)
+            ->map(fn ($s) => strtolower(trim((string) $s)))
+            ->filter(fn ($k) => $k !== '')
+            ->unique()
+            ->values();
+
+        if ($keys->isEmpty()) {
+            return collect();
+        }
+
+        $select = ['id', 'sku'];
+        if (Schema::hasColumn('product_master', 'Values')) {
+            $select[] = 'Values';
+        }
+
+        $placeholders = implode(',', array_fill(0, $keys->count(), '?'));
+        $rows = ProductMaster::query()
+            ->select($select)
+            ->whereRaw('LOWER(TRIM(sku)) IN ('.$placeholders.')', $keys->all())
+            ->get();
+
+        $byLower = collect();
+        foreach ($rows as $pm) {
+            $k = strtolower(trim((string) $pm->sku));
+            if (! $byLower->has($k)) {
+                $byLower->put($k, $pm);
+            }
+        }
+
+        return $byLower;
+    }
+
+    private function recoveredCostForSku(string $sku, int $qty): ?float
+    {
+        $pm = $this->productMastersByLowerSku(collect([$sku]))->get(strtolower(trim($sku)));
+
+        return ProductMaster::recoveredCostUsd($pm, $qty, 2);
     }
 }

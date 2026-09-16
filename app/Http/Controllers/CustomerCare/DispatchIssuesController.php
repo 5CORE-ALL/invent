@@ -111,6 +111,18 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return view('customer-care.shipping_issues_label', $this->issueBoardIndexData());
     }
 
+    /** Same All Issues Tabulator board, locked to the "Listing" department. */
+    public function listingErrorsBoard()
+    {
+        return view('customer-care.all_issues', $this->issueBoardIndexData() + [
+            'pageTitle' => 'Listing Errors Issues',
+            'addIssueButtonText' => 'Listing Errors',
+            'lockedDepartment' => 'Listing',
+            'hideDepartmentColumnAndFilter' => true,
+            'colVisChannel' => 'listing_errors_issues',
+        ]);
+    }
+
     protected function issuesTable(): string
     {
         return 'dispatch_issue_issues';

@@ -764,20 +764,24 @@ class FetchMacyProducts extends Command
                         continue;
                     }
 
+                    // Always keep this shop_sku out of the leftover clearer, even
+                    // when the price field is missing — otherwise a live MCM offer
+                    // gets price wiped to 0 on the pricing page.
+                    $seenNormSkus[$this->normalizeMacyOfferSku($sku)] = true;
+                    $seenExactSkus[$sku] = true;
+
                     $price = $this->extractMcmOfferPrice($offer);
                     if ($price === null) {
                         continue;
                     }
 
                     $activated = array_key_exists('active', $offer)
-                        ? (bool) $offer['active']
+                        ? filter_var($offer['active'], FILTER_VALIDATE_BOOLEAN)
                         : false;
-                    $seenNormSkus[$this->normalizeMacyOfferSku($sku)] = true;
-                    $seenExactSkus[$sku] = true;
 
                     $updates[] = [
                         'sku' => $sku,
-                        'price' => $activated ? $price : 0,
+                        'price' => $price,
                         'stock' => isset($offer['quantity']) && is_numeric($offer['quantity'])
                             ? (int) $offer['quantity']
                             : 0,

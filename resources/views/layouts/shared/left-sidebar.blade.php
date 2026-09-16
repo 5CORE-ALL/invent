@@ -51,6 +51,11 @@
                             </a>
                         </li>
                         <li>
+                            <a href="{{ route('tasks.upload') }}">
+                                <i class="ri-upload-2-line me-2"></i>Tasks Upload
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ route('tasks.summary') }}">
                                 <i class="ri-file-list-3-line me-2"></i>Tasks Summary
                             </a>
@@ -551,6 +556,9 @@
                         </li>
                         <li>
                             <a href="{{ route('customer.care.dispatch.chargeback.issues') }}">Chargeback Issues</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.listing.errors.issues') }}">Listing Errors Issues</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.listing.issue') }}">Listing Issue</a>

@@ -8,7 +8,9 @@ use App\Models\ProductMaster;
 use App\Models\ProductRawImage;
 use App\Models\ProductRawImageAiPrompt;
 use App\Models\ShopifySku;
+use App\Services\BatchCooStampService;
 use App\Services\RawImagesAiImageService;
+use App\Services\Support\AllMarketplaceChannelRegistry;
 use App\Support\Badges\RawImagesBadgeCalculator;
 use App\Support\Badges\RawImagesBatchCooBadgeCalculator;
 use App\Support\Badges\RawImagesHero2BadgeCalculator;
@@ -36,6 +38,8 @@ class RawImagesController extends Controller
     private const DEFAULT_AI_PROMPT = "Make a raw shoot image background for the image in Hero image column and paste it in raw image column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.";
 
     private const DEFAULT_HERO_2_AI_PROMPT = "Make a hero image 2 from the image in the Hero image column and paste it in the Hero Image 2 AI column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.";
+
+    private const DEFAULT_BATCH_COO_AI_PROMPT = "Convert the Hero image into a Batch + Country of Origin (COO) product photo.\nKeep the product realistic and natural so AI cannot detect it.\nAdd a clear marketplace-compliant MADE IN CHINA label (or the product country of origin if it is not China) on a clean bar at the bottom. Do not cover the product.\nThe size should be 2000x2000px.\nIf the product is dark then use a light background or vice-versa.";
 
     public function index(Request $request): View
     {
@@ -115,6 +119,7 @@ class RawImagesController extends Controller
             $row['upc'] = $upc;
             $row['barcode'] = $storedBarcode !== '' ? $storedBarcode : $upc;
             $row['barcode_image'] = $this->normalizePublicImageUrl($row['barcode_image'] ?? null);
+            $row['country_of_origin'] = $this->extractCountryOfOriginFromRow($row);
 
             $result[] = $row;
         }
@@ -466,6 +471,172 @@ class RawImagesController extends Controller
         ]);
     }
 
+    public function stampCoo(Request $request): JsonResponse
+    {
+        $kind = $this->kindFromRequest($request);
+        if ($kind !== ProductRawImage::KIND_BATCH_COO) {
+            return response()->json(['success' => false, 'message' => 'Made in / COO stamp is only available on Batch +COO.'], 422);
+        }
+
+        $validated = $request->validate([
+            'skus' => 'required|array|min:1|max:50',
+            'skus.*' => 'required|string|max:255',
+            'country' => 'nullable|string|max:80',
+            'custom_label' => 'nullable|string|max:80',
+            'batch_text' => 'nullable|string|max:80',
+            'use_product_origin' => 'nullable|boolean',
+        ]);
+
+        $stamp = app(BatchCooStampService::class);
+        $useOrigin = $request->boolean('use_product_origin');
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
+        $bySku = [];
+
+        foreach ($validated['skus'] as $rawSku) {
+            $sku = $this->normalizeSku($rawSku);
+            if ($sku === '') {
+                continue;
+            }
+            try {
+                $source = $this->sourceImageForCooStamp($sku);
+                if ($source === null) {
+                    throw new \RuntimeException('No hero or Batch +COO image to stamp.');
+                }
+                $country = $useOrigin
+                    ? ($this->countryOfOriginForSku($sku) ?: ($validated['country'] ?? 'china'))
+                    : ($validated['country'] ?? 'china');
+                $label = $stamp->label($country, $validated['custom_label'] ?? null);
+                $bytes = $stamp->stamp($source['bytes'], $label, $validated['batch_text'] ?? null);
+                $safeLabel = preg_replace('/[^A-Za-z0-9._-]+/', '_', $label) ?: 'MADE_IN';
+                $this->storeRawImageBytes($sku, $kind, $bytes, $sku.'_'.$safeLabel.'.jpg', 'coo_stamp_');
+                $imported++;
+                $bySku[$sku] = $this->imagesForSku($sku, $kind);
+            } catch (\Throwable $e) {
+                $skipped++;
+                $errors[] = $sku.': '.$e->getMessage();
+            }
+        }
+
+        if ($imported > 0) {
+            self::forgetMissingSidebarCountCache($kind);
+        }
+
+        return response()->json([
+            'success' => $imported > 0,
+            'message' => $imported > 0
+                ? 'Stamped Made in / COO on '.$imported.' SKU'.($imported === 1 ? '' : 's').'.'
+                : 'No images were stamped.',
+            'imported' => $imported,
+            'skipped' => $skipped,
+            'errors' => array_slice($errors, 0, 40),
+            'by_sku' => $bySku,
+        ], $imported > 0 ? 200 : 422);
+    }
+
+    public function pushToChannels(Request $request): JsonResponse
+    {
+        $kind = $this->kindFromRequest($request);
+        if ($kind !== ProductRawImage::KIND_BATCH_COO) {
+            return response()->json(['success' => false, 'message' => 'Channel upload is only available on Batch +COO.'], 422);
+        }
+
+        $validated = $request->validate([
+            'skus' => 'required|array|min:1|max:25',
+            'skus.*' => 'required|string|max:255',
+            'marketplaces' => 'required|array|min:1|max:24',
+            'marketplaces.*' => 'required|string|max:40',
+            'mode' => 'nullable|string|in:append,replace',
+            'dry_run' => 'nullable|boolean',
+        ]);
+
+        $allowed = app(AllMarketplaceChannelRegistry::class)->enabledFor('image');
+        $marketplaces = [];
+        foreach ($validated['marketplaces'] as $mp) {
+            $key = strtolower(trim((string) $mp));
+            if (in_array($key, $allowed, true)) {
+                $marketplaces[$key] = true;
+            }
+        }
+        $marketplaces = array_keys($marketplaces);
+        if ($marketplaces === []) {
+            return response()->json(['success' => false, 'message' => 'Select at least one connected image channel.'], 422);
+        }
+
+        $mode = ($validated['mode'] ?? 'append') === 'replace' ? 'replace' : 'append';
+        $dryRun = $request->boolean('dry_run');
+        $imageMaster = app(ImageMasterController::class);
+        @set_time_limit(0);
+
+        $pushed = 0;
+        $skipped = 0;
+        $errors = [];
+        $results = [];
+
+        foreach ($validated['skus'] as $rawSku) {
+            $sku = $this->normalizeSku($rawSku);
+            if ($sku === '') {
+                continue;
+            }
+            $cooUrls = $this->publicUrlsForSku($sku, $kind);
+            if ($cooUrls === []) {
+                $skipped++;
+                $errors[] = $sku.': no Batch +COO image to upload.';
+                continue;
+            }
+
+            foreach ($marketplaces as $mp) {
+                $images = $mode === 'append'
+                    ? $this->appendUniqueUrls($imageMaster->existingImageUrls($mp, $sku), $cooUrls)
+                    : $cooUrls;
+                if ($images === []) {
+                    $skipped++;
+                    $errors[] = $sku.' / '.$mp.': no images to push.';
+                    continue;
+                }
+
+                try {
+                    $result = $imageMaster->runQueuedMarketplacePush($sku, $mp, $images, 'replace', null, $dryRun);
+                    $ok = (bool) ($result['success'] ?? false);
+                    $results[] = [
+                        'sku' => $sku,
+                        'marketplace' => $mp,
+                        'success' => $ok,
+                        'message' => $result['message'] ?? ($ok ? 'Pushed.' : 'Failed.'),
+                    ];
+                    if ($ok) {
+                        $pushed++;
+                    } else {
+                        $skipped++;
+                        $errors[] = $sku.' / '.$mp.': '.($result['message'] ?? 'Push failed.');
+                    }
+                } catch (\Throwable $e) {
+                    $skipped++;
+                    $errors[] = $sku.' / '.$mp.': '.$e->getMessage();
+                    $results[] = [
+                        'sku' => $sku,
+                        'marketplace' => $mp,
+                        'success' => false,
+                        'message' => $e->getMessage(),
+                    ];
+                }
+            }
+        }
+
+        return response()->json([
+            'success' => $pushed > 0,
+            'message' => $pushed > 0
+                ? ($dryRun ? 'Dry run OK for ' : 'Uploaded ').$pushed.' channel update'.($pushed === 1 ? '' : 's').'.'
+                : 'No channel uploads completed.',
+            'pushed' => $pushed,
+            'skipped' => $skipped,
+            'dry_run' => $dryRun,
+            'errors' => array_slice($errors, 0, 40),
+            'results' => $results,
+        ], $pushed > 0 ? 200 : 422);
+    }
+
     public function aiPrompt(Request $request): JsonResponse
     {
         if (is_string($request->input('selected'))) {
@@ -586,6 +757,7 @@ class RawImagesController extends Controller
 
         return match ($kind) {
             ProductRawImage::KIND_HERO_2 => self::DEFAULT_HERO_2_AI_PROMPT,
+            ProductRawImage::KIND_BATCH_COO => self::DEFAULT_BATCH_COO_AI_PROMPT,
             default => self::DEFAULT_AI_PROMPT,
         };
     }
@@ -678,8 +850,8 @@ class RawImagesController extends Controller
         }
 
         $reply = $imported > 0
-            ? 'Created raw images for '.$imported.' selected SKU'.($imported === 1 ? '' : 's').'.'
-            : 'No raw images were created.';
+            ? 'Created '.$this->pageShortName($kind).' for '.$imported.' selected SKU'.($imported === 1 ? '' : 's').'.'
+            : 'No '.$this->pageShortName($kind).' were created.';
         if ($errors !== []) {
             $reply .= ' '.count($errors).' skipped.';
         }
@@ -904,7 +1076,7 @@ class RawImagesController extends Controller
         return $out !== '' ? $out : $bytes;
     }
 
-    private function storeRawImageBytes(string $sku, string $kind, string $bytes, string $originalName): ProductRawImage
+    private function storeRawImageBytes(string $sku, string $kind, string $bytes, string $originalName, string $filePrefix = 'ai_raw_'): ProductRawImage
     {
         $tmp = tempnam(sys_get_temp_dir(), 'ri_ai_');
         if ($tmp === false) {
@@ -915,7 +1087,8 @@ class RawImagesController extends Controller
         try {
             $safeSku = preg_replace('/[^a-zA-Z0-9_\- ]/', '_', $sku) ?: 'sku';
             $folder = 'raw-images/'.$kind.'/'.$safeSku;
-            $uniqueName = 'ai_raw_'.uniqid().'.jpg';
+            $prefix = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $filePrefix) ?: 'ai_raw_';
+            $uniqueName = $prefix.uniqid().'.jpg';
             $stored = Storage::disk('public')->putFileAs($folder, new \Illuminate\Http\File($tmp), $uniqueName);
             if (! $stored) {
                 throw new \RuntimeException('Could not store the generated image.');
@@ -1093,9 +1266,13 @@ class RawImagesController extends Controller
                 'templateUrl' => route('raw.images.batch.coo.template'),
                 'aiPromptUrl' => route('raw.images.batch.coo.ai.prompt'),
                 'aiPromptSaveUrl' => route('raw.images.batch.coo.ai.prompt.save'),
+                'stampCooUrl' => route('raw.images.batch.coo.stamp'),
+                'pushChannelsUrl' => route('raw.images.batch.coo.push'),
                 'cachedImageUrl' => route('raw.images.cached.image'),
                 'savedAiPrompt' => $this->savedAiPrompt($kind),
                 'savedAiLogos' => $this->savedAiLogos($kind),
+                'imageChannels' => app(AllMarketplaceChannelRegistry::class)->jsConfig('image'),
+                'cooPresets' => BatchCooStampService::PRESETS,
             ]);
         }
 
@@ -1134,11 +1311,11 @@ class RawImagesController extends Controller
         if ($kind === ProductRawImage::KIND_BATCH_COO) {
             return [
                 'pageTitle' => 'Raw Images (Batch +COO)',
-                'pageSubtitle' => 'Upload batch and COO raw image files by SKU',
-                'manualColumnTitle' => 'Raw Images',
-                'aiColumnTitle' => 'Raw Images AI',
-                'missingBadgeLabel' => 'Missing Raw Images',
-                'zipFileName' => 'raw-images.zip',
+                'pageSubtitle' => 'Upload batch and COO images, stamp Made in / origin, and push to channels',
+                'manualColumnTitle' => 'Batch +COO',
+                'aiColumnTitle' => 'Batch +COO AI',
+                'missingBadgeLabel' => 'Missing Batch +COO',
+                'zipFileName' => 'raw-images-batch-coo.zip',
             ];
         }
 
@@ -1919,7 +2096,7 @@ class RawImagesController extends Controller
         }
 
         return [
-            'reply' => 'Tell me what to do on this page — for example show missing images, search a SKU, open Dropbox import, or copy selected SKUs.',
+            'reply' => 'Tell me what to do on this page — for example show missing images, search a SKU, open Dropbox import, stamp Made in China, or copy selected SKUs.',
             'action' => ['type' => 'none'],
         ];
     }
@@ -1937,6 +2114,18 @@ class RawImagesController extends Controller
             return [
                 'reply' => 'Opening Dropbox bulk update. Paste file links as SKU, URL.',
                 'action' => ['type' => 'open_dropbox'],
+            ];
+        }
+        if (preg_match('/\b(made in|coo stamp|stamp|country of origin)\b/', $text) && $kind === ProductRawImage::KIND_BATCH_COO) {
+            return [
+                'reply' => 'Opening the Made in / COO stamp tool for the selected SKUs.',
+                'action' => ['type' => 'open_coo_stamp'],
+            ];
+        }
+        if (preg_match('/\b(push|upload).*(channel|marketplace)|channel upload|upload to channel\b/', $text) && $kind === ProductRawImage::KIND_BATCH_COO) {
+            return [
+                'reply' => 'Opening channel upload. Select marketplaces to push Batch +COO images.',
+                'action' => ['type' => 'open_channel_push'],
             ];
         }
         if (preg_match('/\b(sheet|excel|csv|google sheet|spreadsheet|from sheet)\b/', $text)) {
@@ -2006,7 +2195,7 @@ class RawImagesController extends Controller
         }
 
         $page = $this->pageLabels($kind)['pageTitle'];
-        $schema = 'Return JSON only: {"reply":"short message","action":{"type":"filter_missing|filter_all|search|open_sheet|open_dropbox|download_selected|copy_skus|copy_urls|copy_missing|none","query":"","field":"general|sku|parent"}}';
+        $schema = 'Return JSON only: {"reply":"short message","action":{"type":"filter_missing|filter_all|search|open_sheet|open_dropbox|download_selected|copy_skus|copy_urls|copy_missing|open_coo_stamp|open_channel_push|none","query":"","field":"general|sku|parent"}}';
 
         try {
             $response = Http::timeout(20)
@@ -2038,7 +2227,8 @@ class RawImagesController extends Controller
 
             $allowed = [
                 'filter_missing', 'filter_all', 'search', 'open_sheet', 'open_dropbox',
-                'download_selected', 'copy_skus', 'copy_urls', 'copy_missing', 'none',
+                'download_selected', 'copy_skus', 'copy_urls', 'copy_missing',
+                'open_coo_stamp', 'open_channel_push', 'none',
             ];
             $type = (string) data_get($decoded, 'action.type', 'none');
             if (! in_array($type, $allowed, true)) {
@@ -2065,6 +2255,141 @@ class RawImagesController extends Controller
     private function looksLikeUrl(string $value): bool
     {
         return (bool) preg_match('#^https?://#i', trim($value));
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function extractCountryOfOriginFromRow(array $row): string
+    {
+        $direct = trim((string) ($row['country_of_origin'] ?? $row['Country of Origin'] ?? ''));
+        if ($direct !== '') {
+            return $direct;
+        }
+
+        $values = $row['Values'] ?? $row['values'] ?? [];
+        if (is_string($values)) {
+            $values = json_decode($values, true) ?: [];
+        }
+        if (! is_array($values)) {
+            return '';
+        }
+
+        return trim((string) ($values['country_of_origin'] ?? $values['Country of Origin'] ?? $values['origin'] ?? ''));
+    }
+
+    private function countryOfOriginForSku(string $sku): string
+    {
+        $product = ProductMaster::query()->where('sku', $sku)->first();
+        if (! $product) {
+            return '';
+        }
+        $values = is_array($product->Values) ? $product->Values : [];
+
+        return $this->extractCountryOfOriginFromRow(array_merge($values, ['Values' => $values]));
+    }
+
+    /**
+     * @return array{bytes: string, url: string}|null
+     */
+    private function sourceImageForCooStamp(string $sku): ?array
+    {
+        $kinds = [ProductRawImage::KIND_BATCH_COO, ProductRawImage::KIND_BATCH_COO_AI];
+        $existing = ProductRawImage::query()
+            ->where('sku', $sku)
+            ->whereIn('kind', $kinds)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($existing as $image) {
+            if (! $image->image_path || ! Storage::disk('public')->exists($image->image_path)) {
+                continue;
+            }
+            $bytes = Storage::disk('public')->get($image->image_path);
+            if (is_string($bytes) && $bytes !== '' && @getimagesizefromstring($bytes) !== false) {
+                return ['bytes' => $bytes, 'url' => $image->url];
+            }
+        }
+
+        $hero = $this->heroUrlForSku($sku);
+        if (! $hero) {
+            return null;
+        }
+        try {
+            $bytes = $this->downloadImageBytes($hero);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if ($bytes === '' || @getimagesizefromstring($bytes) === false) {
+            return null;
+        }
+
+        return ['bytes' => $bytes, 'url' => $hero];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function publicUrlsForSku(string $sku, string $kind): array
+    {
+        $urls = [];
+        $seen = [];
+        foreach ([$kind, ProductRawImage::aiKindFor($kind)] as $imageKind) {
+            $rows = ProductRawImage::query()
+                ->where('sku', $sku)
+                ->where('kind', $imageKind)
+                ->orderBy('id')
+                ->get();
+            foreach ($rows as $image) {
+                $url = $this->absoluteImageUrl($image->url);
+                $key = strtolower($url);
+                if ($url === '' || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $urls[] = $url;
+            }
+        }
+
+        return $urls;
+    }
+
+    private function absoluteImageUrl(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return '';
+        }
+        if (preg_match('#^https?://#i', $url)) {
+            return $url;
+        }
+
+        return url('/'.ltrim($url, '/'));
+    }
+
+    /**
+     * @param  list<string>  $existing
+     * @param  list<string>  $extra
+     * @return list<string>
+     */
+    private function appendUniqueUrls(array $existing, array $extra): array
+    {
+        $out = [];
+        $seen = [];
+        foreach (array_merge($existing, $extra) as $url) {
+            $url = trim((string) $url);
+            if ($url === '') {
+                continue;
+            }
+            $key = strtolower($url);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $url;
+        }
+
+        return $out;
     }
 
     private static function sidebarCacheKey(string $kind): string

@@ -304,6 +304,12 @@
                         </div>
                         <div class="col-auto d-flex align-items-end">
                             <div class="mb-0">
+                                <span class="small text-muted">Total Recovered Cost (filtered):</span>
+                                <strong id="totalRecoveredFiltered" class="ms-1">$0</strong>
+                            </div>
+                        </div>
+                        <div class="col-auto d-flex align-items-end">
+                            <div class="mb-0">
                                 <span class="small text-muted">Selected Refund Amt:</span>
                                 <strong id="selectedRowsValue" class="ms-1">$0</strong>
                             </div>
@@ -706,6 +712,7 @@
                                     <th rowspan="2" class="sortable" data-col="approved_by">CREATED BY <i class="fas fa-sort ms-1"></i></th>
                                     <th rowspan="2" class="sortable" data-col="approved_at">DATE <i class="fas fa-sort ms-1"></i></th>
                                     <th rowspan="2" class="sortable" data-col="refund_amt">REFUND AMT <i class="fas fa-sort ms-1"></i></th>
+                                    <th rowspan="2" class="sortable" data-col="recovered_cost" title="LP × quantity for returned items">RECOVERED COST <i class="fas fa-sort ms-1"></i></th>
                                     <th rowspan="2" class="sortable" data-col="is_archived">ARCHIVE <i class="fas fa-sort ms-1"></i></th>
                                     <th rowspan="2">ACTIONS</th>
                                 </tr>
@@ -1551,6 +1558,7 @@
                                     r.sku = res.record.sku;
                                     r.verified_stock = res.record.verified_stock;
                                     r.refund_amt = res.record.refund_amt;
+                                    r.recovered_cost = res.record.recovered_cost;
                                     r.reason = res.record.reason;
                                     r.remarks = res.record.remarks;
                                     r.person_responsible = res.record.person_responsible;
@@ -1720,20 +1728,27 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="14" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="15" class="text-center">No records found</td></tr>';
                     updateTotalValueFiltered(0);
+                    updateTotalRecoveredFiltered(0);
                     $('#selectedRowsValue').text('$0');
                     return;
                 }
 
                 currentDisplayData = data;
                 let totalVal = 0;
+                let totalRecovered = 0;
                 data.forEach((item, index) => {
                     const row = document.createElement('tr');
                     const refundAmt = parseFloat(item.refund_amt) || 0;
+                    const recoveredCost = item.recovered_cost != null && item.recovered_cost !== '' ? parseFloat(item.recovered_cost) : NaN;
                     const archived = !!item.is_archived;
-                    if (!archived) totalVal += refundAmt;
+                    if (!archived) {
+                        totalVal += refundAmt;
+                        if (!isNaN(recoveredCost)) totalRecovered += recoveredCost;
+                    }
                     const amtFormatted = '$' + refundAmt.toFixed(2).replace(/\.00$/, '');
+                    const recoveredFormatted = isNaN(recoveredCost) ? '<span class="text-muted">—</span>' : ('$' + recoveredCost.toFixed(2).replace(/\.00$/, ''));
                     const archiveChecked = archived ? 'checked' : '';
                     const archiveDisabled = archived ? ' disabled' : ' disabled';
                     row.setAttribute('data-id', item.id);
@@ -1762,6 +1777,7 @@
                         <td>${item.approved_by || '-'}</td>
                         <td>${item.approved_at || '-'}</td>
                         <td>${amtFormatted}</td>
+                        <td class="text-nowrap" title="LP × quantity for returned items">${recoveredFormatted}</td>
                         <td class="text-center"><input type="checkbox" class="archive-display" ${archiveChecked}${archiveDisabled} title="${archived ? 'Archived' : 'Not archived'}"></td>
                         <td>
                             <button type="button" class="btn btn-sm btn-outline-primary edit-reason-btn" data-id="${item.id}" data-sku="${(item.sku || '').replace(/"/g, '&quot;')}" data-reason="${(item.reason || '').replace(/"/g, '&quot;')}" data-remarks="${(item.remarks || '').replace(/"/g, '&quot;')}" data-person-responsible="${prVal}" data-supplier-id="${supId}" title="Edit"><i class="fas fa-edit"></i></button>
@@ -1772,6 +1788,7 @@
                     tbody.appendChild(row);
                 });
                 updateTotalValueFiltered(totalVal);
+                updateTotalRecoveredFiltered(totalRecovered);
                 bindRowCheckboxes();
                 bindSelectAll();
             }
@@ -1779,6 +1796,11 @@
             function updateTotalValueFiltered(sum) {
                 var s = parseFloat(sum) || 0;
                 $('#totalValueFiltered').text('$' + (Math.round(s * 100) / 100).toFixed(2).replace(/\.00$/, ''));
+            }
+
+            function updateTotalRecoveredFiltered(sum) {
+                var s = parseFloat(sum) || 0;
+                $('#totalRecoveredFiltered').text('$' + (Math.round(s * 100) / 100).toFixed(2).replace(/\.00$/, ''));
             }
 
             function updateSelectedRowsValue() {
@@ -1866,7 +1888,7 @@
                     const sorted = [...currentDisplayData].sort(function(a, b) {
                         let va = a[col];
                         let vb = b[col];
-                        if (col === 'verified_stock' || col === 'refund_amt') {
+                        if (col === 'verified_stock' || col === 'refund_amt' || col === 'recovered_cost') {
                             va = parseFloat(va) || 0;
                             vb = parseFloat(vb) || 0;
                             return sortDir * (va - vb);
@@ -2345,7 +2367,7 @@
 
                 var headers = ['SKU', 'QTY', 'REASON', 'CORRECTIVE ACTION REQUIRED',
                     'PERSON RESPONSIBLE', 'SUPPLIER', 'ORDER ID', 'CHANNEL',
-                    'CREATED BY', 'DATE', 'REFUND AMT', 'ARCHIVED'];
+                    'CREATED BY', 'DATE', 'REFUND AMT', 'RECOVERED COST', 'ARCHIVED'];
 
                 var lines = [headers.map(csvEsc).join(',')];
                 data.forEach(function (r) {
@@ -2353,7 +2375,8 @@
                         r.sku, r.verified_stock, r.reason, r.remarks,
                         r.person_responsible, r.supplier_name, r.order_id || '',
                         r.channel_name || '', r.approved_by, r.approved_at,
-                        r.refund_amt, r.is_archived ? 'Yes' : 'No'
+                        r.refund_amt, r.recovered_cost != null ? r.recovered_cost : '',
+                        r.is_archived ? 'Yes' : 'No'
                     ].map(csvEsc).join(','));
                 });
 

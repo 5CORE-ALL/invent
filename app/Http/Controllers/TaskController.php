@@ -30,6 +30,7 @@ use App\Models\UserRrProgress;
 use App\Models\UserScoreHistory;
 use App\Models\DeletedTask;
 use App\Policies\TaskPolicy;
+use App\Services\TaskSheetImportService;
 use App\Services\TaskWhatsAppNotificationService;
 use App\Support\AttL30Metrics;
 use App\Support\AutomatedTaskChecklistIds;
@@ -51,8 +52,10 @@ use Illuminate\Validation\Rule;
 class TaskController extends Controller
 {
     public function __construct(
-        protected TaskWhatsAppNotificationService $taskWhatsApp
+        protected TaskWhatsAppNotificationService $taskWhatsApp,
+        protected TaskSheetImportService $taskSheetImport
     ) {}
+
     public function index()
     {
         $user = Auth::user();
@@ -3417,132 +3420,70 @@ class TaskController extends Controller
         return response()->json($tasks);
     }
 
-    public function downloadTemplate()
+    public function uploadIndex()
     {
-        $headers = [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="task_import_template.csv"',
-        ];
+        return view('tasks.upload');
+    }
 
-        $columns = ['Group', 'Task', 'Assignor', 'Assignee', 'Status', 'Priority', 'Image', 'Links'];
-        $sampleData = [
-            ['Marketplaces', 'Sample Task 1', 'John Doe', 'Jane Smith', 'Todo', 'Normal', '', 'https://example.com'],
-            ['Development', 'Sample Task 2', 'Jane Smith', 'John Doe', 'Working', 'High', '', 'L1: https://link1.com'],
-        ];
+    public function downloadTemplate(Request $request)
+    {
+        $format = strtolower((string) $request->query('format', 'xlsx'));
 
-        $callback = function() use ($columns, $sampleData) {
-            $file = fopen('php://output', 'w');
-            fputcsv($file, $columns);
-            foreach ($sampleData as $row) {
-                fputcsv($file, $row);
-            }
-            fclose($file);
-        };
-
-        return response()->stream($callback, 200, $headers);
+        return $this->taskSheetImport->downloadTemplate(in_array($format, ['csv', 'xlsx'], true) ? $format : 'xlsx');
     }
 
     public function importCsv(Request $request)
     {
-        $request->validate([
-            'csv_file' => 'required|file|mimes:csv,txt|max:2048',
-        ]);
-
-        $file = $request->file('csv_file');
-        $handle = fopen($file->getRealPath(), 'r');
-        
-        // Skip header row
-        $header = fgetcsv($handle);
-        
-        $imported = 0;
-        $skipped = 0;
-        $errors = [];
-
-        while (($row = fgetcsv($handle)) !== false) {
-            try {
-                // Map CSV columns: Group, Task, Assignor, Assignee, Status, Priority, Image, Links
-                $group = $row[0] ?? null;
-                $title = $row[1] ?? null;
-                $assignorName = $row[2] ?? null;
-                $assigneeName = $row[3] ?? null;
-                $status = $row[4] ?? 'pending';
-                $priority = $row[5] ?? 'normal';
-                $image = $row[6] ?? null;
-                $links = $row[7] ?? null;
-
-                // Skip if no title
-                if (empty($title)) {
-                    $skipped++;
-                    continue;
-                }
-
-                // Find users by name
-                $assignor = User::where('name', 'LIKE', '%' . $assignorName . '%')->first();
-                $assignee = User::where('name', 'LIKE', '%' . $assigneeName . '%')->first();
-
-                if (!$assignor) {
-                    $assignor = Auth::user(); // Default to current user
-                }
-
-                // Map status values (keep old format)
-                $statusMap = [
-                    'todo' => 'Todo',
-                    'working' => 'Working',
-                    'archived' => 'Archived',
-                    'done' => 'Done',
-                    'need help' => 'Need Help',
-                    'need approval' => 'Need Approval',
-                    'dependent' => 'Dependent',
-                    'approved' => 'Approved',
-                    'hold' => 'Hold',
-                    'rework' => 'Rework',
-                ];
-                $status = $statusMap[strtolower($status)] ?? 'Todo';
-
-                // Map priority
-                $priorityMap = [
-                    'urgent' => 'high',
-                    'high' => 'high',
-                    'normal' => 'normal',
-                    'low' => 'low',
-                ];
-                $priority = $priorityMap[strtolower($priority)] ?? 'normal';
-
-                // Parse links (format: "L1: url")
-                $l1 = null;
-                if ($links && preg_match('/L1:\s*(.+)/i', $links, $matches)) {
-                    $l1 = trim($matches[1]);
-                }
-
-                // Create task
-                Task::create([
-                    'title' => $title,
-                    'group' => $group,
-                    'assignor_id' => $assignor->id,
-                    'assignee_id' => $assignee ? $assignee->id : null,
-                    'status' => $status,
-                    'priority' => $priority,
-                    'l1' => $l1,
-                    'etc_minutes' => 10, // Default
-                    'tid' => now(),
-                ]);
-
-                $imported++;
-            } catch (\Exception $e) {
-                $skipped++;
-                $errors[] = 'Row ' . ($imported + $skipped) . ': ' . $e->getMessage();
-            }
+        $file = $request->file('csv_file') ?? $request->file('file');
+        if (! $file) {
+            return response()->json([
+                'success' => false,
+                'imported' => 0,
+                'skipped' => 0,
+                'errors' => ['Please select a CSV or Excel file.'],
+                'message' => 'Please select a CSV or Excel file.',
+            ], 422);
         }
 
-        fclose($handle);
+        $request->merge(['csv_file' => $file]);
+        $request->validate([
+            'csv_file' => 'required|file|max:10240',
+        ]);
+
+        $extension = strtolower((string) $file->getClientOriginalExtension());
+        if (! in_array($extension, ['csv', 'txt', 'xlsx', 'xls', 'xlsm', 'ods'], true)) {
+            return response()->json([
+                'success' => false,
+                'imported' => 0,
+                'skipped' => 0,
+                'errors' => ['Please upload a CSV or Excel sheet (.csv, .xlsx, .xls).'],
+                'message' => 'Please upload a CSV or Excel sheet (.csv, .xlsx, .xls).',
+            ], 422);
+        }
+
+        try {
+            $result = $this->taskSheetImport->import($file, Auth::user());
+        } catch (\Throwable $e) {
+            \Log::warning('Task sheet import failed: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'imported' => 0,
+                'skipped' => 0,
+                'errors' => ['Could not read the sheet. Please use the downloadable template.'],
+                'message' => 'Could not read the sheet. Please use the downloadable template.',
+            ], 422);
+        }
 
         return response()->json([
-            'success' => true,
-            'imported' => $imported,
-            'skipped' => $skipped,
-            'errors' => $errors,
-            'message' => "$imported task(s) imported successfully!",
-        ]);
+            'success' => $result['imported'] > 0,
+            'imported' => $result['imported'],
+            'skipped' => $result['skipped'],
+            'errors' => $result['errors'],
+            'warnings' => $result['warnings'],
+            'tasks' => $result['tasks'],
+            'message' => $result['message'],
+        ], $result['imported'] > 0 || $result['skipped'] > 0 ? 200 : 422);
     }
 
     public function automatedCreate()
@@ -3577,7 +3518,7 @@ class TaskController extends Controller
         // Set default priority to Normal if not provided
         $validated['priority'] = $validated['priority'] ?? 'Normal';
         if (($validated['schedule_type'] ?? '') === 'daily') {
-            $validated['schedule_time'] = '12:01:00';
+            $validated['schedule_time'] = TaskBusinessTime::dailyGenerateTime();
         }
         $validated['schedule_days'] = AutomatedTaskSchedule::applyDefaultDays(
             (string) ($validated['schedule_type'] ?? ''),
@@ -3678,7 +3619,7 @@ class TaskController extends Controller
             'assign_to' => $taskModel->assign_to,
             'schedule_type' => $taskModel->schedule_type ?? 'daily',
             'schedule_days' => $taskModel->schedule_days ?? '',
-            'schedule_time' => $taskModel->schedule_time ?? '12:01',
+            'schedule_time' => $taskModel->schedule_time ?? TaskBusinessTime::dailyGenerateTime(),
         ];
         
         // Map assignor (email or older display-name rows) to user IDs for the form
@@ -3730,7 +3671,7 @@ class TaskController extends Controller
         // Set default priority to Normal if not provided
         $validated['priority'] = $validated['priority'] ?? 'Normal';
         if (($validated['schedule_type'] ?? '') === 'daily') {
-            $validated['schedule_time'] = '12:01:00';
+            $validated['schedule_time'] = TaskBusinessTime::dailyGenerateTime();
         }
         $validated['schedule_days'] = AutomatedTaskSchedule::applyDefaultDays(
             (string) ($validated['schedule_type'] ?? ''),

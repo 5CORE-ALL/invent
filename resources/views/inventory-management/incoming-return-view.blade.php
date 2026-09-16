@@ -159,7 +159,7 @@
 
         .incoming-sum-badges-grid {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 0.5rem;
             flex: 1 1 0;
             min-width: 0;
@@ -582,7 +582,7 @@
                         </button>
                         <div class="dataTables_length d-none" aria-hidden="true"></div>
 
-                        <div class="incoming-sum-badges-grid incoming-inventory-sum-badges" aria-label="Totals for visible rows in the last 30 calendar days, Pacific time" title="Loss, Restock, and Net include only rows whose date falls in the last 30 calendar days in California (America/Los_Angeles), among rows matching your warehouse and search filters.">
+                        <div class="incoming-sum-badges-grid incoming-inventory-sum-badges" aria-label="Totals for visible rows in the last 30 calendar days, Pacific time" title="Loss, Restock, Recovered Cost, and Net include only rows whose date falls in the last 30 calendar days in California (America/Los_Angeles), among rows matching your warehouse and search filters. Recovered Cost is LP × qty for returned items.">
                             <span class="incoming-sum-badge-cell border border-danger bg-danger bg-opacity-10 text-danger" role="status">
                                 <span class="incoming-sum-badge-label fw-semibold text-uppercase">Loss $</span>
                                 <span class="incoming-sum-value" id="incomingSumLoss">0</span>
@@ -590,6 +590,10 @@
                             <span class="incoming-sum-badge-cell bg-secondary text-white" role="status">
                                 <span class="incoming-sum-badge-label fw-semibold text-uppercase">Restock $</span>
                                 <span class="incoming-sum-value" id="incomingSumRestock">0</span>
+                            </span>
+                            <span class="incoming-sum-badge-cell bg-success text-white" role="status" title="LP × quantity for returned items">
+                                <span class="incoming-sum-badge-label fw-semibold text-uppercase">Recovered Cost</span>
+                                <span class="incoming-sum-value" id="incomingSumRecovered">0</span>
                             </span>
                             <span class="incoming-sum-badge-cell bg-primary text-white" role="status" id="incomingSumNetBadge">
                                 <span class="incoming-sum-badge-label fw-semibold text-uppercase">Net loss $</span>
@@ -1006,6 +1010,7 @@
                                     <th>CONDITION / REMARKS</th>
                                     <th>LOSS $</th>
                                     <th>RESTOCK $</th>
+                                    <th>RECOVERED COST</th>
                                     <th>NET LOSS $</th>
                                     <th>U Images</th>
                                     <th>Voice</th>
@@ -2393,6 +2398,14 @@
                     String(id) + '" min="0" step="1" inputmode="numeric" value="' + escapeHtml(val) + '" placeholder="0" aria-label="Restock fee USD (whole dollars)"></td>';
             }
 
+            function buildRecoveredCostCell(item) {
+                const f = formatIncomingUsd(item.recovered_cost_usd);
+                if (f === null) {
+                    return '<td class="text-center align-middle incoming-recovered-cell"><span class="text-muted small">—</span></td>';
+                }
+                return '<td class="text-end align-middle incoming-recovered-cell"><span class="text-nowrap text-success fw-semibold" title="LP × quantity for returned items">' + f + '</span></td>';
+            }
+
             function buildNetCell(item) {
                 const f = formatIncomingUsd(item.net_loss_usd);
                 if (f === null) {
@@ -2418,10 +2431,12 @@
             function updateIncomingFinancialSums(rows) {
                 let sumLoss = 0;
                 let sumRestock = 0;
+                let sumRecovered = 0;
                 let sumNet = 0;
                 (rows || []).filter(incomingRowInFinancialSumWindow).forEach(function (item) {
                     sumLoss += parseFloat(item.loss_usd) || 0;
                     sumRestock += parseFloat(item.restock_fee_usd) || 0;
+                    sumRecovered += parseFloat(item.recovered_cost_usd) || 0;
                     sumNet += parseFloat(item.net_loss_usd) || 0;
                 });
                 const fmt = function (n) {
@@ -2429,6 +2444,7 @@
                 };
                 $('#incomingSumLoss').text(fmt(sumLoss));
                 $('#incomingSumRestock').text(fmt(sumRestock));
+                $('#incomingSumRecovered').text(fmt(sumRecovered));
                 $('#incomingSumNet').text(fmt(sumNet));
                 const $nb = $('#incomingSumNetBadge');
                 if ($nb.length) {
@@ -2468,7 +2484,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="16" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="17" class="text-center">No records found</td></tr>';
                     updateIncomingFinancialSums([]);
                     return;
                 }
@@ -2488,6 +2504,7 @@
                     const voiceCell = buildVoiceNoteCell(item);
                     const lossCell = buildLossCell(item);
                     const restockCell = buildRestockCell(item);
+                    const recoveredCell = buildRecoveredCostCell(item);
                     const netCell = buildNetCell(item);
                     row.innerHTML = `
                         ${imgCell}
@@ -2501,6 +2518,7 @@
                         <td>${escapeHtml(String(item.reason ?? '-'))}</td>
                         ${lossCell}
                         ${restockCell}
+                        ${recoveredCell}
                         ${netCell}
                         ${uImgCell}
                         ${voiceCell}
@@ -3130,6 +3148,7 @@
                             loss_usd: res.loss_usd,
                             net_loss_usd: res.net_loss_usd,
                             amazon_unit_price: res.amazon_unit_price,
+                            recovered_cost_usd: res.recovered_cost_usd,
                         });
                         if (res.restock_fee_usd !== null && res.restock_fee_usd !== undefined) {
                             $inp.val(String(Math.round(parseFloat(res.restock_fee_usd))));

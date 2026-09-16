@@ -208,6 +208,43 @@ class ProductMaster extends Model
     }
 
     /**
+     * Landed price / COGS for one unit from Values.lp (or a raw lp attribute).
+     */
+    public function unitLandedPrice(): ?float
+    {
+        $values = is_array($this->Values)
+            ? $this->Values
+            : (is_string($this->Values) ? (json_decode($this->Values, true) ?: []) : []);
+
+        $lp = 0.0;
+        if (isset($values['lp']) && is_numeric($values['lp'])) {
+            $lp = (float) $values['lp'];
+        }
+        if ($lp <= 0 && isset($this->attributes['lp']) && is_numeric($this->attributes['lp'])) {
+            $lp = (float) $this->attributes['lp'];
+        }
+
+        return $lp > 0 ? round($lp, 2) : null;
+    }
+
+    /**
+     * Inventory value recovered when a returned qty comes back: LP × quantity.
+     */
+    public static function recoveredCostUsd(?self $product, float $qty, int $decimals = 2): ?float
+    {
+        if ($product === null || $qty <= 0) {
+            return null;
+        }
+
+        $lp = $product->unitLandedPrice();
+        if ($lp === null) {
+            return null;
+        }
+
+        return round($lp * $qty, $decimals);
+    }
+
+    /**
      * Auto-recalculate LP, CBM and FRGHT in the Values JSON whenever the model is saved.
      * Source of truth formula:
      *   CBM   = (L * 2.54) * (W * 2.54) * (H * 2.54) / 1,000,000   (L/W/H in inches -> m^3)

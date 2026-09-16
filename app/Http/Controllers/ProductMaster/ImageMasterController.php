@@ -1212,6 +1212,16 @@ class ImageMasterController extends Controller
     }
 
     /**
+     * Public wrapper for last-pushed marketplace gallery URLs (used by Batch +COO channel upload).
+     *
+     * @return list<string>
+     */
+    public function existingImageUrls(string $marketplace, string $sku): array
+    {
+        return $this->loadExistingMarketplaceImages(strtolower(trim($marketplace)), $this->normalizeSku($sku));
+    }
+
+    /**
      * Load the last-pushed image URLs for a marketplace/sku from the metrics table.
      * Used in "add" mode to append new images to whatever is already on the marketplace.
      *

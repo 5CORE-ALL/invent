@@ -2205,6 +2205,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.chargeback.issues');
     Route::get('/customer-care/shipping-issues-label', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'shippingIssuesLabelBoard'])
         ->name('customer.care.shipping.issues.label');
+    Route::get('/customer-care/listing-errors-issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'listingErrorsBoard'])
+        ->name('customer.care.listing.errors.issues');
     Route::permanentRedirect('/customer-care/dispatch-issue', '/customer-care/all-issues');
     Route::get('/customer-care/all-issues/sku-details', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'skuDetails'])
         ->name('customer.care.dispatch.issues.sku.details');
@@ -4200,6 +4202,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/raw-images-batch-coo/template', [RawImagesController::class, 'downloadTemplate'])->name('raw.images.batch.coo.template');
     Route::post('/raw-images-batch-coo/ai-prompt', [RawImagesController::class, 'aiPrompt'])->name('raw.images.batch.coo.ai.prompt');
     Route::post('/raw-images-batch-coo/ai-prompt/save', [RawImagesController::class, 'saveAiPrompt'])->name('raw.images.batch.coo.ai.prompt.save');
+    Route::post('/raw-images-batch-coo/stamp-coo', [RawImagesController::class, 'stampCoo'])->name('raw.images.batch.coo.stamp');
+    Route::post('/raw-images-batch-coo/push-channels', [RawImagesController::class, 'pushToChannels'])->name('raw.images.batch.coo.push');
     Route::delete('/raw-images-batch-coo/{id}', [RawImagesController::class, 'destroy'])->name('raw.images.batch.coo.destroy');
 
     Route::get('/raw-images-hero-2', [RawImagesController::class, 'index'])->name('raw.images.hero.2');
@@ -7098,6 +7102,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/training-video', [\App\Http\Controllers\TaskController::class, 'getTrainingVideo'])->name('tasks.trainingVideo.get');
     Route::post('/tasks/training-video', [\App\Http\Controllers\TaskController::class, 'saveTrainingVideo'])->name('tasks.trainingVideo.save');
     Route::get('/tasks/users-list', [\App\Http\Controllers\TaskController::class, 'getUsersList'])->name('tasks.usersList');
+    Route::get('/tasks/upload', [\App\Http\Controllers\TaskController::class, 'uploadIndex'])->name('tasks.upload');
     Route::get('/tasks/download-template', [\App\Http\Controllers\TaskController::class, 'downloadTemplate'])->name('tasks.downloadTemplate');
     Route::post('/tasks/import-csv', [\App\Http\Controllers\TaskController::class, 'importCsv'])->name('tasks.importCsv');
     Route::get('/tasks/create', [\App\Http\Controllers\TaskController::class, 'create'])->name('tasks.create');

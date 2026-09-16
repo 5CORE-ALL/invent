@@ -378,9 +378,11 @@
 @endif
 @if($ebaySprcDilChannel === 'doba_withoutship')
                         <li>
-                            <strong>When</strong> S PRC is set:
-                            use <strong>S Pick Price from /doba-tabulator</strong>
-                            (with-ship SPRICE − Ship). That amount is pushed as Pick Up.
+                            <strong>When</strong> S PRC is calculated:
+                            set it so <strong>SNROI = Target NROI</strong>
+                            (Ship not used):
+                            <code>(LP × (1 + NROI%/100)) / (take-home − Ads%/100)</code>.
+                            If Dil has no price, fall back to <strong>S Pick from /doba-tabulator</strong>.
                         </li>
 @elseif(!empty($ebaySprcDilExcludeShip))
                         <li>
@@ -1061,20 +1063,20 @@
         }
         function ebaySpriceFromGroi(d, groi) {
             if (ebayDgIsDobaWithoutship()) {
-                const copied = ebayDgDobaTabulatorSPick(d);
-                if (copied > 0) return copied;
+                if (typeof chPromoSpriceFromTargetRoi === 'function') {
+                    const p = chPromoSpriceFromTargetRoi(d, groi);
+                    if (p > 0) return p;
+                }
                 const lp = ebayDgLp(d);
                 if (!(lp > 0)) return 0;
-                const ship = typeof chPromoShipCost === 'function'
-                    ? Number(chPromoShipCost(d)) || 0
-                    : (parseFloat(d && (d.Ship_productmaster != null ? d.Ship_productmaster : d.ship)) || 0);
-                const margin = (typeof CHANNEL_PROMO_TAKEHOME === 'number' && CHANNEL_PROMO_TAKEHOME > 0)
-                    ? CHANNEL_PROMO_TAKEHOME
-                    : 0.95;
-                const delivery = (lp * (1 + (Number(groi) || 0) / 100) + ship) / margin;
-                return (isFinite(delivery) && delivery > 0)
-                    ? ebayDgRound2(Math.max(0, delivery - ship))
-                    : 0;
+                const margin = ebayDilTakehomeMargin(d);
+                const ads = ebayDilTargetsNroi() ? ebayDilAdsPct() : 0;
+                const denom = margin - (ads / 100);
+                if (!(denom > 0)) return 0;
+                const price = (lp * (1 + (Number(groi) || 0) / 100)) / denom;
+                if (isFinite(price) && price > 0) return ebayDgRound2(price);
+                const copied = ebayDgDobaTabulatorSPick(d);
+                return copied > 0 ? copied : 0;
             }
             // Temu (and any page with a custom invert) must run first — the generic
             // NROI formula ignores Temu S R / recovery math.

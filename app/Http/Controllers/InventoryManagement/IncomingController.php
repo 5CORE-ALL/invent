@@ -1409,6 +1409,7 @@ class IncomingController extends Controller
             $qty = (float) ($item->verified_stock ?? 0);
             $restock = $hasFinancialCols ? $item->restock_fee_usd : null;
             $usd = $this->packIncomingReturnFinancialsFromAmazon($unit, $qty, $restock, $hasFinancialCols);
+            $usd['recovered_cost_usd'] = null;
 
             return array_merge([
                 'sku' => $item->sku,
@@ -1467,6 +1468,7 @@ class IncomingController extends Controller
                 ? (float) round((float) $group->sum(fn ($i) => (float) ($i->restock_fee_usd ?? 0)), 0)
                 : null;
             $usd = $this->packIncomingReturnFinancialsFromAmazon($unit, $sumQty, $restockSum, $hasFinancialCols);
+            $usd['recovered_cost_usd'] = ProductMaster::recoveredCostUsd($pm, $sumQty, 0);
 
             $channelLabels = $group->pluck('id')
                 ->map(fn ($rid) => $returnChannelByInventoryId->get($rid))
@@ -1616,6 +1618,15 @@ class IncomingController extends Controller
         $qty = (float) ($inventory->verified_stock ?? 0);
         $payload = $this->packIncomingReturnFinancialsFromAmazon($unit, $qty, $inventory->restock_fee_usd, true);
         $payload['inventory_id'] = (int) $inventory->id;
+        $payload['recovered_cost_usd'] = $inventory->type === 'incoming_return'
+            ? ProductMaster::recoveredCostUsd(
+                ProductMaster::query()
+                    ->whereRaw('LOWER(TRIM(sku)) = ?', [strtolower(trim((string) ($inventory->sku ?? '')))])
+                    ->first(),
+                $qty,
+                0
+            )
+            : null;
 
         return response()->json(['success' => true] + $payload);
     }

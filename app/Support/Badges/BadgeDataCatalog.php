@@ -119,9 +119,9 @@ class BadgeDataCatalog
             ],
             'raw-images-batch-coo' => [
                 'sku_count' => 'SKUs',
-                'with_raw_image' => 'With raw image',
+                'with_raw_image' => 'With Batch +COO',
                 'image' => 'Image',
-                'missing' => 'Missing Raw Images',
+                'missing' => 'Missing Batch +COO',
             ],
             'raw-images-hero-2' => [
                 'sku_count' => 'SKUs',
