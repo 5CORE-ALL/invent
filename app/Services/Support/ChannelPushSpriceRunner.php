@@ -21,6 +21,7 @@ use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
 use App\Support\MacysAmazonPriceCap;
+use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -228,77 +229,85 @@ class ChannelPushSpriceRunner
             $ok = false;
             $error = null;
             $live = null;
+            $alreadyLive = false;
             try {
                 if ($sku === '' || ! ($price > 0)) {
                     throw new \RuntimeException('SKU and S PRC > 0 required');
                 }
-                if ($this->channel === 'purchasing_power') {
-                    $block = \App\Http\Controllers\MarketPlace\PurchasingPowerController::pricePushBlockReason($sku);
-                    if ($block !== null) {
-                        throw new \RuntimeException($block);
-                    }
-                }
-                if (in_array($this->channel, ['macys', 'macy'], true)) {
-                    $block = \App\Http\Controllers\MarketPlace\MacyController::pricePushBlockReason($sku);
-                    if ($block !== null) {
-                        throw new \RuntimeException($block);
-                    }
-                }
-                if ($this->channel === 'bestbuy') {
-                    $block = \App\Http\Controllers\MarketPlace\BestBuyPricingController::pricePushBlockReason($sku);
-                    if ($block !== null) {
-                        throw new \RuntimeException($block);
-                    }
-                }
-                if (in_array($this->channel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true)) {
-                    $floored = MacysAmazonPriceCap::capForSku($sku, $price);
-                    if ($floored > 0 && abs($floored - $price) >= 0.005) {
-                        $logger->info('S PRC raised to Amazon price', [
-                            'channel' => $this->channel,
-                            'sku' => $sku,
-                            'requested' => $price,
-                            'floored' => $floored,
-                        ]);
-                        $price = $floored;
-                    }
-                }
-                $pushRes = $this->pushPrice($sku, $price);
-                $payload = method_exists($pushRes, 'getData') ? $pushRes->getData(true) : [];
-                $status = method_exists($pushRes, 'getStatusCode') ? $pushRes->getStatusCode() : 200;
-                if ($status >= 400 || (is_array($payload) && (
-                    isset($payload['success']) && $payload['success'] === false
-                    || ! empty($payload['errors'])
-                ))) {
-                    $error = is_array($payload)
-                        ? (string) (($payload['errors'][0]['message'] ?? null) ?: ($payload['message'] ?? 'S PRC push failed'))
-                        : 'S PRC push failed';
-                    throw new \RuntimeException($error);
-                }
-                $live = is_array($payload)
-                    ? ($payload['ebay_price'] ?? $payload['price'] ?? $price)
-                    : $price;
-                $ok = true;
-                if (in_array($this->channel, ['tiktok', 'tiktok2', 'doba', 'doba_withoutship'], true)
-                    && (! is_numeric($live) || abs((float) $live - (float) $price) >= 0.05)) {
-                    $pulled = $this->pullLivePriceAfterPush($sku, (float) $price);
-                    if ($pulled > 0) {
-                        $live = $pulled;
-                    }
-                }
-                $stamp = (float) $price;
-                if ($this->channel === 'newtemuone') {
-                    $full = \App\Services\TemuShopifySalesService::computeFullTemuPrice($stamp);
-                    NewTemuoneSuggestedPriceStore::markPushed($sku, $stamp, $full);
-                    // Do not confirmAfterPush: that writes Temu 1 SPRICE and
-                    // temu_metrics.base_price. Live base stays on the API pull
-                    // until Temu finishes assessing the new price.
-                } elseif ($this->channel === 'newtemutwo') {
-                    $full = \App\Services\TemuShopifySalesService::computeFullTemuPrice($stamp);
-                    NewTemutwoSuggestedPriceStore::markPushed($sku, $stamp, $full);
-                    // Do not confirmAfterPush: that writes Temu 2 SPRICE and
-                    // temu2_metrics.base_price. Live base stays on the API pull.
+                $matchedLive = $this->liveListingPriceIfMatches($sku, $price);
+                if ($matchedLive !== null) {
+                    $ok = true;
+                    $alreadyLive = true;
+                    $live = $matchedLive;
+                    $logger->info('S PRC background push skipped — Price already = S PRC', [
+                        'channel' => $this->channel,
+                        'sku' => $sku,
+                        'price' => $matchedLive,
+                    ]);
                 } else {
-                    ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, $stamp);
+                    if ($this->channel === 'purchasing_power') {
+                        $block = \App\Http\Controllers\MarketPlace\PurchasingPowerController::pricePushBlockReason($sku);
+                        if ($block !== null) {
+                            throw new \RuntimeException($block);
+                        }
+                    }
+                    if (in_array($this->channel, ['macys', 'macy'], true)) {
+                        $block = \App\Http\Controllers\MarketPlace\MacyController::pricePushBlockReason($sku);
+                        if ($block !== null) {
+                            throw new \RuntimeException($block);
+                        }
+                    }
+                    if ($this->channel === 'bestbuy') {
+                        $block = \App\Http\Controllers\MarketPlace\BestBuyPricingController::pricePushBlockReason($sku);
+                        if ($block !== null) {
+                            throw new \RuntimeException($block);
+                        }
+                    }
+                    if (in_array($this->channel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true)) {
+                        $floored = MacysAmazonPriceCap::capForSku($sku, $price);
+                        if ($floored > 0 && abs($floored - $price) >= 0.005) {
+                            $logger->info('S PRC raised to Amazon price', [
+                                'channel' => $this->channel,
+                                'sku' => $sku,
+                                'requested' => $price,
+                                'floored' => $floored,
+                            ]);
+                            $price = $floored;
+                        }
+                    }
+                    $pushRes = $this->pushPrice($sku, $price);
+                    $payload = method_exists($pushRes, 'getData') ? $pushRes->getData(true) : [];
+                    $status = method_exists($pushRes, 'getStatusCode') ? $pushRes->getStatusCode() : 200;
+                    if ($status >= 400 || (is_array($payload) && (
+                        isset($payload['success']) && $payload['success'] === false
+                        || ! empty($payload['errors'])
+                    ))) {
+                        $error = is_array($payload)
+                            ? (string) (($payload['errors'][0]['message'] ?? null) ?: ($payload['message'] ?? 'S PRC push failed'))
+                            : 'S PRC push failed';
+                        throw new \RuntimeException($error);
+                    }
+                    $live = is_array($payload)
+                        ? ($payload['ebay_price'] ?? $payload['price'] ?? $price)
+                        : $price;
+                    $ok = true;
+                    if (in_array($this->channel, ['tiktok', 'tiktok2', 'doba', 'doba_withoutship'], true)
+                        && (! is_numeric($live) || abs((float) $live - (float) $price) >= 0.05)) {
+                        $pulled = $this->pullLivePriceAfterPush($sku, (float) $price);
+                        if ($pulled > 0) {
+                            $live = $pulled;
+                        }
+                    }
+                    $stamp = (float) $price;
+                    if ($this->channel === 'newtemuone') {
+                        $full = \App\Services\TemuShopifySalesService::computeFullTemuPrice($stamp);
+                        NewTemuoneSuggestedPriceStore::markPushed($sku, $stamp, $full);
+                    } elseif ($this->channel === 'newtemutwo') {
+                        $full = \App\Services\TemuShopifySalesService::computeFullTemuPrice($stamp);
+                        NewTemutwoSuggestedPriceStore::markPushed($sku, $stamp, $full);
+                    } else {
+                        ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, $stamp);
+                    }
                 }
             } catch (\Throwable $e) {
                 $ok = false;
@@ -311,14 +320,14 @@ class ChannelPushSpriceRunner
                 $this->markListingEndedIfNeeded($sku, $error);
             }
 
-            $store->update(function (array $state) use ($index, $sku, $ok, $error, $live) {
+            $store->update(function (array $state) use ($index, $sku, $ok, $error, $live, $alreadyLive) {
                 if (! isset($state['tasks'][$index]) || ! is_array($state['tasks'][$index])) {
                     return $state;
                 }
                 if ($ok) {
                     $state['tasks'][$index]['status'] = 'ok';
                     $state['tasks'][$index]['error'] = null;
-                    $state['tasks'][$index]['message'] = 'pushed';
+                    $state['tasks'][$index]['message'] = $alreadyLive ? 'already live' : 'pushed';
                     if ($live !== null) {
                         $state['tasks'][$index]['ebay_price'] = $live;
                     }
@@ -343,7 +352,11 @@ class ChannelPushSpriceRunner
                 return $state;
             });
 
-            $store->appendMessage(($ok ? 'OK ' : 'Fail ').$sku.($error ? (': '.$error) : ''), $ok);
+            $store->appendMessage(
+                ($ok ? ($alreadyLive ? 'Skip ' : 'OK ') : 'Fail ').$sku
+                    .($alreadyLive ? ': Price already = S PRC' : ($error ? (': '.$error) : '')),
+                $ok
+            );
             usleep(in_array($this->channel, ['macys', 'macy'], true) ? 50000 : 250000);
         }
     }
@@ -449,6 +462,30 @@ class ChannelPushSpriceRunner
             if (in_array($st, ['pending', 'queued'], true)) {
                 return (int) $i;
             }
+        }
+
+        return null;
+    }
+
+    private function liveListingPriceIfMatches(string $sku, float $price): ?float
+    {
+        if (! in_array($this->channel, ['shopify_b2c', 'shopify_b2b'], true)) {
+            return null;
+        }
+
+        $row = ShopifySku::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+            ->first(['price', 'b2c_price', 'b2b_price']);
+        if (! $row) {
+            return null;
+        }
+
+        $live = $this->channel === 'shopify_b2b'
+            ? (float) (($row->b2b_price ?? 0) ?: ($row->price ?? 0))
+            : (float) (($row->price ?? 0) ?: ($row->b2c_price ?? 0));
+
+        if ($live > 0 && abs($live - $price) < 0.005) {
+            return round($live, 2);
         }
 
         return null;

@@ -721,7 +721,7 @@
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-blue-triangle-badge"
                             data-metric="blue_triangle_count" data-invert="1" data-format="number" data-live-value="0"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: S PRC ≠ Price. Click badge to filter. Click dot for rolling history.">
+                            title="Blue triangle: INV > 0 and S PRC ≠ Price (needs push). Click to show only those SKUs. Push on reload skips INV=0, Amz-raised, and Price = S PRC.">
                             <span class="summary-trend-dot none" data-metric="blue_triangle_count" title="Rolling history"></span><i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-purple-triangle-badge"
                             data-metric="purple_triangle_count" data-invert="1" data-format="number" data-live-value="0"
@@ -1328,12 +1328,17 @@
     }
 
     function shopifyB2cHasBlueTriangle(data) {
-        if (isShopifyB2cParentRow(data)) return false;
+        if (!data || isShopifyB2cParentRow(data)) return false;
+        const sku = String(data['(Child) sku'] || data.sku || '').trim().toUpperCase();
+        if (!sku || sku.indexOf('PARENT') === 0) return false;
+        // Same as Amazon / Push on reload: INV=0 is not a live listing price.
+        if (!(parseFloat(data.INV) > 0)) return false;
         if (shopifyB2cShowAmzLabel(data)) return false;
         const sprice = shopifyB2cShownSprice(data);
-        const price = parseFloat(data && data.Price) || 0;
+        const price = parseFloat(data.Price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
+    window.shopifyB2cHasBlueTriangle = shopifyB2cHasBlueTriangle;
 
     /** Badge / filter: S PRC was below A Price and was raised to Amz. */
     function shopifyB2cHasPurpleTriangle(data) {
@@ -4023,7 +4028,7 @@
             }
             let blueTriangleCount = 0;
             let purpleTriangleCount = 0;
-            allData.forEach(function(row) {
+            data.forEach(function(row) {
                 if (shopifyB2cHasBlueTriangle(row)) blueTriangleCount++;
                 if (shopifyB2cHasPurpleTriangle(row)) purpleTriangleCount++;
             });

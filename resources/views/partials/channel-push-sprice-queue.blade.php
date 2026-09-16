@@ -99,6 +99,7 @@
             let chPushSpricePulledKey = '';
             let chPushSpriceFlushing = false;
             let chPushSpriceExclusive = false;
+            let chPushSpriceReplacePending = false;
             let chPushSpriceExpecting = false;
             let chPushClientQ = [];
             let chPushClientInflight = 0;
@@ -588,7 +589,10 @@
                     title: 'S PRC queue',
                 });
                 const payload = { _token: chPushSpriceCsrf(), items: items };
-                if (opts.exclusive) {
+                if (opts.replacePending) {
+                    payload.replace_pending = 1;
+                    payload.source = 'catalog';
+                } else if (opts.exclusive) {
                     payload.exclusive = 1;
                     payload.source = 'after_save';
                 }
@@ -626,8 +630,10 @@
                 if (!keys.length) return;
                 const items = keys.map(function(k) { return chPushSpriceBuf[k]; });
                 const exclusive = chPushSpriceExclusive;
+                const replacePending = chPushSpriceReplacePending;
                 chPushSpriceBuf = {};
                 chPushSpriceExclusive = false;
+                chPushSpriceReplacePending = false;
                 chPushSpriceFlushing = true;
                 let i = 0;
                 function nextChunk() {
@@ -635,9 +641,13 @@
                         chPushSpriceFlushing = false;
                         return;
                     }
+                    const start = i;
                     const chunk = items.slice(i, i + CH_PUSH_SPRICE_CHUNK);
                     i += chunk.length;
-                    postChannelPushSpriceItems(chunk, { exclusive: exclusive }).always(nextChunk);
+                    postChannelPushSpriceItems(chunk, {
+                        exclusive: exclusive && !replacePending,
+                        replacePending: replacePending && start === 0,
+                    }).always(nextChunk);
                 }
                 nextChunk();
             }
@@ -656,6 +666,7 @@
                     return;
                 }
                 if (opts.exclusive) chPushSpriceExclusive = true;
+                if (opts.replacePending) chPushSpriceReplacePending = true;
                 if (!items || !items.length) return;
                 items.forEach(function(item) {
                     if (!item) return;
@@ -980,6 +991,17 @@
             }
             function chPushSpriceRowBlocked(d) {
                 if (!d) return true;
+                if (CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c') {
+                    if (typeof global.shopifyB2cHasBlueTriangle === 'function') {
+                        if (!global.shopifyB2cHasBlueTriangle(d)) return true;
+                    } else if (!(parseFloat(d.INV) > 0)) {
+                        return true;
+                    }
+                    const nrlEl = document.getElementById('nrl-filter');
+                    const nrlVal = nrlEl ? String(nrlEl.value || '') : '';
+                    if (nrlVal === 'REQ' && String(d.nr_req || '') !== 'REQ') return true;
+                    if (nrlVal === 'NR' && String(d.nr_req || '') !== 'NR') return true;
+                }
                 if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return true;
                 const flag = String(d.live_inactive || d.listing_status || '').toLowerCase();
                 if (['inactive', 'offline', 'ended', 'disabled'].indexOf(flag) !== -1) return true;
@@ -1040,6 +1062,7 @@
                 if (opts.once !== false && opts.silent && window._chPushSpricePageChecked) return;
                 if (opts.once !== false && opts.silent) window._chPushSpricePageChecked = true;
                 if (!chPushSpriceAutoPushAllowed()) return;
+                if (chPushSpriceUsesClientPump() && chPushClientBusy()) return;
                 if (!CH_PUSH_SPRICE_LIVE) {
                     if (!opts.silent) {
                         chPushSpriceToast('error', 'Live S PRC push is disabled on this environment');
@@ -1093,7 +1116,10 @@
                 if (chPushSpriceUsesClientPump()) {
                     enqueueChannelPushSpriceClient(jobs);
                 } else {
-                    enqueueChannelPushSprice(jobs, { silent: !!opts.silent });
+                    enqueueChannelPushSprice(jobs, {
+                        silent: !!opts.silent,
+                        replacePending: CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c',
+                    });
                 }
             }
 
