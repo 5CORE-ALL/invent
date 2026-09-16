@@ -1604,6 +1604,7 @@
             mercari_woship: {
                 label: 'Mercari w/o Ship',
                 saveSpriceUrl: '/mercari-without-ship-tabulator/save-status',
+                saveSpriceBatchUrl: '/mercari-without-ship-tabulator/save-status',
                 pushPriceUrl: null,
                 priceField: 'price',
                 cvrField: 'CVR%',
@@ -5348,7 +5349,8 @@
                 || CHANNEL_PROMO_CHANNEL === 'purchasing_power'
                 || CHANNEL_PROMO_CHANNEL === 'wayfair'
                 || CHANNEL_PROMO_CHANNEL === 'topdawg'
-                || CHANNEL_PROMO_CHANNEL === 'fb_marketplace')
+                || CHANNEL_PROMO_CHANNEL === 'fb_marketplace'
+                || CHANNEL_PROMO_CHANNEL === 'mercari_woship')
                 ? 0
                 : chPromoShipCost(d);
             const price = (lp * (1 + roi / 100) + ship) / margin;

@@ -196,6 +196,7 @@ class MercariWoShipController extends Controller
                 }
             }
             $opMetrics = $this->mercariWoshipSpriceProfitMetrics($opSprice, $lp, $factor, 0.0);
+            $dilPct = $inv > 0 ? round((($shopifyItem->quantity ?? 0) / $inv) * 100, 2) : 0.0;
 
             $row = [
                 'Parent' => $productMaster->parent ?? null,
@@ -203,6 +204,8 @@ class MercariWoShipController extends Controller
                 'sku' => $sku,
                 'INV' => $shopifyItem->inv ?? 0,
                 'L30' => $shopifyItem->quantity ?? 0,
+                'Dil%' => $dilPct,
+                'Dil' => $dilPct,
                 'price' => $price,
                 'sold' => $soldL30,
                 'PFT' => round($pft, 2),
@@ -221,6 +224,7 @@ class MercariWoShipController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'factor' => $factor,
+                'percentage' => $factor,
                 'buyer_link' => $statusValue['buyer_link'] ?? null,
                 'seller_link' => $statusValue['seller_link'] ?? null,
                 'approved' => $statusValue['approved'] ?? null,
@@ -234,25 +238,53 @@ class MercariWoShipController extends Controller
 
     public function saveMercariWoShipStatus(Request $request)
     {
+        $updates = $request->input('updates');
+        if (is_array($updates) && $updates !== []) {
+            $saved = 0;
+            foreach ($updates as $u) {
+                if (! is_array($u)) {
+                    continue;
+                }
+                $sku = trim((string) ($u['sku'] ?? ''));
+                if ($sku === '' || stripos($sku, 'PARENT') === 0) {
+                    continue;
+                }
+                $this->persistMercariWoShipStatusRow($sku, $u);
+                $saved++;
+            }
+
+            return response()->json(['success' => true, 'updated' => $saved]);
+        }
+
         $request->validate([
             'sku' => 'required|string',
         ]);
 
-        $sku = $request->input('sku');
+        $this->persistMercariWoShipStatusRow((string) $request->input('sku'), $request->all());
 
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Dil Apply / inline S PRC: listing status + mercari_wo_ship_data_views.SPRICE.
+     * OP Sprice is stored separately as op_sprice / OP_SPRICE and never writes SPRICE.
+     *
+     * @param  array<string, mixed>  $fields
+     */
+    private function persistMercariWoShipStatusRow(string $sku, array $fields): void
+    {
         $status = MercariWoShipListingStatus::firstOrNew(['sku' => $sku]);
         $value = is_array($status->value)
             ? $status->value
-            : (json_decode($status->value, true) ?: []);
+            : (json_decode((string) $status->value, true) ?: []);
 
-        // Only update fields present in the request
         foreach (['sprice', 'nr_req', 'approved'] as $field) {
-            if ($request->has($field)) {
-                $value[$field] = $request->input($field);
+            if (array_key_exists($field, $fields)) {
+                $value[$field] = $fields[$field];
             }
         }
-        if ($request->has('op_sprice')) {
-            $opSprice = $request->input('op_sprice');
+        if (array_key_exists('op_sprice', $fields)) {
+            $opSprice = $fields['op_sprice'];
             if ($opSprice === null || $opSprice === '' || ! is_numeric($opSprice) || (float) $opSprice <= 0) {
                 unset($value['op_sprice']);
             } else {
@@ -263,34 +295,38 @@ class MercariWoShipController extends Controller
         $status->value = $value;
         $status->save();
 
-        if ($request->has('sprice') || $request->has('op_sprice')) {
-            $view = MercariWoShipDataView::firstOrNew(['sku' => $sku]);
-            $viewVal = is_array($view->value)
-                ? $view->value
-                : (json_decode((string) ($view->value ?? ''), true) ?: []);
-            if ($request->has('sprice')) {
-                $sprice = $request->input('sprice');
-                if ($sprice === null || $sprice === '' || ! is_numeric($sprice) || (float) $sprice <= 0) {
-                    unset($viewVal['SPRICE'], $viewVal['sprice']);
-                } else {
-                    $viewVal['SPRICE'] = round((float) $sprice, 2);
-                    $viewVal['sprice'] = $viewVal['SPRICE'];
-                }
-            }
-            if ($request->has('op_sprice')) {
-                $opSprice = $request->input('op_sprice');
-                if ($opSprice === null || $opSprice === '' || ! is_numeric($opSprice) || (float) $opSprice <= 0) {
-                    unset($viewVal['OP_SPRICE'], $viewVal['op_sprice']);
-                } else {
-                    $viewVal['OP_SPRICE'] = round((float) $opSprice, 2);
-                    $viewVal['op_sprice'] = $viewVal['OP_SPRICE'];
-                }
-            }
-            $view->value = $viewVal;
-            $view->save();
+        $needsView = array_key_exists('sprice', $fields) || array_key_exists('op_sprice', $fields);
+        if (! $needsView) {
+            return;
         }
 
-        return response()->json(['success' => true]);
+        $view = MercariWoShipDataView::firstOrNew(['sku' => $sku]);
+        $viewVal = is_array($view->value)
+            ? $view->value
+            : (json_decode((string) ($view->value ?? ''), true) ?: []);
+
+        if (array_key_exists('sprice', $fields)) {
+            $sprice = $fields['sprice'];
+            if ($sprice === null || $sprice === '' || ! is_numeric($sprice) || (float) $sprice <= 0) {
+                unset($viewVal['SPRICE'], $viewVal['sprice']);
+            } else {
+                $viewVal['SPRICE'] = round((float) $sprice, 2);
+                $viewVal['sprice'] = $viewVal['SPRICE'];
+            }
+        }
+
+        if (array_key_exists('op_sprice', $fields)) {
+            $opSprice = $fields['op_sprice'];
+            if ($opSprice === null || $opSprice === '' || ! is_numeric($opSprice) || (float) $opSprice <= 0) {
+                unset($viewVal['OP_SPRICE'], $viewVal['op_sprice']);
+            } else {
+                $viewVal['OP_SPRICE'] = round((float) $opSprice, 2);
+                $viewVal['op_sprice'] = $viewVal['OP_SPRICE'];
+            }
+        }
+
+        $view->value = $viewVal;
+        $view->save();
     }
 
     /**

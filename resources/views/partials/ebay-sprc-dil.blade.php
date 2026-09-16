@@ -526,7 +526,7 @@
         function ebayDgUsesClearThenApply() {
             return ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
                 || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsTopdawg()
-                || ebayDgIsMacys();
+                || ebayDgIsMacys() || ebayDgIsMercari();
         }
         function ebayDgUsesBackgroundRuleApply() {
             return ebayDgIsMacys() || ebayDgIsPurchasingPower();
@@ -1851,6 +1851,16 @@
                 if (typeof saveChannelSpriceBatch === 'function'
                     && typeof chPromoCfg !== 'undefined' && chPromoCfg.saveSpriceBatchUrl) {
                     await saveChannelSpriceBatch(chunk, extra);
+                } else if (typeof chPromoCfg !== 'undefined' && chPromoCfg.saveSpriceUrl) {
+                    await $.ajax({
+                        url: chPromoCfg.saveSpriceUrl,
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': ebayDgCsrf(),
+                            'Accept': 'application/json',
+                        },
+                        data: { updates: chunk, _token: ebayDgCsrf(), skip_push: 1 },
+                    });
                 } else {
                     await $.ajax({
                         url: '/shopify/save-sprice',
@@ -2168,7 +2178,11 @@
                 if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
                 renderEbayDilGroiModalTable();
                 redrawEbaySprcDilColumn();
-                ebayScheduleSprcDilAutoApply();
+                if (EBAY_DIL_GROI_CHANNEL === 'mercari_woship' && fromServer.length && !(res && res.is_default)) {
+                    Promise.resolve(ebayApplySprcDilToTable({ persist: true, push: false })).catch(function() { /* retry on next change */ });
+                } else {
+                    ebayScheduleSprcDilAutoApply();
+                }
                 $('#ebay-dil-groi-status').text(
                     fromServer.length && !(res && res.is_default)
                         ? ('Loaded saved Dil → ' + EBAY_DIL_TARGET_LABEL + ' slabs from API.')
