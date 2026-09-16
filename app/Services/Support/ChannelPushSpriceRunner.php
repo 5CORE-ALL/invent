@@ -362,7 +362,7 @@ class ChannelPushSpriceRunner
     }
 
     /**
-     * After Macys auto-push, refresh listed MC Price from MCM once — do not wait per SKU.
+     * After Macys auto-push, schedule a full listed-price pull in 10 minutes.
      */
     private function pullMacysListedAfterBatch(array $state, \Psr\Log\LoggerInterface $logger): void
     {
@@ -383,27 +383,16 @@ class ChannelPushSpriceRunner
         if ($skus === []) {
             return;
         }
-        $expected = [];
-        foreach ($state['tasks'] ?? [] as $task) {
-            if (! is_array($task) || ($task['status'] ?? '') !== 'ok') {
-                continue;
-            }
-            $sku = strtoupper(trim((string) ($task['sku'] ?? '')));
-            $price = (float) ($task['price'] ?? 0);
-            if ($sku !== '' && $price > 0) {
-                $expected[$sku] = round($price, 2);
-            }
-        }
-        $logger->info('Macy listed-price pull after auto-push', ['count' => count($skus)]);
-        try {
-            foreach (array_chunk($skus, 100) as $chunk) {
-                app(\App\Services\ChannelPushedPricePullService::class)->pullSkus($this->channel, $chunk, $expected);
-            }
-        } catch (\Throwable $e) {
-            $logger->warning('Macy listed-price pull after auto-push failed', [
-                'error' => $e->getMessage(),
-            ]);
-        }
+        $scheduled = MacysDelayedPricePullStore::schedule($skus);
+        $logger->info('Macy full listed-price pull scheduled', [
+            'count' => count($skus),
+            'due_at' => $scheduled['due_at'] ?? null,
+        ]);
+        $store = ChannelPushSpriceJobStore::for($this->channel);
+        $store->appendMessage(
+            'Full MC Price pull at '.($scheduled['due_at'] ?? '10 min').'.',
+            true
+        );
     }
 
     private function pullLivePriceAfterPush(string $sku, float $expected): float

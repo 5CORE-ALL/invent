@@ -80,7 +80,7 @@
                 tiktok: 1, tiktok2: 1, topdawg: 1, purchasing_power: 1,
                 faire: 1, pls: 1, newegg: 1, wayfair: 1, aliexpress: 1, shein: 1,
             })[CH_PUSH_SPRICE_CHANNEL] === 1;
-            const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2|doba|doba_withoutship|macys|macy)$/.test(CH_PUSH_SPRICE_CHANNEL);
+            const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2|doba|doba_withoutship)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_TIKTOK = /^(tiktok|tiktok2)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_MACYS = /^(macys|macy)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_PULL_DELAY_MS = CH_PUSH_SPRICE_IS_TIKTOK ? 1500 : 0;
@@ -401,6 +401,12 @@
                             if (result.kind === 'price') priceChanged++;
                             if (CH_PUSH_SPRICE_CHANNEL === 'aliexpress' && typeof window.aeApplyPushPatchToSku === 'function') {
                                 window.aeApplyPushPatchToSku(t.sku, result.patch);
+                            }
+                            if (CH_PUSH_SPRICE_IS_MACYS && result.kind === 'price'
+                                && typeof global.macysApplyLivePriceToRow === 'function') {
+                                const livePrice = Number((result.patch && (result.patch['MC Price'] || result.patch.price))
+                                    || t.ebay_price || t.price) || 0;
+                                if (livePrice > 0) global.macysApplyLivePriceToRow(row, livePrice);
                             }
                         }
                     }

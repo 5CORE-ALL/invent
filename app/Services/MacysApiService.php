@@ -458,19 +458,34 @@ class MacysApiService
     protected function syncLocalMacyPriceAfterPush(string $sku, string $offerSku, float $price): void
     {
         try {
+            $price = round($price, 2);
+            $keys = array_values(array_unique(array_filter([
+                strtoupper(trim($sku)),
+                strtoupper(trim($offerSku)),
+            ])));
+            $productUpdate = ['price' => $price];
+            if (Schema::hasColumn('macy_products', 'listing_status')) {
+                $productUpdate['listing_status'] = 'active';
+            }
             \App\Models\MacyProduct::query()
-                ->where(function ($q) use ($offerSku, $sku) {
-                    $q->where('sku', $offerSku)->orWhere('sku', $sku);
+                ->where(function ($q) use ($keys) {
+                    foreach ($keys as $key) {
+                        $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$key]);
+                    }
                 })
-                ->update(['price' => $price]);
+                ->update($productUpdate);
             \App\Models\MacysPriceData::query()
-                ->where(function ($q) use ($offerSku, $sku) {
-                    $q->where('sku', $offerSku)
-                        ->orWhere('sku', $sku)
-                        ->orWhere('offer_sku', $offerSku)
-                        ->orWhere('offer_sku', $sku);
+                ->where(function ($q) use ($keys) {
+                    foreach ($keys as $key) {
+                        $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$key])
+                            ->orWhereRaw('UPPER(TRIM(offer_sku)) = ?', [$key]);
+                    }
                 })
-                ->update(['price' => $price, 'original_price' => $price]);
+                ->update([
+                    'price' => $price,
+                    'original_price' => $price,
+                    'activated' => true,
+                ]);
         } catch (\Throwable $e) {
             Log::warning('Macy local price sync after PRI01 failed', [
                 'sku' => $offerSku,

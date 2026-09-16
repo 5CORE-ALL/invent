@@ -21,6 +21,7 @@ use App\Console\Commands\DebugEbaySkuMetricsCommand;
 use App\Console\Commands\FetchTopDawgData;
 use App\Console\Commands\SyncTopDawgAll;
 use App\Console\Commands\FetchMacyProducts;
+use App\Console\Commands\MacysPullListedPricesCommand;
 use App\Console\Commands\SyncPurchasingPowerCommand;
 use App\Console\Commands\FetchWayfairData;
 use App\Console\Commands\SyncFbMarketplaceSheet;
@@ -57,6 +58,7 @@ class Kernel extends ConsoleKernel
         SyncTopDawgAll::class,
         \App\Console\Commands\ProcessPendingReverbOrders::class,
         FetchMacyProducts::class,
+        MacysPullListedPricesCommand::class,
         SyncPurchasingPowerCommand::class,
         FetchWayfairData::class,
         SyncFbMarketplaceSheet::class,
@@ -661,6 +663,13 @@ class Kernel extends ConsoleKernel
         $ist($schedule->command('app:fetch-macy-products')
             ->everyFiveMinutes()
             ->name('fetch-macy-products')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('macys:pull-listed-prices --due')
+            ->everyMinute()
+            ->name('macys-pull-listed-prices')
             ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
             ->runInBackground()
             ->appendOutputTo($log));

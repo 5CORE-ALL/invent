@@ -25,6 +25,7 @@ class FetchMacyProducts extends Command
     protected $signature = 'app:fetch-macy-products
                             {--pp-mcm-only : Only sync Purchasing Power prices from MCM OF21}
                             {--macy-mcm-only : Only sync Macy listed prices from MCM OF21}
+                            {--write-live : Write MCM listed prices even if they differ from a just-pushed S PRC}
                             {--bestbuy-mcm-only : Only sync Best Buy listed prices from MCM OF21}
                             {--bestbuy-mcm-offset=0 : Resume Best Buy OF21 at this offer offset}';
 
@@ -462,9 +463,11 @@ class FetchMacyProducts extends Command
                     if ($price === null) {
                         continue;
                     }
-                    $kept = ChannelLivePriceSync::preferIncoming('macys', $sku, $price, $pushedLookup);
-                    if ($kept !== null) {
-                        $price = $kept;
+                    if (! $this->option('write-live')) {
+                        $kept = ChannelLivePriceSync::preferIncoming('macys', $sku, $price, $pushedLookup);
+                        if ($kept !== null) {
+                            $price = $kept;
+                        }
                     }
 
                     $inactivity = $offer['inactivity_reasons'] ?? '';

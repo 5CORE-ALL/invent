@@ -167,10 +167,6 @@ class ChannelLivePriceSync
             $value = $base;
         }
 
-        if (in_array($channel, ['macys', 'macy'], true) && ! self::macysOfferIsActive($sku)) {
-            return;
-        }
-
         foreach (self::writeTargets($channel) as $target) {
             try {
                 self::updateTarget($target, $sku, $value);
