@@ -9,7 +9,7 @@ return [
     |
     | TID, daily auto-task creation, same-day rules, and auto-delete all use this
     | timezone. Set to IST (Asia/Kolkata) so the TID reflects the current India
-    | date and daily automated tasks are generated for 14:00 IST.
+    | date and daily automated tasks are generated at 12:00 PM IST.
     |
     */
     'business_timezone' => env('TASK_BUSINESS_TIMEZONE', 'Asia/Kolkata'),
@@ -21,8 +21,8 @@ return [
     /** Local time (business TZ) when incomplete daily auto-tasks are archived. */
     'auto_delete_time' => env('TASK_AUTO_DELETE_TIME', '00:05:00'),
 
-    /** start_date time for newly generated daily automated instances. */
-    'daily_generate_time' => env('TASK_DAILY_GENERATE_TIME', '14:00:00'),
+    /** start_date time for newly generated daily automated instances (India clock). */
+    'daily_generate_time' => env('TASK_DAILY_GENERATE_TIME', '12:00:00'),
 
     /*
     |--------------------------------------------------------------------------

@@ -358,9 +358,10 @@
                                         @endif
                                     </div>
                                     <div class="col-12 mb-2">
-                                        <label for="tid" class="form-label fw-bold" style="font-size: 12px;">TID <span class="text-danger">*</span></label>
-                                        <input type="datetime-local" class="form-control form-control-sm @error('tid') is-invalid @enderror" 
-                                               id="tid" name="tid" value="{{ old('tid', now()->format('Y-m-d\TH:i')) }}">
+                                        <label for="tid" class="form-label fw-bold" style="font-size: 12px;">TID</label>
+                                        <input type="datetime-local" class="form-control form-control-sm @error('tid') is-invalid @enderror"
+                                               id="tid" name="tid" value="{{ old('tid', now()->format('Y-m-d\TH:i')) }}"
+                                               readonly tabindex="-1" style="pointer-events: none; background-color: #e9ecef;">
                                     </div>
                                     <div class="col-6 mb-2">
                                         <label for="l1" class="form-label fw-bold" style="font-size: 12px;">L1</label>

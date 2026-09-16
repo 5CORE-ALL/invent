@@ -607,8 +607,8 @@
          *   SROI % = ((SPRICE × FORMULA_PERCENT − SHIP − LP) ÷ LP)     × 100
          *
          * --- S PRC on this page ---
-         *   S PRC = S Pick Price from /doba-tabulator (with-ship SPRICE − Ship)
-         *   Push sends that amount as Pick Up.
+         *   Dil + CVR back-solve S PRC so SNROI = Target NROI (Ship = 0).
+         *   If Dil has no price, fall back to S Pick from /doba-tabulator.
          *
          * SHIP is FORMULA_SHIP (= 0 on this "without ship" page).
          * Changing the admin Doba percentage automatically updates BOTH N* and S* margins.
@@ -653,11 +653,79 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'doba_withoutship'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'doba_withoutship'])
-        function dobaWithoutshipRowSpriceForAlert(data) {
+        function dwsDisplayedSprice(data) {
+            if (!data || isDobaWithoutshipParentRow(data)) return 0;
+            if (typeof ebaySprcDilForRow === 'function') {
+                const dil = Number(ebaySprcDilForRow(data)) || 0;
+                if (dil > 0) return dil;
+            }
             if (typeof chPromoSavedOrLiveSprice === 'function') {
                 return Number(chPromoSavedOrLiveSprice(data)) || 0;
             }
-            return parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
+            return parseFloat(data.sprice != null ? data.sprice : data.SPRICE) || 0;
+        }
+        function dwsAdsPercentForNet() {
+            if (typeof ebayDilAdsPct === 'function') {
+                const n = parseFloat(ebayDilAdsPct());
+                if (isFinite(n) && n > 0) return n;
+            }
+            return 0;
+        }
+        function dwsSgroiPercent(row) {
+            if (!row || isDobaWithoutshipParentRow(row)) {
+                const n = parseFloat(row && row.sroi);
+                return isFinite(n) ? n : null;
+            }
+            const sprice = dwsDisplayedSprice(row);
+            const lp = parseFloat(row && row.LP_productmaster) || 0;
+            if (!(sprice > 0) || !(lp > 0)) return null;
+            return ((sprice * FORMULA_PERCENT) - FORMULA_SHIP - lp) / lp * 100;
+        }
+        function dwsSnpftDollars(row) {
+            const sprice = dwsDisplayedSprice(row);
+            if (!(sprice > 0)) return null;
+            const lp = parseFloat(row && row.LP_productmaster) || 0;
+            return (sprice * FORMULA_PERCENT) - FORMULA_SHIP - lp
+                - (sprice * (dwsAdsPercentForNet() / 100));
+        }
+        function chPromoSpriceFromTargetRoi(d, roiPct) {
+            const lp = parseFloat(d && (d.LP_productmaster != null ? d.LP_productmaster : d.lp)) || 0;
+            if (!(lp > 0)) return 0;
+            const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
+            const ads = dwsAdsPercentForNet();
+            const denom = FORMULA_PERCENT - (ads / 100);
+            if (!(denom > 0)) return 0;
+            const price = (lp * (1 + roi / 100)) / denom;
+            if (isFinite(price) && price > 0) return Math.round(price * 100) / 100;
+            const copied = Number(d && (d.doba_tabulator_s_pick != null
+                ? d.doba_tabulator_s_pick : d.DOBA_TABULATOR_S_PICK)) || 0;
+            return copied > 0 ? Math.round(copied * 100) / 100 : 0;
+        }
+        window.chPromoSpriceFromTargetRoi = chPromoSpriceFromTargetRoi;
+        function dwsSnroiFromRule(row) {
+            if (!row || isDobaWithoutshipParentRow(row)) return null;
+            if (typeof ebayDilGroiTargetGroi !== 'function') return null;
+            const rule = ebayDilGroiTargetGroi(row);
+            if (rule == null || !isFinite(rule)) return null;
+            const meta = typeof ebayDilGroiMetaForRow === 'function' ? ebayDilGroiMetaForRow(row) : null;
+            const sprice = dwsDisplayedSprice(row);
+            if (meta && meta.lmpCapped) return null;
+            if (meta && meta.sprc > 0 && sprice > 0
+                && Math.round(sprice * 100) !== Math.round(Number(meta.sprc) * 100)) {
+                return null;
+            }
+            return rule;
+        }
+        function dwsSnroiPercent(row) {
+            const fromRule = dwsSnroiFromRule(row);
+            if (fromRule != null) return fromRule;
+            const snpft = dwsSnpftDollars(row);
+            const lp = parseFloat(row && row.LP_productmaster) || 0;
+            if (snpft == null || !(lp > 0)) return null;
+            return (snpft / lp) * 100;
+        }
+        function dobaWithoutshipRowSpriceForAlert(data) {
+            return dwsDisplayedSprice(data);
         }
         function dobaWithoutshipHasBlueTriangle(data) {
             if (isDobaWithoutshipParentRow(data)) return false;
@@ -2007,17 +2075,19 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC uses S Pick Price from /doba-tabulator (with-ship SPRICE − Ship). Dil slabs do not set a separate default on this page.",
+                        headerTooltip: "S PRC from Dil → Target NROI% (Ship not used). Formula: (LP × (1 + NROI%/100)) / (take-home − Ads%/100) so SNROI = target. If Dil has no price, S Pick from /doba-tabulator.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (isDobaWithoutshipParentRow(rowData)) return '';
                             if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                             const meta = ebayDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                            const tip = (typeof ebayDilGroiTipText === 'function')
+                                ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold Doba L30 → min Target NROI' })
+                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                                 + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2);
+                                + ' → NROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2));
                             return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                                 + meta.sprc.toFixed(2) + '</span>';
                         },
@@ -2030,13 +2100,12 @@
                         sorter: "number",
                         visible: true,
                         editable: false,
-                        headerTooltip: "Not editable. S PRC = S Pick Price from /doba-tabulator (SPRICE − Ship). Push sends this as Pick Up. Blue triangle = S PRC ≠ Pickup Price. Red triangle = S PRC ≥ LMP (no blue when red).",
+                        headerTooltip: "Not editable. Auto from Sprc Dil so SNROI = Dil + CVR Target NROI (Ship not used). If Dil has no price, S Pick from /doba-tabulator. Blue triangle = S PRC ≠ Pickup Price. Red triangle = S PRC ≥ LMP.",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             if (isDobaWithoutshipParentRow(rowData)) return '';
-                            let value = (typeof chPromoSavedOrLiveSprice === 'function')
-                                ? Number(chPromoSavedOrLiveSprice(rowData))
-                                : parseFloat(cell.getValue() || 0);
+                            let value = dwsDisplayedSprice(rowData);
+                            if (!(value > 0)) value = parseFloat(cell.getValue() || 0);
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
                             const live = parseFloat(rowData.self_pick_price || rowData['doba Price']) || 0;
                             const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
@@ -2083,12 +2152,37 @@
                         title: "SGROI %",
                         field: "sroi",
                         width: 70,
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = dwsSgroiPercent(aRow.getData());
+                            const bv = dwsSgroiPercent(bRow.getData());
+                            return ((av == null || !isFinite(av)) ? 0 : av)
+                                 - ((bv == null || !isFinite(bv)) ? 0 : bv);
+                        },
                         visible: true,
-                        formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            if (value === 0) return '';
-                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', value)) || '';
+                        headerTooltip: "SGROI% = live (S PRC × margin − LP) / LP. Dil + CVR set SNROI, not this column.",
+                        formatter: function(cell) {
+                            const value = dwsSgroiPercent(cell.getRow().getData());
+                            if (value == null || !isFinite(value) || value === 0) return '';
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField('NROI', value)) || '';
+                            return _st ? `<span style="${_st}">${Math.round(value)}%</span>` : `${Math.round(value)}%`;
+                        }
+                    },
+                    {
+                        title: "SNROI%",
+                        field: "snroi",
+                        width: 70,
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = dwsSnroiPercent(aRow.getData());
+                            const bv = dwsSnroiPercent(bRow.getData());
+                            return ((av == null || !isFinite(av)) ? 0 : av)
+                                 - ((bv == null || !isFinite(bv)) ? 0 : bv);
+                        },
+                        visible: true,
+                        headerTooltip: "SNROI% = Dil + CVR Target NROI. S PRC is back-solved so this matches the slab. Ads%=0 → same as SGROI. Ship not used. If S PRC was capped, live SNPFT ÷ LP.",
+                        formatter: function(cell) {
+                            const value = dwsSnroiPercent(cell.getRow().getData());
+                            if (value == null || !isFinite(value)) return '';
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField('NROI', value)) || '';
                             return _st ? `<span style="${_st}">${Math.round(value)}%</span>` : `${Math.round(value)}%`;
                         }
                     },

@@ -44,8 +44,15 @@ class GenerateDailyAutomatedTasks extends Command
             TaskBusinessTime::applyDatabaseSession();
             $now = TaskBusinessTime::now();
             $today = $now->toDateString();
+            $generateAt = TaskBusinessTime::dailyGenerateAt($now);
 
-            $this->info("Current date: {$today} {$now->format('H:i:s')}");
+            $this->info("Current date: {$today} {$now->format('H:i:s')} {$now->timezoneName}");
+
+            if (! TaskBusinessTime::isDailyGenerateWindow($now)) {
+                $this->info("Waiting until {$generateAt->format('H:i')} IST to generate today's daily tasks.");
+
+                return 0;
+            }
             $generated = 0;
             $skipped = 0;
 

@@ -3813,8 +3813,10 @@
                     return { _ts: Date.now() };
                 },
                 ajaxSorting: false,
+                sortMode: "local",
                 headerSort: true,
                 headerSortElement: false,
+                headerSortClickElement: "header",
                 layout: "fitData",
                 height: "100%",
                 autoResize: false,
@@ -4599,6 +4601,31 @@
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
+                    },
+                    {
+                        title: "ACOS",
+                        field: "ACOS",
+                        hozAlign: "center",
+                        sorter: "number",
+                        headerSortStartingDir: "desc",
+                        headerTooltip: "ACOS % = Spend L30 ÷ L30 sales × 100. Spend with $0 sales is 100%.",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const spend = parseFloat(row.ad_spend);
+                            const sales = parseFloat(row.T_Sale_l30);
+                            let acos = parseFloat(cell.getValue());
+                            if (!isFinite(acos)) {
+                                if (isFinite(sales) && sales > 0 && isFinite(spend)) acos = (spend / sales) * 100;
+                                else if (isFinite(spend) && spend > 0) acos = 100;
+                                else acos = 0;
+                            }
+                            let color = '#a00211';
+                            if (acos < 20) color = '#28a745';
+                            else if (acos < 30) color = '#3591dc';
+                            else if (acos < 40) color = '#ffc107';
+                            return `<span style="color:${color};font-weight:600;">${Math.round(acos)}%</span>`;
+                        },
+                        width: 55
                     },
                     {
                         title: "Sku Link LMP",

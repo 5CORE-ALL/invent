@@ -696,6 +696,7 @@ class OverallAmazonController extends Controller
             }
 
             $row['image_path'] = $shopify->image_src ?? ($values['image_path'] ?? null);
+            $row['ACOS'] = self::skuAcosPercent($row['ad_spend'] ?? null, $row['T_Sale_l30'] ?? 0);
 
             $result[] = (object) $row;
         }
@@ -778,7 +779,11 @@ class OverallAmazonController extends Controller
                 'SROI' => '',
                 'SGROI' => '',
                 'SGPFT' => '',
-                'ad_spend' => '',
+                'ad_spend' => $rows->sum(function ($r) {
+                    $v = is_array($r) ? ($r['ad_spend'] ?? 0) : ($r->ad_spend ?? 0);
+
+                    return is_numeric($v) ? (float) $v : 0;
+                }),
                 'Listed' => null,
                 'Live' => null,
                 'APlus' => null,
@@ -787,6 +792,7 @@ class OverallAmazonController extends Controller
                 'image_path' => '',
                 'Total_pft' => round($rows->sum('Total_pft'), 2),
                 'T_Sale_l30' => round($rows->sum('T_Sale_l30'), 2),
+                'ACOS' => 0,
                 'PFT_percentage' => '',
                 'ROI_percentage' => '',
                 'T_COGS' => round($rows->sum('T_COGS'), 2),
@@ -826,6 +832,7 @@ class OverallAmazonController extends Controller
             // Price for parent (average of children with prices)
             $childPrices = $rows->pluck('price')->filter(fn($p) => is_numeric($p) && $p > 0);
             $sumRow['price'] = $childPrices->count() > 0 ? round($childPrices->avg(), 2) : 0;
+            $sumRow['ACOS'] = self::skuAcosPercent($sumRow['ad_spend'] ?? 0, $sumRow['T_Sale_l30'] ?? 0);
 
             $finalResult[] = (object) $sumRow;
         }
@@ -3168,6 +3175,23 @@ class OverallAmazonController extends Controller
     public function amazonPricingCvrTabular(Request $request)
     {
         return view("market-places.amazonpricing_cvr_tabular");
+    }
+
+    /**
+     * ACOS % = ad spend ÷ L30 sales × 100. Spend with $0 sales is 100%.
+     */
+    public static function skuAcosPercent(mixed $spend, mixed $sales): float
+    {
+        $spendN = is_numeric($spend) ? (float) $spend : 0.0;
+        $salesN = is_numeric($sales) ? (float) $sales : 0.0;
+        if ($salesN > 0) {
+            return round(($spendN / $salesN) * 100, 2);
+        }
+        if ($spendN > 0) {
+            return 100.0;
+        }
+
+        return 0.0;
     }
 
     public function amazonDataJson(Request $request)

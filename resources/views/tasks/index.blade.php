@@ -1790,7 +1790,43 @@
                 </div>
             </div>
         </div>     
-        <!-- end page title --> 
+        <!-- end page title -->
+
+        <div class="card mb-3 d-none d-md-block" id="task-upload-section">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div>
+                        <h5 class="mb-1">Upload Tasks</h5>
+                        <div class="text-muted" style="font-size: 13px;">
+                            Download the Excel template and pick names from the Assignee dropdown. Do not type names. Email is not needed.
+                        </div>
+                    </div>
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" title="CSV: upload, template, export">
+                            <i class="mdi mdi-file-delimited"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a class="dropdown-item csv-upload-action" href="#">
+                                    <i class="mdi mdi-upload me-2"></i>Upload CSV
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{{ route('tasks.downloadTemplate') }}">
+                                    <i class="mdi mdi-download me-2"></i>Download Template
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item csv-export-action" href="#">
+                                    <i class="mdi mdi-export me-2"></i>Export Selected<span class="export-count"></span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Statistics Cards (Hidden on mobile) - all in one line -->
         <div class="row mb-2 stats-row d-none d-md-flex align-items-stretch flex-nowrap" style="flex-wrap: nowrap !important;">
@@ -2835,7 +2871,7 @@
         <div class="modal-content">
             <div class="modal-header" style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%); color: white;">
                 <h5 class="modal-title">
-                    <i class="mdi mdi-file-upload me-2"></i>Upload Tasks via CSV
+                    <i class="mdi mdi-file-upload me-2"></i>Upload Tasks via Sheet
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -2843,21 +2879,22 @@
                 @csrf
                 <div class="modal-body">
                     <div class="alert alert-info">
-                        <h6 class="alert-heading"><i class="mdi mdi-information me-2"></i>CSV Format Required:</h6>
-                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, SOP (hover: Training), Video, CL (hover: Checklist), Report (hover: Form report)</p>
+                        <h6 class="alert-heading"><i class="mdi mdi-information me-2"></i>Sheet Format:</h6>
+                        <p class="mb-1"><strong>Required:</strong> Task, Assignee</p>
+                        <p class="mb-1"><strong>Optional:</strong> Assignor, Group, Priority, Status, Description, ETC Minutes, Start Date, L1, L2, Training, Video, Form, Form Report, Checklist, PL, Process, Corrective Action</p>
                         <p class="mb-1"><strong>Status Options:</strong> Todo, Done, Need Help, Need Approval, Dependent, Approved, Hold, Cancelled</p>
-                        <p class="mb-0"><strong>Priority Options:</strong> Low, Normal, Urgent</p>
-                        <p class="mb-0"><small class="text-muted">Note: Assignor and Assignee should match exact user names in the system</small></p>
+                        <p class="mb-1"><strong>Priority Options:</strong> Low, Normal, Urgent</p>
+                        <p class="mb-0"><small class="text-muted">Download the <strong>Excel</strong> template. Click Assignee and choose the person from the dropdown. Use Assignee 2 / Assignee 3 for more people. Do not type a different name.</small></p>
                     </div>
 
                     <div class="mb-3">
-                        <label for="csv-file" class="form-label fw-bold">Select CSV File <span class="text-danger">*</span></label>
-                        <input type="file" class="form-control" id="csv-file" name="csv_file" accept=".csv,.txt" required>
+                        <label for="csv-file" class="form-label fw-bold">Select CSV or Excel File <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control" id="csv-file" name="csv_file" accept=".csv,.txt,.xlsx,.xls,.xlsm,.ods" required>
                     </div>
 
                     <div class="mb-3">
                         <a href="{{ route('tasks.downloadTemplate') }}" class="btn btn-sm btn-outline-primary">
-                            <i class="mdi mdi-download me-1"></i> Download Sample CSV Template
+                            <i class="mdi mdi-download me-1"></i> Download Sample Template
                         </a>
                     </div>
 
@@ -3160,8 +3197,8 @@
                     @endif
                 </div>
                 <div class="mb-2">
-                    <label for="tf_tid" class="form-label fw-bold" style="font-size: 12px;">TID <span class="text-danger">*</span></label>
-                    <input type="datetime-local" class="form-control form-control-sm tf-lockable" id="tf_tid" name="tid">
+                    <label for="tf_tid" class="form-label fw-bold" style="font-size: 12px;">TID</label>
+                    <input type="datetime-local" class="form-control form-control-sm" id="tf_tid" name="tid" readonly tabindex="-1" style="pointer-events: none; background-color: #e9ecef;">
                 </div>
                 <div class="row">
                     <div class="col-6 mb-2">
@@ -6115,7 +6152,7 @@
                 
                 var fileInput = $('#csv-file')[0];
                 if (!fileInput.files.length) {
-                    alert('Please select a CSV file');
+                    alert('Please select a CSV or Excel file');
                     return;
                 }
                 
@@ -6138,11 +6175,15 @@
                         $('#upload-progress').hide();
                         $('#upload-csv-submit').prop('disabled', false);
                         
+                        var errors = Array.isArray(response.errors) ? response.errors : [];
+                        var warnings = Array.isArray(response.warnings) ? response.warnings : [];
                         var resultHtml = `
-                            <div class="alert alert-success">
-                                <h6 class="alert-heading"><i class="mdi mdi-check-circle me-2"></i>Import Successful!</h6>
-                                <p class="mb-0">✅ ${response.imported} task(s) imported successfully</p>
-                                ${response.skipped > 0 ? '<p class="mb-0">⚠️ ' + response.skipped + ' row(s) skipped due to errors</p>' : ''}
+                            <div class="alert ${response.imported > 0 ? 'alert-success' : 'alert-warning'}">
+                                <h6 class="alert-heading"><i class="mdi mdi-check-circle me-2"></i>${response.message || 'Import complete'}</h6>
+                                <p class="mb-0">${response.imported || 0} task(s) created and assigned</p>
+                                ${response.skipped > 0 ? '<p class="mb-0">⚠️ ' + response.skipped + ' row(s) skipped</p>' : ''}
+                                ${errors.length ? '<ul class="mb-0 mt-2">' + errors.map(function(item) { return '<li>' + item + '</li>'; }).join('') + '</ul>' : ''}
+                                ${warnings.length ? '<div class="small mt-2">' + warnings.join('<br>') + '</div>' : ''}
                             </div>
                         `;
                         
@@ -6153,13 +6194,13 @@
                                 $('#csv-upload-form')[0].reset();
                                 $('#upload-result').hide();
                                 table.replaceData(); // Refresh table data
-                            }, 2000);
+                            }, response.imported > 0 ? 2000 : 4000);
                     },
                     error: function(xhr) {
                         $('#upload-progress').hide();
                         $('#upload-csv-submit').prop('disabled', false);
                         
-                        var errorMsg = xhr.responseJSON?.message || 'Upload failed. Please check your CSV format.';
+                        var errorMsg = xhr.responseJSON?.message || 'Upload failed. Please check your sheet format.';
                         var resultHtml = `
                             <div class="alert alert-danger">
                                 <h6 class="alert-heading"><i class="mdi mdi-alert-circle me-2"></i>Import Failed</h6>

@@ -12,14 +12,20 @@
     $aiPromptUrl = $aiPromptUrl ?? ($isHero2 ? route('raw.images.hero.2.ai.prompt') : ($isBatchCoo ? route('raw.images.batch.coo.ai.prompt') : route('raw.images.ai.prompt')));
     $aiPromptSaveUrl = $aiPromptSaveUrl ?? ($isHero2 ? route('raw.images.hero.2.ai.prompt.save') : ($isBatchCoo ? route('raw.images.batch.coo.ai.prompt.save') : route('raw.images.ai.prompt.save')));
     $cachedImageUrl = $cachedImageUrl ?? (\Illuminate\Support\Facades\Route::has('raw.images.cached.image') ? route('raw.images.cached.image') : url('/raw-images/cached-image'));
-    $manualColumnTitle = $manualColumnTitle ?? ($isHero2 ? 'Hero Image 2' : 'Raw Images');
-    $aiColumnTitle = $aiColumnTitle ?? ($isHero2 ? 'Hero Image 2 AI' : 'Raw Images AI');
-    $missingBadgeLabel = $missingBadgeLabel ?? ($isHero2 ? 'Missing Hero Image 2' : 'Missing Raw Images');
-    $zipFileName = $zipFileName ?? ($isHero2 ? 'hero-image-2.zip' : 'raw-images.zip');
+    $manualColumnTitle = $manualColumnTitle ?? ($isHero2 ? 'Hero Image 2' : ($isBatchCoo ? 'Batch +COO' : 'Raw Images'));
+    $aiColumnTitle = $aiColumnTitle ?? ($isHero2 ? 'Hero Image 2 AI' : ($isBatchCoo ? 'Batch +COO AI' : 'Raw Images AI'));
+    $missingBadgeLabel = $missingBadgeLabel ?? ($isHero2 ? 'Missing Hero Image 2' : ($isBatchCoo ? 'Missing Batch +COO' : 'Missing Raw Images'));
+    $zipFileName = $zipFileName ?? ($isHero2 ? 'hero-image-2.zip' : ($isBatchCoo ? 'raw-images-batch-coo.zip' : 'raw-images.zip'));
     $savedAiPrompt = $savedAiPrompt ?? ($isHero2
         ? "Make a hero image 2 from the image in the Hero image column and paste it in the Hero Image 2 AI column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa."
-        : "Make a raw shoot image background for the image in Hero image column and paste it in raw image column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.");
+        : ($isBatchCoo
+            ? "Convert the Hero image into a Batch + Country of Origin (COO) product photo.\nKeep the product realistic and natural so AI cannot detect it.\nAdd a clear marketplace-compliant MADE IN CHINA label (or the product country of origin if it is not China) on a clean bar at the bottom. Do not cover the product.\nThe size should be 2000x2000px.\nIf the product is dark then use a light background or vice-versa."
+            : "Make a raw shoot image background for the image in Hero image column and paste it in raw image column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa."));
     $savedAiLogos = $savedAiLogos ?? [];
+    $stampCooUrl = $stampCooUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.stamp') : '');
+    $pushChannelsUrl = $pushChannelsUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.push') : '');
+    $imageChannels = $imageChannels ?? [];
+    $cooPresets = $cooPresets ?? \App\Services\BatchCooStampService::PRESETS;
 @endphp
 @extends('layouts.vertical', ['title' => $pageTitle, 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
@@ -450,9 +456,17 @@
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h4 class="card-title mb-0">{{ $pageTitle }}</h4>
                     <div class="d-flex align-items-center flex-wrap gap-2">
-                        <button type="button" class="btn btn-sm ri-ai-btn" id="riAiBtn" title="{{ $isHero2 ? 'Generate Hero Image 2 AI for all selected SKUs' : 'Generate AI images for all selected SKUs' }}">
-                            <i class="fas fa-wand-magic-sparkles me-1"></i> AI
+                        <button type="button" class="btn btn-sm ri-ai-btn" id="riAiBtn" title="{{ $isHero2 ? 'Generate Hero Image 2 AI for all selected SKUs' : ($isBatchCoo ? 'Convert selected SKUs into Batch +COO AI images' : 'Generate AI images for all selected SKUs') }}">
+                            <i class="fas fa-wand-magic-sparkles me-1"></i> {{ $isBatchCoo ? 'Conversion AI' : 'AI' }}
                         </button>
+                        @if($isBatchCoo)
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="riCooStampBtn" title="Stamp Made in China / country of origin on selected SKUs">
+                            <i class="fas fa-stamp me-1"></i> Made in…
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="riChannelPushBtn" title="Upload Batch +COO images to marketplace channels">
+                            <i class="fas fa-cloud-upload-alt me-1"></i> Upload to Channel
+                        </button>
+                        @endif
                         <div class="dropdown">
                             <button class="btn btn-sm btn-warning dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="fas fa-layer-group"></i> Bulk Update
@@ -494,7 +508,7 @@
                         <span class="badge bg-success fs-6 p-2" id="available-images-badge" title="Click to show SKUs that have a {{ strtolower($manualColumnTitle) }} or AI image">
                             Image: <span id="availableImagesCount">0</span>
                         </span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-raw-images-badge" title="Click to show SKUs with inventory that are missing {{ $manualColumnTitle }} (0 INV excluded)">
+                        <span class="badge bg-danger fs-6 p-2" id="missing-raw-images-badge" title="SKUs with INV &gt; 0 that are missing {{ $manualColumnTitle }} (0 inventory is not counted)">
                             {{ $missingBadgeLabel }}: <span id="missingRawImagesCount">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2">
@@ -677,6 +691,101 @@
         </div>
     </div>
 
+    @if($isBatchCoo)
+    <div class="modal fade" id="riCooStampModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-stamp me-2"></i>Made in / COO stamp</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">Stamps a marketplace-style origin bar on the existing Batch +COO image, or the hero image if none is uploaded. 0-inventory SKUs can still be stamped if you select them.</p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="riCooCountry">Country</label>
+                        <select class="form-select form-select-sm" id="riCooCountry">
+                            @foreach($cooPresets as $key => $label)
+                                <option value="{{ $key }}" @selected($key === 'china')>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="riCooUseOrigin">
+                        <label class="form-check-label" for="riCooUseOrigin">Use each SKU’s country of origin when it is set (otherwise the country above)</label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="riCooCustom">Custom text (optional)</label>
+                        <input type="text" class="form-control form-control-sm" id="riCooCustom" maxlength="80" placeholder="MADE IN CHINA">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="riCooBatch">Batch / lot line (optional)</label>
+                        <input type="text" class="form-control form-control-sm" id="riCooBatch" maxlength="80" placeholder="BATCH 2026-09">
+                    </div>
+                    <div id="riCooStampHint" class="small text-muted"></div>
+                    <div id="riCooStampResult" class="small mt-2"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-danger" id="riCooStampSubmitBtn">
+                        <i class="fas fa-stamp me-1"></i> Stamp selected
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="riChannelPushModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-cloud-upload-alt me-2"></i>Upload Batch +COO to channels</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-2">Uses the same marketplace image APIs as Image Master. Default is <strong>append</strong> — the Batch +COO file is added to the current gallery, not used as the only image.</p>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="riChannelSelectAll">Select all</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="riChannelSelectNone">Clear</button>
+                    </div>
+                    <div class="row g-2" id="riChannelList">
+                        @php
+                            $channelLabels = $imageChannels['labels'] ?? [];
+                            $enabledChannels = $imageChannels['enabled'] ?? array_keys($channelLabels);
+                        @endphp
+                        @foreach($enabledChannels as $channelKey)
+                            <div class="col-md-4 col-sm-6">
+                                <label class="form-check border rounded px-2 py-1 mb-0">
+                                    <input class="form-check-input ri-channel-cb" type="checkbox" value="{{ $channelKey }}">
+                                    <span class="form-check-label">{{ $channelLabels[$channelKey] ?? $channelKey }}</span>
+                                </label>
+                            </div>
+                        @endforeach
+                    </div>
+                    <div class="mt-3">
+                        <label class="form-label fw-semibold">Push mode</label>
+                        <select class="form-select form-select-sm" id="riChannelMode" style="max-width:360px;">
+                            <option value="append">Append Batch +COO to existing channel images</option>
+                            <option value="replace">Replace channel gallery with Batch +COO only</option>
+                        </select>
+                    </div>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="riChannelDryRun">
+                        <label class="form-check-label" for="riChannelDryRun">Dry run (validate only, no live API write)</label>
+                    </div>
+                    <div id="riChannelPushHint" class="small text-muted mt-2"></div>
+                    <div id="riChannelPushResult" class="small mt-2"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="riChannelPushSubmitBtn">
+                        <i class="fas fa-cloud-upload-alt me-1"></i> Upload
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+
     <div class="modal fade" id="riAiModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -687,7 +796,7 @@
                 <div class="modal-body">
                     <label class="form-label fw-semibold" for="riAiPrompt">Prompt</label>
                     <textarea class="form-control" id="riAiPrompt" rows="8" maxlength="8000">{{ $savedAiPrompt }}</textarea>
-                    <div class="form-text" id="riAiFormHint">Edits are saved automatically. Gemini generates a {{ $isHero2 ? 'Hero Image 2 AI' : 'raw-shoot' }} image for every selected SKU, one after another. Ctrl / ⌘ + Enter to save and close.</div>
+                    <div class="form-text" id="riAiFormHint">Edits are saved automatically. Gemini generates a {{ $isHero2 ? 'Hero Image 2 AI' : ($isBatchCoo ? 'Batch +COO AI' : 'raw-shoot') }} image for every selected SKU, one after another. Ctrl / ⌘ + Enter to save and close.</div>
                     <div class="mt-3">
                         <label class="form-label fw-semibold mb-1" for="riAiLogoInput">Logos (optional)</label>
                         <div class="small text-muted mb-2">Upload logos to include in every AI image. They stay saved for everyone until someone removes or replaces them.</div>
@@ -747,6 +856,9 @@
         const rawImagesManualColumnTitle = @json($manualColumnTitle);
         const rawImagesAiColumnTitle = @json($aiColumnTitle);
         const rawImagesIsHero2 = @json((bool) $isHero2);
+        const rawImagesIsBatchCoo = @json((bool) $isBatchCoo);
+        const rawImagesStampCooUrl = @json($stampCooUrl);
+        const rawImagesPushChannelsUrl = @json($pushChannelsUrl);
         const rawImagesZipFileName = @json($zipFileName);
         const riImageWarm = new Set();
 
@@ -1190,6 +1302,8 @@
         let bulkSheetModal;
         let bulkDropboxModal;
         let riAiModal;
+        let riCooStampModal;
+        let riChannelPushModal;
         let missingFilterOn = false;
         let imageFilterOn = false;
         let currentModalSource = 'manual';
@@ -1199,12 +1313,19 @@
             bulkSheetModal = new bootstrap.Modal(document.getElementById('bulkSheetModal'));
             bulkDropboxModal = new bootstrap.Modal(document.getElementById('bulkDropboxModal'));
             riAiModal = new bootstrap.Modal(document.getElementById('riAiModal'));
+            if (rawImagesIsBatchCoo) {
+                const stampEl = document.getElementById('riCooStampModal');
+                const pushEl = document.getElementById('riChannelPushModal');
+                if (stampEl) riCooStampModal = new bootstrap.Modal(stampEl);
+                if (pushEl) riChannelPushModal = new bootstrap.Modal(pushEl);
+            }
             initializeTabulator();
             setupSearchHandlers();
             setupModalHandlers();
             setupTableEvents();
             setupBulkHandlers();
             setupAiHandlers();
+            setupBatchCooHandlers();
             setupEbayHeroHandlers();
             renderAiLogoPreview();
         });
@@ -1766,7 +1887,7 @@
                 filters.push(function (data) {
                     if (data.SKU && String(data.SKU).toUpperCase().includes('PARENT')) return false;
                     if (!hasPositiveInv(data.shopify_inv)) return false;
-                    return !data.has_raw_image;
+                    return !hasAvailableImage(data);
                 });
             }
 
@@ -1789,7 +1910,7 @@
                 if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
                     skuCount++;
                     if (hasAvailableImage(item)) available++;
-                    if (hasPositiveInv(item.shopify_inv) && !item.has_raw_image) missing++;
+                    if (hasPositiveInv(item.shopify_inv) && !hasAvailableImage(item)) missing++;
                 }
             });
 
@@ -1880,6 +2001,166 @@
             });
         }
 
+        function selectedSkuCountHint(elId) {
+            const el = document.getElementById(elId);
+            if (!el) return;
+            const n = selectedSkus().length;
+            el.className = n ? 'small text-muted' : 'small text-danger';
+            el.textContent = n
+                ? 'This will run on ' + n + ' selected SKU' + (n === 1 ? '' : 's') + '.'
+                : 'Select one or more rows in the table first.';
+        }
+
+        function openCooStampModal() {
+            if (!riCooStampModal) return;
+            const resultEl = document.getElementById('riCooStampResult');
+            if (resultEl) resultEl.innerHTML = '';
+            selectedSkuCountHint('riCooStampHint');
+            riCooStampModal.show();
+        }
+
+        function openChannelPushModal() {
+            if (!riChannelPushModal) return;
+            const resultEl = document.getElementById('riChannelPushResult');
+            if (resultEl) resultEl.innerHTML = '';
+            selectedSkuCountHint('riChannelPushHint');
+            riChannelPushModal.show();
+        }
+
+        function setupBatchCooHandlers() {
+            if (!rawImagesIsBatchCoo) return;
+            const stampBtn = document.getElementById('riCooStampBtn');
+            const pushBtn = document.getElementById('riChannelPushBtn');
+            if (stampBtn) stampBtn.addEventListener('click', openCooStampModal);
+            if (pushBtn) pushBtn.addEventListener('click', openChannelPushModal);
+
+            const selectAll = document.getElementById('riChannelSelectAll');
+            const selectNone = document.getElementById('riChannelSelectNone');
+            if (selectAll) {
+                selectAll.addEventListener('click', function () {
+                    document.querySelectorAll('.ri-channel-cb').forEach(function (cb) { cb.checked = true; });
+                });
+            }
+            if (selectNone) {
+                selectNone.addEventListener('click', function () {
+                    document.querySelectorAll('.ri-channel-cb').forEach(function (cb) { cb.checked = false; });
+                });
+            }
+
+            const stampSubmit = document.getElementById('riCooStampSubmitBtn');
+            if (stampSubmit) {
+                stampSubmit.addEventListener('click', submitCooStamp);
+            }
+            const pushSubmit = document.getElementById('riChannelPushSubmitBtn');
+            if (pushSubmit) {
+                pushSubmit.addEventListener('click', submitChannelPush);
+            }
+        }
+
+        function submitCooStamp() {
+            const skus = selectedSkus();
+            const resultEl = document.getElementById('riCooStampResult');
+            const button = document.getElementById('riCooStampSubmitBtn');
+            selectedSkuCountHint('riCooStampHint');
+            if (!skus.length) {
+                if (resultEl) resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">Select one or more SKUs.</div>';
+                return;
+            }
+            button.disabled = true;
+            if (resultEl) resultEl.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>Stamping Made in / COO…</div>';
+            fetch(rawImagesStampCooUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    skus: skus,
+                    country: (document.getElementById('riCooCountry') || {}).value || 'china',
+                    custom_label: (document.getElementById('riCooCustom') || {}).value || '',
+                    batch_text: (document.getElementById('riCooBatch') || {}).value || '',
+                    use_product_origin: !!(document.getElementById('riCooUseOrigin') || {}).checked
+                })
+            })
+            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+                const data = result.data || {};
+                if (data.by_sku) {
+                    Object.keys(data.by_sku).forEach(function (sku) {
+                        applyImagesToSku(sku, data.by_sku[sku] || [], 'manual');
+                    });
+                }
+                const cls = result.ok ? 'success' : 'danger';
+                let html = '<div class="alert alert-' + cls + ' py-2 mb-0">' + escapeHtml(data.message || 'Done.') + '</div>';
+                if (data.errors && data.errors.length) {
+                    html += '<ul class="small mt-2 mb-0">' + data.errors.map(function (err) {
+                        return '<li>' + escapeHtml(err) + '</li>';
+                    }).join('') + '</ul>';
+                }
+                if (resultEl) resultEl.innerHTML = html;
+            })
+            .catch(function (err) {
+                if (resultEl) resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(err.message || 'Stamp failed.') + '</div>';
+            })
+            .finally(function () { button.disabled = false; });
+        }
+
+        function submitChannelPush() {
+            const skus = selectedSkus();
+            const resultEl = document.getElementById('riChannelPushResult');
+            const button = document.getElementById('riChannelPushSubmitBtn');
+            const marketplaces = Array.from(document.querySelectorAll('.ri-channel-cb:checked')).map(function (cb) { return cb.value; });
+            selectedSkuCountHint('riChannelPushHint');
+            if (!skus.length) {
+                if (resultEl) resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">Select one or more SKUs.</div>';
+                return;
+            }
+            if (!marketplaces.length) {
+                if (resultEl) resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">Select at least one channel.</div>';
+                return;
+            }
+            const mode = (document.getElementById('riChannelMode') || {}).value || 'append';
+            const dryRun = !!(document.getElementById('riChannelDryRun') || {}).checked;
+            if (!dryRun && mode === 'replace' && !confirm('Replace the current channel gallery with Batch +COO images only?')) {
+                return;
+            }
+            button.disabled = true;
+            if (resultEl) resultEl.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>' + (dryRun ? 'Dry-running channel APIs…' : 'Uploading to channels…') + '</div>';
+            fetch(rawImagesPushChannelsUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    skus: skus,
+                    marketplaces: marketplaces,
+                    mode: mode,
+                    dry_run: dryRun
+                })
+            })
+            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+                const data = result.data || {};
+                const cls = result.ok ? 'success' : 'danger';
+                let html = '<div class="alert alert-' + cls + ' py-2 mb-0">' + escapeHtml(data.message || 'Done.') + '</div>';
+                if (data.errors && data.errors.length) {
+                    html += '<ul class="small mt-2 mb-0">' + data.errors.map(function (err) {
+                        return '<li>' + escapeHtml(err) + '</li>';
+                    }).join('') + '</ul>';
+                }
+                if (resultEl) resultEl.innerHTML = html;
+            })
+            .catch(function (err) {
+                if (resultEl) resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(err.message || 'Channel upload failed.') + '</div>';
+            })
+            .finally(function () { button.disabled = false; });
+        }
+
         function selectedRowsForAi() {
             return selectedSkus().map(function (sku) {
                 const item = tableData.find(function (d) { return d.SKU === sku; }) || {};
@@ -1927,11 +2208,13 @@
             const titleEl = document.getElementById('riAiModalTitle');
             const hintEl = document.getElementById('riAiFormHint');
             riAiTarget = 'raw';
-            if (titleEl) titleEl.textContent = rawImagesIsHero2 ? 'Hero Image 2 AI prompt' : 'AI prompt';
+            if (titleEl) titleEl.textContent = rawImagesIsHero2 ? 'Hero Image 2 AI prompt' : (rawImagesIsBatchCoo ? 'Batch +COO conversion AI' : 'AI prompt');
             if (hintEl) {
                 hintEl.textContent = rawImagesIsHero2
                     ? 'Edits are saved automatically. Gemini generates a Hero Image 2 AI image for every selected SKU, one after another. Ctrl / ⌘ + Enter to save and close.'
-                    : 'Edits are saved automatically. Gemini generates a raw-shoot image for every selected SKU, one after another. Ctrl / ⌘ + Enter to save and close.';
+                    : (rawImagesIsBatchCoo
+                        ? 'Edits are saved automatically. Gemini converts the hero into a Batch +COO AI image (Made in / origin) for every selected SKU. Ctrl / ⌘ + Enter to save and close.'
+                        : 'Edits are saved automatically. Gemini generates a raw-shoot image for every selected SKU, one after another. Ctrl / ⌘ + Enter to save and close.');
             }
             promptEl.value = riAiLastSaved;
             if (resultEl) resultEl.innerHTML = '';
@@ -2305,13 +2588,21 @@
             }
             if (type === 'copy_missing') {
                 copyMissingSkus();
+                return;
+            }
+            if (type === 'open_coo_stamp') {
+                openCooStampModal();
+                return;
+            }
+            if (type === 'open_channel_push') {
+                openChannelPushModal();
             }
         }
 
         function copyMissingSkus() {
             const skus = tableData.filter(function (item) {
                 if (!item.SKU || String(item.SKU).toUpperCase().includes('PARENT')) return false;
-                return hasPositiveInv(item.shopify_inv) && !item.has_raw_image;
+                return hasPositiveInv(item.shopify_inv) && !hasAvailableImage(item);
             }).map(function (item) { return item.SKU; });
             if (!skus.length) {
                 alert('No missing SKUs with inventory.');

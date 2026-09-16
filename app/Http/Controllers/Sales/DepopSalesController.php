@@ -7,19 +7,25 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use App\Http\Controllers\MarketPlace\DepopController;
 use App\Models\DepopSalesData;
+use App\Models\ProductMaster;
 
 class DepopSalesController extends Controller
 {
-    const MARGIN = 0.87; // 87% margin for Depop
+    const MARGIN = 0.87; // fallback when marketplace_percentages has no Depop row
 
     public function index()
     {
-        return view('sales.depop_sheet_data');
+        return view('sales.depop_sheet_data', [
+            'marginPercent' => DepopController::marginPercent(),
+        ]);
     }
 
     /**
-     * Get Depop sales data. No SKU / Product Master — PFT = sales × margin (87%).
+     * Same rule as /depop/pricing (no ship):
+     * PFT Each = (item price × marketplace Depop margin) − LP
+     * PFT %   = PFT Each ÷ item price
      */
     public function getData(Request $request)
     {
@@ -29,7 +35,15 @@ class DepopSalesController extends Controller
                 return response()->json([]);
             }
 
-            $margin = self::MARGIN;
+            $margin = DepopController::marginFactor();
+            $pmBySku = ProductMaster::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get()
+                ->keyBy(function ($pm) {
+                    return strtoupper(trim((string) $pm->sku));
+                });
+
             $data = [];
             foreach ($rows as $row) {
                 $quantity = (int) $row->quantity ?: 1;
@@ -38,9 +52,14 @@ class DepopSalesController extends Controller
                 }
                 $unitPrice = (float) $row->item_price;
                 $saleAmount = $unitPrice * $quantity;
-                $pft = $saleAmount * $margin;
-                $pftEach = $unitPrice * $margin;
+                $skuKey = strtoupper(trim((string) ($row->sku_code ?? '')));
+                $lp = $skuKey !== '' ? DepopController::extractLp($pmBySku->get($skuKey)) : 0.0;
+
+                $pftEach = DepopController::unitProfit($unitPrice, $lp, $margin);
                 $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
+                $pft = $pftEach * $quantity;
+                $cogs = $lp * $quantity;
+                $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0;
 
                 $data[] = [
                     'id' => $row->id,
@@ -52,16 +71,16 @@ class DepopSalesController extends Controller
                     'sale_amount' => round($saleAmount, 2),
                     'sale_date' => $row->sale_date?->format('Y-m-d'),
                     'buyer' => $row->buyer,
-                    'lp' => 0,
+                    'lp' => round($lp, 2),
                     'ship' => 0,
                     'ship_cost' => 0,
                     'weight_act' => 0,
                     't_weight' => 0,
-                    'cogs' => 0,
+                    'cogs' => round($cogs, 2),
                     'pft_each' => round($pftEach, 2),
                     'pft_each_pct' => round($pftEachPct, 2),
                     't_pft' => round($pft, 2),
-                    'roi' => 0,
+                    'roi' => round($roi, 0),
                     'margin' => round($margin * 100, 2),
                 ];
             }

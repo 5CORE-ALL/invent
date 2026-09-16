@@ -1652,6 +1652,9 @@
             table = new Tabulator("#amazon-table", {
                 ajaxURL: "/amazon-data-json",
                 ajaxSorting: false,
+                sortMode: "local",
+                headerSort: true,
+                headerSortClickElement: "header",
                 layout: "fitDataStretch",
                 pagination: true,
                 paginationSize: 100,
@@ -2418,44 +2421,31 @@
                         field: "ACOS",
                         hozAlign: "center",
                         visible: false,
+                        sorter: "number",
+                        headerSortStartingDir: "desc",
+                        headerTooltip: "ACOS % = Spend L30 ÷ L30 sales × 100. Spend with $0 sales is 100%.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const spend = parseFloat(rowData.SPEND_L30 || rowData.AD_Spend_L30) || 0;
-                            const sales = parseFloat(rowData.SALES_L30) || 0;
-                            
-                            // Calculate ACOS: (SPEND_L30 / SALES_L30) * 100
-                            let acos = 0;
-                            if (sales > 0) {
-                                acos = (spend / sales) * 100;
-                            } else if (spend > 0 && sales === 0) {
-                                acos = 100;
+                            const spend = parseFloat(rowData.ad_spend || rowData.SPEND_L30 || rowData.AD_Spend_L30) || 0;
+                            const sales = parseFloat(rowData.T_Sale_l30 || rowData.SALES_L30) || 0;
+                            let acos = parseFloat(cell.getValue());
+                            if (!isFinite(acos)) {
+                                if (sales > 0) acos = (spend / sales) * 100;
+                                else if (spend > 0) acos = 100;
+                                else acos = 0;
                             }
-                            
-                            // If spend > 0 but ACOS is 0, show red alert
+
                             if (spend > 0 && acos === 0) {
                                 return `<span style="color: #dc3545; font-weight: 600;">100%</span>`;
                             }
-                            
+
                             let color = '';
-                            if (acos < 20) color = '#28a745'; // green
-                            else if (acos >= 20 && acos < 30) color = '#3591dc'; // blue
-                            else if (acos >= 30 && acos < 40) color = '#ffc107'; // yellow
-                            else color = '#a00211'; // red
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${acos.toFixed(0)}%</span>`;
-                        },
-                        sorter: function(a, b, aRow, bRow) {
-                            const calcACOS = (row) => {
-                                const spend = parseFloat(row.SPEND_L30 || row.AD_Spend_L30) || 0;
-                                const sales = parseFloat(row.SALES_L30) || 0;
-                                if (sales > 0) {
-                                    return (spend / sales) * 100;
-                                } else if (spend > 0 && sales === 0) {
-                                    return 100;
-                                }
-                                return 0;
-                            };
-                            return calcACOS(aRow.getData()) - calcACOS(bRow.getData());
+                            if (acos < 20) color = '#28a745';
+                            else if (acos >= 20 && acos < 30) color = '#3591dc';
+                            else if (acos >= 30 && acos < 40) color = '#ffc107';
+                            else color = '#a00211';
+
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(acos)}%</span>`;
                         },
                         width: 60
                     },

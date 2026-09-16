@@ -665,6 +665,9 @@
                             <a href="{{ route('customer.care.dispatch.chargeback.issues') }}">Chargeback Issues</a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.listing.errors.issues') }}">Listing Errors Issues</a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.listing.issue') }}">Listing Issue</a>
                         </li>
                         <li>

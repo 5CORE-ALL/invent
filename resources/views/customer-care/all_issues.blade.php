@@ -1,7 +1,12 @@
-@extends('layouts.vertical', ['title' => 'All Issues', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => $pageTitle ?? 'All Issues', 'sidenav' => 'condensed'])
 {{-- All Issues (Tabulator) — converted from the shared qc_and_packing HTML datatable --}}
 
 @php
+    $pageTitle = $pageTitle ?? 'All Issues';
+    $addIssueButtonText = $addIssueButtonText ?? $pageTitle;
+    $lockedDepartment = $lockedDepartment ?? null;
+    $hideDepartmentColumnAndFilter = (bool) ($hideDepartmentColumnAndFilter ?? !empty($lockedDepartment));
+    $colVisChannel = $colVisChannel ?? 'all_issues';
     $importCsvHeaders = [
         'sku',
         'order_number',
@@ -620,7 +625,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'All Issues',
+        'page_title' => $pageTitle,
         'sub_title' => 'Customer Care',
     ])
 
@@ -630,7 +635,7 @@
                 <div id="all-issues-toolbar" class="d-flex align-items-center gap-2 mb-3">
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                         data-bs-target="#ordersOnHoldIssueModal">
-                        <i class="fa-solid fa-plus"></i> All Issues
+                        <i class="fa-solid fa-plus"></i> {{ $addIssueButtonText }}
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="btnShowHistory">
                         <i class="fa-solid fa-clock-rotate-left"></i> History
@@ -651,9 +656,11 @@
                         <i class="fa-solid fa-circle-exclamation"></i> <span id="l30-issues-badge-label">L30</span> Issues:
                         <span id="l30-issues-badge-total">…</span>
                     </div>
+                    @unless($hideDepartmentColumnAndFilter)
                     <select id="dept-filter-select" class="form-select form-select-sm">
                         <option value="">All Departments</option>
                     </select>
+                    @endunless
                     <div class="dropdown">
                         <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="ai-columns-btn"
                             data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
@@ -808,7 +815,7 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="ordersOnHoldIssueModalLabel">All Issues</h5>
+                    <h5 class="modal-title" id="ordersOnHoldIssueModalLabel">{{ $pageTitle }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form id="ordersOnHoldIssueForm" autocomplete="off">
@@ -1298,7 +1305,10 @@
                             <div class="col-md-6">
                                 <label for="hold_issue_department" class="form-label">Responsible Dept <span
                                         class="text-danger">*</span></label>
-                                <div class="dropdown qc-dept-multiselect" id="hold_issue_department_ui">
+                                @if (!empty($lockedDepartment))
+                                <input type="text" class="form-control" value="{{ $lockedDepartment }}" disabled>
+                                @endif
+                                <div class="dropdown qc-dept-multiselect {{ !empty($lockedDepartment) ? 'd-none' : '' }}" id="hold_issue_department_ui">
                                     <button
                                         class="form-select text-start d-flex align-items-center justify-content-between"
                                         type="button" id="hold_issue_department_toggle" data-bs-toggle="dropdown"
@@ -1327,7 +1337,9 @@
                                     <option value="Orders on Hold">Orders on Hold</option>
                                     <option value="Other">Other</option>
                                 </select>
+                                @unless(!empty($lockedDepartment))
                                 <div class="form-text">Click to select one or more departments.</div>
+                                @endunless
                             </div>
 
                             <div class="col-12 d-none" id="departmentOtherNoteWrap">
@@ -1506,7 +1518,9 @@
             const l30IssuesUrl = @json(route('customer.care.dispatch.issues.l30.issues'));
             const colVisGet = @json(route('tabulator.column.visibility.user.get'));
             const colVisSet = @json(route('tabulator.column.visibility.user.set'));
-            const COLVIS_CHANNEL = 'all_issues';
+            const COLVIS_CHANNEL = @json($colVisChannel);
+            const lockedDepartment = @json($lockedDepartment);
+            const hideDepartmentColumnAndFilter = @json($hideDepartmentColumnAndFilter);
             const importCsvHeaders = @json($importCsvHeaders);
             const importCsvSampleRow = @json($importCsvSampleRow);
             const issueCarrierOptions = ['USPS', 'UPS', 'FEDEX', 'GOFO'];
@@ -1526,7 +1540,7 @@
             let table, historyTable;
             let holdIssueRows = [];
             let holdIssueHistoryRows = [];
-            let activeDeptFilter = null;
+            let activeDeptFilter = lockedDepartment || null;
             let editingIssueId = null;
             let skuTimer = null;
 
@@ -2566,6 +2580,7 @@
                     width: 130,
                     variableHeight: true,
                     formatter: fmtDept,
+                    visible: !hideDepartmentColumnAndFilter,
                 },
                 // Combined Created By + Created At column. The cell shows the
                 // user name (truncated) on top and the short date below; the
@@ -2741,6 +2756,7 @@
                     width: 130,
                     variableHeight: true,
                     formatter: fmtDept,
+                    visible: !hideDepartmentColumnAndFilter,
                 },
                 {
                     title: 'Close',
@@ -3240,7 +3256,16 @@
                 setText('hold_issue_total_count', String(errorCount));
             }
 
+            function departmentQuerySuffix(firstChar) {
+                if (!lockedDepartment) return '';
+                return firstChar + 'department=' + encodeURIComponent(lockedDepartment);
+            }
+
             function buildDeptFilters() {
+                if (lockedDepartment) {
+                    activeDeptFilter = lockedDepartment;
+                    return;
+                }
                 const sel = document.getElementById('dept-filter-select');
                 if (!sel) return;
                 const counts = {};
@@ -3273,7 +3298,7 @@
             async function loadHoldIssueRows() {
                 showMainLoader();
                 try {
-                    const res = await fetch(recordsListUrl, {
+                    const res = await fetch(recordsListUrl + departmentQuerySuffix('?'), {
                         headers: getHeaders
                     });
                     const data = await res.json();
@@ -3300,7 +3325,7 @@
             async function loadHoldIssueHistoryRows() {
                 showHistoryLoader();
                 try {
-                    const res = await fetch(historyListUrl, {
+                    const res = await fetch(historyListUrl + departmentQuerySuffix('?'), {
                         headers: getHeaders
                     });
                     const data = await res.json();
@@ -3360,6 +3385,7 @@
 
             // ── Department multiselect ─────────────────────────────────────────
             function getDepartmentPayload() {
+                if (lockedDepartment) return [lockedDepartment];
                 if (!departmentInput) return [];
                 return Array.from(departmentInput.selectedOptions || []).map(o => o.value.trim()).filter(Boolean);
             }
@@ -3433,6 +3459,14 @@
 
             function setDepartmentMultiSelect(record) {
                 if (!departmentInput) return;
+                if (lockedDepartment) {
+                    Array.from(departmentInput.options).forEach(o => {
+                        o.selected = o.value === lockedDepartment;
+                    });
+                    syncDepartmentDropdown();
+                    toggleDepartmentOtherNoteField();
+                    return;
+                }
                 const depts = rowDepartments(record);
                 Array.from(departmentInput.options).forEach(o => {
                     o.selected = depts.includes(o.value);
@@ -3444,7 +3478,7 @@
             function clearDepartmentMultiSelect() {
                 if (!departmentInput) return;
                 Array.from(departmentInput.options).forEach(o => {
-                    o.selected = false;
+                    o.selected = lockedDepartment ? (o.value === lockedDepartment) : false;
                 });
                 syncDepartmentDropdown();
                 toggleDepartmentOtherNoteField();

@@ -445,13 +445,6 @@ class PurchasingPowerController extends Controller
             return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
         }
 
-        if (is_object($product)) {
-            $status = strtolower(trim((string) ($product->listing_status ?? '')));
-            if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)) {
-                return ['listed' => false, 'price' => 0.0, 'source' => '', 'missing' => true];
-            }
-        }
-
         $price = null;
         if (is_object($product)) {
             $raw = $product->price ?? null;
@@ -577,9 +570,10 @@ class PurchasingPowerController extends Controller
     }
 
     /**
-     * Live listed offer — not a leftover Connect/OF21 row.
-     * listing_status=active only counts when the row was written by the latest
-     * OF21 pull. Stale leftovers (nbsp SKU, old updated_at) stay hidden.
+     * Live listed offer — MCM row still has a site price.
+     * Leftover Connect/OF21 rows are zeroed by the OF21 sync, not by a
+     * global updated_at window (a later single-row touch was hiding every
+     * other listed price as $0).
      */
     public static function productIsLiveOffer(?PurchasingPowerProduct $product, ?Carbon $freshAfter = null): bool
     {
@@ -587,24 +581,11 @@ class PurchasingPowerController extends Controller
             return false;
         }
 
-        $status = strtolower(trim((string) ($product->listing_status ?? '')));
-        if (in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true)) {
-            return false;
-        }
-        if ((float) ($product->price ?? 0) <= 0) {
+        if (isset($product->activated) && ! filter_var($product->activated, FILTER_VALIDATE_BOOLEAN)) {
             return false;
         }
 
-        $inLatestPull = true;
-        if ($freshAfter && $product->updated_at) {
-            $inLatestPull = $product->updated_at->gte($freshAfter);
-        }
-
-        if ($status === 'active') {
-            return $inLatestPull;
-        }
-
-        return $inLatestPull && (int) ($product->stock ?? 0) > 0;
+        return (float) ($product->price ?? 0) > 0;
     }
 
     public static function isListingMarkedInactive($listingStatus): bool

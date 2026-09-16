@@ -103,7 +103,7 @@ class RawImagesBadgeCalculator implements PageBadgeCalculator
                 $available++;
             }
             $inv = $invByNorm[$norm] ?? 0;
-            if ($inv > 0 && ! $hasRaw) {
+            if ($inv > 0 && ! $hasImage) {
                 $missing++;
             }
         }

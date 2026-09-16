@@ -13,13 +13,13 @@
     $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'mercari_wship', 'mercari_woship'], true);
+    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'mercari_wship', 'mercari_woship', 'depop'], true);
     $channelPromoShowZeroSoldDilRule = !$channelPromoUsesSprcDil;
     $channelPromoZeroSoldDilColorSlabs = true;
     $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['temu', 'temu2', 'temu3'], true) && empty($channelPromoUsesSprcDil);
     $channelPromoZeroSoldMinRoi = $channelPromoChannel === 'shopify_b2c';
     $channelPromoZeroSoldSoldLabel = $channelPromoChannel === 'shopify_b2c' ? 'B2C L30' : 'L30';
-    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace'], true);
+    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'depop'], true);
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'fb_marketplace'], true);
     $channelPromoUsesAmazonCvrDisc = $channelPromoChannel === 'shopify_b2c';
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
@@ -1646,11 +1646,12 @@
                 saveSpriceUrl: '/depop/pricing/save-sprice',
                 pushPriceUrl: null,
                 priceField: 'price',
-                cvrField: 'CVR%',
-                dilField: 'Dil%',
+                cvrField: 'cvr',
+                dilField: 'dil_percent',
                 invField: 'inv',
                 skuField: 'sku',
-                soldField: 'l30',
+                soldField: 'al30',
+                soldFieldLabel: 'D L30',
                 saveSpriceMode: 'sku',
             },
         };
@@ -3983,7 +3984,8 @@
             // forces PRMT% = 0, so S PRC skips the Dil vs PRMT discount rule.
             if (CHANNEL_PROMO_CHANNEL === 'aliexpress' || CHANNEL_PROMO_CHANNEL === 'shein'
                 || CHANNEL_PROMO_CHANNEL === 'newegg'
-                || CHANNEL_PROMO_CHANNEL === 'faire' || CHANNEL_PROMO_CHANNEL === 'pls') {
+                || CHANNEL_PROMO_CHANNEL === 'faire' || CHANNEL_PROMO_CHANNEL === 'pls'
+                || CHANNEL_PROMO_CHANNEL === 'depop') {
                 let dil = Number(d.dil_percent != null ? d.dil_percent : d[chPromoCfg.dilField]);
                 if (isFinite(dil)) return dil;
                 if (inv <= 0) return 0;
@@ -5034,6 +5036,7 @@
             return (isFinite(lp) && lp > 0) ? lp : 0;
         }
         function chPromoShipCost(d) {
+            if (CHANNEL_PROMO_CHANNEL === 'depop') return 0;
             if (chPromoIsTemuPromoChannel()) {
                 const temuShip = Number(d && (d.temu_ship != null ? d.temu_ship : d.temuShip));
                 return isFinite(temuShip) && temuShip > 0 ? temuShip : 0;
@@ -5343,22 +5346,24 @@
             if (!(margin > 0)) return 0;
             const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
             if (CHANNEL_PROMO_CHANNEL === 'doba_withoutship') {
+                const ads = (typeof ebayDilAdsPct === 'function') ? (parseFloat(ebayDilAdsPct()) || 0) : 0;
+                const denom = margin - (ads / 100);
+                if (denom > 0) {
+                    const price = (lp * (1 + roi / 100)) / denom;
+                    if (isFinite(price) && price > 0) return chPromoRound2(price);
+                }
                 const copied = Number(d && (d.doba_tabulator_s_pick != null
                     ? d.doba_tabulator_s_pick
                     : d.DOBA_TABULATOR_S_PICK)) || 0;
-                if (copied > 0) return chPromoRound2(copied);
-                const ship = chPromoShipCost(d);
-                const delivery = (lp * (1 + roi / 100) + ship) / margin;
-                return (isFinite(delivery) && delivery > 0)
-                    ? chPromoRound2(Math.max(0, delivery - ship))
-                    : 0;
+                return copied > 0 ? chPromoRound2(copied) : 0;
             }
             const ship = (CHANNEL_PROMO_CHANNEL === 'faire'
                 || CHANNEL_PROMO_CHANNEL === 'purchasing_power'
                 || CHANNEL_PROMO_CHANNEL === 'wayfair'
                 || CHANNEL_PROMO_CHANNEL === 'topdawg'
                 || CHANNEL_PROMO_CHANNEL === 'fb_marketplace'
-                || CHANNEL_PROMO_CHANNEL === 'mercari_woship')
+                || CHANNEL_PROMO_CHANNEL === 'mercari_woship'
+                || CHANNEL_PROMO_CHANNEL === 'depop')
                 ? 0
                 : chPromoShipCost(d);
             const price = (lp * (1 + roi / 100) + ship) / margin;

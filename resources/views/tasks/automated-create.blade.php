@@ -166,7 +166,7 @@
                                 </div>
                                 <div class="col-md-4 mb-2">
                                     <label for="schedule_time" class="form-label fw-bold" style="font-size: 13px;">Time <span class="text-danger">*</span></label>
-                                    <input type="time" class="form-control form-control-sm" id="schedule_time" name="schedule_time" value="12:01" required>
+                                    <input type="time" class="form-control form-control-sm" id="schedule_time" name="schedule_time" value="12:00" required>
                                 </div>
                             </div>
 

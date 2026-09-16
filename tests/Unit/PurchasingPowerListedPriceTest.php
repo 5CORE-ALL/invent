@@ -63,16 +63,19 @@ class PurchasingPowerListedPriceTest extends TestCase
         $this->assertFalse(PurchasingPowerController::productInLatestMcm(null, $freshAfter));
     }
 
-    public function test_zero_stock_legacy_row_is_not_live(): void
+    public function test_zero_stock_offer_with_price_is_still_listed(): void
     {
-        $ghost = new PurchasingPowerProduct();
-        $ghost->price = 47.49;
-        $ghost->stock = 0;
+        $row = new PurchasingPowerProduct();
+        $row->price = 47.49;
+        $row->stock = 0;
 
-        $this->assertFalse(PurchasingPowerController::productIsLiveOffer($ghost));
-        $out = PurchasingPowerController::resolveListedPrice($ghost, false);
-        $this->assertFalse($out['listed']);
-        $this->assertSame(0.0, $out['price']);
+        $this->assertTrue(PurchasingPowerController::productIsLiveOffer($row));
+        $out = PurchasingPowerController::resolveListedPrice(
+            $row,
+            PurchasingPowerController::productIsLiveOffer($row)
+        );
+        $this->assertTrue($out['listed']);
+        $this->assertEqualsWithDelta(47.49, $out['price'], 0.001);
     }
 
     public function test_in_stock_legacy_row_is_live(): void
@@ -98,28 +101,28 @@ class PurchasingPowerListedPriceTest extends TestCase
         ));
     }
 
-    public function test_stale_active_nbsp_leftover_is_not_live(): void
+    public function test_active_priced_row_stays_listed_outside_freshness_window(): void
     {
-        $ghost = new PurchasingPowerProduct();
-        $ghost->sku = "DS CH\u{00A0}YLW\u{00A0}REST-LVR";
-        $ghost->price = 93.99;
-        $ghost->stock = 24;
-        $ghost->listing_status = 'active';
-        $ghost->updated_at = Carbon::parse('2026-09-12 16:49:53');
+        $row = new PurchasingPowerProduct();
+        $row->sku = "DS CH\u{00A0}YLW\u{00A0}REST-LVR";
+        $row->price = 93.99;
+        $row->stock = 24;
+        $row->listing_status = 'active';
+        $row->updated_at = Carbon::parse('2026-09-12 16:49:53');
 
-        $this->assertFalse(PurchasingPowerController::productIsLiveOffer(
-            $ghost,
+        $this->assertTrue(PurchasingPowerController::productIsLiveOffer(
+            $row,
             Carbon::parse('2026-09-13 05:20:00')->subMinutes(15)
         ));
         $out = PurchasingPowerController::resolveListedPrice(
-            $ghost,
+            $row,
             PurchasingPowerController::productIsLiveOffer(
-                $ghost,
+                $row,
                 Carbon::parse('2026-09-13 05:20:00')->subMinutes(15)
             )
         );
-        $this->assertFalse($out['listed']);
-        $this->assertSame(0.0, $out['price']);
+        $this->assertTrue($out['listed']);
+        $this->assertEqualsWithDelta(93.99, $out['price'], 0.001);
     }
 
     public function test_normalize_offer_sku_collapses_nbsp(): void
@@ -130,20 +133,20 @@ class PurchasingPowerListedPriceTest extends TestCase
         );
     }
 
-    public function test_inactive_status_is_not_live_even_with_stock(): void
+    public function test_inactive_flag_still_shows_mcm_price(): void
     {
         $row = new PurchasingPowerProduct();
         $row->price = 123.99;
         $row->stock = 5;
         $row->listing_status = 'inactive';
 
-        $this->assertFalse(PurchasingPowerController::productIsLiveOffer($row));
+        $this->assertTrue(PurchasingPowerController::productIsLiveOffer($row));
         $out = PurchasingPowerController::resolveListedPrice(
             $row,
             PurchasingPowerController::productIsLiveOffer($row)
         );
-        $this->assertFalse($out['listed']);
-        $this->assertSame(0.0, $out['price']);
+        $this->assertTrue($out['listed']);
+        $this->assertEqualsWithDelta(123.99, $out['price'], 0.001);
     }
 
     public function test_listing_inactive_flag(): void

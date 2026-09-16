@@ -73,7 +73,28 @@ class TaskBusinessTime
 
     public static function dailyGenerateTime(): string
     {
-        return (string) config('tasks.daily_generate_time', '00:01:00');
+        return (string) (static::configValue('tasks.daily_generate_time') ?: '12:00:00');
+    }
+
+    /**
+     * Today's generation instant in the India business timezone.
+     */
+    public static function dailyGenerateAt(?Carbon $day = null): Carbon
+    {
+        $parts = array_map('intval', explode(':', static::dailyGenerateTime()));
+
+        return ($day ? $day->copy()->timezone(static::tz()) : static::today())
+            ->setTime($parts[0] ?? 12, $parts[1] ?? 0, $parts[2] ?? 0);
+    }
+
+    /**
+     * True once the India clock has reached today's daily generation time.
+     */
+    public static function isDailyGenerateWindow(?Carbon $now = null): bool
+    {
+        $now = $now ? $now->copy()->timezone(static::tz()) : static::now();
+
+        return $now->gte(static::dailyGenerateAt($now));
     }
 
     public const WEEKLY_MONTHLY_OVERDUE_DAYS = 6;
