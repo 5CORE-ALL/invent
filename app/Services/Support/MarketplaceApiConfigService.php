@@ -37,6 +37,9 @@ class MarketplaceApiConfigService
         'pls' => 'shopify_pls',
         'newegg' => 'newegg',
         'topdawg' => 'topdawg',
+        'b5cb2b' => 'b5cb2b',
+        'business5coreb2b' => 'b5cb2b',
+        'business5core(b2b)' => 'b5cb2b',
     ];
 
     /**
@@ -102,6 +105,9 @@ class MarketplaceApiConfigService
         'shopify_b2b' => null,
         'shopify' => 'shopify_main',
         'amazon_fba' => 'amazon',
+        'b5cb2b' => 'b5cb2b',
+        'business5coreb2b' => 'b5cb2b',
+        'business5core(b2b)' => 'b5cb2b',
     ];
 
     /** @var list<string> Keys used by Bullet / Description / Image / Video / Title masters */
@@ -323,6 +329,7 @@ class MarketplaceApiConfigService
                     'services.purchasingpower.client_secret',
                 ]),
             'shopify_b2b' => $this->shopifyB2bConfigured(),
+            'b5cb2b' => $this->filled('services.b5cb2b.url') && $this->filled('services.b5cb2b.api_key'),
             default => false,
         };
     }

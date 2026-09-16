@@ -22,6 +22,8 @@ use App\Jobs\SyncTikTok2TrackingJob;
 use App\Jobs\SyncTikTokTrackingJob;
 use App\Jobs\SyncTopDawgTrackingJob;
 use App\Jobs\SyncWayfairTrackingJob;
+use App\Jobs\SyncB5cB2bTrackingJob;
+use App\Models\B5cB2bOrder;
 use App\Models\AlibabaOrderMetric;
 use App\Models\AliexpressOrderMetric;
 use App\Models\AmazonOrder;
@@ -77,6 +79,7 @@ class MarketplaceChannelFulfillmentHub
             'faire' => [FaireOrderMetric::class, FaireTrackingSyncService::class, ['order_id', 'order_number']],
             'tiktok' => [TiktokOrder::class, TikTokTrackingSyncService::class, ['order_id']],
             'tiktok2' => [Tiktok2Order::class, TikTok2TrackingSyncService::class, ['order_id']],
+            'b5cb2b' => [B5cB2bOrder::class, B5cB2bTrackingSyncService::class, ['store_order_id']],
         ];
     }
 
@@ -186,6 +189,7 @@ class MarketplaceChannelFulfillmentHub
             'faire' => new SyncFaireTrackingJob(true, $limit),
             'tiktok' => new SyncTikTokTrackingJob(true, $limit),
             'tiktok2' => new SyncTikTok2TrackingJob(true, $limit),
+            'b5cb2b' => new SyncB5cB2bTrackingJob(true, $limit),
             default => null,
         };
         if ($job === null) {

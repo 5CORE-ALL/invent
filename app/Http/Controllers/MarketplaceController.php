@@ -23,6 +23,7 @@ use App\Http\Controllers\MarketPlace\Temu2SyncController;
 use App\Http\Controllers\MarketPlace\TikTokSyncController;
 use App\Http\Controllers\MarketPlace\TikTok2SyncController;
 use App\Http\Controllers\MarketPlace\PlsSyncController;
+use App\Http\Controllers\MarketPlace\B5cB2bSyncController;
 use App\Models\ShopifySku;
 use App\Services\MarketplaceManager\MarketplaceListingInstantMapService;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
@@ -39,7 +40,7 @@ use Illuminate\View\View;
 class MarketplaceController extends Controller
 {
     /** Supported marketplace slugs (lowercase). */
-    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'aliexpress', 'alibaba', 'newegg', 'shein', 'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok', 'tiktok2', 'pls'];
+    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'aliexpress', 'alibaba', 'newegg', 'shein', 'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok', 'tiktok2', 'pls', 'b5cb2b'];
 
     protected function getController(string $marketplace): ?object
     {
@@ -65,6 +66,7 @@ class MarketplaceController extends Controller
             'tiktok2' => app(TikTok2SyncController::class),
             'tiktok' => app(TikTokSyncController::class),
             'pls' => app(PlsSyncController::class),
+            'b5cb2b' => app(B5cB2bSyncController::class),
             'ebay', 'walmart' => null,
             default => null,
         };
@@ -558,6 +560,9 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'doba') {
             return app(DobaSyncController::class)->saveSettings($request);
+        }
+        if ($marketplace === 'b5cb2b') {
+            return app(B5cB2bSyncController::class)->saveSettings($request);
         }
         if ($marketplace === 'aliexpress') {
             return app(AliexpressSyncController::class)->saveSettings($request);

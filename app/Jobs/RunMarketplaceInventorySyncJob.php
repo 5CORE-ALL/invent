@@ -75,6 +75,7 @@ class RunMarketplaceInventorySyncJob implements ShouldQueue, ShouldBeUnique
                 'topdawg' => app(\App\Services\MarketplaceManager\TopDawgInventorySyncService::class)->syncFromShopify(false),
                 'purchasingpower' => app(\App\Services\MarketplaceManager\PurchasingPowerInventorySyncService::class)->syncFromShopify(false),
                 'pls' => app(\App\Services\MarketplaceManager\PlsInventorySyncService::class)->syncFromShopify(false),
+                'b5cb2b' => app(\App\Services\MarketplaceManager\B5cB2bInventorySyncService::class)->syncFromShopify(false),
                 default => ['updated' => 0, 'failed' => 0, 'message' => 'Unknown marketplace: '.$slug],
             };
         } catch (\Throwable $e) {

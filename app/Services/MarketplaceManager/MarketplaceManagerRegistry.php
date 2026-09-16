@@ -269,6 +269,20 @@ class MarketplaceManagerRegistry
                 'enabled' => true,
                 'mp_channel_keys' => ['Doba', 'doba', 'DOBA'],
             ],
+            [
+                'slug' => 'b5cb2b',
+                'label' => 'Business 5 Core (B2B)',
+                'short' => 'B5B',
+                'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/shopify.png',
+                'enabled' => true,
+                'mp_channel_keys' => [
+                    'Business 5 Core (B2B)',
+                    'Business 5 Core B2B',
+                    'Business5Core B2B',
+                    'b5cb2b',
+                ],
+            ],
         ];
     }
 

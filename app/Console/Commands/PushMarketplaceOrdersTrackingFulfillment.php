@@ -175,6 +175,7 @@ class PushMarketplaceOrdersTrackingFulfillment extends Command
             'faire' => 'faire:sync-orders',
             'tiktok' => 'tiktok:sync-orders',
             'tiktok2' => 'tiktok2:sync-orders',
+            'b5cb2b' => 'b5cb2b:sync-orders',
         ];
     }
 
@@ -201,6 +202,7 @@ class PushMarketplaceOrdersTrackingFulfillment extends Command
             'ebay3' => 'ebay3:sync-inventory-from-shopify',
             'tiktok' => 'tiktok:sync-inventory-from-shopify',
             'tiktok2' => 'tiktok2:sync-inventory-from-shopify',
+            'b5cb2b' => 'b5cb2b:sync-inventory-from-shopify',
             default => null,
         };
     }

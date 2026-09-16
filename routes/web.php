@@ -819,16 +819,24 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/pls/sync-inventory', [\App\Http\Controllers\MarketPlace\PlsSyncController::class, 'syncInventoryNow'])->name('pls.sync.inventory');
         Route::post('/pls/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\PlsSyncController::class, 'syncMismatchInventoryNow'])->name('pls.sync.mismatch.inventory');
         Route::post('/pls/sync-tracking', [\App\Http\Controllers\MarketPlace\PlsSyncController::class, 'syncTrackingNow'])->name('pls.sync.tracking');
+        Route::get('/b5cb2b/connect', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'connect'])->name('b5cb2b.connect');
+        Route::post('/b5cb2b/test-connection', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'testConnection'])->name('b5cb2b.test');
+        Route::post('/b5cb2b/refresh-products', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'refreshProducts'])->name('b5cb2b.refresh');
+        Route::get('/b5cb2b/refresh-products/status', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'refreshProductsStatus'])->name('b5cb2b.refresh.status');
+        Route::post('/b5cb2b/fetch-orders', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'fetchOrders'])->name('b5cb2b.fetch.orders');
+        Route::post('/b5cb2b/sync-inventory', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'syncInventoryNow'])->name('b5cb2b.sync.inventory');
+        Route::post('/b5cb2b/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'syncMismatchInventoryNow'])->name('b5cb2b.sync.mismatch.inventory');
+        Route::post('/b5cb2b/sync-tracking', [\App\Http\Controllers\MarketPlace\B5cB2bSyncController::class, 'syncTrackingNow'])->name('b5cb2b.sync.tracking');
         Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
             ->name('show')
-            ->where('marketplace', 'amazon|aliexpress|alibaba|reverb|newegg|shein|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|ebay1|ebay2|ebay3|faire|tiktok|tiktok2|pls');
+            ->where('marketplace', 'amazon|aliexpress|alibaba|reverb|newegg|shein|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|ebay1|ebay2|ebay3|faire|tiktok|tiktok2|pls|b5cb2b');
     });
 
     // Faire OAuth redirect (must match FAIRE_REDIRECT_URL)
     Route::get('/faire/callback', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'oauthCallback'])->name('faire.oauth.callback');
 
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg, shein, ebay2, ebay3, faire)
-    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|aliexpress|alibaba|newegg|shein|ebay1|ebay2|ebay3|faire|tiktok|tiktok2|pls'])->group(function () {
+    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|aliexpress|alibaba|newegg|shein|ebay1|ebay2|ebay3|faire|tiktok|tiktok2|pls|b5cb2b'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/products/shopify-search', [\App\Http\Controllers\MarketplaceController::class, 'searchShopifySkus'])->name('marketplace.products.shopify.search');
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');

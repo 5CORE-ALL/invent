@@ -229,6 +229,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Business 5 Core (B2B) Laravel store sync API
+    | docs/sync-api.md on the B2B store — X-Api-Key
+    |--------------------------------------------------------------------------
+    */
+    'b5cb2b' => [
+        'url' => env('BUSINESS5CORE_B2B_API_URL', 'https://business5core.com'),
+        'api_key' => env('BUSINESS5CORE_B2B_API_KEY', ''),
+        'timeout' => (int) env('BUSINESS5CORE_B2B_TIMEOUT', 30),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Google (OAuth)
     |--------------------------------------------------------------------------
     */

@@ -23,6 +23,7 @@ use App\Models\Temu2Metric;
 use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\PLSProduct;
+use App\Models\B5cB2bProduct;
 use App\Models\ReverbProduct;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
@@ -406,6 +407,9 @@ class MarketplaceManagerController extends Controller
                 : 0,
             'pls' => Schema::hasTable('pls_products')
                 ? (int) PLSProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                : 0,
+            'b5cb2b' => Schema::hasTable('b5c_b2b_products')
+                ? (int) B5cB2bProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
                 : 0,
             default => 0,
         };

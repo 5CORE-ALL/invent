@@ -40,7 +40,7 @@ final class MarketplaceMismatchInventoryPass
             'message' => 'Mismatch pass skipped.',
         ];
 
-        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon', 'tiktok', 'tiktok2', 'pls'], true)) {
+        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon', 'tiktok', 'tiktok2', 'pls', 'b5cb2b'], true)) {
             return $empty;
         }
 
@@ -109,6 +109,7 @@ final class MarketplaceMismatchInventoryPass
             'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'temu2' => app(Temu2InventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'pls' => app(PlsInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'b5cb2b' => app(B5cB2bInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'wayfair' => app(WayfairInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
             'bestbuy' => app(BestBuyInventorySyncService::class)->syncSkusFromShopify($mismatch, null, true),
@@ -329,6 +330,22 @@ final class MarketplaceMismatchInventoryPass
             return app(PlsListingsPageBuilder::class)->linkedSkus();
         }
 
+        if ($channel === 'b5cb2b') {
+            if (! Schema::hasTable('b5c_b2b_products')) {
+                return [];
+            }
+
+            return \App\Models\B5cB2bProduct::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '')
+                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
+                ->values()
+                ->all();
+        }
+
         if ($channel === 'shein') {
             $fromMetric = SheinMmMetric::query()
                 ->whereNotNull('sku')
@@ -404,6 +421,21 @@ final class MarketplaceMismatchInventoryPass
     {
         if ($channel === 'alibaba') {
             return $this->alibabaLocalStockMap($skus);
+        }
+
+        if ($channel === 'b5cb2b') {
+            if (! Schema::hasTable('b5c_b2b_products') || $skus === []) {
+                return [];
+            }
+            $map = [];
+            foreach (\App\Models\B5cB2bProduct::query()->whereIn('sku', $skus)->get(['sku', 'qty']) as $row) {
+                $sku = trim((string) $row->sku);
+                if ($sku !== '') {
+                    $map[$sku] = (int) $row->qty;
+                }
+            }
+
+            return $map;
         }
 
         $resolverChannel = match ($channel) {

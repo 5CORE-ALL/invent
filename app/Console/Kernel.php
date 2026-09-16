@@ -638,6 +638,13 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('b5cb2b', '', true, 14))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('b5cb2b-sync-orders')
+            ->withoutOverlapping(55)
+            ->appendOutputTo($log);
+
         // $schedule->command('shopify:retry-pending-orders')
             //     ->hourly()
             //     ->timezone('UTC')
@@ -2554,6 +2561,27 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('tiktok2-sync-link-map')
             ->withoutOverlapping(55)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\RunMarketplaceInventorySyncJob('b5cb2b'))
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('b5cb2b-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('b5cb2b'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('b5cb2b-sync-mismatch-inventory')
+            ->withoutOverlapping(45)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncB5cB2bTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('b5cb2b-sync-tracking')
+            ->withoutOverlapping(18)
             ->appendOutputTo($log);
 
         // Backup: queue Shopify imports for unpushed MM orders even if fetch jobs are stuck.

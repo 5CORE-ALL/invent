@@ -125,6 +125,7 @@ class MarketplaceSyncSettings extends Model
         $isFaire = $marketplace === 'faire';
         $isTikTok2 = $marketplace === 'tiktok2';
         $isTikTok = $marketplace === 'tiktok';
+        $isB5cB2b = $marketplace === 'b5cb2b';
 
         $sourceName = 'aliexpress';
         $sourceDisplay = 'AliExpress';
@@ -185,6 +186,9 @@ class MarketplaceSyncSettings extends Model
         } elseif ($isTikTok) {
             $sourceName = 'tiktok';
             $sourceDisplay = 'TikTok Shop';
+        } elseif ($isB5cB2b) {
+            $sourceName = 'b5cb2b';
+            $sourceDisplay = 'Business 5 Core (B2B)';
         }
 
         return [
@@ -234,6 +238,7 @@ class MarketplaceSyncSettings extends Model
                 'push_tracking_to_faire' => $isFaire,
                 'push_tracking_to_tiktok2' => $isTikTok2,
                 'push_tracking_to_tiktok' => $isTikTok,
+                'push_tracking_to_b5cb2b' => $isB5cB2b,
                 'push_tracking_to_amazon' => $isAmazon,
                 // Marketplace address → fill missing Shopify shipping + customer fields.
                 'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'reverb', 'faire', 'tiktok2', 'tiktok', 'amazon'], true),

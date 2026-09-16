@@ -73,6 +73,7 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
             'faire' => 'faire:sync-orders',
             'tiktok2' => 'tiktok2:sync-orders',
             'tiktok' => 'tiktok:sync-orders',
+            'b5cb2b' => 'b5cb2b:sync-orders',
             default => null,
         };
 
