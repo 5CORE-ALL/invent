@@ -207,30 +207,76 @@ class B5cB2bSyncController extends Controller
         return view('marketplace.b5cb2b.settings', [
             'title' => 'Business 5 Core (B2B) — Settings',
             'settings' => MarketplaceSyncSettings::getFor('b5cb2b'),
+            'connected' => $this->apiConfig->isConfigured('b5cb2b'),
         ]);
     }
 
     public function saveSettings(Request $request): JsonResponse
     {
         $current = MarketplaceSyncSettings::getFor('b5cb2b');
-        $inventory = $current['inventory'] ?? [];
-        $inventory['inventory_sync'] = $request->boolean('inventory.inventory_sync');
-        $inventory['quantity_calc_percent'] = max(0, min(100, (int) $request->input(
-            'inventory.quantity_calc_percent',
-            $inventory['quantity_calc_percent'] ?? 100
-        )));
-        $order = $current['order'] ?? [];
-        $order['fetch_orders'] = $request->boolean('order.fetch_orders');
-        $order['push_tracking_to_b5cb2b'] = $request->boolean('order.push_tracking_to_b5cb2b');
 
-        MarketplaceSyncSettings::setFor('b5cb2b', [
-            'pricing' => $current['pricing'] ?? [],
-            'inventory' => $inventory,
-            'order' => $order,
-            'listings' => $current['listings'] ?? [],
+        $pricing = $this->mergeSettingsSection($current['pricing'] ?? [], $request->input('pricing', []), [
+            'price_sync', 'use_sale_price', 'currency_conversion',
+        ]);
+        $inventory = $this->mergeSettingsSection($current['inventory'] ?? [], $request->input('inventory', []), [
+            'inventory_sync',
+        ]);
+        $inventory['min_quantity'] = 0;
+        $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
+            'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only',
+            'keep_order_number_from_channel', 'push_tracking_to_b5cb2b', 'sync_address_to_shopify',
+        ]);
+        $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
+            'auto_link_by_sku', 'create_products_on_b5cb2b', 'sync_title', 'sync_images',
         ]);
 
-        return response()->json(['success' => true, 'message' => 'Settings saved.']);
+        if ($request->has('order.shopify_order_tags')) {
+            $tags = $request->input('order.shopify_order_tags');
+            $order['shopify_order_tags'] = is_array($tags)
+                ? $tags
+                : array_values(array_filter(array_map('trim', explode(',', (string) $tags))));
+        }
+        if ($request->filled('order.shopify_store')) {
+            $store = (string) $request->input('order.shopify_store');
+            if (in_array($store, ['main', '5core', 'business', 'prolightsounds'], true)) {
+                $order['shopify_store'] = $store;
+            }
+        }
+        if ($request->filled('order.shopify_source_name')) {
+            $order['shopify_source_name'] = trim((string) $request->input('order.shopify_source_name'));
+        }
+        if ($request->filled('order.shopify_source_display_name')) {
+            $order['shopify_source_display_name'] = trim((string) $request->input('order.shopify_source_display_name'));
+        }
+
+        MarketplaceSyncSettings::setFor('b5cb2b', [
+            'pricing' => $pricing,
+            'inventory' => $inventory,
+            'order' => $order,
+            'listings' => $listings,
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Business 5 Core (B2B) sync settings saved.']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $current
+     * @param  array<string, mixed>  $input
+     * @param  list<string>  $booleanKeys
+     * @return array<string, mixed>
+     */
+    protected function mergeSettingsSection(array $current, array $input, array $booleanKeys): array
+    {
+        $merged = array_merge($current, $input);
+        if ($input !== []) {
+            foreach ($booleanKeys as $key) {
+                $merged[$key] = array_key_exists($key, $input)
+                    ? filter_var($input[$key], FILTER_VALIDATE_BOOLEAN)
+                    : false;
+            }
+        }
+
+        return $merged;
     }
 
     protected function maskCredential(string $value, int $showStart = 4, int $showEnd = 4): string

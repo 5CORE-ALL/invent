@@ -214,7 +214,7 @@ class MarketplaceSyncSettings extends Model
                 'auto_import_to_shopify' => in_array($marketplace, [
                     'amazon', 'aliexpress', 'alibaba', 'reverb', 'newegg', 'shein', 'topdawg',
                     'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba',
-                    'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok', 'tiktok2',
+                    'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok', 'tiktok2', 'b5cb2b',
                 ], true),
                 'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
@@ -241,7 +241,7 @@ class MarketplaceSyncSettings extends Model
                 'push_tracking_to_b5cb2b' => $isB5cB2b,
                 'push_tracking_to_amazon' => $isAmazon,
                 // Marketplace address → fill missing Shopify shipping + customer fields.
-                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'reverb', 'faire', 'tiktok2', 'tiktok', 'amazon'], true),
+                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'reverb', 'faire', 'tiktok2', 'tiktok', 'amazon', 'b5cb2b'], true),
                 // Shein: Pending → To Be Shipped via export-address handleType=2 (ON so Shopify gets ship-to).
                 'auto_accept_on_shein' => true,
                 'tracking_send_notification' => false,
@@ -271,6 +271,7 @@ class MarketplaceSyncSettings extends Model
                 'create_products_on_faire' => false,
                 'create_products_on_tiktok2' => false,
                 'create_products_on_tiktok' => false,
+                'create_products_on_b5cb2b' => false,
                 'sync_title' => false,
                 'sync_images' => false,
             ],
