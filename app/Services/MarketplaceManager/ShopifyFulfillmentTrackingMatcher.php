@@ -56,7 +56,7 @@ class ShopifyFulfillmentTrackingMatcher
             return $empty;
         }
 
-        $orderIds = $this->uniqueIds(array_merge([$marketplaceOrderId], $extraOrderIds));
+        $orderIds = $this->fullOrderIdsFirst(array_merge([$marketplaceOrderId], $extraOrderIds));
         $sku = $this->normalizeSku($sku);
         if (in_array($sku, ['__ORDER__', '__UNKNOWN__'], true)) {
             $sku = '';
@@ -195,7 +195,7 @@ class ShopifyFulfillmentTrackingMatcher
     {
         $haystacks = $this->orderIdHaystacks($order);
 
-        foreach ($orderIds as $id) {
+        foreach ($this->fullOrderIdsFirst($orderIds) as $id) {
             foreach ($haystacks as $haystack) {
                 if ($this->containsFullOrderId($haystack, $id)) {
                     return $id;
@@ -221,6 +221,43 @@ class ShopifyFulfillmentTrackingMatcher
         }
 
         return $out;
+    }
+
+    /**
+     * Longest complete marketplace order ids first. Drop prefixes like "113"
+     * that sit inside Amazon 113-xxxxxxx-xxxxxxx.
+     *
+     * @param  list<mixed>  $ids
+     * @return list<string>
+     */
+    public function fullOrderIdsFirst(array $ids): array
+    {
+        $out = [];
+        foreach ($this->uniqueIds($ids) as $id) {
+            if ($this->isIncompleteOrderId($id)) {
+                continue;
+            }
+            $out[] = $id;
+        }
+        usort($out, static fn ($a, $b) => strlen((string) $b) <=> strlen((string) $a));
+
+        return array_values($out);
+    }
+
+    public function isIncompleteOrderId(string $id): bool
+    {
+        $id = trim($id);
+        if ($id === '') {
+            return true;
+        }
+        if (preg_match('/^\d{3}-/', $id) && ! preg_match('/^\d{3}-\d{7}-\d{7}$/', $id)) {
+            return true;
+        }
+        if (preg_match('/^\d{1,7}$/', $id)) {
+            return true;
+        }
+
+        return false;
     }
 
     public function normalizeSku(string $sku): string
@@ -298,7 +335,7 @@ class ShopifyFulfillmentTrackingMatcher
     {
         $orderId = trim($orderId);
         $haystack = trim($haystack);
-        if ($orderId === '' || $haystack === '') {
+        if ($orderId === '' || $haystack === '' || $this->isIncompleteOrderId($orderId)) {
             return false;
         }
 

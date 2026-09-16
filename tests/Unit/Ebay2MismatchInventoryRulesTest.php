@@ -15,6 +15,9 @@ class Ebay2MismatchInventoryRulesTest extends TestCase
         $this->assertFalse(Ebay2InventorySyncService::looksLikeTradingLimit(
             'ReviseInventoryStatus failed for ItemID 365518123456: SKU does not exist.'
         ));
+        $this->assertFalse(Ebay2InventorySyncService::looksLikeTradingLimit(
+            'SKU does not exist for item #518123456789.'
+        ));
         $this->assertTrue(Ebay2InventorySyncService::looksLikeTradingLimit(
             'eBay error 518: Call usage limit has been exceeded.'
         ));

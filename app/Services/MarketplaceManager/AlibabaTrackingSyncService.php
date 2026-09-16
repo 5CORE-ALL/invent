@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\Log;
  */
 class AlibabaTrackingSyncService
 {
+    use CopiesPurchaseLabelToShopify;
+
     /** @var list<array{service_name: string, display_name?: string}>|null */
     protected ?array $logisticsServicesCache = null;
 
@@ -66,6 +68,12 @@ class AlibabaTrackingSyncService
         }
 
         $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, (string) ($line->sku ?? ''));
+        if (empty($shopifyFulfillment['tracking'])) {
+            $copied = $this->copyPurchasedLabelToShopify('alibaba', (int) ($line->id ?? 0));
+            if (! empty($copied['success']) || trim((string) ($copied['tracking'] ?? '')) !== '') {
+                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, (string) ($line->sku ?? ''));
+            }
+        }
         if (empty($shopifyFulfillment['tracking'])) {
             return [
                 'success' => false,

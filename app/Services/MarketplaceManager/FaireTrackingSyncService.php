@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Log;
  */
 class FaireTrackingSyncService
 {
+    use CopiesPurchaseLabelToShopify;
+
     public function __construct(
         protected FaireApiService $faireApi,
         protected FaireOrderDetailService $orderDetailService,
@@ -65,6 +67,17 @@ class FaireTrackingSyncService
             (string) ($line->sku ?? ''),
             trim((string) ($line->order_number ?? ''))
         );
+        if (empty($shopifyFulfillment['tracking'])) {
+            $copied = $this->copyPurchasedLabelToShopify('faire', (int) ($line->id ?? 0));
+            if (! empty($copied['success']) || trim((string) ($copied['tracking'] ?? '')) !== '') {
+                $shopifyFulfillment = $this->fetchShopifyTracking(
+                    $shopifyOrderId,
+                    $orderId,
+                    (string) ($line->sku ?? ''),
+                    trim((string) ($line->order_number ?? ''))
+                );
+            }
+        }
         if (empty($shopifyFulfillment['tracking'])) {
             return [
                 'success' => false,

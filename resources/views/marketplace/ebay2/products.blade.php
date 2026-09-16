@@ -9,7 +9,7 @@
             Linked tabs: <strong>All</strong> = every Shopify live SKU.
             <strong>Inv SKU Match / Inv SKU Mismatch</strong> = Shopify vs eBay 2 quantity. Shopify qty must not be less than marketplace qty. Match allows marketplace to be short by at most max(3 units, 3% of Shopify). <strong>Linked mismatch SKU</strong> is only the SKUs where marketplace qty is higher than Shopify.
             <strong>Active SKU / Inactive SKU</strong> = actual eBay 2 seller portal status (not inventory match).
-            If eBay returns error <strong>518</strong> (usage limit), stop — that call’s daily quota is used until about midnight Pacific (~12:50 PM IST). Do not click Sync Mismatch, Sync link map, or Refresh live until then.
+            If eBay returns error <strong>518</strong> on ReviseInventoryStatus, Sync Mismatch keeps pushing qty through ReviseFixedPriceItem (separate daily quota). Stop only if that fallback also reports a usage limit — then wait until about midnight Pacific (~12:50 PM IST).
             <em>Refresh live</em> warms eBay 2 status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 
@@ -347,7 +347,7 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ offset: offset, limit: 1, scope: scope, ready: ready ? 1 : 0 }),
+            body: JSON.stringify({ offset: offset, limit: 4, scope: scope, ready: ready ? 1 : 0 }),
         }).then(function (r) {
             return r.text().then(function (text) {
                 var data = null;
@@ -383,7 +383,7 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
             totals.failed += data.failed || 0;
             totals.skipped += data.skipped || 0;
             offset = data.offset || offset;
-            if (data.rate_limited || /518|usage limit/i.test(String(data.message || ''))) {
+            if (data.rate_limited) {
                 finish((data.message || 'eBay 2 daily API limit (518) is used.')
                     + '\nStopped so more calls are not burned. Do not click Sync again today — wait until after midnight Pacific (~12:50 PM IST).'
                     + '\nUpdated: ' + totals.updated + ', Failed: ' + totals.failed + ', Skipped: ' + totals.skipped);

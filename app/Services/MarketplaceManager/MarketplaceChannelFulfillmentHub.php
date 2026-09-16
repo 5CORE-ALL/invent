@@ -282,10 +282,14 @@ class MarketplaceChannelFulfillmentHub
                 return null;
             }
 
+            $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
+            if ($matcher->isIncompleteOrderId($ref)) {
+                return null;
+            }
+
             $sku = trim($sku);
             $skuCol = in_array($marketplace, ['tiktok', 'tiktok2'], true) ? 'seller_sku' : 'sku';
             if ($sku !== '' && Schema::hasColumn($table, $skuCol)) {
-                $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
                 foreach ((clone $query)->orderBy('id')->limit(40)->get() as $candidate) {
                     if ($matcher->skusEqual((string) ($candidate->{$skuCol} ?? ''), $sku)) {
                         return $candidate;

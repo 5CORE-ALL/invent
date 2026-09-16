@@ -6,9 +6,8 @@ use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Channel tracking crons used to skip "no tracking on Shopify yet", then
- * burn their unique-lock window on Veeqo copies. Push marketplace tracking
- * first (Shopify already has the label); copy a small unlabeled batch after.
+ * After a label is purchased (Veeqo / GOFO / Shopify): copy tracking onto the
+ * Shopify copy first, then push that tracking to the marketplace and mark shipped.
  */
 trait FulfillsShopifyBeforeChannelTracking
 {
@@ -24,27 +23,27 @@ trait FulfillsShopifyBeforeChannelTracking
 
     protected function runTrackingSafely(callable $callback): void
     {
+        $marketplace = $this->pendingShopifyCopyMarketplace;
+        $copyLimit = $this->pendingShopifyCopyLimit;
+        $this->pendingShopifyCopyMarketplace = null;
+
+        if ($marketplace !== null && $marketplace !== '') {
+            try {
+                app(VeeqoShopifyFulfillmentService::class)
+                    ->syncPendingUnfulfilledForMarketplace($marketplace, $copyLimit);
+            } catch (\Throwable $e) {
+                Log::warning(static::class.': Shopify label copy before marketplace push failed', [
+                    'marketplace' => $marketplace,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         try {
             $result = $callback();
             Log::info(static::class.': completed', is_array($result) ? $result : []);
         } catch (\Throwable $e) {
             Log::error(static::class.': failed', [
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        $marketplace = $this->pendingShopifyCopyMarketplace;
-        if ($marketplace === null || $marketplace === '') {
-            return;
-        }
-        $this->pendingShopifyCopyMarketplace = null;
-
-        try {
-            app(VeeqoShopifyFulfillmentService::class)
-                ->syncPendingUnfulfilledForMarketplace($marketplace, $this->pendingShopifyCopyLimit);
-        } catch (\Throwable $e) {
-            Log::warning(static::class.': Shopify fulfill-after-channel-push failed', [
-                'marketplace' => $marketplace,
                 'error' => $e->getMessage(),
             ]);
         }
