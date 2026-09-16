@@ -12,8 +12,10 @@ use Illuminate\Support\Facades\Schema;
 
 class StorePriceSyncService
 {
-    public function __construct(protected StoreListingApiClient $client)
-    {
+    public function __construct(
+        protected StoreListingApiClient $client,
+        protected Business5CoreB2bApiService $b2b
+    ) {
     }
 
     /**
@@ -82,40 +84,24 @@ class StorePriceSyncService
      */
     protected function fetchMergedListings(?string $sku, ?callable $onPage): array
     {
-        $priceItems = $this->client->fetchAllPrices($sku, $onPage ? function ($page, $last, $count, $payload) use ($onPage) {
-            $onPage('prices', $page, $last, $count, $payload);
-        } : null);
-
-        $catalogItems = [];
-        if ($priceItems === []) {
-            $catalogItems = $this->client->fetchAllProducts($sku, $onPage ? function ($page, $last, $count, $payload) use ($onPage) {
-                $onPage('products', $page, $last, $count, $payload);
-            } : null);
+        $priceItems = [];
+        if (trim((string) config('services.store.api_key')) !== '') {
+            $priceItems = $this->safeCollection(function () use ($sku, $onPage) {
+                return $this->client->fetchAllPrices($sku, $onPage ? function ($page, $last, $count, $payload) use ($onPage) {
+                    $onPage('prices', $page, $last, $count, $payload);
+                } : null);
+            });
         }
 
-        $listingItems = [];
-        try {
-            if ($sku === null) {
-                $listingItems = $this->client->fetchAllListings(null, $onPage ? function ($page, $last, $count, $payload) use ($onPage) {
-                    $onPage('listings', $page, $last, $count, $payload);
+        $listingItems = $this->fetchListingItems($sku, $onPage);
+
+        $catalogItems = [];
+        if ($priceItems === [] && $listingItems === []) {
+            $catalogItems = $this->safeCollection(function () use ($sku, $onPage) {
+                return $this->client->fetchAllProducts($sku, $onPage ? function ($page, $last, $count, $payload) use ($onPage) {
+                    $onPage('products', $page, $last, $count, $payload);
                 } : null);
-            } else {
-                $probe = $this->client->fetchListings(1, 5, $sku);
-                $total = (int) ($probe['meta']['total'] ?? 0);
-                if ($total > 0 && $total <= 20) {
-                    $listingItems = $this->client->fetchAllListings($sku);
-                } elseif (is_array($probe['data'] ?? null)) {
-                    foreach ($probe['data'] as $item) {
-                        if (is_array($item) && $this->skuMatches($item['sku'] ?? '', $sku)) {
-                            $listingItems[] = $item;
-                        }
-                    }
-                }
-            }
-        } catch (\Throwable $e) {
-            if (! str_contains($e->getMessage(), 'HTTP 404')) {
-                throw $e;
-            }
+            });
         }
 
         $byId = [];
@@ -157,6 +143,10 @@ class StorePriceSyncService
             }
         }
 
+        if ($this->listingsAlreadyHaveSoldViews($byId)) {
+            return array_values($byId);
+        }
+
         if ($onPage) {
             $onPage('details', 0, 1, count($slugs), []);
         }
@@ -169,6 +159,122 @@ class StorePriceSyncService
         }
 
         return array_values($byId);
+    }
+
+    /**
+     * Prefer the working B2B /api/listings (price + sold + views) over /api/listings/prices.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function fetchListingItems(?string $sku, ?callable $onPage): array
+    {
+        $pageCb = $onPage ? function ($page, $last, $count, $payload) use ($onPage) {
+            $onPage('listings', $page, $last, $count, $payload);
+        } : null;
+
+        if ($this->b2b->isConfigured()) {
+            try {
+                if ($sku !== null && $sku !== '') {
+                    $probe = $this->b2b->fetchListings(1, 100, ['sku' => $sku]);
+                    $data = is_array($probe['data'] ?? null) ? $probe['data'] : [];
+                    $matched = array_values(array_filter($data, function ($item) use ($sku) {
+                        return is_array($item) && $this->skuMatches((string) ($item['sku'] ?? ''), $sku);
+                    }));
+                    if ($matched !== []) {
+                        if ($pageCb) {
+                            $pageCb(1, 1, count($matched), $probe);
+                        }
+
+                        return $matched;
+                    }
+                }
+
+                $items = $this->b2b->fetchAllListings($sku ? ['sku' => $sku] : [], $pageCb);
+                if ($sku !== null && $sku !== '') {
+                    $items = array_values(array_filter($items, function ($item) use ($sku) {
+                        return is_array($item) && $this->skuMatches((string) ($item['sku'] ?? ''), $sku);
+                    }));
+                }
+
+                return $items;
+            } catch (\Throwable $e) {
+                Log::warning('B2B /api/listings sync fallback failed', [
+                    'sku' => $sku,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $this->safeCollection(function () use ($sku, $pageCb) {
+            if ($sku === null) {
+                return $this->client->fetchAllListings(null, $pageCb);
+            }
+            $probe = $this->client->fetchListings(1, 5, $sku);
+            $total = (int) ($probe['meta']['total'] ?? 0);
+            if ($total > 0 && $total <= 20) {
+                return $this->client->fetchAllListings($sku);
+            }
+            $items = [];
+            if (is_array($probe['data'] ?? null)) {
+                foreach ($probe['data'] as $item) {
+                    if (is_array($item) && $this->skuMatches($item['sku'] ?? '', $sku)) {
+                        $items[] = $item;
+                    }
+                }
+            }
+
+            return $items;
+        });
+    }
+
+    /**
+     * @param  array<int, array{listing:?array, price:?array, detail:?array}>  $byId
+     */
+    protected function listingsAlreadyHaveSoldViews(array $byId): bool
+    {
+        foreach ($byId as $bundle) {
+            $src = is_array($bundle['listing'] ?? null) ? $bundle['listing'] : [];
+            if ($src === [] && is_array($bundle['price'] ?? null)) {
+                $src = $bundle['price'];
+            }
+            if (isset($src['sold']) || isset($src['views'])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  callable():mixed  $fn
+     * @return list<array<string, mixed>>
+     */
+    protected function safeCollection(callable $fn): array
+    {
+        try {
+            $items = $fn();
+        } catch (\Throwable $e) {
+            if (! $this->isSkippableStoreError($e)) {
+                throw $e;
+            }
+            Log::warning('Store listing source skipped', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        return is_array($items) ? $items : [];
+    }
+
+    protected function isSkippableStoreError(\Throwable $e): bool
+    {
+        $message = $e->getMessage();
+        foreach (['HTTP 401', 'HTTP 403', 'HTTP 404', 'BUSINESS5CORE_API_KEY'] as $needle) {
+            if (str_contains($message, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -311,6 +417,13 @@ class StorePriceSyncService
 
         $images = [];
         $baseImage = $listing['base_image']['path'] ?? $product['base_image']['path'] ?? null;
+        if (! is_string($baseImage)) {
+            if (is_string($listing['base_image'] ?? null)) {
+                $baseImage = $listing['base_image'];
+            } elseif (is_string($product['base_image'] ?? null)) {
+                $baseImage = $product['base_image'];
+            }
+        }
         if (is_array($listing['additional_images'] ?? null)) {
             $images = $listing['additional_images'];
         } elseif (is_array($product['additional_images'] ?? null)) {
@@ -546,6 +659,9 @@ class StorePriceSyncService
     {
         if (is_array($price) && isset($price['amount']) && is_numeric($price['amount'])) {
             return round((float) $price['amount'], 2);
+        }
+        if (is_numeric($price)) {
+            return round((float) $price, 2);
         }
 
         return null;
