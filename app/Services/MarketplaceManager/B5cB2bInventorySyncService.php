@@ -6,13 +6,18 @@ use App\Models\B5cB2bProduct;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\ShopifySku;
 use App\Services\Business5CoreB2bApiService;
+use App\Services\ShopifyApiService;
+use App\Support\Marketplace\MappingChannelCounts;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class B5cB2bInventorySyncService
 {
-    public function __construct(protected Business5CoreB2bApiService $api)
-    {
+    public function __construct(
+        protected Business5CoreB2bApiService $api,
+        protected ShopifyApiService $shopifyApi
+    ) {
     }
 
     /**
@@ -61,16 +66,28 @@ class B5cB2bInventorySyncService
 
         $settings = MarketplaceSyncSettings::getFor('b5cb2b');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
-        $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush($skus);
-        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush($shopifyQty, $skus, $exactShopifyQty);
+
+        $fetchSkus = $skus;
+        foreach ($skus as $sku) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '' && $norm !== $sku) {
+                $fetchSkus[] = $norm;
+            }
+        }
+        $fetchSkus = array_values(array_unique($fetchSkus));
+
+        $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush(
+            $fetchSkus,
+            fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
+        );
+        $shopifyQty = MarketplaceLiveInventoryRules::applyListingsShopifyQtyForPush($shopifyQty, $fetchSkus, $exactShopifyQty);
 
         $updated = 0;
         $failed = 0;
         $skipped = 0;
         $batch = [];
         foreach ($skus as $sku) {
-            $norm = strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku);
-            $qty = $shopifyQty[$sku] ?? $shopifyQty[$norm] ?? null;
+            $qty = $this->resolveShopifyQty($shopifyQty, $sku);
             if ($qty === null) {
                 $skipped++;
                 continue;
@@ -99,6 +116,10 @@ class B5cB2bInventorySyncService
             }
         }
 
+        if ($updated > 0) {
+            $this->forgetListingCaches();
+        }
+
         return [
             'updated' => $updated,
             'failed' => $failed,
@@ -107,5 +128,43 @@ class B5cB2bInventorySyncService
                 .($failed ? ", {$failed} failed" : '')
                 .($skipped ? ", {$skipped} skipped" : '').'.',
         ];
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
+     * @return array<string, int>
+     */
+    protected function fetchLiveShopifyQuantities(array $skus, ?array $shopifyConfig = null): array
+    {
+        try {
+            unset($shopifyConfig);
+
+            return $this->shopifyApi->getInventoryQuantitiesBySku($skus);
+        } catch (\Throwable $e) {
+            Log::warning('B5cB2bInventorySyncService: live Shopify fetch failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     */
+    protected function resolveShopifyQty(array $map, string $sku): ?int
+    {
+        return app(ShopifyQtySource::class)->resolveQty($map, $sku);
+    }
+
+    protected function forgetListingCaches(): void
+    {
+        try {
+            app(B5cB2bLiveListingsService::class)->clearCache();
+            Cache::forget('mm.b5cb2b.listings_mismatch_skus.v1');
+            Cache::forget(MarketplaceListingQtyMatchService::CACHE_PREFIX.'b5cb2b');
+            MappingChannelCounts::forgetMasterCaches();
+        } catch (\Throwable $e) {
+            // non-fatal
+        }
     }
 }
