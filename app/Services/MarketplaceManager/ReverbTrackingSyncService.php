@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\Log;
  */
 class ReverbTrackingSyncService
 {
+    use CopiesPurchaseLabelToShopify;
+
     /** @var list<string>|null */
     protected ?array $providersCache = null;
 
@@ -66,6 +68,12 @@ class ReverbTrackingSyncService
         }
 
         $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderRef, (string) ($line->sku ?? ''));
+        if (empty($shopifyFulfillment['tracking'])) {
+            $copied = $this->copyPurchasedLabelToShopify('reverb', (int) ($line->id ?? 0));
+            if (! empty($copied['success']) || trim((string) ($copied['tracking'] ?? '')) !== '') {
+                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderRef, (string) ($line->sku ?? ''));
+            }
+        }
         if (empty($shopifyFulfillment['tracking'])) {
             return [
                 'success' => false,

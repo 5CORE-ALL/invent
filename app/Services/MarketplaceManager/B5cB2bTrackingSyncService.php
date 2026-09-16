@@ -5,11 +5,14 @@ namespace App\Services\MarketplaceManager;
 use App\Models\B5cB2bOrder;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\Business5CoreB2bApiService;
+use App\Services\ShopifyStoreSelector;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class B5cB2bTrackingSyncService
 {
+    use CopiesPurchaseLabelToShopify;
+
     public function __construct(protected Business5CoreB2bApiService $api)
     {
     }
@@ -44,7 +47,14 @@ class B5cB2bTrackingSyncService
             ];
         }
 
-        $tracking = $this->trackingFromShopify($shopifyOrderId);
+        $sku = $this->skuFromLine($line);
+        $tracking = $this->trackingFromShopify($shopifyOrderId, (string) $storeOrderId, $sku);
+        if ($tracking === '') {
+            $copied = $this->copyPurchasedLabelToShopify('b5cb2b', (int) ($line->id ?? 0));
+            if (! empty($copied['success']) || trim((string) ($copied['tracking'] ?? '')) !== '') {
+                $tracking = $this->trackingFromShopify($shopifyOrderId, (string) $storeOrderId, $sku);
+            }
+        }
         if ($tracking === '') {
             return [
                 'success' => false,
@@ -55,11 +65,12 @@ class B5cB2bTrackingSyncService
 
         try {
             $this->api->updateOrder($storeOrderId, [
-                'status' => 'processing',
+                'status' => 'shipped',
                 'tracking_reference' => $tracking,
             ]);
             if ($line instanceof B5cB2bOrder) {
                 $line->tracking_reference = $tracking;
+                $line->status = 'shipped';
                 $line->save();
             }
         } catch (\Throwable $e) {
@@ -106,23 +117,9 @@ class B5cB2bTrackingSyncService
 
         $updated = 0;
         foreach ($rows as $row) {
-            $tracking = $this->trackingFromShopify((string) $row->shopify_order_id);
-            if ($tracking === '') {
-                continue;
-            }
-            try {
-                $this->api->updateOrder((int) $row->store_order_id, [
-                    'status' => 'processing',
-                    'tracking_reference' => $tracking,
-                ]);
-                $row->tracking_reference = $tracking;
-                $row->save();
+            $result = $this->pushTrackingForOrder($row);
+            if (! empty($result['success']) && empty($result['skipped'])) {
                 $updated++;
-            } catch (\Throwable $e) {
-                Log::warning('B5C B2B tracking push failed', [
-                    'order' => $row->store_order_id,
-                    'error' => $e->getMessage(),
-                ]);
             }
         }
 
@@ -133,29 +130,50 @@ class B5cB2bTrackingSyncService
         ];
     }
 
-    private function trackingFromShopify(string $shopifyOrderId): string
+    private function trackingFromShopify(string $shopifyOrderId, string $storeOrderId = '', string $sku = ''): string
     {
-        $shopify = app(\App\Services\ShopifyApiService::class);
-        if (! method_exists($shopify, 'getOrder') && ! method_exists($shopify, 'fetchOrder')) {
-            return '';
+        $hit = app(ShopifyFulfillmentTrackingMatcher::class)->match(
+            $this->shopifyConfig(),
+            $shopifyOrderId,
+            $storeOrderId,
+            $sku,
+            [],
+            'B5cB2bTrackingSyncService'
+        );
+
+        return trim((string) ($hit['tracking'] ?? ''));
+    }
+
+    protected function skuFromLine(object $line): string
+    {
+        $payload = is_array($line->payload ?? null) ? $line->payload : [];
+        foreach (['sku', 'seller_sku', 'variant_sku'] as $key) {
+            $sku = trim((string) ($payload[$key] ?? ''));
+            if ($sku !== '') {
+                return $sku;
+            }
         }
-        try {
-            $order = method_exists($shopify, 'getOrder')
-                ? $shopify->getOrder($shopifyOrderId)
-                : $shopify->fetchOrder($shopifyOrderId);
-        } catch (\Throwable) {
-            return '';
-        }
-        if (! is_array($order)) {
-            return '';
-        }
-        foreach ($order['fulfillments'] ?? [] as $fulfillment) {
-            $num = trim((string) ($fulfillment['tracking_number'] ?? ''));
-            if ($num !== '') {
-                return $num;
+        foreach (is_array($payload['items'] ?? null) ? $payload['items'] : [] as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $sku = trim((string) ($item['sku'] ?? $item['seller_sku'] ?? ''));
+            if ($sku !== '') {
+                return $sku;
             }
         }
 
         return '';
+    }
+
+    /**
+     * @return array{store_url: string, token: string, store_key?: string}
+     */
+    protected function shopifyConfig(): array
+    {
+        $settings = MarketplaceSyncSettings::getFor('b5cb2b');
+        $storeKey = (string) ($settings['order']['shopify_store'] ?? 'main');
+
+        return app(ShopifyStoreSelector::class)->getConfigForStore($storeKey);
     }
 }

@@ -5,6 +5,7 @@ namespace App\Services\MarketplaceManager;
 use App\Models\AlibabaOrderMetric;
 use App\Models\AliexpressOrderMetric;
 use App\Models\AmazonOrder;
+use App\Models\B5cB2bOrder;
 use App\Models\BestBuyOrderMetric;
 use App\Models\DobaDailyData;
 use App\Models\Ebay1OrderMetric;
@@ -56,6 +57,8 @@ class VeeqoShopifyFulfillmentService
 
     /** @var array<string, int> */
     protected array $skipReasons = [];
+
+    protected int $fulfillNest = 0;
 
     public function __construct(
         protected VeeqoApiService $veeqo,
@@ -122,6 +125,27 @@ class VeeqoShopifyFulfillmentService
      */
     public function fulfillMarketplaceOrder(string $marketplace, int $orderId): array
     {
+        if ($this->fulfillNest > 0) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'action' => 'nested',
+                'message' => 'Shopify label copy already in progress.',
+            ];
+        }
+        $this->fulfillNest++;
+        try {
+            return $this->fulfillMarketplaceOrderInner($marketplace, $orderId);
+        } finally {
+            $this->fulfillNest--;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function fulfillMarketplaceOrderInner(string $marketplace, int $orderId): array
+    {
         $ctx = $this->contextForMarketplaceOrder($marketplace, $orderId);
         if ($ctx === null) {
             return [
@@ -164,7 +188,7 @@ class VeeqoShopifyFulfillmentService
         ];
         $ok = null;
         foreach ($skus as $sku) {
-            $attached = false;
+            $pushed = [];
             $bundle = $this->fulfillShopifyFromLabelsAll(
                 (string) $ctx['shopify_order_id'],
                 (array) $ctx['shopify_config'],
@@ -177,8 +201,8 @@ class VeeqoShopifyFulfillmentService
             foreach ($bundle['results'] as $result) {
                 $last = $result;
                 $action = (string) ($result['action'] ?? '');
-                $tn = trim((string) ($result['tracking'] ?? ''));
-                if ($tn !== '' && ! $attached && in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
+                $tn = strtoupper(trim((string) ($result['tracking'] ?? '')));
+                if ($tn !== '' && in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true) && ! isset($pushed[$tn])) {
                     $this->persistTrackingOntoMarketplaceOrder(
                         $marketplace,
                         $orderId,
@@ -187,7 +211,7 @@ class VeeqoShopifyFulfillmentService
                         (string) ($result['carrier'] ?? '')
                     );
                     $this->pushChannelTrackingAfterShopify($marketplace, $orderId, $result);
-                    $attached = true;
+                    $pushed[$tn] = true;
                 }
                 if (! empty($result['success']) || $action === 'shopify_fulfilled') {
                     $ok = $result;
@@ -279,10 +303,12 @@ class VeeqoShopifyFulfillmentService
 
         $strict = $this->isStrictTrackingMarketplace($marketplace);
         $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
-        $marketplaceOrderIds = $matcher->uniqueIds(
+        $marketplaceOrderIds = $matcher->fullOrderIdsFirst(
             $marketplaceOrderIds !== [] ? $marketplaceOrderIds : $refs
         );
-        $marketplaceOrderIds = $this->expandMarketplaceOrderIdVariants($marketplaceOrderIds);
+        $marketplaceOrderIds = $matcher->fullOrderIdsFirst(
+            $this->expandMarketplaceOrderIdVariants($marketplaceOrderIds)
+        );
         $marketplace = strtolower(trim($marketplace));
         if ($marketplace !== '') {
             $marketplaceOrderIds = array_values(array_filter(
@@ -768,7 +794,9 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        return $out;
+        usort($out, static fn ($a, $b) => strlen((string) $b) <=> strlen((string) $a));
+
+        return array_values($out);
     }
 
     /**
@@ -1324,12 +1352,13 @@ class VeeqoShopifyFulfillmentService
             'purchasingpower' => [PurchasingPowerSale::class, 'date_created'],
             'doba' => [DobaDailyData::class, 'order_time'],
             'pls' => [PlsSale::class, 'order_date'],
+            'b5cb2b' => [B5cB2bOrder::class, 'ordered_at'],
         ];
     }
 
     protected function firstTrackingColumn(string $table): ?string
     {
-        foreach (['tracking_number', 'tracking', 'tracking_no', 'shipment_tracking'] as $col) {
+        foreach (['tracking_number', 'tracking_reference', 'tracking', 'tracking_no', 'shipment_tracking'] as $col) {
             if (Schema::hasColumn($table, $col)) {
                 return $col;
             }
@@ -1959,6 +1988,7 @@ class VeeqoShopifyFulfillmentService
             'tiktok' => [TiktokOrder::class, ['order_id']],
             'tiktok2' => [Tiktok2Order::class, ['order_id']],
             'pls' => [PlsSale::class, ['order_name', 'order_number']],
+            'b5cb2b' => [B5cB2bOrder::class, ['store_order_id']],
             default => null,
         };
         if ($simple === null) {
@@ -2184,6 +2214,7 @@ class VeeqoShopifyFulfillmentService
             'tiktok' => [TiktokOrder::class, ['order_id']],
             'tiktok2' => [Tiktok2Order::class, ['order_id']],
             'pls' => [PlsSale::class, ['order_name', 'order_number']],
+            'b5cb2b' => [B5cB2bOrder::class, ['store_order_id']],
             default => null,
         };
 
@@ -2391,9 +2422,7 @@ class VeeqoShopifyFulfillmentService
             if (! is_array($order)) {
                 continue;
             }
-            $queryNorm = strtolower(preg_replace('/\s+/', '', $query) ?? '');
-            $queryIsWantedRef = $queryNorm !== '' && in_array($queryNorm, $normalized, true);
-            if (! $queryIsWantedRef && ! $this->orderLooksLikeRef($order, $normalized)) {
+            if (! $this->orderLooksLikeRef($order, $normalized)) {
                 continue;
             }
             $ship = $this->extractShipment($order, $sku, $excludeTrackings);
@@ -2443,9 +2472,7 @@ class VeeqoShopifyFulfillmentService
             if (! is_array($row)) {
                 continue;
             }
-            $queryNorm = strtolower(preg_replace('/\s+/', '', $query) ?? '');
-            $queryIsWantedRef = $queryNorm !== '' && in_array($queryNorm, $normalized, true);
-            if (! $queryIsWantedRef && ! $this->orderLooksLikeRef($row, $normalized)) {
+            if (! $this->orderLooksLikeRef($row, $normalized)) {
                 continue;
             }
             $ship = $this->extractShipment($row, $sku, $excludeTrackings);
@@ -4326,6 +4353,7 @@ class VeeqoShopifyFulfillmentService
             'purchasingpower' => [PurchasingPowerSale::class, 'date_created'],
             'doba' => [DobaDailyData::class, 'order_time'],
             'pls' => [PlsSale::class, 'order_date'],
+            'b5cb2b' => [B5cB2bOrder::class, 'ordered_at'],
         ];
         if (! isset($map[$marketplace])) {
             return [];
@@ -4553,6 +4581,7 @@ class VeeqoShopifyFulfillmentService
                 'doba' => DobaDailyData::class,
                 'tiktok' => TiktokOrder::class,
                 'tiktok2' => Tiktok2Order::class,
+                'b5cb2b' => B5cB2bOrder::class,
                 default => null,
             };
             if ($class === null) {
@@ -4571,6 +4600,8 @@ class VeeqoShopifyFulfillmentService
                 } elseif ($carrier !== '' && Schema::hasColumn($model->getTable(), 'shipping_company')) {
                     $model->shipping_company = $carrier;
                 }
+            } elseif (Schema::hasColumn($model->getTable(), 'tracking_reference')) {
+                $model->tracking_reference = $tn;
             }
             foreach (['raw_payload', 'raw_json', 'raw_data'] as $field) {
                 if (! isset($model->{$field})) {

@@ -31,7 +31,7 @@ class NeweggTrackingSyncService
      *   ship_carrier?: string|null
      * }
      */
-    public function pushTrackingForOrder(NeweggOrderMetric $line, bool $tryVeeqoCopy = false): array
+    public function pushTrackingForOrder(NeweggOrderMetric $line, bool $tryVeeqoCopy = true): array
     {
         if (! $this->neweggApi->isConfigured()) {
             return ['success' => false, 'message' => 'Newegg API credentials missing.'];

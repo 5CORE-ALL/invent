@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Log;
 
 class SyncB5cB2bTrackingJob implements ShouldQueue, ShouldBeUnique
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, FulfillsShopifyBeforeChannelTracking;
 
     public int $tries = 3;
 
@@ -44,7 +44,7 @@ class SyncB5cB2bTrackingJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        $result = $sync->syncFromShopify($this->limit);
-        Log::info('SyncB5cB2bTrackingJob: done', $result);
+        $this->fulfillShopifyCopiesFirst('b5cb2b', $this->limit);
+        $this->runTrackingSafely(fn () => $sync->syncFromShopify($this->limit));
     }
 }

@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\Log;
  */
 class TemuTrackingSyncService
 {
+    use CopiesPurchaseLabelToShopify;
+
     public function __construct(
         protected TemuApiService $temuApi,
     ) {}
@@ -68,6 +70,17 @@ class TemuTrackingSyncService
             (string) ($line->display_sku ?? $line->sku_id ?? ''),
             [trim((string) ($line->order_sn ?? ''))]
         );
+        if (empty($shopifyFulfillment['tracking'])) {
+            $copied = $this->copyPurchasedLabelToShopify('temu', (int) ($line->id ?? 0));
+            if (! empty($copied['success']) || trim((string) ($copied['tracking'] ?? '')) !== '') {
+                $shopifyFulfillment = $this->fetchShopifyTracking(
+                    $shopifyOrderId,
+                    $parentOrderSn,
+                    (string) ($line->display_sku ?? $line->sku_id ?? ''),
+                    [trim((string) ($line->order_sn ?? ''))]
+                );
+            }
+        }
         if (empty($shopifyFulfillment['tracking'])) {
             return [
                 'success' => false,
