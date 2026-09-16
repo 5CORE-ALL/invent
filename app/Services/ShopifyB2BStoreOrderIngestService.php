@@ -30,8 +30,12 @@ class ShopifyB2BStoreOrderIngestService
         $orderId = (string) $order->store_order_id;
         $orderDate = $order->ordered_at
             ?? $this->parseDate($payload['created_at'] ?? $payload['ordered_at'] ?? null);
-        $financial = $this->financialStatus($order->status ?? ($payload['status'] ?? null));
         $tracking = trim((string) ($order->tracking_reference ?? $payload['tracking_reference'] ?? ''));
+        $financial = $this->financialStatus(
+            $order->status ?? ($payload['status'] ?? null),
+            $payload['payment_method'] ?? $payload['payment_status'] ?? null,
+            $payload['status_label'] ?? null
+        );
         $fulfillment = $this->fulfillmentStatus($order->status ?? ($payload['status'] ?? null), $tracking);
         $shipping = is_array($payload['shipping_address'] ?? null)
             ? $payload['shipping_address']
@@ -175,18 +179,41 @@ class ShopifyB2BStoreOrderIngestService
         return [];
     }
 
-    protected function financialStatus(?string $status): string
+    protected function financialStatus(?string $status, mixed $payment = null, ?string $label = null): string
     {
         $status = strtolower(trim((string) $status));
+        $label = strtolower(trim((string) $label));
+        $payment = strtolower(trim(is_array($payment)
+            ? (string) ($payment['method'] ?? $payment['status'] ?? $payment['name'] ?? '')
+            : (string) $payment));
 
-        return match (true) {
-            in_array($status, ['refunded', 'refund', 'returned'], true) => 'refunded',
-            in_array($status, ['canceled', 'cancelled'], true) => 'cancelled',
-            in_array($status, ['completed', 'complete', 'paid', 'delivered', 'shipped', 'fulfilled'], true) => 'paid',
-            in_array($status, ['pending', 'processing', 'on_hold', 'hold', 'unpaid', 'new'], true) => 'pending',
-            $status !== '' => $status,
-            default => 'paid',
-        };
+        if (in_array($status, ['refunded', 'refund', 'returned'], true) || str_contains($label, 'refund')) {
+            return 'refunded';
+        }
+        if (in_array($status, ['canceled', 'cancelled'], true) || str_contains($label, 'cancel')) {
+            return 'cancelled';
+        }
+        if (in_array($status, ['pending_payment', 'unpaid'], true)
+            || str_contains($label, 'unpaid')
+            || str_contains($payment, 'unpaid')) {
+            return 'pending';
+        }
+        if (in_array($payment, ['cod', 'cash_on_delivery', 'cash', 'bank_transfer', 'check'], true)) {
+            return 'pending';
+        }
+        // Store "pending" often means awaiting merchant processing after checkout.
+        // A real payment method (paypal, stripe, card, …) means the order is paid.
+        if ($payment !== '') {
+            return 'paid';
+        }
+        if (in_array($status, ['completed', 'complete', 'paid', 'delivered', 'shipped', 'fulfilled', 'processing'], true)) {
+            return 'paid';
+        }
+        if (in_array($status, ['pending', 'on_hold', 'hold', 'new'], true)) {
+            return 'pending';
+        }
+
+        return $status !== '' ? $status : 'paid';
     }
 
     protected function fulfillmentStatus(?string $status, string $tracking): ?string
