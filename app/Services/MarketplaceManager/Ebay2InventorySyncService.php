@@ -76,15 +76,7 @@ class Ebay2InventorySyncService
             return ['updated' => 0, 'failed' => 0, 'skipped' => 0, 'message' => 'eBay 2 API credentials missing.'];
         }
 
-        if ($blocked = self::tradingLimitMessage()) {
-            return [
-                'updated' => 0,
-                'failed' => 0,
-                'skipped' => count($skus),
-                'rate_limited' => true,
-                'message' => $blocked,
-            ];
-        }
+        $preferFixedPrice = self::isTradingLimited();
 
         $settings = MarketplaceSyncSettings::getFor('ebay2');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
@@ -190,14 +182,14 @@ class Ebay2InventorySyncService
             ];
         }
 
-        $invResult = $this->pushInventoryRows($inventoryRows, ! $exactShopifyQty);
+        $invResult = $this->pushInventoryRows($inventoryRows, ! $exactShopifyQty, $preferFixedPrice);
         $pushedRows = $invResult['rows'] ?? [];
         $skipped += (int) ($invResult['skipped'] ?? 0);
         if ($pushedRows !== []) {
             $this->updateLocalStock($pushedRows);
             $this->updateLocalPlatformQuantities($pushedRows);
             $this->updateLocalPrices($this->rowsWithPositivePrice($pushedRows));
-            app(Ebay2LiveListingsService::class)->clearCache();
+            app(Ebay2LiveListingsService::class)->applyPushedInventory($pushedRows);
 
             return [
                 'updated' => (int) ($invResult['pushed'] ?? count($pushedRows)),
@@ -281,19 +273,9 @@ class Ebay2InventorySyncService
             ]);
         }
 
-        if ($blocked = self::tradingLimitMessage()) {
-            return $finish([
-                'updated' => 0,
-                'failed' => 0,
-                'skipped' => 0,
-                'price_updated' => 0,
-                'rate_limited' => true,
-                'message' => $blocked,
-            ]);
-        }
-
         // Inv SKU Mismatch first. A full catalog crawl burns Trading API 518
-        // before those SKUs get Shopify qty.
+        // before those SKUs get Shopify qty. When ReviseInventoryStatus is
+        // already capped, the mismatch pass still pushes via ReviseFixedPriceItem.
         if (! $dryRun && ($settings['inventory']['inventory_sync'] ?? false)) {
             $priority = app(MarketplaceMismatchInventoryPass::class)->run('ebay2', self::MISMATCH_BATCH);
             $remaining = (int) ($priority['remaining'] ?? 0);
@@ -556,7 +538,7 @@ class Ebay2InventorySyncService
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int, price?: float|null}>  $inventoryRows
      * @return array{success: bool, pushed: int, failed: int, skipped: int, rate_limited: bool, message?: string, rows: array<int, array<string, mixed>>}
      */
-    protected function pushInventoryRows(array $inventoryRows, bool $allowRelist = true): array
+    protected function pushInventoryRows(array $inventoryRows, bool $allowRelist = true, bool $preferFixedPrice = false): array
     {
         $pushed = 0;
         $failed = 0;
@@ -589,8 +571,10 @@ class Ebay2InventorySyncService
                 usleep(350000);
             }
 
-            if (count($chunk) >= 2) {
+            $batchCounted = false;
+            if (! $preferFixedPrice && count($chunk) >= 2) {
                 $attempted += count($chunk);
+                $batchCounted = true;
                 $batch = [];
                 foreach ($chunk as $row) {
                     $batch[] = [
@@ -602,31 +586,28 @@ class Ebay2InventorySyncService
                 }
                 $result = $this->ebay2Api->reviseInventoryStatusMany($batch);
                 $msg = (string) ($result['message'] ?? '');
-                if ($this->isEbayUsageLimit($msg)) {
-                    $rateLimited = true;
+                if (self::looksLikeTradingLimit($msg)) {
+                    $preferFixedPrice = true;
                     $lastMessage = $msg;
-                    $failed += count($chunk);
-                    Log::warning('Ebay2InventorySyncService: eBay usage limit — stopping remaining SKUs', [
+                    Log::warning('Ebay2InventorySyncService: ReviseInventoryStatus 518 — falling back to ReviseFixedPriceItem', [
                         'batch' => count($chunk),
-                        'remaining' => max(0, count($valid) - $attempted),
                     ]);
-                    break;
-                }
-                if (! empty($result['success'])) {
+                } elseif (! empty($result['success'])) {
                     foreach ($chunk as $row) {
                         $pushedRows[] = $row;
                         $pushed++;
                     }
                     continue;
+                } else {
+                    $lastMessage = $msg !== '' ? $msg : 'Batch ReviseInventoryStatus failed.';
                 }
-                $lastMessage = $msg !== '' ? $msg : 'Batch ReviseInventoryStatus failed.';
             }
 
             foreach ($chunk as $index => $row) {
                 if ($rateLimited) {
                     break;
                 }
-                if (count($chunk) < 2) {
+                if (! $batchCounted) {
                     if ($attempted > 0) {
                         usleep(350000);
                     }
@@ -634,7 +615,7 @@ class Ebay2InventorySyncService
                 } elseif ($index > 0) {
                     usleep(350000);
                 }
-                $one = $this->pushOneInventoryRow($row, $allowRelist);
+                $one = $this->pushOneInventoryRow($row, $allowRelist, $preferFixedPrice);
                 $lastMessage = $one['message'] ?? $lastMessage;
                 if (! empty($one['rate_limited'])) {
                     $rateLimited = true;
@@ -677,7 +658,7 @@ class Ebay2InventorySyncService
      * @param  array{product_id: string, sku_code: string, inventory: int, price?: float|null}  $row
      * @return array{ok: bool, rate_limited: bool, skipped?: bool, row?: array, message?: string}
      */
-    protected function pushOneInventoryRow(array $row, bool $allowRelist = true): array
+    protected function pushOneInventoryRow(array $row, bool $allowRelist = true, bool $preferFixedPrice = false): array
     {
         $itemId = trim((string) ($row['product_id'] ?? ''));
         $sku = trim((string) ($row['sku_code'] ?? ''));
@@ -685,34 +666,39 @@ class Ebay2InventorySyncService
         $price = $row['price'] ?? null;
         $price = ($price !== null && (float) $price > 0) ? (float) $price : null;
         $usedQtyOnlyFallback = false;
+        $result = ['success' => false, 'message' => ''];
+        $msg = '';
 
         try {
-            $result = $this->ebay2Api->reviseInventoryStatus($itemId, $qty, $sku, $price);
-            $msg = (string) ($result['message'] ?? '');
-            if ($this->isEbayUsageLimit($msg)) {
-                return ['ok' => false, 'rate_limited' => true, 'message' => $msg];
+            if (! $preferFixedPrice) {
+                $result = $this->ebay2Api->reviseInventoryStatus($itemId, $qty, $sku, $price);
+                $msg = (string) ($result['message'] ?? '');
+                if (self::looksLikeTradingLimit($msg)) {
+                    $preferFixedPrice = true;
+                    $msg = '';
+                }
             }
-            if (empty($result['success']) && self::looksLikeMissingNameValueList($msg)) {
+            if (! $preferFixedPrice && empty($result['success']) && self::looksLikeMissingNameValueList($msg)) {
                 $itemLevel = $this->ebay2Api->reviseInventoryStatus($itemId, $qty, null, null);
                 $itemMsg = (string) ($itemLevel['message'] ?? '');
-                if ($this->isEbayUsageLimit($itemMsg)) {
-                    return ['ok' => false, 'rate_limited' => true, 'message' => $itemMsg];
-                }
-                if (! empty($itemLevel['success'])) {
+                if (self::looksLikeTradingLimit($itemMsg)) {
+                    $preferFixedPrice = true;
+                } elseif (! empty($itemLevel['success'])) {
                     $result = $itemLevel;
                     $msg = $itemMsg;
                     $row['price'] = null;
                 }
             }
-            if (empty($result['success']) && self::looksLikeSkuMismatch($msg)) {
+            if (! $preferFixedPrice && empty($result['success']) && self::looksLikeSkuMismatch($msg)) {
                 foreach (self::skuAliasesForPush($sku) as $alias) {
                     if (strcasecmp($alias, $sku) === 0) {
                         continue;
                     }
                     $aliasResult = $this->ebay2Api->reviseInventoryStatus($itemId, $qty, $alias, $price);
                     $aliasMsg = (string) ($aliasResult['message'] ?? '');
-                    if ($this->isEbayUsageLimit($aliasMsg)) {
-                        return ['ok' => false, 'rate_limited' => true, 'message' => $aliasMsg];
+                    if (self::looksLikeTradingLimit($aliasMsg)) {
+                        $preferFixedPrice = true;
+                        break;
                     }
                     if (! empty($aliasResult['success'])) {
                         $result = $aliasResult;
@@ -723,14 +709,13 @@ class Ebay2InventorySyncService
                     }
                 }
             }
-            if (empty($result['success']) && (! empty($result['ended']) || $this->ebay2Api->listingLooksEnded($msg))) {
+            if (! $preferFixedPrice && empty($result['success']) && (! empty($result['ended']) || $this->ebay2Api->listingLooksEnded($msg))) {
                 if ($allowRelist) {
                     $relist = $this->ebay2Api->relistFixedPriceItem($itemId, $sku, $qty);
                     $relistMsg = (string) ($relist['message'] ?? '');
-                    if ($this->isEbayUsageLimit($relistMsg)) {
-                        return ['ok' => false, 'rate_limited' => true, 'message' => $relistMsg];
-                    }
-                    if (! empty($relist['success'])) {
+                    if (self::looksLikeTradingLimit($relistMsg)) {
+                        $preferFixedPrice = true;
+                    } elseif (! empty($relist['success'])) {
                         $newId = trim((string) ($relist['item_id'] ?? $itemId));
                         if ($newId !== '' && $newId !== $itemId) {
                             Ebay2Metric::query()->where('item_id', $itemId)->update(['item_id' => $newId]);
@@ -739,8 +724,8 @@ class Ebay2InventorySyncService
                         }
                         $result = $this->ebay2Api->reviseInventoryStatus($itemId, $qty, $sku, $price);
                         $msg = (string) ($result['message'] ?? '');
-                        if ($this->isEbayUsageLimit($msg)) {
-                            return ['ok' => false, 'rate_limited' => true, 'message' => $msg];
+                        if (self::looksLikeTradingLimit($msg)) {
+                            $preferFixedPrice = true;
                         }
                     } else {
                         Log::warning('Ebay2InventorySyncService: relist failed', [
@@ -757,13 +742,21 @@ class Ebay2InventorySyncService
                     }
                 }
             }
-            if (empty($result['success']) || (isset($result['quantity_confirmed']) && $result['quantity_confirmed'] === false)) {
-                if ($this->isEbayUsageLimit((string) ($result['message'] ?? ''))) {
-                    return ['ok' => false, 'rate_limited' => true, 'message' => (string) ($result['message'] ?? '')];
-                }
+            if ($preferFixedPrice || empty($result['success']) || (isset($result['quantity_confirmed']) && $result['quantity_confirmed'] === false)) {
                 $fallback = $this->ebay2Api->reviseVariationQuantity($itemId, $sku, $qty);
                 $fallbackMsg = (string) ($fallback['message'] ?? '');
-                if ($this->isEbayUsageLimit($fallbackMsg)) {
+                if (empty($fallback['success'])) {
+                    $itemQty = $this->ebay2Api->reviseItemQuantity($itemId, $qty);
+                    if (! empty($itemQty['success'])) {
+                        $fallback = $itemQty;
+                        $fallbackMsg = (string) ($itemQty['message'] ?? '');
+                    } else {
+                        $fallbackMsg = trim($fallbackMsg.' '.(string) ($itemQty['message'] ?? ''));
+                    }
+                }
+                if (self::looksLikeTradingLimit($fallbackMsg)) {
+                    self::markTradingLimited();
+
                     return ['ok' => false, 'rate_limited' => true, 'message' => $fallbackMsg];
                 }
                 if (! empty($fallback['success'])) {
@@ -797,7 +790,9 @@ class Ebay2InventorySyncService
             }
 
             $lastMessage = (string) ($result['message'] ?? 'ReviseInventoryStatus failed');
-            if ($this->isEbayUsageLimit($lastMessage)) {
+            if (self::looksLikeTradingLimit($lastMessage)) {
+                self::markTradingLimited();
+
                 return ['ok' => false, 'rate_limited' => true, 'message' => $lastMessage];
             }
             if (! $allowRelist && $this->ebay2Api->listingLooksEnded($lastMessage)) {
@@ -822,10 +817,14 @@ class Ebay2InventorySyncService
                 'sku' => $sku,
                 'error' => $e->getMessage(),
             ]);
+            $limited = self::looksLikeTradingLimit($e->getMessage());
+            if ($limited) {
+                self::markTradingLimited();
+            }
 
             return [
                 'ok' => false,
-                'rate_limited' => $this->isEbayUsageLimit($e->getMessage()),
+                'rate_limited' => $limited,
                 'message' => $e->getMessage(),
             ];
         }
@@ -847,11 +846,8 @@ class Ebay2InventorySyncService
             || str_contains($m, 'getapiaccessrules')
             || str_contains($m, 'ebay #518')
             || str_contains($m, 'error #518')
-            || str_contains($m, 'error 518')
-            || str_contains($m, 'errorcode 518')
-            || str_contains($m, 'errorcode>518')
-            || str_contains($m, 'errorcode":518')
-            || str_contains($m, '#518')) {
+            || (bool) preg_match('/error\s+518\b/', $m)
+            || (bool) preg_match('/errorcode["\s:>]*518\b/', $m)) {
             return true;
         }
 
@@ -926,12 +922,7 @@ class Ebay2InventorySyncService
 
     protected function isEbayUsageLimit(?string $message): bool
     {
-        $hit = self::looksLikeTradingLimit($message);
-        if ($hit) {
-            self::markTradingLimited();
-        }
-
-        return $hit;
+        return self::looksLikeTradingLimit($message);
     }
 
     public static function isTradingLimited(): bool
@@ -1131,9 +1122,7 @@ class Ebay2InventorySyncService
     protected function fetchLiveShopifyQuantities(array $skus, ?array $shopifyConfig = null): array
     {
         try {
-            if ($shopifyConfig) {
-                return $this->shopifyApi->getInventoryQuantitiesBySku($skus, $shopifyConfig);
-            }
+            unset($shopifyConfig);
 
             return $this->shopifyApi->getInventoryQuantitiesBySku($skus);
         } catch (\Throwable $e) {

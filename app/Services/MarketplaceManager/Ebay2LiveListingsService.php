@@ -90,6 +90,62 @@ final class Ebay2LiveListingsService
     }
 
     /**
+     * Write pushed qty onto the warm listings cache so mismatch tabs
+     * drop those SKUs immediately (do not wait for the next Refresh live).
+     *
+     * @param  array<int, array{product_id?: string, sku_code?: string, inventory?: int}>  $rows
+     */
+    public function applyPushedInventory(array $rows): void
+    {
+        $byId = [];
+        $bySku = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $qty = (int) ($row['inventory'] ?? 0);
+            $itemId = trim((string) ($row['product_id'] ?? ''));
+            $sku = strtoupper(trim((string) ($row['sku_code'] ?? '')));
+            if ($itemId !== '') {
+                $byId[$itemId] = $qty;
+            }
+            if ($sku !== '') {
+                $bySku[$sku] = $qty;
+            }
+        }
+        if ($byId === [] && $bySku === []) {
+            return;
+        }
+
+        try {
+            $cached = Cache::get(self::CACHE_KEY);
+            if (! is_array($cached) || $cached === []) {
+                return;
+            }
+            $changed = false;
+            foreach ($cached as $i => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $itemId = trim((string) ($row['product_id'] ?? ''));
+                $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
+                if ($itemId !== '' && array_key_exists($itemId, $byId)) {
+                    $cached[$i]['inventory'] = $byId[$itemId];
+                    $changed = true;
+                } elseif ($sku !== '' && array_key_exists($sku, $bySku)) {
+                    $cached[$i]['inventory'] = $bySku[$sku];
+                    $changed = true;
+                }
+            }
+            if ($changed) {
+                Cache::put(self::CACHE_KEY, $cached, self::CACHE_TTL_SECONDS);
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
      * @param  array<int, string>  $productIds  eBay item_ids and/or seller SKUs
      * @return array<string, array{product_id: string, sku: string, state: string, inventory: int|null, title: ?string, price: ?float}>
      */

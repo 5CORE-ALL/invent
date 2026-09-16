@@ -884,21 +884,9 @@ class Ebay2SyncController extends Controller
         @set_time_limit(300);
 
         try {
-            if ($blocked = Ebay2InventorySyncService::tradingLimitMessage()) {
-                return response()->json([
-                    'success' => true,
-                    'done' => true,
-                    'rate_limited' => true,
-                    'updated' => 0,
-                    'failed' => 0,
-                    'skipped' => 0,
-                    'message' => $blocked,
-                ]);
-            }
-
             $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
             $offset = max(0, (int) $request->input('offset', 0));
-            $limit = 1;
+            $limit = max(1, min(4, (int) $request->input('limit', 4)));
             $cacheKey = $this->ebay2MismatchSyncCacheKey($scope);
 
             $hasReadyFlag = $request->exists('ready');
