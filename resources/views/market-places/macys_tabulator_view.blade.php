@@ -795,6 +795,7 @@
                 SPRICE_STATUS: 'pushed',
                 push_status: 'pushed',
                 SPRICE_PUSHED_VALUE: live,
+                SPRICE: live,
             };
             patch['MC Price'] = live;
             patch.price = live;
@@ -819,6 +820,7 @@
                 };
                 if (ok && live > 0) {
                     patch.SPRICE_PUSHED_VALUE = live;
+                    patch.SPRICE = live;
                     patch['MC Price'] = live;
                     patch.price = live;
                     patch.is_missing_macy = false;
@@ -827,9 +829,6 @@
                 try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
             });
             if (typeof updateSummary === 'function') updateSummary();
-            if (okSkus.length && typeof chPushSpricePullAfterPush === 'function') {
-                chPushSpricePullAfterPush(okSkus);
-            }
         }
 
         function macysPushPriceForRow(row) {

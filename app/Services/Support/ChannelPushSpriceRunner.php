@@ -194,8 +194,6 @@ class ChannelPushSpriceRunner
                         "Completed: {$state['ok_count']} ok, {$state['fail_count']} failed.",
                         ((int) ($state['fail_count'] ?? 0)) === 0
                     );
-                    $this->pullMacysListedAfterBatch($state, $logger);
-
                     return 0;
                 }
 
@@ -358,51 +356,6 @@ class ChannelPushSpriceRunner
                 $ok
             );
             usleep(in_array($this->channel, ['macys', 'macy'], true) ? 50000 : 250000);
-        }
-    }
-
-    /**
-     * After Macys auto-push, refresh listed MC Price from MCM once — do not wait per SKU.
-     */
-    private function pullMacysListedAfterBatch(array $state, \Psr\Log\LoggerInterface $logger): void
-    {
-        if (! in_array($this->channel, ['macys', 'macy'], true)) {
-            return;
-        }
-        $skus = [];
-        foreach ($state['tasks'] ?? [] as $task) {
-            if (! is_array($task) || ($task['status'] ?? '') !== 'ok') {
-                continue;
-            }
-            $sku = trim((string) ($task['sku'] ?? ''));
-            if ($sku !== '') {
-                $skus[] = $sku;
-            }
-        }
-        $skus = array_values(array_unique($skus));
-        if ($skus === []) {
-            return;
-        }
-        $expected = [];
-        foreach ($state['tasks'] ?? [] as $task) {
-            if (! is_array($task) || ($task['status'] ?? '') !== 'ok') {
-                continue;
-            }
-            $sku = strtoupper(trim((string) ($task['sku'] ?? '')));
-            $price = (float) ($task['price'] ?? 0);
-            if ($sku !== '' && $price > 0) {
-                $expected[$sku] = round($price, 2);
-            }
-        }
-        $logger->info('Macy listed-price pull after auto-push', ['count' => count($skus)]);
-        try {
-            foreach (array_chunk($skus, 100) as $chunk) {
-                app(\App\Services\ChannelPushedPricePullService::class)->pullSkus($this->channel, $chunk, $expected);
-            }
-        } catch (\Throwable $e) {
-            $logger->warning('Macy listed-price pull after auto-push failed', [
-                'error' => $e->getMessage(),
-            ]);
         }
     }
 

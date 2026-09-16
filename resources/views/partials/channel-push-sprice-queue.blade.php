@@ -80,7 +80,7 @@
                 tiktok: 1, tiktok2: 1, topdawg: 1, purchasing_power: 1,
                 faire: 1, pls: 1, newegg: 1, wayfair: 1, aliexpress: 1, shein: 1,
             })[CH_PUSH_SPRICE_CHANNEL] === 1;
-            const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2|doba|doba_withoutship|macys|macy)$/.test(CH_PUSH_SPRICE_CHANNEL);
+            const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2|doba|doba_withoutship)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_TIKTOK = /^(tiktok|tiktok2)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_MACYS = /^(macys|macy)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_PULL_DELAY_MS = CH_PUSH_SPRICE_IS_TIKTOK ? 1500 : 0;
@@ -401,6 +401,12 @@
                             if (result.kind === 'price') priceChanged++;
                             if (CH_PUSH_SPRICE_CHANNEL === 'aliexpress' && typeof window.aeApplyPushPatchToSku === 'function') {
                                 window.aeApplyPushPatchToSku(t.sku, result.patch);
+                            }
+                            if (CH_PUSH_SPRICE_IS_MACYS && result.kind === 'price'
+                                && typeof global.macysApplyLivePriceToRow === 'function') {
+                                const livePrice = Number((result.patch && (result.patch['MC Price'] || result.patch.price))
+                                    || t.ebay_price || t.price) || 0;
+                                if (livePrice > 0) global.macysApplyLivePriceToRow(row, livePrice);
                             }
                         }
                     }
@@ -1046,6 +1052,14 @@
                 if (d.is_missing_macy === true) return true;
                 return false;
             }
+            function chPushSpriceAlreadyPushedToSaved(d, saved) {
+                const status = String(d && (d.SPRICE_STATUS || d.push_status) || '').toLowerCase();
+                if (status !== 'pushed') return false;
+                const pushed = chPushSpriceRound2(
+                    d && (d.SPRICE_PUSHED_VALUE != null ? d.SPRICE_PUSHED_VALUE : d.CHANNEL_PUSHED_PRICE)
+                );
+                return pushed > 0 && chPushSpriceNearlyEqual(pushed, saved);
+            }
             function chPushSpriceLiveFromRow(d) {
                 if (!d) return 0;
                 const raw = d[CH_PUSH_SPRICE_PRICE_FIELD] != null && d[CH_PUSH_SPRICE_PRICE_FIELD] !== ''
@@ -1121,6 +1135,7 @@
                     let saved = chPushSpriceSavedFromRow(d);
                     saved = chPushSpriceCapMacysToAmz(d, saved);
                     if (!(saved > 0)) return;
+                    if (chPushSpriceAlreadyPushedToSaved(d, saved)) return;
                     const live = chPushSpriceLiveFromRow(d);
                     if (!(live > 0) || chPushSpriceNearlyEqual(saved, live)) return;
                     jobs.push({ sku: sku, price: saved, row: row });

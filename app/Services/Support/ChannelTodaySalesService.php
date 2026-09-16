@@ -407,15 +407,11 @@ class ChannelTodaySalesService
 
     private function tiktok2(Carbon $start, Carbon $end): ?float
     {
-        if (! Schema::hasTable('tiktok_sales_two')) {
+        if (! Tiktok2Order::tableReady()) {
             return null;
         }
 
-        return round((float) DB::table('tiktok_sales_two')
-            ->whereDate('order_date', '>=', $start->toDateString())
-            ->whereDate('order_date', '<=', $end->toDateString())
-            ->selectRaw('COALESCE(SUM(unit_price * GREATEST(COALESCE(quantity, 1), 1)), 0) as revenue')
-            ->value('revenue'), 2);
+        return round(Tiktok2Order::salesAmountBetween($start, $end), 2);
     }
 
     private function wayfair(string $ymd): ?float

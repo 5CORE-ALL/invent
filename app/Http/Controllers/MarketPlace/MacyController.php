@@ -119,15 +119,39 @@ class MacyController extends Controller
         // NBSP / unicode spaces in PM vs macy_products break plain whereIn + strtoupper match (SKU looks identical in UI)
         $macysByNormSku = $this->buildMacyProductLookupByNormalizedSku($skus);
 
-        // NR/REQ + SPRICE data from MacyDataView
-        $dataViews = MacyDataView::whereIn("sku", $skus)->pluck("value", "sku");
+        // NR/REQ + SPRICE data from MacyDataView (normalized — PM vs saved sku can differ by NBSP)
+        $dataViewsByNorm = [];
+        $dataViewsByCompact = [];
+        foreach (MacyDataView::query()->whereNotNull('sku')->get(['sku', 'value']) as $dv) {
+            $val = is_array($dv->value)
+                ? $dv->value
+                : (json_decode((string) ($dv->value ?? ''), true) ?: []);
+            if (! is_array($val)) {
+                $val = [];
+            }
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $dv->sku);
+            $c = ShopifySku::compactSkuForLookup((string) $dv->sku);
+            if ($n !== '') {
+                $dataViewsByNorm[$n] = self::preferMacyDataViewValue($dataViewsByNorm[$n] ?? null, $val);
+            }
+            if ($c !== '') {
+                $dataViewsByCompact[$c] = self::preferMacyDataViewValue($dataViewsByCompact[$c] ?? null, $val);
+            }
+        }
 
-        // Fetch Amazon pricing data (key by uppercase for case-insensitive lookup)
-        $amazonData = AmazonDatasheet::whereIn('sku', $skus)
-            ->get()
-            ->keyBy(function($item) {
-                return strtoupper($item->sku);
-            });
+        // Amazon A Price — PM SKUs often have NBSP; amazon_datasheets uses plain spaces.
+        $amazonByNorm = [];
+        $amazonByCompact = [];
+        foreach (AmazonDatasheet::whereIn('sku', $skus)->get(['sku', 'price']) as $item) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $item->sku);
+            $c = ShopifySku::compactSkuForLookup((string) $item->sku);
+            if ($n !== '' && ! isset($amazonByNorm[$n])) {
+                $amazonByNorm[$n] = $item;
+            }
+            if ($c !== '' && ! isset($amazonByCompact[$c])) {
+                $amazonByCompact[$c] = $item;
+            }
+        }
 
         // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
         $amazonStandardPrices = [];
@@ -174,11 +198,12 @@ class MacyController extends Controller
             $parent = $pm->parent;
 
             $shopify = $shopifyData->get($pm->sku);
-            $pmSkuU = strtoupper((string) $pm->sku);
             $pmSkuNorm = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
+            $pmCompact = ShopifySku::compactSkuForLookup((string) $pm->sku);
             $macysMetric = $macysByNormSku[$pmSkuNorm] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
-            $amazon = $amazonData[$pmSkuU] ?? null;
+            $amazon = $amazonByNorm[$pmSkuNorm]
+                ?? (($pmCompact !== '' && isset($amazonByCompact[$pmCompact])) ? $amazonByCompact[$pmCompact] : null);
 
             $row = [];
             $row["Parent"] = $parent;
@@ -293,18 +318,15 @@ class MacyController extends Controller
             $row['NR'] = "";
             $row['Listed'] = null;
             $row['Live'] = null;
-            
-            if (isset($dataViews[$pm->sku])) {
-                $raw = $dataViews[$pm->sku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
-                }
-                if (is_array($raw)) {
-                    $row['NR'] = $raw['NR'] ?? null;
-                    $row['NRL'] = $raw['NRL'] ?? null;
-                    $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
-                    $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
-                }
+
+            $raw = $dataViewsByNorm[$pmSkuNorm]
+                ?? (($pmCompact !== '' && isset($dataViewsByCompact[$pmCompact])) ? $dataViewsByCompact[$pmCompact] : null);
+            $hasDataView = is_array($raw);
+            if ($hasDataView) {
+                $row['NR'] = $raw['NR'] ?? null;
+                $row['NRL'] = $raw['NRL'] ?? null;
+                $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
+                $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
             }
 
             // SPRICE calculation
@@ -314,20 +336,13 @@ class MacyController extends Controller
             $savedSprice = null;
             $savedStatus = null;
             $hasSavedSprice = false;
-            $raw = null;
-            if (isset($dataViews[$pm->sku])) {
-                $raw = $dataViews[$pm->sku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
+            if ($hasDataView) {
+                if (isset($raw['SPRICE'])) {
+                    $savedSprice = floatval($raw['SPRICE']);
+                    $hasSavedSprice = true;
                 }
-                if (is_array($raw)) {
-                    if (isset($raw['SPRICE'])) {
-                        $savedSprice = floatval($raw['SPRICE']);
-                        $hasSavedSprice = true;
-                    }
-                    if (isset($raw['SPRICE_STATUS'])) {
-                        $savedStatus = $raw['SPRICE_STATUS'];
-                    }
+                if (isset($raw['SPRICE_STATUS'])) {
+                    $savedStatus = $raw['SPRICE_STATUS'];
                 }
             }
 
@@ -338,18 +353,43 @@ class MacyController extends Controller
                 $row['SPRICE_STATUS'] = $savedStatus ?: 'saved';
             } else {
                 // If record exists but no SPRICE, it was cleared - show 0
-                $row['SPRICE'] = isset($dataViews[$pm->sku]) ? 0 : $calculatedSprice;
+                $row['SPRICE'] = $hasDataView ? 0 : $calculatedSprice;
                 $row['has_custom_sprice'] = false;
                 $row['SPRICE_STATUS'] = $savedStatus;
             }
             $row['push_status'] = $row['SPRICE_STATUS'];
-            $row['SPRICE_PUSHED_VALUE'] = (is_array($raw ?? null) && isset($raw['SPRICE_PUSHED_VALUE']))
+            $row['SPRICE_PUSHED_VALUE'] = ($hasDataView && isset($raw['SPRICE_PUSHED_VALUE']))
                 ? floatval($raw['SPRICE_PUSHED_VALUE'])
                 : null;
-            $row['SPRICE_STATUS_UPDATED_AT'] = is_array($raw ?? null)
+            $row['SPRICE_STATUS_UPDATED_AT'] = $hasDataView
                 ? ($raw['SPRICE_STATUS_UPDATED_AT'] ?? $raw['SPRICE_PUSHED_AT'] ?? null)
                 : null;
-            $row['SPRICE_PUSHED_BY'] = is_array($raw ?? null) ? ($raw['SPRICE_PUSHED_BY'] ?? null) : null;
+            $row['SPRICE_PUSHED_BY'] = $hasDataView ? ($raw['SPRICE_PUSHED_BY'] ?? null) : null;
+
+            $pushedVal = (float) ($row['SPRICE_PUSHED_VALUE'] ?? 0);
+            $savedForPush = (float) ($row['SPRICE'] ?? 0);
+            if (($row['SPRICE_STATUS'] ?? '') === 'pushed'
+                && $pushedVal > 0
+                && $savedForPush > 0
+                && abs($pushedVal - $savedForPush) < 0.005
+                && ! ($row['is_missing_macy'] ?? false)
+                && (float) ($row['MC Price'] ?? 0) > 0
+            ) {
+                $row['MC Price'] = $pushedVal;
+                $row['Price Source'] = 'pushed';
+                $price = $pushedVal;
+                $row["Total_pft"] = round(($price * $percentage - $lp - $ship) * $units_ordered_l30, 2);
+                $row["Profit"] = $row["Total_pft"];
+                $row["T_Sale_l30"] = round($price * $units_ordered_l30, 2);
+                $row["Sales L30"] = $row["T_Sale_l30"];
+                $gpft = $price > 0 ? (($price * $percentage - $ship - $lp) / $price) * 100 : 0;
+                $row["GPFT%"] = round($gpft, 2);
+                $row["PFT %"] = round($gpft, 2);
+                $row["ROI%"] = round(
+                    $lp > 0 ? (($price * $percentage - $lp - $ship) / $lp) * 100 : 0,
+                    2
+                );
+            }
 
             // Calculate SGPFT based on SPRICE
             $sprice = $row['SPRICE'] ?? 0;
@@ -1388,8 +1428,6 @@ class MacyController extends Controller
             'message' => (string) ($result['message'] ?? ''),
             'status_code' => $result['status_code'] ?? null,
             'price' => $result['price'] ?? null,
-            'pulled' => (bool) ($result['pulled'] ?? false),
-            'pulled_price' => $result['pulled_price'] ?? null,
             'capped' => (bool) ($result['capped'] ?? false),
             'amazon_price' => $result['amazon_price'] ?? null,
         ], ($result['success'] ?? false) ? 200 : 422);
@@ -1436,13 +1474,6 @@ class MacyController extends Controller
             }
             if ($ok) {
                 ChannelLivePriceSync::confirmAfterPush('macys', $sku, $sprice);
-                $live = app(MacysApiService::class)->pullLiveListedPrice($sku, $sprice);
-                $pulled = is_array($live) ? (float) ($live['price'] ?? 0) : 0.0;
-                $result['pulled_price'] = $pulled > 0 ? $pulled : null;
-                $result['pulled'] = $pulled > 0 && empty($live['stale']);
-                if ($result['pulled']) {
-                    $result['price'] = $pulled;
-                }
             }
 
             return $result;
@@ -1462,9 +1493,7 @@ class MacyController extends Controller
     public static function persistSpricePushStatus(string $sku, string $status, ?float $price = null): void
     {
         try {
-            $skuKey = strtoupper(trim($sku));
-            $dataView = MacyDataView::whereRaw('UPPER(TRIM(sku)) = ?', [$skuKey])->first()
-                ?: MacyDataView::firstOrNew(['sku' => $skuKey]);
+            $dataView = self::findMacyDataViewForSku($sku);
             $existing = is_array($dataView->value)
                 ? $dataView->value
                 : (json_decode((string) ($dataView->value ?? ''), true) ?: []);
@@ -1490,6 +1519,47 @@ class MacyController extends Controller
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    private static function findMacyDataViewForSku(string $sku): MacyDataView
+    {
+        $skuKey = strtoupper(trim(str_replace(["\xc2\xa0", "\xC2\xA0"], ' ', $sku)));
+        $found = MacyDataView::whereRaw('UPPER(TRIM(sku)) = ?', [$skuKey])->first();
+        if ($found) {
+            return $found;
+        }
+
+        foreach (MacyDataView::query()->whereNotNull('sku')->cursor() as $row) {
+            if (ShopifySku::skusMatch((string) $row->sku, $sku)) {
+                return $row;
+            }
+        }
+
+        return new MacyDataView(['sku' => $skuKey]);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $current
+     * @param  array<string, mixed>  $incoming
+     * @return array<string, mixed>
+     */
+    private static function preferMacyDataViewValue(?array $current, array $incoming): array
+    {
+        if ($current === null) {
+            return $incoming;
+        }
+        $curPushed = (($current['SPRICE_STATUS'] ?? '') === 'pushed');
+        $inPushed = (($incoming['SPRICE_STATUS'] ?? '') === 'pushed');
+        if ($inPushed && ! $curPushed) {
+            return $incoming;
+        }
+        if ($curPushed && ! $inPushed) {
+            return $current;
+        }
+        $curAt = strtotime((string) ($current['SPRICE_STATUS_UPDATED_AT'] ?? $current['SPRICE_PUSHED_AT'] ?? '')) ?: 0;
+        $inAt = strtotime((string) ($incoming['SPRICE_STATUS_UPDATED_AT'] ?? $incoming['SPRICE_PUSHED_AT'] ?? '')) ?: 0;
+
+        return $inAt >= $curAt ? $incoming : $current;
     }
 
     public function saveLowProfit(Request $request)

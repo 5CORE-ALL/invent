@@ -121,7 +121,6 @@ use App\Support\TemuGoodsIdHelper;
 use App\Models\TiktokCampaignReport;
 use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
-use App\Models\TiktokSalesTwo;
 use App\Models\TiktokShopListingStatus;
 use App\Models\DepopSalesData;
 use App\Models\VintedSalesData;
@@ -179,6 +178,12 @@ class ChannelMasterController extends Controller
             'TopDawg' => '/topdawg-pricing',
             'Temu 3' => '/temu3-decrease',
             'Temu3' => '/temu3-decrease',
+            'TikTok' => '/tiktok-pricing',
+            'TikTok Shop' => '/tiktok-pricing',
+            'Tiktok Shop' => '/tiktok-pricing',
+            'TikTok 2' => '/tiktok-2-pricing',
+            'TikTok Shop 2' => '/tiktok-2-pricing',
+            'Tiktok Shop 2' => '/tiktok-2-pricing',
         ];
 
         $path = $paths[trim($channel)] ?? null;
@@ -2165,6 +2170,12 @@ class ChannelMasterController extends Controller
         $rows = $this->overlayLiveMiraklTodaySalesOnChannelRows($rows);
         // FB Marketplace L30/L60/Y/L7 from /facebook-marketplace uploads (not stale sheet cache)
         $rows = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($rows);
+        // TikTok 2 L30 = /tiktok-two/daily-sales Total Sales (tiktok2_orders), not cached sheet.
+        try {
+            $rows = $this->overlayLiveTiktokTwoMetricsOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path TikTok 2 overlay failed: '.$e->getMessage());
+        }
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
@@ -3630,6 +3641,10 @@ class ChannelMasterController extends Controller
             return $rows;
         }
 
+        if (empty($live['ok'])) {
+            return $rows;
+        }
+
         $l30Sales = (float) ($live['l30_sales'] ?? 0);
         $l60Sales = (float) ($live['l60_sales'] ?? 0);
         $totalPft = (float) ($live['total_pft'] ?? 0);
@@ -3646,11 +3661,15 @@ class ChannelMasterController extends Controller
 
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if (strcasecmp($name, 'TikTok 2') !== 0 && strcasecmp($name, 'Tiktok Shop 2') !== 0) {
+            if ($this->allMarketplaceSnapshotKey($name) !== 'tiktokshop2') {
                 continue;
             }
 
             $row['Channel '] = 'TikTok 2';
+            $row['Update'] = 'A';
+            if (empty($row['missing_link'])) {
+                $row['missing_link'] = '/tiktok-2-pricing';
+            }
             $row['L30 Sales'] = (int) round($l30Sales);
             $row['L-60 Sales'] = (int) round($l60Sales);
             $row['L30 Orders'] = $l30Orders;
@@ -8671,12 +8690,11 @@ class ChannelMasterController extends Controller
 
     /**
      * TikTok 2: tiktok2_orders line sales for Pacific calendar yesterday
-     * (same clock as Amazon / Faire). Do not use latest-order−1 — that skipped
-     * a real Aug 28 $39.99 order because the latest row was already yesterday.
+     * (same Shop API + clock as TikTok 1 / Amazon).
      */
     private function computeTiktokTwoYSalesLikeAmazon(): ?float
     {
-        if (! Schema::hasTable('tiktok_sales_two')) {
+        if (! Tiktok2Order::tableReady()) {
             return null;
         }
 
@@ -8686,18 +8704,18 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * /tiktok-two/daily-sales dollars for one Pacific calendar day (order_date).
+     * /tiktok-two/daily-sales dollars for one Pacific calendar day.
      */
     private function sumTiktokTwoSheetSalesForPacificDate(string $ymd): float
     {
-        if ($ymd === '' || ! Schema::hasTable('tiktok_sales_two')) {
+        if ($ymd === '' || ! Tiktok2Order::tableReady()) {
             return 0.0;
         }
 
-        return round((float) DB::table('tiktok_sales_two')
-            ->whereDate('order_date', $ymd)
-            ->selectRaw('COALESCE(SUM(unit_price * GREATEST(COALESCE(quantity, 1), 1)), 0) as revenue')
-            ->value('revenue'), 2);
+        $start = Carbon::parse($ymd, 'America/Los_Angeles')->startOfDay();
+        $end = Carbon::parse($ymd, 'America/Los_Angeles')->endOfDay();
+
+        return round(Tiktok2Order::salesAmountBetween($start, $end), 2);
     }
 
     /**
@@ -8705,15 +8723,11 @@ class ChannelMasterController extends Controller
      */
     private function sumTiktokTwoSheetSalesBetween(Carbon $start, Carbon $end): float
     {
-        if (! Schema::hasTable('tiktok_sales_two')) {
+        if (! Tiktok2Order::tableReady()) {
             return 0.0;
         }
 
-        return round((float) DB::table('tiktok_sales_two')
-            ->whereDate('order_date', '>=', $start->toDateString())
-            ->whereDate('order_date', '<=', $end->toDateString())
-            ->selectRaw('COALESCE(SUM(unit_price * GREATEST(COALESCE(quantity, 1), 1)), 0) as revenue')
-            ->value('revenue'), 2);
+        return round(Tiktok2Order::salesAmountBetween($start, $end), 2);
     }
 
     /**
@@ -9229,7 +9243,7 @@ class ChannelMasterController extends Controller
 
     private function computeTiktokTwoL7SalesLikeAmazon(): ?float
     {
-        if (! Schema::hasTable('tiktok_sales_two')) {
+        if (! Tiktok2Order::tableReady()) {
             return null;
         }
 
@@ -13198,10 +13212,9 @@ class ChannelMasterController extends Controller
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
         $pct = (($marketplaceData ? (float) ($marketplaceData->percentage ?? 65) : 65) / 100);
 
-        $skus = $rows->map(fn ($r) => $r->offer_sku ?: $r->product_sku)->filter()->unique()->values()->toArray();
-        $productMasters = !empty($skus)
-            ? ProductMaster::whereIn('sku', $skus)->get()->keyBy(fn ($pm) => strtoupper(trim((string) $pm->sku)))
-            : collect();
+        $pmIndex = PurchasingPowerController::indexProductMastersForSkuLookup(
+            ProductMaster::query()->whereNotNull('sku')->get(['id', 'sku', 'Values'])
+        );
 
         $totalSales = 0.0;
         $totalQty   = 0;
@@ -13210,7 +13223,7 @@ class ChannelMasterController extends Controller
         $orderSet   = [];
 
         foreach ($rows as $r) {
-            $sku      = strtoupper(trim((string) ($r->offer_sku ?: $r->product_sku)));
+            $sku      = (string) ($r->offer_sku ?: $r->product_sku);
             $quantity = (int) ($r->quantity ?? 0);
             $amount   = (float) ($r->amount ?? 0);
             $price    = (float) ($r->unit_price ?? 0);
@@ -13223,31 +13236,17 @@ class ChannelMasterController extends Controller
             }
             if ($quantity <= 0) continue;
 
-            $lp = 0.0;
-            if ($sku !== null && $sku !== '' && isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-                $values = is_array($pm->Values)
-                    ? $pm->Values
-                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                if (is_array($values)) {
-                    foreach ($values as $k => $v) {
-                        if (strtolower((string) $k) === 'lp') {
-                            $lp = (float) $v;
-                            break;
-                        }
-                    }
-                }
-                if ($lp === 0.0 && isset($pm->lp)) {
-                    $lp = (float) $pm->lp;
-                }
-            }
+            $cost = PurchasingPowerController::lpAndShipBb(
+                PurchasingPowerController::findProductMasterForSku($pmIndex, $sku)
+            );
+            $lp = $cost['lp'];
+            $ship = $cost['ship'];
 
             $lineSales = $amount > 0 ? $amount : ($price * $quantity);
             $totalSales += $lineSales;
             $totalQty   += $quantity;
             $totalCogs  += $lp * $quantity;
-            // Ship intentionally excluded to match /purchasing-power-pricing.
-            $totalPft   += (($price * $pct) - $lp) * $quantity;
+            $totalPft   += (($price * $pct) - $lp - $ship) * $quantity;
             if (!empty($r->order_number)) {
                 $orderSet[$r->order_number] = true;
             }
@@ -13962,7 +13961,12 @@ class ChannelMasterController extends Controller
         $l7Sales = $this->computeTiktokTwoL7SalesLikeAmazon() ?? 0.0;
 
         $mapMissCounts = $this->getTiktok2LiveMapMissNMapFromPricingData($request);
-        $channelData = ChannelMaster::whereIn('channel', ['TikTok 2', 'Tiktok Shop 2'])->first();
+        $channelData = ChannelMaster::whereIn('channel', ['TikTok 2', 'Tiktok Shop 2', 'TikTok Shop 2'])->first();
+        if ($channelData && Schema::hasColumn('channel_master', 'update')
+            && $channelData->getAttribute('update') !== 'A') {
+            ChannelMaster::whereKey($channelData->getKey())->update(['update' => 'A']);
+            $channelData->setAttribute('update', 'A');
+        }
 
         $result[] = [
             'Channel '   => 'TikTok 2',
@@ -13994,7 +13998,7 @@ class ChannelMasterController extends Controller
             'type'       => optional($channelData)->type ?? 'B2C',
             'W/Ads'      => optional($channelData)->w_ads ?? 0,
             'NR'         => optional($channelData)->nr ?? 0,
-            'Update'     => optional($channelData)->update ?? 0,
+            'Update'     => 'A',
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
@@ -14002,6 +14006,7 @@ class ChannelMasterController extends Controller
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
             'base'       => optional($channelData)->base ?? 0,
             'sheet_link' => optional($channelData)->sheet_link ?? '',
+            'missing_link' => optional($channelData)->missing_link ?: '/tiktok-2-pricing',
             'ra'         => optional($channelData)->ra ?? 0,
         ];
 
@@ -18949,11 +18954,11 @@ class ChannelMasterController extends Controller
 
     /**
      * Snapshot D stores TikTok 2 L30 for the 30 Pacific days ending D−1,
-     * from tiktok_sales_two (same table as /tiktok-two/daily-sales).
+     * from tiktok2_orders (same Shop API as /tiktok-two/daily-sales).
      */
     private function healClosedTiktokTwoL30Snapshots(): void
     {
-        if (! Schema::hasTable('tiktok_sales_two')) {
+        if (! Tiktok2Order::tableReady()) {
             return;
         }
 
@@ -18979,7 +18984,7 @@ class ChannelMasterController extends Controller
                 }
                 $sd['l30_sales'] = $live;
                 $row->summary_data = $sd;
-                $row->notes = 'TikTok 2 L30 healed from tiktok_sales_two ending '.$asOf->toDateString();
+                $row->notes = 'TikTok 2 L30 healed from tiktok2_orders ending '.$asOf->toDateString();
                 $row->save();
             }
         }

@@ -292,6 +292,14 @@
                     }
                 },
                 {
+                    title: 'Ship BB', field: 'ship', width: 70, hozAlign: 'center', sorter: 'number',
+                    headerTooltip: 'Shipping Master Ship BB (slab + Handling + O-Size)',
+                    formatter: function (cell) {
+                        const v = parseFloat(cell.getValue() || 0);
+                        return `$${v.toFixed(2)}`;
+                    }
+                },
+                {
                     title: 'GROI%', field: 'groi_pct', width: 58, hozAlign: 'center', sorter: 'number',
                     formatter: function (cell) {
                         const v = parseFloat(cell.getValue() || 0);

@@ -52,18 +52,14 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'TikTok 2 Daily Sales Data',
-        'sub_title' => 'Upload-based sales data (margin 80%, same as TikTok)',
+        'sub_title' => 'TikTok Shop Orders API (L30) — same source as TikTok 1',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>TikTok 2 Daily Sales Data (L30) — Margin 80%</h4>
-                <p class="text-muted small mb-3 mb-md-2">Import replaces all rows in this table. Use <strong>Upload</strong> to select your TikTok Seller Center export.</p>
+                <h4>TikTok 2 Daily Sales Data (L30)</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#tiktokTwoUploadModal">
-                        <i class="fa fa-upload"></i> Upload (Truncate &amp; Replace)
-                    </button>
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fa fa-eye"></i> Columns
@@ -93,39 +89,6 @@
                         <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by SKU...">
                     </div>
                     <div id="tiktok-two-table" style="flex: 1;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="tiktokTwoUploadModal" tabindex="-1" aria-labelledby="tiktokTwoUploadModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="tiktokTwoUploadModalLabel">
-                        <i class="fa fa-upload me-1"></i> Upload TikTok order export
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="alert alert-secondary py-2 small mb-3">
-                        Upload the <strong>TikTok Seller Center</strong> order export (tab-separated <code>.txt</code> / <code>.csv</code>).
-                        The file must include the <strong>header row</strong> with columns such as
-                        <strong>Order ID</strong>, <strong>Seller SKU</strong>, <strong>Quantity</strong>,
-                        <strong>SKU Unit Original Price</strong>, <strong>Order Amount</strong>, and <strong>Created Time</strong>.
-                        Column positions are detected from the header so new TikTok columns do not break the import.
-                    </div>
-                    <form id="upload-form-tiktok-two">
-                        @csrf
-                        <label for="upload-file-tiktok-two" class="form-label small mb-1">Order export file</label>
-                        <input type="file" name="file" id="upload-file-tiktok-two" accept=".txt,.csv,.tsv" class="form-control form-control-sm">
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="upload-form-tiktok-two" class="btn btn-primary btn-sm" id="upload-btn-tiktok-two">
-                        <i class="fa fa-upload"></i> Upload (Truncate &amp; Replace)
-                    </button>
                 </div>
             </div>
         </div>
@@ -345,42 +308,6 @@
 
         $('#export-btn').on('click', function() {
             table.download("csv", "tiktok_two_daily_sales_data.csv");
-        });
-
-        $('#upload-form-tiktok-two').on('submit', function(e) {
-            e.preventDefault();
-            var fileInput = document.getElementById('upload-file-tiktok-two');
-            if (!fileInput.files.length) {
-                showToast('Please select a file', 'error');
-                return;
-            }
-            var formData = new FormData(this);
-            formData.append('file', fileInput.files[0]);
-            $('#upload-btn-tiktok-two').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Uploading...');
-            $.ajax({
-                url: "{{ url('/tiktok-two/upload') }}",
-                type: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                success: function(res) {
-                    showToast(res.message || 'Upload complete. ' + (res.rows || 0) + ' rows imported.', 'success');
-                    table.setData();
-                    $('#upload-file-tiktok-two').val('');
-                    var modalEl = document.getElementById('tiktokTwoUploadModal');
-                    if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                        var inst = bootstrap.Modal.getInstance(modalEl);
-                        if (inst) inst.hide();
-                    }
-                },
-                error: function(xhr) {
-                    var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : (xhr.statusText || 'Upload failed');
-                    showToast(msg, 'error');
-                },
-                complete: function() {
-                    $('#upload-btn-tiktok-two').prop('disabled', false).html('<i class="fa fa-upload"></i> Upload (Truncate &amp; Replace)');
-                }
-            });
         });
     });
 </script>

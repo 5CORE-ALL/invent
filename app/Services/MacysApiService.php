@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use App\Models\MacyProduct;
+use App\Models\MacysPriceData;
 use App\Models\ProductStockMapping;
+use App\Models\ShopifySku;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\Concerns\MiraklMcmBulletImport;
@@ -291,12 +294,17 @@ class MacysApiService
         $uppers = array_keys($wanted);
         $placeholders = implode(',', array_fill(0, count($uppers), '?'));
         try {
-            $sheetRows = \App\Models\MacysPriceData::query()
+            $sheetRows = MacysPriceData::query()
                 ->where(function ($q) use ($placeholders, $uppers) {
                     $q->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $uppers)
                         ->orWhereRaw("UPPER(TRIM(offer_sku)) IN ({$placeholders})", $uppers);
                 })
                 ->get(['sku', 'offer_sku', 'activated']);
+            if ($sheetRows->isEmpty()) {
+                $sheetRows = MacysPriceData::query()
+                    ->where('activated', true)
+                    ->get(['sku', 'offer_sku', 'activated']);
+            }
             foreach ($sheetRows as $row) {
                 if (! filter_var($row->activated, FILTER_VALIDATE_BOOLEAN)) {
                     continue;
@@ -305,9 +313,13 @@ class MacysApiService
                 if ($offer === '') {
                     continue;
                 }
-                foreach ([strtoupper(trim((string) $row->sku)), strtoupper(trim((string) $row->offer_sku))] as $key) {
-                    if ($key !== '' && isset($wanted[$key]) && ! isset($found[$key])) {
-                        $found[$key] = $offer;
+                foreach ($wanted as $upper => $orig) {
+                    if (isset($found[$upper])) {
+                        continue;
+                    }
+                    if (ShopifySku::skusMatch((string) $row->sku, $orig)
+                        || ShopifySku::skusMatch((string) $row->offer_sku, $orig)) {
+                        $found[$upper] = $offer;
                     }
                 }
             }
@@ -458,19 +470,48 @@ class MacysApiService
     protected function syncLocalMacyPriceAfterPush(string $sku, string $offerSku, float $price): void
     {
         try {
-            \App\Models\MacyProduct::query()
-                ->where(function ($q) use ($offerSku, $sku) {
-                    $q->where('sku', $offerSku)->orWhere('sku', $sku);
-                })
-                ->update(['price' => $price]);
-            \App\Models\MacysPriceData::query()
-                ->where(function ($q) use ($offerSku, $sku) {
-                    $q->where('sku', $offerSku)
-                        ->orWhere('sku', $sku)
-                        ->orWhere('offer_sku', $offerSku)
-                        ->orWhere('offer_sku', $sku);
-                })
-                ->update(['price' => $price, 'original_price' => $price]);
+            $price = round($price, 2);
+            $want = array_values(array_unique(array_filter([
+                trim($sku),
+                trim($offerSku),
+            ])));
+            $matchesWant = static function (?string $stored) use ($want): bool {
+                foreach ($want as $key) {
+                    if (ShopifySku::skusMatch((string) $stored, $key)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            };
+
+            $productUpdate = ['price' => $price];
+            if (Schema::hasColumn('macy_products', 'listing_status')) {
+                $productUpdate['listing_status'] = 'active';
+            }
+            $productIds = MacyProduct::query()
+                ->select('id', 'sku')
+                ->get()
+                ->filter(fn ($row) => $matchesWant($row->sku))
+                ->pluck('id')
+                ->all();
+            if ($productIds !== []) {
+                MacyProduct::query()->whereIn('id', $productIds)->update($productUpdate);
+            }
+
+            $priceIds = MacysPriceData::query()
+                ->select('id', 'sku', 'offer_sku')
+                ->get()
+                ->filter(fn ($row) => $matchesWant($row->sku) || $matchesWant($row->offer_sku))
+                ->pluck('id')
+                ->all();
+            if ($priceIds !== []) {
+                MacysPriceData::query()->whereIn('id', $priceIds)->update([
+                    'price' => $price,
+                    'original_price' => $price,
+                    'activated' => true,
+                ]);
+            }
         } catch (\Throwable $e) {
             Log::warning('Macy local price sync after PRI01 failed', [
                 'sku' => $offerSku,

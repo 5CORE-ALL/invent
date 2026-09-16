@@ -107,7 +107,7 @@
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
                     <button type="button" id="pp-rule-btn" class="btn btn-sm btn-outline-dark"
-                        title="Price rules: Dil %, PP sold qty, Discount % → SPRICE = (STD × (1−Disc%)) − Ship">
+                        title="Price rules: Dil %, PP sold qty, Discount % → SPRICE = (STD × (1−Disc%)) − Ship BB">
                         <i class="fas fa-sliders-h"></i> Rule
                     </button>
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'purchasing_power'])
@@ -119,7 +119,7 @@
                     <h6 class="mb-3">Summary ({{ $ppPercentage }}% Margin)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color:black;font-weight:bold;display:none;">Total PFT: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color:black;font-weight:bold;">Total Sales: $0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color:black;font-weight:bold;" title="Last 30 days actual order revenue — same MCM OR11 lines as /purchasing-power-sales L30 Sales.">Total Sales: $0</span>
                         <span class="badge fs-6 p-2" id="gpft-pct-badge"
                               style="background:#6f42c1;color:#fff;font-weight:bold;"
                               title="Weighted Gross Profit %: (Σ Profit ÷ Σ Sales L30) × 100. Matches /all-marketplace-master Gprofit% formula and /purchasing-power-sales GPFT % (rev) badge.">GPFT: 0%</span>
@@ -178,7 +178,7 @@
                 <div class="modal-body">
                     <p class="small text-muted mb-2">
                         Match rows by <strong>Dil %</strong> and <strong>Sold qty (PP L30)</strong>.
-                        Apply sets <strong>SPRICE = (STD prc × (1 − Discount%/100)) − Ship</strong>.
+                        Apply sets <strong>SPRICE = (STD prc × (1 − Discount%/100)) − Ship BB</strong>.
                         Blank min/max = no limit. If SKUs are checked, only those are updated.
                     </p>
                     <div class="table-responsive">
@@ -351,7 +351,7 @@
 
             const factor = 1 - (parseFloat(hit.discount_pct) / 100);
             const ship = parseFloat(d.Ship_productmaster) || 0;
-            // Same rule as Faire: SPRICE = (STD × (1 − Discount%/100)) − Ship
+            // SPRICE = (STD × (1 − Discount%/100)) − Ship BB
             let raw = Math.max(0.99, (std * factor) - ship);
             let newSprice = (typeof roundToRetailPrice === 'function')
                 ? roundToRetailPrice(raw)
@@ -1015,7 +1015,8 @@
                     formatter: function(cell) { return `$${parseFloat(cell.getValue() || 0).toFixed(2)}`; }
                 },
                 {
-                    title: 'Ship', field: 'Ship_productmaster', hozAlign: 'center', sorter: 'number', visible: false, width: 60,
+                    title: 'Ship BB', field: 'Ship_productmaster', hozAlign: 'center', sorter: 'number', visible: false, width: 70,
+                    headerTooltip: 'Shipping Master Ship BB (slab + Handling + O-Size)',
                     formatter: function(cell) { return `$${parseFloat(cell.getValue() || 0).toFixed(2)}`; }
                 },
                 {

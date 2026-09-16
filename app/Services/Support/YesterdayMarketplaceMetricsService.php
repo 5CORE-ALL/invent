@@ -831,21 +831,21 @@ class YesterdayMarketplaceMetricsService
      */
     private function tiktok2(Carbon $start, Carbon $end): array
     {
+        if ($this->alignLatestCompleteDay) {
+            $latest = Tiktok2Order::latestCreatedAt();
+            $window = $this->latestCompleteDay($latest ? $latest->toDateTimeString() : null, 'to_pacific');
+            if ($window !== null) {
+                [$start, $end] = $window;
+            }
+        }
+
         $items = Tiktok2Order::linesInWindow($start, $end);
         $sales = 0.0;
-        if (Schema::hasTable('tiktok_sales_two')) {
-            $sales = (float) DB::table('tiktok_sales_two')
-                ->whereDate('order_date', '>=', $start->toDateString())
-                ->whereDate('order_date', '<=', $end->toDateString())
-                ->selectRaw('COALESCE(SUM(unit_price * GREATEST(COALESCE(quantity, 1), 1)), 0) as revenue')
-                ->value('revenue');
-        }
         $pft = 0.0;
         $cogs = 0.0;
         $qty = 0;
         $orders = [];
         $margin = 0.80;
-        $lineSales = 0.0;
 
         foreach ($items as $item) {
             $quantity = (int) ($item->quantity ?? 1);
@@ -855,7 +855,7 @@ class YesterdayMarketplaceMetricsService
             $unitPrice = (float) ($item->sale_price ?? 0);
             $pm = $this->pm((string) ($item->seller_sku ?? ''));
             $shipCost = $this->shipCost($pm['ship'], $pm['wt'], $quantity);
-            $lineSales += $unitPrice * $quantity;
+            $sales += $unitPrice * $quantity;
             $qty += $quantity;
             if (! empty($item->order_id)) {
                 $orders[(string) $item->order_id] = true;
@@ -864,11 +864,7 @@ class YesterdayMarketplaceMetricsService
             $pft += (($unitPrice * $margin) - $pm['lp'] - $shipCost) * $quantity;
         }
 
-        if ($sales <= 0 && ! Schema::hasTable('tiktok_sales_two')) {
-            $sales = $lineSales;
-        }
-
-        return $this->pack($sales, $lineSales, $pft, $cogs, 0.0, count($orders), $qty, $lineSales);
+        return $this->pack($sales, $sales, $pft, $cogs, 0.0, count($orders), $qty, $sales);
     }
 
     /**

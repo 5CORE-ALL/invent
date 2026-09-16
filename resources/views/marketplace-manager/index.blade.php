@@ -177,7 +177,7 @@
 
         <div class="alert alert-info mt-3 mb-0">
             <i class="ri-information-line me-1"></i>
-            Only channels with a live API appear here (Amazon, AliExpress, Alibaba, Reverb, Newegg, Shein, TopDawg, Temu, Temu 2, eBay 1–3, Faire, TikTok, PLS, Purchasing Power, Wayfair, Best Buy, Macy’s, Doba, and Business 5 Core B2B). Sheet-only marketplaces stay on Active Channels Master.
+            Only channels with a live API appear here (Amazon, AliExpress, Alibaba, Reverb, Newegg, Shein, TopDawg, Temu, Temu 2, eBay 1–3, Faire, TikTok, TikTok 2, PLS, Purchasing Power, Wayfair, Best Buy, Macy’s, Doba, and Business 5 Core B2B). Sheet-only marketplaces stay on Active Channels Master.
         </div>
     </div>
 </div>

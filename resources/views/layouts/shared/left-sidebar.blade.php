@@ -2171,6 +2171,8 @@
                         </li>
                         <li><a href="{{ route('tiktok.video.quality') }}">TikTok Video Quality</a>
                         </li>
+                        <li><a href="{{ url('/tiktok/connect') }}" target="_blank" rel="noopener">TikTok 1 Connect (OAuth)</a>
+                        </li>
                     </ul>
                 </div>
             </li>
