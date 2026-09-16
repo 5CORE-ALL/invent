@@ -612,7 +612,7 @@
                 (kidsByParent[k] = kidsByParent[k] || []).push(r);
             });
             const sumFields = ['INV', 'shopify_inv', 'L30', 'doba L30', 'doba L60', 'doba L45', 'quantity_l7', 'quantity_l7_prev', 's_l30', 'Profit', 'T_COGS', 'Sales L30'];
-            const avgFields = ['doba Price', 'self_pick_price', 'standard_price', 'sprice', 's_self_pick', 'Roi', 'NPFT_pct', 'PFT_percentage', 'msrp', 'map', 'amazon_price', 'l30_avg_price', 'l60_avg_price', 'spft', 'sroi'];
+            const avgFields = ['doba Price', 'self_pick_price', 'standard_price', 'sprice', 's_self_pick', 'Roi', 'NPFT_pct', 'PFT_percentage', 'msrp', 'map', 'amazon_price', 'l30_avg_price', 'l60_avg_price', 'spft', 'sroi', 'snroi'];
             (rows || []).forEach(function(r) {
                 if (!r || !isDobaParentRow(r)) return;
                 const k = dobaParentKey(r);
@@ -689,6 +689,67 @@
                 return Number(chPromoSavedOrLiveSprice(data)) || 0;
             }
             return parseFloat(data.sprice != null ? data.sprice : data.SPRICE) || 0;
+        }
+        function dobaAdsPercentForNet() {
+            if (typeof ebayDilAdsPct === 'function') {
+                const n = parseFloat(ebayDilAdsPct());
+                if (isFinite(n) && n > 0) return n;
+            }
+            return 0;
+        }
+        function dobaSnpftDollars(row) {
+            const sprice = dobaDisplayedSprice(row);
+            if (!(sprice > 0)) return null;
+            const lp = parseFloat(row && row.LP_productmaster) || 0;
+            const ship = parseFloat(row && row.Ship_productmaster) || 0;
+            return (sprice * 0.95) - ship - lp - (sprice * (dobaAdsPercentForNet() / 100));
+        }
+        function dobaSgroiPercent(row) {
+            if (!row || isDobaParentRow(row)) {
+                const n = parseFloat(row && row.sroi);
+                return isFinite(n) ? n : null;
+            }
+            const sprice = dobaDisplayedSprice(row);
+            const lp = parseFloat(row && row.LP_productmaster) || 0;
+            const ship = parseFloat(row && row.Ship_productmaster) || 0;
+            if (!(sprice > 0) || !(lp > 0)) return null;
+            return ((sprice * 0.95) - ship - lp) / lp * 100;
+        }
+        /** Back-solve S PRC so SNROI (Dil + CVR Target NROI) matches. */
+        function chPromoSpriceFromTargetRoi(d, roiPct) {
+            const lp = parseFloat(d && (d.LP_productmaster != null ? d.LP_productmaster : d.lp)) || 0;
+            if (!(lp > 0)) return 0;
+            const ship = parseFloat(d && (d.Ship_productmaster != null ? d.Ship_productmaster : d.ship)) || 0;
+            const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
+            const ads = dobaAdsPercentForNet();
+            const denom = 0.95 - (ads / 100);
+            if (!(denom > 0)) return 0;
+            const price = (lp * (1 + roi / 100) + ship) / denom;
+            return (isFinite(price) && price > 0) ? Math.round(price * 100) / 100 : 0;
+        }
+        window.chPromoSpriceFromTargetRoi = chPromoSpriceFromTargetRoi;
+        /** Dil + CVR Target NROI when S PRC is the Dil price (not LMP capped). */
+        function dobaSnroiFromRule(row) {
+            if (!row || isDobaParentRow(row)) return null;
+            if (typeof ebayDilGroiTargetGroi !== 'function') return null;
+            const rule = ebayDilGroiTargetGroi(row);
+            if (rule == null || !isFinite(rule)) return null;
+            const meta = typeof ebayDilGroiMetaForRow === 'function' ? ebayDilGroiMetaForRow(row) : null;
+            const sprice = dobaDisplayedSprice(row);
+            if (meta && meta.lmpCapped) return null;
+            if (meta && meta.sprc > 0 && sprice > 0
+                && Math.round(sprice * 100) !== Math.round(Number(meta.sprc) * 100)) {
+                return null;
+            }
+            return rule;
+        }
+        function dobaSnroiPercent(row) {
+            const fromRule = dobaSnroiFromRule(row);
+            if (fromRule != null) return fromRule;
+            const snpft = dobaSnpftDollars(row);
+            const lp = parseFloat(row && row.LP_productmaster) || 0;
+            if (snpft == null || !(lp > 0)) return null;
+            return (snpft / lp) * 100;
         }
         function dobaRowSpriceForAlert(data) {
             return dobaDisplayedSprice(data);
@@ -2055,6 +2116,9 @@
                                 spft: item.SPFT || spft,
                                 sprofit: sprofit,
                                 sroi: item.SROI || sroi,
+                                snroi: lp > 0 && sprice > 0
+                                    ? (((sprice * 0.95) - ship - lp) / lp) * 100
+                                    : (item.SROI || sroi),
                                 s_self_pick: sPickPrice, // always SPRICE − Ship
                                 s_l30: Number(item.s_l30) || 0,  // S L30 from doba_daily_data
                                 self_pick_price: pickPrice, // live Doba Pick Up
@@ -2392,17 +2456,19 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (Doba L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                        headerTooltip: "S PRC from Dil → Target NROI% slabs. 0 Sold (Doba L30 = 0, INV > 0) uses the lowest Target NROI. Formula: (LP × (1 + NROI%/100) + Ship) / (0.95 − Ads%/100) so SNROI = target.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (isDobaParentRow(rowData)) return '';
                             if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                             const meta = ebayDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                            const tip = (typeof ebayDilGroiTipText === 'function')
+                                ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold Doba L30 → min Target NROI' })
+                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                                 + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2);
+                                + ' → NROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2));
                             return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
                                 + meta.sprc.toFixed(2) + '</span>';
                         },
@@ -2415,7 +2481,7 @@
                         sorter: dobaNumberSorter,
                         visible: true,
                         editable: false,
-                        headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab when Doba L30 > 0; 0 Sold uses the lowest Target GROI). S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP (no blue when red).",
+                        headerTooltip: "Not editable. Auto-saved from Sprc Dil so SNROI = Dil + CVR Target NROI (0 Sold uses the lowest Target NROI). S PRC = (LP × (1 + NROI%/100) + Ship) / (0.95 − Ads%/100). Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP (no blue when red).",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             if (isDobaParentRow(rowData)) {
@@ -2478,12 +2544,38 @@
                         title: "SGROI %",
                         field: "sroi",
                         width: 70,
-                        sorter: dobaNumberSorter,
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = dobaSgroiPercent(aRow.getData());
+                            const bv = dobaSgroiPercent(bRow.getData());
+                            return ((av == null || !isFinite(av)) ? 0 : av)
+                                 - ((bv == null || !isFinite(bv)) ? 0 : bv);
+                        },
                         visible: true,
-                        formatter: function(cell, formatterParams) {
-                            const value = parseFloat(cell.getValue()) || 0;
-                            if (value === 0) return '';
-                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', value)) || '';
+                        headerTooltip: "SGROI% = live (S PRC × 0.95 − Ship − LP) / LP. Dil + CVR set SNROI, not this column.",
+                        formatter: function(cell) {
+                            const value = dobaSgroiPercent(cell.getRow().getData());
+                            if (value == null || !isFinite(value) || value === 0) return '';
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField('NROI', value)) || '';
+                            return _st ? `<span style="${_st}">${Math.round(value)}%</span>` : `${Math.round(value)}%`;
+                        }
+                    },
+                    {
+                        title: "SNROI%",
+                        field: "snroi",
+                        width: 70,
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = dobaSnroiPercent(aRow.getData());
+                            const bv = dobaSnroiPercent(bRow.getData());
+                            return ((av == null || !isFinite(av)) ? 0 : av)
+                                 - ((bv == null || !isFinite(bv)) ? 0 : bv);
+                        },
+                        visible: true,
+                        headerTooltip: "SNROI% = Dil + CVR Target NROI. S PRC is back-solved so this matches the slab (same as eBay / Amazon). Ads%=0 → same as SGROI. If S PRC was capped, live SNPFT ÷ LP.",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const value = dobaSnroiPercent(row);
+                            if (value == null || !isFinite(value)) return '';
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField('NROI', value)) || '';
                             return _st ? `<span style="${_st}">${Math.round(value)}%</span>` : `${Math.round(value)}%`;
                         }
                     },

@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Persist New Temu Two suggested SGROI + S PRC on temu2_data_view without
- * touching Temu 1/2/3 SPRICE keys. Recalculate only when Dil/CVR rules or
- * pricing inputs change (fingerprint).
+ * Persist New Temu Two suggested S PRC (Dil + CVR Target NROI) on temu2_data_view
+ * without touching Temu 1/2/3 SPRICE keys. Recalculate only when Dil/CVR rules
+ * or pricing inputs change (fingerprint). Saved SGROI is live SPFT ÷ LP.
  */
 class NewTemutwoSuggestedPriceStore
 {
@@ -184,13 +184,11 @@ class NewTemutwoSuggestedPriceStore
     }
 
     /**
-     * S PRC from the exact rule SGROI using the same 0.95 take-home as Sprc Dil.
-     * The displayed / saved SGROI stays that rule number (110), not the invert
-     * at this price (which rounding used to turn into 111).
+     * S PRC from Dil + CVR Target NROI (SNROI), including channel Ads%.
      */
-    public static function priceFromExactSgroi(float $lp, float $ship, float $sgroi): float
+    public static function priceFromExactSgroi(float $lp, float $ship, float $sgroi, float $adsPercent = 0.0): float
     {
-        $raw = TemuShopifySalesService::spriceFromTargetSgroi($lp, $ship, $sgroi, 0.0);
+        $raw = TemuShopifySalesService::spriceFromTargetSnroi($lp, $ship, $sgroi, $adsPercent, 0.0);
         if (! is_finite($raw) || $raw < 0.01) {
             return 0.0;
         }
@@ -200,7 +198,7 @@ class NewTemutwoSuggestedPriceStore
 
     /**
      * Dil slab + CVR overlay. Dil 100 + CVR +10 → 110 exactly.
-     * Temu L30 = 0 (0 Sold) uses the lowest Target GROI in the table, same as Temu 1.
+     * Temu L30 = 0 (0 Sold) uses the lowest Target NROI in the table, same as Temu 1.
      */
     public static function targetSgroi(
         float $inv,
@@ -272,7 +270,8 @@ class NewTemutwoSuggestedPriceStore
         if ($ruleSgroi === null) {
             return $empty;
         }
-        $sprcDil = self::priceFromExactSgroi($lp, $ship, $ruleSgroi);
+        $ads = (float) ($inputs['ads'] ?? 0);
+        $sprcDil = self::priceFromExactSgroi($lp, $ship, $ruleSgroi, $ads);
         $cap = $this->capSprice(
             $sprcDil,
             (float) ($inputs['ebay'] ?? 0),
@@ -284,11 +283,8 @@ class NewTemutwoSuggestedPriceStore
             return $empty;
         }
         $capped = $sprcDil > 0 && round($sprice, 2) !== round($sprcDil, 2);
-        $sgroi = $ruleSgroi;
-        if ($capped) {
-            $inverted = TemuShopifySalesService::sgroiAtSprice($sprice, $lp, $ship, 0.0);
-            $sgroi = $inverted !== null ? round($inverted, 2) : $ruleSgroi;
-        }
+        $inverted = TemuShopifySalesService::sgroiAtSprice($sprice, $lp, $ship, 0.0);
+        $sgroi = $inverted !== null ? round($inverted, 2) : $ruleSgroi;
         $sBase = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($sprice), 2);
 
         return [
@@ -465,7 +461,8 @@ class NewTemutwoSuggestedPriceStore
         $cvr = AmazonDilGroiRule::normalizeCvrAdj($cvrAdj);
         $lmp = $inputs['lmp'] ?? 0;
         $payload = [
-            'v' => 2,
+            'v' => 3,
+            'ads' => round((float) ($inputs['ads'] ?? 0), 2),
             'rules' => $normRules,
             'temu_l30' => (int) ($inputs['temu_l30'] ?? $inputs['sold'] ?? 0),
             'cvr_adj' => [

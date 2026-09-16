@@ -27,7 +27,7 @@
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'shein'], true);
-    $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
+    $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2b'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
@@ -1009,6 +1009,13 @@
             }
             if (ch === 'reverb') return read(function() { return REVERB_CHANNEL_ADS_PCT; });
             if (ch === 'amazon') return read(function() { return AMAZON_CHANNEL_ADS_PCT; });
+            if (ch === 'temu' || ch === 'temu2' || ch === 'temu3') {
+                if (typeof temuAdsPercentForNet === 'function') {
+                    const n = parseFloat(temuAdsPercentForNet());
+                    if (isFinite(n) && n > 0) return n;
+                }
+                return read(function() { return TEMU_ADS_PERCENT; });
+            }
             return 0;
         }
         function ebayDilTakehomeMargin(d) {
@@ -1069,6 +1076,12 @@
                     ? ebayDgRound2(Math.max(0, delivery - ship))
                     : 0;
             }
+            // Temu (and any page with a custom invert) must run first — the generic
+            // NROI formula ignores Temu S R / recovery math.
+            if (typeof chPromoSpriceFromTargetRoi === 'function') {
+                const p = chPromoSpriceFromTargetRoi(d, groi);
+                return p > 0 ? p : 0;
+            }
             const ads = ebayDilTargetsNroi() ? ebayDilAdsPct() : 0;
             if (ads > 0) {
                 const lp = ebayDgLp(d);
@@ -1079,10 +1092,6 @@
                 if (!(denom > 0)) return 0;
                 const price = (lp * (1 + (Number(groi) || 0) / 100) + ship) / denom;
                 return (isFinite(price) && price > 0) ? ebayDgRound2(price) : 0;
-            }
-            if (typeof chPromoSpriceFromTargetRoi === 'function') {
-                const p = chPromoSpriceFromTargetRoi(d, groi);
-                return p > 0 ? p : 0;
             }
             const lp = ebayDgLp(d);
             if (!(lp > 0)) return 0;
