@@ -294,12 +294,17 @@ class MacysApiService
         $uppers = array_keys($wanted);
         $placeholders = implode(',', array_fill(0, count($uppers), '?'));
         try {
-            $sheetRows = \App\Models\MacysPriceData::query()
+            $sheetRows = MacysPriceData::query()
                 ->where(function ($q) use ($placeholders, $uppers) {
                     $q->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $uppers)
                         ->orWhereRaw("UPPER(TRIM(offer_sku)) IN ({$placeholders})", $uppers);
                 })
                 ->get(['sku', 'offer_sku', 'activated']);
+            if ($sheetRows->isEmpty()) {
+                $sheetRows = MacysPriceData::query()
+                    ->where('activated', true)
+                    ->get(['sku', 'offer_sku', 'activated']);
+            }
             foreach ($sheetRows as $row) {
                 if (! filter_var($row->activated, FILTER_VALIDATE_BOOLEAN)) {
                     continue;
@@ -308,9 +313,13 @@ class MacysApiService
                 if ($offer === '') {
                     continue;
                 }
-                foreach ([strtoupper(trim((string) $row->sku)), strtoupper(trim((string) $row->offer_sku))] as $key) {
-                    if ($key !== '' && isset($wanted[$key]) && ! isset($found[$key])) {
-                        $found[$key] = $offer;
+                foreach ($wanted as $upper => $orig) {
+                    if (isset($found[$upper])) {
+                        continue;
+                    }
+                    if (ShopifySku::skusMatch((string) $row->sku, $orig)
+                        || ShopifySku::skusMatch((string) $row->offer_sku, $orig)) {
+                        $found[$upper] = $offer;
                     }
                 }
             }

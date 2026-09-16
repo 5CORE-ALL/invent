@@ -139,12 +139,19 @@ class MacyController extends Controller
             }
         }
 
-        // Fetch Amazon pricing data (key by uppercase for case-insensitive lookup)
-        $amazonData = AmazonDatasheet::whereIn('sku', $skus)
-            ->get()
-            ->keyBy(function($item) {
-                return strtoupper($item->sku);
-            });
+        // Amazon A Price — PM SKUs often have NBSP; amazon_datasheets uses plain spaces.
+        $amazonByNorm = [];
+        $amazonByCompact = [];
+        foreach (AmazonDatasheet::whereIn('sku', $skus)->get(['sku', 'price']) as $item) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $item->sku);
+            $c = ShopifySku::compactSkuForLookup((string) $item->sku);
+            if ($n !== '' && ! isset($amazonByNorm[$n])) {
+                $amazonByNorm[$n] = $item;
+            }
+            if ($c !== '' && ! isset($amazonByCompact[$c])) {
+                $amazonByCompact[$c] = $item;
+            }
+        }
 
         // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
         $amazonStandardPrices = [];
@@ -191,11 +198,12 @@ class MacyController extends Controller
             $parent = $pm->parent;
 
             $shopify = $shopifyData->get($pm->sku);
-            $pmSkuU = strtoupper((string) $pm->sku);
             $pmSkuNorm = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
+            $pmCompact = ShopifySku::compactSkuForLookup((string) $pm->sku);
             $macysMetric = $macysByNormSku[$pmSkuNorm] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
-            $amazon = $amazonData[$pmSkuU] ?? null;
+            $amazon = $amazonByNorm[$pmSkuNorm]
+                ?? (($pmCompact !== '' && isset($amazonByCompact[$pmCompact])) ? $amazonByCompact[$pmCompact] : null);
 
             $row = [];
             $row["Parent"] = $parent;
@@ -311,7 +319,6 @@ class MacyController extends Controller
             $row['Listed'] = null;
             $row['Live'] = null;
 
-            $pmCompact = ShopifySku::compactSkuForLookup((string) $pm->sku);
             $raw = $dataViewsByNorm[$pmSkuNorm]
                 ?? (($pmCompact !== '' && isset($dataViewsByCompact[$pmCompact])) ? $dataViewsByCompact[$pmCompact] : null);
             $hasDataView = is_array($raw);
