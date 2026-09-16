@@ -16,6 +16,7 @@ use Carbon\Carbon;
 use App\Services\ChannelPromoPricingService;
 use App\Services\PurchasingPowerApiService;
 use App\Support\MacysAmazonPriceCap;
+use App\Support\ProductMasterShipBb;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -48,6 +49,148 @@ class PurchasingPowerController extends Controller
             $start->copy()->timezone('UTC')->format('Y-m-d H:i:s'),
             $end->copy()->timezone('UTC')->format('Y-m-d H:i:s'),
         ];
+    }
+
+    /**
+     * Same Pacific L30 window as /purchasing-power-sales.
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    public static function purchasingPowerL30Window(): array
+    {
+        $todayPst = Carbon::now('America/Los_Angeles');
+
+        return [
+            $todayPst->copy()->subDays(29)->startOfDay(),
+            $todayPst->copy()->endOfDay(),
+        ];
+    }
+
+    /**
+     * Qty + actual line revenue from sales-page rows (qty > 0, canceled included).
+     *
+     * @param  iterable<int, object|array<string, mixed>>  $lines
+     * @return array{by_norm: array<string, array{qty: int, sales: float}>, by_compact: array<string, array{qty: int, sales: float}>}
+     */
+    public static function rollupL30SoldFromLines(iterable $lines): array
+    {
+        $byNorm = [];
+        $byCompact = [];
+        $add = static function (array &$map, string $key, int $qty, float $sales): void {
+            if ($key === '') {
+                return;
+            }
+            if (! isset($map[$key])) {
+                $map[$key] = ['qty' => 0, 'sales' => 0.0];
+            }
+            $map[$key]['qty'] += $qty;
+            $map[$key]['sales'] += $sales;
+        };
+
+        foreach ($lines as $line) {
+            $row = is_array($line) ? (object) $line : $line;
+            $qty = (int) ($row->quantity ?? 0);
+            if ($qty <= 0) {
+                continue;
+            }
+            $sku = (string) ($row->sku ?? $row->offer_sku ?? $row->product_sku ?? '');
+            $unit = (float) ($row->unit_price ?? 0);
+            $amount = isset($row->amount) ? (float) $row->amount : 0.0;
+            if ($unit <= 0 && $amount > 0) {
+                $unit = $amount / $qty;
+            }
+            $sales = $amount > 0 ? $amount : ($unit * $qty);
+            $add($byNorm, ShopifySku::normalizeSkuForShopifyLookup($sku), $qty, $sales);
+            $add($byCompact, ShopifySku::compactSkuForLookup($sku), $qty, $sales);
+        }
+
+        return ['by_norm' => $byNorm, 'by_compact' => $byCompact];
+    }
+
+    /**
+     * @return array{lp: float, ship: float}
+     */
+    public static function lpAndShipBb($pm): array
+    {
+        if (! $pm) {
+            return ['lp' => 0.0, 'ship' => 0.0];
+        }
+        $values = is_array($pm->Values)
+            ? $pm->Values
+            : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+        if (! is_array($values)) {
+            $values = [];
+        }
+        $lp = 0.0;
+        foreach ($values as $k => $v) {
+            if (strtolower((string) $k) === 'lp') {
+                $lp = (float) $v;
+                break;
+            }
+        }
+        if ($lp === 0.0 && isset($pm->lp)) {
+            $lp = (float) $pm->lp;
+        }
+
+        return [
+            'lp' => $lp,
+            'ship' => ProductMasterShipBb::forPricing($values, $pm),
+        ];
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, ProductMaster>|array<int, ProductMaster>  $productMasters
+     * @return array{by_norm: array<string, ProductMaster>, by_compact: array<string, ProductMaster>}
+     */
+    public static function indexProductMastersForSkuLookup($productMasters): array
+    {
+        $byNorm = [];
+        $byCompact = [];
+        foreach ($productMasters as $pm) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
+            $c = ShopifySku::compactSkuForLookup((string) $pm->sku);
+            if ($n !== '' && ! isset($byNorm[$n])) {
+                $byNorm[$n] = $pm;
+            }
+            if ($c !== '' && ! isset($byCompact[$c])) {
+                $byCompact[$c] = $pm;
+            }
+        }
+
+        return ['by_norm' => $byNorm, 'by_compact' => $byCompact];
+    }
+
+    public static function findProductMasterForSku(array $index, string $sku): ?ProductMaster
+    {
+        $n = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($n !== '' && isset($index['by_norm'][$n])) {
+            return $index['by_norm'][$n];
+        }
+        $c = ShopifySku::compactSkuForLookup($sku);
+        if ($c !== '' && isset($index['by_compact'][$c])) {
+            return $index['by_compact'][$c];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array{by_norm?: array<string, array{qty: int, sales: float}>, by_compact?: array<string, array{qty: int, sales: float}>}  $rollup
+     * @return array{qty: int, sales: float}
+     */
+    public static function lookupL30Sold(array $rollup, string $sku): array
+    {
+        $empty = ['qty' => 0, 'sales' => 0.0];
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '' && isset($rollup['by_norm'][$norm])) {
+            return $rollup['by_norm'][$norm];
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        if ($compact !== '' && isset($rollup['by_compact'][$compact])) {
+            return $rollup['by_compact'][$compact];
+        }
+
+        return $empty;
     }
 
     public static function sumSalesBetween(Carbon $start, Carbon $end): float
@@ -125,12 +268,8 @@ class PurchasingPowerController extends Controller
                 ->mapWithKeys(fn ($item) => [strtolower((string) $item->sku) => $item])
                 ->all();
         }
-        // Sales qty from uploaded purchasing_power_sales (excluding Canceled)
-        // Match by offer_sku (= product_masters.sku), NOT product_sku (which is Mirakl internal numeric ID)
-        $salesQty = PurchasingPowerSale::whereNotIn('status', ['Canceled', 'canceled'])
-            ->selectRaw('UPPER(offer_sku) as sku_upper, SUM(quantity) as total_qty')
-            ->groupBy('sku_upper')
-            ->pluck('total_qty', 'sku_upper');
+        // PP L30 + Sales L30 = same L30 MCM OR11 lines as /purchasing-power-sales.
+        $soldRollup = self::rollupL30SoldFromLines($this->fetchL30OrderLines(true));
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
         $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.65;
@@ -163,7 +302,8 @@ class PurchasingPowerController extends Controller
             $row['INV']  = $shopify ? (int) ($shopify->inv ?? 0) : 0;
             $row['L30']  = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
-            $row['PP L30']   = $salesQty[strtoupper($pm->sku)] ?? $ppMetric->m_l30 ?? 0;
+            $sold = self::lookupL30Sold($soldRollup, (string) $pm->sku);
+            $row['PP L30']   = (int) ($sold['qty'] ?? 0);
 
             // Listed price is only a live PP MCM offer. Leftover product rows and
             // macys_price_data (Macy sheet) are not listed — show 0.
@@ -234,25 +374,19 @@ class PurchasingPowerController extends Controller
                 }
             }
 
-            // LP / Ship from ProductMaster. Ship is excluded from margin formulas,
-            // but Price Rule Apply uses Ship: SPRICE = (STD × (1 − Disc%)) − Ship.
+            // LP from ProductMaster. Price Rule Apply uses Ship BB
+            // (SPRICE = (STD × (1 − Disc%)) − Ship BB). Margin formulas still exclude ship.
             $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
             $lp = 0;
-            $ship = 0;
             foreach ($values as $k => $v) {
                 if (strtolower((string) $k) === 'lp') {
                     $lp = floatval($v);
-                }
-                if (strtolower((string) $k) === 'ship') {
-                    $ship = floatval($v);
                 }
             }
             if ($lp === 0 && isset($pm->lp)) {
                 $lp = floatval($pm->lp);
             }
-            if ($ship === 0 && isset($pm->ship)) {
-                $ship = floatval($pm->ship);
-            }
+            $ship = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $pm);
 
             $price           = floatval($row['PP Price'] ?? 0);
             $units_l30       = floatval($row['PP L30']   ?? 0);
@@ -260,7 +394,7 @@ class PurchasingPowerController extends Controller
             $row['PP Dil%']    = ($units_l30 && $row['INV'] > 0) ? round($units_l30 / $row['INV'], 2) : 0;
             $row['Total_pft']  = round(($price * $percentage - $lp) * $units_l30, 2);
             $row['Profit']     = $row['Total_pft'];
-            $row['T_Sale_l30'] = round($price * $units_l30, 2);
+            $row['T_Sale_l30'] = round((float) ($sold['sales'] ?? 0), 2);
             $row['Sales L30']  = $row['T_Sale_l30'];
 
             $gpft = $price > 0 ? (($price * $percentage - $lp) / $price) * 100 : 0;
@@ -796,6 +930,62 @@ class PurchasingPowerController extends Controller
 
     // ==================== SALES PAGE ====================
 
+    /**
+     * Same MCM OR11 L30 lines as /purchasing-power-sales. Cached so pricing + sales share one pull.
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function fetchL30OrderLines(bool $allowTableFallback)
+    {
+        try {
+            return Cache::remember('pp_l30_or11_lines_v1', 180, function () {
+                [$l30Start, $l30End] = self::purchasingPowerL30Window();
+                $ppApi = app(PurchasingPowerApiService::class);
+                $result = $ppApi->fetchOrders($l30Start, $l30End);
+
+                return collect($ppApi->flattenOrdersToLineRows($result['orders'] ?? []));
+            });
+        } catch (\Throwable $e) {
+            if (! $allowTableFallback) {
+                throw $e;
+            }
+            Log::warning('PP L30 sold rollup API failed, using purchasing_power_sales', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->fetchL30OrderLinesFromTable();
+        }
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function fetchL30OrderLinesFromTable()
+    {
+        if (! Schema::hasTable('purchasing_power_sales')) {
+            return collect();
+        }
+
+        [$l30Start, $l30End] = self::purchasingPowerL30Window();
+        [$fromUtc, $toUtc] = self::purchasingPowerUtcRange($l30Start, $l30End);
+
+        return PurchasingPowerSale::query()
+            ->where('date_created', '>=', $fromUtc)
+            ->where('date_created', '<=', $toUtc)
+            ->get(['offer_sku', 'product_sku', 'quantity', 'unit_price', 'amount', 'status'])
+            ->map(function ($row) {
+                return (object) [
+                    'sku' => trim((string) ($row->offer_sku ?: $row->product_sku)),
+                    'offer_sku' => $row->offer_sku,
+                    'product_sku' => $row->product_sku,
+                    'quantity' => (int) ($row->quantity ?? 0),
+                    'unit_price' => (float) ($row->unit_price ?? 0),
+                    'amount' => (float) ($row->amount ?? 0),
+                    'status' => $row->status,
+                ];
+            });
+    }
+
     public function salesView(Request $request)
     {
         $rawPct = MarketplacePercentage::where('marketplace', 'Purchase')->value('percentage');
@@ -814,14 +1004,7 @@ class PurchasingPowerController extends Controller
             $rawPct = MarketplacePercentage::where('marketplace', 'Purchase')->value('percentage');
             $percentage = ($rawPct !== null && (float) $rawPct > 0) ? (float) $rawPct : 65.0;
 
-            $todayPst = \Carbon\Carbon::now('America/Los_Angeles');
-            $l30Start = $todayPst->copy()->subDays(29)->startOfDay();
-            $l30End = $todayPst->copy()->endOfDay();
-
-            /** @var PurchasingPowerApiService $ppApi */
-            $ppApi = app(PurchasingPowerApiService::class);
-            $result = $ppApi->fetchOrders($l30Start, $l30End);
-            $normalizedRows = collect($ppApi->flattenOrdersToLineRows($result['orders'] ?? []));
+            $normalizedRows = $this->fetchL30OrderLines(false);
             $data = $this->mapPurchasingPowerSalesRows($normalizedRows, $percentage, 'pp_mcm_or11');
 
             return response()->json($data)
@@ -925,36 +1108,15 @@ class PurchasingPowerController extends Controller
     private function mapPurchasingPowerSalesRows($rows, float $percentage, string $source = 'pp_mcm_or11')
     {
         $pct = $percentage / 100;
-        $skus = $rows->pluck('sku')->filter()->map(fn ($sku) => trim((string) $sku))->unique()->values()->all();
-        $productMasters = collect();
-        if (! empty($skus)) {
-            $productMasters = ProductMaster::whereIn('sku', $skus)
-                ->get()
-                ->keyBy(fn ($pm) => strtoupper(trim((string) $pm->sku)));
-        }
+        $pmIndex = self::indexProductMastersForSkuLookup(
+            ProductMaster::query()->whereNotNull('sku')->get(['id', 'sku', 'Values'])
+        );
 
-        return $rows->map(function ($r) use ($pct, $percentage, $productMasters, $source) {
-            $skuKey = strtoupper(trim((string) ($r->sku ?? '')));
-            $pm = $skuKey !== '' ? ($productMasters[$skuKey] ?? null) : null;
-
-            // Ship intentionally excluded from Purchasing Power profit formulas.
-            $lp = 0.0;
-            if ($pm) {
-                $values = is_array($pm->Values)
-                    ? $pm->Values
-                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                if (is_array($values)) {
-                    foreach ($values as $k => $v) {
-                        if (strtolower((string) $k) === 'lp') {
-                            $lp = (float) $v;
-                            break;
-                        }
-                    }
-                }
-                if ($lp === 0.0 && isset($pm->lp)) {
-                    $lp = (float) $pm->lp;
-                }
-            }
+        return $rows->map(function ($r) use ($pct, $percentage, $pmIndex, $source) {
+            $pm = self::findProductMasterForSku($pmIndex, (string) ($r->sku ?? ''));
+            $cost = self::lpAndShipBb($pm);
+            $lp = $cost['lp'];
+            $ship = $cost['ship'];
 
             $unitPrice = (float) ($r->unit_price ?? 0);
             $qty = max(0, (int) ($r->quantity ?? 0));
@@ -962,7 +1124,7 @@ class PurchasingPowerController extends Controller
                 ? (float) $r->amount
                 : ($unitPrice * $qty);
 
-            $pftEach = ($unitPrice * $pct) - $lp;
+            $pftEach = ($unitPrice * $pct) - $lp - $ship;
             $pft = round($pftEach * $qty, 2);
             $gpft = $unitPrice > 0 ? round(($pftEach / $unitPrice) * 100, 2) : 0;
             $cogs = round($lp * $qty, 2);
@@ -1004,7 +1166,7 @@ class PurchasingPowerController extends Controller
                 'country' => $r->country ?? null,
                 'category_label' => $r->category_label ?? null,
                 'lp' => round($lp, 2),
-                'ship' => 0.0, // not used in PP formulas
+                'ship' => round($ship, 2),
                 'cogs' => $cogs,
                 'pft' => $pft,
                 'gpft_pct' => $gpft,

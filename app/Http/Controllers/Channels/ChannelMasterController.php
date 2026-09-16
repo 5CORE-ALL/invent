@@ -13198,10 +13198,9 @@ class ChannelMasterController extends Controller
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
         $pct = (($marketplaceData ? (float) ($marketplaceData->percentage ?? 65) : 65) / 100);
 
-        $skus = $rows->map(fn ($r) => $r->offer_sku ?: $r->product_sku)->filter()->unique()->values()->toArray();
-        $productMasters = !empty($skus)
-            ? ProductMaster::whereIn('sku', $skus)->get()->keyBy(fn ($pm) => strtoupper(trim((string) $pm->sku)))
-            : collect();
+        $pmIndex = PurchasingPowerController::indexProductMastersForSkuLookup(
+            ProductMaster::query()->whereNotNull('sku')->get(['id', 'sku', 'Values'])
+        );
 
         $totalSales = 0.0;
         $totalQty   = 0;
@@ -13210,7 +13209,7 @@ class ChannelMasterController extends Controller
         $orderSet   = [];
 
         foreach ($rows as $r) {
-            $sku      = strtoupper(trim((string) ($r->offer_sku ?: $r->product_sku)));
+            $sku      = (string) ($r->offer_sku ?: $r->product_sku);
             $quantity = (int) ($r->quantity ?? 0);
             $amount   = (float) ($r->amount ?? 0);
             $price    = (float) ($r->unit_price ?? 0);
@@ -13223,31 +13222,17 @@ class ChannelMasterController extends Controller
             }
             if ($quantity <= 0) continue;
 
-            $lp = 0.0;
-            if ($sku !== null && $sku !== '' && isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-                $values = is_array($pm->Values)
-                    ? $pm->Values
-                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                if (is_array($values)) {
-                    foreach ($values as $k => $v) {
-                        if (strtolower((string) $k) === 'lp') {
-                            $lp = (float) $v;
-                            break;
-                        }
-                    }
-                }
-                if ($lp === 0.0 && isset($pm->lp)) {
-                    $lp = (float) $pm->lp;
-                }
-            }
+            $cost = PurchasingPowerController::lpAndShipBb(
+                PurchasingPowerController::findProductMasterForSku($pmIndex, $sku)
+            );
+            $lp = $cost['lp'];
+            $ship = $cost['ship'];
 
             $lineSales = $amount > 0 ? $amount : ($price * $quantity);
             $totalSales += $lineSales;
             $totalQty   += $quantity;
             $totalCogs  += $lp * $quantity;
-            // Ship intentionally excluded to match /purchasing-power-pricing.
-            $totalPft   += (($price * $pct) - $lp) * $quantity;
+            $totalPft   += (($price * $pct) - $lp - $ship) * $quantity;
             if (!empty($r->order_number)) {
                 $orderSet[$r->order_number] = true;
             }
