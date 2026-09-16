@@ -71,7 +71,7 @@ class MarketplaceManagerController extends Controller
         $usedManagerSlugs = [];
         $rows = [];
 
-        // All Active Channels Master names first (same list as /all-marketplace-master).
+        // Only API-capable Marketplace Manager channels (skip sheet-only / no-API names).
         foreach ($mpRows as $mp) {
             if (! $mp['is_active']) {
                 continue;
@@ -79,10 +79,10 @@ class MarketplaceManagerController extends Controller
 
             $key = strtolower($mp['channel']);
             $manager = $managerByMpKey[$key] ?? null;
-            if ($manager !== null) {
-                $usedManagerSlugs[$manager['slug']] = true;
+            if ($manager === null) {
+                continue;
             }
-
+            $usedManagerSlugs[$manager['slug']] = true;
             $rows[] = $this->mergeMpAndManagerRow($mp, $manager);
         }
 

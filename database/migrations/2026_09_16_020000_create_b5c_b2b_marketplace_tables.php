@@ -54,7 +54,7 @@ return new class extends Migration
                     'id' => ((int) DB::table('channel_master')->max('id')) + 1,
                     'channel' => 'Business 5 Core (B2B)',
                     'alias' => 'B5C B2B',
-                    'logo' => 'uploads/shopify.png',
+                    'logo' => 'uploads/laravel.svg',
                     'status' => 'Active',
                     'type' => 'API',
                     'created_at' => now(),

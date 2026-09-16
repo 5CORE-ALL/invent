@@ -8,7 +8,7 @@
             <div>
                 <a href="{{ route('marketplace.manager.index') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Marketplace Manager</a>
                 @include('marketplace._page-heading', ['slug' => $slug, 'heading' => $channel['label'], 'mb' => 'mb-1'])
-                <p class="text-muted mb-0">Source shop: <strong>{{ $channel['source_shop'] }}</strong></p>
+                <p class="text-muted mb-0">{{ ($channel['slug'] ?? '') === 'b5cb2b' ? 'Store' : 'Source shop' }}: <strong>{{ $channel['source_shop'] }}</strong></p>
             </div>
             <div>
                 @if($connected)

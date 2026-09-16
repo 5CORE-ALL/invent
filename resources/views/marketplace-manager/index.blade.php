@@ -21,11 +21,11 @@
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
             <div>
                 <h4 class="mb-1">Marketplace Manager</h4>
-                <p class="text-muted mb-0">Connect marketplaces to Shopify (source shop). Sync listings, inventory, and orders.</p>
+                <p class="text-muted mb-0">Only marketplaces with an API. Sync listings, inventory, and orders.</p>
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap">
-                <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;" title="Active Channels Master count (same as /all-marketplace-master)">
-                    Channels: {{ number_format((int) ($mpChannelCount ?? collect($channels ?? [])->where('mp_is_active', true)->count())) }}
+                <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;" title="Marketplace Manager API channels">
+                    Channels: {{ number_format(count($channels ?? [])) }}
                 </span>
                 <form method="post" action="{{ route('marketplace.manager.refresh.shopify') }}" class="d-inline">
                     @csrf
@@ -177,7 +177,7 @@
 
         <div class="alert alert-info mt-3 mb-0">
             <i class="ri-information-line me-1"></i>
-            Amz (orders), AliExpress, Alibaba, Reverb, Newegg, Shein, TopDawg, Temu, Temu 2, eBay 2, eBay 3, and Faire are available here. More marketplaces can be added the same way.
+            Only channels with a live API appear here (Amazon, AliExpress, Alibaba, Reverb, Newegg, Shein, TopDawg, Temu, Temu 2, eBay 1–3, Faire, TikTok, PLS, Purchasing Power, Wayfair, Best Buy, Macy’s, Doba, and Business 5 Core B2B). Sheet-only marketplaces stay on Active Channels Master.
         </div>
     </div>
 </div>
