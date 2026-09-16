@@ -1388,7 +1388,6 @@ class MacyController extends Controller
             'message' => (string) ($result['message'] ?? ''),
             'status_code' => $result['status_code'] ?? null,
             'price' => $result['price'] ?? null,
-            'pull_due_at' => $result['pull_due_at'] ?? null,
             'capped' => (bool) ($result['capped'] ?? false),
             'amazon_price' => $result['amazon_price'] ?? null,
         ], ($result['success'] ?? false) ? 200 : 422);
@@ -1435,8 +1434,6 @@ class MacyController extends Controller
             }
             if ($ok) {
                 ChannelLivePriceSync::confirmAfterPush('macys', $sku, $sprice);
-                $scheduled = \App\Services\Support\MacysDelayedPricePullStore::schedule([$sku]);
-                $result['pull_due_at'] = $scheduled['due_at'] ?? null;
             }
 
             return $result;

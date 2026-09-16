@@ -867,8 +867,8 @@
                 }]);
                 if (resp && resp.success) {
                     showToast(resp.capped
-                        ? (sku + ': pushed $' + Number(resp.price).toFixed(2) + ' (raised to A Price). Full pull in 10 min')
-                        : (sku + ': price pushed. Full MC Price pull in 10 min'), 'success');
+                        ? (sku + ': pushed $' + Number(resp.price).toFixed(2) + ' (raised to A Price)')
+                        : (sku + ': price pushed'), 'success');
                 } else {
                     showToast((resp && resp.message) || 'Macy price push failed', 'error');
                 }
