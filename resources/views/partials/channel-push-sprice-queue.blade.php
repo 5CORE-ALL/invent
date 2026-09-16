@@ -83,7 +83,7 @@
             const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2|doba|doba_withoutship|macys|macy)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_TIKTOK = /^(tiktok|tiktok2)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_MACYS = /^(macys|macy)$/.test(CH_PUSH_SPRICE_CHANNEL);
-            const CH_PUSH_SPRICE_PULL_DELAY_MS = (CH_PUSH_SPRICE_IS_TIKTOK || CH_PUSH_SPRICE_IS_MACYS) ? 1500 : 0;
+            const CH_PUSH_SPRICE_PULL_DELAY_MS = CH_PUSH_SPRICE_IS_TIKTOK ? 1500 : 0;
             const CH_PUSH_SPRICE_CHUNK = 200;
             const CH_PUSH_SPRICE_PUSH_URL = ({
                 ebay1: '/push-ebay-price-tabulator',
@@ -478,7 +478,12 @@
                         ? chPushSpriceFindRowBySku(sku)
                         : null;
                     const d = row && typeof row.getData === 'function' ? (row.getData() || {}) : {};
-                    const expected = Number(d.SPRICE || d.PUSH_PRC_VALUE || d.sprice || 0);
+                    let expected = Number(d.SPRICE_PUSHED_VALUE || d.PUSH_PRC_VALUE || 0);
+                    if (CH_PUSH_SPRICE_IS_MACYS && typeof macysCappedPushPrice === 'function') {
+                        const capped = Number(macysCappedPushPrice(d)) || 0;
+                        if (capped > 0) expected = capped;
+                    }
+                    if (!(expected > 0)) expected = Number(d.SPRICE || d.sprice || 0);
                     if (expected > 0) out[String(sku).toUpperCase()] = expected;
                 });
                 return out;
@@ -495,8 +500,13 @@
                     $.ajax({
                         url: CH_PUSH_SPRICE_URL + '/pull',
                         method: 'POST',
+                        contentType: 'application/json',
                         headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
-                        data: { _token: chPushSpriceCsrf(), skus: pending },
+                        data: JSON.stringify({
+                            _token: chPushSpriceCsrf(),
+                            skus: pending,
+                            expected: expectedBySku,
+                        }),
                         timeout: 300000,
                     }).done(function(resp) {
                         const results = resp && Array.isArray(resp.results) ? resp.results : [];
@@ -504,15 +514,30 @@
                         const stale = applyChannelPushSpricePullResults(results, expectedBySku, lastTry && CH_PUSH_SPRICE_IS_TIKTOK);
                         const pulled = Number(resp && resp.ok_count) || 0;
                         const skipped = Number(resp && resp.skip_count) || 0;
-                        if (stale.length && attempt + 1 < retryMs.length) {
+                        const failed = [];
+                        const seen = {};
+                        stale.forEach(function(sku) { seen[String(sku).toUpperCase()] = true; });
+                        pending.forEach(function(sku) {
+                            const key = String(sku || '').toUpperCase();
+                            if (!key || seen[key]) return;
+                            const row = (results || []).find(function(r) {
+                                return r && String(r.sku || '').toUpperCase() === key;
+                            });
+                            if (!row || !row.success) {
+                                seen[key] = true;
+                                failed.push(sku);
+                            }
+                        });
+                        const retry = stale.concat(failed);
+                        if (retry.length && attempt + 1 < retryMs.length) {
                             chPushSpricePullAfterPush._t = setTimeout(function() {
-                                runPull(attempt + 1, stale);
+                                runPull(attempt + 1, retry);
                             }, retryMs[attempt + 1]);
                             return;
                         }
-                        if (pulled > 0 && !stale.length) {
+                        if (pulled > 0 && !retry.length) {
                             chPushSpriceToast('success', 'Pulled live Price for ' + pulled + ' SKU(s)');
-                        } else if (stale.length) {
+                        } else if (retry.length) {
                             chPushSpriceToast('success', 'Pushed ' + n + ' SKU(s) — live Price still catching up');
                         } else if (!skipped) {
                             chPushSpriceToast('error', (resp && resp.message) || 'Live Price pull failed');

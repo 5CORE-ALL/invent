@@ -410,7 +410,12 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'skus required'], 422);
         }
 
-        $results = app(\App\Services\ChannelPushedPricePullService::class)->pullSkus($channel, $skus);
+        $expected = $request->input('expected', []);
+        if (! is_array($expected)) {
+            $expected = [];
+        }
+
+        $results = app(\App\Services\ChannelPushedPricePullService::class)->pullSkus($channel, $skus, $expected);
         $ok = 0;
         $skipped = 0;
         foreach ($results as $row) {

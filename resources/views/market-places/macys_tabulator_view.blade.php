@@ -796,10 +796,9 @@
                 push_status: 'pushed',
                 SPRICE_PUSHED_VALUE: live,
             };
-            if (isMacysListed(row.getData() || {})) {
-                patch['MC Price'] = live;
-                patch.price = live;
-            }
+            patch['MC Price'] = live;
+            patch.price = live;
+            patch.is_missing_macy = false;
             try { row.update(patch); } catch (e) { /* ignore */ }
             try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
         }
@@ -820,9 +819,9 @@
                 };
                 if (ok && live > 0) {
                     patch.SPRICE_PUSHED_VALUE = live;
-                    if (isMacysListed(row.getData() || {})) {
-                        patch['MC Price'] = live;
-                    }
+                    patch['MC Price'] = live;
+                    patch.price = live;
+                    patch.is_missing_macy = false;
                 }
                 try { row.update(patch); } catch (e) { /* ignore */ }
                 try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
