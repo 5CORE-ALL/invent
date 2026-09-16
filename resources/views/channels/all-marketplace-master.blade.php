@@ -6310,7 +6310,9 @@
                     data: {
                         labels: labels,
                         datasets: [{
-                            label: currentChartMetric.charAt(0).toUpperCase() + currentChartMetric.slice(1),
+                            label: (typeof metricLabels !== 'undefined' && metricLabels[currentChartMetric])
+                                ? metricLabels[currentChartMetric]
+                                : (currentChartMetric.charAt(0).toUpperCase() + currentChartMetric.slice(1)),
                             data: values,
                             backgroundColor: 'rgba(108,117,125,0.08)',
                             borderColor: '#adb5bd',
@@ -6321,7 +6323,10 @@
                             pointHoverRadius: 5,
                             pointBackgroundColor: dotColors,
                             pointBorderColor: dotColors,
-                            pointBorderWidth: 1.5
+                            pointHoverBackgroundColor: dotColors,
+                            pointHoverBorderColor: dotColors,
+                            pointBorderWidth: 1.5,
+                            pointHoverBorderWidth: 1.5
                         }]
                     },
                     plugins: [medianLinePlugin, valueLabelsPlugin],
@@ -6339,6 +6344,15 @@
                                 bodyFont: { size: 10 },
                                 padding: 6,
                                 callbacks: {
+                                    labelColor: function(context) {
+                                        const c = dotColors[context.dataIndex] || '#6c757d';
+                                        return {
+                                            borderColor: c,
+                                            backgroundColor: c,
+                                            borderWidth: 2,
+                                            borderRadius: 8
+                                        };
+                                    },
                                     label: function(context) {
                                         const idx = context.dataIndex;
                                         let parts = [];
