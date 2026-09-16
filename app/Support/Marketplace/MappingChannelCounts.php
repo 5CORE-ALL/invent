@@ -23,19 +23,19 @@ class MappingChannelCounts
 
     public const TOTAL_TITAS_CACHE_KEY = 'mapping_pages_titas_total_v2';
 
-    public const MASTER_ROWS_CACHE_KEY = 'mapping_pages_master_rows_v2';
+    public const MASTER_ROWS_CACHE_KEY = 'mapping_pages_master_rows_v3';
 
-    public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v1';
+    public const API_STATUS_CACHE_KEY = 'mapping_pages_api_status_v2';
 
-    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v21';
+    public const INACTIVE_TOTAL_CACHE_KEY = 'inactive_listings_total_v22';
 
-    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v21';
+    public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v22';
 
-    public const INACTIVE_CP_TOTAL_CACHE_KEY = 'inactive_listings_cp_total_v21';
+    public const INACTIVE_CP_TOTAL_CACHE_KEY = 'inactive_listings_cp_total_v22';
 
-    public const LINKED_MISMATCH_TOTAL_CACHE_KEY = 'linked_mismatch_sku_total_v2';
+    public const LINKED_MISMATCH_TOTAL_CACHE_KEY = 'linked_mismatch_sku_total_v3';
 
-    public const LINKED_MISMATCH_MASTER_ROWS_CACHE_KEY = 'linked_mismatch_sku_master_rows_v2';
+    public const LINKED_MISMATCH_MASTER_ROWS_CACHE_KEY = 'linked_mismatch_sku_master_rows_v3';
 
     /**
      * Channels shown on /map-issues.
@@ -71,6 +71,8 @@ class MappingChannelCounts
         'doba' => ['label' => 'Doba', 'loader' => 'doba'],
         'purchasingpower' => ['label' => 'Purchasing Power', 'loader' => 'purchasingpower'],
         'alibaba' => ['label' => 'Alibaba', 'loader' => 'alibaba'],
+        'b5cb2b' => ['label' => 'Business 5 Core (B2B)', 'loader' => 'b5cb2b'],
+        'business5coreb2b' => ['label' => 'Business 5 Core (B2B)', 'loader' => 'b5cb2b'],
     ];
 
     public static function normalize(string $channel): string
@@ -292,7 +294,7 @@ class MappingChannelCounts
             'amazon', 'ebay', 'ebay2', 'ebay3', 'reverb', 'macys', 'bestbuy',
             'temu', 'temu2', 'shein', 'newegg', 'aliexpress',
             'pls', 'wayfair', 'faire', 'topdawg', 'tiktok', 'tiktok2',
-            'doba', 'purchasingpower', 'alibaba',
+            'doba', 'purchasingpower', 'alibaba', 'b5cb2b',
         ];
 
         foreach ($order as $slug) {
@@ -300,7 +302,7 @@ class MappingChannelCounts
                 continue;
             }
             // Skip alias keys that share counts with a primary slug
-            if (in_array($slug, ['ebaytwo', 'ebaythree', 'bestbuyusa', 'neweggb2c', 'tiktokshop', 'tiktokshop2'], true)) {
+            if (in_array($slug, ['ebaytwo', 'ebaythree', 'bestbuyusa', 'neweggb2c', 'tiktokshop', 'tiktokshop2', 'business5coreb2b'], true)) {
                 continue;
             }
 
@@ -322,7 +324,8 @@ class MappingChannelCounts
                 'listings_url' => self::listingsUrlForSlug($slug),
                 // mi_key MapIssues channels + pricing loaders that expose SKU detail
                 'has_sku_detail' => isset(self::$sources[$slug]['mi_key'])
-                    || in_array($slug, ['tiktok', 'tiktok2', 'shein', 'pls', 'temu', 'temu2'], true),
+                    || in_array($slug, ['tiktok', 'tiktok2', 'shein', 'pls', 'temu', 'temu2', 'b5cb2b'], true)
+                    || MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null,
                 'api_status' => $api['api_status'],
                 'api_connected' => $api['api_connected'],
                 'api_updated_at' => $api['api_updated_at'],
@@ -413,7 +416,7 @@ class MappingChannelCounts
             'amazon', 'ebay', 'ebay2', 'ebay3', 'reverb', 'macys', 'bestbuy',
             'temu', 'temu2', 'shein', 'newegg', 'aliexpress',
             'pls', 'wayfair', 'faire', 'topdawg', 'tiktok', 'tiktok2',
-            'doba', 'purchasingpower', 'alibaba',
+            'doba', 'purchasingpower', 'alibaba', 'b5cb2b',
         ];
 
         foreach ($order as $slug) {
@@ -523,7 +526,7 @@ class MappingChannelCounts
             'amazon', 'ebay', 'ebay2', 'ebay3', 'reverb', 'macys', 'bestbuy',
             'temu', 'temu2', 'shein', 'newegg', 'aliexpress',
             'pls', 'wayfair', 'faire', 'topdawg', 'tiktok', 'tiktok2',
-            'doba', 'purchasingpower', 'alibaba',
+            'doba', 'purchasingpower', 'alibaba', 'b5cb2b',
         ];
 
         foreach ($order as $slug) {
@@ -588,7 +591,7 @@ class MappingChannelCounts
         $out = [];
 
         foreach (array_keys(self::$sources) as $slug) {
-            if (in_array($slug, ['ebaytwo', 'ebaythree', 'bestbuyusa', 'neweggb2c', 'tiktokshop', 'tiktokshop2'], true)) {
+            if (in_array($slug, ['ebaytwo', 'ebaythree', 'bestbuyusa', 'neweggb2c', 'tiktokshop', 'tiktokshop2', 'business5coreb2b'], true)) {
                 continue;
             }
 
@@ -696,6 +699,7 @@ class MappingChannelCounts
             'topdawg' => ['topdawg_products'],
             'tiktok' => ['tiktok_products', 'tiktok_shop_listing_statuses'],
             'tiktok2' => ['tiktok_products_two', 'tiktok_two_shop_listing_statuses'],
+            'b5cb2b' => ['b5c_b2b_products'],
             default => [],
         };
     }
@@ -953,6 +957,10 @@ class MappingChannelCounts
                 }
             });
 
+        if (! empty($map['business5coreb2b']) && empty($map['b5cb2b'])) {
+            $map['b5cb2b'] = $map['business5coreb2b'];
+        }
+
         return $map;
     }
 
@@ -981,6 +989,10 @@ class MappingChannelCounts
                 $map[$key] = (string) $row->channel;
             }
         });
+
+        if (! empty($map['business5coreb2b']) && empty($map['b5cb2b'])) {
+            $map['b5cb2b'] = $map['business5coreb2b'];
+        }
 
         return $map;
     }
