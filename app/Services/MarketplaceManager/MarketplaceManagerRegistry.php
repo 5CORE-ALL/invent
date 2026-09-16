@@ -213,7 +213,7 @@ class MarketplaceManagerRegistry
                 'source_shop' => 'Shopify B2C',
                 'logo' => 'uploads/tiktok.png',
                 'enabled' => true,
-                'mp_channel_keys' => ['TikTok Shop 2', 'TikTok 2', 'Tiktok2', 'tiktok2', 'TikTok2'],
+                'mp_channel_keys' => ['TikTok Shop 2', 'Tiktok Shop 2', 'TikTok 2', 'Tiktok2', 'tiktok2', 'TikTok2'],
             ],
             [
                 'slug' => 'pls',

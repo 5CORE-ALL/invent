@@ -178,6 +178,12 @@ class ChannelMasterController extends Controller
             'TopDawg' => '/topdawg-pricing',
             'Temu 3' => '/temu3-decrease',
             'Temu3' => '/temu3-decrease',
+            'TikTok' => '/tiktok-pricing',
+            'TikTok Shop' => '/tiktok-pricing',
+            'Tiktok Shop' => '/tiktok-pricing',
+            'TikTok 2' => '/tiktok-2-pricing',
+            'TikTok Shop 2' => '/tiktok-2-pricing',
+            'Tiktok Shop 2' => '/tiktok-2-pricing',
         ];
 
         $path = $paths[trim($channel)] ?? null;
@@ -3645,11 +3651,15 @@ class ChannelMasterController extends Controller
 
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if (strcasecmp($name, 'TikTok 2') !== 0 && strcasecmp($name, 'Tiktok Shop 2') !== 0) {
+            if ($this->allMarketplaceSnapshotKey($name) !== 'tiktokshop2') {
                 continue;
             }
 
             $row['Channel '] = 'TikTok 2';
+            $row['Update'] = 'A';
+            if (empty($row['missing_link'])) {
+                $row['missing_link'] = '/tiktok-2-pricing';
+            }
             $row['L30 Sales'] = (int) round($l30Sales);
             $row['L-60 Sales'] = (int) round($l60Sales);
             $row['L30 Orders'] = $l30Orders;
@@ -13941,7 +13951,12 @@ class ChannelMasterController extends Controller
         $l7Sales = $this->computeTiktokTwoL7SalesLikeAmazon() ?? 0.0;
 
         $mapMissCounts = $this->getTiktok2LiveMapMissNMapFromPricingData($request);
-        $channelData = ChannelMaster::whereIn('channel', ['TikTok 2', 'Tiktok Shop 2'])->first();
+        $channelData = ChannelMaster::whereIn('channel', ['TikTok 2', 'Tiktok Shop 2', 'TikTok Shop 2'])->first();
+        if ($channelData && Schema::hasColumn('channel_master', 'update')
+            && $channelData->getAttribute('update') !== 'A') {
+            ChannelMaster::whereKey($channelData->getKey())->update(['update' => 'A']);
+            $channelData->setAttribute('update', 'A');
+        }
 
         $result[] = [
             'Channel '   => 'TikTok 2',
@@ -13973,7 +13988,7 @@ class ChannelMasterController extends Controller
             'type'       => optional($channelData)->type ?? 'B2C',
             'W/Ads'      => optional($channelData)->w_ads ?? 0,
             'NR'         => optional($channelData)->nr ?? 0,
-            'Update'     => optional($channelData)->update ?? 0,
+            'Update'     => 'A',
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
@@ -13981,6 +13996,7 @@ class ChannelMasterController extends Controller
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
             'base'       => optional($channelData)->base ?? 0,
             'sheet_link' => optional($channelData)->sheet_link ?? '',
+            'missing_link' => optional($channelData)->missing_link ?: '/tiktok-2-pricing',
             'ra'         => optional($channelData)->ra ?? 0,
         ];
 

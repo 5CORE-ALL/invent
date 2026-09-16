@@ -2109,8 +2109,18 @@
                             const channelDisplay = missingLink
                                 ? `<a href="${missingLink}" target="_blank" class="missing-l-link channel-name-link" style="color:inherit;font-weight:inherit;text-decoration:none;" title="View missing items">${channel}</a>`
                                 : `<span>${channel}</span>`;
+                            const chKey = String(channel || '').toLowerCase().replace(/[\s\-&/]/g, '');
+                            let connectHref = '';
+                            if (chKey === 'tiktok2' || chKey === 'tiktokshop2') {
+                                connectHref = '/tiktok2/connect';
+                            } else if (chKey === 'tiktok' || chKey === 'tiktokshop') {
+                                connectHref = '/tiktok/connect';
+                            }
+                            const connectHtml = connectHref
+                                ? `<a href="${connectHref}" target="_blank" rel="noopener noreferrer" class="ms-1" title="Connect shop API"><i class="ri-plug-line"></i></a>`
+                                : '';
 
-                            return `<div>${channelDisplay}</div>`;
+                            return `<div>${channelDisplay}${connectHtml}</div>`;
                         }
                     },
                     {
