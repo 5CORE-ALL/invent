@@ -5,7 +5,9 @@ namespace App\Support\Marketplace;
 use App\Models\AmazonDataView;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonListingRaw;
+use App\Models\AmazonListingStatus;
 use App\Models\ShopifySku;
+use App\Services\MarketplaceManager\AmazonListingStatusHelper;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -13,10 +15,11 @@ use Illuminate\Support\Facades\Schema;
  *
  * Rules (per ProductMaster SKU, deleted_at null):
  * - skip PARENT SKUs
+ * - skip Amazon FBA SKUs / FBA report rows (FBA is not this listing page)
  * - skip INV <= 0 (Shopify)
  * - nr_req from AmazonDataView.value.NRL (NRL → NR, else REQ)
- * - listed from amazon_listings_raw (SP-API listings report) — ASIN present
- * - Missing L (Pending) = REQ and not listed
+ * - listed from FBM amazon_listings_raw + amazon_listing_statuses — ASIN present
+ * - Missing L (Pending) = REQ and not listed on FBM
  */
 class AmazonListingCounts
 {
@@ -49,7 +52,7 @@ class AmazonListingCounts
 
         foreach ($productMasters as $item) {
             $sku = trim((string) $item->sku);
-            if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+            if ($sku === '' || stripos($sku, 'PARENT') !== false || self::skuLooksLikeFba($sku)) {
                 continue;
             }
 
@@ -119,6 +122,11 @@ class AmazonListingCounts
      *
      * @return list<string>
      */
+    public static function skuLooksLikeFba(string $sku): bool
+    {
+        return (bool) preg_match('/\bFBA\b/i', $sku);
+    }
+
     public static function skuLookupKeys(string $sku): array
     {
         $sku = trim(str_replace("\xC2\xA0", ' ', $sku));
@@ -233,10 +241,10 @@ class AmazonListingCounts
         AmazonListingRaw::query()
             ->whereNotNull('seller_sku')
             ->where('seller_sku', '!=', '')
-            ->get(['seller_sku', 'asin1'])
+            ->get(['seller_sku', 'asin1', 'raw_data'])
             ->each(function (AmazonListingRaw $row) use (&$map) {
                 $sellerSku = trim((string) $row->seller_sku);
-                if ($sellerSku === '') {
+                if ($sellerSku === '' || self::skuLooksLikeFba($sellerSku) || AmazonListingStatusHelper::reportRowIsFba($row)) {
                     return;
                 }
                 $asin = trim((string) ($row->asin1 ?? ''));
@@ -244,24 +252,50 @@ class AmazonListingCounts
                     return;
                 }
 
-                $base = trim((string) preg_replace('/\s+(FBA|FBM)$/i', '', $sellerSku));
-                $payload = [
-                    'asin' => $asin,
-                    'seller_sku' => $sellerSku,
-                ];
-                foreach (array_unique([$sellerSku, $base]) as $cand) {
-                    $norm = AmazonDatasheet::normalizeSkuForLookup($cand);
-                    if ($norm !== '' && ! isset($map[$norm])) {
-                        $map[$norm] = $payload;
-                    }
-                    $compact = ShopifySku::compactSkuForLookup($cand);
-                    if ($compact !== '' && ! isset($map['c:'.$compact])) {
-                        $map['c:'.$compact] = $payload;
-                    }
-                }
+                self::indexListing($map, $sellerSku, $asin);
             });
 
+        if (Schema::hasTable('amazon_listing_statuses')) {
+            AmazonListingStatus::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get(['sku', 'value'])
+                ->each(function (AmazonListingStatus $row) use (&$map) {
+                    $sku = trim((string) $row->sku);
+                    if ($sku === '' || self::skuLooksLikeFba($sku) || ! AmazonListingStatusHelper::isLinked($row)) {
+                        return;
+                    }
+                    $asin = AmazonListingStatusHelper::resolveAsin($row);
+                    if ($asin === '') {
+                        return;
+                    }
+                    self::indexListing($map, $sku, $asin);
+                });
+        }
+
         return $map;
+    }
+
+    /**
+     * @param  array<string, array{asin: string, seller_sku: string}>  $map
+     */
+    protected static function indexListing(array &$map, string $sellerSku, string $asin): void
+    {
+        $base = trim((string) preg_replace('/\s+(FBA|FBM)$/i', '', $sellerSku));
+        $payload = [
+            'asin' => $asin,
+            'seller_sku' => $sellerSku,
+        ];
+        foreach (array_unique([$sellerSku, $base]) as $cand) {
+            $norm = AmazonDatasheet::normalizeSkuForLookup($cand);
+            if ($norm !== '' && ! isset($map[$norm])) {
+                $map[$norm] = $payload;
+            }
+            $compact = ShopifySku::compactSkuForLookup($cand);
+            if ($compact !== '' && ! isset($map['c:'.$compact])) {
+                $map['c:'.$compact] = $payload;
+            }
+        }
     }
 
     /**
@@ -271,13 +305,15 @@ class AmazonListingCounts
     public static function pickListingForProductSku(string $sku, ?array $listingsByNorm = null): ?array
     {
         $listingsByNorm ??= self::listingsByNormalizedSku();
-        $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
-        if ($norm !== '' && isset($listingsByNorm[$norm])) {
-            return $listingsByNorm[$norm];
-        }
-        $compact = ShopifySku::compactSkuForLookup($sku);
-        if ($compact !== '' && isset($listingsByNorm['c:'.$compact])) {
-            return $listingsByNorm['c:'.$compact];
+        foreach (self::skuLookupKeys($sku) as $key) {
+            $norm = AmazonDatasheet::normalizeSkuForLookup($key);
+            if ($norm !== '' && isset($listingsByNorm[$norm])) {
+                return $listingsByNorm[$norm];
+            }
+            $compact = ShopifySku::compactSkuForLookup($key);
+            if ($compact !== '' && isset($listingsByNorm['c:'.$compact])) {
+                return $listingsByNorm['c:'.$compact];
+            }
         }
 
         return null;

@@ -6,6 +6,7 @@ use App\Models\ShopifySku;
 use App\Models\TopDawgProduct;
 use App\Services\ShopifyCatalogSyncService;
 use App\Services\ShopifyPlsTokenService;
+use App\Services\Support\MarketplaceApiConfigService;
 use App\Services\TopDawgApiService;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
@@ -29,7 +30,7 @@ class MissingListingCatalogRefresh
 
         $results = [];
         foreach ([
-            'pls', 'topdawg', 'faire', 'macy', 'bestbuy',
+            'pls', 'topdawg', 'faire', 'macy', 'bestbuy', 'b5cb2b',
         ] as $channel) {
             $results[$channel] = $this->refreshChannel($channel);
         }
@@ -70,6 +71,7 @@ class MissingListingCatalogRefresh
                 'macy', 'macys' => $this->refreshMirakl('macy'),
                 'bestbuy', 'bestbuyusa' => $this->refreshMirakl('bestbuy'),
                 'shopify', 'shopifyb2c' => $this->refreshShopifyMain(),
+                'b5cb2b', 'business5coreb2b', 'business5core(b2b)' => $this->refreshB5cB2b(),
                 default => 'skipped',
             };
 
@@ -81,6 +83,21 @@ class MissingListingCatalogRefresh
         } finally {
             optional($lock)->release();
         }
+    }
+
+    protected function refreshB5cB2b(): string
+    {
+        if (! app(MarketplaceApiConfigService::class)->isConfigured('b5cb2b')) {
+            return 'skipped';
+        }
+
+        @set_time_limit(180);
+        $result = app(B5cB2bLiveListingsService::class)->refresh();
+        Log::info('MissingListingCatalogRefresh: B5C B2B catalog', $result);
+
+        return ! empty($result['success']) || (int) ($result['stored'] ?? 0) > 0
+            ? 'ok'
+            : 'failed';
     }
 
     protected function refreshPls(): string

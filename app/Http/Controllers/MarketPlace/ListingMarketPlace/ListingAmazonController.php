@@ -54,7 +54,9 @@ class ListingAmazonController extends Controller
             $item->INV = ListingCountsEngine::shopifyInv($shopify);
             $item->L30 = $shopify?->quantity ?? 0;
 
-            $item->nr_req = AmazonListingCounts::skuIsNrl($childSku, $nrlSet) ? 'NR' : 'REQ';
+            $item->nr_req = AmazonListingCounts::skuLooksLikeFba($childSku) || AmazonListingCounts::skuIsNrl($childSku, $nrlSet)
+                ? 'NR'
+                : 'REQ';
             $item->NR = $item->nr_req;
 
             $listing = AmazonListingCounts::pickListingForProductSku($childSku, $listingsByNorm);
@@ -286,7 +288,9 @@ class ListingAmazonController extends Controller
 
                 fputcsv($file, [
                     'sku' => $sku,
-                    'nr_req' => AmazonListingCounts::nrReqFromDataView($raw),
+                    'nr_req' => AmazonListingCounts::skuLooksLikeFba($sku)
+                        ? 'NR'
+                        : AmazonListingCounts::nrReqFromDataView($raw),
                     'listed' => AmazonListingCounts::isListedFromApi($listing) ? 'Listed' : 'Pending',
                     'asin' => $asin,
                     'buyer_link' => $buyerLink,

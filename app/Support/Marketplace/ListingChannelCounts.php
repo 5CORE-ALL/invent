@@ -178,6 +178,9 @@ class ListingChannelCounts
         'bestbuy' => '/listing-bestbuyusa',
         'swgearexchange' => '/listing-swgearexchange',
         'pls' => '/listing-pls',
+        'b5cb2b' => '/marketplace/b5cb2b/products',
+        'business5coreb2b' => '/marketplace/b5cb2b/products',
+        'business5core(b2b)' => '/marketplace/b5cb2b/products',
     ];
 
     /**
@@ -269,6 +272,9 @@ class ListingChannelCounts
         'topdawg',
         'purchasingpower',
         'alibaba',
+        'b5cb2b',
+        'business5coreb2b',
+        'business5core(b2b)',
     ];
 
     private static array $sheetListingSources = [
