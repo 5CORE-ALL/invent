@@ -128,6 +128,9 @@ class StorePricePushService
     {
         try {
             $items = $this->client->fetchAllPrices($sku);
+            if ($items === []) {
+                $items = $this->client->fetchAllListings($sku);
+            }
         } catch (\Throwable $e) {
             Log::warning('Store S PRC lookup from API failed', [
                 'sku' => $sku,

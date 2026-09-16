@@ -27,7 +27,13 @@ class StoreListingApiClient
 
     public function apiKey(): string
     {
-        return trim((string) config('services.store.api_key'));
+        $key = trim((string) config('services.store.api_key'));
+        if ($key !== '') {
+            return $key;
+        }
+
+        // Same business5core.com host — listing prices key is often unset while B2B sync key works.
+        return trim((string) config('services.b5cb2b.api_key'));
     }
 
     /**
@@ -240,7 +246,7 @@ class StoreListingApiClient
                 $page++;
             } while ($page <= $lastPage);
         } catch (RuntimeException $e) {
-            if (! str_contains($e->getMessage(), 'HTTP 404')) {
+            if (! $this->isOptionalStoreEndpoint($e)) {
                 throw $e;
             }
         }
@@ -293,7 +299,7 @@ class StoreListingApiClient
                 $page = $current + 1;
             } while ($page <= $lastPage);
         } catch (RuntimeException $e) {
-            if (! str_contains($e->getMessage(), 'HTTP 404')) {
+            if (! $this->isOptionalStoreEndpoint($e)) {
                 throw $e;
             }
         }
@@ -357,12 +363,23 @@ class StoreListingApiClient
                 $page++;
             } while ($page <= $lastPage);
         } catch (RuntimeException $e) {
-            if (! str_contains($e->getMessage(), 'HTTP 404')) {
+            if (! $this->isOptionalStoreEndpoint($e)) {
                 throw $e;
             }
         }
 
         return $items;
+    }
+
+    protected function isOptionalStoreEndpoint(RuntimeException $e): bool
+    {
+        foreach (['HTTP 404', 'HTTP 401', 'HTTP 403'] as $needle) {
+            if (str_contains($e->getMessage(), $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -393,7 +410,7 @@ class StoreListingApiClient
         ), static fn ($slug) => $slug !== '')));
 
         $out = [];
-        $headers = $this->headers(false);
+        $headers = $this->headers($this->apiKey() !== '');
 
         foreach (array_chunk($slugs, max(1, $chunkSize)) as $chunk) {
             $responses = Http::pool(function ($pool) use ($chunk, $headers) {

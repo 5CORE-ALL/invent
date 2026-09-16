@@ -12,7 +12,7 @@ class SyncStoreWebsitePrices extends Command
 
     protected $aliases = ['store:sync-price-sold-views'];
 
-    protected $description = 'Pull website price, sold, and views from business5core.com /api/listings/prices and match them to product master by SKU';
+    protected $description = 'Pull website price, sold, and views from business5core.com /api/listings (B2B) or /api/listings/prices and match them to product master by SKU';
 
     public function handle(StorePriceSyncService $sync): int
     {
