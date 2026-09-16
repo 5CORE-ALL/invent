@@ -81,6 +81,7 @@ class AmazonAdsController extends Controller
         'U7%', 'U2%', 'U1%', 'CPC3', 'CPC2',
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
         'pageCvr', 'viewsL30', 'viewsL7',
+        'ACOS',
     ];
 
     /**

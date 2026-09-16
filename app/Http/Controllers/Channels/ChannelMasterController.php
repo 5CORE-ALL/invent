@@ -41,6 +41,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWayfairController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingZendropController;
 use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
+use App\Http\Controllers\MarketPlace\DepopController;
 use App\Http\Controllers\MarketPlace\EbayThreeController as MarketPlaceEbayThreeController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Support\EbayCampaignReportRollup;
@@ -184,6 +185,7 @@ class ChannelMasterController extends Controller
             'TikTok 2' => '/tiktok-2-pricing',
             'TikTok Shop 2' => '/tiktok-2-pricing',
             'Tiktok Shop 2' => '/tiktok-2-pricing',
+            'Depop' => '/depop/pricing',
         ];
 
         $path = $paths[trim($channel)] ?? null;
@@ -14020,133 +14022,70 @@ class ChannelMasterController extends Controller
     public function getDepopChannelData(Request $request)
     {
         $result = [];
-        $margin = 0.87; // Depop margin
-        $latestSaleDate = DepopSalesData::whereNotNull('sale_date')->max('sale_date');
-        $l60Orders = 0;
-        $l60Sales = 0;
-        $l30Orders = 0;
-        $l30Sales = 0;
-        $totalQuantity = 0;
-        $totalProfit = 0;
-        $totalCogs = 0;
-        $gProfitPct = 0;
-        $gRoi = 0;
+        $empty = [
+            'orders' => 0,
+            'sales' => 0.0,
+            'qty' => 0,
+            'pft' => 0.0,
+            'cogs' => 0.0,
+            'gpft' => 0.0,
+            'groi' => 0.0,
+        ];
+        $l30 = $empty;
+        $l60 = $empty;
 
+        $latestSaleDate = DepopSalesData::whereNotNull('sale_date')->max('sale_date');
         if ($latestSaleDate) {
-            $latestCarbon = \Carbon\Carbon::parse($latestSaleDate);
+            $latestCarbon = Carbon::parse($latestSaleDate);
             $l30Start = $latestCarbon->copy()->subDays(29)->format('Y-m-d');
             $l30End = $latestCarbon->format('Y-m-d');
             $l60Start = $latestCarbon->copy()->subDays(59)->format('Y-m-d');
             $l60End = $latestCarbon->copy()->subDays(30)->format('Y-m-d');
 
-            $l60Rows = DepopSalesData::whereBetween('sale_date', [$l60Start, $l60End])->get();
-            $l60Orders = $l60Rows->count();
-            $l60Sales = $l60Rows->sum(function ($r) {
-                return (float) $r->item_price * (int) ($r->quantity ?: 1);
-            });
+            $productMasters = ProductMaster::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get()
+                ->keyBy(function ($item) {
+                    return strtoupper(trim((string) $item->sku));
+                });
+            $margin = DepopController::marginFactor();
 
-            // Get product masters for COGS lookup
-            $productMasters = \App\Models\ProductMaster::all()->keyBy(function ($item) {
-                return strtoupper($item->sku);
-            });
-
-            $rows = DepopSalesData::whereBetween('sale_date', [$l30Start, $l30End])->get();
-            
-            foreach ($rows as $row) {
-                $quantity = (int) ($row->quantity ?: 1);
-                $unitPrice = (float) $row->item_price;
-                $revenue = $unitPrice * $quantity;
-                $l30Sales += $revenue;
-                $l30Orders++;
-                $totalQuantity += $quantity;
-
-                // Try to lookup COGS from Product Master using sku_code first
-                $sku = strtoupper($row->sku_code ?? '');
-                $lp = 0;
-                $ship = 0;
-                
-                $pm = $productMasters->get($sku);
-                if ($sku && $pm) {
-                    $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    if (is_array($values)) {
-                        foreach ($values as $k => $v) {
-                            if (strtolower($k) === 'lp') {
-                                $lp = floatval($v);
-                                break;
-                            }
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-                    if (is_array($values) && isset($values['ship'])) {
-                        $ship = floatval($values['ship']);
-                    } elseif (isset($pm->ship)) {
-                        $ship = floatval($pm->ship);
-                    }
-                }
-                
-                // If no SKU/COGS found, estimate COGS from actual Depop costs
-                // Depop margin of 87% means: Profit = Revenue - Depop Fee - Shipping - COGS
-                // So: COGS = Revenue - Profit - Depop Fee - Shipping
-                // Where Profit = Revenue * 87% (but this includes all costs)
-                // Better approach: Use actual fees from Depop data
-                $depopFee = (float) ($row->depop_fee ?? 0);
-                $uspsCost = (float) ($row->usps_cost ?? 0);
-                
-                if ($lp == 0) {
-                    // Estimate COGS: Assume 13% of revenue goes to COGS when not found
-                    // This is derived from 87% margin, meaning 13% for COGS approximately
-                    $lp = $revenue * 0.13 / $quantity;
-                }
-                
-                if ($ship == 0 && $uspsCost > 0) {
-                    $ship = $uspsCost;
-                }
-                
-                // Calculate COGS and profit
-                // Revenue = Item Price
-                // Costs = Depop Fee + USPS Cost + COGS(LP)
-                // Profit = Revenue - All Costs
-                $cogs = $lp * $quantity;
-                $totalShipping = $ship > 0 ? $ship : $uspsCost;
-                $totalFees = $depopFee;
-                
-                // Profit = Revenue - COGS - Shipping - Fees
-                $profit = $revenue - $cogs - $totalShipping - $totalFees;
-                
-                $totalCogs += $cogs;
-                $totalProfit += $profit;
-            }
-            
-            $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-            $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+            $l30 = DepopController::aggregateSalesWindow(
+                DepopSalesData::whereBetween('sale_date', [$l30Start, $l30End])->get(),
+                $productMasters,
+                $margin
+            );
+            $l60 = DepopController::aggregateSalesWindow(
+                DepopSalesData::whereBetween('sale_date', [$l60Start, $l60End])->get(),
+                $productMasters,
+                $margin
+            );
         }
 
+        $l30Sales = (float) $l30['sales'];
+        $l60Sales = (float) $l60['sales'];
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $mapMissCounts = $this->getMapAndMissCounts('depop');
         $channelData = ChannelMaster::where('channel', 'Depop')->first();
-
-        // N PFT and N ROI are same as G values since there's no ad spend
-        $nPft = $gProfitPct;
-        $nRoi = $gRoi;
 
         $result[] = [
             'Channel '   => 'Depop',
             'L-60 Sales' => intval($l60Sales),
             'L30 Sales'  => intval($l30Sales),
             'Growth'     => round($growth, 2) . '%',
-            'L60 Orders' => $l60Orders,
-            'L30 Orders' => $l30Orders,
-            'Qty'        => intval($totalQuantity),
-            'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60' => 0,
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'   => 0,
-            'Total PFT'  => round($totalProfit, 2),
-            'N PFT'      => round($nPft, 2) . '%',
-            'N ROI'      => round($nRoi, 2),
+            'L60 Orders' => (int) $l60['orders'],
+            'L30 Orders' => (int) $l30['orders'],
+            'Qty'        => (int) $l30['qty'],
+            'Gprofit%'   => round($l30['gpft'], 2) . '%',
+            'gprofitL60' => round($l60['gpft'], 2) . '%',
+            'G Roi'      => round($l30['groi'], 2),
+            'G RoiL60'   => round($l60['groi'], 2),
+            'Total PFT'  => round($l30['pft'], 2),
+            'N PFT'      => round($l30['gpft'], 2) . '%',
+            'N ROI'      => round($l30['groi'], 2),
             'Ads%'       => 0,
+            'TACOS %'    => '0%',
             'TikTok Ad Spend' => 0,
             'KW Spent'   => 0,
             'PT Spent'   => 0,
@@ -14159,12 +14098,16 @@ class ChannelMasterController extends Controller
             'W/Ads'      => optional($channelData)->w_ads ?? 0,
             'NR'         => optional($channelData)->nr ?? 0,
             'Update'     => optional($channelData)->update ?? 0,
-            'cogs'       => round($totalCogs, 2),
+            'cogs'       => round($l30['cogs'], 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'] ?? 0,
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
             'base'       => optional($channelData)->base ?? 0,
             'sheet_link' => optional($channelData)->sheet_link ?? '',
+            'missing_link' => optional($channelData)->missing_link ?? $this->defaultMissingLinkForChannel('Depop'),
             'ra'         => optional($channelData)->ra ?? 0,
+            ...$this->getChannelHealthAndReviewsStub(),
         ];
 
         return response()->json([

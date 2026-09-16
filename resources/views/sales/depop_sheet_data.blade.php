@@ -25,13 +25,13 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Depop Sales Data',
-        'sub_title' => 'Upload Depop sales export (TSV/Excel). Margin 87%.',
+        'sub_title' => 'PFT = (sale × marketplace Depop margin) − LP. Ship not used.',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Depop Sales Data — Margin 87%</h4>
+                <h4>Depop Sales Data — Margin {{ number_format((float) ($marginPercent ?? 87), 2) }}% (PFT = sale × margin − LP)</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <form id="upload-form-depop" class="d-flex align-items-center gap-2 me-2">
                         @csrf
@@ -99,8 +99,8 @@
                 { title: "Price", field: "price", width: 80, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
                 { title: "Sale AMT", field: "sale_amount", width: 90, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
                 { title: "LP", field: "lp", width: 70, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
-                { title: "Ship", field: "ship", width: 70, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
-                { title: "Ship Cost", field: "ship_cost", width: 80, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
+                { title: "Ship", field: "ship", width: 70, hozAlign: "center", visible: false, formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
+                { title: "Ship Cost", field: "ship_cost", width: 80, hozAlign: "center", visible: false, formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
                 { title: "COGS", field: "cogs", width: 80, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
                 { title: "PFT Each", field: "pft_each", width: 90, hozAlign: "center", formatter: function(c) { var v = c.getValue(); var color = v >= 0 ? '#28a745' : '#dc3545'; return '<span style="color:'+color+'">$'+parseFloat(v).toFixed(2)+'</span>'; }},
                 { title: "PFT %", field: "pft_each_pct", width: 80, hozAlign: "center", formatter: function(c) { var v = c.getValue(); return (v != null ? parseFloat(v).toFixed(1) : '0') + '%'; }},

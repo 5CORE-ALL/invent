@@ -33,7 +33,7 @@
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'mercari_wship', 'mercari_woship'], true);
-    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship'], true);
+    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship', 'depop'], true);
     $ebaySprcDilSoldLabel = match ($ebaySprcDilChannel) {
         'temu', 'temu2', 'temu3' => 'Temu L30',
         'macys', 'macy' => 'MC L30',
@@ -51,7 +51,7 @@
         'newegg' => 'L30',
         'walmart' => 'W L30',
         'pls' => 'P L30',
-        'depop' => 'L30',
+        'depop' => 'D L30',
         'vinted' => 'V L30',
         'mercari_wship', 'mercari_woship' => 'L30',
         default => 'E L30',
@@ -561,7 +561,8 @@
         function ebayDgExcludeShip() {
             return ebayDgIsPurchasingPower() || ebayDgIsWayfair() || ebayDgIsDobaWithoutship() || ebayDgIsFaire() || ebayDgIsTopdawg() || ebayDgIsFbMarketplace()
                 || EBAY_DIL_GROI_CHANNEL === 'shopify_b2b'
-                || EBAY_DIL_GROI_CHANNEL === 'mercari_woship';
+                || EBAY_DIL_GROI_CHANNEL === 'mercari_woship'
+                || EBAY_DIL_GROI_CHANNEL === 'depop';
         }
         function ebayDgRulesUrl() {
             return '/channel-promo-pricing/' + encodeURIComponent(EBAY_DIL_GROI_CHANNEL) + '/dil-groi';

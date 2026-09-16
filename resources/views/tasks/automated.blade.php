@@ -475,6 +475,15 @@
             background-color: #bb2d3b;
         }
 
+        .action-btn-duplicate {
+            background-color: #6f42c1;
+            color: white;
+        }
+
+        .action-btn-duplicate:hover {
+            background-color: #5a32a3;
+        }
+
         /* Pagination */
         .tabulator-footer {
             background: #f8f9fa !important;
@@ -1123,7 +1132,7 @@
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-duplicate-btn">
                         <i class="mdi mdi-content-copy text-info me-2"></i>
                         <strong>Duplicate Tasks</strong>
-                        <small class="d-block text-muted ms-4">Optional: new group, title suffix, assignor, assignee</small>
+                        <small class="d-block text-muted ms-4">Keep the same assignee, or change assignee on the copies</small>
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
@@ -1177,6 +1186,47 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="confirm-bulk-update-btn">
                     <i class="mdi mdi-check me-1"></i>Update
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Duplicate automated task — same assignee or change -->
+<div class="modal fade" id="duplicateTaskModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-content-copy me-2"></i>Duplicate automated task
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2"><strong id="duplicate-task-summary">Duplicate this task?</strong></p>
+                <p class="text-muted small mb-3" id="duplicate-task-assignee-line"></p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Assignee on the copy</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="duplicate_assignee_mode" id="dup-assignee-same" value="same" checked>
+                        <label class="form-check-label" for="dup-assignee-same">Same assignee</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="duplicate_assignee_mode" id="dup-assignee-change" value="change">
+                        <label class="form-check-label" for="dup-assignee-change">Change assignee</label>
+                    </div>
+                </div>
+                <div class="mb-0 d-none" id="dup-assignee-pick-wrap">
+                    <label for="duplicate-assignee-select" class="form-label">New assignee</label>
+                    <select class="form-select" id="duplicate-assignee-select">
+                        <option value="">Select assignee</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirm-duplicate-task-btn" style="background:#6f42c1;border-color:#6f42c1;">
+                    <i class="mdi mdi-content-copy me-1"></i>Duplicate
                 </button>
             </div>
         </div>
@@ -2498,13 +2548,16 @@
                     cols.push({
                         title: "ACTION", 
                         field: "id", 
-                        width: 176,
+                        width: 220,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var id = cell.getValue();
                             return `
                                 <button class="action-btn-icon action-btn-edit edit-automated-task" data-id="${id}" title="Edit" style="background: #0dcaf0; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
                                     <i class="mdi mdi-pencil"></i>
+                                </button>
+                                <button class="action-btn-icon action-btn-duplicate duplicate-automated-task" data-id="${id}" title="Duplicate (same assignee or change)" style="background: #6f42c1; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
+                                    <i class="mdi mdi-content-copy"></i>
                                 </button>
                                 <button class="action-btn-icon action-btn-delete delete-automated-task" data-id="${id}" title="Delete (or delete all selected)" style="background: #fd7e14; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
                                     <i class="mdi mdi-delete"></i>
@@ -3041,7 +3094,7 @@
                 exportSelectedAutomatedTasksCsv();
             });
 
-            // Bulk Duplicate — optional group, title suffix, assignor, assignee for new copies
+            // Bulk Duplicate — ask same assignee or change
             $('#bulk-duplicate-btn').on('click', function(e) {
                 e.preventDefault();
                 bulkActionType = 'duplicate';
@@ -3058,7 +3111,24 @@
                 @endif
                 var html = `
                     <p class="mb-2"><strong>Duplicate ${selectedTasks.length} automated task(s)</strong></p>
-                    <p class="text-muted small mb-3">Creates one copy per selected row. Leave options empty to copy group, title, assignor, and assignee from each original—same as before.</p>
+                    <p class="text-muted small mb-3">Creates one copy per selected row. Choose whether copies keep the current assignee or get a new one.</p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Assignee on the copies</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="bulk_duplicate_assignee_mode" id="bulk-dup-assignee-same" value="same" checked>
+                            <label class="form-check-label" for="bulk-dup-assignee-same">Same assignee as each original</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="bulk_duplicate_assignee_mode" id="bulk-dup-assignee-change" value="change">
+                            <label class="form-check-label" for="bulk-dup-assignee-change">Change assignee for all copies</label>
+                        </div>
+                    </div>
+                    <div class="mb-3 d-none" id="bulk-dup-assignee-pick-wrap">
+                        <label for="bulk-duplicate-assignee-select" class="form-label">New assignee</label>
+                        <select class="form-select" id="bulk-duplicate-assignee-select">
+                            <option value="">Select assignee</option>
+                        </select>
+                    </div>
                     <div class="mb-3">
                         <label for="bulk-duplicate-group" class="form-label">Group for all copies <span class="text-muted fw-normal">(optional)</span></label>
                         <input type="text" class="form-control" id="bulk-duplicate-group" placeholder="Leave empty to keep each task’s group">
@@ -3068,14 +3138,8 @@
                         <input type="text" class="form-control" id="bulk-duplicate-title-suffix" placeholder="e.g. (Copy) or - Branch 2 — added to each duplicated title">
                     </div>
                     ` + assignorBlock + `
-                    <div class="mb-3">
-                        <label for="bulk-duplicate-assignee-select" class="form-label">Assignee for all copies <span class="text-muted fw-normal">(optional)</span></label>
-                        <select class="form-select" id="bulk-duplicate-assignee-select">
-                            <option value="">Same assignee as original (per task)</option>
-                        </select>
-                    </div>
                 `;
-                showBulkUpdateForm('Duplicate tasks', html);
+                showBulkUpdateForm('Duplicate tasks', html, 'Duplicate');
                 loadUsersForDuplicateBulk();
                 @if($isAdmin)
                 loadUsersForDuplicateAssignor();
@@ -3208,10 +3272,11 @@
             });
 
             // Show Bulk Update Form
-            function showBulkUpdateForm(title, content) {
+            function showBulkUpdateForm(title, content, confirmLabel) {
                 $('#bulkActionsModal').modal('hide');
                 $('#bulkUpdateModalTitle').text(title);
                 $('#bulkUpdateModalBody').html(content);
+                $('#confirm-bulk-update-btn').html('<i class="mdi mdi-check me-1"></i>' + (confirmLabel || 'Update'));
                 $('#bulkUpdateModal').modal('show');
             }
 
@@ -3259,8 +3324,13 @@
                         }
                         break;
                     case 'duplicate':
-                        var dupAssignee = $('#bulk-duplicate-assignee-select').val();
-                        if (dupAssignee) {
+                        var dupMode = $('input[name="bulk_duplicate_assignee_mode"]:checked').val() || 'same';
+                        if (dupMode === 'change') {
+                            var dupAssignee = $('#bulk-duplicate-assignee-select').val();
+                            if (!dupAssignee) {
+                                alert('Please select a new assignee, or choose Same assignee.');
+                                return;
+                            }
                             data.assignee_id = dupAssignee;
                         }
                         var dupGroup = ($('#bulk-duplicate-group').val() || '').trim();
@@ -3350,22 +3420,37 @@
             }
 
             function loadUsersForDuplicateBulk() {
+                loadAutomatedUsersList(function(users) {
+                    fillAssigneeSelect($('#bulk-duplicate-assignee-select'), users, 'Select assignee');
+                });
+            }
+
+            var automatedUsersList = null;
+            function loadAutomatedUsersList(cb) {
+                if (automatedUsersList) {
+                    cb(automatedUsersList);
+                    return;
+                }
                 $.ajax({
                     url: '/tasks/users-list',
                     type: 'GET',
                     success: function(users) {
-                        var sel = $('#bulk-duplicate-assignee-select');
-                        var keep = '<option value="">Same assignee as original (per task)</option>';
-                        var opts = keep;
-                        users.forEach(function(user) {
-                            opts += `<option value="${user.id}">${user.name}</option>`;
-                        });
-                        sel.html(opts);
+                        automatedUsersList = users || [];
+                        cb(automatedUsersList);
                     },
                     error: function() {
-                        $('#bulk-duplicate-assignee-select').html('<option value="">Same assignee as original (per task)</option>');
+                        cb([]);
                     }
                 });
+            }
+
+            function fillAssigneeSelect($sel, users, placeholder) {
+                if (!$sel || !$sel.length) return;
+                var opts = '<option value="">' + (placeholder || 'Select assignee') + '</option>';
+                (users || []).forEach(function(user) {
+                    opts += '<option value="' + user.id + '">' + String(user.name || '').replace(/</g, '&lt;') + '</option>';
+                });
+                $sel.html(opts);
             }
 
             function loadUsersForDuplicateAssignor() {
@@ -3822,6 +3907,100 @@
                 }
                 var taskId = $(this).data('id');
                 window.location.href = '/tasks/automated/' + taskId + '/edit';
+            });
+
+            var duplicateTaskIds = [];
+
+            function openDuplicateTaskModal(ids, titles, assigneeNames) {
+                duplicateTaskIds = (ids || []).map(function(id) { return parseInt(id, 10); }).filter(function(id) { return id > 0; });
+                if (!duplicateTaskIds.length) {
+                    return;
+                }
+                var count = duplicateTaskIds.length;
+                var firstTitle = (titles && titles[0]) ? String(titles[0]) : ('Task #' + duplicateTaskIds[0]);
+                if (count === 1) {
+                    $('#duplicate-task-summary').text('Duplicate “' + firstTitle + '”?');
+                } else {
+                    $('#duplicate-task-summary').text('Duplicate ' + count + ' automated tasks?');
+                }
+                var uniqueAssignees = [];
+                (assigneeNames || []).forEach(function(name) {
+                    var n = String(name || '').trim();
+                    if (n && n !== '-' && uniqueAssignees.indexOf(n) === -1) {
+                        uniqueAssignees.push(n);
+                    }
+                });
+                if (uniqueAssignees.length === 1) {
+                    $('#duplicate-task-assignee-line').text('Current assignee: ' + uniqueAssignees[0]);
+                } else if (uniqueAssignees.length > 1) {
+                    $('#duplicate-task-assignee-line').text('Current assignees: ' + uniqueAssignees.join(', '));
+                } else {
+                    $('#duplicate-task-assignee-line').text('No assignee on the original.');
+                }
+                $('#dup-assignee-same').prop('checked', true);
+                $('#dup-assignee-change').prop('checked', false);
+                $('#dup-assignee-pick-wrap').addClass('d-none');
+                $('#duplicate-assignee-select').val('');
+                loadAutomatedUsersList(function(users) {
+                    fillAssigneeSelect($('#duplicate-assignee-select'), users, 'Select assignee');
+                });
+                $('#duplicateTaskModal').modal('show');
+            }
+
+            $(document).on('click', '.duplicate-automated-task', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var taskId = String($(this).data('id'));
+                var selectedIdSet = new Set((selectedTasks || []).map(function(sid) { return String(sid); }));
+                var ids = (selectedTasks.length > 1 && selectedIdSet.has(taskId))
+                    ? selectedTasks.slice()
+                    : [taskId];
+                var titles = [];
+                var assigneeNames = [];
+                ids.forEach(function(id) {
+                    var row = table ? table.getRow(parseInt(id, 10)) : null;
+                    var data = row ? row.getData() : null;
+                    titles.push(data && data.title ? data.title : ('Task #' + id));
+                    assigneeNames.push(data && data.assignee_name ? data.assignee_name : '');
+                });
+                openDuplicateTaskModal(ids, titles, assigneeNames);
+            });
+
+            $(document).on('change', 'input[name="duplicate_assignee_mode"]', function() {
+                if ($(this).val() === 'change') {
+                    $('#dup-assignee-pick-wrap').removeClass('d-none');
+                } else {
+                    $('#dup-assignee-pick-wrap').addClass('d-none');
+                }
+            });
+
+            $(document).on('change', 'input[name="bulk_duplicate_assignee_mode"]', function() {
+                if ($(this).val() === 'change') {
+                    $('#bulk-dup-assignee-pick-wrap').removeClass('d-none');
+                } else {
+                    $('#bulk-dup-assignee-pick-wrap').addClass('d-none');
+                }
+            });
+
+            $('#confirm-duplicate-task-btn').on('click', function() {
+                if (!duplicateTaskIds.length) {
+                    return;
+                }
+                var mode = $('input[name="duplicate_assignee_mode"]:checked').val() || 'same';
+                var data = {};
+                if (mode === 'change') {
+                    var assigneeId = $('#duplicate-assignee-select').val();
+                    if (!assigneeId) {
+                        alert('Please select a new assignee, or choose Same assignee.');
+                        return;
+                    }
+                    data.assignee_id = assigneeId;
+                }
+                var previousSelected = selectedTasks.slice();
+                selectedTasks = duplicateTaskIds.slice();
+                $('#duplicateTaskModal').modal('hide');
+                bulkUpdate('duplicate', data);
+                selectedTasks = previousSelected;
             });
 
             // Delete Automated Task: single row, or all selected if this row is in a multi-selection.

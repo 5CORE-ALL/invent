@@ -3377,22 +3377,26 @@ class TaskController extends Controller
         $tasks->each(function($task) use ($defaultAvatar, $formMeta, $submissionCounts, $sopPageSet, $currentEmail) {
             if ($task->assignor) {
                 $assignorUser = User::where('email', $task->assignor)->first();
+                $task->assignor_id = $assignorUser ? $assignorUser->id : null;
                 $task->assignor_name = $assignorUser ? $assignorUser->name : $task->assignor;
                 $task->assignor_avatar = $assignorUser && $assignorUser->avatar
                     ? asset('storage/' . $assignorUser->avatar)
                     : $defaultAvatar;
             } else {
+                $task->assignor_id = null;
                 $task->assignor_name = '-';
                 $task->assignor_avatar = null;
             }
 
             if ($task->assign_to) {
                 $assigneeUser = User::where('email', $task->assign_to)->first();
+                $task->assignee_id = $assigneeUser ? $assigneeUser->id : null;
                 $task->assignee_name = $assigneeUser ? $assigneeUser->name : $task->assign_to;
                 $task->assignee_avatar = $assigneeUser && $assigneeUser->avatar
                     ? asset('storage/' . $assigneeUser->avatar)
                     : $defaultAvatar;
             } else {
+                $task->assignee_id = null;
                 $task->assignee_name = '-';
                 $task->assignee_avatar = null;
             }

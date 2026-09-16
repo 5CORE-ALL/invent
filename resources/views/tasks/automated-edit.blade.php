@@ -49,6 +49,9 @@
                             <!-- Action Buttons at Top Right -->
                             <div class="row mb-4">
                                 <div class="col-12 text-end">
+                                    <button type="button" class="btn btn-outline-secondary me-2" id="duplicate-from-edit-btn">
+                                        <i class="mdi mdi-content-copy me-1"></i> Duplicate
+                                    </button>
                                     <button type="submit" class="btn btn-danger">
                                         <i class="mdi mdi-check-circle me-1"></i> Update
                                     </button>
@@ -214,6 +217,50 @@
         <!-- end row -->
 
     </div> <!-- container -->
+
+    <div class="modal fade" id="duplicateFromEditModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%); color: white;">
+                    <h5 class="modal-title"><i class="mdi mdi-content-copy me-2"></i>Duplicate automated task</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2"><strong>Duplicate “{{ $task->title }}”?</strong></p>
+                    <p class="text-muted small mb-3">
+                        Current assignee:
+                        {{ optional($users->firstWhere('id', $task->assignee_id))->name ?? ($task->assign_to ?: 'None') }}
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold mb-2">Assignee on the copy</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="edit_dup_assignee_mode" id="edit-dup-same" value="same" checked>
+                            <label class="form-check-label" for="edit-dup-same">Same assignee</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="edit_dup_assignee_mode" id="edit-dup-change" value="change">
+                            <label class="form-check-label" for="edit-dup-change">Change assignee</label>
+                        </div>
+                    </div>
+                    <div class="mb-0 d-none" id="edit-dup-assignee-wrap">
+                        <label for="edit-dup-assignee-select" class="form-label">New assignee</label>
+                        <select class="form-select" id="edit-dup-assignee-select">
+                            <option value="">Select assignee</option>
+                            @foreach($users as $user)
+                                <option value="{{ $user->id }}">{{ $user->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirm-duplicate-from-edit-btn" style="background:#6f42c1;border-color:#6f42c1;">
+                        <i class="mdi mdi-content-copy me-1"></i>Duplicate
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -347,6 +394,55 @@
                     }
                     reader.readAsDataURL(file);
                 }
+            });
+
+            $('#duplicate-from-edit-btn').on('click', function() {
+                $('#edit-dup-same').prop('checked', true);
+                $('#edit-dup-change').prop('checked', false);
+                $('#edit-dup-assignee-wrap').addClass('d-none');
+                $('#edit-dup-assignee-select').val('');
+                $('#duplicateFromEditModal').modal('show');
+            });
+
+            $('input[name="edit_dup_assignee_mode"]').on('change', function() {
+                if ($(this).val() === 'change') {
+                    $('#edit-dup-assignee-wrap').removeClass('d-none');
+                } else {
+                    $('#edit-dup-assignee-wrap').addClass('d-none');
+                }
+            });
+
+            $('#confirm-duplicate-from-edit-btn').on('click', function() {
+                var mode = $('input[name="edit_dup_assignee_mode"]:checked').val() || 'same';
+                var payload = {
+                    _token: '{{ csrf_token() }}',
+                    action: 'duplicate',
+                    task_ids: [{{ (int) $task->id }}],
+                    is_automated: 1
+                };
+                if (mode === 'change') {
+                    var assigneeId = $('#edit-dup-assignee-select').val();
+                    if (!assigneeId) {
+                        alert('Please select a new assignee, or choose Same assignee.');
+                        return;
+                    }
+                    payload.assignee_id = assigneeId;
+                }
+                var $btn = $(this).prop('disabled', true);
+                $.ajax({
+                    url: '/tasks/bulk-update',
+                    type: 'POST',
+                    data: payload,
+                    success: function(response) {
+                        $('#duplicateFromEditModal').modal('hide');
+                        window.location.href = '{{ route('tasks.automated') }}';
+                    },
+                    error: function(xhr) {
+                        $btn.prop('disabled', false);
+                        var errorMsg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Failed to duplicate task.';
+                        alert(errorMsg);
+                    }
+                });
             });
         });
     </script>
