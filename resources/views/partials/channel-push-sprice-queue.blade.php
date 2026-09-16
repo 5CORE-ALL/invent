@@ -1052,6 +1052,14 @@
                 if (d.is_missing_macy === true) return true;
                 return false;
             }
+            function chPushSpriceAlreadyPushedToSaved(d, saved) {
+                const status = String(d && (d.SPRICE_STATUS || d.push_status) || '').toLowerCase();
+                if (status !== 'pushed') return false;
+                const pushed = chPushSpriceRound2(
+                    d && (d.SPRICE_PUSHED_VALUE != null ? d.SPRICE_PUSHED_VALUE : d.CHANNEL_PUSHED_PRICE)
+                );
+                return pushed > 0 && chPushSpriceNearlyEqual(pushed, saved);
+            }
             function chPushSpriceLiveFromRow(d) {
                 if (!d) return 0;
                 const raw = d[CH_PUSH_SPRICE_PRICE_FIELD] != null && d[CH_PUSH_SPRICE_PRICE_FIELD] !== ''
@@ -1127,6 +1135,7 @@
                     let saved = chPushSpriceSavedFromRow(d);
                     saved = chPushSpriceCapMacysToAmz(d, saved);
                     if (!(saved > 0)) return;
+                    if (chPushSpriceAlreadyPushedToSaved(d, saved)) return;
                     const live = chPushSpriceLiveFromRow(d);
                     if (!(live > 0) || chPushSpriceNearlyEqual(saved, live)) return;
                     jobs.push({ sku: sku, price: saved, row: row });

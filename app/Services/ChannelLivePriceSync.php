@@ -47,6 +47,7 @@ use App\Models\WalmartMetrics;
 use App\Models\MacyDataView;
 use App\Models\MacyProduct;
 use App\Models\MacysPriceData;
+use App\Models\ShopifySku;
 use App\Models\WalmartPricingSales;
 use App\Models\WayfairDataView;
 use App\Models\WayfairPricingPrice;
@@ -122,12 +123,9 @@ class ChannelLivePriceSync
             return;
         }
 
-        $sku = strtoupper(trim($sku));
+        $sku = strtoupper(trim(str_replace(["\xc2\xa0", "\xC2\xA0"], ' ', $sku)));
         $sprice = round($sprice, 2);
-        $view = $viewClass::query()
-            ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
-            ->first()
-            ?? new $viewClass(['sku' => $sku]);
+        $view = self::findDataViewBySku($viewClass, $sku);
         $existing = is_array($view->value)
             ? $view->value
             : (json_decode((string) ($view->value ?? ''), true) ?: []);
@@ -152,7 +150,7 @@ class ChannelLivePriceSync
     public static function writeLive(string $channel, string $sku, float $sprice): void
     {
         $channel = self::normalize($channel);
-        $sku = strtoupper(trim($sku));
+        $sku = strtoupper(trim(str_replace(["\xc2\xa0", "\xC2\xA0"], ' ', $sku)));
         $sprice = round($sprice, 2);
         if ($sku === '' || $sprice <= 0) {
             return;
@@ -207,9 +205,8 @@ class ChannelLivePriceSync
                     if ($pushed === null) {
                         return;
                     }
-                    $sku = strtoupper(trim(str_replace("\xc2\xa0", ' ', (string) $row->sku)));
-                    if ($sku !== '') {
-                        $map[$sku] = $pushed;
+                    foreach (self::skuLookupKeys((string) $row->sku) as $key) {
+                        $map[$key] = $pushed;
                     }
                 });
         } catch (Throwable $e) {
@@ -234,10 +231,8 @@ class ChannelLivePriceSync
             return null;
         }
         try {
-            $row = $viewClass::query()
-                ->whereRaw('UPPER(TRIM(sku)) = ?', [$key])
-                ->first(['value']);
-            if (! $row) {
+            $row = self::findDataViewBySku($viewClass, $key);
+            if (! $row->exists) {
                 return null;
             }
             $val = is_array($row->value)
@@ -262,10 +257,24 @@ class ChannelLivePriceSync
     public static function preferIncoming(string $channel, string $sku, ?float $incoming, ?array $lookup = null): ?float
     {
         $channel = self::normalize($channel);
-        $key = strtoupper(trim(str_replace("\xc2\xa0", ' ', $sku)));
-        $pushed = $key !== '' && is_array($lookup) ? ($lookup[$key] ?? null) : null;
-        if ($pushed === null && $lookup === null && $key !== '') {
-            $pushed = self::lookupMap($channel)[$key] ?? null;
+        $keys = self::skuLookupKeys($sku);
+        $pushed = null;
+        if (is_array($lookup)) {
+            foreach ($keys as $key) {
+                if (isset($lookup[$key]) && is_numeric($lookup[$key])) {
+                    $pushed = (float) $lookup[$key];
+                    break;
+                }
+            }
+        }
+        if ($pushed === null && $lookup === null && $keys !== []) {
+            $map = self::lookupMap($channel);
+            foreach ($keys as $key) {
+                if (isset($map[$key]) && is_numeric($map[$key])) {
+                    $pushed = (float) $map[$key];
+                    break;
+                }
+            }
         }
 
         if (in_array($channel, ['temu', 'temu2', 'temu3'], true)) {
@@ -411,6 +420,7 @@ class ChannelLivePriceSync
             'macys', 'macy' => [
                 ['model' => MacyProduct::class, 'column' => 'price'],
                 ['model' => MacysPriceData::class, 'column' => 'price'],
+                ['model' => MacysPriceData::class, 'column' => 'price', 'sku' => 'offer_sku'],
             ],
             default => [],
         };
@@ -453,8 +463,94 @@ class ChannelLivePriceSync
             return;
         }
 
-        $class::query()
+        $updated = $class::query()
             ->whereRaw('UPPER(TRIM('.$skuCol.')) = ?', [$sku])
             ->update([$column => $value]);
+
+        if ($updated > 0 || ! in_array($class, [MacyProduct::class, MacysPriceData::class], true)) {
+            return;
+        }
+
+        $ids = self::matchingModelIds($class, $skuCol, $sku);
+        if ($ids !== []) {
+            $class::query()->whereIn('id', $ids)->update([$column => $value]);
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function skuLookupKeys(string $sku): array
+    {
+        $keys = [];
+        $raw = strtoupper(trim(str_replace(["\xc2\xa0", "\xC2\xA0"], ' ', $sku)));
+        if ($raw !== '') {
+            $keys[] = $raw;
+        }
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '') {
+            $keys[] = $norm;
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        if ($compact !== '') {
+            $keys[] = $compact;
+        }
+
+        return array_values(array_unique($keys));
+    }
+
+    /**
+     * @param  class-string  $viewClass
+     */
+    private static function findDataViewBySku(string $viewClass, string $sku): object
+    {
+        $sku = strtoupper(trim(str_replace(["\xc2\xa0", "\xC2\xA0"], ' ', $sku)));
+        $view = $viewClass::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+            ->first();
+        if ($view) {
+            return $view;
+        }
+
+        try {
+            foreach ($viewClass::query()->whereNotNull('sku')->cursor() as $row) {
+                if (ShopifySku::skusMatch((string) $row->sku, $sku)) {
+                    return $row;
+                }
+            }
+        } catch (Throwable) {
+            // fall through to a new row
+        }
+
+        return new $viewClass(['sku' => $sku]);
+    }
+
+    /**
+     * @param  class-string  $class
+     * @return list<int>
+     */
+    private static function matchingModelIds(string $class, string $skuCol, string $sku): array
+    {
+        $ids = [];
+        try {
+            $select = ['id', $skuCol];
+            if ($class === MacysPriceData::class && $skuCol !== 'offer_sku') {
+                $select[] = 'offer_sku';
+            }
+            foreach ($class::query()->select($select)->cursor() as $row) {
+                $stored = (string) ($row->{$skuCol} ?? '');
+                if (ShopifySku::skusMatch($stored, $sku)) {
+                    $ids[] = $row->id;
+                    continue;
+                }
+                if ($class === MacysPriceData::class && ShopifySku::skusMatch((string) ($row->offer_sku ?? ''), $sku)) {
+                    $ids[] = $row->id;
+                }
+            }
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_values(array_unique($ids));
     }
 }

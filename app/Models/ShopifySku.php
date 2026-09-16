@@ -76,6 +76,22 @@ class ShopifySku extends Model
     }
 
     /**
+     * True when two SKU strings are the same after NBSP / hyphen / space cleanup.
+     */
+    public static function skusMatch(?string $a, ?string $b): bool
+    {
+        $na = self::normalizeSkuForShopifyLookup($a);
+        $nb = self::normalizeSkuForShopifyLookup($b);
+        if ($na !== '' && $na === $nb) {
+            return true;
+        }
+        $ca = self::compactSkuForLookup($a);
+        $cb = self::compactSkuForLookup($b);
+
+        return $ca !== '' && $ca === $cb;
+    }
+
+    /**
      * @param  array<int, string>  $productSkus
      * @return array<string, self> normalized key => row (first wins)
      */
