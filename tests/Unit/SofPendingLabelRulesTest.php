@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Http\Controllers\Channels\SalesOrderFulfillmentController;
+use App\Services\MarketplaceManager\EbaySellFulfillmentTracking;
 use App\Services\ShipmentTrackingService;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
@@ -59,6 +60,31 @@ class SofPendingLabelRulesTest extends TestCase
 
         $fromPrefixed = $keys->invoke($ctrl, '#TT-577572569413617223');
         $this->assertContains('577572569413617223', $fromPrefixed);
+    }
+
+    public function test_ebay_fulfillment_payload_exposes_tracking(): void
+    {
+        $hit = EbaySellFulfillmentTracking::trackingFromEbayPayload([
+            'fulfillments' => [[
+                'shipmentTrackingNumber' => '9361289903501234567890',
+                'shippingCarrierCode' => 'USPS',
+            ]],
+        ]);
+
+        $this->assertSame('9361289903501234567890', $hit['tracking'] ?? null);
+        $this->assertSame('USPS', $hit['carrier'] ?? null);
+    }
+
+    public function test_ebay_and_tiktok_prefer_live_channel_tracking(): void
+    {
+        $ref = new ReflectionClass(SalesOrderFulfillmentController::class);
+        $ctrl = $ref->newInstanceWithoutConstructor();
+        $prefers = $ref->getMethod('sofPrefersLiveChannelTracking');
+
+        $this->assertTrue($prefers->invoke($ctrl, 'ebay1'));
+        $this->assertTrue($prefers->invoke($ctrl, 'tiktok2'));
+        $this->assertFalse($prefers->invoke($ctrl, 'amazon'));
+        $this->assertFalse($prefers->invoke($ctrl, 'shein'));
     }
 
     public function test_pending_badge_counts_unique_orders_not_sku_lines(): void

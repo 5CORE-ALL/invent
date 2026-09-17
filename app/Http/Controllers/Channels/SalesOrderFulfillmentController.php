@@ -72,7 +72,7 @@ class SalesOrderFulfillmentController extends Controller
     public const TOP_BADGE_KEYS = ['gofo', 'veeqo', 'shopify', 'others'];
 
     /** Max orders per HTTP Pull Tracking request (keep under nginx/proxy gateway timeout). */
-    protected const HTTP_PULL_MAX = 4;
+    protected const HTTP_PULL_MAX = 8;
 
     /** Stop HTTP Pull Tracking after this many seconds and return partial results. */
     protected const HTTP_PULL_DEADLINE_SECONDS = 16.0;
@@ -3821,6 +3821,21 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * eBay / TikTok already have the label on the channel API. Hitting Veeqo/GOFO
+     * first burned the HTTP deadline and left Tracking blank.
+     */
+    protected function sofPrefersLiveChannelTracking(string $slug): bool
+    {
+        return in_array(strtolower(trim($slug)), [
+            'ebay1',
+            'ebay2',
+            'ebay3',
+            'tiktok',
+            'tiktok2',
+        ], true);
+    }
+
+    /**
      * Pull tracking from Veeqo / GOFO / 4Seller for SOF rows that still have no number.
      *
      * @param  list<array<string, mixed>>  $candidateRows
@@ -3941,11 +3956,22 @@ class SalesOrderFulfillmentController extends Controller
                 }
             }
 
-            $found = $labels->lookupLabelTracking($refs, $local, $fast);
-            if ($found === null || trim((string) ($found['tracking'] ?? '')) === '') {
+            $preferLive = $this->sofPrefersLiveChannelTracking($slug);
+            $found = null;
+            if ($preferLive) {
                 $found = $labels->lookupLiveChannelTracking($slug, $refs);
             }
-            if ($found === null) {
+            $warehouseBudgetLeft = $deadline === null || ($deadline - microtime(true)) > 4.0;
+            if (
+                ($found === null || trim((string) ($found['tracking'] ?? '')) === '')
+                && (! $fast || ! $preferLive || $warehouseBudgetLeft)
+            ) {
+                $found = $labels->lookupLabelTracking($refs, $local, $fast);
+            }
+            if (($found === null || trim((string) ($found['tracking'] ?? '')) === '') && ! $preferLive) {
+                $found = $labels->lookupLiveChannelTracking($slug, $refs);
+            }
+            if ($found === null || trim((string) ($found['tracking'] ?? '')) === '') {
                 continue;
             }
 

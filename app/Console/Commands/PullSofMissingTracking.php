@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Http\Controllers\Channels\SalesOrderFulfillmentController;
 use App\Services\MarketplaceManager\AmazonTrackingSyncService;
+use App\Services\MarketplaceManager\EbaySellFulfillmentTracking;
 use App\Services\MarketplaceManager\Temu2OrderTrackingPullService;
 use App\Services\MarketplaceManager\TemuOrderTrackingPullService;
 use Illuminate\Console\Command;
@@ -54,6 +55,14 @@ class PullSofMissingTracking extends Command
         } catch (\Throwable $e) {
             $this->warn('Amazon SOF tracking fill failed: '.$e->getMessage());
             Log::warning('sof:pull-missing-tracking Amazon failed', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            $ebay = app(EbaySellFulfillmentTracking::class)->fillMissingSofTracking($limit);
+            $this->info('eBay: '.((string) ($ebay['message'] ?? 'done')));
+        } catch (\Throwable $e) {
+            $this->warn('eBay SOF tracking fill failed: '.$e->getMessage());
+            Log::warning('sof:pull-missing-tracking eBay failed', ['error' => $e->getMessage()]);
         }
 
         $label = [

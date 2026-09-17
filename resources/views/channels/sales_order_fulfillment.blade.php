@@ -5756,7 +5756,7 @@
             });
     }
 
-    const SOF_PULL_CHUNK = 4;
+    const SOF_PULL_CHUNK = 8;
 
     function sofPullTargetKey(t) {
         if (!t || typeof t !== 'object') return '';
