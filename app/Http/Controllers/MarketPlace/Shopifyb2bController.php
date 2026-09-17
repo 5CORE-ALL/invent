@@ -244,6 +244,7 @@ class Shopifyb2bController extends Controller
 
             $processedItem['LP_productmaster'] = $lp;
             $processedItem['Ship_productmaster'] = $ship;
+            $processedItem['percentage'] = $percentageValue;
 
             $storeRow = $storeByNorm[ShopifySku::normalizeSkuForShopifyLookup((string) $sku)] ?? null;
 

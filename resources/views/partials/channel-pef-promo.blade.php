@@ -3461,10 +3461,11 @@
                 : CHANNEL_PROMO_CHANNEL === 'faire') {
                 return false;
             }
-            // TikTok / FB Marketplace / Doba: persist the rule discount. Cell shows saved S PRC; red triangle if ≥ LMP.
+            // TikTok / FB Marketplace / Doba / Shopify B2B: persist the rule discount. No LMP cap.
             if (chPromoIsTiktokPromoChannel() || CHANNEL_PROMO_CHANNEL === 'fb_marketplace'
                 || chPromoIsDobaPromoChannel() || chPromoIsDobaWithoutshipPromoChannel()
-                || CHANNEL_PROMO_CHANNEL === 'topdawg') {
+                || CHANNEL_PROMO_CHANNEL === 'topdawg'
+                || CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
                 return false;
             }
             if (!d) return true;

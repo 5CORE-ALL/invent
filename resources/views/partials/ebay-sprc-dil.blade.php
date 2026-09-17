@@ -15,9 +15,10 @@
   Purchasing Power / Best Buy: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
   Best Buy also caps S PRC at LMP (including 0 Sold) after the A Price floor.
-  Shopify B2C: Dil-matching when B2C L30 > 0, including Dil below the first slab or above the last
-  (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay. CVR Down/Up uses
-  CVR% vs the overlay thresholds (no L60). Dil S PRC inverts 0.95 take-home so SNROI = target.
+  Shopify B2C / B2B: Dil-matching when channel L30 > 0, including Dil below the first slab or above
+  the last (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay.
+  CVR Down/Up uses CVR% vs the overlay thresholds (no L60). Dil S PRC inverts 0.95 take-home
+  so SNROI = target. B2B excludes Ship.
   Dil slab edits and table load recalculate display only.
   Save and Apply deletes old S PRC (saves 0), then writes the new Dil S PRC.
   Macys / Purchasing Power persist in the background (page can close).
@@ -855,10 +856,9 @@
                 || (d.cvr_60 != null && d.cvr_60 !== '')
                 || (d.CVR_45 != null && d.CVR_45 !== '')
                 || (d.cvr_45 != null && d.cvr_45 !== '')));
-            if (ebayDgIsShopifyB2b() && !hasCvr60) return 'flat';
-            // Shopify B2C has no L60 CVR. Do not treat CVR>0 as Up vs a missing 0% L60.
+            // Shopify B2C / B2B have no L60 CVR. Do not treat CVR>0 as Up vs a missing 0% L60.
             // Down / Up follow the editable CVR overlay thresholds (default <7% / >10%).
-            if (ebayDgIsShopifyB2c() && !hasCvr60) {
+            if ((ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) && !hasCvr60) {
                 const cfg = ebayCvrGroiAdjNow();
                 if (cvr < cfg.down_lt) return 'down';
                 if (cvr > cfg.up_gt) return 'up';
@@ -891,8 +891,8 @@
         }
         function ebayDilGroiCvrAdj(d) {
             if (!EBAY_DIL_GROI_CVR_ADJ) return 0;
-            if ((ebayDgIsShein() || ebayDgIsShopifyB2c()) && !(ebayDgViews(d) > 0)) return 0;
-            if (ebayDgIsShopifyB2c() && ebayDgIsZeroSold(d)) return 0;
+            if ((ebayDgIsShein() || ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) && !(ebayDgViews(d) > 0)) return 0;
+            if ((ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) && ebayDgIsZeroSold(d)) return 0;
             const cvr = ebayDgCvr30(d);
             const cfg = ebayCvrGroiAdjNow();
             const trend = ebayDgCvrTrend(d);
@@ -1055,8 +1055,8 @@
             return 0;
         }
         function ebayDilTakehomeMargin(d) {
-            // SNROI = ((S PRC × 0.95 − ship − LP − ads) / LP) × 100. Dil must invert the same 0.95.
-            if (ebayDgIsShopifyB2c()) return 0.95;
+            // Shopify SNROI = ((S PRC × 0.95 − ship? − LP − ads) / LP) × 100. B2B excludes ship.
+            if (ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) return 0.95;
             if (typeof chPromoTakehomeMargin === 'function') {
                 try {
                     const rowM = Number(chPromoTakehomeMargin(d));
@@ -1182,7 +1182,7 @@
             // TikTok 0 Sold: keep the min Target NROI. CVR 0% (1 view, no L60) is
             // treated as a down-arrow (−10) and was pinning S PRC to the listing
             // 40% price instead of back-solving the 50% slab.
-            const skipCvr = (ebayDgIsTiktok() || ebayDgIsShopifyB2c()) && zeroSoldMin;
+            const skipCvr = (ebayDgIsTiktok() || ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) && zeroSoldMin;
             const cvrAdj = skipCvr ? 0 : ebayDilGroiCvrAdj(d);
             groi = skipCvr ? slabGroi : ebayDilGroiApplyCvrAdj(slabGroi, d);
             const rawSprc = ebaySpriceFromGroi(d, groi);
@@ -1771,7 +1771,8 @@
         function redrawEbaySprcDilColumn() {
             if (typeof table === 'undefined' || !table) return;
             const scroll = ebayDgCaptureScroll();
-            if (typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c()) {
+            if ((typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c())
+                || (typeof ebayDgIsShopifyB2b === 'function' && ebayDgIsShopifyB2b())) {
                 ebayDgRefreshVisibleRows();
             } else {
                 try { table.redraw(true); } catch (e) { /* ignore */ }
@@ -1836,8 +1837,9 @@
         /** Macys / Purchasing Power load / slab edit: write Dil S PRC in the grid only. No catalog wipe or batch POST. */
         function ebayDgPaintMacysRuleSprice() {
             if (typeof table === 'undefined' || !table) return 0;
-            // Shopify B2C S PRC / SNROI already read live Dil. Mass row.update + redraw jumps the table to the top.
-            if (typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c()) {
+            // Shopify S PRC / SNROI already read live Dil. Mass row.update + redraw jumps the table to the top.
+            if ((typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c())
+                || (typeof ebayDgIsShopifyB2b === 'function' && ebayDgIsShopifyB2b())) {
                 ebayDgRefreshVisibleRows();
                 if (typeof window.updateSummary === 'function') {
                     try { window.updateSummary(); } catch (e) { /* ignore */ }
