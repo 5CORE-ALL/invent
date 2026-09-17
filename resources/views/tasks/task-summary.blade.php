@@ -96,9 +96,23 @@
             font-weight: 700;
         }
         .task-summary-col-missed {
-            color: #dc2626 !important;
             font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        .task-summary-col-missed.is-miss-worse {
+            color: #dc2626 !important;
             background-color: #fef2f2;
+        }
+        .task-summary-col-missed.is-miss-better {
+            color: #15803d !important;
+        }
+        .task-summary-col-missed.is-miss-same {
+            color: #92400e !important;
+        }
+        .task-summary-col-missed.is-miss-zero {
+            color: #6b7280 !important;
+            font-weight: 600;
         }
         /* TAT colour scale —
              ≥ 3 days   → red text
@@ -117,7 +131,7 @@
             color: #831843 !important;
             font-weight: 600;
         }
-        /* DAR (days/25) and ATT (hours/200) — last 30 days.
+        /* DAR (days/25) — last 30 days.
              > 90%  → pink
              80–90% → green
              else   → red */
@@ -125,24 +139,37 @@
             font-weight: 700;
             font-variant-numeric: tabular-nums;
         }
-        .task-summary-col-dar.is-dar-high,
-        .task-summary-col-att.is-att-high {
+        .task-summary-col-dar.is-dar-high {
             background-color: #fce7f3 !important;
             color: #831843 !important;
         }
-        .task-summary-col-dar.is-dar-mid,
-        .task-summary-col-att.is-att-mid {
+        .task-summary-col-dar.is-dar-mid {
             background-color: #dcfce7 !important;
             color: #166534 !important;
         }
-        .task-summary-col-dar.is-dar-low,
-        .task-summary-col-att.is-att-low {
+        .task-summary-col-dar.is-dar-low {
             background-color: #fee2e2 !important;
             color: #991b1b !important;
         }
+        /* ATT (hours/200) — last 30 days.
+             > 90%  → green text
+             75–90% → yellow bg + black text
+             < 75%  → red text */
         .task-summary-col-att {
             font-weight: 700;
             font-variant-numeric: tabular-nums;
+        }
+        .task-summary-col-att.is-att-high {
+            color: #15803d !important;
+            background-color: transparent !important;
+        }
+        .task-summary-col-att.is-att-mid {
+            background-color: #ffc107 !important;
+            color: #000000 !important;
+        }
+        .task-summary-col-att.is-att-low {
+            color: #dc2626 !important;
+            background-color: transparent !important;
         }
         .task-summary-dar-cell {
             display: inline-flex;
@@ -556,74 +583,61 @@
             display: none !important;
         }
 
-        /* Interactive analytics (frontend-only, visible rows) */
+        /* Teal pill badges + history dots (same pattern as marketplace KPIs) */
         .task-summary-analytics {
-            background: linear-gradient(180deg, rgba(13, 148, 136, 0.07) 0%, transparent 100%);
-            border: 1px solid rgba(13, 148, 136, 0.14);
-            border-radius: 14px;
-            padding: 0.85rem 0.65rem 0.65rem;
-            margin-bottom: 1rem;
+            background: transparent;
+            border: none;
+            padding: 0 0 0.85rem;
+            margin-bottom: 0.35rem;
         }
         .task-summary-analytics-badges {
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
-            gap: 0.65rem;
+            gap: 0.5rem;
         }
         .task-summary-analytics-badge {
-            flex: 1 1 0;
-            min-width: 118px;
-            max-width: 200px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.45rem;
+            flex: 0 1 auto;
+            min-width: 0;
             border: none;
-            border-radius: 14px;
-            padding: 0.8rem 0.95rem;
-            text-align: center;
-            background: #fff;
-            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07), 0 0 0 1px rgba(13, 148, 136, 0.12);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            cursor: pointer;
+            border-radius: 999px;
+            padding: 0.55rem 1.35rem;
+            background: #5ecfc4;
+            color: #fff;
+            box-shadow: none;
+            cursor: default;
             position: relative;
-            overflow: hidden;
-        }
-        .task-summary-analytics-badge::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 4px;
-            background: linear-gradient(180deg, #0d9488, #14b8a6);
+            line-height: 1.2;
+            white-space: nowrap;
         }
         .task-summary-analytics-badge:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 26px rgba(13, 148, 136, 0.16), 0 0 0 1px rgba(13, 148, 136, 0.2);
+            background: #4ec4b8;
         }
         .task-summary-analytics-badge:focus-visible {
-            outline: 2px solid #0d9488;
+            outline: 2px solid #0f766e;
             outline-offset: 2px;
         }
-        .task-summary-analytics-badge-label {
-            font-size: 0.65rem;
-            font-weight: 700;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            color: #64748b;
-            margin-bottom: 0.15rem;
+        .task-summary-analytics-badge-label,
+        .task-summary-analytics-badge-value {
+            font-size: 1rem;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+            text-transform: none;
+            color: #fff !important;
+            margin: 0;
+            line-height: 1.2;
         }
         .task-summary-analytics-badge-value {
-            font-size: 1.45rem;
-            font-weight: 800;
             font-variant-numeric: tabular-nums;
-            color: #0f766e;
-            line-height: 1.15;
         }
-        .task-summary-analytics-badge i {
-            position: absolute;
-            right: 10px;
-            top: 8px;
-            font-size: 1.25rem;
-            color: rgba(13, 148, 136, 0.35);
-            pointer-events: none;
+        .task-summary-analytics-badge .summary-trend-dot {
+            background: #fff !important;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+            cursor: pointer;
         }
         #taskSummaryAnalyticsModal .modal-content {
             border-radius: 16px;
@@ -659,8 +673,7 @@
         }
         @media (max-width: 575.98px) {
             .task-summary-analytics-badge {
-                min-width: 140px;
-                max-width: none;
+                padding: 0.4rem 0.85rem;
             }
         }
 
@@ -862,7 +875,6 @@
             'assigned_members' => 0,
             'pending' => 0,
             'overdue' => 0,
-            'approval_pending' => 0,
             'done' => 0,
         ];
     @endphp
@@ -935,31 +947,26 @@
                     @if (!empty($rows) && count($rows))
                         <div class="task-summary-analytics">
                             <div class="task-summary-analytics-badges">
-                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="assigned" data-ts-title="Members Analytics" title="Active members with at least one assignee task" aria-label="Open members chart">
-                                    <div class="task-summary-analytics-badge-label">Members</div>
-                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-assigned">{{ number_format($taskDashboardStats['assigned_members']) }}</div>
-                                    <i class="ri-team-line" aria-hidden="true"></i>
-                                </button>
-                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="total" data-ts-title="Total Task Analytics" aria-label="Open total tasks chart">
-                                    <div class="task-summary-analytics-badge-label">Total tasks</div>
-                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-total">{{ number_format($taskDashboardStats['total_tasks']) }}</div>
-                                    <i class="ri-line-chart-line" aria-hidden="true"></i>
-                                </button>
-                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="overdue" data-ts-title="Overdue Analytics" aria-label="Open overdue chart">
-                                    <div class="task-summary-analytics-badge-label">Overdue</div>
-                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-overdue">{{ number_format($taskDashboardStats['overdue']) }}</div>
-                                    <i class="ri-alarm-warning-line" aria-hidden="true"></i>
-                                </button>
-                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="approval" data-ts-title="Approval Pending Analytics" aria-label="Open approval chart">
-                                    <div class="task-summary-analytics-badge-label">Approval pending</div>
-                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-approval">{{ number_format($taskDashboardStats['approval_pending']) }}</div>
-                                    <i class="ri-time-line" aria-hidden="true"></i>
-                                </button>
-                                <button type="button" class="task-summary-analytics-badge" data-ts-metric="done" data-ts-title="Done Task Analytics" aria-label="Open done chart">
-                                    <div class="task-summary-analytics-badge-label">Done</div>
-                                    <div class="task-summary-analytics-badge-value" id="ts-analytics-val-done">{{ number_format($taskDashboardStats['done']) }}</div>
-                                    <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
-                                </button>
+                                <span class="task-summary-analytics-badge" data-ts-metric="assigned" data-ts-title="Members Analytics">
+                                    <span class="summary-trend-dot none" data-ts-metric="assigned" title="History" role="button" tabindex="0" aria-label="Members history"></span>
+                                    <span class="task-summary-analytics-badge-label">Members</span>
+                                    <span class="task-summary-analytics-badge-value" id="ts-analytics-val-assigned">{{ number_format($taskDashboardStats['assigned_members']) }}</span>
+                                </span>
+                                <span class="task-summary-analytics-badge" data-ts-metric="total" data-ts-title="Total Task Analytics">
+                                    <span class="summary-trend-dot none" data-ts-metric="total" title="History" role="button" tabindex="0" aria-label="Total tasks history"></span>
+                                    <span class="task-summary-analytics-badge-label">Total tasks</span>
+                                    <span class="task-summary-analytics-badge-value" id="ts-analytics-val-total">{{ number_format($taskDashboardStats['total_tasks']) }}</span>
+                                </span>
+                                <span class="task-summary-analytics-badge" data-ts-metric="overdue" data-ts-title="Overdue Analytics">
+                                    <span class="summary-trend-dot none" data-ts-metric="overdue" title="History" role="button" tabindex="0" aria-label="Overdue history"></span>
+                                    <span class="task-summary-analytics-badge-label">Overdue</span>
+                                    <span class="task-summary-analytics-badge-value" id="ts-analytics-val-overdue">{{ number_format($taskDashboardStats['overdue']) }}</span>
+                                </span>
+                                <span class="task-summary-analytics-badge" data-ts-metric="done" data-ts-title="Done Task Analytics">
+                                    <span class="summary-trend-dot none" data-ts-metric="done" title="History" role="button" tabindex="0" aria-label="Done history"></span>
+                                    <span class="task-summary-analytics-badge-label">Done</span>
+                                    <span class="task-summary-analytics-badge-value" id="ts-analytics-val-done">{{ number_format($taskDashboardStats['done']) }}</span>
+                                </span>
                             </div>
                            
                         </div>
@@ -1096,17 +1103,11 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="tat_l30" data-sort-type="float" title="TAT — average Turn-Around Time in days (task start → completion) over the last 30 days" role="button" tabindex="0">
                                         TAT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="missed_l30" data-sort-type="number" title="Miss — L30 missed tasks (is_missed = true, last 30 days)" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="missed_l30" data-sort-type="number" title="Miss — last 30 days vs prior 30 days (days 31–60). Any deleted task that was not Done counts as missed." role="button" tabindex="0">
                                         Miss <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
-                                    </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="a_task" data-sort-type="number" title="Sort by A Task count" role="button" tabindex="0">
-                                        A Task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort task-summary-col-a-task-h" data-sort-key="a_task_h" data-sort-type="number" title="Sort by automated task ETC hours (rounded)" role="button" tabindex="0">
                                         A Task H <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
-                                    </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="need_approval" data-sort-type="number" title="Appr — number of tasks pending approval (status = Need Approval)" role="button" tabindex="0">
-                                        APPR <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" title="Summary — open the team-member dashboard (own metrics + tagged juniors)">
                                         Summ
@@ -1146,9 +1147,7 @@
                                         data-sort-dar_l30="{{ (int) ($row['dar_l30_pct'] ?? 0) }}"
                                         data-sort-tat_l30="{{ $row['tat_l30_days'] !== null ? (float) $row['tat_l30_days'] : -1 }}"
                                         data-sort-missed_l30="{{ (int) ($row['missed_l30'] ?? 0) }}"
-                                        data-sort-a_task="{{ (int) ($row['a_task'] ?? 0) }}"
                                         data-sort-a_task_h="{{ (int) ($row['a_task_h'] ?? 0) }}"
-                                        data-sort-need_approval="{{ (int) ($row['need_approval'] ?? 0) }}"
                                         data-sort-done="{{ (int) ($row['done'] ?? 0) }}">
                                         @php
                                             $tmLevel = strtolower((string) ($row['org_level'] ?? ''));
@@ -1405,13 +1404,23 @@
                                             @if($tat !== null) title="Avg TAT over last 30 days · based on {{ (int) ($row['tat_l30_count'] ?? 0) }} completed task{{ ((int) ($row['tat_l30_count'] ?? 0) === 1) ? '' : 's' }} · raw {{ number_format((float) $tat, 1) }}d" @else title="No tasks completed in the last 30 days" @endif>
                                             {{ $tatDisplay }}
                                         </td>
-                                        <td class="task-summary-num task-summary-col-missed"
-                                            title="Missed tasks in the last 30 days (is_missed = true · by start_date)">
-                                            {{ (int) ($row['missed_l30'] ?? 0) }}
+                                        @php
+                                            $missL30 = (int) ($row['missed_l30'] ?? 0);
+                                            $missP30 = (int) ($row['missed_p30'] ?? 0);
+                                            $missClass = 'is-miss-zero';
+                                            if ($missL30 > $missP30) {
+                                                $missClass = 'is-miss-worse';
+                                            } elseif ($missL30 < $missP30) {
+                                                $missClass = 'is-miss-better';
+                                            } elseif ($missL30 > 0) {
+                                                $missClass = 'is-miss-same';
+                                            }
+                                        @endphp
+                                        <td class="task-summary-num task-summary-col-missed {{ $missClass }}"
+                                            title="Last 30 days: {{ $missL30 }} · Prior 30 days (31–60): {{ $missP30 }}">
+                                            {{ $missL30 }} / {{ $missP30 }}
                                         </td>
-                                        <td class="task-summary-num">{{ $row['a_task'] }}</td>
                                         <td class="task-summary-num task-summary-col-a-task-h" title="Total ETC hours (assignee) for automated tasks, rounded">{{ (int) ($row['a_task_h'] ?? 0) }}</td>
-                                        <td class="task-summary-num">{{ $row['need_approval'] }}</td>
                                         <td>
                                             @php
                                                 $kpiData = [];
@@ -1451,9 +1460,16 @@
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($row['designation'] ?? '') }}"
                                                     data-incentive-count="{{ (int) ($row['incentive_count'] ?? 0) }}"
-                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row" @else title="View incentives for {{ e($row['team_member']) }}" @endif
+                                                    @php
+                                                        $incUserId = (int) ($row['user_id'] ?? 0);
+                                                        $canOpenInc = $incUserId > 0 && (!empty($canEditIncentives) || $incUserId === (int) auth()->id());
+                                                    @endphp
+                                                    @if($incUserId === 0) disabled title="No user record found for this row"
+                                                    @elseif(!$canOpenInc) disabled title="You can only view your own incentives"
+                                                    @else title="{{ !empty($canEditIncentives) ? 'Edit' : 'View' }} incentives for {{ e($row['team_member']) }}"
+                                                    @endif
                                                     aria-label="Open incentives for {{ e($row['team_member']) }}">
-                                                <i class="ri-hand-coin-fill" style="font-size:1.2rem;" aria-hidden="true"></i>@if((int) ($row['incentive_count'] ?? 0) > 0)<span class="incentive-bag-count">{{ (int) $row['incentive_count'] }}</span>@endif
+                                                <span class="incentive-dollar-icon" aria-hidden="true">$</span>@if((int) ($row['incentive_count'] ?? 0) > 0)<span class="incentive-bag-count">{{ (int) $row['incentive_count'] }}</span>@endif
                                             </button>
                                         </td>
                                         <td class="task-summary-col-minimize text-center">
@@ -1469,7 +1485,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="26" class="text-center text-muted py-4">
+                                        <td colspan="24" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -1480,7 +1496,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="26" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="24" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -1722,9 +1738,7 @@
                         task: parseInt(tr.getAttribute('data-sort-task'), 10) || 0,
                         assignor_task: parseInt(tr.getAttribute('data-sort-assignor_task'), 10) || 0,
                         overdue: parseInt(tr.getAttribute('data-sort-overdue'), 10) || 0,
-                        a_task: parseInt(tr.getAttribute('data-sort-a_task'), 10) || 0,
                         a_task_h: parseInt(tr.getAttribute('data-sort-a_task_h'), 10) || 0,
-                        need_approval: parseInt(tr.getAttribute('data-sort-need_approval'), 10) || 0,
                         done: parseInt(tr.getAttribute('data-sort-done'), 10) || 0
                     };
                 });
@@ -1736,7 +1750,6 @@
                     total: 'task',
                     assigned: 'task',
                     overdue: 'overdue',
-                    approval: 'need_approval',
                     done: 'done'
                 };
                 var field = fieldMap[metric] || 'task';
@@ -1760,7 +1773,6 @@
                     total: 'Tasks (assignee)',
                     assigned: 'Tasks (assignee)',
                     overdue: 'Overdue',
-                    approval: 'Need approval',
                     done: 'Done'
                 };
                 return {
@@ -1907,9 +1919,19 @@
                 });
             }
 
-            document.querySelectorAll('.task-summary-analytics-badge[data-ts-metric]').forEach(function (b) {
-                b.addEventListener('click', function () {
-                    var m = b.getAttribute('data-ts-metric');
+            document.querySelectorAll('.task-summary-analytics-badge .summary-trend-dot[data-ts-metric]').forEach(function (dot) {
+                dot.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var m = dot.getAttribute('data-ts-metric');
+                    if (m) {
+                        openAnalyticsModal(m);
+                    }
+                });
+                dot.addEventListener('keydown', function (e) {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    e.preventDefault();
+                    var m = dot.getAttribute('data-ts-metric');
                     if (m) {
                         openAnalyticsModal(m);
                     }
@@ -2058,7 +2080,7 @@
             }
 
             // Recompute the top-bar analytics badges (Members / Total tasks /
-            // Overdue / Approval pending / Done) from whatever rows are
+            // Overdue / Done) from whatever rows are
             // currently visible — respects both the search filter and the
             // hierarchy-collapse "task-summary-row-collapsed-hidden" class.
             function recomputeAnalyticsBadges() {
@@ -2072,13 +2094,12 @@
                     + ':not(.is-ts-minimized)'
                     + ':not(.is-ts-snoozed)'
                 );
-                var sum = { task: 0, overdue: 0, done: 0, approval: 0, members: 0 };
+                var sum = { task: 0, overdue: 0, done: 0, members: 0 };
                 rows.forEach(function (tr) {
                     var taskN = parseInt(tr.getAttribute('data-sort-task'), 10) || 0;
                     sum.task += taskN;
                     sum.overdue += parseInt(tr.getAttribute('data-sort-overdue'), 10) || 0;
                     sum.done += parseInt(tr.getAttribute('data-sort-done'), 10) || 0;
-                    sum.approval += parseInt(tr.getAttribute('data-sort-need_approval'), 10) || 0;
                     if (taskN > 0) sum.members += 1;
                 });
                 var fmt = function (n) {
@@ -2089,7 +2110,6 @@
                     'ts-analytics-val-total': sum.task,
                     'ts-analytics-val-assigned': sum.members,
                     'ts-analytics-val-overdue': sum.overdue,
-                    'ts-analytics-val-approval': sum.approval,
                     'ts-analytics-val-done': sum.done
                 };
                 Object.keys(pairs).forEach(function (id) {
@@ -3174,7 +3194,7 @@
                 tr.setAttribute('data-level', level); // 'director' | 'mgr' | 'others'
                 tr.setAttribute('data-collapsed', 'false');
                 var td = document.createElement('td');
-                td.setAttribute('colspan', '26');
+                td.setAttribute('colspan', '24');
                 td.innerHTML =
                     '<div class="task-summary-group-header-inner">'
                     + '<button type="button" class="task-summary-group-chevron" data-action="toggle-group" aria-label="Toggle group">'
@@ -6341,9 +6361,7 @@
                     + renderMetricTile('Done', m.done || 0, 'is-done')
                     + renderMetricTile('O-Due', m.overdue || 0, 'is-overdue')
                     + renderMetricTile('TAT', tat)
-                    + renderMetricTile('Miss', m.missed_l30 || 0, 'is-overdue')
-                    + renderMetricTile('A Task', m.a_task || 0)
-                    + renderMetricTile('Appr', m.need_approval || 0);
+                    + renderMetricTile('Miss', (m.missed_l30 || 0) + ' / ' + (m.missed_p30 || 0), 'is-overdue');
                 return html;
             }
 
@@ -6940,8 +6958,7 @@
                     + renderTile('Done', m.done || 0, 'is-done')
                     + renderTile('O-Due', m.overdue || 0, 'is-overdue')
                     + renderTile('TAT', tat)
-                    + renderTile('Miss', m.missed_l30 || 0, 'is-overdue')
-                    + renderTile('Appr', m.need_approval || 0);
+                    + renderTile('Miss', (m.missed_l30 || 0) + ' / ' + (m.missed_p30 || 0), 'is-overdue');
             }
 
             function renderPersonRow(p) {
@@ -7125,7 +7142,8 @@
                 assigned: [],
                 available: [],
                 pickerOpen: false,
-                pickerQuery: '',
+                pickerPageQuery: '',
+                pickerBadgeQuery: '',
                 pickerSelected: {}
             };
 
@@ -7199,16 +7217,19 @@
 
             function clearPickerSelection() {
                 state.pickerSelected = {};
-                state.pickerQuery = '';
-                var search = el('ts-uk-picker-search');
-                if (search) search.value = '';
+                state.pickerPageQuery = '';
+                state.pickerBadgeQuery = '';
+                var pageSearch = el('ts-uk-picker-page-search');
+                var badgeSearch = el('ts-uk-picker-badge-search');
+                if (pageSearch) pageSearch.value = '';
+                if (badgeSearch) badgeSearch.value = '';
             }
 
             var pickerFloatBound = false;
 
             function positionPickerDropdown() {
                 var dropdown = el('ts-uk-picker-dropdown');
-                var anchor = el('ts-uk-picker-anchor');
+                var anchor = el('ts-uk-picker-filters');
                 if (!dropdown || !anchor || !state.pickerOpen) return;
 
                 var rect = anchor.getBoundingClientRect();
@@ -7282,10 +7303,12 @@
                 state.pickerOpen = !!open;
                 var picker = el('ts-uk-picker');
                 var dropdown = el('ts-uk-picker-dropdown');
-                var search = el('ts-uk-picker-search');
+                var pageSearch = el('ts-uk-picker-page-search');
+                var badgeSearch = el('ts-uk-picker-badge-search');
                 if (picker) picker.classList.toggle('is-open', state.pickerOpen);
                 if (dropdown) dropdown.classList.toggle('d-none', !state.pickerOpen);
-                if (search) search.setAttribute('aria-expanded', state.pickerOpen ? 'true' : 'false');
+                if (pageSearch) pageSearch.setAttribute('aria-expanded', state.pickerOpen ? 'true' : 'false');
+                if (badgeSearch) badgeSearch.setAttribute('aria-expanded', state.pickerOpen ? 'true' : 'false');
                 if (state.pickerOpen) {
                     floatPickerDropdown();
                     bindPickerFloatListeners(true);
@@ -7313,17 +7336,16 @@
                 renderPicker();
             }
 
-            function optionMatchesQuery(opt, query) {
-                if (!query) return true;
-                var hay = [
-                    opt.label,
-                    opt.field_label,
-                    opt.page_label,
-                    opt.page,
-                    opt.field,
-                    opt.value_display
-                ].join(' ').toLowerCase();
-                return hay.indexOf(query) >= 0;
+            function optionMatchesFilters(opt, pageQuery, badgeQuery) {
+                if (pageQuery) {
+                    var pageHay = [opt.page_label, opt.page].join(' ').toLowerCase();
+                    if (pageHay.indexOf(pageQuery) < 0) return false;
+                }
+                if (badgeQuery) {
+                    var badgeHay = [opt.label, opt.field_label, opt.field, opt.value_display].join(' ').toLowerCase();
+                    if (badgeHay.indexOf(badgeQuery) < 0) return false;
+                }
+                return true;
             }
 
             function renderPicker() {
@@ -7340,7 +7362,8 @@
                 var atMax = slotsLeft <= 0;
                 var noOptions = state.available.length === 0;
                 var selectedKeys = selectedPickerKeys();
-                var query = (state.pickerQuery || '').trim().toLowerCase();
+                var pageQuery = (state.pickerPageQuery || '').trim().toLowerCase();
+                var badgeQuery = (state.pickerBadgeQuery || '').trim().toLowerCase();
 
                 if (addWrap) addWrap.classList.toggle('d-none', !state.canManage);
                 if (hint) hint.classList.toggle('d-none', !state.canManage || (!atMax && !noOptions));
@@ -7381,7 +7404,7 @@
 
                 var grouped = {};
                 state.available.forEach(function (opt) {
-                    if (!optionMatchesQuery(opt, query)) return;
+                    if (!optionMatchesFilters(opt, pageQuery, badgeQuery)) return;
                     var pageKey = opt.page || 'other';
                     if (!grouped[pageKey]) {
                         grouped[pageKey] = {
@@ -7622,7 +7645,7 @@
                 if (target.closest('#ts-uk-picker-toggle')) {
                     e.preventDefault();
                     setPickerOpen(!state.pickerOpen);
-                    var searchToggle = el('ts-uk-picker-search');
+                    var searchToggle = el('ts-uk-picker-page-search');
                     if (state.pickerOpen && searchToggle) searchToggle.focus();
                     return;
                 }
@@ -7649,15 +7672,23 @@
             });
 
             document.addEventListener('input', function (e) {
-                if (e.target && e.target.id === 'ts-uk-picker-search') {
-                    state.pickerQuery = e.target.value || '';
+                if (!e.target) return;
+                if (e.target.id === 'ts-uk-picker-page-search') {
+                    state.pickerPageQuery = e.target.value || '';
+                    if (!state.pickerOpen) setPickerOpen(true);
+                    renderPicker();
+                    return;
+                }
+                if (e.target.id === 'ts-uk-picker-badge-search') {
+                    state.pickerBadgeQuery = e.target.value || '';
                     if (!state.pickerOpen) setPickerOpen(true);
                     renderPicker();
                 }
             });
 
             document.addEventListener('focusin', function (e) {
-                if (e.target && e.target.id === 'ts-uk-picker-search' && state.canManage) {
+                if (!e.target || !state.canManage) return;
+                if (e.target.id === 'ts-uk-picker-page-search' || e.target.id === 'ts-uk-picker-badge-search') {
                     setPickerOpen(true);
                 }
             });

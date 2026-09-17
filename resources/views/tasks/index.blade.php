@@ -1194,7 +1194,8 @@
             background-color: #fffbea !important;
         }
 
-        .tabulator-row.automated-task.alt {
+        .tabulator-row.automated-task.alt,
+        .tabulator-row.automated-task.tabulator-row-even {
             background-color: #fff7cc !important;
         }
 
@@ -1202,7 +1203,8 @@
             background-color: #fffbea !important;
         }
 
-        .tabulator-row.automated-task.alt .tabulator-cell {
+        .tabulator-row.automated-task.alt .tabulator-cell,
+        .tabulator-row.automated-task.tabulator-row-even .tabulator-cell {
             background-color: #fff7cc !important;
         }
         
@@ -2135,40 +2137,18 @@
                                 <select id="filter-assignor" class="form-select form-select-sm task-filter-user-select" title="Search by name or email">
                                     <option value=""></option>
                                     <option value="__NULL__" data-email="">No assignor</option>
-                                    @if(isset($assignorOnTasksUsers) && $assignorOnTasksUsers->isNotEmpty())
-                                        <optgroup label="On visible tasks">
-                                            @foreach($assignorOnTasksUsers as $u)
-                                                <option value="{{ $u->name }}" data-email="{{ $u->email }}">{{ $u->name }}</option>
-                                            @endforeach
-                                        </optgroup>
-                                    @endif
-                                    @if(isset($assignorOtherUsers) && $assignorOtherUsers->isNotEmpty())
-                                        <optgroup label="All users">
-                                            @foreach($assignorOtherUsers as $u)
-                                                <option value="{{ $u->name }}" data-email="{{ $u->email }}">{{ $u->name }}</option>
-                                            @endforeach
-                                        </optgroup>
-                                    @endif
+                                    @foreach(($users ?? collect()) as $u)
+                                        <option value="{{ $u->name }}" data-email="{{ $u->email }}">{{ $u->name }}</option>
+                                    @endforeach
                                 </select>
                             </div>
                             <div class="col-12 mb-2 toolbar-field toolbar-field-select">
                                 <select id="filter-assignee" class="form-select form-select-sm task-filter-user-select" title="Search by name or email">
                                     <option value=""></option>
                                     <option value="__NULL__" data-email="">No assignee</option>
-                                    @if(isset($assigneeOnTasksUsers) && $assigneeOnTasksUsers->isNotEmpty())
-                                        <optgroup label="On visible tasks">
-                                            @foreach($assigneeOnTasksUsers as $u)
-                                                <option value="{{ $u->name }}" data-email="{{ $u->email }}" data-user-id="{{ $u->id }}">{{ $u->name }}</option>
-                                            @endforeach
-                                        </optgroup>
-                                    @endif
-                                    @if(isset($assigneeOtherUsers) && $assigneeOtherUsers->isNotEmpty())
-                                        <optgroup label="All users">
-                                            @foreach($assigneeOtherUsers as $u)
-                                                <option value="{{ $u->name }}" data-email="{{ $u->email }}" data-user-id="{{ $u->id }}">{{ $u->name }}</option>
-                                            @endforeach
-                                        </optgroup>
-                                    @endif
+                                    @foreach(($users ?? collect()) as $u)
+                                        <option value="{{ $u->name }}" data-email="{{ $u->email }}" data-user-id="{{ $u->id }}">{{ $u->name }}</option>
+                                    @endforeach
                                 </select>
                             </div>
                             <div class="col-12 mb-2 toolbar-field toolbar-field-select">
@@ -3365,40 +3345,14 @@
             var TASK_INDEX_FILTERS_KEY = 'taskManager.indexFilters.v1';
 
             function persistTaskIndexFilters() {
-                try {
-                    localStorage.setItem(TASK_INDEX_FILTERS_KEY, JSON.stringify({
-                        search: $('#filter-search').val() || '',
-                        ca: $('#filter-ca').val() || '',
-                        overdue: $('#filter-overdue').val() || '',
-                        group: $('#filter-group').val() || '',
-                        task: $('#filter-task').val() || '',
-                        assignor: $('#filter-assignor').val() || '',
-                        assignee: $('#filter-assignee').val() || '',
-                        status: $('#filter-status').val() || '',
-                        priority: $('#filter-priority').val() || '',
-                        taskType: $('#filter-task-type').val() || ''
-                    }));
-                } catch (e) { /* ignore quota / private mode */ }
+                // Do not cache toolbar filters. Restoring them made the page
+                // reopen on a previous user and delayed "show all" after clear.
             }
 
             function restoreTaskIndexFilters() {
                 try {
-                    var raw = localStorage.getItem(TASK_INDEX_FILTERS_KEY);
-                    if (!raw) return;
-                    var s = JSON.parse(raw);
-                    if (!s || typeof s !== 'object') return;
-                    $('#filter-search').val(s.search || '');
-                    $('#filter-ca').val(s.ca || '');
-                    $('#filter-overdue').val(s.overdue || '');
-                    $('#filter-group').val(s.group || '');
-                    $('#filter-task').val(s.task || '');
-                    $('#filter-status').val(s.status || '');
-                    $('#filter-priority').val(s.priority || '');
-                    $('#filter-task-type').val(s.taskType || '');
-                    suppressAssignFilterApply = true;
-                    $('#filter-assignor').val(s.assignor != null ? s.assignor : '').trigger('change');
-                    $('#filter-assignee').val(s.assignee != null ? s.assignee : '').trigger('change');
-                    suppressAssignFilterApply = false;
+                    localStorage.removeItem(TASK_INDEX_FILTERS_KEY);
+                    localStorage.removeItem('taskManager.indexFilters.v2');
                 } catch (e) { /* ignore */ }
             }
 
@@ -4048,37 +4002,15 @@
                     headerHozAlign: "center",
                 },
                 ajaxURL: "{{ route('tasks.data') }}",
-                ajaxParams: function () {
-                    var params = {};
-                    var urlParams = new URLSearchParams(window.location.search);
-                    var uid = parseInt(urlParams.get('user_id') || '0', 10);
-                    var assignee = (urlParams.get('assignee') || '').trim();
-                    if (uid > 0) {
-                        params.user_id = uid;
-                    } else if (assignee) {
-                        params.user_name = assignee;
+                ajaxConfig: {
+                    method: "GET",
+                    headers: {
+                        "Cache-Control": "no-cache",
+                        "Pragma": "no-cache"
                     }
-                    return params;
                 },
                 ajaxContentType: "json",
                 ajaxResponse: function(url, params, response) {
-                    console.log('===== TASK MANAGER DEBUG =====');
-                    console.log('Tasks loaded:', response.length);
-                    console.log('Current User ID:', currentUserId);
-                    console.log('Is Admin:', isAdmin);
-                    
-                    // Debug: Show unique status values
-                    const uniqueStatuses = [...new Set(response.map(t => t.status))];
-                    console.log('📊 Unique status values in data:', uniqueStatuses);
-                    
-                    // Debug: Show first 3 tasks with status
-                    console.log('Sample tasks:', response.slice(0, 3).map(t => ({
-                        id: t.id,
-                        title: t.title?.substring(0, 30),
-                        status: t.status
-                    })));
-                    console.log('==============================');
-
                     if (Array.isArray(response)) {
                         response = response.map(normalizeTaskAutomateFlag);
                     }
@@ -4137,19 +4069,9 @@
                     // Apply styling:
                     // - Automated tasks: always yellow (even if overdue)
                     // - Non-automated overdue tasks: red highlight
+                    // Do not scan other rows here — that is O(n²) on every filter/redraw.
                     if (data.is_automate_task == 1) {
                         row.getElement().classList.add('automated-task');
-                        // Alternate shades among automated rows: yellow / light-yellow
-                        var automatedRowsBefore = row.getTable().getRows("active").filter(function(r) {
-                            var d = r.getData();
-                            return !!d && d.is_automate_task == 1;
-                        });
-                        var automatedIndex = automatedRowsBefore.findIndex(function(r) {
-                            return r.getData().id === data.id;
-                        });
-                        if (automatedIndex % 2 === 1) {
-                            row.getElement().classList.add('alt');
-                        }
                         row.getElement().style.borderLeft = "4px solid #ffc107";
                     } else if (isOverdue) {
                         row.getElement().style.backgroundColor = "#ffe5e5";
@@ -4168,13 +4090,8 @@
                 responsiveLayout: false,
                 placeholder: "No Tasks Found",
                 height: "calc(100vh - 220px)",
-                layoutColumnsOnNewData: true,
+                layoutColumnsOnNewData: false,
                 autoResize: true,
-                initialSort: [
-                    {column: "priority", dir: "desc"},
-                    {column: "tid_business_date", dir: "asc"},
-                    {column: "start_date", dir: "asc"}
-                ],
                 columns: (function() {
                     var cols = [];
 
@@ -4747,6 +4664,68 @@
                 })(),
             });
 
+            function getTaskTableScrollEl() {
+                return document.querySelector('#tasks-table .tabulator-tableholder');
+            }
+
+            function getTaskTableScrollTop() {
+                var el = getTaskTableScrollEl();
+                return el ? el.scrollTop : 0;
+            }
+
+            function setTaskTableScrollTop(top) {
+                var el = getTaskTableScrollEl();
+                if (el) {
+                    el.scrollTop = top;
+                }
+            }
+
+            function findTaskTableRow(id) {
+                var keys = [id, String(id), parseInt(id, 10)];
+                for (var i = 0; i < keys.length; i++) {
+                    if (keys[i] === '' || keys[i] == null || (typeof keys[i] === 'number' && isNaN(keys[i]))) {
+                        continue;
+                    }
+                    try {
+                        var row = table.getRow(keys[i]);
+                        if (row) return row;
+                    } catch (e) { /* try next key */ }
+                }
+                return null;
+            }
+
+            function removeDeletedTaskRows(ids) {
+                var idList = (ids || []).map(function (id) { return String(id); }).filter(Boolean);
+                if (!idList.length) return;
+                var scrollTop = getTaskTableScrollTop();
+                idList.forEach(function (id) {
+                    var row = findTaskTableRow(id);
+                    if (row) {
+                        try { row.delete(); } catch (e) { /* already removed */ }
+                    }
+                });
+                selectedTasks = (selectedTasks || []).filter(function (sid) {
+                    return idList.indexOf(String(sid)) === -1;
+                });
+                var restore = function () {
+                    setTaskTableScrollTop(scrollTop);
+                };
+                restore();
+                requestAnimationFrame(restore);
+                setTimeout(function () {
+                    restore();
+                    if (typeof updateStatistics === 'function') {
+                        updateStatistics();
+                    }
+                    if (typeof refreshTodayDeletedBadge === 'function') {
+                        refreshTodayDeletedBadge();
+                    }
+                    if (typeof syncTaskTableHeaderSelectAllCheckbox === 'function') {
+                        syncTaskTableHeaderSelectAllCheckbox();
+                    }
+                }, 0);
+            }
+
             // Update statistics based on filtered data
             function updateStatistics() {
                 var filteredData = table.getData("active");
@@ -5091,151 +5070,142 @@
                 $('.quick-filter-chip[data-filter="overdue"]').toggleClass('active', overdueOn);
             }
 
+            function debounceFn(fn, wait) {
+                var timer = null;
+                function wrapped() {
+                    var ctx = this;
+                    var args = arguments;
+                    clearTimeout(timer);
+                    timer = setTimeout(function () {
+                        fn.apply(ctx, args);
+                    }, wait);
+                }
+                wrapped.cancel = function () {
+                    clearTimeout(timer);
+                };
+                return wrapped;
+            }
+
             function replaceTableFilters(filters) {
-                // setFilter replaces existing filters. Calling clearFilter() first
-                // on a dataTree table can leave row visibility stuck, so the next
-                // search after clearing the box does nothing until reload.
+                // setFilter replaces the previous filter. Do not re-sort or reload.
                 if (filters && filters.length) {
                     table.setFilter(filters);
                 } else {
-                    table.clearFilter();
+                    table.setFilter(function () { return true; });
                 }
             }
 
+            function assignorAssigneeFilterValues() {
+                return {
+                    assignor: String($('#filter-assignor').val() || '').trim(),
+                    assignee: String($('#filter-assignee').val() || '').trim()
+                };
+            }
+
+            function urlHasUserTaskScope() {
+                var params = new URLSearchParams(window.location.search);
+                return parseInt(params.get('user_id') || '0', 10) > 0
+                    || !!(params.get('assignee') || '').trim();
+            }
+
+            function clearUrlUserTaskScope() {
+                if (!urlHasUserTaskScope()) {
+                    return false;
+                }
+                var url = new URL(window.location.href);
+                url.searchParams.delete('user_id');
+                url.searchParams.delete('assignee');
+                window.history.replaceState({}, '', url.pathname + (url.search || '') + (url.hash || ''));
+                return true;
+            }
+
+            function clearTaskManagerSessionUserFocus() {
+                if (!taskManagerSessionUserFocus) {
+                    return;
+                }
+                taskManagerSessionUserFocus = '';
+                $.ajax({
+                    url: '{{ route("tasks.setSelectedUser") }}',
+                    method: 'POST',
+                    data: { _token: '{{ csrf_token() }}', user_name: '' }
+                });
+            }
+
+            var persistFiltersDebounced = debounceFn(persistTaskIndexFilters, 400);
+            var filterSideEffectsTimer = null;
+            function scheduleFilterSideEffects() {
+                clearTimeout(filterSideEffectsTimer);
+                filterSideEffectsTimer = setTimeout(function () {
+                    updateStatistics();
+                    if (window.innerWidth < 768) {
+                        renderMobileTasks(table.getData('active'));
+                    }
+                    syncTaskTableHeaderSelectAllCheckbox();
+                }, 0);
+            }
+
             function applyFilters() {
-                console.log('🔍 Applying filters...');
-                
-                // Build filter array with AND logic
                 var filters = [];
+                var vals = assignorAssigneeFilterValues();
+                if (!vals.assignor && !vals.assignee) {
+                    clearTaskManagerSessionUserFocus();
+                    clearUrlUserTaskScope();
+                } else if (taskManagerSessionUserFocus) {
+                    var focusName = String(taskManagerSessionUserFocus).trim();
+                    if (vals.assignor || vals.assignee !== focusName) {
+                        clearTaskManagerSessionUserFocus();
+                    }
+                }
                 var focusActive = !!(taskManagerSessionUserFocus && String(taskManagerSessionUserFocus).trim());
-                
-                // CA filter — Tabulator only accepts {field,type,value} objects in this array
+
                 var caValue = $('#filter-ca').val();
                 if (caValue === '1' || caValue === '0') {
                     filters.push({field: 'is_corrective_action', type: '=', value: caValue === '1' ? 1 : 0});
                 }
 
-                // Group filter
                 var groupValue = $('#filter-group').val();
                 if (groupValue) {
                     filters.push({field:"group", type:"like", value:groupValue});
-                    console.log('Filter - Group:', groupValue);
                 }
-                
-                // Task filter
+
                 var taskValue = $('#filter-task').val();
                 if (taskValue) {
                     filters.push({field:"title", type:"like", value:taskValue});
-                    console.log('Filter - Task:', taskValue);
                 }
 
-                // Assignor filter (including NULL check); skipped when session user focus is active (uses OR block below)
-                var assignorValue = $('#filter-assignor').val();
+                var assignorValue = vals.assignor;
                 if (!focusActive && assignorValue) {
                     if (assignorValue === '__NULL__') {
                         filters.push(function (data) {
                             return !data.assignor_name || data.assignor_name === '-' || data.assignor_name === '';
                         });
-                        appendTaskTypeFilter(filters);
-                        appendOverdueFilter(filters);
-                        replaceTableFilters(filters);
-                        applyDuplicateTitleFilter();
-                        console.log('✓ Filter applied: No Assignor');
-                        applyTaskOrdering();
-                        setTimeout(function () {
-                            updateStatistics();
-                            if (window.innerWidth < 768) {
-                                renderMobileTasks(table.getData('active'));
-                            }
-                            syncTaskTableHeaderSelectAllCheckbox();
-                        }, 100);
-                        persistTaskIndexFilters();
-                        syncOverdueFilterUi();
-                        return;
                     } else {
-                        // Use "like" so tasks show when this person is assignor (exact or in list)
                         filters.push({field:"assignor_name", type:"like", value:assignorValue});
-                        console.log('Filter - Assignor (like):', assignorValue);
                     }
                 }
-                
-                // Assignee filter (including NULL check); skipped when session user focus is active
-                var assigneeValue = $('#filter-assignee').val();
-                var urlUserId = parseInt(new URLSearchParams(window.location.search).get('user_id') || '0', 10);
-                if (!focusActive && assigneeValue && !(urlUserId > 0)) {
+
+                var assigneeValue = vals.assignee;
+                if (!focusActive && assigneeValue) {
                     if (assigneeValue === '__NULL__') {
-                        console.log('🔴 NO ASSIGNEE FILTER TRIGGERED');
-                        
-                        // First, let's see what we're working with
-                        const allData = table.getData();
-                        console.log('📊 Total tasks:', allData.length);
-                        console.log('📝 Sample assignee_name values:', allData.slice(0, 10).map(t => `ID:${t.id} assignee="${t.assignee_name}"`));
-                        
-                        // Count how many actually have no assignee
-                        const noAssigneeCount = allData.filter(t => {
-                            const name = t.assignee_name;
-                            return name === '-' || name === '' || name === null || name === undefined;
-                        }).length;
-                        console.log('📊 Tasks with no assignee (-, null, empty):', noAssigneeCount);
-                        
-                        // Apply filter - ONLY show tasks where assignee_name is exactly "-"
                         filters.push({field:"assignee_name", type:"=", value:"-"});
-                        appendTaskTypeFilter(filters);
-                        appendOverdueFilter(filters);
-                        replaceTableFilters(filters);
-                        applyDuplicateTitleFilter();
-                        
-                        console.log('✅ Filter applied: assignee_name = "-"');
-                        console.log('📊 Filtered tasks showing:', table.getDataCount('active'));
-                        
-                        // Update mobile view
-                        if (window.innerWidth < 768) {
-                            const filtered = table.getData('active');
-                            renderMobileTasks(filtered);
-                        }
-                        
-                        setTimeout(function () {
-                            updateStatistics();
-                            syncTaskTableHeaderSelectAllCheckbox();
-                        }, 100);
-                        persistTaskIndexFilters();
-                        syncOverdueFilterUi();
-                        return; // Skip other filters
                     } else {
-                        // Use "like" so tasks show when this person is assignee (single or in list: "Shobha N" or "Srimanta, Shobha N")
                         filters.push({field: "assignee_name", type: "like", value: assigneeValue});
-                        console.log('Filter - Assignee (like):', assigneeValue);
                     }
                 }
-                
+
                 appendTaskTypeFilter(filters);
                 appendOverdueFilter(filters);
-                var taskTypeValue = $('#filter-task-type').val();
-                if (taskTypeValue === 'automated' || taskTypeValue === 'normal') {
-                    console.log('Filter - Task type:', taskTypeValue === 'automated' ? 'Automated' : 'Normal');
-                }
-                var overdueValue = $('#filter-overdue').val();
-                if (overdueValue === '1' || overdueValue === '0') {
-                    console.log('Filter - Overdue:', overdueValue === '1' ? 'Overdue' : 'Not Overdue');
-                }
-                
-                // Status filter - Try case-insensitive
+
                 var statusValue = $('#filter-status').val();
                 if (statusValue) {
-                    // Try both exact match and like match
                     filters.push({field:"status", type:"like", value:statusValue});
-                    console.log('✓ Filter - Status (like):', statusValue);
-                    console.log('Sample task statuses:', table.getData().slice(0, 3).map(t => t.status));
                 }
-                
-                // Priority filter
+
                 var priorityValue = $('#filter-priority').val();
                 if (priorityValue) {
                     filters.push({field:"priority", type:"=", value:priorityValue});
-                    console.log('Filter - Priority:', priorityValue);
                 }
-                
-                // Search filter (OR logic within search - add last)
+
                 var searchValue = $('#filter-search').val();
                 if (searchValue) {
                     filters.push([
@@ -5246,33 +5216,18 @@
                     ]);
                 }
 
-                // Task Summary / session: show tasks where this user is assignor OR assignee (Tabulator OR group)
                 if (focusActive) {
-                    var focusName = String(taskManagerSessionUserFocus).trim();
                     filters.push([
-                        {field:"assignor_name", type:"like", value:focusName},
-                        {field:"assignee_name", type:"like", value:focusName}
+                        {field:"assignor_name", type:"like", value:String(taskManagerSessionUserFocus).trim()},
+                        {field:"assignee_name", type:"like", value:String(taskManagerSessionUserFocus).trim()}
                     ]);
                 }
-                
+
                 replaceTableFilters(filters);
                 applyDuplicateTitleFilter();
-
-                applyTaskOrdering();
-
-                // Update statistics after filtering
-                setTimeout(function() {
-                    updateStatistics();
-                    
-                    // Update mobile view
-                    if (window.innerWidth < 768) {
-                        const filteredData = table.getData('active');
-                        renderMobileTasks(filteredData);
-                    }
-                    syncTaskTableHeaderSelectAllCheckbox();
-                }, 100);
-                persistTaskIndexFilters();
+                persistFiltersDebounced();
                 syncOverdueFilterUi();
+                scheduleFilterSideEffects();
             }
 
             function applyUrlAssigneePreset() {
@@ -5337,31 +5292,17 @@
                 }
             });
             
+            var applyFiltersDebounced = debounceFn(applyFilters, 160);
             $('#filter-search, #filter-group, #filter-task').on('input', function() {
-                applyFilters();
+                if (!String($(this).val() || '').trim()) {
+                    applyFiltersDebounced.cancel();
+                    applyFilters();
+                    return;
+                }
+                applyFiltersDebounced();
             });
             $('#filter-assignor, #filter-assignee').on('change', function () {
                 if (suppressAssignFilterApply) return;
-                if (taskManagerSessionUserFocus) {
-                    if (this.id === 'filter-assignee') {
-                        var v = $('#filter-assignee').val() || '';
-                        if (v !== taskManagerSessionUserFocus) {
-                            taskManagerSessionUserFocus = '';
-                            $.ajax({
-                                url: '{{ route("tasks.setSelectedUser") }}',
-                                method: 'POST',
-                                data: { _token: '{{ csrf_token() }}', user_name: '' }
-                            });
-                        }
-                    } else if (this.id === 'filter-assignor' && ($('#filter-assignor').val() || '')) {
-                        taskManagerSessionUserFocus = '';
-                        $.ajax({
-                            url: '{{ route("tasks.setSelectedUser") }}',
-                            method: 'POST',
-                            data: { _token: '{{ csrf_token() }}', user_name: '' }
-                        });
-                    }
-                }
                 applyFilters();
             });
             $('#filter-status, #filter-task-type').on('change', applyFilters);
@@ -6512,8 +6453,13 @@
                     success: function(response) {
                         $('#bulkUpdateModal').modal('hide');
                         $('#bulkActionsModal').modal('hide');
+                        var deletedIds = action === 'delete' ? (selectedTasks || []).slice() : [];
                         table.deselectRow();
-                        table.replaceData();
+                        if (action === 'delete') {
+                            removeDeletedTaskRows(deletedIds);
+                        } else {
+                            table.replaceData();
+                        }
                         
                         var alertHtml = `
                             <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -7453,7 +7399,7 @@
                     headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
                     success: function(resp) {
                         if (taskFormOffcanvas) taskFormOffcanvas.hide();
-                        table.replaceData();
+                        removeDeletedTaskRows([taskId]);
                         var msg = (resp && resp.message) ? resp.message : 'Task deleted successfully!';
                         var alertHtml = '<div class="alert alert-success alert-dismissible fade show" role="alert">' +
                             '<i class="mdi mdi-check-circle me-2"></i>' + msg +
@@ -7507,7 +7453,7 @@
                     type: 'DELETE',
                     data: { _token: '{{ csrf_token() }}' },
                     success: function(response) {
-                        table.replaceData();
+                        removeDeletedTaskRows([taskId]);
                         var alertHtml = `
                             <div class="alert alert-success alert-dismissible fade show" role="alert">
                                 <i class="mdi mdi-check-circle me-2"></i>${response.message || 'Task deleted successfully!'}

@@ -205,8 +205,25 @@ class TemuShopifySalesService
     }
 
     /**
+     * Full Temu Price from a target S R Price (R-price rule, then T Price).
+     */
+    public static function spriceFromTargetSR(float $targetSR): float
+    {
+        if (! ($targetSR > 0) || ! is_finite($targetSR)) {
+            return 0.0;
+        }
+        $base = $targetSR > 26.99 ? $targetSR : max(0.01, $targetSR - 2.99);
+        $full = self::computeFullTemuPrice($base);
+        if (! ($full > 0) || ! is_finite($full)) {
+            return 0.0;
+        }
+
+        return round($full, 2);
+    }
+
+    /**
      * Back-solve S PRC (Full Temu Price) so sgroiAtSprice equals Target GROI%.
-     * Target GROI decides S PRC — SGROI is not derived from a leftover price.
+     * Built from target S R — do not binary-search Full Price (non-monotonic at +$2.99).
      */
     public static function spriceFromTargetSgroi(float $lp, float $ship, float $groiPct, float $listingBase = 0.0): float
     {
@@ -217,63 +234,9 @@ class TemuShopifySalesService
             $ship = 0.0;
         }
         $targetSR = ($lp * (1 + $groiPct / 100) + $ship) / self::DECREASE_TAKEHOME;
-        if (! ($targetSR > 0) || ! is_finite($targetSR)) {
-            return 0.0;
-        }
-        // targetSR is S R Price: +$2.99 only when that R Price is ≤ $26.99.
-        $base = $targetSR > 26.99 ? $targetSR : max(0.01, $targetSR - 2.99);
-        $seed = self::computeFullTemuPrice($base);
-        if (! ($seed > 0)) {
-            $seed = $targetSR;
-        }
-        $seed = round($seed, 2);
-        $seedSgroi = self::sgroiAtSprice($seed, $lp, $ship, $listingBase);
-        if ($seedSgroi !== null && abs($seedSgroi - $groiPct) <= 1.5) {
-            return $seed;
-        }
-        $lo = max(0.01, $seed * 0.35);
-        $hi = max($seed * 2.8, $seed + 20);
-        for ($expand = 0; $expand < 10; $expand++) {
-            $gLo = self::sgroiAtSprice($lo, $lp, $ship, $listingBase);
-            $gHi = self::sgroiAtSprice($hi, $lp, $ship, $listingBase);
-            if ($gLo === null || $gHi === null) {
-                break;
-            }
-            if ($gLo <= $groiPct && $groiPct <= $gHi) {
-                break;
-            }
-            if ($groiPct < $gLo) {
-                $hi = $lo;
-                $lo = max(0.01, $lo * 0.5);
-            } else {
-                $lo = $hi;
-                $hi = $hi * 1.8;
-            }
-        }
-        $best = $seed;
-        $bestErr = INF;
-        for ($i = 0; $i < 40; $i++) {
-            $mid = ($lo + $hi) / 2;
-            $g = self::sgroiAtSprice($mid, $lp, $ship, $listingBase);
-            if ($g === null) {
-                break;
-            }
-            $err = abs($g - $groiPct);
-            if ($err < $bestErr) {
-                $bestErr = $err;
-                $best = $mid;
-            }
-            if ($g < $groiPct) {
-                $lo = $mid;
-            } else {
-                $hi = $mid;
-            }
-        }
-        if (! is_finite($best) || ! ($best > 0)) {
-            return 0.0;
-        }
+        unset($listingBase);
 
-        return round($best, 2);
+        return self::spriceFromTargetSR($targetSR);
     }
 
     /**
@@ -299,6 +262,7 @@ class TemuShopifySalesService
 
     /**
      * Back-solve S PRC so snroiAtSprice equals Dil + CVR Target NROI.
+     * Iterate ads $ on Full Price; rebuild from target S R each pass.
      */
     public static function spriceFromTargetSnroi(
         float $lp,
@@ -316,61 +280,23 @@ class TemuShopifySalesService
         if (! is_finite($adsPercent) || $adsPercent < 0) {
             $adsPercent = 0.0;
         }
-        $seed = self::spriceFromTargetSgroi($lp, $ship, $nroiPct, $listingBase);
-        if ($adsPercent > 0 && $seed > 0) {
-            $seed = $seed / max(0.2, 1 - $adsPercent / 95);
-        }
-        $seed = round($seed, 2);
-        $invert = static function (float $price) use ($lp, $ship, $adsPercent, $listingBase): ?float {
-            return self::snroiAtSprice($price, $lp, $ship, $adsPercent, $listingBase);
-        };
-        $seedRoi = $invert($seed);
-        if ($seedRoi !== null && abs($seedRoi - $nroiPct) <= 1.5) {
-            return $seed;
-        }
-        $lo = max(0.01, $seed * 0.35);
-        $hi = max($seed * 2.8, $seed + 20);
-        for ($expand = 0; $expand < 10; $expand++) {
-            $gLo = $invert($lo);
-            $gHi = $invert($hi);
-            if ($gLo === null || $gHi === null) {
+        unset($listingBase);
+        $adsDollar = 0.0;
+        $full = 0.0;
+        for ($i = 0; $i < 12; $i++) {
+            $targetSR = ($lp * (1 + $nroiPct / 100) + $ship + $adsDollar) / self::DECREASE_TAKEHOME;
+            $full = self::spriceFromTargetSR($targetSR);
+            if (! ($full > 0)) {
+                return 0.0;
+            }
+            $nextAds = ($adsPercent > 0) ? ($full * $adsPercent / 100.0) : 0.0;
+            if (abs($nextAds - $adsDollar) < 0.0005) {
                 break;
             }
-            if ($gLo <= $nroiPct && $nroiPct <= $gHi) {
-                break;
-            }
-            if ($nroiPct < $gLo) {
-                $hi = $lo;
-                $lo = max(0.01, $lo * 0.5);
-            } else {
-                $lo = $hi;
-                $hi = $hi * 1.8;
-            }
-        }
-        $best = $seed;
-        $bestErr = INF;
-        for ($i = 0; $i < 40; $i++) {
-            $mid = ($lo + $hi) / 2;
-            $g = $invert($mid);
-            if ($g === null) {
-                break;
-            }
-            $err = abs($g - $nroiPct);
-            if ($err < $bestErr) {
-                $bestErr = $err;
-                $best = $mid;
-            }
-            if ($g < $nroiPct) {
-                $lo = $mid;
-            } else {
-                $hi = $mid;
-            }
-        }
-        if (! is_finite($best) || ! ($best > 0)) {
-            return 0.0;
+            $adsDollar = $nextAds;
         }
 
-        return round($best, 2);
+        return $full > 0 ? $full : 0.0;
     }
 
     /**
@@ -393,7 +319,10 @@ class TemuShopifySalesService
             if ($err < $bestErr - 1e-6) {
                 $bestErr = $err;
                 $best = $base;
-            } elseif (abs($err - $bestErr) <= 1e-6 && $base > $best) {
+            } elseif (abs($err - $bestErr) <= 1e-6 && $base < $best) {
+                // Same Full Price maps to two bases around the +$2.99 band.
+                // Keep the listing-style (lower) base so S R / SGROI / SNROI
+                // match Sprc Dil construction, not the inflated no-+$2.99 invert.
                 $best = $base;
             }
         }

@@ -3165,10 +3165,25 @@ class OverallAmazonController extends Controller
         // "Total Sales" badge (AMAZON_SALES_TOTAL_MODE, default = Ordered Product Sales).
         $amazonSalesL30 = (float) \App\Models\AmazonOrder::badgeTotalSalesByOrderDate($unitsStart, $unitsEnd);
 
+        // GPFT% / GROI% / NROI% — same real-order PFT + COGS /amazon/daily-sales sums.
+        // Do not use sheet Total_pft (today's list price × A_L30); that is why this page
+        // and /amazon/daily-sales used to disagree.
+        $agg = AmazonSalesController::l30OrdersFinancials();
+        $adsPct = (float) ($amazonAdsPercent ?? 0);
+        $adSpendEst = ($adsPct / 100.0) * $amazonSalesL30;
+        $ordersL30Nroi = ((float) $agg['cogs']) > 0
+            ? round((((float) $agg['pft']) - $adSpendEst) / (float) $agg['cogs'] * 100, 1)
+            : 0.0;
+
         return view("market-places.amazon_tabulator_view", [
             'amazonAdsPercent'   => $amazonAdsPercent,
             'amazonUnitsSoldL30' => $amazonUnitsSoldL30,
             'amazonSalesL30'     => $amazonSalesL30,
+            'ordersL30Gpft'      => $agg['gpft'],
+            'ordersL30Groi'      => $agg['groi'],
+            'ordersL30Pft'       => $agg['pft'],
+            'ordersL30Cogs'      => $agg['cogs'],
+            'ordersL30Nroi'      => $ordersL30Nroi,
         ]);
     }
 

@@ -11,6 +11,7 @@ class UserIncentive extends Model
         'user_id',
         'title',
         'body',
+        'additional_condition',
         'amount',
         'sort_order',
         'is_active',

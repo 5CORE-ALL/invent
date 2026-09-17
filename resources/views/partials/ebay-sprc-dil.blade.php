@@ -554,6 +554,9 @@
                 || (typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel());
         }
         function ebayDgUsesClearThenApply() {
+            if (typeof window.chPromoUsesClearThenApply === 'function' && window.chPromoUsesClearThenApply()) {
+                return true;
+            }
             return ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
                 || ebayDgIsShopifyB2b() || ebayDgIsEbay123()
                 || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsTopdawg()
@@ -1966,15 +1969,8 @@
                     return;
                 }
                 if (ebayDgIsShopifyB2b() || ebayDgIsEbay123()) {
+                    // Same as Amazon reload: wipe saved S PRC, then write Dil if it changed.
                     const persist = opts.persist === true || !!opts.flashClear;
-                    if (persist && (ebayDgB2bPersistOnce || ebayDgClearApplyPersistOnce) && !opts.forcePersist) {
-                        Promise.resolve(ebayApplySprcDilToTable({ persist: false, push: false })).catch(function() { /* retry */ });
-                        return;
-                    }
-                    if (persist) {
-                        ebayDgB2bPersistOnce = true;
-                        ebayDgClearApplyPersistOnce = true;
-                    }
                     const push = persist
                         && typeof chPromoPageReloadPushAllowed === 'function'
                         && chPromoPageReloadPushAllowed();
@@ -2221,6 +2217,9 @@
             }
             ebayDgApplyBusy = true;
             try {
+                if (typeof window.chPromoClearThenApplyAllRules === 'function') {
+                    return await window.chPromoClearThenApplyAllRules({ persist: persist, push: allowPush });
+                }
                 if (ebayDgUsesClearThenApply()) {
                     return await ebayTiktokClearThenApplyAllRules({ persist: persist, push: allowPush });
                 }

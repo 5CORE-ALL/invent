@@ -37,6 +37,7 @@ use App\Support\AutomatedTaskChecklistIds;
 use App\Support\AutomatedTaskSchedule;
 use App\Support\Badges\BadgeDataCatalog;
 use App\Support\DarL30Metrics;
+use App\Support\MissedPeriodMetrics;
 use App\Support\OpenAiRequest;
 use App\Support\TaskBusinessTime;
 use Illuminate\Database\Eloquent\Builder;
@@ -63,39 +64,35 @@ class TaskController extends Controller
 
         $tasksQuery = $this->taskManagerVisibilityQuery();
 
-        // Get selected user from session (set from user selection) - CHECK THIS FIRST
+        // Session user is applied in the browser only. Filtering stats here
+        // made the HTML wait on extra queries and kept a stale user after clear.
         $selectedUserName = Session::get('selected_user_name', '');
-        $selectedUserEmail = null;
-        if ($selectedUserName) {
-            $selectedUser = User::where('name', $selectedUserName)->first();
-            $selectedUserEmail = $selectedUser ? $selectedUser->email : null;
-        }
-
-        // Filter tasks query by selected user if set (for all stats cards)
-        if ($selectedUserEmail) {
-            $tasksQuery->where(function($query) use ($selectedUserEmail) {
-                $query->where('assignor', $selectedUserEmail)
-                      ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
-            });
-        }
 
         // Overdue = TID + 1 day, except weekly/monthly auto tasks (created_at + 6 days).
         $overdueQuery = $this->whereOverdueByBusinessTid(clone $tasksQuery)
             ->where('status', '!=', 'Archived');
 
-        // Calculate statistics based on filtered tasks (with user filter if selected)
+        $agg = (clone $tasksQuery)->toBase()->selectRaw("
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'Todo' THEN 1 ELSE 0 END) as pending,
+            SUM(CASE WHEN status = 'Done' THEN 1 ELSE 0 END) as done,
+            COALESCE(SUM(eta_time), 0) as etc_total,
+            COALESCE(SUM(etc_done), 0) as atc_total,
+            COALESCE(SUM(CASE WHEN status = 'Done' THEN eta_time ELSE 0 END), 0) as done_etc,
+            COALESCE(SUM(CASE WHEN status = 'Done' THEN etc_done ELSE 0 END), 0) as done_atc,
+            SUM(CASE WHEN COALESCE(is_corrective_action, 0) = 1 THEN 1 ELSE 0 END) as ca
+        ")->first();
+
         $stats = [
-            'total' => (clone $tasksQuery)->count(),
-            'pending' => (clone $tasksQuery)->where('status', 'Todo')->count(),
+            'total' => (int) ($agg->total ?? 0),
+            'pending' => (int) ($agg->pending ?? 0),
             'overdue' => $overdueQuery->count(),
-            'etc_total' => (clone $tasksQuery)->sum('eta_time') ?? 0,
-            'atc_total' => (clone $tasksQuery)->sum('etc_done') ?? 0,
-            'done' => (clone $tasksQuery)->where('status', 'Done')->count(),
-            'done_etc' => (clone $tasksQuery)->where('status', 'Done')->sum('eta_time') ?? 0,
-            'done_atc' => (clone $tasksQuery)->where('status', 'Done')->sum('etc_done') ?? 0,
-            'ca' => Schema::hasColumn('tasks', 'is_corrective_action')
-                ? (clone $tasksQuery)->where('is_corrective_action', 1)->count()
-                : 0,
+            'etc_total' => (float) ($agg->etc_total ?? 0),
+            'atc_total' => (float) ($agg->atc_total ?? 0),
+            'done' => (int) ($agg->done ?? 0),
+            'done_etc' => (float) ($agg->done_etc ?? 0),
+            'done_atc' => (float) ($agg->done_atc ?? 0),
+            'ca' => (int) ($agg->ca ?? 0),
         ];
 
         // 30-day ETC/ATC badges from deleted_tasks only (by deleted_at)
@@ -109,15 +106,11 @@ class TaskController extends Controller
             });
         }
 
-        if ($selectedUserEmail) {
-            $deletedLast30ForTimeQuery->where(function($query) use ($selectedUserEmail) {
-                $query->where('assignor', $selectedUserEmail)
-                    ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
-            });
-        }
-
-        $deletedEtcLast30 = (clone $deletedLast30ForTimeQuery)->sum('eta_time') ?? 0;
-        $deletedAtcLast30 = (clone $deletedLast30ForTimeQuery)->sum('etc_done') ?? 0;
+        $deletedLast30Agg = (clone $deletedLast30ForTimeQuery)->toBase()->selectRaw(
+            'COALESCE(SUM(eta_time), 0) as etc_minutes, COALESCE(SUM(etc_done), 0) as atc_minutes'
+        )->first();
+        $deletedEtcLast30 = (float) ($deletedLast30Agg->etc_minutes ?? 0);
+        $deletedAtcLast30 = (float) ($deletedLast30Agg->atc_minutes ?? 0);
 
         $stats['etc_last_30'] = (float) $deletedEtcLast30;
         $stats['atc_last_30'] = (float) $deletedAtcLast30;
@@ -137,28 +130,10 @@ class TaskController extends Controller
             ->orderBy('name')
             ->get();
 
-        // Assignor/assignee roles from visible tasks (for "Select user" dropdown labels)
-        $baseTasksQuery = $this->taskManagerVisibilityQuery();
-        $assignorEmails = (clone $baseTasksQuery)->whereNotNull('assignor')->where('assignor', '!=', '')
-            ->distinct()->pluck('assignor')->values()->all();
-        $assigneeEmails = (clone $baseTasksQuery)->whereNotNull('assign_to')->where('assign_to', '!=', '')
-            ->pluck('assign_to')
-            ->flatMap(function ($assignTo) {
-                return array_map('trim', explode(',', $assignTo));
-            })
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
-        foreach ($users as $u) {
-            $u->is_assignor = in_array($u->email, $assignorEmails, true);
-            $u->is_assignee = in_array($u->email, $assigneeEmails, true);
-        }
-
-        $assignorOnTasksUsers = $users->filter(fn ($u) => $u->is_assignor)->sortBy('name')->values();
-        $assignorOtherUsers = $users->filter(fn ($u) => ! $u->is_assignor)->sortBy('name')->values();
-        $assigneeOnTasksUsers = $users->filter(fn ($u) => $u->is_assignee)->sortBy('name')->values();
-        $assigneeOtherUsers = $users->filter(fn ($u) => ! $u->is_assignee)->sortBy('name')->values();
+        $assignorOnTasksUsers = $users;
+        $assignorOtherUsers = collect();
+        $assigneeOnTasksUsers = $users;
+        $assigneeOtherUsers = collect();
 
         // TAT badge: average TAT (days from start_date to completion_date) for Done tasks completed in last 30 days
         $last30DoneQuery = (clone $tasksQuery)
@@ -172,14 +147,7 @@ class TaskController extends Controller
                          ->where('updated_at', '>=', now()->subDays(30));
                   });
             });
-        // Filter by selected user if set (search in both assignor and assign_to)
-        if ($selectedUserEmail) {
-            $last30DoneQuery->where(function($query) use ($selectedUserEmail) {
-                $query->where('assignor', $selectedUserEmail)
-                      ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
-            });
-        }
-        $last30DoneTasks = $last30DoneQuery->get();
+        $last30DoneTasks = $last30DoneQuery->toBase()->get(['start_date', 'completion_date', 'updated_at']);
         $tatValues = [];
         foreach ($last30DoneTasks as $task) {
             $start = \Carbon\Carbon::parse($task->start_date);
@@ -231,14 +199,7 @@ class TaskController extends Controller
                          ->whereNotIn('status', ['Done', 'Archived']);
                   });
             });
-        // Filter by selected user if set (search in both assignor and assign_to)
-        if ($selectedUserEmail) {
-            $missedQuery->where(function($query) use ($selectedUserEmail) {
-                $query->where('assignor', $selectedUserEmail)
-                      ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
-            });
-        }
-        $missedTasks = $missedQuery->get();
+        $missedTasks = $missedQuery->toBase()->get(['start_date']);
 
         // Also include daily-auto tasks that the system already auto-expired into deleted_tasks
         // (see App\Console\Commands\ExpireDailyAutomatedTasks). Without this, the Missed badge would
@@ -253,13 +214,7 @@ class TaskController extends Controller
                       ->orWhere('assign_to', 'LIKE', '%' . $user->email . '%');
             });
         }
-        if ($selectedUserEmail) {
-            $archivedMissedQuery->where(function($query) use ($selectedUserEmail) {
-                $query->where('assignor', $selectedUserEmail)
-                      ->orWhere('assign_to', 'LIKE', '%' . $selectedUserEmail . '%');
-            });
-        }
-        $archivedMissedTasks = $archivedMissedQuery->get();
+        $archivedMissedTasks = $archivedMissedQuery->toBase()->get(['start_date']);
 
         $stats['missed_count_30'] = $missedTasks->count() + $archivedMissedTasks->count();
 
@@ -309,7 +264,7 @@ class TaskController extends Controller
         $trainingVideoLink = $this->getTrainingVideoLink();
         $canEditTrainingVideo = $this->userCanEditTrainingVideo($user);
 
-        return view('tasks.index', compact(
+        return response()->view('tasks.index', compact(
             'stats',
             'isAdmin',
             'users',
@@ -330,7 +285,8 @@ class TaskController extends Controller
             'taskBusinessTzShort' => TaskBusinessTime::shortLabel(),
             'taskBusinessTzLabel' => TaskBusinessTime::label(),
             'taskBusinessToday' => TaskBusinessTime::today()->toDateString(),
-        ]);
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache');
     }
 
     /** Email allowed to add/edit the Task Manager training video link. */
@@ -512,17 +468,19 @@ class TaskController extends Controller
         // tat_sum_days + tat_count are used to compute the average L30 TAT
         // (Turn-Around Time, in calendar days) for tasks the user closed
         // (status=Done) in the last 30 days.
-        // missed_l30 counts tasks with is_missed = true whose start_date
-        // falls inside the same rolling 30-day window.
+        // Missed is L30 vs prior 30 (days 31–60). A deleted task counts as
+        // missed unless it was already Done (same rule as /tasks/deleted).
+        // Live is_missed rows are included too.
         $defaultCounts = [
             'task' => 0, 'overdue' => 0, 'a_task' => 0, 'a_task_h' => 0,
             'need_approval' => 0, 'assignor_task' => 0, 'done' => 0,
             'tat_sum_days' => 0.0, 'tat_count' => 0,
-            'missed_l30' => 0,
+            'missed_l30' => 0, 'missed_p30' => 0,
         ];
 
-        $tatCutoff = \Carbon\Carbon::now()->subDays(30);
-        $missedCutoff = $tatCutoff; // same 30-day window
+        $now = \Carbon\Carbon::now();
+        $tatCutoff = $now->copy()->subDays(30);
+        $missedLookback = $now->copy()->subDays(MissedPeriodMetrics::LOOKBACK_DAYS);
 
         $byEmail = [];
         foreach ($tasks as $task) {
@@ -616,20 +574,14 @@ class TaskController extends Controller
                     }
                 }
 
-                // L30 Missed: tasks flagged is_missed whose start_date is
-                // within the last 30 days.
-                if (! empty($task->is_missed) && ! empty($task->start_date)) {
-                    try {
-                        $startMissed = \Carbon\Carbon::parse($task->start_date);
-                        if ($startMissed->greaterThanOrEqualTo($missedCutoff)) {
-                            $byEmail[$email]['missed_l30']++;
-                        }
-                    } catch (\Throwable $e) {
-                        // Malformed timestamp — skip silently.
-                    }
+                // Live is_missed (rare after nightly expire) — last 30 vs prior 30.
+                if (! empty($task->is_missed)) {
+                    $this->addMissedPeriodCount($byEmail, $defaultCounts, $email, $task->start_date, $now);
                 }
             }
         }
+
+        $this->addArchivedMissedPeriodCounts($byEmail, $defaultCounts, $missedLookback, $now);
 
         $members = $this->activeTeamUsersQuery()
             ->orderBy('name')
@@ -754,6 +706,7 @@ class TaskController extends Controller
                 'tat_l30_days' => $tatAvgDays,
                 'tat_l30_count' => $tatCount,
                 'missed_l30' => (int) $counts['missed_l30'],
+                'missed_p30' => (int) $counts['missed_p30'],
                 'score_clrr' => (int) ($scoresByUser[$member->id]['clrr'] ?? 0),
                 'score_clmgr' => (int) ($scoresByUser[$member->id]['clmgr'] ?? 0),
                 'score_clgen' => (int) ($scoresByUser[$member->id]['clgen'] ?? 0),
@@ -778,6 +731,67 @@ class TaskController extends Controller
         });
 
         return $rows;
+    }
+
+    /**
+     * Count one missed task into L30 or prior-30 (days 31–60) for an assignee email.
+     *
+     * @param  array<string, array<string, mixed>>  $byEmail
+     * @param  array<string, mixed>  $defaultCounts
+     */
+    protected function addMissedPeriodCount(array &$byEmail, array $defaultCounts, string $email, mixed $when, \Carbon\Carbon $now): void
+    {
+        $email = trim($email);
+        $bucket = MissedPeriodMetrics::bucket($when, $now);
+        if ($email === '' || $bucket === null) {
+            return;
+        }
+        if (! isset($byEmail[$email])) {
+            $byEmail[$email] = $defaultCounts;
+        }
+        $key = $bucket === 'p30' ? 'missed_p30' : 'missed_l30';
+        $byEmail[$email][$key]++;
+    }
+
+    /**
+     * Deleted tasks in the last 60 days count as missed unless they were Done.
+     * Split into L30 vs prior 30 (days 31–60).
+     *
+     * @param  array<string, array<string, mixed>>  $byEmail
+     * @param  array<string, mixed>  $defaultCounts
+     */
+    protected function addArchivedMissedPeriodCounts(array &$byEmail, array $defaultCounts, \Carbon\Carbon $lookback, \Carbon\Carbon $now): void
+    {
+        if (! Schema::hasTable('deleted_tasks')) {
+            return;
+        }
+
+        $archived = DeletedTask::query()
+            ->where(function ($q) use ($lookback) {
+                $q->where('deleted_at', '>=', $lookback)
+                    ->orWhere(function ($q2) use ($lookback) {
+                        $q2->whereNull('deleted_at')
+                            ->where('start_date', '>=', $lookback);
+                    });
+            })
+            ->where(function ($q) {
+                $q->where('is_missed', 1)
+                    ->orWhereNull('status')
+                    ->orWhere('status', '')
+                    ->orWhere('status', '!=', 'Done');
+            })
+            ->get(['assign_to', 'deleted_at', 'start_date']);
+
+        foreach ($archived as $row) {
+            $when = $row->deleted_at ?: $row->start_date;
+            $assignTo = trim((string) ($row->assign_to ?? ''));
+            if ($assignTo === '') {
+                continue;
+            }
+            foreach (array_map('trim', explode(',', $assignTo)) as $email) {
+                $this->addMissedPeriodCount($byEmail, $defaultCounts, $email, $when, $now);
+            }
+        }
     }
 
     /**
@@ -1373,27 +1387,20 @@ class TaskController extends Controller
         // Map emails/names to user records (older tasks store assignor as a display name)
         $defaultAvatar = asset('images/users/avatar-2.jpg');
         $teamUsers = User::query()->get(['id', 'name', 'email', 'avatar', 'designation']);
-        $tasks->each(function($task) use ($defaultAvatar, $teamUsers) {
+        [$usersByEmail, $usersByName, $usersByFirst] = $this->taskUserLookupMaps($teamUsers);
+        $tasks->each(function($task) use ($defaultAvatar, $usersByEmail, $usersByName, $usersByFirst) {
             // Normalize datetime fields to local string format so frontend date parsing
             // doesn't shift dates because of UTC ISO serialization ("...Z").
             foreach (['start_date', 'due_date', 'completion_date', 'created_at', 'updated_at'] as $dtField) {
-                // Use the raw DB value (already stored as office-time wall-clock) and reformat
-                // without any timezone conversion. Reading $task->{$dtField} would apply the
-                // 'datetime' cast (app TZ = Asia/Kolkata) and a later shift to PT, rolling
-                // 00:01 PT auto-tasks back to the previous day.
-                $raw = $task->getRawOriginal($dtField);
-                if (!empty($raw)) {
-                    try {
-                        $task->{$dtField} = \Carbon\Carbon::parse($raw)->format('Y-m-d H:i:s');
-                    } catch (\Throwable $e) {
-                        // keep original value if parsing fails
-                    }
+                $formatted = $this->formatTaskWallClockDatetime($task->getRawOriginal($dtField));
+                if ($formatted !== null) {
+                    $task->{$dtField} = $formatted;
                 }
             }
 
             // Find assignor by email or name (older rows store "Amarjit", not an email)
             if ($task->assignor) {
-                $assignorUser = TaskPolicy::findUserForAssignorValue($task->assignor, $teamUsers);
+                $assignorUser = $this->findTaskUserFromMaps((string) $task->assignor, $usersByEmail, $usersByName, $usersByFirst);
                 $task->assignor_name = $assignorUser ? $assignorUser->name : $task->assignor;
                 $task->assignor_id = $assignorUser ? $assignorUser->id : null;
                 $task->assignor_designation = $assignorUser ? $assignorUser->designation : null;
@@ -1416,7 +1423,10 @@ class TaskController extends Controller
                 $assigneeAvatars = [];
 
                 foreach ($assigneeEmails as $email) {
-                    $assigneeUser = User::where('email', $email)->first();
+                    if ($email === '') {
+                        continue;
+                    }
+                    $assigneeUser = $this->findTaskUserFromMaps($email, $usersByEmail, $usersByName, $usersByFirst);
                     if ($assigneeUser) {
                         $assigneeNames[] = $assigneeUser->name;
                         $assigneeIds[] = $assigneeUser->id;
@@ -1534,7 +1544,77 @@ class TaskController extends Controller
             return $row;
         })->values();
 
-        return response()->json($responseRows);
+        return response()->json($responseRows)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache');
+    }
+
+    /**
+     * @param  iterable<int, User>  $users
+     * @return array{0: array<string, User>, 1: array<string, User>, 2: array<string, User>}
+     */
+    private function taskUserLookupMaps($users): array
+    {
+        $byEmail = [];
+        $byName = [];
+        $byFirst = [];
+        foreach ($users as $user) {
+            $email = strtolower(trim((string) ($user->email ?? '')));
+            if ($email !== '') {
+                $byEmail[$email] = $user;
+            }
+            $name = strtolower(trim((string) ($user->name ?? '')));
+            if ($name === '') {
+                continue;
+            }
+            $byName[$name] = $user;
+            $first = strtolower(trim((string) (preg_split('/\s+/', $name, 2)[0] ?? '')));
+            if ($first !== '' && ! isset($byFirst[$first])) {
+                $byFirst[$first] = $user;
+            }
+        }
+
+        return [$byEmail, $byName, $byFirst];
+    }
+
+    /**
+     * @param  array<string, User>  $byEmail
+     * @param  array<string, User>  $byName
+     * @param  array<string, User>  $byFirst
+     */
+    private function findTaskUserFromMaps(string $value, array $byEmail, array $byName, array $byFirst): ?User
+    {
+        $key = strtolower(trim($value));
+        if ($key === '') {
+            return null;
+        }
+        if (isset($byEmail[$key])) {
+            return $byEmail[$key];
+        }
+        if (isset($byName[$key])) {
+            return $byName[$key];
+        }
+        if (! str_contains($key, ' ') && isset($byFirst[$key])) {
+            return $byFirst[$key];
+        }
+
+        return null;
+    }
+
+    private function formatTaskWallClockDatetime(mixed $raw): ?string
+    {
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        $value = trim((string) $raw);
+        if (preg_match('/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?/', $value, $m)) {
+            return $m[1].' '.($m[2] ?? '00:00:00');
+        }
+        try {
+            return \Carbon\Carbon::parse($value)->format('Y-m-d H:i:s');
+        } catch (\Throwable $e) {
+            return $value;
+        }
     }
 
     public function create()
@@ -7500,13 +7580,14 @@ class TaskController extends Controller
                 'tat_l30_days' => $row['tat_l30_days'] ?? null,
                 'tat_l30_count' => (int) ($row['tat_l30_count'] ?? 0),
                 'missed_l30' => (int) ($row['missed_l30'] ?? 0),
+                'missed_p30' => (int) ($row['missed_p30'] ?? 0),
                 'a_task' => (int) ($row['a_task'] ?? 0),
                 'a_task_h' => (int) ($row['a_task_h'] ?? 0),
                 'need_approval' => (int) ($row['need_approval'] ?? 0),
             ] : [
                 'task' => 0, 'l30_hrs' => 0, 'att_l30_pct' => 0, 'att_l30_target' => 200, 'assignor_task' => 0,
                 'done' => 0, 'overdue' => 0, 'tat_l30_days' => null, 'tat_l30_count' => 0,
-                'missed_l30' => 0, 'a_task' => 0, 'a_task_h' => 0, 'need_approval' => 0,
+                'missed_l30' => 0, 'missed_p30' => 0, 'a_task' => 0, 'a_task_h' => 0, 'need_approval' => 0,
             ],
             'scores' => [
                 'rr_percent' => $rrPercent,
@@ -8066,19 +8147,8 @@ class TaskController extends Controller
         if ($this->canEditIncentives($viewer)) {
             return true;
         }
-        if ((int) $viewer->id === (int) $target->id) {
-            return true;
-        }
-        if ($this->canManageRow($viewer, $target)) {
-            return true;
-        }
 
-        $visible = $this->getTaskSummaryVisibleUserIds($viewer);
-        if ($visible === null) {
-            return true;
-        }
-
-        return in_array((int) $target->id, $visible, true);
+        return (int) $viewer->id === (int) $target->id;
     }
 
     /** GET incentives for a team member (self, mgr juniors, president). */
@@ -8136,6 +8206,7 @@ class TaskController extends Controller
             'items.*.id' => 'nullable|integer',
             'items.*.title' => 'required|string|max:200',
             'items.*.body' => 'nullable|string|max:5000',
+            'items.*.additional_condition' => 'nullable|string|max:5000',
             'items.*.amount' => 'nullable|numeric|min:0',
             'items.*.sort_order' => 'nullable|integer|min:0|max:999',
             'items.*.is_active' => 'nullable|boolean',
@@ -8155,6 +8226,11 @@ class TaskController extends Controller
                 'is_active' => array_key_exists('is_active', $item) ? (bool) $item['is_active'] : true,
                 'updated_by_user_id' => optional($viewer)->id,
             ];
+            if (Schema::hasColumn('user_incentives', 'additional_condition')) {
+                $payload['additional_condition'] = isset($item['additional_condition'])
+                    ? trim((string) $item['additional_condition'])
+                    : null;
+            }
 
             if (! empty($item['id'])) {
                 $row = UserIncentive::query()
@@ -8197,9 +8273,14 @@ class TaskController extends Controller
         return [
             'id' => $row->id,
             'title' => $row->title,
+            'target' => $row->title,
             'body' => $row->body,
+            'condition' => $row->body,
+            'additional_condition' => Schema::hasColumn('user_incentives', 'additional_condition')
+                ? ($row->additional_condition ?? null)
+                : null,
             'amount' => $row->amount !== null ? (float) $row->amount : null,
-            'amount_display' => $row->amount !== null ? '₹'.number_format((float) $row->amount, 0) : null,
+            'amount_display' => $row->amount !== null ? '$'.number_format((float) $row->amount, 0) : null,
             'sort_order' => (int) $row->sort_order,
             'is_active' => (bool) $row->is_active,
             'updated_at' => $row->updated_at?->toDateTimeString(),

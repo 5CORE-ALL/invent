@@ -42,10 +42,10 @@ class AttL30MetricsTest extends TestCase
         $this->assertSame(110, AttL30Metrics::percent(220));
     }
 
-    public function test_band_matches_dar_color_thresholds(): void
+    public function test_band_uses_att_color_thresholds(): void
     {
-        $this->assertSame('low', AttL30Metrics::band(79));
-        $this->assertSame('mid', AttL30Metrics::band(80));
+        $this->assertSame('low', AttL30Metrics::band(74));
+        $this->assertSame('mid', AttL30Metrics::band(75));
         $this->assertSame('mid', AttL30Metrics::band(90));
         $this->assertSame('high', AttL30Metrics::band(91));
     }

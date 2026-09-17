@@ -184,6 +184,56 @@ class NewTemuoneSuggestedPriceStore
     }
 
     /**
+     * Wipe stored New Temu One S PRC so the next resolve() back-solves SNROI again.
+     */
+    public function clearSprice(string $sku): void
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return;
+        }
+        $this->queueWrite($sku, [
+            'sgroi' => null,
+            'sprice' => 0.0,
+            's_base' => 0.0,
+            'sprc_dil' => 0.0,
+            'labels' => [],
+            'lmp_alert' => false,
+            'capped' => false,
+            'use_saved' => false,
+        ], '');
+    }
+
+    /**
+     * Persist a Dil SNROI S PRC (Amazon-style insert after clear). Empty fingerprint
+     * so the next catalog load recomputes if Dil / CVR / ads inputs changed.
+     */
+    public function writeExactSprice(string $sku, float $sprice, float $lp = 0.0, float $ship = 0.0): void
+    {
+        $sku = trim($sku);
+        $sprice = round($sprice, 2);
+        if ($sku === '' || ! ($sprice > 0)) {
+            $this->clearSprice($sku);
+
+            return;
+        }
+        $inverted = ($lp > 0)
+            ? TemuShopifySalesService::sgroiAtSprice($sprice, $lp, $ship, 0.0)
+            : null;
+        $sBase = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($sprice), 2);
+        $this->queueWrite($sku, [
+            'sgroi' => $inverted !== null ? round($inverted, 2) : null,
+            'sprice' => $sprice,
+            's_base' => $sBase > 0 ? $sBase : 0.0,
+            'sprc_dil' => $sprice,
+            'labels' => [],
+            'lmp_alert' => false,
+            'capped' => false,
+            'use_saved' => true,
+        ], '');
+    }
+
+    /**
      * S PRC from Dil + CVR Target NROI (SNROI), including channel Ads%.
      */
     public static function priceFromExactSgroi(float $lp, float $ship, float $sgroi, float $adsPercent = 0.0): float
@@ -461,7 +511,7 @@ class NewTemuoneSuggestedPriceStore
         $cvr = AmazonDilGroiRule::normalizeCvrAdj($cvrAdj);
         $lmp = $inputs['lmp'] ?? 0;
         $payload = [
-            'v' => 3,
+            'v' => 5,
             'ads' => round((float) ($inputs['ads'] ?? 0), 2),
             'rules' => $normRules,
             'temu_l30' => (int) ($inputs['temu_l30'] ?? $inputs['sold'] ?? 0),
