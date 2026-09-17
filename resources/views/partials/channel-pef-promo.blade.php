@@ -1645,6 +1645,7 @@
             depop: {
                 label: 'Depop',
                 saveSpriceUrl: '/depop/pricing/save-sprice',
+                saveSpriceBatchUrl: '/depop/pricing/save-sprice',
                 pushPriceUrl: null,
                 priceField: 'price',
                 cvrField: 'cvr',
@@ -1653,7 +1654,7 @@
                 skuField: 'sku',
                 soldField: 'al30',
                 soldFieldLabel: 'D L30',
-                saveSpriceMode: 'sku',
+                saveSpriceMode: 'updates',
             },
         };
         CHANNEL_PROMO_CFG.macy = CHANNEL_PROMO_CFG.macys;

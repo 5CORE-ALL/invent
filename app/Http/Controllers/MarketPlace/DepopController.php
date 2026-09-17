@@ -321,6 +321,15 @@ class DepopController extends Controller
 
     public function saveSprice(Request $request)
     {
+        if ($request->filled('sku') && ! $request->has('updates')) {
+            $request->merge([
+                'updates' => [[
+                    'sku' => $request->input('sku'),
+                    'sprice' => $request->input('sprice'),
+                ]],
+            ]);
+        }
+
         $request->validate([
             'updates' => 'required|array|min:1',
             'updates.*.sku' => 'required|string|max:255',

@@ -1899,7 +1899,8 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * Macys Dil = MC L30 ÷ INV. Today uses live macy_products.m_l30 + Shopify INV.
+     * Macys Dil = MC L30 ÷ INV for listed MCM SKUs only (same as the Dil column).
+     * Today uses live macy_products.m_l30 + Shopify INV.
      * Earlier days use eBay 1/2 INV snapshots and a rolling 30-day Mirakl qty.
      *
      * @param  array<string, array<string, mixed>>  $out
@@ -1975,17 +1976,34 @@ class ChannelPromoPricingController extends Controller
         }
 
         $liveMcL30 = [];
+        $listedSkus = [];
         if (Schema::hasTable('macy_products')) {
+            $hasPrice = Schema::hasColumn('macy_products', 'price');
+            $hasStatus = Schema::hasColumn('macy_products', 'listing_status');
+            $cols = ['id', 'sku', 'm_l30'];
+            if ($hasPrice) {
+                $cols[] = 'price';
+            }
+            if ($hasStatus) {
+                $cols[] = 'listing_status';
+            }
             MacyProduct::query()
                 ->whereNotNull('sku')
-                ->select(['id', 'sku', 'm_l30'])
+                ->select($cols)
                 ->orderBy('id')
-                ->chunkById(2000, function ($chunk) use (&$liveMcL30) {
+                ->chunkById(2000, function ($chunk) use (&$liveMcL30, &$listedSkus, $hasPrice, $hasStatus) {
                     foreach ($chunk as $row) {
                         $sku = strtoupper(trim((string) ($row->sku ?? '')));
                         if ($sku === '' || str_contains($sku, 'PARENT')) {
                             continue;
                         }
+                        $status = $hasStatus ? strtolower(trim((string) ($row->listing_status ?? ''))) : '';
+                        $inactive = in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true);
+                        $listed = $hasPrice ? ((float) ($row->price ?? 0) > 0 && ! $inactive) : ! $inactive;
+                        if (! $listed) {
+                            continue;
+                        }
+                        $listedSkus[$sku] = true;
                         $liveMcL30[$sku] = (int) ($row->m_l30 ?? 0);
                     }
                 });
@@ -2011,6 +2029,9 @@ class ChannelPromoPricingController extends Controller
         foreach (array_keys($out) as $dateKey) {
             $windowStart = Carbon::parse($dateKey, 'America/Los_Angeles')->subDays(29)->toDateString();
             foreach (array_keys($skuAllow) as $sku) {
+                if (Schema::hasTable('macy_products') && ! isset($listedSkus[$sku])) {
+                    continue;
+                }
                 $inv = $invBySkuDate[$sku][$dateKey] ?? null;
                 if ($dateKey === $todayKey && ($shopifyInv[$sku] ?? 0) > 0) {
                     $inv = $shopifyInv[$sku];

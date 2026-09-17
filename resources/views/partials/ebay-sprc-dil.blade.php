@@ -434,6 +434,9 @@
                         </li>
                         <li>
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
+                            @if(!empty($ebaySprcDilIsMacys))
+                            Macys also skips parent rows and Missing L (not listed). Dil = MC L30 ÷ INV.
+                            @endif
                         </li>
                     </ul>
                     <div class="table-responsive">
@@ -810,6 +813,12 @@
         function ebayDgIsChild(d) {
             if (typeof chPromoIsChildRow === 'function') return chPromoIsChildRow(d);
             return !!(d && !d.is_parent_summary && d['(Child) sku'] && String(d['(Child) sku']).indexOf('PARENT') === -1);
+        }
+        function ebayDgMacysCountEligible(d) {
+            if (!ebayDgIsMacys()) return true;
+            if (d && (d.is_parent_summary || d.is_parent || d.is_parent_row)) return false;
+            if (typeof isMacysListed === 'function' && !isMacysListed(d)) return false;
+            return true;
         }
         function ebayDgInv(d) {
             if (typeof chPromoInv === 'function') return chPromoInv(d);
@@ -1358,11 +1367,21 @@
         window.ebayCvrGroiAdjNow = ebayCvrGroiAdjNow;
 
         function ebayDgEachInvChild(fn) {
+            const seen = {};
             const walk = function(row, d) {
                 const data = d || (row && typeof row.getData === 'function' ? row.getData() : row);
-                if (!ebayDgIsChild(data) || !(ebayDgInv(data) > 0)) return;
+                if (!ebayDgIsChild(data) || !(ebayDgInv(data) > 0) || !ebayDgMacysCountEligible(data)) return;
+                const sku = String((typeof chPromoSku === 'function' ? chPromoSku(data) : (data && (data['(Child) sku'] || data.sku))) || '').trim().toUpperCase();
+                if (sku) {
+                    if (seen[sku]) return;
+                    seen[sku] = true;
+                }
                 fn(data);
             };
+            if (ebayDgIsMacys() && typeof table !== 'undefined' && table && typeof table.getData === 'function') {
+                (table.getData('all') || []).forEach(function(d) { walk(null, d); });
+                return;
+            }
             if (typeof chPromoEachTableRow === 'function') {
                 chPromoEachTableRow(walk);
                 return;
