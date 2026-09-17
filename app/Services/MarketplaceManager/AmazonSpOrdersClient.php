@@ -2,6 +2,7 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\AmazonOrder;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -88,6 +89,146 @@ class AmazonSpOrdersClient
         }
 
         return ['success' => true, 'order' => $order, 'message' => 'OK'];
+    }
+
+    /**
+     * Best-effort tracking from SP-API (getOrder / getOrderItems / Easy Ship).
+     * getOrder itself does not include a tracking field for most MFN orders.
+     *
+     * @return array{tracking: string, carrier: string}|null
+     */
+    public function lookupTrackingForOrder(string $orderId): ?array
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '' || ! preg_match('/^\d{3}-\d{7}-\d{7}$/', $orderId)) {
+            return null;
+        }
+
+        foreach ([$this->getOrder($orderId), $this->getOrderItems($orderId)] as $payload) {
+            if (! is_array($payload) || $payload === []) {
+                continue;
+            }
+            $hit = AmazonOrder::trackingFromDecoded($payload);
+            if (trim((string) ($hit['tracking'] ?? '')) !== '') {
+                return $hit;
+            }
+            foreach ((array) ($payload['OrderItems'] ?? $payload['orderItems'] ?? []) as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $hit = AmazonOrder::trackingFromDecoded($item);
+                if (trim((string) ($hit['tracking'] ?? '')) !== '') {
+                    return $hit;
+                }
+            }
+        }
+
+        return $this->getEasyShipTracking($orderId);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getOrder(string $orderId): ?array
+    {
+        $token = $this->getAccessToken();
+        if ($token === null) {
+            return null;
+        }
+
+        $response = Http::timeout(30)->withHeaders([
+            'x-amz-access-token' => $token,
+            'accept' => 'application/json',
+        ])->get($this->endpoint.'/orders/v0/orders/'.$orderId);
+
+        if (! $response->successful()) {
+            Log::info('AmazonSpOrdersClient: getOrder failed', [
+                'order_id' => $orderId,
+                'status' => $response->status(),
+            ]);
+
+            return null;
+        }
+
+        $order = $response->json('payload');
+
+        return is_array($order) ? $order : null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getOrderItems(string $orderId): ?array
+    {
+        $token = $this->getAccessToken();
+        if ($token === null) {
+            return null;
+        }
+
+        $response = Http::timeout(30)->withHeaders([
+            'x-amz-access-token' => $token,
+            'accept' => 'application/json',
+        ])->get($this->endpoint.'/orders/v0/orders/'.$orderId.'/orderItems');
+
+        if (! $response->successful()) {
+            Log::info('AmazonSpOrdersClient: getOrderItems failed', [
+                'order_id' => $orderId,
+                'status' => $response->status(),
+            ]);
+
+            return null;
+        }
+
+        $payload = $response->json('payload');
+
+        return is_array($payload) ? $payload : null;
+    }
+
+    /**
+     * @return array{tracking: string, carrier: string}|null
+     */
+    protected function getEasyShipTracking(string $orderId): ?array
+    {
+        $token = $this->getAccessToken();
+        if ($token === null) {
+            return null;
+        }
+
+        $response = Http::timeout(30)->withHeaders([
+            'x-amz-access-token' => $token,
+            'accept' => 'application/json',
+        ])->get($this->endpoint.'/easyShip/2022-03-23/packages', [
+            'amazonOrderId' => $orderId,
+        ]);
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $json = $response->json();
+        $hit = AmazonOrder::trackingFromDecoded(is_array($json) ? $json : []);
+        if (trim((string) ($hit['tracking'] ?? '')) !== '') {
+            return $hit;
+        }
+
+        foreach (['packages', 'packageList', 'payload'] as $key) {
+            $list = is_array($json) ? ($json[$key] ?? null) : null;
+            if (! is_array($list)) {
+                continue;
+            }
+            $items = array_is_list($list) ? $list : [$list];
+            foreach ($items as $pkg) {
+                if (! is_array($pkg)) {
+                    continue;
+                }
+                $hit = AmazonOrder::trackingFromDecoded($pkg);
+                if (trim((string) ($hit['tracking'] ?? '')) !== '') {
+                    return $hit;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

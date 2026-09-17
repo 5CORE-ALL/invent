@@ -48,6 +48,6 @@ class SyncAmazonTrackingJob implements ShouldQueue, ShouldBeUnique
         if (! $this->respectSettings || AmazonTrackingSyncService::canPushTracking()) {
             $this->runTrackingSafely(fn () => $sync->syncFromShopify($this->limit));
         }
-        $this->runTrackingSafely(fn () => $sync->fillMissingSofTracking(max(80, $this->limit)));
+        $this->runTrackingSafely(fn () => $sync->fillMissingSofTracking(max(200, $this->limit)));
     }
 }

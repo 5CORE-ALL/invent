@@ -46,4 +46,50 @@ class SofPendingLabelRulesTest extends TestCase
 
         $this->assertFalse($looks->invoke($ctrl, '113-1234567-1234567'));
     }
+
+    public function test_shopify_lookup_keys_include_tiktok_prefixes(): void
+    {
+        $ref = new ReflectionClass(SalesOrderFulfillmentController::class);
+        $ctrl = $ref->newInstanceWithoutConstructor();
+        $keys = $ref->getMethod('shopifyTrackingLookupKeys');
+
+        $fromPlain = $keys->invoke($ctrl, '577572569413617223');
+        $this->assertContains('TT-577572569413617223', $fromPlain);
+        $this->assertContains('#TT-577572569413617223', $fromPlain);
+
+        $fromPrefixed = $keys->invoke($ctrl, '#TT-577572569413617223');
+        $this->assertContains('577572569413617223', $fromPrefixed);
+    }
+
+    public function test_pending_badge_counts_unique_orders_not_sku_lines(): void
+    {
+        $ref = new ReflectionClass(SalesOrderFulfillmentController::class);
+        $ctrl = $ref->newInstanceWithoutConstructor();
+        $match = $ref->getMethod('uniqueMarketplaceOrdersMatching');
+
+        $lines = [];
+        for ($i = 1; $i <= 8; $i++) {
+            $lines[] = [
+                'id' => 'faire-'.$i,
+                'mm_slug' => 'faire',
+                'order_id' => 'bo_n8pa3fg3f8',
+                'order_id_api' => 'bo_n8pa3fg3f8',
+                'sku' => 'SKU-'.$i,
+                'quantity' => 1,
+                'status' => 'PROCESSING',
+                'tracking_number' => '',
+            ];
+        }
+
+        $pending = $match->invoke($ctrl, $lines, false);
+        $this->assertCount(1, $pending);
+        $this->assertSame(8, $pending[0]['quantity']);
+        $this->assertStringContainsString('+7', (string) $pending[0]['sku']);
+
+        $lines[0]['tracking_number'] = '9400111899351234567890';
+        $pendingAfterLabel = $match->invoke($ctrl, $lines, false);
+        $labeled = $match->invoke($ctrl, $lines, true);
+        $this->assertCount(0, $pendingAfterLabel);
+        $this->assertCount(1, $labeled);
+    }
 }

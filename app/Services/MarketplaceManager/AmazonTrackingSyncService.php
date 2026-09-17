@@ -299,7 +299,7 @@ class AmazonTrackingSyncService
             ];
         }
 
-        $limit = max(1, min(200, $limit));
+        $limit = max(1, min(400, $limit));
         $orders = AmazonOrder::query()
             ->with('items')
             ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED', 'UNSHIPPED'])
@@ -389,13 +389,20 @@ class AmazonTrackingSyncService
             }
         }
 
+        if (empty($hit['tracking'])) {
+            $fromAmazon = $this->ordersClient->lookupTrackingForOrder($amazonOrderId);
+            if ($fromAmazon !== null && trim((string) ($fromAmazon['tracking'] ?? '')) !== '') {
+                $hit = $fromAmazon;
+            }
+        }
+
         $tn = trim((string) ($hit['tracking'] ?? ''));
         if ($tn === '') {
             return [
                 'success' => false,
                 'tracking' => null,
                 'carrier' => null,
-                'message' => 'No Shopify/Veeqo/GOFO tracking found.',
+                'message' => 'No Shopify/Veeqo/GOFO/Amazon tracking found.',
             ];
         }
 
