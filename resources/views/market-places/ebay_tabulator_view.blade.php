@@ -3321,11 +3321,27 @@
                 if (nrlFilter === 'NR' && data.nr_req !== 'NR') return false;
                 return true;
             }
+            function ebay1AlreadyPushedToShown(data) {
+                const status = String((data && (data.SPRICE_STATUS || data.push_status)) || '').toLowerCase();
+                if (status !== 'pushed') return false;
+                const shown = ebay1RowSpriceForAlert(data);
+                const pushed = parseFloat(data && (data.SPRICE_PUSHED_VALUE != null
+                    ? data.SPRICE_PUSHED_VALUE
+                    : data.CHANNEL_PUSHED_PRICE)) || 0;
+                return shown > 0 && pushed > 0 && Math.round(shown * 100) === Math.round(pushed * 100);
+            }
+            /** Same set auto-push queues: INV/REQ scope, S PRC ≠ Price, not already pushed. */
+            function ebay1NeedsSpricePush(data) {
+                return ebay1InPushFilterScope(data)
+                    && ebay1HasBlueTriangle(data)
+                    && !ebay1AlreadyPushedToShown(data);
+            }
             function ebay1BlueTriangleBadgeRow(data) {
-                return ebay1InPushFilterScope(data) && ebay1HasBlueTriangle(data);
+                return ebay1NeedsSpricePush(data);
             }
             window.ebay1HasBlueTriangle = ebay1HasBlueTriangle;
             window.ebay1InPushFilterScope = ebay1InPushFilterScope;
+            window.ebay1NeedsSpricePush = ebay1NeedsSpricePush;
             function syncEbay1TriangleBadgeState() {
                 $('#ebay1-blue-triangle-badge').css({
                     outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -5796,7 +5812,7 @@
 
                 if (blueTriangleFilterActive) {
                     table.addFilter(function(data) {
-                        return ebay1HasBlueTriangle(data);
+                        return ebay1NeedsSpricePush(data);
                     });
                 }
                 if (endedListingFilterActive) {
@@ -6026,7 +6042,10 @@
                 let blueTriangleCount = 0;
                 let redTriangleCount = 0;
                 let endedListingCount = 0;
-                allData.forEach(function(row) {
+                const blueSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
+                    ? allTableData
+                    : allData;
+                blueSrc.forEach(function(row) {
                     if (ebay1BlueTriangleBadgeRow(row)) blueTriangleCount++;
                     if (ebay1HasRedTriangle(row)) redTriangleCount++;
                     if (ebay1IsEndedListing(row)) endedListingCount++;

@@ -871,6 +871,9 @@
                     return 0;
                 }
                 if (!chPushSpriceUsesClientPump()) return 0;
+                if (opts.replacePending) {
+                    chPushClientQ = [];
+                }
                 let n = 0;
                 (items || []).forEach(function(item) {
                     if (!item) return;
@@ -887,8 +890,10 @@
                     const row = (item.row && typeof item.row.getData === 'function')
                         ? item.row
                         : chPushSpriceFindRowBySku(sku);
-                    const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
-                    if (chPushSpriceRowBlocked(d)) return;
+                    const d = (row && typeof row.getData === 'function')
+                        ? (row.getData() || {})
+                        : (item.data || {});
+                    if (d && chPushSpriceRowBlocked(d)) return;
                     chPushClientQ.push({ sku: sku, price: price, row: row });
                     n++;
                 });
@@ -1137,7 +1142,7 @@
                 if (opts.once !== false && opts.silent && window._chPushSpricePageChecked) return;
                 if (opts.once !== false && opts.silent) window._chPushSpricePageChecked = true;
                 if (!chPushSpriceAutoPushAllowed()) return;
-                if (chPushSpriceUsesClientPump() && chPushClientBusy()) return;
+                if (chPushSpriceUsesClientPump() && chPushClientBusy() && !opts.catalog) return;
                 if (!CH_PUSH_SPRICE_LIVE) {
                     if (!opts.silent) {
                         chPushSpriceToast('error', 'Live S PRC push is disabled on this environment');
@@ -1166,7 +1171,7 @@
                     if (chPushSpriceAlreadyPushedToSaved(d, saved)) return;
                     const live = chPushSpriceLiveFromRow(d);
                     if (!(live > 0) || chPushSpriceNearlyEqual(saved, live)) return;
-                    jobs.push({ sku: sku, price: saved, row: row });
+                    jobs.push({ sku: sku, price: saved, row: row, data: d });
                 }
                 if (tbl) chPushSpriceWalkRows(tbl, consider);
                 extra.forEach(function(d) { if (d) consider(null, d); });
@@ -1190,7 +1195,11 @@
                     return;
                 }
                 if (chPushSpriceUsesClientPump()) {
-                    enqueueChannelPushSpriceClient(jobs);
+                    enqueueChannelPushSpriceClient(jobs, {
+                        replacePending: CH_PUSH_SPRICE_CHANNEL === 'ebay1'
+                            || CH_PUSH_SPRICE_CHANNEL === 'ebay2'
+                            || CH_PUSH_SPRICE_CHANNEL === 'ebay3',
+                    });
                 } else {
                     enqueueChannelPushSprice(jobs, {
                         silent: !!opts.silent,
