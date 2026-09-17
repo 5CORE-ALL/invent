@@ -3893,6 +3893,9 @@
             // Keep S PRC visible even when it equals listing price (ebay formatter hides matches)
             if (isFinite(n) && n > 0) patch.has_custom_sprice = true;
             if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c') patch.AMZ_SUGG_APPLIED = false;
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
+                patch.calc_price = (isFinite(n) && n > 0) ? n : 0;
+            }
             return patch;
         }
         function chPromoStdBase(d) {

@@ -761,6 +761,7 @@ class Shopifyb2bController extends Controller
 
         $merged = array_merge($existing, [
             'SPRICE' => $sprice,
+            'calc_price' => $sprice > 0 ? $sprice : 0,
             'SGPFT' => $sgpft,
             'SNPFT' => $snpft,
             'SPFT' => $snpft,

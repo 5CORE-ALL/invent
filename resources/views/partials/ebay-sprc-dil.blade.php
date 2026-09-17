@@ -405,7 +405,11 @@
                         </li>
                         <li>
                             <strong>When</strong> you click <strong>Save and Apply</strong>:
+                            @if($ebaySprcDilChannel === 'shopify_b2b')
+                            old <strong>S PRC / calc_price</strong> is deleted, Dil is calculated and saved, then Push starts for S PRC ≠ Price (same as Amazon).
+                            @else
                             {{ $ebaySprcDilPageLabel }}’s table is stored via <strong>API only</strong>, then old <strong>S PRC</strong> is deleted and the new Dil S PRC is written.
+                            @endif
                         </li>
                         <li>
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
@@ -1789,6 +1793,7 @@
         }
         let ebayDgAutoApplyTimer = null;
         let ebayDgAutoApplyWaits = 0;
+        let ebayDgB2bPersistOnce = false;
         let ebayDgApplyBusy = false;
         let ebayDgApplyPending = false;
         function ebaySprcDilRowAdapter(d) {
@@ -1945,6 +1950,19 @@
                     }
                     return;
                 }
+                if (ebayDgIsShopifyB2b()) {
+                    const persist = opts.persist === true || !!opts.flashClear;
+                    if (persist && ebayDgB2bPersistOnce && !opts.forcePersist) {
+                        Promise.resolve(ebayApplySprcDilToTable({ persist: false, push: false })).catch(function() { /* retry */ });
+                        return;
+                    }
+                    if (persist) ebayDgB2bPersistOnce = true;
+                    const push = persist
+                        && typeof chPromoPageReloadPushAllowed === 'function'
+                        && chPromoPageReloadPushAllowed();
+                    Promise.resolve(ebayApplySprcDilToTable({ persist: persist, push: push })).catch(function() { /* retry */ });
+                    return;
+                }
                 Promise.resolve(ebayApplySprcDilToTable({ persist: false, push: false })).catch(function() { /* retry on next change */ });
             }, delay);
         }
@@ -2086,7 +2104,7 @@
                     if (item.row && typeof chPromoWipeSpriceRow === 'function') {
                         chPromoWipeSpriceRow(item.row);
                     } else if (item.row && typeof item.row.update === 'function') {
-                        item.row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false, SGPFT: 0, SROI: 0, SPFT: 0 });
+                        item.row.update({ SPRICE: 0, sprice: 0, calc_price: 0, has_custom_sprice: false, SGPFT: 0, SROI: 0, SPFT: 0 });
                     }
                     if (ebayDgIsShopifyB2c() && item.row && typeof item.row.update === 'function') {
                         item.row.update({ AMZ_SUGG_APPLIED: false });
@@ -2134,7 +2152,13 @@
             }
 
             if (opts.push === true && livePushOn && fills.length) {
-                if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
+                if (ebayDgIsShopifyB2b() && typeof scanAndQueueChannelPushSprice === 'function') {
+                    const tbl = (typeof chPromoSafeTable === 'function')
+                        ? chPromoSafeTable()
+                        : ((typeof table !== 'undefined') ? table : null);
+                    scanAndQueueChannelPushSprice(tbl, { catalog: true, once: false, silent: false });
+                    ebayDgToast('success', 'S PRC / calc_price cleared, Dil saved on ' + fills.length + ' SKU(s). Pushing S PRC ≠ Price.');
+                } else if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
                     fills.forEach(function(f) {
                         const d = (f.row && typeof f.row.getData === 'function') ? f.row.getData() : {};
                         const pushPrice = (window.SpriceLmpCap && typeof SpriceLmpCap.prepare === 'function')
@@ -2142,13 +2166,27 @@
                             : f.sprice;
                         enqueueChannelPushSpriceAfterSave(f.sku, pushPrice, f.row);
                     });
+                    ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
+                } else {
+                    ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
                 }
-                ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
             } else if (fills.length) {
-                ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
+                ebayDgToast(
+                    'success',
+                    ebayDgIsShopifyB2b()
+                        ? ('S PRC / calc_price cleared, then Dil saved on ' + fills.length + ' SKU(s)')
+                        : ('S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)')
+                );
             }
             redrawEbaySprcDilColumn();
-            try { if (typeof table !== 'undefined' && table) table.redraw(true); } catch (e) { /* ignore */ }
+            if (ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) {
+                if (typeof ebayDgRefreshVisibleRows === 'function') ebayDgRefreshVisibleRows();
+                if (typeof updateSummary === 'function') {
+                    try { updateSummary(); } catch (e) { /* ignore */ }
+                }
+            } else {
+                try { if (typeof table !== 'undefined' && table) table.redraw(true); } catch (e) { /* ignore */ }
+            }
             return fills.length;
         }
         async function ebayApplySprcDilToTable(opts) {
@@ -2343,6 +2381,7 @@
                     renderEbayDilGroiModalTable();
                 }
                 if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
+                if (ebayDgIsShopifyB2b()) ebayDgB2bPersistOnce = false;
                 const n = ebayDgUsesBackgroundRuleApply()
                     ? await ebayDgFlashThenPaintMacysRuleSprice({ toast: true })
                     : await ebayApplySprcDilToTable({ persist: true, push: true });
