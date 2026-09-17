@@ -17967,6 +17967,7 @@ class ChannelMasterController extends Controller
             if (! $useDailyWindow && ! $useL7Window) {
                 $this->pinLiveDotTrendsFromCalculatedData($out);
                 $this->pinAllDotTrendsFromChannelPairs($out);
+                $this->alignYesterdayProfitDotsWithYSales($out);
             }
 
             return $out;
@@ -20809,6 +20810,41 @@ class ChannelMasterController extends Controller
                 $live,
                 $this->metricDotEpsilon($metric)
             );
+        }
+    }
+
+    /**
+     * Y PFT $ / Y NPFT $ are Y Sales × rate. If yesterday sales moved but the
+     * profit pair is missing or flat (no GPFT history, one snapshot day), scale
+     * the previous profit from the Y Sales pair so All / Amazon badges cannot
+     * stay gray while Y Sales is already green or red.
+     *
+     * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $out
+     */
+    private function alignYesterdayProfitDotsWithYSales(array &$out): void
+    {
+        foreach ($out as $ch => $metrics) {
+            if (! is_array($metrics)) {
+                continue;
+            }
+            $sales = $metrics['y_sales'] ?? [null, null];
+            $s1 = isset($sales[0]) && is_numeric($sales[0]) ? (float) $sales[0] : null;
+            $s2 = isset($sales[1]) && is_numeric($sales[1]) ? (float) $sales[1] : null;
+            if ($s1 === null || $s2 === null || abs($s2) < 0.5 || abs($s2 - $s1) <= 0.5) {
+                continue;
+            }
+            foreach (['y_pft', 'y_npft_amt'] as $metric) {
+                $profit = $metrics[$metric] ?? [null, null];
+                $p1 = isset($profit[0]) && is_numeric($profit[0]) ? (float) $profit[0] : null;
+                $p2 = isset($profit[1]) && is_numeric($profit[1]) ? (float) $profit[1] : null;
+                if ($p2 === null) {
+                    continue;
+                }
+                if ($p1 !== null && abs($p2 - $p1) > 0.01) {
+                    continue;
+                }
+                $out[$ch][$metric] = [round($p2 * ($s1 / $s2), 2), $p2];
+            }
         }
     }
 

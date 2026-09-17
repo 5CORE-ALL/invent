@@ -4961,6 +4961,38 @@
                         $(this).removeClass('up down flat none').addClass(nCls);
                         return;
                     }
+                    if (metric === 'y_pft' || metric === 'y_npft_amt') {
+                        var yRows = [];
+                        try {
+                            yRows = (table && table.getData) ? (table.getData('active') || table.getData() || []) : [];
+                        } catch (e) {
+                            yRows = (table && table.getData) ? (table.getData() || []) : [];
+                        }
+                        var liveAmt = 0, liveSales = 0;
+                        yRows.forEach(function(row) {
+                            liveAmt += metric === 'y_pft' ? yGrossPftFromRow(row) : yNetPftFromRow(row);
+                            liveSales += parseNumber(row['Y Sales'] || 0);
+                        });
+                        var profitPair = lastDotPairByKey['all_' + metric];
+                        var prevAmt = (profitPair && profitPair[0] != null && !isNaN(profitPair[0])) ? profitPair[0] : null;
+                        var ySalesPair = lastDotPairByKey['all_y_sales'];
+                        var salesMoved = ySalesPair && ySalesPair[0] != null && ySalesPair[1] != null
+                            && !isNaN(ySalesPair[0]) && !isNaN(ySalesPair[1])
+                            && Math.abs(ySalesPair[1] - ySalesPair[0]) > 0.5;
+                        if ((prevAmt == null || Math.abs(liveAmt - prevAmt) <= 0.5) && salesMoved && liveSales > 0.5 && Math.abs(ySalesPair[1]) > 0.5) {
+                            prevAmt = liveAmt * (ySalesPair[0] / ySalesPair[1]);
+                        }
+                        var yCls = 'none';
+                        if (prevAmt != null && !isNaN(prevAmt)) {
+                            if (Math.abs(liveAmt - prevAmt) < 0.5) yCls = 'flat';
+                            else yCls = liveAmt > prevAmt ? 'up' : 'down';
+                            lastDotPairByKey['all_' + metric] = [prevAmt, liveAmt];
+                        } else if (salesMoved) {
+                            yCls = ySalesPair[1] > ySalesPair[0] ? 'up' : 'down';
+                        }
+                        $(this).removeClass('up down flat none').addClass(yCls);
+                        return;
+                    }
                     // Prefer the blended All pair. Only treat it as settled when
                     // both values exist — a leftover gray hex must not lock Every
                     // summary badge to flat.
