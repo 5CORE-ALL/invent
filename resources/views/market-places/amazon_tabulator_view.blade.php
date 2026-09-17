@@ -4590,7 +4590,7 @@
                     },
 
                     {
-                        title: "NROI",
+                        title: "NROI%",
                         field: "NROI",
                         hozAlign: "center",
                         headerTooltip: "NROI% = (gross PFT$ − ad spend$) / LP × 100. Same formula as the NROI badge / SNROI, using current Amazon price.",
@@ -4609,7 +4609,7 @@
                         width: 65
                     },
                     {
-                        title: "NPFT",
+                        title: "NPFT%",
                         field: "PFT%",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
@@ -4724,7 +4724,7 @@
                         }
                     },
                     {
-                        title: "SGROI",
+                        title: "SGROI%",
                         field: "SGROI",
                         hozAlign: "center",
                         // Same formula as GROI%: ((SPRICE × 0.80 − ship − lp) / lp) × 100
@@ -4744,7 +4744,7 @@
                         width: 65
                     },
                     {
-                        title: "S GPFT",
+                        title: "S GPFT%",
                         field: "SGPFT",
                         hozAlign: "center",
                         headerTooltip: "Live from S PRC: ((S PRC × 0.80 − ship − LP) / S PRC) × 100. Same profit $ as SGROI.",
@@ -4764,7 +4764,7 @@
                         width: 80
                     },
                     {
-                        title: "SNROI",
+                        title: "SNROI%",
                         field: "SROI",
                         hozAlign: "center",
                         // Same formula as NROI badge: (PFT$ − Ad Spend$) / COGS × 100
@@ -4784,7 +4784,7 @@
                         width: 80
                     },
                     {
-                        title: "SNPFT",
+                        title: "SNPFT%",
                         field: "Spft%",
                         hozAlign: "center",
                         headerTooltip: "SNPFT = live S GPFT − Ads%. Same S PRC as SGROI / S GPFT.",
