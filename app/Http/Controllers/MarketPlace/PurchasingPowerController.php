@@ -375,7 +375,7 @@ class PurchasingPowerController extends Controller
             }
 
             // LP from ProductMaster. Price Rule Apply uses Ship BB
-            // (SPRICE = (STD × (1 − Disc%)) − Ship BB). Margin formulas still exclude ship.
+            // (SPRICE = (STD × (1 − Disc%)) − Ship BB). Margin formulas include Ship, same as Amazon.
             $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
             $lp = 0;
             foreach ($values as $k => $v) {
@@ -392,15 +392,15 @@ class PurchasingPowerController extends Controller
             $units_l30       = floatval($row['PP L30']   ?? 0);
 
             $row['PP Dil%']    = ($units_l30 && $row['INV'] > 0) ? round($units_l30 / $row['INV'], 2) : 0;
-            $row['Total_pft']  = round(($price * $percentage - $lp) * $units_l30, 2);
+            $row['Total_pft']  = round(($price * $percentage - $lp - $ship) * $units_l30, 2);
             $row['Profit']     = $row['Total_pft'];
             $row['T_Sale_l30'] = round((float) ($sold['sales'] ?? 0), 2);
             $row['Sales L30']  = $row['T_Sale_l30'];
 
-            $gpft = $price > 0 ? (($price * $percentage - $lp) / $price) * 100 : 0;
+            $gpft = $price > 0 ? (($price * $percentage - $lp - $ship) / $price) * 100 : 0;
             $row['GPFT%']  = round($gpft, 2);
             $row['PFT %']  = round($gpft, 2);
-            $row['ROI%']   = round($lp > 0 ? (($price * $percentage - $lp) / $lp) * 100 : 0, 2);
+            $row['ROI%']   = round($lp > 0 ? (($price * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
 
             $row['percentage']          = $percentage;
             $row['LP_productmaster']    = $lp;
@@ -411,12 +411,12 @@ class PurchasingPowerController extends Controller
                 : 0;
             $row['STANDARD_PRICE'] = ($row['standard_price'] ?? 0) > 0 ? $row['standard_price'] : null;
 
-            // SPRICE metrics (Ship excluded from margin math)
+            // SPRICE metrics — same as Amazon: (price × margin − Ship − LP)
             $sprice = $row['SPRICE'] ?? 0;
-            $sgpft  = round($sprice > 0 ? (($sprice * $percentage - $lp) / $sprice) * 100 : 0, 2);
+            $sgpft  = round($sprice > 0 ? (($sprice * $percentage - $lp - $ship) / $sprice) * 100 : 0, 2);
             $row['SGPFT'] = $sgpft;
             $row['SPFT']  = $sgpft;
-            $row['SROI']  = round($lp > 0 ? (($sprice * $percentage - $lp) / $lp) * 100 : 0, 2);
+            $row['SROI']  = round($lp > 0 && $sprice > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
 
             $row['image_path'] = $shopify?->image_src ?? ($values['image_path'] ?? ($pm->image_path ?? null));
             $row = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $pm->sku);
@@ -707,17 +707,12 @@ class PurchasingPowerController extends Controller
             $margin     = $percentage / 100;
 
             $pm = ProductMaster::where('sku', $sku)->first();
-            $lp = 0;
-            if ($pm) {
-                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                foreach ($values as $k => $v) {
-                    if (strtolower($k) === 'lp') { $lp = (float) $v; break; }
-                }
-                if ($lp === 0 && isset($pm->lp)) $lp = (float) $pm->lp;
-            }
+            $cost = self::lpAndShipBb($pm);
+            $lp = $cost['lp'];
+            $ship = $cost['ship'];
 
-            $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp) / $sprice) * 100, 2) : 0;
-            $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp) / $lp)     * 100, 2) : 0;
+            $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
+            $sroi  = $lp > 0 && $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $lp) * 100, 2) : 0;
 
             // Same pattern as AliExpress
             $view   = PurchasingPowerDataView::firstOrNew(['sku' => $sku]);
@@ -791,14 +786,9 @@ class PurchasingPowerController extends Controller
                 $sprice = (float) $sprice;
 
                 $pm = ProductMaster::where('sku', $sku)->first();
-                $lp = 0;
-                if ($pm) {
-                    $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === 'lp') { $lp = (float) $v; break; }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) $lp = (float) $pm->lp;
-                }
+                $cost = self::lpAndShipBb($pm);
+                $lp = $cost['lp'];
+                $ship = $cost['ship'];
 
                 // Same pattern as AliExpress
                 $view   = PurchasingPowerDataView::firstOrNew(['sku' => $sku]);
@@ -810,8 +800,8 @@ class PurchasingPowerController extends Controller
                     $stored['SPRICE_STATUS'] = 'cleared';
                     $stored['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
                 } else {
-                    $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp) / $sprice) * 100, 2) : 0;
-                    $sroi  = $lp     > 0 ? round((($sprice * $margin - $lp) / $lp)     * 100, 2) : 0;
+                    $sgpft = $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0;
+                    $sroi  = $lp > 0 && $sprice > 0 ? round((($sprice * $margin - $lp - $ship) / $lp) * 100, 2) : 0;
 
                     $stored['SPRICE'] = $sprice;
                     $stored['SGPFT']  = $sgpft;

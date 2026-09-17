@@ -33,7 +33,7 @@
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'mercari_wship', 'mercari_woship'], true);
-    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship', 'depop'], true);
+    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship', 'depop'], true);
     $ebaySprcDilSoldLabel = match ($ebaySprcDilChannel) {
         'temu', 'temu2', 'temu3' => 'Temu L30',
         'macys', 'macy' => 'MC L30',
@@ -383,6 +383,12 @@
                             (Ship not used):
                             <code>(LP × (1 + NROI%/100)) / (take-home − Ads%/100)</code>.
                             If Dil has no price, fall back to <strong>S Pick from /doba-tabulator</strong>.
+                        </li>
+@elseif($ebaySprcDilChannel === 'purchasing_power')
+                        <li>
+                            <strong>When</strong> S PRC is calculated:
+                            same as Amazon, using <strong>Ship BB</strong> (not normal Ship):
+                            <code>S PRC = (LP × (1 + GROI%/100) + Ship BB) / margin</code>.
                         </li>
 @elseif(!empty($ebaySprcDilExcludeShip))
                         <li>

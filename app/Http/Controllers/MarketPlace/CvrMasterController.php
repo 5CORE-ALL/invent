@@ -1525,7 +1525,7 @@ class CvrMasterController extends Controller
             }
 
             // Purchasing Power — same sources/formulas as /purchasing-power-pricing
-            // Margin default 65%; GPFT/ROI exclude ship; Ads% = 0
+            // Margin default 65%; GPFT/ROI use Ship BB (Amazon shape); Ads% = 0
             $ppMarketplace = MarketplacePercentage::where('marketplace', 'Purchase')->first();
             $ppPercentage = $ppMarketplace ? ($ppMarketplace->percentage / 100) : 0.65;
 
@@ -2251,7 +2251,7 @@ class CvrMasterController extends Controller
                 $ppL30 = $ppSaleRow !== null
                     ? intval($ppSaleRow)
                     : ($ppProduct ? intval($ppProduct->m_l30 ?? 0) : 0);
-                $ppGPFT = $ppPrice > 0 ? ((($ppPrice * $ppPercentage - $lp) / $ppPrice) * 100) : 0;
+                $ppGPFT = $ppPrice > 0 ? ((($ppPrice * $ppPercentage - $lp - $shipBb) / $ppPrice) * 100) : 0;
                 $ppPFT = $ppGPFT; // No ads
 
                 // === TOPDAWG (same as /topdawg-pricing) ===
@@ -2700,12 +2700,12 @@ class CvrMasterController extends Controller
 
                     // STD-rule channels (same as /price-increase modal + getBreakdownData):
                     // TopDawg/Faire/SB2B: SPRICE = (STD × marketplace_percentages) − Ship
-                    // PPower: SPRICE = (STD × 1.15) − Ship
-                    // Metric formulas still use ship=0 for these channels (GPFT/SGPFT).
+                    // PPower: SPRICE = (STD × 1.15) − Ship BB; GPFT/SGPFT also use Ship BB.
                     $stdPef = (is_numeric($amazonStandardPrice) && (float) $amazonStandardPrice > 0)
                         ? (float) $amazonStandardPrice
                         : 0.0;
                     $applyShipPef = ($ship > 0) ? (float) $ship : 0.0;
+                    $applyShipBbPef = ($shipBb > 0) ? (float) $shipBb : 0.0;
                     $tdRatePef = $tdPercentage > 0 ? $tdPercentage : 0.80;
                     $faireRatePef = $fairePercentage > 0 ? $fairePercentage : 0.80;
                     $sb2bRatePef = $sb2bPercentagePef > 0 ? $sb2bPercentagePef : 0.80;
@@ -2713,7 +2713,7 @@ class CvrMasterController extends Controller
                         $tdSp = max(0.01, round(($stdPef * $tdRatePef) - $applyShipPef, 2));
                         $faireSp = max(0.01, round(($stdPef * $faireRatePef) - $applyShipPef, 2));
                         $sb2bSp = max(0.01, round(($stdPef * $sb2bRatePef) - $applyShipPef, 2));
-                        $ppSp = max(0.01, round(($stdPef * 1.15) - $applyShipPef, 2));
+                        $ppSp = max(0.01, round(($stdPef * 1.15) - $applyShipBbPef, 2));
                     } else {
                         // No STD: fallback (price × marketplace%) − Ship when saved sprice empty
                         if (! ($tdSp > 0) && $tdPrice > 0) {
@@ -2726,7 +2726,7 @@ class CvrMasterController extends Controller
                             $sb2bSp = max(0.01, round(($sb2bPricePef * $sb2bRatePef) - $applyShipPef, 2));
                         }
                         if (! ($ppSp > 0) && $ppPrice > 0) {
-                            $ppSp = max(0.01, round(($ppPrice * 1.15) - $applyShipPef, 2));
+                            $ppSp = max(0.01, round(($ppPrice * 1.15) - $applyShipBbPef, 2));
                         }
                     }
 
@@ -2764,7 +2764,7 @@ class CvrMasterController extends Controller
                         ['marketplace' => 'Shein', 'price' => $sheinPrice, 'sprice' => 0, 'lp' => $lp, 'ship' => $ship, 'margin' => $sheinPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $sheinL30, 'views' => $sheinViews, 'cvr' => $pefCvr((float) $sheinL30, (float) $sheinViews), 'push_status' => null],
                         ['marketplace' => 'Faire', 'price' => $fairePrice, 'sprice' => $faireSp, 'lp' => $lp, 'ship' => 0, 'margin' => $fairePercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $faireL30, 'views' => $faireViews, 'cvr' => $pefCvr((float) $faireL30, (float) $faireViews), 'push_status' => $faireSt, 'product_id' => $faireMetric ? ($faireMetric->product_id ?? null) : null],
                         ['marketplace' => 'AliExpress', 'price' => $aePrice, 'sprice' => $aeSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $aePercentage, 'ad' => $aeAdsPef, 'tacos_ch' => $aeAdsPef, 'l30' => $aeL30, 'views' => $aeViewsPef, 'cvr' => $pefCvr((float) $aeL30, (float) $aeViewsPef), 'push_status' => $aeSt],
-                        ['marketplace' => 'PPower', 'price' => $ppPrice, 'sprice' => $ppSp, 'lp' => $lp, 'ship' => 0, 'margin' => $ppPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $ppL30, 'views' => 0, 'cvr' => 0, 'push_status' => $ppSt],
+                        ['marketplace' => 'PPower', 'price' => $ppPrice, 'sprice' => $ppSp, 'lp' => $lp, 'ship' => $shipBb, 'margin' => $ppPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $ppL30, 'views' => 0, 'cvr' => 0, 'push_status' => $ppSt],
                         ['marketplace' => 'TopDawg', 'price' => $tdPrice, 'sprice' => $tdSp, 'lp' => $lp, 'ship' => 0, 'margin' => $tdPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $tdL30, 'views' => $tdViews, 'cvr' => $pefCvr((float) $tdL30, (float) $tdViews), 'push_status' => $tdSt],
                     ];
                     // LMP + LMP diff% = (Price − LMP) / LMP × 100 — for LMP vs DISC
@@ -5249,8 +5249,8 @@ class CvrMasterController extends Controller
             } catch (\Exception $e) {
                 Log::warning('PP breakdown data fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
             }
-            // Ship intentionally excluded from all PP formulas (same as /purchasing-power-pricing)
-            $ppGPFTBd = $ppPriceBd > 0 ? (($ppPriceBd * $ppMarginBd - $lp) / $ppPriceBd) * 100 : 0;
+            // PP formulas use Ship BB (same as /purchasing-power-pricing, Amazon shape)
+            $ppGPFTBd = $ppPriceBd > 0 ? (($ppPriceBd * $ppMarginBd - $lp - $shipBb) / $ppPriceBd) * 100 : 0;
             $ppNPFTBd = round($ppGPFTBd, 2); // Ads% = 0
             $ppSuggestedBd = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
             try {
@@ -5260,10 +5260,10 @@ class CvrMasterController extends Controller
                     $val = is_array($ppDataViewBd->value) ? $ppDataViewBd->value : json_decode($ppDataViewBd->value, true);
                     if (is_array($val)) {
                         $ppSprice = floatval($val['SPRICE'] ?? 0);
-                        // Recalc suggested metrics without ship (same as PP pricing page)
-                        $ppSgpft = $ppSprice > 0 ? (($ppSprice * $ppMarginBd - $lp) / $ppSprice) * 100 : floatval($val['SGPFT'] ?? 0);
+                        // Recalc suggested metrics with Ship BB (same as PP pricing page)
+                        $ppSgpft = $ppSprice > 0 ? (($ppSprice * $ppMarginBd - $lp - $shipBb) / $ppSprice) * 100 : floatval($val['SGPFT'] ?? 0);
                         $ppSroi = $lp > 0 && $ppSprice > 0
-                            ? (($ppSprice * $ppMarginBd - $lp) / $lp) * 100
+                            ? (($ppSprice * $ppMarginBd - $lp - $shipBb) / $lp) * 100
                             : floatval($val['SROI'] ?? 0);
                         $ppSuggestedBd = [
                             'sprice' => $ppSprice,
@@ -5296,9 +5296,8 @@ class CvrMasterController extends Controller
                 'sroi'        => $ppSuggestedBd['sroi'],
                 'spft'        => $ppSuggestedBd['spft'],
                 'lp'          => $lp,
-                // Product-master ship kept for SP Apply: (SP × 1.15) − Ship.
-                // GPFT/ROI formulas still exclude ship on the frontend/pricing page.
-                'ship'        => $ship,
+                // Ship BB for PP GPFT/ROI and SP Apply: (SP × 1.15) − Ship BB.
+                'ship'        => $shipBb,
                 'margin'      => $ppMarginBd,
                 'pushed_by'   => null,
                 'pushed_at'   => null,
@@ -5637,8 +5636,8 @@ class CvrMasterController extends Controller
                     $row['ad'] = 0;
                     $row['tacos_ch'] = 0;
                     $row['npft'] = round($gpftPct, 2);
-                    // TopDawg / Faire / PPower keep product-master ship for SP Apply formulas;
-                    // frontend GPFT/ROI still exclude ship for those channels.
+                    // TopDawg / Faire keep product-master ship for SP Apply only.
+                    // PPower GPFT/ROI use Ship BB (same as /purchasing-power-pricing).
                 } elseif (in_array($mp, ['tiktok2', 'tiktok 2'], true)) {
                     // TikTok 2: same as Amazon — product-master ship already on row; Ads% from AMM;
                     // NPFT/SPFT = GPFT/SGPFT − Ads when L30 > 0
@@ -6270,6 +6269,16 @@ class CvrMasterController extends Controller
                     $margin = $mp ? ((float) $mp->percentage / 100) : 0.80;
                     $useShip = $shipBb;
                     $ads = $this->resolveChannelAdsPercentForChart('bestbuy');
+                    break;
+                case 'ppower':
+                case 'pp':
+                case 'purchasingpower':
+                case 'purchasing_power':
+                case 'purchase':
+                    $mp = MarketplacePercentage::where('marketplace', 'Purchase')->first();
+                    $margin = $mp ? ((float) $mp->percentage / 100) : 0.65;
+                    $useShip = $shipBb;
+                    $ads = 0.0;
                     break;
                 case 'temu':
                 case 'temu2':

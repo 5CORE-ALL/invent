@@ -357,8 +357,8 @@
                 ? roundToRetailPrice(raw)
                 : (raw < 20.99 ? +raw.toFixed(2) : Math.ceil(raw) - 0.01);
             const lp = parseFloat(d.LP_productmaster) || 0;
-            const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 10000) / 100 : 0;
-            const sroi = lp > 0 ? Math.round(((newSprice * margin - lp) / lp) * 10000) / 100 : 0;
+            const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp - ship) / newSprice) * 10000) / 100 : 0;
+            const sroi = lp > 0 ? Math.round(((newSprice * margin - lp - ship) / lp) * 10000) / 100 : 0;
             row.update({ SPRICE: newSprice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
             updates.push({ sku: sku, sprice: newSprice });
         });
@@ -1043,7 +1043,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: 'S PRC from Dil → Target GROI% slabs. 0 Sold (PP L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100)) / margin. Ship not used. If that S PRC < A Price, S PRC = A Price.',
+                    headerTooltip: 'S PRC from Dil → Target GROI% slabs. 0 Sold (PP L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship BB) / margin — same as Amazon, Ship BB not normal Ship. If that S PRC < A Price, S PRC = A Price.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (ppIsParentRow(rowData)) return '';
@@ -1066,7 +1066,7 @@
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center',
                     editable: false, sorter: 'number', width: 110,
-                    headerTooltip: 'S PRC from Sprc Dil. Dil-matching Target GROI when PP L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). If that price < A Price, S PRC = A Price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
+                    headerTooltip: 'S PRC from Sprc Dil. Dil-matching Target GROI when PP L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship BB) / margin — same as Amazon, Ship BB not normal Ship. If that price < A Price, S PRC = A Price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';
@@ -1256,9 +1256,9 @@
             const newSprice = parseFloat(cell.getValue()) || 0;
             const percentage = {{ $ppPercentage }} / 100;
             const lp   = d.LP_productmaster || 0;
-            // Ship excluded from Purchasing Power formulas
-            const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp) / newSprice) * 10000) / 100 : 0;
-            const sroi  = lp > 0 ? Math.round(((newSprice * percentage - lp) / lp) * 10000) / 100 : 0;
+            const ship = parseFloat(d.Ship_productmaster) || 0;
+            const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp - ship) / newSprice) * 10000) / 100 : 0;
+            const sroi  = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 10000) / 100 : 0;
             row.update({ SGPFT: sgpft, SPFT: sgpft, SROI: sroi, has_custom_sprice: true });
 
             // Auto-save immediately — no Send button needed

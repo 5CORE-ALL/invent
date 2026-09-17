@@ -146,11 +146,10 @@
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'pls'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'pls'])
 
-                    {{-- Target ROI% / GPFT% — compact UI matches /ebay-tabulator-view (🎯 label + icon-only apply).
-                         PLS take-home is 100%: sprice = LP × (1 + ROI%/100) + Ship --}}
+                    {{-- Target ROI% / GPFT% — same take-home as marketplace_percentages PLS. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="pls-target-roi-controls"
-                        title="Target ROI% — sets S PRC = LP × (1 + Target ROI%/100) + Ship on every selected row">
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / PLS% on every selected row">
                         <label for="pls-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
@@ -158,23 +157,22 @@
                             placeholder="30" step="0.1" style="width: 56px;"
                             title="Target ROI% applied to all selected rows when you click Apply">
                         <button id="pls-apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = LP × (1 + Target ROI%/100) + Ship for every selected row">
+                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / PLS% for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
-                    {{-- Formula: sprice = (LP + Ship) / (1 − GPFT%/100). Target GPFT% must be < 100. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="pls-target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / (1 − Target GPFT%/100) on every selected row">
+                        title="Target GPFT% — sets S PRC = (LP + Ship) / (PLS% − Target GPFT%/100) on every selected row">
                         <label for="pls-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="pls-target-gpft-input" class="form-control form-control-sm text-end"
                             placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target GPFT% applied to all selected rows when you click Apply. Must be less than 100%.">
+                            title="Target GPFT% applied to all selected rows when you click Apply. Must be less than PLS take-home.">
                         <button id="pls-apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / (1 − Target GPFT%/100) for every selected row">
+                            title="Compute & save S PRC = (LP + Ship) / (PLS% − Target GPFT%/100) for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
@@ -311,7 +309,7 @@
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'pls'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'pls'])
     const COLUMN_VIS_KEY = "pls_tabulator_column_visibility";
-    const PLS_PERCENTAGE = {{ $plsPercentage ?? 100 }} / 100; // Dynamic from database
+    const PLS_PERCENTAGE = {{ (float) ($plsTakeHome ?? (($plsPercentage ?? 100) / 100)) }};
     let table = null;
     let allTableData = [];
 
@@ -1806,20 +1804,11 @@
         });
 
         /*
-         * Target ROI% / Target GPFT% bulk apply (PLS, no margin factor)
-         * -------------------------------------------------------------
-         * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered
-         * target. PLS's server-side SGPFT / SROI formulas (PlsController::savePlsSprice
-         * lines 865-871) and the matching client-side computations (plsApplyDiscount
-         * lines 1640-1641 of the original file) treat take-home as 100% — they're:
-         *     SGPFT% = ((sprice − lp − ship) / sprice) * 100
-         *     SROI%  = ((sprice − lp − ship) / lp)     * 100
-         *   → sprice = lp * (1 + ROI%/100)  + ship
-         *   → sprice = (lp + ship) / (1 − GPFT%/100)   (target < 100 required)
-         * Each save goes through the existing plsSaveSpriceWithRetry() Promise pipeline
-         * so the row gets the server-returned sgpft / sroi values automatically.
-         * Plain 2-decimal rounding — no .99 / .49 retail snapping — because snapping
-         * would shift the achieved SROI / SGPFT off the user-typed target.
+         * Target ROI% / Target GPFT% — marketplace_percentages PLS take-home.
+         *   SROI%  = ((sprice × PLS% − lp − ship) / lp) * 100
+         *      → sprice = (lp × (1 + ROI%/100) + ship) / PLS%
+         *   SGPFT% = ((sprice × PLS% − ship − lp) / sprice) * 100
+         *      → sprice = (lp + ship) / (PLS% − GPFT%/100)
          */
         function plsApplyTargetBackSolve(computeFn, labelPrefix) {
             if (plsSelectedSkus.size === 0) {
@@ -1856,7 +1845,7 @@
 
             if (tasks.length === 0) {
                 if (skippedHigh > 0) {
-                    showToast(labelPrefix + ' too high — must be less than 100% (PLS take-home).', 'error');
+                    showToast(labelPrefix + ' too high — must be less than PLS take-home (' + Math.round(PLS_PERCENTAGE * 100) + '%).', 'error');
                 } else {
                     showToast('No selected rows have a usable LP > 0', 'warning');
                 }
@@ -1874,7 +1863,7 @@
                         if (okCount + errCount === total) {
                             let note = '';
                             if (skippedNoLp > 0) note += ' (' + skippedNoLp + ' skipped — no LP)';
-                            if (skippedHigh > 0) note += ' (' + skippedHigh + ' skipped — target ≥ 100%)';
+                            if (skippedHigh > 0) note += ' (' + skippedHigh + ' skipped — target ≥ PLS take-home)';
                             if (errCount === 0) {
                                 showToast(labelPrefix + ' applied to ' + okCount + ' SKU(s)' + note, 'success');
                             } else {
@@ -1888,7 +1877,7 @@
                         if (okCount + errCount === total) {
                             let note = '';
                             if (skippedNoLp > 0) note += ' (' + skippedNoLp + ' skipped — no LP)';
-                            if (skippedHigh > 0) note += ' (' + skippedHigh + ' skipped — target ≥ 100%)';
+                            if (skippedHigh > 0) note += ' (' + skippedHigh + ' skipped — target ≥ PLS take-home)';
                             showToast(labelPrefix + ' applied to ' + okCount + ' SKU(s), ' + errCount + ' failed' + note, 'error');
                         }
                     });
@@ -1904,7 +1893,8 @@
 
             const roiMultiplier = 1 + (targetRoiPct / 100);
             plsApplyTargetBackSolve(function (lp, ship) {
-                return (lp * roiMultiplier) + ship;
+                if (!(PLS_PERCENTAGE > 0)) return null;
+                return (lp * roiMultiplier + ship) / PLS_PERCENTAGE;
             }, 'Target ROI ' + targetRoiPct + '%');
         });
 
@@ -1917,8 +1907,8 @@
 
             const targetFraction = targetGpftPct / 100;
             plsApplyTargetBackSolve(function (lp, ship) {
-                const denom = 1 - targetFraction;
-                if (denom <= 0) return null; // signals "target ≥ 100%" skip
+                const denom = PLS_PERCENTAGE - targetFraction;
+                if (denom <= 0) return null;
                 return (lp + ship) / denom;
             }, 'Target GPFT ' + targetGpftPct + '%');
         });
@@ -2005,8 +1995,8 @@
                 const newPriceNum = parseFloat((parseFloat(row.amazon_price) || 0).toFixed(2));
                 const lp = parseFloat(row.lp) || 0;
                 const ship = parseFloat(row.ship) || 0;
-                const sgpft = newPriceNum > 0 ? Math.round(((newPriceNum - lp - ship) / newPriceNum) * 100 * 100) / 100 : 0;
-                const sroi = lp > 0 ? Math.round(((newPriceNum - lp - ship) / lp) * 100 * 100) / 100 : 0;
+                const sgpft = newPriceNum > 0 ? Math.round(((newPriceNum * PLS_PERCENTAGE - lp - ship) / newPriceNum) * 100 * 100) / 100 : 0;
+                const sroi = lp > 0 ? Math.round(((newPriceNum * PLS_PERCENTAGE - lp - ship) / lp) * 100 * 100) / 100 : 0;
 
                 const tableRow = table.getRows().find(function(r) { return r.getData().sku === sku; });
                 if (tableRow) {

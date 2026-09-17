@@ -91,15 +91,23 @@ class PlsController extends Controller
     }
 
     /**
+     * Take-home decimal (0–1) from marketplace_percentages (PLS / Pls).
+     */
+    private function resolvePlsTakeHomeDecimal(): float
+    {
+        return MarketplacePercentage::takeHomeDecimal('PLS', 'Pls');
+    }
+
+    /**
      * PLS Pricing View - Shows pricing and inventory data
      */
     public function pricingView(Request $request)
     {
-        // Get PLS marketplace percentage from database
-        $plsPercentage = MarketplacePercentage::where('marketplace', 'LIKE', '%PLS%')->value('percentage') ?? 100;
-        
+        $plsTakeHome = $this->resolvePlsTakeHomeDecimal();
+
         return view('market-places.pls_pricing_view', [
-            'plsPercentage' => $plsPercentage
+            'plsTakeHome' => $plsTakeHome,
+            'plsPercentage' => $plsTakeHome * 100,
         ]);
     }
 
@@ -125,9 +133,7 @@ class PlsController extends Controller
             ->values()
             ->all();
 
-        // Get PLS marketplace percentage from marketplace_percentages table
-        $plsPercentage = MarketplacePercentage::where('marketplace', 'LIKE', '%PLS%')->value('percentage') ?? 100;
-        $plsPercentage = $plsPercentage / 100; // convert to fraction
+        $plsPercentage = $this->resolvePlsTakeHomeDecimal();
 
         // 3. Get inventory and L30 from shopify_skus table (like Purchasing Power page)
         $shopifyData = ShopifySku::mapByProductSkus($skus);
@@ -287,6 +293,8 @@ class PlsController extends Controller
             $row['gpft'] = round($gpft, 2);
             $row['gpft_pct'] = round($gpftPct, 2);
             $row['roi_pct'] = round($roiPct, 2);
+            $row['_margin'] = $plsPercentage;
+            $row['percentage'] = $plsPercentage;
             
             // Add SPRICE, SGPFT%, SROI% from pls_data_views
             $row['sprice'] = $sprice;
@@ -592,17 +600,17 @@ class PlsController extends Controller
         }
         
         $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($productMaster->ship) ? floatval($productMaster->ship) : 0);
+        $margin = $this->resolvePlsTakeHomeDecimal();
 
-        // Calculate SGPFT% = ((SPRICE - LP - Ship) / SPRICE) * 100
+        // SGPFT% / SROI% — same take-home as live GPFT/GROI (marketplace_percentages PLS)
         $sgpft_percent = 0;
         if ($sprice > 0) {
-            $sgpft_percent = (($sprice - $lp - $ship) / $sprice) * 100;
+            $sgpft_percent = (($sprice * $margin - $lp - $ship) / $sprice) * 100;
         }
 
-        // Calculate SROI% = ((SPRICE - LP - Ship) / LP) * 100
         $sroi_percent = 0;
         if ($lp > 0) {
-            $sroi_percent = (($sprice - $lp - $ship) / $lp) * 100;
+            $sroi_percent = (($sprice * $margin - $lp - $ship) / $lp) * 100;
         }
 
         // Save to pls_data_views table (create or update)
