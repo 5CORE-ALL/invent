@@ -478,23 +478,27 @@ class MarketplaceController extends Controller
 
     public function fetchTrackingNow(string $marketplace): JsonResponse
     {
-        @set_time_limit(180);
+        return $this->queueFreshTrackingCatchup();
+    }
 
-        $result = app(VeeqoShopifyFulfillmentService::class)->syncPendingUnfulfilled(250, true, true);
-        MarketplaceChannelFulfillmentHub::dispatchAllTrackingJobs(80);
-        FetchMarketplaceShopifyTrackingJob::dispatch(800, true, true);
+    public function queueFreshTrackingCatchup(): JsonResponse
+    {
+        try {
+            FetchMarketplaceShopifyTrackingJob::dispatch(800, true, true);
+            MarketplaceChannelFulfillmentHub::dispatchAllTrackingJobs(80);
 
-        $fulfilled = (int) ($result['fulfilled'] ?? 0);
-        $checked = (int) ($result['checked'] ?? 0);
-
-        return response()->json([
-            'success' => true,
-            'message' => ($result['message'] ?? 'Tracking fetch started.')
-                .' Shopify copies fulfilled now: '.$fulfilled.' of '.$checked.' checked.'
-                .' Marketplace declare jobs are queued (AliExpress, Temu 2, and the rest). Refresh Shopify in 1–2 minutes.',
-            'checked' => $checked,
-            'fulfilled' => $fulfilled,
-        ]);
+            return response()->json([
+                'success' => true,
+                'queued' => true,
+                'message' => 'Tracking catch-up queued. Shopify copies will fulfill first (no customer email), then AliExpress, Temu 2, and the other marketplaces. Refresh in 2–3 minutes.',
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'queued' => false,
+                'message' => 'Could not queue tracking: '.$e->getMessage(),
+            ], 500);
+        }
     }
 
     public function orders(Request $request, string $marketplace): View

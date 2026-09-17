@@ -1,10 +1,11 @@
 @php
     $ftNowSlug = $fetchTrackingMarketplace ?? $slug ?? '';
+    $ftNowUrl = $fetchTrackingUrl ?? ($ftNowSlug !== '' ? url('marketplace/'.$ftNowSlug.'/orders/fetch-tracking-now') : '');
 @endphp
-@if($ftNowSlug !== '')
+@if($ftNowUrl !== '')
 <button type="button" class="btn btn-sm btn-outline-warning btn-mm-fetch-tracking-now"
-    data-url="{{ url('marketplace/'.$ftNowSlug.'/orders/fetch-tracking-now') }}"
-    title="Check Veeqo and GOFO for every marketplace, write tracking to unfulfilled Shopify copies, and mark them fulfilled. The Shopify customer is not emailed.">
+    data-url="{{ $ftNowUrl }}"
+    title="Queue a fresh Veeqo/GOFO catch-up: fulfill unfulfilled Shopify copies, then push tracking to every marketplace. The Shopify customer is not emailed.">
     <i class="ri-truck-line"></i> Fetch tracking now
 </button>
 @once
@@ -15,23 +16,33 @@ document.addEventListener('click', function (e) {
     var url = btn.getAttribute('data-url');
     if (!url) return;
     e.preventDefault();
-    if (!confirm('Fetch tracking from Veeqo and GOFO (4Seller) now, fulfill those Shopify copies, and push tracking to every marketplace (AliExpress, Temu 2, etc.)?\n\nThe Shopify customer will not be emailed. This can take a minute.')) return;
+    if (!confirm('Queue a fresh tracking catch-up now?\n\nShopify copies will fulfill first (no customer email), then AliExpress, Temu 2, and the other marketplaces. This returns immediately; refresh in 2–3 minutes.')) return;
     var original = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = '<i class="ri-loader-4-line"></i> Fetching…';
+    btn.innerHTML = '<i class="ri-loader-4-line"></i> Queueing…';
     fetch(url, {
         method: 'POST',
         headers: {
             'X-CSRF-TOKEN': '{{ csrf_token() }}',
             'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
         },
+        credentials: 'same-origin',
     })
-    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+    .then(function (r) {
+        return r.text().then(function (text) {
+            var data = {};
+            try { data = text ? JSON.parse(text) : {}; } catch (err) {
+                data = { message: 'HTTP ' + r.status + (text ? ': ' + text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180) : '') };
+            }
+            return { ok: r.ok, data: data };
+        });
+    })
     .then(function (res) {
-        alert((res.data && res.data.message) || (res.ok ? 'Queued' : 'Failed'));
+        alert((res.data && res.data.message) || (res.ok ? 'Queued. Refresh in 2–3 minutes.' : 'Failed'));
         if (res.data && res.data.success) location.reload();
     })
-    .catch(function () { alert('Request failed.'); })
+    .catch(function (err) { alert('Request failed: ' + (err && err.message ? err.message : 'network error')); })
     .finally(function () {
         btn.disabled = false;
         btn.innerHTML = original;
