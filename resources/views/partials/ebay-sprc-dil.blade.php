@@ -537,6 +537,12 @@
         function ebayDgIsShopifyB2b() {
             return EBAY_DIL_GROI_CHANNEL === 'shopify_b2b';
         }
+        function ebayDgIsEbay123() {
+            return EBAY_DIL_GROI_CHANNEL === 'ebay1'
+                || EBAY_DIL_GROI_CHANNEL === 'ebay2'
+                || EBAY_DIL_GROI_CHANNEL === 'ebay2op'
+                || EBAY_DIL_GROI_CHANNEL === 'ebay3';
+        }
         function ebayDgIsMercari() {
             return EBAY_DIL_GROI_CHANNEL === 'mercari_wship'
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship';
@@ -549,7 +555,7 @@
         }
         function ebayDgUsesClearThenApply() {
             return ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
-                || ebayDgIsShopifyB2b()
+                || ebayDgIsShopifyB2b() || ebayDgIsEbay123()
                 || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsTopdawg()
                 || ebayDgIsMacys() || ebayDgIsMercari();
         }
@@ -1794,6 +1800,7 @@
         let ebayDgAutoApplyTimer = null;
         let ebayDgAutoApplyWaits = 0;
         let ebayDgB2bPersistOnce = false;
+        let ebayDgClearApplyPersistOnce = false;
         let ebayDgApplyBusy = false;
         let ebayDgApplyPending = false;
         function ebaySprcDilRowAdapter(d) {
@@ -1844,7 +1851,8 @@
             if (typeof table === 'undefined' || !table) return 0;
             // Shopify S PRC / SNROI already read live Dil. Mass row.update + redraw jumps the table to the top.
             if ((typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c())
-                || (typeof ebayDgIsShopifyB2b === 'function' && ebayDgIsShopifyB2b())) {
+                || (typeof ebayDgIsShopifyB2b === 'function' && ebayDgIsShopifyB2b())
+                || (typeof ebayDgIsEbay123 === 'function' && ebayDgIsEbay123())) {
                 ebayDgRefreshVisibleRows();
                 if (typeof window.updateSummary === 'function') {
                     try { window.updateSummary(); } catch (e) { /* ignore */ }
@@ -1950,13 +1958,16 @@
                     }
                     return;
                 }
-                if (ebayDgIsShopifyB2b()) {
+                if (ebayDgIsShopifyB2b() || ebayDgIsEbay123()) {
                     const persist = opts.persist === true || !!opts.flashClear;
-                    if (persist && ebayDgB2bPersistOnce && !opts.forcePersist) {
+                    if (persist && (ebayDgB2bPersistOnce || ebayDgClearApplyPersistOnce) && !opts.forcePersist) {
                         Promise.resolve(ebayApplySprcDilToTable({ persist: false, push: false })).catch(function() { /* retry */ });
                         return;
                     }
-                    if (persist) ebayDgB2bPersistOnce = true;
+                    if (persist) {
+                        ebayDgB2bPersistOnce = true;
+                        ebayDgClearApplyPersistOnce = true;
+                    }
                     const push = persist
                         && typeof chPromoPageReloadPushAllowed === 'function'
                         && chPromoPageReloadPushAllowed();
@@ -2047,7 +2058,8 @@
                 let price = ebayDgIsFbMarketplace() && typeof fbMpRoundSprice === 'function'
                     ? fbMpRoundSprice(meta.sprc)
                     : ebayDgRound2(meta.sprc);
-                if ((ebayDgIsShopifyB2c() || ebayDgIsMacys()) && typeof chPromoFinalSpriceToSave === 'function') {
+                if ((ebayDgIsShopifyB2c() || ebayDgIsMacys() || ebayDgIsEbay123())
+                    && typeof chPromoFinalSpriceToSave === 'function') {
                     price = chPromoFinalSpriceToSave(d, price);
                 }
                 if (!(price > 0)) return 0;
@@ -2152,7 +2164,7 @@
             }
 
             if (opts.push === true && livePushOn && fills.length) {
-                if (ebayDgIsShopifyB2b() && typeof scanAndQueueChannelPushSprice === 'function') {
+                if ((ebayDgIsShopifyB2b() || ebayDgIsEbay123()) && typeof scanAndQueueChannelPushSprice === 'function') {
                     const tbl = (typeof chPromoSafeTable === 'function')
                         ? chPromoSafeTable()
                         : ((typeof table !== 'undefined') ? table : null);
@@ -2381,7 +2393,10 @@
                     renderEbayDilGroiModalTable();
                 }
                 if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
-                if (ebayDgIsShopifyB2b()) ebayDgB2bPersistOnce = false;
+                if (ebayDgIsShopifyB2b() || ebayDgIsEbay123()) {
+                    ebayDgB2bPersistOnce = false;
+                    ebayDgClearApplyPersistOnce = false;
+                }
                 const n = ebayDgUsesBackgroundRuleApply()
                     ? await ebayDgFlashThenPaintMacysRuleSprice({ toast: true })
                     : await ebayApplySprcDilToTable({ persist: true, push: true });

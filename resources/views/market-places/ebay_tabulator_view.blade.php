@@ -1522,8 +1522,22 @@
             const stored = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
             return stored > 0 ? stored : 0;
         }
-        /** Visible S PRC = saved SPRICE (same $ as the cell / DB). Dil is the Sprc Dil column. */
+        /** Visible S PRC = live Dil (same $ Amazon paints), then saved SPRICE. */
         function ebayDisplayedSprice(rowData) {
+            if (!rowData || rowData.is_parent_summary) return 0;
+            if (typeof ebayTiktokRuleDiscount === 'function') {
+                const live = Number(ebayTiktokRuleDiscount(rowData)) || 0;
+                if (live > 0) return live;
+            }
+            if (typeof ebaySprcDilForRow === 'function') {
+                const dil = Number(ebaySprcDilForRow(rowData)) || 0;
+                if (dil > 0) {
+                    const capped = (typeof ebayCapSpriceToLmp === 'function')
+                        ? ebayCapSpriceToLmp(rowData, dil)
+                        : +Number(dil).toFixed(2);
+                    if (capped > 0) return capped;
+                }
+            }
             return ebayRawRuleSprice(rowData);
         }
         window.ebaySgroiAtPrice = ebaySgroiAtPrice;
@@ -3312,6 +3326,8 @@
                 if (!(parseFloat(data.INV) > 0)) return false;
                 if (typeof chPromoEbaySpriceSlabsReady === 'function' && !chPromoEbaySpriceSlabsReady()) return false;
                 if (!ebay1HasPushableListing(data)) return false;
+                const pushSt = String(data.SPRICE_STATUS || data.push_status || data.PUSH_PRC_STATUS || '').toLowerCase();
+                if (pushSt === 'error' || pushSt === 'failed') return false;
                 const sprice = ebay1RowSpriceForAlert(data);
                 const price = parseFloat(data['eBay Price']) || 0;
                 return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
@@ -4966,11 +4982,13 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
-                            const raw = (typeof ebayRawRuleSprice === 'function')
-                                ? ebayRawRuleSprice(rowData)
-                                : ((typeof chPromoSavedOrLiveSprice === 'function')
-                                    ? chPromoSavedOrLiveSprice(rowData)
-                                    : (parseFloat(rowData.SPRICE) || 0));
+                            const raw = (typeof ebayDisplayedSprice === 'function')
+                                ? ebayDisplayedSprice(rowData)
+                                : ((typeof ebayRawRuleSprice === 'function')
+                                    ? ebayRawRuleSprice(rowData)
+                                    : ((typeof chPromoSavedOrLiveSprice === 'function')
+                                        ? chPromoSavedOrLiveSprice(rowData)
+                                        : (parseFloat(rowData.SPRICE) || 0)));
                             if (!(raw > 0)) return '';
 
                             const lmpNow = (typeof ebayEffectiveLmp === 'function')

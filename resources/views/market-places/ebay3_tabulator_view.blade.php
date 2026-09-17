@@ -962,6 +962,20 @@
         return stored > 0 ? stored : 0;
     }
     function ebay3DisplayedSprice(rowData) {
+        if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return 0;
+        if (typeof ebayTiktokRuleDiscount === 'function') {
+            const live = Number(ebayTiktokRuleDiscount(rowData)) || 0;
+            if (live > 0) return live;
+        }
+        if (typeof ebaySprcDilForRow === 'function') {
+            const dil = Number(ebaySprcDilForRow(rowData)) || 0;
+            if (dil > 0) {
+                const capped = (typeof ebay3CapSpriceToLmp === 'function')
+                    ? ebay3CapSpriceToLmp(rowData, dil)
+                    : +Number(dil).toFixed(2);
+                if (capped > 0) return capped;
+            }
+        }
         return ebay3RawRuleSprice(rowData);
     }
     function ebay3SpriceAmount(rowData) {
@@ -1902,11 +1916,14 @@
             if (typeof chPromoEbaySpriceSlabsReady === 'function' && !chPromoEbaySpriceSlabsReady()) return false;
             if (ebay3IsEndedListing(data)) return false;
             if (!String((data && (data.eBay_item_id || data.ebay_item_id || data.item_id)) || '').trim()) return false;
+            const pushSt = String((data && (data.SPRICE_STATUS || data.push_status || data.PUSH_PRC_STATUS)) || '').toLowerCase();
+            if (pushSt === 'error' || pushSt === 'failed') return false;
             const sprice = ebay3RowSpriceForAlert(data);
             const price = parseFloat(data['eBay Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
         window.ebay3HasBlueTriangle = ebay3HasBlueTriangle;
+        window.ebay3DisplayedSprice = ebay3DisplayedSprice;
         function syncEbay3TriangleBadgeState() {
             $('#ebay3-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -2791,11 +2808,13 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary || rowData.is_parent_row) return '';
-                        const raw = (typeof ebay3RawRuleSprice === 'function')
-                            ? ebay3RawRuleSprice(rowData)
-                            : ((typeof chPromoSavedOrLiveSprice === 'function')
-                                ? chPromoSavedOrLiveSprice(rowData)
-                                : (parseFloat(rowData.SPRICE) || 0));
+                        const raw = (typeof ebay3DisplayedSprice === 'function')
+                            ? ebay3DisplayedSprice(rowData)
+                            : ((typeof ebay3RawRuleSprice === 'function')
+                                ? ebay3RawRuleSprice(rowData)
+                                : ((typeof chPromoSavedOrLiveSprice === 'function')
+                                    ? chPromoSavedOrLiveSprice(rowData)
+                                    : (parseFloat(rowData.SPRICE) || 0)));
                         if (!(raw > 0)) return '';
 
                         const lmpNow = (typeof ebayEffectiveLmp === 'function')
