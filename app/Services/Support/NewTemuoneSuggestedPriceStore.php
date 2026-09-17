@@ -511,7 +511,7 @@ class NewTemuoneSuggestedPriceStore
         $cvr = AmazonDilGroiRule::normalizeCvrAdj($cvrAdj);
         $lmp = $inputs['lmp'] ?? 0;
         $payload = [
-            'v' => 4,
+            'v' => 5,
             'ads' => round((float) ($inputs['ads'] ?? 0), 2),
             'rules' => $normRules,
             'temu_l30' => (int) ($inputs['temu_l30'] ?? $inputs['sold'] ?? 0),

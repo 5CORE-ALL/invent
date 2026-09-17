@@ -27,6 +27,23 @@ class NewTemuoneSuggestedPriceStoreTest extends TestCase
         $this->assertGreaterThan($snroi, $sgroi);
     }
 
+    public function test_dil_snroi_target_survives_temu_299_band(): void
+    {
+        $lp = 9.90;
+        $ship = 10.04;
+        $ads = 3.3;
+        $sprice = NewTemuoneSuggestedPriceStore::priceFromExactSgroi($lp, $ship, 40.0, $ads);
+        $this->assertGreaterThan(26.99, $sprice);
+
+        $snroi = TemuShopifySalesService::snroiAtSprice($sprice, $lp, $ship, $ads, 0.0);
+        $this->assertNotNull($snroi);
+        $this->assertEqualsWithDelta(40.0, $snroi, 1.0);
+
+        $sgroi = TemuShopifySalesService::sgroiAtSprice($sprice, $lp, $ship, 0.0);
+        $this->assertNotNull($sgroi);
+        $this->assertGreaterThan($snroi, $sgroi);
+    }
+
     public function test_zero_ads_snroi_matches_sgroi_at_solved_price(): void
     {
         $sprice = NewTemuoneSuggestedPriceStore::priceFromExactSgroi(9.22, 7.2, 40.0, 0.0);

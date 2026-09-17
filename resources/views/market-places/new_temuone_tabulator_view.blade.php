@@ -892,7 +892,7 @@
             if (err < bestErr - 1e-6) {
                 bestErr = err;
                 best = base;
-            } else if (Math.abs(err - bestErr) <= 1e-6 && base > best) {
+            } else if (Math.abs(err - bestErr) <= 1e-6 && base < best) {
                 best = base;
             }
         });
@@ -917,6 +917,15 @@
         if (!(ads > 0) || !(s > 0) || !(cost > 0)) return sgroi;
         return sgroi - ((s * ads / 100) / cost) * 100;
     }
+    /** Full Temu Price from target S R (same as PHP spriceFromTargetSR). */
+    function chPromoTemuSpriceFromTargetSR(targetSR) {
+        const sr = Number(targetSR);
+        if (!(sr > 0) || !isFinite(sr)) return 0;
+        const base = sr > 26.99 ? sr : Math.max(0.01, sr - 2.99);
+        let full = base * 1.1364;
+        if (full <= 26.99) full += 2.99;
+        return chPromoRound2(full);
+    }
     /** Back-solve S PRC so SNROI (Dil + CVR Target NROI) matches, using Temu S R math. */
     function chPromoSpriceFromTargetRoi(d, roiPct) {
         const lp = parseFloat(d && (d.LP_productmaster != null ? d.LP_productmaster : d.lp)) || 0;
@@ -924,38 +933,17 @@
         const ship = parseFloat(d && (d.temu_ship != null ? d.temu_ship : d.Ship_productmaster)) || 0;
         const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
         const ads = chPromoTemuAdsPct();
-        const targetSR = (lp * (1 + roi / 100) + ship) / 0.95;
-        if (!(targetSR > 0) || !isFinite(targetSR)) return 0;
-        const base = targetSR > 26.99 ? targetSR : Math.max(0.01, targetSR - 2.99);
-        let seed = base * 1.1364;
-        if (seed <= 26.99) seed += 2.99;
-        if (ads > 0) seed = seed / Math.max(0.2, 1 - ads / 95);
-        seed = chPromoRound2(seed);
-        const invert = chPromoTemuInvertSnroiAtSprice;
-        const seedRoi = invert(seed, lp, ship);
-        if (seedRoi != null && Math.abs(seedRoi - roi) <= 1.5) return seed;
-        let lo = Math.max(0.01, seed * 0.35);
-        let hi = Math.max(seed * 2.8, seed + 20);
-        for (let expand = 0; expand < 10; expand++) {
-            const gLo = invert(lo, lp, ship);
-            const gHi = invert(hi, lp, ship);
-            if (gLo == null || gHi == null) break;
-            if (gLo <= roi && roi <= gHi) break;
-            if (roi < gLo) { hi = lo; lo = Math.max(0.01, lo * 0.5); }
-            else { lo = hi; hi = hi * 1.8; }
+        let adsDollar = 0;
+        let full = 0;
+        for (let i = 0; i < 12; i++) {
+            const targetSR = (lp * (1 + roi / 100) + ship + adsDollar) / 0.95;
+            full = chPromoTemuSpriceFromTargetSR(targetSR);
+            if (!(full > 0)) return 0;
+            const nextAds = ads > 0 ? (full * ads / 100) : 0;
+            if (Math.abs(nextAds - adsDollar) < 0.0005) break;
+            adsDollar = nextAds;
         }
-        let best = seed;
-        let bestErr = Infinity;
-        for (let i = 0; i < 40; i++) {
-            const mid = (lo + hi) / 2;
-            const g = invert(mid, lp, ship);
-            if (g == null) break;
-            const err = Math.abs(g - roi);
-            if (err < bestErr) { bestErr = err; best = mid; }
-            if (g < roi) lo = mid;
-            else hi = mid;
-        }
-        return (isFinite(best) && best > 0) ? chPromoRound2(best) : 0;
+        return full > 0 ? full : 0;
     }
     window.chPromoSpriceFromTargetRoi = chPromoSpriceFromTargetRoi;
 
@@ -1158,7 +1146,7 @@
             if (err < bestErr - 1e-6) {
                 bestErr = err;
                 best = base;
-            } else if (Math.abs(err - bestErr) <= 1e-6 && base > best) {
+            } else if (Math.abs(err - bestErr) <= 1e-6 && base < best) {
                 best = base;
             }
         });
@@ -1393,8 +1381,18 @@
         return (snpft / sprice) * 100;
     }
 
-    /** Live SNROI at the visible S PRC — same shape as Amazon / NROI: SNPFT ÷ LP. */
+    /** Dil + CVR Target NROI when S PRC is the Dil price (not eBay / Amazon / LMP capped). */
+    function temuSnroiFromRule(row) {
+        if (typeof ebayDilGroiTargetGroi !== 'function') return null;
+        const rule = ebayDilGroiTargetGroi(row);
+        if (rule == null || !isFinite(rule)) return null;
+        const cap = typeof temuSpriceCapResult === 'function' ? temuSpriceCapResult(row) : null;
+        if (cap && ((cap.labels && cap.labels.length) || cap.lmpAlert)) return null;
+        return rule;
+    }
     function temuSnroiPercent(row) {
+        const fromRule = temuSnroiFromRule(row);
+        if (fromRule != null) return fromRule;
         const snpft = temuSnpftDollars(row);
         const lp = parseFloat(row && row.lp) || 0;
         if (snpft == null || !(lp > 0)) return null;
@@ -3486,15 +3484,22 @@
                     hozAlign: 'center',
                     width: 70,
                     sorter: 'number',
-                    headerTooltip: 'SNROI% = live SNPFT ÷ LP at the visible S PRC. Dil + CVR back-solves S PRC so this equals Target NROI (same as Amazon). Ads% lowers it vs SGROI.',
+                    headerTooltip: 'SNROI% = Dil + CVR Target NROI. S PRC is back-solved so live SNPFT ÷ LP equals this slab (same as Amazon). Capped to eBay / Amazon / LMP → live SNPFT ÷ LP.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSnroiPercent(row);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const snpft = temuSnpftDollars(row);
-                        const tip = 'SNPFT $' + (snpft != null ? snpft.toFixed(2) : '—')
-                            + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
-                            + ' (Ads ' + temuAdsPercentForNet().toFixed(2) + '%)';
+                        const fromRule = temuSnroiFromRule(row);
+                        let tip;
+                        if (fromRule != null && typeof ebayDilGroiTipText === 'function') {
+                            const meta = ebayDilGroiMetaForRow(row);
+                            tip = ebayDilGroiTipText(meta) || ('Target NROI ' + fromRule + '%');
+                        } else {
+                            const snpft = temuSnpftDollars(row);
+                            tip = 'SNPFT $' + (snpft != null ? snpft.toFixed(2) : '—')
+                                + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
+                                + ' (capped S PRC)';
+                        }
                         return temuPercentCell(value, 'roi', tip);
                     }
                 },

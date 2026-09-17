@@ -486,6 +486,18 @@
             cursor: pointer;
             letter-spacing: -0.02em;
         }
+        #marketplace-table .p-sales-vs-sales-pct {
+            font-size: 10px;
+            font-weight: 700;
+            margin-left: 4px;
+            white-space: nowrap;
+            letter-spacing: -0.02em;
+        }
+        #total-p-sales-vs-sales {
+            margin-left: 4px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
         #marketplace-table .ads-page-link {
             color: #0d6efd;
             font-size: 10px;
@@ -622,8 +634,8 @@
                         <span class="badge fs-6 p-2" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now.">
                             Today Sales: <span id="total-today-sales">$0</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_sales" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30.">
-                            <span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>P-Sales: <span id="total-p-sales">$0</span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_sales" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. % is P-Sales vs Sales.">
+                            <span class="summary-trend-dot none" data-metric="p_sales" title="P-Sales vs Sales"></span>P-Sales: <span id="total-p-sales">$0</span><span id="total-p-sales-vs-sales"></span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amz = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day Pacific rolling (same as Amz Daily Sales); other channels vary.">
                             <span class="summary-trend-dot none" data-metric="l30_orders" title="Rolling history"></span>Orders: <span id="total-l30-orders">0</span>
@@ -1338,6 +1350,37 @@
         function projectedSalesFromL7(l7) {
             return (parseNumber(l7) / 7) * 30;
         }
+        function pSalesVsL30Pct(pSales, l30Sales) {
+            const p = parseNumber(pSales);
+            const s = parseNumber(l30Sales);
+            if (!isFinite(p) || !isFinite(s) || s <= 0) return null;
+            return ((p - s) / s) * 100;
+        }
+        function pSalesVsL30Color(pSales, l30Sales) {
+            const p = parseNumber(pSales);
+            const s = parseNumber(l30Sales);
+            if (!isFinite(p) || !isFinite(s)) return DEFAULT_DOT_GRAY;
+            if (s <= 0) return p > 0 ? '#28a745' : DEFAULT_DOT_GRAY;
+            const diff = p - s;
+            if (Math.abs(diff) < 0.5) return DEFAULT_DOT_GRAY;
+            return diff > 0 ? '#28a745' : '#dc3545';
+        }
+        function formatPSalesVsL30PctHtml(pct) {
+            if (pct == null || !isFinite(pct)) return '';
+            if (Math.abs(pct) < 0.1) {
+                return '<span class="p-sales-vs-sales-pct" style="color:#6c757d;">0%</span>';
+            }
+            const isUp = pct > 0;
+            const color = isUp ? '#198754' : '#dc3545';
+            const sign = isUp ? '+' : '−';
+            return `<span class="p-sales-vs-sales-pct" style="color:${color};">${sign}${Math.abs(pct).toFixed(0)}%</span>`;
+        }
+        function pSalesVsL30Title(pct) {
+            if (pct == null || !isFinite(pct)) return 'P-Sales vs Sales — click for chart';
+            if (Math.abs(pct) < 0.1) return 'P-Sales in line with Sales — click for chart';
+            const dir = pct > 0 ? 'above' : 'below';
+            return Math.abs(pct).toFixed(0) + '% ' + dir + ' Sales — click for chart';
+        }
         function projectedNpftFromL7(l7, gprofitPercent, adSpend) {
             const pSales = projectedSalesFromL7(l7);
             if (!pSales || pSales <= 0) return null;
@@ -1921,6 +1964,15 @@
                 document.querySelectorAll('i.metric-chart-icon, i.ad-chart-icon').forEach(function(el) {
                     var ch = el.getAttribute('data-channel');
                     var metric = el.getAttribute('data-metric');
+                    if (metric === 'p_sales') {
+                        var p = parseFloat(el.getAttribute('data-p-sales'));
+                        var s = parseFloat(el.getAttribute('data-l30-sales'));
+                        var pct = pSalesVsL30Pct(p, s);
+                        el.style.color = pSalesVsL30Color(p, s);
+                        el.style.display = '';
+                        el.title = pSalesVsL30Title(pct);
+                        return;
+                    }
                     var color = getMetricDotColor(ch, metric || 'ad_spend');
                     el.style.color = color;
                     el.style.display = '';
@@ -2764,24 +2816,26 @@
                         field: "P-Sales",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 110,
-                        headerTooltip: "Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30.",
+                        width: 168,
+                        headerTooltip: "Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. % and dot compare P-Sales to Sales: green = above Sales, red = below Sales.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const l7 = parseNumber(row['L7 Sales'] || 0);
                             const value = parseNumber(cell.getValue() != null && cell.getValue() !== '' ? cell.getValue() : projectedSalesFromL7(l7));
+                            const l30 = parseNumber(row['L30 Sales'] || 0);
                             const channel = (row['Channel '] || '').trim();
-                            const dotColor = getMetricDotColor(channel, 'p_sales');
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            const pct = pSalesVsL30Pct(value, l30);
+                            const dotColor = pSalesVsL30Color(value, l30);
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_sales" data-p-sales="${value}" data-l30-sales="${l30}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="${pSalesVsL30Title(pct)}"></i>`;
                             if (!l7 || l7 === 0) {
                                 return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
                             }
-                            return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                            return `<span style="white-space:nowrap;"><span class="p-sales-value" style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${formatPSalesVsL30PctHtml(pct)}${chartIcon}</span>`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
-                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                                var cv = cell.getElement().querySelector('.p-sales-value'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         },
                         bottomCalc: function(values, data) {
@@ -2792,9 +2846,16 @@
                             return sum;
                         },
                         bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            if (!value || value === 0) return '<strong style="color:#adb5bd;">-</strong>';
-                            return `<strong style="color:#0d6efd;">$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
+                            const pSales = parseNumber(cell.getValue());
+                            if (!pSales || pSales === 0) return '<strong style="color:#adb5bd;">-</strong>';
+                            let l30 = 0;
+                            try {
+                                const rows = cell.getTable().getData('active') || [];
+                                rows.forEach(function(row) {
+                                    l30 += parseNumber(row['L30 Sales'] || 0);
+                                });
+                            } catch (e) { /* ignore */ }
+                            return `<strong style="color:#0d6efd;">$${Math.round(pSales).toLocaleString('en-US')}</strong>${formatPSalesVsL30PctHtml(pSalesVsL30Pct(pSales, l30))}`;
                         }
                     },
                     {
@@ -4675,6 +4736,28 @@
                 $('#summary-stats .summary-trend-dot[data-metric]').each(function() {
                     var metric = $(this).attr('data-metric');
                     if (!metric) return;
+                    if (metric === 'p_sales') {
+                        var rows = [];
+                        try {
+                            rows = (table && table.getData) ? (table.getData('active') || table.getData() || []) : [];
+                        } catch (e) {
+                            rows = (table && table.getData) ? (table.getData() || []) : [];
+                        }
+                        var pSum = 0, sSum = 0;
+                        rows.forEach(function(row) {
+                            pSum += pSalesFromRow(row);
+                            sSum += parseNumber(row['L30 Sales'] || 0);
+                        });
+                        var pCls = 'none';
+                        if (sSum > 0) {
+                            if (Math.abs(pSum - sSum) < 0.5) pCls = 'flat';
+                            else pCls = pSum > sSum ? 'up' : 'down';
+                        } else if (pSum > 0) {
+                            pCls = 'up';
+                        }
+                        $(this).removeClass('up down flat none').addClass(pCls);
+                        return;
+                    }
                     // Prefer the blended All pair. Only treat it as settled when
                     // both values exist — a leftover gray hex must not lock Every
                     // summary badge to flat.
@@ -4907,8 +4990,27 @@
                     const val = Math.round(totalPSales);
                     const $el = $('#total-p-sales');
                     $el.text(toCompact(val));
+                    const pct = pSalesVsL30Pct(totalPSales, totalL30Sales);
+                    const $pct = $('#total-p-sales-vs-sales');
+                    const $dot = $('#summary-stats .summary-trend-dot[data-metric="p_sales"]');
+                    $dot.removeClass('up down flat none');
+                    if (pct == null || !isFinite(pct)) {
+                        $pct.text('');
+                        $dot.addClass(totalPSales > 0 && totalL30Sales <= 0 ? 'up' : 'none');
+                    } else if (Math.abs(pct) < 0.1) {
+                        $pct.text('0%').css('color', '#e5e7eb');
+                        $dot.addClass('flat');
+                    } else {
+                        const isUp = pct > 0;
+                        $pct.text((isUp ? '+' : '−') + Math.abs(pct).toFixed(0) + '%')
+                            .css('color', isUp ? '#86efac' : '#fecaca');
+                        $dot.addClass(isUp ? 'up' : 'down');
+                    }
+                    const pctLabel = (pct != null && isFinite(pct))
+                        ? (' ' + (pct > 0 ? '+' : (pct < 0 ? '−' : '')) + Math.abs(pct).toFixed(0) + '% vs Sales')
+                        : '';
                     $el.closest('.badge').attr('title',
-                        'Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. $' + val.toLocaleString('en-US'));
+                        'Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. $' + val.toLocaleString('en-US') + pctLabel + '. Green/red = P-Sales vs Sales.');
                     setBadgeExact($el, val);
                 })();
                 (function() {
