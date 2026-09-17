@@ -712,11 +712,25 @@
         const snroi = lp > 0 ? ((gross - sprice * (ads / 100)) / lp) * 100 : 0;
         return { sgpft: sgpft, sroi: sroi, snpft: snpft, snroi: snroi };
     }
+    /** Dil Target NROI — SNROI/SGROI follow this, not the 2-decimal S PRC remainder. */
+    function shopifyB2bDilTargetNroi(data) {
+        if (typeof ebayDilGroiMetaForRow !== 'function') return null;
+        const meta = ebayDilGroiMetaForRow(data);
+        if (!meta || !(meta.sprc > 0) || meta.groi == null) return null;
+        const n = Number(meta.groi);
+        return isFinite(n) ? n : null;
+    }
     function shopifyB2bRowPriceMetrics(data) {
         return shopifyB2bSpriceMetrics(data && data.Price, data && data.LP_productmaster);
     }
     function shopifyB2bRowSMetrics(data) {
-        return shopifyB2bSpriceMetrics(shopifyB2bDisplayedSprice(data), data && data.LP_productmaster);
+        const m = shopifyB2bSpriceMetrics(shopifyB2bDisplayedSprice(data), data && data.LP_productmaster);
+        const target = shopifyB2bDilTargetNroi(data);
+        if (target != null) {
+            m.snroi = target;
+            if (!(shopifyChannelAdsPct() > 0)) m.sroi = target;
+        }
+        return m;
     }
     function shopifyB2bRowSpriceForAlert(data) {
         return shopifyB2bDisplayedSprice(data);
