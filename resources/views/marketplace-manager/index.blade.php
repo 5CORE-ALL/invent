@@ -27,6 +27,7 @@
                 <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;" title="Marketplace Manager API channels">
                     Channels: {{ number_format(count($channels ?? [])) }}
                 </span>
+                @include('marketplace._fetch-tracking-now', ['fetchTrackingMarketplace' => 'aliexpress'])
                 <form method="post" action="{{ route('marketplace.manager.refresh.shopify') }}" class="d-inline">
                     @csrf
                     <button type="submit" class="btn btn-success">

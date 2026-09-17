@@ -272,7 +272,7 @@ class NeweggTrackingSyncService
             ->where('shopify_order_id', '!=', '')
             ->orderByRaw('pushed_to_shopify_at IS NULL')
             ->orderBy('pushed_to_shopify_at')
-            ->orderBy('order_date')
+            ->orderByDesc('order_date')
             ->orderBy('id')
             ->limit($limit * 40)
             ->get(['id', 'order_id', 'order_number', 'sku', 'shopify_order_id', 'status', 'raw_payload']);

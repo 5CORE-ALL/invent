@@ -320,9 +320,10 @@ class VeeqoShopifyFulfillmentService
             $marketplaceOrderIds = array_values(array_filter(
                 $marketplaceOrderIds,
                 static function ($id) use ($matcher, $marketplace) {
-                    $slug = $matcher->slugFromOrderId((string) $id);
-
-                    return $slug === '' || $slug === $marketplace;
+                    return $matcher->slugsCompatible(
+                        $matcher->slugFromOrderId((string) $id),
+                        $marketplace
+                    );
                 }
             ));
         }
@@ -821,8 +822,8 @@ class VeeqoShopifyFulfillmentService
             if (! in_array($ref, $out, true)) {
                 $out[] = $ref;
             }
-            if (preg_match('/^(?:PO-|TT2?-|tiktok2?-)/i', $ref, $m)) {
-                $tail = trim((string) preg_replace('/^(?:PO-|TT2?-|tiktok2?-)/i', '', $ref));
+            if (preg_match('/^(?:temu2?-|aliexpress-|alibaba-|PO-|TT2?-|tiktok2?-)/i', $ref, $m)) {
+                $tail = trim((string) preg_replace('/^(?:temu2?-|aliexpress-|alibaba-|PO-|TT2?-|tiktok2?-)/i', '', $ref));
                 if (
                     $tail !== ''
                     && ! $this->isCollisionProneOrderRef($tail)

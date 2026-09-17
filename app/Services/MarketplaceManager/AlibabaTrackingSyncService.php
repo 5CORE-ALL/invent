@@ -67,11 +67,19 @@ class AlibabaTrackingSyncService
             ];
         }
 
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, (string) ($line->sku ?? ''));
+        $extraIds = array_values(array_filter([
+            trim((string) ($line->order_number ?? '')),
+        ], static fn ($id) => $id !== '' && $id !== $orderId));
+
+        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, (string) ($line->sku ?? ''), $extraIds);
         if (empty($shopifyFulfillment['tracking'])) {
             $copied = $this->copyPurchasedLabelToShopify('alibaba', (int) ($line->id ?? 0));
-            if (! empty($copied['success']) || trim((string) ($copied['tracking'] ?? '')) !== '') {
-                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, (string) ($line->sku ?? ''));
+            $copiedTn = trim((string) ($copied['tracking'] ?? ''));
+            if ($copiedTn !== '') {
+                $shopifyFulfillment['tracking'] = $copiedTn;
+                $shopifyFulfillment['carrier'] = $copied['carrier'] ?? ($shopifyFulfillment['carrier'] ?? null);
+            } elseif (! empty($copied['success'])) {
+                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, (string) ($line->sku ?? ''), $extraIds);
             }
         }
         if (empty($shopifyFulfillment['tracking'])) {
@@ -228,8 +236,8 @@ class AlibabaTrackingSyncService
                 $q->where('order_date', '>=', now()->subDays(90))
                     ->orWhere('created_at', '>=', now()->subDays(90));
             })
-            ->orderBy('order_date')
-            ->orderBy('id')
+            ->orderByDesc('order_date')
+            ->orderByDesc('id')
             ->limit($limit * 8)
             ->pluck('order_id', 'shopify_order_id');
 
@@ -312,16 +320,17 @@ class AlibabaTrackingSyncService
     }
 
     /**
+     * @param  list<string>  $extraOrderIds
      * @return array{tracking: ?string, carrier: ?string, tracking_url: ?string, error?: ?string}
      */
-    protected function fetchShopifyTracking(string $shopifyOrderId, string $marketplaceOrderId = '', string $sku = ''): array
+    protected function fetchShopifyTracking(string $shopifyOrderId, string $marketplaceOrderId = '', string $sku = '', array $extraOrderIds = []): array
     {
         return app(ShopifyFulfillmentTrackingMatcher::class)->match(
             $this->shopifyConfig(),
             $shopifyOrderId,
             $marketplaceOrderId,
             $sku,
-            [],
+            $extraOrderIds,
             'AlibabaTrackingSyncService'
         );
     }

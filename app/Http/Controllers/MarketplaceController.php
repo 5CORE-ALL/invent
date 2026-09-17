@@ -28,6 +28,7 @@ use App\Models\ShopifySku;
 use App\Services\MarketplaceManager\MarketplaceListingInstantMapService;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Jobs\FetchMarketplaceShopifyTrackingJob;
+use App\Services\MarketplaceManager\MarketplaceChannelFulfillmentHub;
 use App\Services\MarketplaceManager\MarketplaceManagerQueueStatusService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -477,16 +478,22 @@ class MarketplaceController extends Controller
 
     public function fetchTrackingNow(string $marketplace): JsonResponse
     {
-        FetchMarketplaceShopifyTrackingJob::dispatch(800);
+        @set_time_limit(180);
 
-        $result = app(VeeqoShopifyFulfillmentService::class)->syncPendingUnfulfilled(120);
+        $result = app(VeeqoShopifyFulfillmentService::class)->syncPendingUnfulfilled(250, true, true);
+        MarketplaceChannelFulfillmentHub::dispatchAllTrackingJobs(80);
+        FetchMarketplaceShopifyTrackingJob::dispatch(800, true, true);
+
+        $fulfilled = (int) ($result['fulfilled'] ?? 0);
+        $checked = (int) ($result['checked'] ?? 0);
 
         return response()->json([
             'success' => true,
             'message' => ($result['message'] ?? 'Tracking fetch started.')
-                .' Checking every marketplace automatically every 10 minutes (Veeqo, GOFO, then Shopify fulfill, no customer email).',
-            'checked' => $result['checked'] ?? 0,
-            'fulfilled' => $result['fulfilled'] ?? 0,
+                .' Shopify copies fulfilled now: '.$fulfilled.' of '.$checked.' checked.'
+                .' Marketplace declare jobs are queued (AliExpress, Temu 2, and the rest). Refresh Shopify in 1–2 minutes.',
+            'checked' => $checked,
+            'fulfilled' => $fulfilled,
         ]);
     }
 
