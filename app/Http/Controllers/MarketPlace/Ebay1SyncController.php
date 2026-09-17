@@ -924,6 +924,7 @@ class Ebay1SyncController extends Controller
                 'updated' => (int) ($result['updated'] ?? 0),
                 'failed' => (int) ($result['failed'] ?? 0),
                 'skipped' => (int) ($result['skipped'] ?? 0),
+                'rate_limited' => ! empty($result['rate_limited']),
                 'message' => $result['message'] ?? ($done
                     ? 'Mismatch inventory sync complete.'
                     : 'Synced batch '.$nextOffset.' / '.$total.'…'),
