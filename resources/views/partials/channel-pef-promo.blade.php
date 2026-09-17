@@ -5335,7 +5335,7 @@
             }
             return out;
         }
-        /** GROI back-solve: (sprice×margin − ship − lp) / lp × 100 = Target. Temu uses S R Price × 0.95. */
+        /** Back-solve S PRC so Target % lands. NROI pages include Ads%; Ads%=0 → GROI. Temu uses S R × 0.95. */
         function chPromoSpriceFromTargetRoi(d, roiPct) {
             const lp = chPromoLp(d);
             if (!(lp > 0)) return 0;
@@ -5366,7 +5366,15 @@
                 || CHANNEL_PROMO_CHANNEL === 'depop')
                 ? 0
                 : chPromoShipCost(d);
-            const price = (lp * (1 + roi / 100) + ship) / margin;
+            // Target NROI pages (eBay 1–3, etc.): include Ads% so SNROI = target.
+            // Ads% = 0 → same $ as the old GROI invert.
+            const ads = (typeof ebayDilTargetsNroi === 'function' && ebayDilTargetsNroi()
+                && typeof ebayDilAdsPct === 'function')
+                ? (parseFloat(ebayDilAdsPct()) || 0)
+                : 0;
+            const denom = margin - (ads / 100);
+            if (!(denom > 0)) return 0;
+            const price = (lp * (1 + roi / 100) + ship) / denom;
             return (isFinite(price) && price > 0) ? chPromoRoundChannelSprice(price) : 0;
         }
         function chPromoPatchDatasetSprice(sku, updates) {

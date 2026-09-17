@@ -85,13 +85,13 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Mercari With Ship Daily Sales',
-        'sub_title' => 'Orders where seller pays shipping (buyer_shipping_fee = 0)',
+        'sub_title' => 'All Mercari orders except cancelled. Ship / LP from Product Master.',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Mercari With Ship Daily Sales <span class="badge bg-success">Seller Pays Shipping</span></h4>
+                <h4>Mercari With Ship Daily Sales <span class="badge bg-success">All orders (Ship from Product Master)</span></h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Upload Button -->
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
@@ -619,11 +619,8 @@
                         return;
                     }
 
-                    // Skip cancelled orders
                     const orderStatus = (row.order_status || '').toLowerCase();
-                    const isCancelled = row.canceled_date !== null && row.canceled_date !== '' ||
-                                       orderStatus.includes('cancelled') || 
-                                       orderStatus.includes('canceled');
+                    const isCancelled = orderStatus.includes('cancelled') || orderStatus.includes('canceled');
                     if (isCancelled) {
                         return;
                     }

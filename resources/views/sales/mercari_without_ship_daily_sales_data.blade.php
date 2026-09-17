@@ -577,9 +577,7 @@
                     }
 
                     const orderStatus = (row.order_status || '').toLowerCase();
-                    const isCancelled = row.canceled_date !== null && row.canceled_date !== '' ||
-                                       orderStatus.includes('cancelled') || 
-                                       orderStatus.includes('canceled');
+                    const isCancelled = orderStatus.includes('cancelled') || orderStatus.includes('canceled');
                     if (isCancelled) {
                         return;
                     }

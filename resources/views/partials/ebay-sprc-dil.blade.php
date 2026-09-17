@@ -528,6 +528,12 @@
             return EBAY_DIL_GROI_CHANNEL === 'mercari_wship'
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship';
         }
+        function ebayDgIsTemu() {
+            return EBAY_DIL_GROI_CHANNEL === 'temu'
+                || EBAY_DIL_GROI_CHANNEL === 'temu2'
+                || EBAY_DIL_GROI_CHANNEL === 'temu3'
+                || (typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel());
+        }
         function ebayDgUsesClearThenApply() {
             return ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
                 || ebayDgIsShopifyB2b()
@@ -1079,9 +1085,10 @@
                 const copied = ebayDgDobaTabulatorSPick(d);
                 return copied > 0 ? copied : 0;
             }
-            // Temu (and any page with a custom invert) must run first — the generic
-            // NROI formula ignores Temu S R / recovery math.
-            if (typeof chPromoSpriceFromTargetRoi === 'function') {
+            // Temu S R / recovery invert only. Do not use the shared PEF invert here —
+            // it is defined on every Dil page and used to drop Ads%, so eBay Target
+            // NROI was setting GROI instead of SNROI.
+            if (ebayDgIsTemu() && typeof chPromoSpriceFromTargetRoi === 'function') {
                 const p = chPromoSpriceFromTargetRoi(d, groi);
                 return p > 0 ? p : 0;
             }
