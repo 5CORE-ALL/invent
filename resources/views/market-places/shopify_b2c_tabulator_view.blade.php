@@ -1270,6 +1270,10 @@
             if (amz > 0) return Math.round(amz * 100) / 100;
             return stored > 0 ? Math.round(stored * 100) / 100 : 0;
         }
+        if (typeof ebaySprcDilForRow === 'function') {
+            const dil = Number(ebaySprcDilForRow(data)) || 0;
+            if (dil > 0) return Math.round(dil * 100) / 100;
+        }
         if (typeof chPromoTableSprice === 'function') {
             const saved = Number(chPromoTableSprice(data)) || 0;
             if (saved > 0) return saved;
@@ -2759,7 +2763,7 @@
             google_spend_L30: 0
         };
 
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2c'])
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2c', 'channelPromoTakehome' => 0.95])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shopify_b2c'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 

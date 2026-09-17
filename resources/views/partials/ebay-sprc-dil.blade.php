@@ -15,7 +15,9 @@
   Purchasing Power / Best Buy: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
   Best Buy also caps S PRC at LMP (including 0 Sold) after the A Price floor.
-  Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
+  Shopify B2C: Dil-matching when B2C L30 > 0, including Dil below the first slab or above the last
+  (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay. CVR Down/Up uses
+  CVR% vs the overlay thresholds (no L60). Dil S PRC inverts 0.95 take-home so SNROI = target.
   Dil slab edits and table load recalculate display only.
   Save and Apply deletes old S PRC (saves 0), then writes the new Dil S PRC.
   Macys / Purchasing Power persist in the background (page can close).
@@ -29,7 +31,7 @@
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'shein'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
-        ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2b'], true);
+        ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2c', 'shopify_b2b'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'mercari_wship', 'mercari_woship'], true);
@@ -811,6 +813,10 @@
                 return views > 0 ? (sold / views) * 100 : 0;
             }
             if (EBAY_DIL_GROI_CHANNEL === 'shopify_b2c') {
+                if (d && d['CVR%'] != null && d['CVR%'] !== '') {
+                    const n = Number(d['CVR%']);
+                    if (isFinite(n) && n >= 0) return n;
+                }
                 const l30 = Number(d && (d['B2B L30'] != null ? d['B2B L30'] : d['B2C L30'])) || 0;
                 const views = Number(d && (d.Views != null ? d.Views : d.views)) || 0;
                 return views > 0 ? (l30 / views) * 100 : 0;
@@ -850,6 +856,14 @@
                 || (d.CVR_45 != null && d.CVR_45 !== '')
                 || (d.cvr_45 != null && d.cvr_45 !== '')));
             if (ebayDgIsShopifyB2b() && !hasCvr60) return 'flat';
+            // Shopify B2C has no L60 CVR. Do not treat CVR>0 as Up vs a missing 0% L60.
+            // Down / Up follow the editable CVR overlay thresholds (default <7% / >10%).
+            if (ebayDgIsShopifyB2c() && !hasCvr60) {
+                const cfg = ebayCvrGroiAdjNow();
+                if (cvr < cfg.down_lt) return 'down';
+                if (cvr > cfg.up_gt) return 'up';
+                return 'flat';
+            }
             const cvr60 = ebayDgCvr60(d);
             const tol = 0.1;
             if (cvr === 0 || cvr < cvr60 - tol) return 'down';
@@ -872,11 +886,13 @@
                 || EBAY_DIL_GROI_CHANNEL === 'ebay2'
                 || EBAY_DIL_GROI_CHANNEL === 'ebay2op'
                 || EBAY_DIL_GROI_CHANNEL === 'ebay3'
-                || EBAY_DIL_GROI_CHANNEL === 'shein';
+                || EBAY_DIL_GROI_CHANNEL === 'shein'
+                || EBAY_DIL_GROI_CHANNEL === 'shopify_b2c';
         }
         function ebayDilGroiCvrAdj(d) {
             if (!EBAY_DIL_GROI_CVR_ADJ) return 0;
-            if (ebayDgIsShein() && !(ebayDgViews(d) > 0)) return 0;
+            if ((ebayDgIsShein() || ebayDgIsShopifyB2c()) && !(ebayDgViews(d) > 0)) return 0;
+            if (ebayDgIsShopifyB2c() && ebayDgIsZeroSold(d)) return 0;
             const cvr = ebayDgCvr30(d);
             const cfg = ebayCvrGroiAdjNow();
             const trend = ebayDgCvrTrend(d);
@@ -889,6 +905,11 @@
             return groi < 0 ? 0 : groi;
         }
         function ebayDgIsZeroSold(d) {
+            // Shopify B2C 0 Sold is B2C L30 (stored as B2B L30), not OV L30 / eBay L30.
+            if (ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) {
+                if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
+                return !(Number(d && (d['B2B L30'] != null ? d['B2B L30'] : d['B2C L30'])) > 0);
+            }
             // Temu 1: 0 Sold is Temu orders L30, not Shopify OV / metrics L30.
             if (EBAY_DIL_GROI_CHANNEL === 'temu') {
                 if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
@@ -1034,6 +1055,8 @@
             return 0;
         }
         function ebayDilTakehomeMargin(d) {
+            // SNROI = ((S PRC × 0.95 − ship − LP − ads) / LP) × 100. Dil must invert the same 0.95.
+            if (ebayDgIsShopifyB2c()) return 0.95;
             if (typeof chPromoTakehomeMargin === 'function') {
                 try {
                     const rowM = Number(chPromoTakehomeMargin(d));
@@ -1159,7 +1182,7 @@
             // TikTok 0 Sold: keep the min Target NROI. CVR 0% (1 view, no L60) is
             // treated as a down-arrow (−10) and was pinning S PRC to the listing
             // 40% price instead of back-solving the 50% slab.
-            const skipCvr = ebayDgIsTiktok() && zeroSoldMin;
+            const skipCvr = (ebayDgIsTiktok() || ebayDgIsShopifyB2c()) && zeroSoldMin;
             const cvrAdj = skipCvr ? 0 : ebayDilGroiCvrAdj(d);
             groi = skipCvr ? slabGroi : ebayDilGroiApplyCvrAdj(slabGroi, d);
             const rawSprc = ebaySpriceFromGroi(d, groi);

@@ -932,6 +932,7 @@ class Shopifyb2cController extends Controller
 
             $processedItem["LP_productmaster"] = $lp;
             $processedItem["Ship_productmaster"] = $ship;
+            $processedItem["percentage"] = $percentageValue;
 
             // Add shopify SKU data if available
             $shopifyItem = $shopifyData[$sku] ?? null;
