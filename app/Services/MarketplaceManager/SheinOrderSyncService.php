@@ -173,14 +173,7 @@ class SheinOrderSyncService
         $status = $statusMap[(int) $statusCode] ?? (string) ($statusCode ?? '');
 
         $orderTime = $order['orderTime'] ?? $order['paymentTime'] ?? null;
-        $orderDate = null;
-        if (is_string($orderTime) && $orderTime !== '') {
-            try {
-                $orderDate = Carbon::parse($orderTime);
-            } catch (\Throwable $e) {
-                $orderDate = null;
-            }
-        }
+        $orderDate = SheinApiService::apiDateTimeString($orderTime);
 
         $goodsList = is_array($order['orderGoodsInfoList'] ?? null) ? $order['orderGoodsInfoList'] : [];
         if ($goodsList === []) {

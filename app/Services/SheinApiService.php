@@ -20,6 +20,7 @@ use App\Models\ShopifySku;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\SavesMarketplaceImageMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class SheinApiService
@@ -1210,6 +1211,42 @@ class SheinApiService
         return $json;
     }
 
+    /** Shein Open API order timestamps are UTC+8 (Asia/Shanghai). */
+    public const API_TIMEZONE = 'Asia/Shanghai';
+
+    /**
+     * Naive Shein timestamps are China wall clock. Offset/Z strings keep their instant.
+     * Stored/returned as Asia/Shanghai Y-m-d H:i:s so SOF can convert to Eastern.
+     */
+    public static function apiDateTimeString(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return Carbon::instance(\DateTimeImmutable::createFromInterface($value))
+                ->timezone(self::API_TIMEZONE)
+                ->format('Y-m-d H:i:s');
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        try {
+            $hasOffset = (bool) preg_match('/(?:[zZ]|[+-]\d{2}:?\d{2})$/', $raw);
+            $dt = $hasOffset
+                ? Carbon::parse($raw)
+                : Carbon::parse($raw, self::API_TIMEZONE);
+
+            return $dt->timezone(self::API_TIMEZONE)->format('Y-m-d H:i:s');
+        } catch (\Throwable) {
+            return $raw;
+        }
+    }
+
     /**
      * Order list — POST /open-api/order/order-list
      * start/end must be within 48 hours (Shein limit). Timezone: Asia/Shanghai.
@@ -1540,14 +1577,7 @@ class SheinApiService
         $status = $statusMap[(int) $statusCode] ?? (string) ($statusCode ?? '');
 
         $orderTime = $order['orderTime'] ?? $order['paymentTime'] ?? null;
-        $processedOn = null;
-        if (is_string($orderTime) && $orderTime !== '') {
-            try {
-                $processedOn = \Carbon\Carbon::parse($orderTime)->format('Y-m-d H:i:s');
-            } catch (\Throwable $e) {
-                $processedOn = null;
-            }
-        }
+        $processedOn = self::apiDateTimeString($orderTime);
 
         $currency = (string) ($order['saleCurrency'] ?? $order['orderCurrency'] ?? 'USD');
         $goodsList = is_array($order['orderGoodsInfoList'] ?? null) ? $order['orderGoodsInfoList'] : [];

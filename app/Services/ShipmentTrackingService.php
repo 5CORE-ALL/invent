@@ -109,8 +109,23 @@ class ShipmentTrackingService
         if (($result['status'] ?? '') === self::STATUS_RATE_LIMITED) {
             return false;
         }
+        if (self::isUnusableProviderFailure((string) ($result['detail'] ?? ''))) {
+            return false;
+        }
 
         return true;
+    }
+
+    /** USPS MID / Tracking API Access Controls — not a real package exception. */
+    public static function isUnusableProviderFailure(?string $detail): bool
+    {
+        $hay = strtolower(trim((string) $detail));
+        if ($hay === '') {
+            return false;
+        }
+
+        return str_contains($hay, 'not authorized')
+            || str_contains($hay, 'tracking api access');
     }
 
     /**
@@ -266,7 +281,11 @@ class ShipmentTrackingService
         $retry = [];
         foreach ($requested as $s) {
             $res = $results[$s['number']] ?? null;
-            if ($res === null || ! empty($res['transient']) || ($res['status'] ?? '') === self::STATUS_RATE_LIMITED) {
+            if ($res === null
+                || ! empty($res['transient'])
+                || ($res['status'] ?? '') === self::STATUS_RATE_LIMITED
+                || self::isUnusableProviderFailure((string) ($res['detail'] ?? ''))
+            ) {
                 $retry[] = $s;
             }
         }
@@ -441,9 +460,18 @@ class ShipmentTrackingService
                         continue;
                     }
 
-                    // 403 = MID not authorized for Tracking API Access Controls (not a missing package).
+                    // 403 MID / Tracking API Access Controls is a credential problem, not
+                    // a package exception. Do not persist it — fall back to 17TRACK.
+                    if ($resp->status() === 403 || self::isUnusableProviderFailure($errMsg)) {
+                        $out[$number] = $this->transientResult(
+                            'usps',
+                            $errMsg !== '' ? $errMsg : 'USPS Tracking API not authorized'
+                        );
+                        continue;
+                    }
+
                     $out[$number] = [
-                        'status' => $resp->status() === 403 ? self::STATUS_EXCEPTION : self::STATUS_NOT_FOUND,
+                        'status' => self::STATUS_NOT_FOUND,
                         'detail' => $errMsg !== '' ? mb_substr($errMsg, 0, 480) : ('USPS HTTP '.$resp->status()),
                         'provider' => 'usps',
                     ];

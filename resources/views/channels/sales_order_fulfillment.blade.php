@@ -947,11 +947,15 @@
         .sof-date-late-alert i {
             color: #dc3545;
         }
-        #sof-in-transit-table .tabulator-row.sof-scan-pending-late .tabulator-cell {
+        #sof-in-transit-table .tabulator-row.sof-scan-pending-late .tabulator-cell,
+        #sof-pending-table .tabulator-row.sof-order-over-24h .tabulator-cell,
+        #sof-fulfilled-table .tabulator-row.sof-order-over-24h .tabulator-cell {
             background-color: #f8d7da !important;
             color: #842029;
         }
-        #sof-in-transit-table .tabulator-row.sof-scan-pending-late.tabulator-selected .tabulator-cell {
+        #sof-in-transit-table .tabulator-row.sof-scan-pending-late.tabulator-selected .tabulator-cell,
+        #sof-pending-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell,
+        #sof-fulfilled-table .tabulator-row.sof-order-over-24h.tabulator-selected .tabulator-cell {
             background-color: #f1aeb5 !important;
         }
         .sof-in-transit-late-badge {
@@ -1179,7 +1183,7 @@
                             <span class="badge sof-summary-badge" id="sof-pending-total-badge" data-sof-metric="pending_total" style="background:#fff3cd; color:#856404; border:1px solid #ffe69c;" title="Pending — click for history graph">
                                 Pending: <span id="sof-pending-total">0</span><i class="sof-hist-dot" data-sof-metric="pending_total" style="background:#6c757d;" title="History trend"></i>
                             </span>
-                            <span class="badge sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; border:1px solid #a3cfbb;" title="Label Created / No Scan (last 24 hours) — click for history graph">
+                            <span class="badge sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; border:1px solid #a3cfbb;" title="Label Created / No Scan — red triangle if more than 24 hours since the order time. Click for history graph">
                                 Label Created / No Scan: <span id="sof-fulfilled-24h">0</span><i class="sof-hist-dot" data-sof-metric="fulfilled_24h" style="background:#6c757d;" title="History trend"></i>
                             </span>
                             <span class="badge sof-summary-badge" id="sof-scan-done-24h-badge" data-sof-metric="received_by_carrier_total" style="background:#cfe2ff; color:#084298; border:1px solid #9ec5fe;" title="Received by carrier — click for history graph">
@@ -1418,7 +1422,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-pending-pane" role="tabpanel" aria-labelledby="sof-pending-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Orders still waiting for a shipping label (no tracking number yet) in the selected date range. Red triangle = not shipped for more than 25 hours.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Orders still waiting for a shipping label (no tracking number yet) in the selected date range. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
                             <div id="sof-pending-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1474,7 +1478,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-fulfilled-pane" role="tabpanel" aria-labelledby="sof-fulfilled-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Labels from the last 24 hours that have not been carrier-scanned yet. Older labeled orders move to In Transit.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Labels that have not been carrier-scanned yet. Red triangle = more than 24 hours since the order time. Those rows stay at the top.</p>
                             <div id="sof-fulfilled-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1484,7 +1488,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-in-transit-pane" role="tabpanel" aria-labelledby="sof-in-transit-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range. Scan pending more than 36 hours are in red at the top.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range (carrier or marketplace in transit). Delivered USPS/UPS/FedEx packages are not kept here. Scan pending more than 36 hours are in red at the top.</p>
                             <div id="sof-in-transit-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -2826,21 +2830,23 @@
         label.textContent = text;
         wrap.appendChild(label);
         const tableEl = (cell.getTable && cell.getTable()) ? cell.getTable().element : null;
-        const onPending = !!(tableEl && tableEl.id === 'sof-pending-table');
-        const onInTransit = !!(tableEl && tableEl.id === 'sof-in-transit-table');
-        const pendingLate = onPending && sofIsUnshippedOver25h(row);
+        const tableId = tableEl ? String(tableEl.id || '') : '';
+        const onPending = tableId === 'sof-pending-table';
+        const onFulfilled = tableId === 'sof-fulfilled-table';
+        const onInTransit = tableId === 'sof-in-transit-table';
+        const over24h = (onPending || onFulfilled) && sofIsOrderOver24h(row);
         const scanLate = onInTransit && sofIsScanPendingOver36h(row);
-        const dateLate = !onPending && sofOrderDatePastYesterday3pmEt(v);
-        if (pendingLate || scanLate || dateLate) {
+        const dateLate = !onPending && !onFulfilled && !onInTransit && sofOrderDatePastYesterday3pmEt(v);
+        if (over24h || scanLate || dateLate) {
             const alert = document.createElement('span');
             alert.className = 'sof-date-late-alert';
-            alert.title = pendingLate
-                ? 'Not shipped for more than 25 hours'
+            alert.title = over24h
+                ? 'More than 24 hours since the order time'
                 : (scanLate
                     ? 'Scan pending more than 36 hours'
                     : 'Alert: Date is before yesterday 3:00 PM ET');
-            alert.setAttribute('aria-label', pendingLate
-                ? 'Not shipped for more than 25 hours'
+            alert.setAttribute('aria-label', over24h
+                ? 'More than 24 hours since the order time'
                 : (scanLate
                     ? 'Scan pending more than 36 hours'
                     : 'Older than yesterday 3:00 PM Eastern'));
@@ -2850,12 +2856,40 @@
         return wrap;
     }
 
-    function sofIsUnshippedOver25h(row) {
+    function sofOrderAgeOver24hFromDate(row) {
         if (!row || typeof row !== 'object') return false;
-        const raw = String(row.order_date || row.updated_at || '').trim();
+        const raw = String(row.order_date || '').trim();
         const ms = sofWallClockToUtcMs(raw, SOF_TZ);
         if (ms == null) return false;
-        return (Date.now() - ms) > (25 * 60 * 60 * 1000);
+        return (Date.now() - ms) > (24 * 60 * 60 * 1000);
+    }
+
+    function sofIsOrderOver24h(row) {
+        if (!row || typeof row !== 'object') return false;
+        if (row.order_over_24h === 1 || row.order_over_24h === true || row.order_over_24h === '1') {
+            return true;
+        }
+        if (row.order_over_24h === 0 || row.order_over_24h === false || row.order_over_24h === '0') {
+            return false;
+        }
+        return sofOrderAgeOver24hFromDate(row);
+    }
+
+    function sofAnnotateOrderOver24h(rows) {
+        if (!Array.isArray(rows)) return [];
+        return rows.map(function (row) {
+            const next = Object.assign({}, row);
+            next.order_over_24h = sofOrderAgeOver24hFromDate(next) ? 1 : 0;
+            return next;
+        });
+    }
+
+    function sofPinOrderOver24h(table) {
+        sofPinRowsByField(table, 'order_over_24h', 'order_date');
+    }
+
+    function sofIsUnshippedOver25h(row) {
+        return sofIsOrderOver24h(row);
     }
 
     function sofCarrierHasLeftLabelCreated(shipmentStatus) {
@@ -2888,7 +2922,7 @@
         });
     }
 
-    function sofPinInTransitScanPendingLate(table) {
+    function sofPinRowsByField(table, field, fallbackField) {
         if (!table || table._sofPinningLate) return;
         let sorters = [];
         try {
@@ -2897,21 +2931,34 @@
             sorters = [];
         }
         const first = sorters[0];
-        if (first && (first.field === 'scan_pending_over_36h') && String(first.dir).toLowerCase() === 'desc') {
+        if (first && (first.field === field) && String(first.dir).toLowerCase() === 'desc') {
             return;
         }
-        const rest = sorters.filter(function (s) { return s && s.field !== 'scan_pending_over_36h'; });
+        const rest = sorters.filter(function (s) { return s && s.field !== field; });
         table._sofPinningLate = true;
         try {
-            const next = [{ column: 'scan_pending_over_36h', dir: 'desc' }].concat(rest.map(function (s) {
+            const next = [{ column: field, dir: 'desc' }].concat(rest.map(function (s) {
                 return { column: s.field, dir: s.dir };
             }));
-            if (!rest.length) {
-                next.push({ column: 'updated_at', dir: 'desc' });
+            if (!rest.length && fallbackField) {
+                next.push({ column: fallbackField, dir: 'desc' });
             }
             table.setSort(next);
         } catch (e2) {}
         table._sofPinningLate = false;
+    }
+
+    function sofPinInTransitScanPendingLate(table) {
+        sofPinRowsByField(table, 'scan_pending_over_36h', 'updated_at');
+    }
+
+    function sofOver24hHiddenColumn() {
+        return {
+            field: 'order_over_24h',
+            visible: false,
+            headerSort: false,
+            sorter: 'number',
+        };
     }
 
     /** Updated + Tracking + Carrier columns inserted after Date on order tabs. */
@@ -4465,8 +4512,14 @@
             layout: 'fitColumns',
             placeholder: 'Loading pending orders…',
             initialSort: [
+                { column: 'order_over_24h', dir: 'desc' },
                 { column: 'order_date', dir: 'desc' },
             ],
+            rowFormatter: function (row) {
+                const el = row.getElement();
+                const data = row.getData() || {};
+                el.classList.toggle('sof-order-over-24h', sofIsOrderOver24h(data));
+            },
             ajaxURL: '{{ route("sales.order.fulfillment.pending.data") }}',
             ajaxConfig: 'GET',
             ajaxParams: sofDateParams,
@@ -4483,9 +4536,9 @@
                 });
             },
             ajaxResponse: function (url, params, response) {
-                pendingRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
+                pendingRows = sofAnnotateOrderOver24h(sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
                     ? response.data
-                    : []);
+                    : []));
                 pendingTableLoaded = true;
                 pendingTableLoading = false;
                 const count = (response && response.count != null)
@@ -4501,13 +4554,18 @@
             dataLoaded: function () {
                 sofUpdateTrackingFilterCounts(pendingRows);
                 applyPendingFilters();
+                sofPinOrderOver24h(pendingTable);
                 sofAutoFillMissingLabelTracking(pendingRows, 0);
+            },
+            dataSorted: function () {
+                sofPinOrderOver24h(pendingTable);
             },
             columns: (function () {
                 const cols = orderListColumns('sof-pending-badge');
+                cols.unshift(sofOver24hHiddenColumn());
                 cols.forEach(function (c) {
                     if (c.field === 'order_date') {
-                        c.headerTooltip = 'Red triangle = not shipped for more than 25 hours';
+                        c.headerTooltip = 'Red triangle = more than 24 hours since the order time';
                     }
                 });
                 return cols;
@@ -4541,8 +4599,14 @@
             layout: 'fitColumns',
             placeholder: 'Loading Label Created / No Scan orders…',
             initialSort: [
+                { column: 'order_over_24h', dir: 'desc' },
                 { column: 'updated_at', dir: 'desc' },
             ],
+            rowFormatter: function (row) {
+                const el = row.getElement();
+                const data = row.getData() || {};
+                el.classList.toggle('sof-order-over-24h', sofIsOrderOver24h(data));
+            },
             ajaxURL: '{{ route("sales.order.fulfillment.fulfilled.data") }}',
             ajaxConfig: 'GET',
             ajaxParams: sofDateParams,
@@ -4559,9 +4623,9 @@
                 });
             },
             ajaxResponse: function (url, params, response) {
-                fulfilledRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
+                fulfilledRows = sofAnnotateOrderOver24h(sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
                     ? response.data
-                    : []);
+                    : []));
                 fulfilledTableLoaded = true;
                 fulfilledTableLoading = false;
                 const count = (response && response.count != null)
@@ -4581,6 +4645,7 @@
             dataLoaded: function () {
                 sofUpdateTrackingFilterCounts(fulfilledRows);
                 applyFulfilledFilters();
+                sofPinOrderOver24h(fulfilledTable);
                 setTimeout(function () {
                     if (fulfilledTable) {
                         try { fulfilledTable.redraw(true); } catch (e) {}
@@ -4588,12 +4653,19 @@
                     sofAutoFillMissingLabelTracking(fulfilledRows, 0);
                 }, 50);
             },
+            dataSorted: function () {
+                sofPinOrderOver24h(fulfilledTable);
+            },
             columns: (function () {
                 const cols = orderListColumns('sof-fulfilled-badge');
+                cols.unshift(sofOver24hHiddenColumn());
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
                         c.title = 'Created';
                         c.headerTooltip = 'Label Created / No Scan';
+                    }
+                    if (c.field === 'order_date') {
+                        c.headerTooltip = 'Red triangle = more than 24 hours since the order time';
                     }
                 });
                 // After Date (index 3 after Channel, Ch Orders, Order ID, Date) insert Updated + Tracking

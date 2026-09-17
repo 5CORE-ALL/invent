@@ -40,6 +40,7 @@ use App\Services\MarketplaceManager\Temu2OrderTrackingPullService;
 use App\Services\MarketplaceManager\TemuOrderAmountParser;
 use App\Services\MarketplaceManager\TemuOrderTrackingPullService;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
+use App\Services\SheinApiService;
 use App\Services\ShipmentTrackingService;
 use App\Services\Support\MarketplaceApiConfigService;
 use App\Support\TrackingCarrierGuesser;
@@ -262,8 +263,8 @@ class SalesOrderFulfillmentController extends Controller
 
     /**
      * Label Created / No Scan — last 24 hours only.
-     * Older labeled rows (already scanned in the warehouse) go to In Transit
-     * until carrier tracking reports Delivered.
+     * Older labeled rows with no successful carrier scan used to be forced into
+     * In Transit; domestic parcels older than 5 days now go to Delivered instead.
      */
     public function fulfilledData(): JsonResponse
     {
@@ -382,7 +383,7 @@ class SalesOrderFulfillmentController extends Controller
             );
             $fromCarrier = array_values(array_filter(
                 $this->labelCreatedOrderRows(),
-                fn (array $r) => ($r['shipment_status'] ?? null) === ShipmentTrackingService::STATUS_DELIVERED
+                fn (array $r) => $this->rowLooksDelivered($r)
             ));
             $rows = $this->mergeOrderRowsById($rows, $fromCarrier);
             $rows = $this->mergeOrderRowsById(
@@ -1542,7 +1543,10 @@ class SalesOrderFulfillmentController extends Controller
                     'order_id' => $displayOrderId,
                     'order_id_api' => $apiOrderId,
                     'order_number' => $orderNumber !== '' ? $orderNumber : null,
-                    'order_date' => $this->formatOrderDate($n['order_date'] ?? null),
+                    'order_date' => $this->formatOrderDate(
+                        $n['order_date'] ?? null,
+                        $slug === 'shein' ? SheinApiService::API_TIMEZONE : null
+                    ),
                     'updated_at' => $this->formatOrderDate($n['updated_at'] ?? null),
                     'tracking_number' => $tracking,
                     'tracking_company' => $company,
@@ -2335,7 +2339,7 @@ class SalesOrderFulfillmentController extends Controller
     {
         return array_values(array_filter(
             $rows,
-            fn (array $r) => ($r['shipment_status'] ?? '') !== ShipmentTrackingService::STATUS_DELIVERED
+            fn (array $r) => ! $this->rowLooksDelivered($r)
         ));
     }
 
@@ -2347,8 +2351,93 @@ class SalesOrderFulfillmentController extends Controller
     {
         return array_values(array_filter(
             $rows,
-            fn (array $r) => ($r['shipment_status'] ?? '') === ShipmentTrackingService::STATUS_DELIVERED
+            fn (array $r) => $this->rowLooksDelivered($r)
         ));
+    }
+
+    /**
+     * Carrier Delivered, marketplace delivered/completed, or USPS/UPS/FedEx
+     * with no real scan after 5 days (USPS MID failures never get a scan).
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function rowLooksDelivered(array $row): bool
+    {
+        $status = strtolower(trim((string) ($row['shipment_status'] ?? '')));
+        if ($status === strtolower(ShipmentTrackingService::STATUS_DELIVERED)) {
+            return true;
+        }
+
+        $detail = strtolower(trim((string) ($row['shipment_status_detail'] ?? '')));
+        if ($detail !== ''
+            && str_contains($detail, 'delivered')
+            && ! ShipmentTrackingService::isUnusableProviderFailure($detail)
+        ) {
+            return true;
+        }
+
+        $mp = strtolower(str_replace([' ', '-'], '_', trim((string) ($row['status'] ?? ''))));
+        if (in_array($mp, [
+            'delivered',
+            'completed',
+            'received',
+            'finish',
+            'buyer_accept_goods',
+            'trade_finished',
+            'partially_delivered',
+        ], true)) {
+            return true;
+        }
+
+        return $this->rowIsAssumedDeliveredDomestic($row);
+    }
+
+    /**
+     * Domestic last-mile tracking that never got a real carrier event (empty /
+     * Exception / NotFound, including USPS MID unauthorized) after 5 days.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function rowIsAssumedDeliveredDomestic(array $row): bool
+    {
+        if ($this->carrierStatusHasLeftLabelCreated($row['shipment_status'] ?? null)) {
+            return false;
+        }
+        if (trim((string) ($row['tracking_number'] ?? '')) === '') {
+            return false;
+        }
+        if (! $this->rowLooksLikeDomesticParcel($row)) {
+            return false;
+        }
+
+        return $this->rowIsOlderThanHours($row, 5 * 24);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected function rowLooksLikeDomesticParcel(array $row): bool
+    {
+        $company = strtolower((string) ($row['tracking_company'] ?? ''));
+        if (str_contains($company, 'usps') || str_contains($company, 'ups') || str_contains($company, 'fedex')) {
+            return true;
+        }
+
+        $tn = strtoupper((string) preg_replace('/[^A-Z0-9]/', '', (string) ($row['tracking_number'] ?? '')));
+        if ($tn === '') {
+            return false;
+        }
+        if (preg_match('/^1Z[A-Z0-9]{16}$/', $tn) === 1) {
+            return true;
+        }
+        if (preg_match('/^9\d{21}$/', $tn) === 1) {
+            return true;
+        }
+        if (preg_match('/^\d{12,15}$/', $tn) === 1 && str_contains($company, 'fedex')) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -2889,17 +2978,24 @@ class SalesOrderFulfillmentController extends Controller
         return $rows;
     }
 
-    protected function formatOrderDate(mixed $value): ?string
+    protected function formatOrderDate(mixed $value, ?string $valueTz = null): ?string
     {
         if ($value === null || $value === '') {
             return null;
         }
 
         $displayTz = $this->sofTimezone();
-        $storageTz = $this->sofStorageTimezone();
+        $storageTz = $valueTz ?: $this->sofStorageTimezone();
 
         try {
             if ($value instanceof \DateTimeInterface) {
+                if ($valueTz !== null) {
+                    $raw = Carbon::instance(\DateTimeImmutable::createFromInterface($value))
+                        ->format('Y-m-d H:i:s');
+
+                    return Carbon::parse($raw, $storageTz)->timezone($displayTz)->format('Y-m-d H:i:s');
+                }
+
                 return Carbon::parse($value)->timezone($displayTz)->format('Y-m-d H:i:s');
             }
 
@@ -4398,7 +4494,7 @@ class SalesOrderFulfillmentController extends Controller
         );
         $fromCarrier = array_values(array_filter(
             $this->labelCreatedOrderRows(),
-            fn (array $r) => ($r['shipment_status'] ?? null) === ShipmentTrackingService::STATUS_DELIVERED
+            fn (array $r) => $this->rowLooksDelivered($r)
         ));
         $rows = $this->mergeOrderRowsById($rows, $fromCarrier);
         $rows = $this->mergeOrderRowsById(
@@ -4505,10 +4601,10 @@ class SalesOrderFulfillmentController extends Controller
      *
      * @return array{from: Carbon, to: Carbon, from_date: string, to_date: string, from_dt: string, to_dt: string}
      */
-    protected function californiaSqlBounds(Carbon $from, Carbon $to): array
+    protected function californiaSqlBounds(Carbon $from, Carbon $to, ?string $storageTz = null): array
     {
         $displayTz = $this->sofTimezone();
-        $storageTz = $this->sofStorageTimezone();
+        $storageTz = $storageTz ?: $this->sofStorageTimezone();
         $fromEst = $from->copy()->timezone($displayTz)->startOfDay();
         $toEst = $to->copy()->timezone($displayTz)->endOfDay();
         $fromStored = $fromEst->copy()->timezone($storageTz);
@@ -4560,6 +4656,12 @@ class SalesOrderFulfillmentController extends Controller
             }),
             'purchasingpower' => $query->where('date_created', '>=', $fromDt)->where('date_created', '<=', $toDt),
             'wayfair' => $query->whereDate('po_date', '>=', $fromDate)->whereDate('po_date', '<=', $toDate),
+            'shein' => (function () use ($query, $from, $to) {
+                $shein = $this->californiaSqlBounds($from, $to, SheinApiService::API_TIMEZONE);
+
+                return $query->where('order_date', '>=', $shein['from_dt'])
+                    ->where('order_date', '<=', $shein['to_dt']);
+            })(),
             'doba' => $query->where('order_time', '>=', $fromDt)->where('order_time', '<=', $toDt),
             'tiktok', 'tiktok2' => $query->where(function (Builder $q) use ($fromDt, $toDt) {
                 $q->where(function (Builder $q2) use ($fromDt, $toDt) {
