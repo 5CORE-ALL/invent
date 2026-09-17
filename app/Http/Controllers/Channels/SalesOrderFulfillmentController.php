@@ -2232,8 +2232,12 @@ class SalesOrderFulfillmentController extends Controller
 
     protected function looksLikeCarrierTrackingNumber(string $value): bool
     {
-        $v = strtoupper(preg_replace('/\s+/', '', $value) ?? '');
+        $v = strtoupper((string) preg_replace('/[^A-Z0-9]/', '', $value));
         if ($v === '' || strlen($v) < 8) {
+            return false;
+        }
+        // Marketplace order ids are not tracking numbers.
+        if (preg_match('/^\d{3}\d{7}\d{7}$/', $v) === 1) {
             return false;
         }
 
@@ -2609,6 +2613,18 @@ class SalesOrderFulfillmentController extends Controller
 
         $tn = trim((string) ($row['tracking_number'] ?? ''));
         if ($tn !== '' && $this->looksLikeCarrierTrackingNumber($tn)) {
+            return true;
+        }
+
+        $status = (string) ($row['shipment_status'] ?? '');
+        if ($this->carrierStatusHasLeftLabelCreated($status)
+            || $status === ShipmentTrackingService::STATUS_INFO_RECEIVED
+        ) {
+            return true;
+        }
+
+        $mpStatus = strtoupper(str_replace([' ', '-'], '_', trim((string) ($row['status'] ?? ''))));
+        if (in_array($mpStatus, ['AWAITING_COLLECTION', 'PARTIALLY_SHIPPING', 'PARTIALLY_SHIPPED'], true)) {
             return true;
         }
 
@@ -4829,6 +4845,10 @@ class SalesOrderFulfillmentController extends Controller
                 "UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN (?, ?)",
                 ['SHIPPED', 'PARTIALLY_SHIPPED']
             ),
+            'tiktok', 'tiktok2' => $base->whereRaw(
+                "UPPER(TRIM(COALESCE(order_status, ''))) IN (?, ?)",
+                ['AWAITING_COLLECTION', 'PARTIALLY_SHIPPING']
+            ),
             // Purchasing Power SHIPPING / Doba In Transit → In Transit tab
             'purchasingpower', 'doba', 'wayfair' => null,
             default => null,
@@ -5067,9 +5087,10 @@ class SalesOrderFulfillmentController extends Controller
                 ['AWAITING_SHIPMENT']
             ),
             'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['UNSHIPPED']),
+            // AWAITING_COLLECTION / PARTIALLY_SHIPPING already have a label or a shipment.
             'tiktok', 'tiktok2' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(order_status, ''))) IN (?, ?, ?)",
-                ['AWAITING_SHIPMENT', 'AWAITING_COLLECTION', 'PARTIALLY_SHIPPING']
+                "UPPER(TRIM(COALESCE(order_status, ''))) = ?",
+                ['AWAITING_SHIPMENT']
             ),
             default => null,
         };
@@ -5160,9 +5181,9 @@ class SalesOrderFulfillmentController extends Controller
                 if ($skus->count() > 1) {
                     $sku .= ' +'.($skus->count() - 1);
                 }
-                $decoded = AmazonOrder::decodeRawPayload($order->raw_data ?? null);
-                $tn = trim((string) ($decoded['tracking_number'] ?? ''));
-                $carrier = trim((string) ($decoded['carrier'] ?? ''));
+                $local = $order->localTracking();
+                $tn = trim((string) ($local['tracking'] ?? ''));
+                $carrier = trim((string) ($local['carrier'] ?? ''));
 
                 return [
                     'status' => (string) ($order->status ?? ''),

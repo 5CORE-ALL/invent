@@ -80,6 +80,12 @@ class FourSellerApiService
             if (! in_array($ref, $out, true)) {
                 $out[] = $ref;
             }
+            if (preg_match('/^\d{3}-\d{7}-\d{7}$/', $ref) === 1) {
+                $plainAmz = str_replace('-', '', $ref);
+                if (! in_array($plainAmz, $out, true)) {
+                    $out[] = $plainAmz;
+                }
+            }
         }
 
         return $out;

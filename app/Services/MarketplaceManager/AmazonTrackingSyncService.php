@@ -50,13 +50,7 @@ class AmazonTrackingSyncService
         }
 
         $shopifyOrderId = trim((string) ($order->shopify_order_id ?? ''));
-        if ($shopifyOrderId === '' || str_starts_with($shopifyOrderId, 'manual')) {
-            return [
-                'success' => false,
-                'skipped' => true,
-                'message' => 'Order is not linked to a Shopify order yet. Import/push to Shopify first.',
-            ];
-        }
+        $hasShopify = $shopifyOrderId !== '' && ! str_starts_with($shopifyOrderId, 'manual');
 
         $status = strtoupper(trim((string) ($order->status ?? '')));
         $amazonOrderId = trim((string) ($order->amazon_order_id ?? ''));
@@ -70,26 +64,34 @@ class AmazonTrackingSyncService
 
         $shopifyFulfillment = ['tracking' => null, 'carrier' => null, 'error' => null];
         $matchedSku = '';
-        foreach ($itemSkus as $sku) {
-            $hit = $this->fetchShopifyTracking($shopifyOrderId, $amazonOrderId, $sku);
-            if (! empty($hit['tracking'])) {
+        if ($hasShopify) {
+            foreach ($itemSkus as $sku) {
+                $hit = $this->fetchShopifyTracking($shopifyOrderId, $amazonOrderId, $sku);
+                if (! empty($hit['tracking'])) {
+                    $shopifyFulfillment = $hit;
+                    $matchedSku = $sku;
+                    break;
+                }
                 $shopifyFulfillment = $hit;
-                $matchedSku = $sku;
-                break;
             }
-            $shopifyFulfillment = $hit;
-        }
-        if (empty($shopifyFulfillment['tracking'])) {
-            $veeqo = $this->veeqoFulfillment->fulfillMarketplaceOrder('amazon', (int) $order->id);
-            if (! empty($veeqo['success'])) {
-                foreach ($itemSkus as $sku) {
-                    $hit = $this->fetchShopifyTracking($shopifyOrderId, $amazonOrderId, $sku);
-                    if (! empty($hit['tracking'])) {
-                        $shopifyFulfillment = $hit;
-                        $matchedSku = $sku;
-                        break;
+            if (empty($shopifyFulfillment['tracking'])) {
+                $veeqo = $this->veeqoFulfillment->fulfillMarketplaceOrder('amazon', (int) $order->id);
+                if (! empty($veeqo['success'])) {
+                    foreach ($itemSkus as $sku) {
+                        $hit = $this->fetchShopifyTracking($shopifyOrderId, $amazonOrderId, $sku);
+                        if (! empty($hit['tracking'])) {
+                            $shopifyFulfillment = $hit;
+                            $matchedSku = $sku;
+                            break;
+                        }
                     }
                 }
+            }
+        }
+        if (empty($shopifyFulfillment['tracking'])) {
+            $warehouse = $this->lookupWarehouseTracking($order);
+            if ($warehouse !== null) {
+                $shopifyFulfillment = $warehouse;
             }
         }
 
@@ -119,7 +121,7 @@ class AmazonTrackingSyncService
                 'success' => false,
                 'skipped' => true,
                 'message' => $shopifyFulfillment['error']
-                    ?: 'No tracking number on Shopify yet. Buy the label in Veeqo, 4Seller, Shopify, or ShipStation first.',
+                    ?: 'No tracking number on Shopify/Veeqo/GOFO yet. Buy the label first.',
                 'shopify_tracking' => null,
                 'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
             ];
@@ -243,7 +245,7 @@ class AmazonTrackingSyncService
                     ->orWhere(function ($q2) {
                         // Label already created on Amazon — still copy Shopify/Veeqo tracking onto SOF.
                         $q2->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED'])
-                            ->where('updated_at', '>=', now()->subDays(3));
+                            ->where('order_date', '>=', now()->subDays(30));
                     });
             })
             ->orderByRaw("CASE WHEN UPPER(TRIM(COALESCE(status, ''))) IN ('SHIPPED','PARTIALLYSHIPPED') THEN 1 ELSE 0 END")
@@ -276,6 +278,159 @@ class AmazonTrackingSyncService
             'skipped' => $skipped,
             'failed' => $failed,
             'message' => "Tracking sync: checked {$checked}, pushed {$pushed}, skipped {$skipped}, failed {$failed}.",
+        ];
+    }
+
+    /**
+     * SHIPPED Amazon MFN rows that never got tracking onto raw_data (SP-API getOrder
+     * does not include it). Copy Veeqo / GOFO / Shopify tracking for SOF.
+     *
+     * @return array{success: bool, message: string, checked: int, filled: int, skipped: int}
+     */
+    public function fillMissingSofTracking(int $limit = 80): array
+    {
+        if (! Schema::hasTable('amazon_orders')) {
+            return [
+                'success' => true,
+                'message' => 'amazon_orders table missing.',
+                'checked' => 0,
+                'filled' => 0,
+                'skipped' => 0,
+            ];
+        }
+
+        $limit = max(1, min(200, $limit));
+        $orders = AmazonOrder::query()
+            ->with('items')
+            ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?, ?)", ['SHIPPED', 'PARTIALLYSHIPPED', 'UNSHIPPED'])
+            ->where(function ($q) {
+                $q->whereNull('fulfillment_channel')
+                    ->orWhereRaw("UPPER(TRIM(COALESCE(fulfillment_channel, ''))) != ?", ['AFN']);
+            })
+            ->where('order_date', '>=', now()->subDays(30))
+            ->orderByDesc('order_date')
+            ->orderByDesc('id')
+            ->limit(max(200, $limit * 5))
+            ->get();
+
+        $checked = 0;
+        $filled = 0;
+        $skipped = 0;
+
+        foreach ($orders as $order) {
+            if ($checked >= $limit) {
+                break;
+            }
+            if ($order->isFba() || $order->isCancelled()) {
+                continue;
+            }
+            if (trim((string) ($order->localTracking()['tracking'] ?? '')) !== '') {
+                continue;
+            }
+            $checked++;
+            $result = $this->fillTrackingForOrder($order);
+            if (! empty($result['success']) && trim((string) ($result['tracking'] ?? '')) !== '') {
+                $filled++;
+            } else {
+                $skipped++;
+            }
+            usleep(150000);
+        }
+
+        return [
+            'success' => true,
+            'checked' => $checked,
+            'filled' => $filled,
+            'skipped' => $skipped,
+            'message' => "Amazon SOF tracking fill: checked {$checked}, filled {$filled}, still missing {$skipped}.",
+        ];
+    }
+
+    /**
+     * @return array{success: bool, tracking: ?string, carrier: ?string, message?: string}
+     */
+    public function fillTrackingForOrder(AmazonOrder $order): array
+    {
+        $existing = $order->localTracking();
+        if (trim((string) ($existing['tracking'] ?? '')) !== '') {
+            return [
+                'success' => true,
+                'tracking' => $existing['tracking'],
+                'carrier' => $existing['carrier'] !== '' ? $existing['carrier'] : null,
+            ];
+        }
+
+        $shopifyOrderId = trim((string) ($order->shopify_order_id ?? ''));
+        $amazonOrderId = trim((string) ($order->amazon_order_id ?? ''));
+        $hit = ['tracking' => null, 'carrier' => null];
+
+        if ($shopifyOrderId !== '' && ! str_starts_with($shopifyOrderId, 'manual')) {
+            $itemSkus = $order->items()
+                ->orderBy('id')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn ($sku) => $sku !== '' && ! in_array($sku, ['__order__', '__unknown__'], true))
+                ->unique()
+                ->values();
+            $itemSkus->push('');
+            foreach ($itemSkus as $sku) {
+                $one = $this->fetchShopifyTracking($shopifyOrderId, $amazonOrderId, $sku);
+                if (! empty($one['tracking'])) {
+                    $hit = $one;
+                    break;
+                }
+            }
+        }
+
+        if (empty($hit['tracking'])) {
+            $warehouse = $this->lookupWarehouseTracking($order);
+            if ($warehouse !== null) {
+                $hit = $warehouse;
+            }
+        }
+
+        $tn = trim((string) ($hit['tracking'] ?? ''));
+        if ($tn === '') {
+            return [
+                'success' => false,
+                'tracking' => null,
+                'carrier' => null,
+                'message' => 'No Shopify/Veeqo/GOFO tracking found.',
+            ];
+        }
+
+        $carrier = trim((string) ($hit['carrier'] ?? ''));
+        $this->persistLocalTracking($order, $tn, $carrier);
+
+        return [
+            'success' => true,
+            'tracking' => $tn,
+            'carrier' => $carrier !== '' ? $carrier : null,
+            'message' => 'Saved tracking '.$tn.' for SOF.',
+        ];
+    }
+
+    /**
+     * @return array{tracking: string, carrier: string}|null
+     */
+    protected function lookupWarehouseTracking(AmazonOrder $order): ?array
+    {
+        $refs = $order->trackingLookupRefs();
+        $shopifyOrderId = trim((string) ($order->shopify_order_id ?? ''));
+        if ($shopifyOrderId !== '' && ! str_starts_with($shopifyOrderId, 'manual')) {
+            $refs[] = $shopifyOrderId;
+        }
+        $local = $order->localTracking();
+        $localHit = trim((string) ($local['tracking'] ?? '')) !== '' ? $local : null;
+        $found = $this->veeqoFulfillment->lookupLabelTracking($refs, $localHit, false, '');
+        $tn = trim((string) ($found['tracking'] ?? ''));
+        if ($tn === '') {
+            return null;
+        }
+
+        return [
+            'tracking' => $tn,
+            'carrier' => trim((string) ($found['carrier'] ?? '')) ?: 'Other',
         ];
     }
 

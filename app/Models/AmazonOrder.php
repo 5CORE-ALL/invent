@@ -78,6 +78,96 @@ class AmazonOrder extends Model
     }
 
     /**
+     * Tracking stored on the Amazon order or its line items (not SP-API getOrder).
+     *
+     * @return array{tracking: string, carrier: string}
+     */
+    public function localTracking(): array
+    {
+        $from = self::trackingFromDecoded($this->rawPayload());
+        if ($from['tracking'] !== '') {
+            return $from;
+        }
+
+        $items = $this->relationLoaded('items') ? $this->items : $this->items()->get();
+        foreach ($items as $item) {
+            $from = self::trackingFromDecoded(self::decodeRawPayload($item->raw_data ?? null));
+            if ($from['tracking'] !== '') {
+                return $from;
+            }
+        }
+
+        return ['tracking' => '', 'carrier' => ''];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $raw
+     * @return array{tracking: string, carrier: string}
+     */
+    public static function trackingFromDecoded(?array $raw): array
+    {
+        if (! is_array($raw)) {
+            return ['tracking' => '', 'carrier' => ''];
+        }
+
+        $tn = trim((string) ($raw['tracking_number'] ?? $raw['TrackingNumber'] ?? $raw['trackingNumber'] ?? ''));
+        $carrier = trim((string) ($raw['carrier'] ?? $raw['Carrier'] ?? $raw['CarrierName'] ?? $raw['carrierName'] ?? ''));
+
+        foreach (['PackageTrackingDetails', 'packageTrackingDetails', 'shipment', 'shipping'] as $nestedKey) {
+            $nested = $raw[$nestedKey] ?? null;
+            if (! is_array($nested)) {
+                continue;
+            }
+            $list = isset($nested[0]) && is_array($nested[0]) ? $nested : [$nested];
+            foreach ($list as $pkg) {
+                if (! is_array($pkg)) {
+                    continue;
+                }
+                if ($tn === '') {
+                    $tn = trim((string) ($pkg['TrackingNumber'] ?? $pkg['trackingNumber'] ?? $pkg['tracking_number'] ?? ''));
+                }
+                if ($carrier === '') {
+                    $carrier = trim((string) ($pkg['CarrierCode'] ?? $pkg['carrier'] ?? $pkg['CarrierName'] ?? ''));
+                }
+                if ($tn !== '') {
+                    break 2;
+                }
+            }
+        }
+
+        if ($tn !== '' && preg_match('/^\d{3}-\d{7}-\d{7}$/', $tn) === 1) {
+            return ['tracking' => '', 'carrier' => ''];
+        }
+
+        return ['tracking' => $tn, 'carrier' => $carrier];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function trackingLookupRefs(): array
+    {
+        $refs = [];
+        $amazonId = trim((string) ($this->amazon_order_id ?? ''));
+        if ($amazonId !== '') {
+            $refs[] = $amazonId;
+            $plain = str_replace('-', '', $amazonId);
+            if ($plain !== $amazonId) {
+                $refs[] = $plain;
+            }
+        }
+        $raw = $this->rawPayload();
+        foreach (['SellerOrderId', 'sellerOrderId'] as $key) {
+            $seller = trim((string) ($raw[$key] ?? ''));
+            if ($seller !== '' && ! in_array($seller, $refs, true)) {
+                $refs[] = $seller;
+            }
+        }
+
+        return $refs;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function rawPayload(): array

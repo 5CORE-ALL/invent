@@ -262,6 +262,9 @@ class GofoExpressService
                 $variants[] = $tail;
             }
         }
+        if (preg_match('/^\d{3}-\d{7}-\d{7}$/', $plain) === 1) {
+            $variants[] = str_replace('-', '', $plain);
+        }
 
         return $variants;
     }
