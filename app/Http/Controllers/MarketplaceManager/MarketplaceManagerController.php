@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketplaceManager;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\MarketplaceController;
 use App\Jobs\WarmShopifyLiveCatalogCache;
 use App\Models\AlibabaMetric;
 use App\Models\AliexpressListingStatus;
@@ -246,6 +247,11 @@ class MarketplaceManagerController extends Controller
         }
 
         return $activeMatch ?? $anyMatch;
+    }
+
+    public function fetchTrackingNow(): JsonResponse
+    {
+        return app(MarketplaceController::class)->queueFreshTrackingCatchup();
     }
 
     /**

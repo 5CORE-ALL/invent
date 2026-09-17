@@ -40,7 +40,7 @@ class FetchMarketplaceShopifyTrackingJob implements ShouldQueue, ShouldBeUnique
 
     public function uniqueId(): string
     {
-        return 'mm-fetch-shopify-tracking';
+        return $this->fresh ? 'mm-fetch-shopify-tracking-fresh' : 'mm-fetch-shopify-tracking';
     }
 
     public function handle(VeeqoShopifyFulfillmentService $sync): void

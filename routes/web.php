@@ -636,6 +636,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::prefix('marketplace-manager')->name('marketplace.manager.')->group(function () {
         Route::get('/', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'index'])->name('index');
         Route::post('/refresh-shopify', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'refreshShopify'])->name('refresh.shopify');
+        Route::post('/fetch-tracking-now', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'fetchTrackingNow'])->name('fetch.tracking.now');
         Route::get('/refresh-shopify/status', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'refreshShopifyStatus'])->name('refresh.shopify.status');
         Route::get('/shopify/active-skus', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'activeShopifySkus'])->name('shopify.active');
         Route::get('/aliexpress/connect', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'connect'])->name('aliexpress.connect');
