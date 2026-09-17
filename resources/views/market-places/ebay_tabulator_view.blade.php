@@ -887,7 +887,7 @@
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay'])
                         <span class="badge fs-6 p-2" id="ebay1-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            title="Blue triangle: S PRC ≠ eBay Price, same scope as auto-push (current INV + REQ filters). Click to show those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay1-ended-listing-badge"
                             style="background-color:#ffc107;color:#212529;font-weight:700;cursor:pointer;"
@@ -3309,6 +3309,23 @@
                 const price = parseFloat(data['eBay Price']) || 0;
                 return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
             }
+            /** Same INV / REQ scope as the page filters and auto-push. */
+            function ebay1InPushFilterScope(data) {
+                if (!data || ebay1IsAlertParentRow(data)) return false;
+                const inventoryFilter = ($('#inventory-filter').val() || 'more');
+                const inv = parseFloat(data.INV) || 0;
+                if (inventoryFilter === 'zero' && inv !== 0) return false;
+                if (inventoryFilter === 'more' && !(inv > 0)) return false;
+                const nrlFilter = ($('#nrl-filter').val() || 'REQ');
+                if (nrlFilter === 'REQ' && data.nr_req !== 'REQ') return false;
+                if (nrlFilter === 'NR' && data.nr_req !== 'NR') return false;
+                return true;
+            }
+            function ebay1BlueTriangleBadgeRow(data) {
+                return ebay1InPushFilterScope(data) && ebay1HasBlueTriangle(data);
+            }
+            window.ebay1HasBlueTriangle = ebay1HasBlueTriangle;
+            window.ebay1InPushFilterScope = ebay1InPushFilterScope;
             function syncEbay1TriangleBadgeState() {
                 $('#ebay1-blue-triangle-badge').css({
                     outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -6010,7 +6027,7 @@
                 let redTriangleCount = 0;
                 let endedListingCount = 0;
                 allData.forEach(function(row) {
-                    if (ebay1HasBlueTriangle(row)) blueTriangleCount++;
+                    if (ebay1BlueTriangleBadgeRow(row)) blueTriangleCount++;
                     if (ebay1HasRedTriangle(row)) redTriangleCount++;
                     if (ebay1IsEndedListing(row)) endedListingCount++;
                 });

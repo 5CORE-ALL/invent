@@ -1056,6 +1056,17 @@
                         if (!(shown > 0) || !(live > 0) || chPushSpriceNearlyEqual(shown, live)) return true;
                     }
                 }
+                if (CH_PUSH_SPRICE_CHANNEL === 'ebay1') {
+                    if (typeof global.ebay1HasBlueTriangle === 'function') {
+                        if (!global.ebay1HasBlueTriangle(d)) return true;
+                    }
+                    if (typeof global.ebay1InPushFilterScope === 'function') {
+                        if (!global.ebay1InPushFilterScope(d)) return true;
+                    } else {
+                        if (!((parseFloat(d.INV) || 0) > 0)) return true;
+                        if (String(d.nr_req || '') !== 'REQ') return true;
+                    }
+                }
                 if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return true;
                 const flag = String(d.live_inactive || d.listing_status || '').toLowerCase();
                 if (['inactive', 'offline', 'ended', 'disabled'].indexOf(flag) !== -1) return true;
