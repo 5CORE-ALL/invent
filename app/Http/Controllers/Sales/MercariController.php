@@ -349,13 +349,7 @@ class MercariController extends Controller
     public function getDailyData(Request $request)
     {
         try {
-            // Get all Mercari daily data, excluding cancelled orders
-            $data = MercariDailyData::whereNull('canceled_date')
-                ->where(function($query) {
-                    $query->whereNull('order_status')
-                          ->orWhere('order_status', 'not like', '%cancelled%')
-                          ->orWhere('order_status', 'not like', '%canceled%');
-                })
+            $data = $this->mercariOrdersExcludingCancelled()
                 ->orderBy('sold_date', 'desc')
                 ->get();
             
@@ -452,7 +446,7 @@ class MercariController extends Controller
     }
 
     /**
-     * Show Mercari tabulator view (With Ship - buyer_shipping_fee = 0 or null)
+     * Show Mercari tabulator view (all non-canceled orders; Ship comes from Product Master)
      */
     public function mercariTabulatorView()
     {
@@ -473,13 +467,7 @@ class MercariController extends Controller
     public function getDailyDataWithoutShip(Request $request)
     {
         try {
-            // Get Mercari daily data where buyer_shipping_fee > 0
-            $data = MercariDailyData::whereNull('canceled_date')
-                ->where(function($query) {
-                    $query->whereNull('order_status')
-                          ->orWhere('order_status', 'not like', '%cancelled%')
-                          ->orWhere('order_status', 'not like', '%canceled%');
-                })
+            $data = $this->mercariOrdersExcludingCancelled()
                 ->where('buyer_shipping_fee', '>', 0)
                 ->orderBy('sold_date', 'desc')
                 ->get();
@@ -492,22 +480,13 @@ class MercariController extends Controller
     }
 
     /**
-     * Get daily data for Mercari With Ship (buyer_shipping_fee = 0 or null)
+     * Get daily data for Mercari With Ship (all non-canceled orders).
+     * Ship / LP still come from Product Master after SKU match.
      */
     public function getDailyDataWithShip(Request $request)
     {
         try {
-            // Get Mercari daily data where buyer_shipping_fee = 0 or null
-            $data = MercariDailyData::whereNull('canceled_date')
-                ->where(function($query) {
-                    $query->whereNull('order_status')
-                          ->orWhere('order_status', 'not like', '%cancelled%')
-                          ->orWhere('order_status', 'not like', '%canceled%');
-                })
-                ->where(function($query) {
-                    $query->whereNull('buyer_shipping_fee')
-                          ->orWhere('buyer_shipping_fee', '=', 0);
-                })
+            $data = $this->mercariOrdersExcludingCancelled()
                 ->orderBy('sold_date', 'desc')
                 ->get();
             
@@ -516,6 +495,20 @@ class MercariController extends Controller
             Log::error('Error fetching Mercari With Ship data: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Hide only when order_status is cancelled/canceled. canceled_date is ignored.
+     */
+    private function mercariOrdersExcludingCancelled()
+    {
+        return MercariDailyData::query()->where(function ($query) {
+            $query->whereNull('order_status')
+                ->orWhere(function ($q) {
+                    $q->where('order_status', 'not like', '%cancelled%')
+                        ->where('order_status', 'not like', '%canceled%');
+                });
+        });
     }
 
     /**

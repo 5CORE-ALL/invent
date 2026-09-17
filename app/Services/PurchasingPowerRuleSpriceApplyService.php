@@ -109,7 +109,17 @@ class PurchasingPowerRuleSpriceApplyService
                             }
                             $next = $computed !== null ? $computed['sprice'] : 0.0;
                             if (abs($saved - $next) < 0.005) {
-                                $stats['skipped_unchanged']++;
+                                if ($push && ! $dryRun && $next > 0 && ($row['listed'] ?? false) && abs($next - $live) >= 0.005) {
+                                    $ok = $this->pushPrice((string) $row['sku'], $next);
+                                    if ($ok) {
+                                        $stats['pushed']++;
+                                        $this->markPushed((string) $row['sku'], $next);
+                                    } else {
+                                        $stats['push_failed']++;
+                                    }
+                                } else {
+                                    $stats['skipped_unchanged']++;
+                                }
                                 continue;
                             }
                             if (! $dryRun) {
