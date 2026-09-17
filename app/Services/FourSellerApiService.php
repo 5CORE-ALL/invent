@@ -67,6 +67,9 @@ class FourSellerApiService
         $out = [];
         foreach ($refs as $ref) {
             $ref = trim((string) $ref);
+            if (preg_match('/^(?:TT2?|tiktok2?)-(.+)$/i', ltrim($ref, '#'), $m)) {
+                $ref = trim((string) $m[1]);
+            }
             $plain = strtolower(ltrim($ref, '#'));
             if (strlen($ref) < 6) {
                 continue;

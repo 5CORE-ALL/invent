@@ -4,12 +4,16 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\AlibabaOrderMetric;
 use App\Models\AliexpressOrderMetric;
+use App\Models\BestBuyOrderMetric;
 use App\Models\DobaDailyData;
 use App\Models\FaireOrderMetric;
+use App\Models\MacyOrderMetric;
 use App\Models\NeweggOrderMetric;
 use App\Models\PurchasingPowerSale;
 use App\Models\ReverbOrderMetric;
 use App\Models\SheinOrderMetric;
+use App\Models\TopDawgOrderMetric;
+use App\Models\WayfairDailyData;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -27,6 +31,10 @@ class ChannelTrackingApiFallbackService
         'alibaba',
         'faire',
         'shein',
+        'bestbuy',
+        'macy',
+        'topdawg',
+        'wayfair',
     ];
 
     /** Channels that re-sync a batch from their API (tracking lives on local columns). */
@@ -349,6 +357,10 @@ class ChannelTrackingApiFallbackService
             'alibaba' => app(AlibabaOrderDetailService::class),
             'faire' => app(FaireOrderDetailService::class),
             'shein' => app(SheinOrderDetailService::class),
+            'bestbuy' => app(BestBuyOrderDetailService::class),
+            'macy' => app(MacyOrderDetailService::class),
+            'topdawg' => app(TopDawgOrderDetailService::class),
+            'wayfair' => app(WayfairOrderDetailService::class),
             default => null,
         };
     }
@@ -379,6 +391,18 @@ class ChannelTrackingApiFallbackService
                 break;
             case 'shein':
                 $raw = SheinOrderMetric::query()->where('order_id', $orderId)->value('raw_payload');
+                break;
+            case 'bestbuy':
+                $raw = BestBuyOrderMetric::query()->where('order_id', $orderId)->orWhere('channel_order_id', $orderId)->value('raw_payload');
+                break;
+            case 'macy':
+                $raw = MacyOrderMetric::query()->where('order_id', $orderId)->orWhere('channel_order_id', $orderId)->value('raw_payload');
+                break;
+            case 'topdawg':
+                $raw = TopDawgOrderMetric::query()->where('order_id', $orderId)->orWhere('order_number', $orderId)->value('raw_payload');
+                break;
+            case 'wayfair':
+                $raw = WayfairDailyData::query()->where('po_number', $orderId)->value('raw_payload');
                 break;
         }
 
