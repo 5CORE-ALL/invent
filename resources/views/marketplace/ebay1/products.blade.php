@@ -10,6 +10,7 @@
             <strong>Inv SKU Match / Inv SKU Mismatch</strong> = Shopify vs eBay 1 quantity. Shopify qty must not be less than marketplace qty. Match allows marketplace to be short by at most max(3 units, 3% of Shopify). <strong>Linked mismatch SKU</strong> is only the SKUs where marketplace qty is higher than Shopify.
             <strong>Active SKU / Inactive SKU</strong> = actual eBay 1 seller portal status (not inventory match).
             <em>Refresh live</em> warms eBay 1 status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
+            If eBay returns error <strong>518</strong> on ReviseInventoryStatus, Sync Mismatch keeps pushing qty through ReviseFixedPriceItem (separate daily quota). Stop only if that fallback also reports a usage limit — then wait until about midnight Pacific (~12:50 PM IST).
         </p>
 
         @if(!empty($shopifyCatalogSyncedAt))
@@ -367,6 +368,12 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
             totals.failed += data.failed || 0;
             totals.skipped += data.skipped || 0;
             offset = data.offset || offset;
+            if (data.rate_limited) {
+                finish((data.message || 'eBay 1 daily API limit (518) is used.')
+                    + '\nStopped so more ReviseInventoryStatus calls are not burned. Sync Mismatch will keep using ReviseFixedPriceItem after you retry — wait until after midnight Pacific only if that fallback also hits 518.'
+                    + '\nUpdated: ' + totals.updated + ', Failed: ' + totals.failed + ', Skipped: ' + totals.skipped);
+                return;
+            }
             if (data.done) {
                 alert((data.message || 'Done.') + '\nUpdated: ' + totals.updated + ', Failed: ' + totals.failed + ', Skipped: ' + totals.skipped);
                 location.reload();

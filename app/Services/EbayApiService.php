@@ -2621,21 +2621,88 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             $data = json_decode(json_encode($xmlResp), true) ?: [];
             $ack = $data['Ack'] ?? 'Failure';
             $msg = $this->flattenEbayErrors($data);
+            $errors = isset($data['Errors'][0]) ? $data['Errors'] : (isset($data['Errors']) && is_array($data['Errors']) ? [$data['Errors']] : []);
             if ($ack === 'Success' || $ack === 'Warning') {
-                if ($this->ebayErrorLooksLikeNonVariationListing(
-                    isset($data['Errors'][0]) ? $data['Errors'] : (isset($data['Errors']) && is_array($data['Errors']) ? [$data['Errors']] : []),
-                    $msg
-                )) {
-                    return ['success' => false, 'message' => $msg ?: 'Not a multi-SKU listing.', 'data' => $data];
+                if ($this->ebayErrorLooksLikeNonVariationListing($errors, $msg)) {
+                    return $this->reviseItemQuantity($itemId, $quantity);
                 }
 
                 return ['success' => true, 'message' => 'Variation quantity updated.', 'data' => $data];
+            }
+
+            if ($this->ebayErrorLooksLikeNonVariationListing($errors, $msg)
+                || str_contains(strtolower($msg), '21916587')) {
+                return $this->reviseItemQuantity($itemId, $quantity);
             }
 
             return [
                 'success' => false,
                 'ended' => $this->listingLooksEnded($msg),
                 'message' => $msg ?: 'ReviseFixedPriceItem quantity failed.',
+                'data' => $data,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Qty-only item revise when ReviseInventoryStatus is capped (error 518)
+     * or the listing is single-SKU (no VariationSpecifics).
+     *
+     * @return array{success: bool, message: string, data?: array, ended?: bool, raw?: string}
+     */
+    public function reviseItemQuantity(string $itemId, int $quantity): array
+    {
+        $itemId = trim($itemId);
+        if ($itemId === '') {
+            return ['success' => false, 'message' => 'ItemID is required.'];
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            $credentials->addChild('eBayAuthToken', $this->generateBearerToken() ?? '');
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+
+            $item = $xml->addChild('Item');
+            $item->addChild('ItemID', $itemId);
+            $item->addChild('Quantity', (string) max(0, $quantity));
+
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME' => $this->devId,
+                'X-EBAY-API-APP-NAME' => $this->appId,
+                'X-EBAY-API-CERT-NAME' => $this->certId,
+                'X-EBAY-API-CALL-NAME' => 'ReviseFixedPriceItem',
+                'X-EBAY-API-SITEID' => $this->siteId,
+                'Content-Type' => 'text/xml',
+            ];
+
+            $response = Http::timeout(60)
+                ->withHeaders($headers)
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post($this->endpoint);
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            if ($xmlResp === false) {
+                return ['success' => false, 'message' => 'Invalid XML response from eBay.', 'raw' => $body];
+            }
+
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = $data['Ack'] ?? 'Failure';
+            $msg = $this->flattenEbayErrors($data);
+            if ($ack === 'Success' || $ack === 'Warning') {
+                return ['success' => true, 'message' => 'Item quantity updated.', 'data' => $data];
+            }
+
+            return [
+                'success' => false,
+                'ended' => $this->listingLooksEnded($msg),
+                'message' => $msg !== '' ? $msg : 'ReviseFixedPriceItem quantity failed.',
                 'data' => $data,
             ];
         } catch (\Throwable $e) {
