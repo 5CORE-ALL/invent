@@ -4684,7 +4684,21 @@
                         width: 65
                     },
                     {
-                        title: "NROI",
+                        title: "GPFT%",
+                        field: "GPFT%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 50
+                    },
+                    {
+                        title: "NROI%",
                         field: "NROI",
                         hozAlign: "center",
                         // Same formula as Amazon NROI: (PFT$ − Ad Spend$) / LP × 100
@@ -4715,23 +4729,7 @@
                         width: 65
                     },
                     {
-                        title: "GPFT %",
-                        field: "GPFT%",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        },
-                        width: 50
-                    },
-
-
-                    {
-                        title: "NPFT",
+                        title: "NPFT%",
                         field: "PFT %",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
@@ -5045,7 +5043,7 @@
                     },
 
                     {
-                        title: "S GROI",
+                        title: "S GROI%",
                         field: "SGROI",
                         hozAlign: "center",
                         sorter: "number",
@@ -5060,7 +5058,7 @@
                         width: 80
                     },
                     {
-                        title: "S GPFT",
+                        title: "S GPFT%",
                         field: "SGPFT",
                         visible: false,
                         hozAlign: "center",
@@ -5075,7 +5073,7 @@
                         width: 80
                     },
                     {
-                        title: "SNROI",
+                        title: "SNROI%",
                         field: "SROI",
                         hozAlign: "center",
                         headerTooltip: "SNROI from S PRC (gross PFT$ − S PRC×Ads%/100) / LP × 100.",
@@ -5095,7 +5093,7 @@
                         width: 80
                     },
                     {
-                        title: "SNPFT",
+                        title: "SNPFT%",
                         field: "SPFT",
                         visible: false,
                         hozAlign: "center",
