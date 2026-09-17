@@ -3194,7 +3194,7 @@
                     width: 50
                 },
                 {
-                    title: "PFT %",
+                    title: "NPFT%",
                     field: "NPFT%",
                     hozAlign: "center",
                     sorter: "number",
@@ -3435,7 +3435,7 @@
                     }
                 },
                 {
-                    title: "SGROI",
+                    title: "SGROI%",
                     field: "SROI",
                     hozAlign: "center",
                     sorter: "number",
@@ -3449,7 +3449,7 @@
                     width: 50
                 },
                 {
-                    title: "S GPFT",
+                    title: "S GPFT%",
                     field: "SGPFT",
                     hozAlign: "center",
                     sorter: "number",
@@ -3463,7 +3463,7 @@
                     width: 50
                 },
                 {
-                    title: "SNPFT",
+                    title: "SNPFT%",
                     field: "SNPFT",
                     hozAlign: "center",
                     sorter: "number",
@@ -3477,7 +3477,7 @@
                     width: 50
                 },
                 {
-                    title: "SNROI",
+                    title: "SNROI%",
                     field: "SNROI",
                     hozAlign: "center",
                     sorter: "number",
