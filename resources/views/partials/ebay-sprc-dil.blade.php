@@ -154,6 +154,7 @@
             align-items: center;
             justify-content: center;
             gap: 5px;
+            cursor: pointer;
         }
         #ebayDilGroiModal .ebay-dg-rules {
             margin: 0 0 10px;
@@ -230,7 +231,7 @@
             border-radius: 8px;
             background: #fff;
         }
-        #ebayDilGroiModal .ebay-dg-hist-wrap.is-open { display: block; }
+        #ebayDilGroiModal .ebay-dg-hist-wrap.is-open { display: block; margin-top: 10px; }
         #ebayDilGroiModal .ebay-dg-hist-canvas-wrap { height: 220px; }
         #ebay-dil-groi-btn {
             background: #6f42c1;
@@ -248,7 +249,7 @@
 
 @if($ebaySprcDilPart === 'modals' || $ebaySprcDilPart === 'all')
     <div class="modal fade" id="ebayDilGroiModal" tabindex="-1" aria-labelledby="ebayDilGroiModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="ebayDilGroiModalLabel">
@@ -272,15 +273,6 @@
                             <div class="ebay-dg-pie-legend" id="ebay-dg-cvr-legend"></div>
                         </div>
                         @endunless
-                    </div>
-                    <div class="ebay-dg-hist-wrap" id="ebay-dg-hist-wrap">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="small fw-semibold" id="ebay-dg-hist-title">Slab history</span>
-                            <button type="button" class="btn-close" id="ebay-dg-hist-close" aria-label="Close history" style="font-size:10px;"></button>
-                        </div>
-                        <div class="ebay-dg-hist-canvas-wrap">
-                            <canvas id="ebay-dg-hist"></canvas>
-                        </div>
                     </div>
                     <div class="ebay-dg-rules-title">Rules — when each condition applies</div>
                     <ul class="small text-muted ebay-dg-rules">
@@ -452,6 +444,15 @@
                             </thead>
                             <tbody id="ebay-dil-groi-tbody"></tbody>
                         </table>
+                    </div>
+                    <div class="ebay-dg-hist-wrap" id="ebay-dg-hist-wrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold" id="ebay-dg-hist-title">Slab history</span>
+                            <button type="button" class="btn-close" id="ebay-dg-hist-close" aria-label="Close history" style="font-size:10px;"></button>
+                        </div>
+                        <div class="ebay-dg-hist-canvas-wrap">
+                            <canvas id="ebay-dg-hist"></canvas>
+                        </div>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-primary ebay-dg-add-btn mt-2" id="ebay-dil-groi-add-btn">
                         <i class="fas fa-plus me-1"></i> Add slab
@@ -1537,7 +1538,10 @@
             const labels = plot.map(function(r) { return r.label || r.date; });
             const values = plot.map(function(r) { return Number(r[band]) || 0; });
             $('#ebay-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : 'Dil ') + spec.label + ' count · last 30 days');
-            $('#ebay-dg-hist-wrap').addClass('is-open');
+            const $wrap = $('#ebay-dg-hist-wrap').addClass('is-open');
+            if ($wrap.length && $wrap[0].scrollIntoView) {
+                $wrap[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
             ebayDgWithChart(function() {
                 const canvas = document.getElementById('ebay-dg-hist');
                 if (!canvas || typeof Chart === 'undefined') return;
@@ -1643,10 +1647,8 @@
             const drawLocal = function() {
                 ebayDgDrawHist(chart, band, applyToday(ebayDgLocalHistory(storeKey)));
             };
-            if (chart !== 'dil') {
-                drawLocal();
-                return;
-            }
+            drawLocal();
+            if (chart !== 'dil') return;
             $.ajax({
                 url: ebayDgRulesUrl() + '-history',
                 method: 'GET',
@@ -1654,7 +1656,7 @@
             }).done(function(res) {
                 const rows = (res && res.success && Array.isArray(res.data)) ? res.data : ebayDgLocalHistory(storeKey);
                 ebayDgDrawHist(chart, band, applyToday(rows));
-            }).fail(drawLocal);
+            });
         }
         function ebayDgDrawPie(canvasId, chartRefName, slices, counts) {
             const total = slices.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
@@ -1725,6 +1727,7 @@
                         $cell.find('.ebay-dg-count-n').text(r ? (dilCounts[r.key] || 0) : 0);
                         $cell.find('.ebay-dg-hist-dot').remove();
                         if (r) {
+                            $cell.attr('title', r.label + ' daily history — click to open');
                             $cell.append(' ' + ebayDgHistDotHtml('dil', r.key, ebayDgSlabColor(i), r.label));
                         }
                     });
@@ -1746,6 +1749,7 @@
                     $cell.find('.ebay-dg-count-n').text(r ? (dilCounts[r.key] || 0) : 0);
                     $cell.find('.ebay-dg-hist-dot').remove();
                     if (r) {
+                        $cell.attr('title', r.label + ' daily history — click to open');
                         $cell.append(' ' + ebayDgHistDotHtml('dil', r.key, ebayDgSlabColor(i), r.label));
                     }
                 });
@@ -2597,10 +2601,14 @@
             $('#ebayDilGroiModal').off('hidden.bs.modal.ebaydg').on('hidden.bs.modal.ebaydg', function() {
                 destroyEbayDilGroiPies();
             });
-            $(document).off('click.ebaydghist', '.ebay-dg-hist-dot').on('click.ebaydghist', '.ebay-dg-hist-dot', function() {
-                const chart = String($(this).attr('data-chart') || 'dil');
-                const band = String($(this).attr('data-band') || '');
+            $('#ebayDilGroiModal').off('click.ebaydghist').on('click.ebaydghist', '.ebay-dg-hist-dot, #ebay-dil-groi-table .ebay-dg-count', function(e) {
+                const $dot = $(this).hasClass('ebay-dg-hist-dot')
+                    ? $(this)
+                    : $(this).find('.ebay-dg-hist-dot').first();
+                const chart = String($dot.attr('data-chart') || 'dil');
+                const band = String($dot.attr('data-band') || '');
                 if (!band) return;
+                e.preventDefault();
                 ebayDgOpenHist(chart, band);
             });
             $('#ebay-dg-hist-close').off('click.ebaydghist').on('click.ebaydghist', function() {

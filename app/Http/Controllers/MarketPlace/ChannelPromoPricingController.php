@@ -1919,65 +1919,10 @@ class ChannelPromoPricingController extends Controller
             return;
         }
 
-        $invBySkuDate = [];
-        foreach ([EbaySkuDailyData::class, Ebay2SkuDailyData::class] as $modelClass) {
-            if (! class_exists($modelClass)) {
-                continue;
-            }
-            $table = (new $modelClass)->getTable();
-            if (! Schema::hasTable($table)) {
-                continue;
-            }
-            $modelClass::query()
-                ->whereBetween('record_date', [$start->toDateString(), $end->toDateString()])
-                ->select(['id', 'sku', 'record_date', 'daily_data'])
-                ->orderBy('id')
-                ->chunkById(2000, function ($chunk) use (&$invBySkuDate, $skuAllow) {
-                    foreach ($chunk as $record) {
-                        $sku = strtoupper(trim((string) ($record->sku ?? '')));
-                        if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuAllow[$sku])) {
-                            continue;
-                        }
-                        $dateKey = Carbon::parse($record->record_date)->toDateString();
-                        $data = is_array($record->daily_data)
-                            ? $record->daily_data
-                            : (json_decode($record->daily_data ?? '{}', true) ?: []);
-                        $inv = (int) ($data['inv'] ?? 0);
-                        if ($inv <= 0) {
-                            continue;
-                        }
-                        $invBySkuDate[$sku][$dateKey] = $inv;
-                    }
-                });
-        }
-
-        $qtyBySkuDate = [];
-        if (Schema::hasTable('mirakl_daily_data')) {
-            $qtyStart = $start->copy()->subDays(29)->startOfDay();
-            MiraklDailyData::query()
-                ->macys()
-                ->whereNotNull('sku')
-                ->whereBetween('order_created_at', [$qtyStart, $end->copy()->endOfDay()])
-                ->select(['id', 'sku', 'quantity', 'order_created_at'])
-                ->orderBy('id')
-                ->chunkById(2000, function ($chunk) use (&$qtyBySkuDate, $skuAllow) {
-                    foreach ($chunk as $row) {
-                        $sku = strtoupper(trim((string) ($row->sku ?? '')));
-                        if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuAllow[$sku])) {
-                            continue;
-                        }
-                        if (! $row->order_created_at) {
-                            continue;
-                        }
-                        $dateKey = Carbon::parse($row->order_created_at)->timezone('America/Los_Angeles')->toDateString();
-                        $qtyBySkuDate[$sku][$dateKey] = ((int) ($qtyBySkuDate[$sku][$dateKey] ?? 0)) + (int) ($row->quantity ?? 0);
-                    }
-                });
-        }
-
         $liveMcL30 = [];
         $listedSkus = [];
-        if (Schema::hasTable('macy_products')) {
+        $restrictListed = Schema::hasTable('macy_products');
+        if ($restrictListed) {
             $hasPrice = Schema::hasColumn('macy_products', 'price');
             $hasStatus = Schema::hasColumn('macy_products', 'listing_status');
             $cols = ['id', 'sku', 'm_l30'];
@@ -2007,13 +1952,73 @@ class ChannelPromoPricingController extends Controller
                         $liveMcL30[$sku] = (int) ($row->m_l30 ?? 0);
                     }
                 });
+            if ($listedSkus === []) {
+                return;
+            }
+        }
+        $skuFilter = $restrictListed ? $listedSkus : $skuAllow;
+
+        $invBySkuDate = [];
+        foreach ([EbaySkuDailyData::class, Ebay2SkuDailyData::class] as $modelClass) {
+            if (! class_exists($modelClass)) {
+                continue;
+            }
+            $table = (new $modelClass)->getTable();
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+            $modelClass::query()
+                ->whereBetween('record_date', [$start->toDateString(), $end->toDateString()])
+                ->select(['id', 'sku', 'record_date', 'daily_data'])
+                ->orderBy('id')
+                ->chunkById(2000, function ($chunk) use (&$invBySkuDate, $skuFilter) {
+                    foreach ($chunk as $record) {
+                        $sku = strtoupper(trim((string) ($record->sku ?? '')));
+                        if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuFilter[$sku])) {
+                            continue;
+                        }
+                        $dateKey = Carbon::parse($record->record_date)->toDateString();
+                        $data = is_array($record->daily_data)
+                            ? $record->daily_data
+                            : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                        $inv = (int) ($data['inv'] ?? 0);
+                        if ($inv <= 0) {
+                            continue;
+                        }
+                        $invBySkuDate[$sku][$dateKey] = $inv;
+                    }
+                });
+        }
+
+        $qtyBySkuDate = [];
+        if (Schema::hasTable('mirakl_daily_data')) {
+            $qtyStart = $start->copy()->subDays(29)->startOfDay();
+            MiraklDailyData::query()
+                ->macys()
+                ->whereNotNull('sku')
+                ->whereBetween('order_created_at', [$qtyStart, $end->copy()->endOfDay()])
+                ->select(['id', 'sku', 'quantity', 'order_created_at'])
+                ->orderBy('id')
+                ->chunkById(2000, function ($chunk) use (&$qtyBySkuDate, $skuFilter) {
+                    foreach ($chunk as $row) {
+                        $sku = strtoupper(trim((string) ($row->sku ?? '')));
+                        if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuFilter[$sku])) {
+                            continue;
+                        }
+                        if (! $row->order_created_at) {
+                            continue;
+                        }
+                        $dateKey = Carbon::parse($row->order_created_at)->timezone('America/Los_Angeles')->toDateString();
+                        $qtyBySkuDate[$sku][$dateKey] = ((int) ($qtyBySkuDate[$sku][$dateKey] ?? 0)) + (int) ($row->quantity ?? 0);
+                    }
+                });
         }
 
         $shopifyInv = [];
         if (Schema::hasTable((new ShopifySku)->getTable())) {
             foreach (ShopifySku::query()->select('sku', 'inv')->whereNotNull('sku')->get() as $row) {
                 $sku = strtoupper(trim((string) $row->sku));
-                if ($sku === '' || str_contains($sku, 'PARENT')) {
+                if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuFilter[$sku])) {
                     continue;
                 }
                 $shopifyInv[$sku] = (int) ($row->inv ?? 0);
@@ -2021,17 +2026,29 @@ class ChannelPromoPricingController extends Controller
         }
 
         $todayKey = $end->toDateString();
+        $skuKeys = array_keys($skuFilter);
         $windowDates = [];
         for ($d = $start->copy()->subDays(29); $d->lte($end); $d->addDay()) {
             $windowDates[] = $d->toDateString();
         }
+        $dateIndex = array_flip($windowDates);
+        $qtyPrefix = [];
+        foreach ($skuKeys as $sku) {
+            $running = 0;
+            $prefix = [];
+            foreach ($windowDates as $i => $date) {
+                $running += (int) ($qtyBySkuDate[$sku][$date] ?? 0);
+                $prefix[$i] = $running;
+            }
+            $qtyPrefix[$sku] = $prefix;
+        }
 
         foreach (array_keys($out) as $dateKey) {
-            $windowStart = Carbon::parse($dateKey, 'America/Los_Angeles')->subDays(29)->toDateString();
-            foreach (array_keys($skuAllow) as $sku) {
-                if (Schema::hasTable('macy_products') && ! isset($listedSkus[$sku])) {
-                    continue;
-                }
+            $idx = $dateIndex[$dateKey] ?? null;
+            if ($idx === null) {
+                continue;
+            }
+            foreach ($skuKeys as $sku) {
                 $inv = $invBySkuDate[$sku][$dateKey] ?? null;
                 if ($dateKey === $todayKey && ($shopifyInv[$sku] ?? 0) > 0) {
                     $inv = $shopifyInv[$sku];
@@ -2048,13 +2065,7 @@ class ChannelPromoPricingController extends Controller
                 if ($dateKey === $todayKey && array_key_exists($sku, $liveMcL30)) {
                     $mcL30 = $liveMcL30[$sku];
                 } else {
-                    $mcL30 = 0;
-                    foreach ($windowDates as $qtyDate) {
-                        if ($qtyDate < $windowStart || $qtyDate > $dateKey) {
-                            continue;
-                        }
-                        $mcL30 += (int) ($qtyBySkuDate[$sku][$qtyDate] ?? 0);
-                    }
+                    $mcL30 = $qtyPrefix[$sku][$idx] - ($idx >= 30 ? $qtyPrefix[$sku][$idx - 30] : 0);
                 }
 
                 $dil = ($mcL30 / $inv) * 100;
