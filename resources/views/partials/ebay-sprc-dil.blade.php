@@ -436,6 +436,16 @@
                             Dil = OV L30 ÷ INV. 0 Sold is Temu L30 = 0.
                             @elseif($ebaySprcDilChannel === 'doba')
                             Dil = OV L30 ÷ INV. 0 Sold is Doba L30 = 0.
+                            @elseif(in_array($ebaySprcDilChannel, ['mercari_wship', 'mercari_woship'], true))
+                            Dil = OV L30 ÷ INV. 0 Sold is L30 = 0.
+                            @elseif($ebaySprcDilChannel === 'pls')
+                            Dil = OV L30 ÷ INV. 0 Sold is P L30 = 0.
+                            @elseif($ebaySprcDilChannel === 'shein')
+                            Dil = OV L30 ÷ INV. Every INV > 0 SKU Dil-matches, including AL30 = 0.
+                            @elseif($ebaySprcDilChannel === 'bestbuy')
+                            Dil = OV L30 ÷ INV. 0 Sold is BB L30 = 0. If S PRC < A Price, use A Price, then cap at LMP.
+                            @elseif($ebaySprcDilChannel === 'newegg')
+                            Dil = OV L30 ÷ INV. 0 Sold is L30 = 0.
                             @endif
                         </li>
                     </ul>

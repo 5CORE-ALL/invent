@@ -3901,7 +3901,7 @@
                         width: 55
                     },
                     {
-                        title: "PFT%",
+                        title: "NPFT%",
                         field: "PFT %",
                         hozAlign: "center",
                         sorter: "number",
@@ -4033,7 +4033,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (TT L30 = 0, INV > 0) uses the lowest Target GROI. CVR overlay (editable) adjusts Target GROI; Count updates live. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (TT L30 = 0, INV > 0) uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof ttIsParentRow === 'function' && ttIsParentRow(rowData)) return '';
@@ -4059,7 +4059,7 @@
                         editable: false,
                         sorter: "number",
                         headerTooltip: @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
-                            "S PRC = Dil Target NROI back-solve: (LP × (1 + Target%/100) + Ship) / margin. 0 Sold (TT L30 = 0) uses the min slab (no CVR −10). Sold rows use Dil slab + CVR overlay. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP."
+                            "S PRC = Dil Target NROI back-solve: (LP × (1 + Target%/100) + Ship) / margin. Dil = 0 uses the 0–0 slab. 0 Sold (TT L30 = 0) uses the min slab (no CVR −10). Sold rows use Dil slab + CVR overlay. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP."
                         @else
                             "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price."
                         @endif,
@@ -4163,7 +4163,7 @@
                         }
                     },
                     {
-                        title: "SGROI",
+                        title: "SGROI%",
                         field: "SROI",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {

@@ -2339,7 +2339,7 @@
                         }
                     },
                     {
-                        title: 'GROI', field: 'groi', sorter: 'number', headerSort: true, hozAlign: 'right',
+                        title: 'GROI%', field: 'groi', sorter: 'number', headerSort: true, hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2353,7 +2353,7 @@
                         }
                     },
                     {
-                        title: 'GPFT', field: 'gpft', sorter: 'number', headerSort: true, hozAlign: 'right',
+                        title: 'GPFT%', field: 'gpft', sorter: 'number', headerSort: true, hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const v = parseFloat(cell.getValue());
@@ -2411,7 +2411,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: 'S PRC from Dil → Target GROI% slabs (same as Amazon). 0 Sold (AL30 = 0, INV > 0) uses the lowest Target GROI. CVR overlay (editable) adjusts Target GROI; Count updates live. Formula: (LP × (1 + GROI%/100)) / margin (Ship not used).',
+                        headerTooltip: 'S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (AL30 = 0, INV > 0) uses the lowest Target NROI. CVR overlay (editable) adjusts Target NROI; Count updates live. Formula: (LP × (1 + NROI%/100)) / margin (Ship not used).',
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof frIsParentRow === 'function' && frIsParentRow(rowData)) return '';
@@ -2432,7 +2432,7 @@
                     {
                         title: 'Sprice', field: 'sprice', sorter: 'number', headerSort: true, hozAlign: 'right',
                         editable: false,
-                        headerTooltip: 'Not editable. S PRC from Sprc Dil when Dil matches (or 0 Sold min GROI). Otherwise Std × (1 − CVR%/100). Ship not used. No LMP cap. Blue triangle = S PRC ≠ Price.',
+                        headerTooltip: 'Not editable. S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. Dil match or 0 Sold min NROI. Otherwise Std × (1 − CVR%/100). Ship not used. No LMP cap. Blue triangle = S PRC ≠ Price.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -2451,7 +2451,7 @@
                         }
                     },
                     {
-                        title: 'SGROI', field: 'sroi', sorter: 'number', headerSort: true, hozAlign: 'right',
+                        title: 'SGROI%', field: 'sroi', sorter: 'number', headerSort: true, hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2468,7 +2468,7 @@
                         }
                     },
                     {
-                        title: 'SGPFT', field: 'sgpft', sorter: 'number', headerSort: true, hozAlign: 'right',
+                        title: 'SGPFT%', field: 'sgpft', sorter: 'number', headerSort: true, hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';

@@ -121,6 +121,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    @include('partials.lazy-chart-js')
 @endsection
 
 @section('content')
@@ -1660,7 +1661,7 @@
                         },
                     },
                     {
-                        title: "GROI", field: "roi", hozAlign: "right", sorter: "number",
+                        title: "GROI%", field: "roi", hozAlign: "right", sorter: "number",
                         formatter: function(cell) {
                             const m = neLivePriceMetrics(cell.getRow().getData());
                             const n = m.groi;
@@ -1674,7 +1675,7 @@
                         }
                     },
                     {
-                        title: "GPFT", field: "pft_pct", hozAlign: "right", sorter: "number",
+                        title: "GPFT%", field: "pft_pct", hozAlign: "right", sorter: "number",
                         formatter: function(cell) {
                             const m = neLivePriceMetrics(cell.getRow().getData());
                             const n = m.gpft;
@@ -1702,7 +1703,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (L30 = 0, INV > 0) uses the lowest Target NROI. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (typeof chPromoIsParentRow === 'function' && chPromoIsParentRow(rowData)) return '';
@@ -1726,7 +1727,7 @@
                             return (neShownSprice(ad) || 0) - (neShownSprice(bd) || 0);
                         },
                         editable: false,
-                        headerTooltip: "Not editable. S PRC from Sprc Dil. Dil-matching Target GROI when L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Below A Price is raised to Amz. Blue triangle = S PRC ≠ Price. Red triangle = S PRC raised to Amz or capped at LMP.",
+                        headerTooltip: "Not editable. S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. Dil-matching Target NROI when L30 > 0; 0 Sold uses the lowest Target NROI. Below A Price is raised to Amz. Blue triangle = S PRC ≠ Price. Red triangle = S PRC raised to Amz or capped at LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             let value = nePriceBeforeAmzFloor(d);
@@ -1773,7 +1774,7 @@
                         }
                     },
                     {
-                        title: "SGROI", field: "sroi", hozAlign: "right", headerSort: true,
+                        title: "SGROI%", field: "sroi", hozAlign: "right", headerSort: true,
                         accessor: function(value, data) {
                             return neSpriceMetrics(data).sroi;
                         },
@@ -1795,7 +1796,7 @@
                         }
                     },
                     {
-                        title: "SGPFT", field: "spft", hozAlign: "right", headerSort: true,
+                        title: "SGPFT%", field: "spft", hozAlign: "right", headerSort: true,
                         accessor: function(value, data) {
                             return neSpriceMetrics(data).spft;
                         },

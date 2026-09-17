@@ -165,6 +165,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    @include('partials.lazy-chart-js')
 @endsection
 
 @section('content')
@@ -713,7 +714,7 @@
                         }
                     },
                     {
-                        title: "PFT",
+                        title: "GPFT%",
                         field: "PFT",
                         hozAlign: "center",
                         width: 70,
@@ -725,7 +726,7 @@
                         }
                     },
                     {
-                        title: "ROI",
+                        title: "GROI%",
                         field: "ROI",
                         hozAlign: "center",
                         width: 70,
@@ -737,12 +738,42 @@
                         }
                     },
                     {
+                        title: "Sprc Dil",
+                        field: "SPRC_DIL",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const val = function(row) {
+                                return (typeof ebaySprcDilForRow === 'function')
+                                    ? (ebaySprcDilForRow(row) || 0)
+                                    : 0;
+                            };
+                            return val(aRow.getData()) - val(bRow.getData());
+                        },
+                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. 0 Sold (L30 = 0) uses the lowest Target NROI. Dil outside the table uses the nearest slab. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                            const meta = ebayDilGroiMetaForRow(rowData);
+                            if (!meta || !(meta.sprc > 0)) return '';
+                            const tip = (typeof ebayDilGroiTipText === 'function')
+                                ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold L30 → min Target NROI' })
+                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                    + ' → ' + meta.label
+                                    + ' → NROI ' + meta.groi + '%'
+                                    + ' → $' + meta.sprc.toFixed(2));
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                                + meta.sprc.toFixed(2) + '</span>';
+                        },
+                        width: 78
+                    },
+                    {
                         title: "S PRC",
                         field: "SPRICE",
                         hozAlign: "center",
                         width: 92,
                         sorter: "number",
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. 0 Sold (L30 = 0) uses the lowest Target NROI. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             let value = (typeof chPromoTableSprice === 'function')
@@ -783,7 +814,7 @@
                         }
                     },
                     {
-                        title: "SROI",
+                        title: "SGROI%",
                         field: "SROI",
                         hozAlign: "center",
                         width: 70,

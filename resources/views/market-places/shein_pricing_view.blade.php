@@ -1907,7 +1907,7 @@
                         },
                     },
                     {
-                        title: "GROI",
+                        title: "GROI%",
                         field: "groi",
                         sorter: "number",
                         hozAlign: "right",
@@ -1919,7 +1919,7 @@
                         }
                     },
                     {
-                        title: "GPFT",
+                        title: "GPFT%",
                         field: "gpft",
                         sorter: "number",
                         hozAlign: "right",
@@ -2014,7 +2014,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "Suggested price from Dil → Target GROI% slabs, same as /amazon-tabulator-view and /ebay-tabulator-view. Every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Dil outside the table uses the nearest slab. CVR overlay is level-only (CVR < 7% −10 GROI; CVR > 10% +10) and only when the SKU has views. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                        headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Every INV > 0 SKU Dil-matches, including 0 Sold; Dil outside the table uses the nearest slab. CVR overlay is level-only (CVR < 7% −10; CVR > 10% +10) and only when the SKU has views. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData && rowData.is_parent) return '';
@@ -2038,7 +2038,7 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI for every INV > 0 SKU (including 0 Sold); Dil outside the table uses the nearest slab. CVR overlay adjusts Target GROI when the SKU has views. Same as Amazon/eBay: Dil below LMP stays Dil; Dil at/above LMP becomes LMP only when SGROI at LMP ≥ 20%. Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. Every INV > 0 SKU Dil-matches, including 0 Sold; Dil outside the table uses the nearest slab. CVR overlay adjusts Target NROI when the SKU has views. Dil below LMP stays Dil; Dil at/above LMP becomes LMP only when SGROI at LMP ≥ 20%. Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2070,7 +2070,7 @@
                         }
                     },
                     {
-                        title: "SGPFT",
+                        title: "SGPFT%",
                         field: "sgpft",
                         sorter: function(a, b, aRow, bRow) {
                             const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sgpft;
