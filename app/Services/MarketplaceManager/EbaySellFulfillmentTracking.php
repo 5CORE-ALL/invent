@@ -2,6 +2,9 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\Ebay1OrderMetric;
+use App\Models\Ebay2OrderMetric;
+use App\Models\Ebay3OrderMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\ShopifyStoreSelector;
 use Illuminate\Support\Facades\Http;
@@ -439,6 +442,77 @@ class EbaySellFulfillmentTracking
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * FULFILLED eBay rows whose raw_payload never got shippingFulfillments
+     * (order list sync does not store tracking). Pull Sell Fulfillment and persist.
+     *
+     * @return array{success: bool, message: string, checked: int, filled: int, skipped: int}
+     */
+    public function fillMissingSofTracking(int $limit = 200): array
+    {
+        $limit = max(1, min(400, $limit));
+        $checked = 0;
+        $filled = 0;
+        $skipped = 0;
+        $labels = app(VeeqoShopifyFulfillmentService::class);
+
+        foreach ([
+            'ebay1' => [Ebay1OrderMetric::class, 'ebay1_order_metrics'],
+            'ebay2' => [Ebay2OrderMetric::class, 'ebay2_order_metrics'],
+            'ebay3' => [Ebay3OrderMetric::class, 'ebay3_order_metrics'],
+        ] as $slug => [$class, $table]) {
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+            $orders = $class::query()
+                ->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['FULFILLED'])
+                ->where('order_date', '>=', now()->subDays(30))
+                ->orderByDesc('order_date')
+                ->orderByDesc('id')
+                ->limit(max(80, $limit))
+                ->get();
+
+            foreach ($orders as $order) {
+                if ($checked >= $limit) {
+                    break 2;
+                }
+                $raw = is_array($order->raw_payload ?? null) ? $order->raw_payload : [];
+                $existing = self::trackingFromEbayPayload($raw);
+                if ($existing !== null && trim((string) ($existing['tracking'] ?? '')) !== '') {
+                    continue;
+                }
+                $ebayOrderId = trim((string) ($order->order_id ?? ''));
+                if ($ebayOrderId === '' || ! preg_match('/^\d{2}-\d{5}-\d{5}$/', $ebayOrderId)) {
+                    continue;
+                }
+                $checked++;
+                $hit = $this->readTrackingFromEbay($slug, $ebayOrderId);
+                $tn = trim((string) ($hit['tracking'] ?? ''));
+                if ($tn === '') {
+                    $skipped++;
+                    continue;
+                }
+                $labels->persistTrackingOntoMarketplaceOrder(
+                    $slug,
+                    (int) $order->id,
+                    (string) ($order->shopify_order_id ?? ''),
+                    $tn,
+                    (string) ($hit['carrier'] ?? 'eBay')
+                );
+                $filled++;
+                usleep(120000);
+            }
+        }
+
+        return [
+            'success' => true,
+            'checked' => $checked,
+            'filled' => $filled,
+            'skipped' => $skipped,
+            'message' => "eBay SOF tracking fill: checked {$checked}, filled {$filled}, still missing {$skipped}.",
+        ];
     }
 
     /**
