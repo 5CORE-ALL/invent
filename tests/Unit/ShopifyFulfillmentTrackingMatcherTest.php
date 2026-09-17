@@ -78,4 +78,36 @@ class ShopifyFulfillmentTrackingMatcherTest extends TestCase
         ]));
         $this->assertTrue($matcher->trackingNumbersEqual('1Z 999 AA1 01 2345 6784', '1z999aa10123456784'));
     }
+
+    public function test_temu_po_ids_are_accepted_on_temu2_orders(): void
+    {
+        $matcher = new ShopifyFulfillmentTrackingMatcher;
+
+        $this->assertSame('', $matcher->slugFromOrderId('PO-2115257707232237'));
+        $this->assertTrue($matcher->slugsCompatible('temu2', 'temu'));
+        $this->assertTrue($matcher->slugsCompatible('temu', 'temu2'));
+        $this->assertTrue($matcher->slugsCompatible('', 'aliexpress'));
+        $this->assertFalse($matcher->slugsCompatible('amazon', 'aliexpress'));
+        $this->assertSame(
+            'PO-2115257707232237',
+            $matcher->matchFullOrderId(
+                ['tags' => 'temu2-PO-2115257707232237', 'note' => ''],
+                ['PO-2115257707232237']
+            )
+        );
+        $this->assertSame(
+            '82109001234613550',
+            $matcher->matchFullOrderId(
+                ['tags' => 'aliexpress-82109001234613550', 'note' => ''],
+                ['82109001234613550']
+            )
+        );
+        $this->assertSame(
+            'AE-ORDER-NUM-99',
+            $matcher->matchFullOrderId(
+                ['tags' => 'aliexpress-AE-ORDER-NUM-99', 'note' => ''],
+                ['82109001234613550', 'AE-ORDER-NUM-99']
+            )
+        );
+    }
 }

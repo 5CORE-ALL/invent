@@ -90,7 +90,7 @@ class ShopifyFulfillmentTrackingMatcher
             }
 
             $primarySlug = $this->primaryMarketplaceSlug($order);
-            if ($expectedSlug !== '' && $primarySlug !== '' && $primarySlug !== $expectedSlug) {
+            if ($expectedSlug !== '' && $primarySlug !== '' && ! $this->slugsCompatible($primarySlug, $expectedSlug)) {
                 $empty['error'] = 'Shopify order belongs to '.$primarySlug
                     .' — will not attach that tracking to '.$expectedSlug.'.';
                 Log::info($logContext.': marketplace slug mismatch — tracking skipped', [
@@ -559,6 +559,23 @@ class ShopifyFulfillmentTrackingMatcher
         return '';
     }
 
+    /**
+     * Temu / Temu 2 share PO-211… ids. A Temu2 Shopify tag must still
+     * accept a PO- ref classified as Temu (and the reverse).
+     */
+    public function slugsCompatible(string $left, string $right): bool
+    {
+        $left = strtolower(trim($left));
+        $right = strtolower(trim($right));
+        if ($left === '' || $right === '' || $left === $right) {
+            return true;
+        }
+
+        $temu = ['temu', 'temu2'];
+
+        return in_array($left, $temu, true) && in_array($right, $temu, true);
+    }
+
     public function slugFromOrderId(string $orderId): string
     {
         $id = trim($orderId);
@@ -572,7 +589,8 @@ class ShopifyFulfillmentTrackingMatcher
             return 'shein';
         }
         if (preg_match('/^PO-\d/i', $id)) {
-            return 'temu';
+            // Temu and Temu 2 share PO- numbers — never pin the family here.
+            return '';
         }
         if (preg_match('/^BBY\d{2}-/i', $id)) {
             return 'bestbuy';

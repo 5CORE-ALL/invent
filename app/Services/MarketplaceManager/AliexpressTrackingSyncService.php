@@ -74,11 +74,19 @@ class AliexpressTrackingSyncService
             ];
         }
 
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
+        $extraIds = array_values(array_filter([
+            trim((string) ($line->order_number ?? '')),
+        ], static fn ($id) => $id !== '' && $id !== $orderId));
+
+        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku, $extraIds);
         if (empty($shopifyFulfillment['tracking'])) {
             $copied = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder('aliexpress', (int) $line->id);
-            if (! empty($copied['success'])) {
-                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku);
+            $copiedTn = trim((string) ($copied['tracking'] ?? ''));
+            if ($copiedTn !== '') {
+                $shopifyFulfillment['tracking'] = $copiedTn;
+                $shopifyFulfillment['carrier'] = $copied['carrier'] ?? ($shopifyFulfillment['carrier'] ?? null);
+            } elseif (! empty($copied['success'])) {
+                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, $sku, $extraIds);
             }
         }
         if (empty($shopifyFulfillment['tracking'])) {
@@ -231,8 +239,8 @@ class AliexpressTrackingSyncService
                         'ORDER_CANCEL',
                     ]);
             })
-            ->orderBy('order_date')
-            ->orderBy('id')
+            ->orderByDesc('order_date')
+            ->orderByDesc('id')
             ->limit($limit * 12)
             ->get(['id', 'order_id', 'sku', 'shopify_order_id', 'status']);
 
@@ -290,16 +298,17 @@ class AliexpressTrackingSyncService
     }
 
     /**
+     * @param  list<string>  $extraOrderIds
      * @return array{tracking: ?string, carrier: ?string, tracking_url: ?string, error?: ?string}
      */
-    protected function fetchShopifyTracking(string $shopifyOrderId, string $marketplaceOrderId = '', string $sku = ''): array
+    protected function fetchShopifyTracking(string $shopifyOrderId, string $marketplaceOrderId = '', string $sku = '', array $extraOrderIds = []): array
     {
         return app(ShopifyFulfillmentTrackingMatcher::class)->match(
             $this->shopifyConfig(),
             $shopifyOrderId,
             $marketplaceOrderId,
             $sku,
-            [],
+            $extraOrderIds,
             'AliexpressTrackingSyncService'
         );
     }
