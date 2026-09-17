@@ -9,12 +9,165 @@ use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class AmazonSalesController extends Controller
 {
     /** Inclusive calendar days ending yesterday (Pacific), same for badge + grid API + Channel Master */
     public const DAILY_SALES_WINDOW_DAYS = 30;
+
+    /**
+     * Per-line PFT / COGS — same math /amazon/daily-sales getData uses on each order row.
+     *
+     * @return array{unit_price: float, t_weight: float, ship_cost: float, cogs: float, pft_each: float, pft_each_pct: float, pft: float, roi: float, sale_amount: float}
+     */
+    public static function lineFinancials(float $qty, float $lineRevenue, float $lp, float $ship, float $weightAct): array
+    {
+        if ($qty <= 0) {
+            return [
+                'unit_price' => 0.0,
+                't_weight' => 0.0,
+                'ship_cost' => 0.0,
+                'cogs' => 0.0,
+                'pft_each' => 0.0,
+                'pft_each_pct' => 0.0,
+                'pft' => 0.0,
+                'roi' => 0.0,
+                'sale_amount' => 0.0,
+            ];
+        }
+
+        $unitPrice = $lineRevenue / $qty;
+        $tWeight = $weightAct * $qty;
+        $shipCost = ($qty == 1.0 || $tWeight >= 20)
+            ? $ship
+            : ($ship / max($qty, 1.0));
+        $cogs = $lp * $qty;
+        $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
+        $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0.0;
+        $pft = $pftEach * $qty;
+        $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0.0;
+
+        return [
+            'unit_price' => $unitPrice,
+            't_weight' => $tWeight,
+            'ship_cost' => $shipCost,
+            'cogs' => $cogs,
+            'pft_each' => $pftEach,
+            'pft_each_pct' => $pftEachPct,
+            'pft' => $pft,
+            'roi' => $roi,
+            'sale_amount' => $lineRevenue,
+        ];
+    }
+
+    /**
+     * L30 PFT / COGS / GPFT% / GROI% from the same order lines /amazon/daily-sales
+     * sums in its summary badges (sold unit price, not today's list price).
+     *
+     * @return array{qty: int, line_sales: float, pft: float, cogs: float, gpft: float, groi: float}
+     */
+    public static function l30OrdersFinancials(): array
+    {
+        $empty = [
+            'qty' => 0,
+            'line_sales' => 0.0,
+            'pft' => 0.0,
+            'cogs' => 0.0,
+            'gpft' => 0.0,
+            'groi' => 0.0,
+        ];
+
+        try {
+            if (! Schema::hasTable('amazon_orders') || ! Schema::hasTable('amazon_order_items')) {
+                return $empty;
+            }
+
+            [$startWindow, $endDate] = AmazonOrder::dailySalesL30Window(self::DAILY_SALES_WINDOW_DAYS);
+            $lineRevExpr = AmazonOrder::lineRevenueSelectSql('i');
+
+            $orderRows = AmazonOrder::constrainOrderDate(
+                DB::table('amazon_orders as o')
+                    ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                    ->where(function ($q) {
+                        $q->whereNull('o.status')
+                            ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                    }),
+                $startWindow,
+                $endDate
+            )
+                ->select([
+                    'i.sku',
+                    'i.quantity',
+                    DB::raw("({$lineRevExpr}) as line_revenue"),
+                ])
+                ->get();
+
+            if ($orderRows->isEmpty()) {
+                return $empty;
+            }
+
+            $skus = $orderRows->pluck('sku')->filter()->unique()->values()->all();
+            $productMasters = $skus !== []
+                ? ProductMaster::whereIn('sku', $skus)->select(['sku', 'Values'])->get()->keyBy('sku')
+                : collect();
+
+            $qty = 0;
+            $lineSales = 0.0;
+            $pft = 0.0;
+            $cogs = 0.0;
+
+            foreach ($orderRows as $row) {
+                $sku = trim((string) ($row->sku ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+                $lineQty = (float) ($row->quantity ?? 0);
+                if ($lineQty == 0.0) {
+                    continue;
+                }
+
+                $pm = $productMasters[$row->sku] ?? $productMasters[$sku] ?? null;
+                $lp = 0.0;
+                $ship = 0.0;
+                $weightAct = 0.0;
+                if ($pm) {
+                    $values = is_array($pm->Values)
+                        ? $pm->Values
+                        : json_decode((string) $pm->Values, true);
+                    $lp = floatval($values['lp'] ?? 0);
+                    $ship = floatval($values['ship'] ?? 0);
+                    $weightAct = floatval($values['wt_act'] ?? 0);
+                }
+
+                $fin = self::lineFinancials(
+                    $lineQty,
+                    (float) ($row->line_revenue ?? 0),
+                    $lp,
+                    $ship,
+                    $weightAct
+                );
+
+                $qty += (int) $lineQty;
+                // Round per line the same way getData() does before the sales-page JS sums.
+                $lineSales += round($fin['sale_amount'], 2);
+                $pft += round($fin['pft'], 2);
+                $cogs += round($fin['cogs'], 2);
+            }
+
+            return [
+                'qty' => $qty,
+                'line_sales' => $lineSales,
+                'pft' => $pft,
+                'cogs' => $cogs,
+                'gpft' => $lineSales > 0 ? round(($pft / $lineSales) * 100, 2) : 0.0,
+                'groi' => $cogs > 0 ? round(($pft / $cogs) * 100, 2) : 0.0,
+            ];
+        } catch (\Throwable $e) {
+            return $empty;
+        }
+    }
 
     public function index()
     {
@@ -159,20 +312,7 @@ class AmazonSalesController extends Controller
             $qty = floatval($item->quantity);
     
             $totalPrice = floatval($item->line_revenue ?? ($qty * floatval($item->price)));
-            $unitPrice = $qty > 0 ? $totalPrice / $qty : 0;
-    
-            $tWeight = $weightAct * $qty;
-    
-            $shipCost = ($qty == 1 || $tWeight >= 20)
-                ? $ship
-                : ($ship / max($qty, 1));
-    
-            $cogs = $lp * $qty;
-    
-            $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
-            $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-            $pft = $pftEach * $qty;
-            $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0;
+            $fin = self::lineFinancials($qty, $totalPrice, $lp, $ship, $weightAct);
     
             $data[] = [
                 'order_id' => $item->order_id,
@@ -180,8 +320,8 @@ class AmazonSalesController extends Controller
                 'sku' => $item->sku,
                 'title' => $item->title,
                 'quantity' => $qty,
-                'sale_amount' => round($totalPrice, 2),
-                'price' => round($unitPrice, 2),
+                'sale_amount' => round($fin['sale_amount'], 2),
+                'price' => round($fin['unit_price'], 2),
                 'total_amount' => $item->total_amount,
                 'order_total_amount' => round((float) ($item->order_total_amount ?? 0), 2),
                 'currency' => $item->currency,
@@ -190,13 +330,13 @@ class AmazonSalesController extends Controller
                 'period' => 'L'.(int) self::DAILY_SALES_WINDOW_DAYS,
                 'lp' => round($lp, 2),
                 'ship' => round($ship, 2),
-                't_weight' => round($tWeight, 2),
-                'ship_cost' => round($shipCost, 2),
-                'cogs' => round($cogs, 2),
-                'pft_each' => round($pftEach, 2),
-                'pft_each_pct' => round($pftEachPct, 2),
-                'pft' => round($pft, 2),
-                'roi' => round($roi, 2),
+                't_weight' => round($fin['t_weight'], 2),
+                'ship_cost' => round($fin['ship_cost'], 2),
+                'cogs' => round($fin['cogs'], 2),
+                'pft_each' => round($fin['pft_each'], 2),
+                'pft_each_pct' => round($fin['pft_each_pct'], 2),
+                'pft' => round($fin['pft'], 2),
+                'roi' => round($fin['roi'], 2),
             ];
         }
     

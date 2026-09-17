@@ -7,11 +7,17 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 
     <style>
-        html, body {
+        html {
             max-width: 100%;
             overflow-x: clip;
+            overflow-y: auto;
         }
+        /* Theme sets body { overflow-x: hidden } after this block, which makes
+           overflow-y compute to auto and turns <body> into a non-scrolling
+           scrollport — position:sticky on the table header then never pins. */
         body {
+            max-width: 100%;
+            overflow: visible !important;
             font-family: 'Poppins', sans-serif;
             background-color: #f5f7fa !important;
         }
@@ -85,19 +91,20 @@
             display: none !important;
         }
 
-        /* Contain width so the page never grows sideways; extra columns scroll in the table */
+        /* Contain width so the page never grows sideways; extra columns scroll in the table.
+           Do not set overflow-x on .content-page / card ancestors — a non-visible overflow
+           on one axis makes the other compute to auto/hidden, which creates a scrollport
+           as tall as the content and stops position:sticky from pinning the header. */
         .content-page,
         .content-page .content,
-        .content-page .container-fluid {
-            max-width: 100%;
-            overflow-x: clip;
-        }
+        .content-page .container-fluid,
         .content-page .row,
         .content-page .row > [class*="col-"],
         .content-page .card.shadow-sm,
         .content-page .card.shadow-sm > .card-body {
             max-width: 100%;
             min-width: 0;
+            overflow: visible;
         }
         #marketplace-table-wrapper {
             height: auto;
@@ -110,7 +117,7 @@
             height: auto;
             width: 100% !important;
             max-width: 100%;
-            overflow: visible;
+            overflow: visible !important;
         }
         #marketplace-table.tabulator .tabulator-tableholder {
             height: auto !important;
@@ -126,8 +133,8 @@
             background-color: #fff;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-col.tabulator-frozen {
-            background-color: #e6e6e6;
-            z-index: 27;
+            background-color: #dbeafe !important;
+            z-index: 27 !important;
         }
         #marketplace-table.tabulator .tabulator-row.tabulator-row-even .tabulator-cell.tabulator-frozen {
             background-color: #fff;
@@ -138,18 +145,21 @@
         #marketplace-table.tabulator .tabulator-row.tabulator-calcs .tabulator-cell.tabulator-frozen {
             background-color: #f8f9fa;
         }
+        /* Beat global .tabulator-header { top: 0 !important } so the header docks
+           under the sticky topbar instead of sliding underneath it. */
         #marketplace-table.tabulator .tabulator-header {
-            position: sticky;
-            top: var(--tz-topbar-height, 70px);
-            z-index: 24;
+            position: sticky !important;
+            top: var(--tz-topbar-height, 70px) !important;
+            z-index: 24 !important;
+            background-color: #dbeafe !important;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
         }
-        #marketplace-table.tabulator .tabulator-header .tabulator-frozen {
-            z-index: 26;
-        }
-
+        #marketplace-table.tabulator .tabulator-header .tabulator-header-contents,
         #marketplace-table.tabulator .tabulator-header .tabulator-col {
-            background-color: #e6e6e6;
+            background-color: #dbeafe !important;
+        }
+        #marketplace-table.tabulator .tabulator-header .tabulator-frozen {
+            z-index: 26 !important;
         }
 
         /* Vertical column headers */

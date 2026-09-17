@@ -1,6 +1,7 @@
 {{--
-    User incentives — Task Summary column + floating bag for logged-in user.
-    Editable by president@5core.com only. Managers can view tagged juniors.
+    User incentives — Task Summary INC column + $ icon beside the login name.
+    Table columns: Target, Incentive, Condition, Additional Condition.
+    Editable by president@5core.com only. Everyone else can view their own row.
 
     GET  /tasks/user-incentives
     POST /tasks/user-incentives/sync
@@ -10,16 +11,71 @@
     .incentive-bag-btn {
         border: none;
         background: transparent;
-        color: #b45309;
+        color: #15803d;
         padding: 0.15rem 0.35rem;
         cursor: pointer;
         border-radius: 6px;
         transition: background 0.15s ease, transform 0.15s ease;
         line-height: 1;
+        font-weight: 800;
+        font-size: 1.15rem;
     }
     .incentive-bag-btn:hover {
-        background: rgba(180, 83, 9, 0.12);
+        background: rgba(21, 128, 61, 0.12);
         transform: scale(1.08);
+    }
+    .incentive-dollar-icon {
+        font-weight: 800;
+        font-size: 1.2rem;
+        color: #15803d;
+        line-height: 1;
+    }
+    .topbar-incentive-dollar-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        margin-right: 0.15rem;
+        border: none;
+        border-radius: 50%;
+        background: #15803d;
+        color: #fff;
+        font-weight: 800;
+        font-size: 1.05rem;
+        line-height: 1;
+        cursor: pointer;
+        box-shadow: 0 0 0 2px rgba(21, 128, 61, 0.15);
+    }
+    .topbar-incentive-dollar-btn:hover {
+        background: #166534;
+        color: #fff;
+    }
+    .ts-inc-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.86rem;
+    }
+    .ts-inc-table th,
+    .ts-inc-table td {
+        border: 1px solid #fde68a;
+        padding: 0.55rem 0.6rem;
+        vertical-align: top;
+    }
+    .ts-inc-table thead th {
+        background: #fffbeb;
+        color: #92400e;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+    .ts-inc-table .ts-inc-amt {
+        font-weight: 800;
+        color: #15803d;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
     }
     .incentive-bag-count {
         margin-left: 0.15rem;
@@ -130,7 +186,7 @@
         class="d-none"
         title="My incentives"
         aria-label="Open my incentives">
-    <i class="ri-hand-coin-fill" aria-hidden="true"></i>
+    <span aria-hidden="true">$</span>
     <span class="ts-inc-float-count d-none" id="ts-incentive-float-count"></span>
 </button>
 
@@ -141,7 +197,7 @@
                 <div class="d-flex align-items-start w-100">
                     <div class="flex-grow-1 min-w-0">
                         <h5 class="modal-title mb-1" id="taskSummaryIncentivesModalLabel">
-                            <i class="ri-hand-coin-fill me-2" aria-hidden="true"></i>
+                            <span class="me-2" aria-hidden="true">$</span>
                             <span id="ts-inc-modal-user">Incentives</span>
                         </h5>
                         <div class="small opacity-90" id="ts-inc-modal-designation"></div>
@@ -296,34 +352,35 @@
         }
         if (empty) empty.classList.add('d-none');
         wrap.classList.remove('d-none');
-        wrap.innerHTML = active.map(function (item) {
-            var amt = item.amount_display
-                ? ('<div class="ts-inc-item-amount">' + escapeHtml(item.amount_display) + '</div>')
-                : '';
-            var body = item.body
-                ? ('<div class="text-muted small mt-1">' + escapeHtml(item.body).replace(/\n/g, '<br>') + '</div>')
-                : '';
-            return '<div class="ts-inc-item">'
-                + '<div class="d-flex justify-content-between gap-2 align-items-start">'
-                + '<div class="ts-inc-item-title">' + escapeHtml(item.title) + '</div>'
-                + amt
-                + '</div>' + body + '</div>';
-        }).join('');
+        wrap.innerHTML = '<div class="table-responsive"><table class="ts-inc-table">'
+            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>Additional Condition</th></tr></thead><tbody>'
+            + active.map(function (item) {
+                return '<tr>'
+                    + '<td>' + escapeHtml(item.target || item.title || '—') + '</td>'
+                    + '<td class="ts-inc-amt">' + escapeHtml(item.amount_display || '—') + '</td>'
+                    + '<td>' + escapeHtml(item.condition || item.body || '—').replace(/\n/g, '<br>') + '</td>'
+                    + '<td>' + escapeHtml(item.additional_condition || '—').replace(/\n/g, '<br>') + '</td>'
+                    + '</tr>';
+            }).join('')
+            + '</tbody></table></div>';
     }
 
     function renderEditRows() {
         var wrap = el('ts-inc-edit-rows');
         if (!wrap) return;
-        wrap.innerHTML = state.editItems.map(function (item, idx) {
-            return '<div class="ts-inc-edit-row" data-edit-idx="' + idx + '">'
-                + '<div class="row g-2">'
-                + '<div class="col-md-5"><input type="text" class="form-control form-control-sm ts-inc-field-title" placeholder="Title" value="' + escapeHtml(item.title || '') + '" maxlength="200"></div>'
-                + '<div class="col-md-3"><input type="number" class="form-control form-control-sm ts-inc-field-amount" placeholder="Amount ₹" value="' + (item.amount != null ? escapeHtml(item.amount) : '') + '" min="0" step="1"></div>'
-                + '<div class="col-md-2"><div class="form-check mt-1"><input class="form-check-input ts-inc-field-active" type="checkbox" ' + (item.is_active !== false ? 'checked' : '') + ' id="ts-inc-active-' + idx + '"><label class="form-check-label small" for="ts-inc-active-' + idx + '">Active</label></div></div>'
-                + '<div class="col-md-2 text-end"><button type="button" class="btn btn-sm btn-outline-danger ts-inc-remove-row" data-edit-idx="' + idx + '"><i class="ri-delete-bin-line"></i></button></div>'
-                + '<div class="col-12"><textarea class="form-control form-control-sm ts-inc-field-body" rows="2" placeholder="Details (optional)" maxlength="5000">' + escapeHtml(item.body || '') + '</textarea></div>'
-                + '</div></div>';
-        }).join('');
+        wrap.innerHTML = '<div class="table-responsive"><table class="ts-inc-table">'
+            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>Additional Condition</th><th></th></tr></thead><tbody>'
+            + state.editItems.map(function (item, idx) {
+                return '<tr class="ts-inc-edit-row" data-edit-idx="' + idx + '">'
+                    + '<td><input type="text" class="form-control form-control-sm ts-inc-field-title" placeholder="Target" value="' + escapeHtml(item.title || item.target || '') + '" maxlength="200"></td>'
+                    + '<td><input type="number" class="form-control form-control-sm ts-inc-field-amount" placeholder="$" value="' + (item.amount != null ? escapeHtml(item.amount) : '') + '" min="0" step="1"></td>'
+                    + '<td><textarea class="form-control form-control-sm ts-inc-field-body" rows="2" placeholder="Condition" maxlength="5000">' + escapeHtml(item.body || item.condition || '') + '</textarea></td>'
+                    + '<td><textarea class="form-control form-control-sm ts-inc-field-extra" rows="2" placeholder="Additional condition" maxlength="5000">' + escapeHtml(item.additional_condition || '') + '</textarea>'
+                    + '<div class="form-check mt-1"><input class="form-check-input ts-inc-field-active" type="checkbox" ' + (item.is_active !== false ? 'checked' : '') + ' id="ts-inc-active-' + idx + '"><label class="form-check-label small" for="ts-inc-active-' + idx + '">Active</label></div></td>'
+                    + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger ts-inc-remove-row" data-edit-idx="' + idx + '"><i class="ri-delete-bin-line"></i></button></td>'
+                    + '</tr>';
+            }).join('')
+            + '</tbody></table></div>';
     }
 
     function collectEditItems() {
@@ -332,6 +389,7 @@
         rows.forEach(function (row, idx) {
             var titleEl = row.querySelector('.ts-inc-field-title');
             var bodyEl = row.querySelector('.ts-inc-field-body');
+            var extraEl = row.querySelector('.ts-inc-field-extra');
             var amountEl = row.querySelector('.ts-inc-field-amount');
             var activeEl = row.querySelector('.ts-inc-field-active');
             var title = (titleEl && titleEl.value || '').trim();
@@ -341,6 +399,7 @@
                 id: src.id || null,
                 title: title,
                 body: (bodyEl && bodyEl.value || '').trim() || null,
+                additional_condition: (extraEl && extraEl.value || '').trim() || null,
                 amount: (amountEl && amountEl.value !== '') ? parseFloat(amountEl.value) : null,
                 sort_order: idx,
                 is_active: !!(activeEl && activeEl.checked)
@@ -447,7 +506,7 @@
             return;
         }
 
-        if (t.closest('#ts-incentive-float-btn')) {
+        if (t.closest('#ts-incentive-float-btn') || t.closest('#ts-incentive-header-btn')) {
             e.preventDefault();
             openModal(cfg.viewerId, cfg.viewerName, '');
             return;
@@ -456,7 +515,7 @@
         if (t.closest('#ts-inc-add-row')) {
             e.preventDefault();
             pullEditFromDom();
-            state.editItems.push({ title: '', body: '', amount: null, is_active: true, sort_order: state.editItems.length });
+            state.editItems.push({ title: '', body: '', additional_condition: '', amount: null, is_active: true, sort_order: state.editItems.length });
             renderEditRows();
             return;
         }
@@ -492,10 +551,7 @@
             if (!data || data.success === false) return;
             var n = (data.items || []).filter(function (i) { return i.is_active !== false; }).length;
             syncFloatCount(n);
-            el('ts-incentive-float-btn').classList.remove('d-none');
-        }).catch(function () {
-            el('ts-incentive-float-btn').classList.remove('d-none');
-        });
+        }).catch(function () {});
     }
 })();
 </script>

@@ -100,18 +100,24 @@
         cursor: pointer;
         font-size: 0.95rem;
     }
+    .uk-picker-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
     .uk-picker-input-wrap {
         display: flex;
         align-items: center;
         gap: 0.45rem;
+        flex: 1 1 180px;
+        min-width: 0;
         border: 1px solid #cbd5e1;
-        border-radius: 8px;
+        border-radius: 999px;
         background: #fff;
-        padding: 0.35rem 0.55rem;
+        padding: 0.4rem 0.7rem;
         transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
-    .uk-picker-input-wrap:focus-within,
-    .uk-picker.is-open .uk-picker-input-wrap {
+    .uk-picker-input-wrap:focus-within {
         border-color: #14b8a6;
         box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.15);
     }
@@ -120,7 +126,7 @@
         font-size: 1rem;
         flex-shrink: 0;
     }
-    #ts-uk-picker-search {
+    .uk-picker-search {
         border: none;
         outline: none;
         box-shadow: none;
@@ -329,19 +335,32 @@
                         <div class="uk-picker" id="ts-uk-picker">
                             <div class="uk-picker-chips" id="ts-uk-picker-chips" aria-live="polite"></div>
                             <div class="uk-picker-control">
-                                <div class="uk-picker-input-wrap" id="ts-uk-picker-anchor">
-                                    <i class="ri-search-line" aria-hidden="true"></i>
-                                    <input type="text"
-                                           id="ts-uk-picker-search"
-                                           class="form-control form-control-sm border-0 shadow-none p-0"
-                                           placeholder="Search page badges…"
-                                           autocomplete="off"
-                                           aria-controls="ts-uk-picker-list"
-                                           aria-expanded="false"
-                                           aria-autocomplete="list" />
-                                    <button type="button" class="uk-picker-toggle" id="ts-uk-picker-toggle" aria-label="Show badge list">
-                                        <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
-                                    </button>
+                                <div class="uk-picker-filters" id="ts-uk-picker-filters">
+                                    <div class="uk-picker-input-wrap" id="ts-uk-picker-page-wrap">
+                                        <i class="ri-pages-line" aria-hidden="true"></i>
+                                        <input type="text"
+                                               id="ts-uk-picker-page-search"
+                                               class="uk-picker-search form-control form-control-sm border-0 shadow-none p-0"
+                                               placeholder="Search by page…"
+                                               autocomplete="off"
+                                               aria-controls="ts-uk-picker-list"
+                                               aria-expanded="false"
+                                               aria-autocomplete="list" />
+                                    </div>
+                                    <div class="uk-picker-input-wrap" id="ts-uk-picker-badge-wrap">
+                                        <i class="ri-award-line" aria-hidden="true"></i>
+                                        <input type="text"
+                                               id="ts-uk-picker-badge-search"
+                                               class="uk-picker-search form-control form-control-sm border-0 shadow-none p-0"
+                                               placeholder="Search by badge…"
+                                               autocomplete="off"
+                                               aria-controls="ts-uk-picker-list"
+                                               aria-expanded="false"
+                                               aria-autocomplete="list" />
+                                        <button type="button" class="uk-picker-toggle" id="ts-uk-picker-toggle" aria-label="Show badge list">
+                                            <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="uk-picker-dropdown d-none" id="ts-uk-picker-dropdown">
                                     <div id="ts-uk-picker-list" role="listbox" aria-multiselectable="true"></div>

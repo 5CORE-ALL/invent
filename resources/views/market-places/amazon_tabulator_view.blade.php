@@ -828,13 +828,13 @@
                         <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" data-live-value="{{ (float) ($amazonSalesL30 ?? 0) }}" data-format="money" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="30-day sales from real Amz orders (same source as /amazon/daily-sales). Click badge or dot for trend."><span class="summary-trend-dot none" data-metric="total_sales" title="Rolling history"></span>Sales: ${{ number_format((float) ($amazonSalesL30 ?? 0)) }}</span>
                         
                         <!-- Percentage Metrics -->
-                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" data-live-value="0" data-format="pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend"><span class="summary-trend-dot none" data-metric="gpft_pct" title="Rolling history"></span>GPFT: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" data-live-value="{{ (float) ($ordersL30Gpft ?? 0) }}" data-format="pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="L30 GPFT% = Σ PFT ÷ Σ line sales from real Amz orders — same as /amazon/daily-sales GPFT %. Click for trend."><span class="summary-trend-dot none" data-metric="gpft_pct" title="Rolling history"></span>GPFT: {{ (int) round((float) ($ordersL30Gpft ?? 0)) }}%</span>
 
                         <!-- Ads% (from /all-marketplace-master — Amz channel) -->
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="tcos_pct" data-live-value="{{ $amazonAdsPercent !== null ? round((float) $amazonAdsPercent, 1) : 0 }}" data-format="pct" data-invert="1" id="amazon-ads-badge" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Amz Ads% (Total Ad Spend / L30 Sales). Lower is better. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="tcos_pct" title="Rolling history"></span>Ads: {{ $amazonAdsPercent !== null ? round($amazonAdsPercent, 1) . '%' : 'N/A' }}</span>
-                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" data-live-value="0" data-format="pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend"><span class="summary-trend-dot none" data-metric="npft_pct" title="Rolling history"></span>NPFT: 0%</span>
-                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="groi_pct" data-live-value="0" data-format="pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View GROI% rolling history"><span class="summary-trend-dot none" data-metric="groi_pct" title="Rolling history"></span>GROI: 0%</span>
-                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" data-live-value="0" data-format="pct" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View NROI% rolling history — Net ROI = (Total PFT − Ad Spend) / COGS"><span class="summary-trend-dot none" data-metric="nroi_pct" title="Rolling history"></span>NROI: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" data-live-value="{{ (float) (($ordersL30Gpft ?? 0) - (float) ($amazonAdsPercent ?? 0)) }}" data-format="pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="NPFT% = GPFT% − Ads%. GPFT from real Amz orders (same as /amazon/daily-sales). Click for trend."><span class="summary-trend-dot none" data-metric="npft_pct" title="Rolling history"></span>NPFT: {{ (int) round((float) ($ordersL30Gpft ?? 0) - (float) ($amazonAdsPercent ?? 0)) }}%</span>
+                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="groi_pct" data-live-value="{{ (float) ($ordersL30Groi ?? 0) }}" data-format="pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="L30 GROI% = Σ PFT ÷ Σ COGS from real Amz orders — same as /amazon/daily-sales ROI %. Click for trend."><span class="summary-trend-dot none" data-metric="groi_pct" title="Rolling history"></span>GROI: {{ (int) round((float) ($ordersL30Groi ?? 0)) }}%</span>
+                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" data-live-value="{{ (float) ($ordersL30Nroi ?? 0) }}" data-format="pct" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="L30 NROI% = (Σ PFT − Ads% × Sales) ÷ Σ COGS. PFT/COGS from real Amz orders (same as /amazon/daily-sales). Click for trend."><span class="summary-trend-dot none" data-metric="nroi_pct" title="Rolling history"></span>NROI: {{ (int) round((float) ($ordersL30Nroi ?? 0)) }}%</span>
                         
                         <!-- Amz Metrics -->
                         <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;" aria-hidden="true"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Price: $0.00</span>
@@ -1352,6 +1352,12 @@
         // Amazon channel Ads% (TACOS) — same value as the Ads badge /all-marketplace-master.
         // Used for PFT% = GPFT% − Ads%, SPFT = SGPFT − Ads%, and net SROI (NROI-badge formula).
         const AMAZON_CHANNEL_ADS_PCT = {{ $amazonAdsPercent !== null ? (float) $amazonAdsPercent : 0 }};
+        // GPFT / GROI / NROI / PFT$ / COGS from real L30 orders — same source as /amazon/daily-sales.
+        const ORDERS_L30_GPFT = {{ (float) ($ordersL30Gpft ?? 0) }};
+        const ORDERS_L30_GROI = {{ (float) ($ordersL30Groi ?? 0) }};
+        const ORDERS_L30_NROI = {{ (float) ($ordersL30Nroi ?? 0) }};
+        const ORDERS_L30_PFT = {{ (float) ($ordersL30Pft ?? 0) }};
+        const ORDERS_L30_COGS = {{ (float) ($ordersL30Cogs ?? 0) }};
 
         /**
          * Net SROI — same shape as the NROI badge:
@@ -5382,9 +5388,6 @@
                 // Use "active" data for campaign/badge counts so Campaign count matches "Showing X of Y rows"
                 const allData = table.getData("all");
                 const data = table.getData("active");
-                let totalPftAmt = 0;
-                let totalSalesAmt = 0;
-                let totalLpAmt = 0;
                 let totalSkuCount = 0;
                 let totalSoldCount = 0;
                 let zeroSoldCount = 0;
@@ -5397,9 +5400,6 @@
                 data.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
                         totalSkuCount++;
-                        totalPftAmt += parseFloat(row['Total_pft'] || 0);
-                        totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
-                        totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['A_L30'] || 0);
                         totalViews += parseFloat(row['Sess30'] || 0);
 
                         if (amazonPriceGtLandedLmp(row)) {
@@ -5489,24 +5489,21 @@
                 // Ads% (from /all-marketplace-master, Amazon channel).
                 const amazonAdsPercent = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
 
-                // GROI% = (Total PFT / Total COGS) * 100
-                const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
+                // GROI / GPFT / NROI / NPFT — real L30 orders, same as /amazon/daily-sales.
+                // Not the sheet Total_pft / (LP × A_L30) path (today's list price). Not filter-dependent.
+                const groiPercent = ORDERS_L30_GROI;
                 setAmzSummaryBadge($('#groi-percent-badge'), 'GROI: ' + Math.round(groiPercent) + '%', Math.round(groiPercent));
 
-                // NROI% = (Total PFT − Ad Spend) / COGS × 100
-                // Ad Spend estimated from channel Ads% × sales (same Ads% basis as the Ads badge).
-                const adSpendEst = (amazonAdsPercent / 100) * totalSalesAmt;
-                const nroiPercent = totalLpAmt > 0 ? ((totalPftAmt - adSpendEst) / totalLpAmt) * 100 : 0;
+                const nroiPercent = ORDERS_L30_NROI;
                 setAmzSummaryBadge($('#nroi-percent-badge'), 'NROI: ' + Math.round(nroiPercent) + '%', Math.round(nroiPercent));
                 
-                setAmzSummaryBadge($('#total-pft-amt-badge'), 'PFT: $' + Math.round(totalPftAmt), Math.round(totalPftAmt));
+                setAmzSummaryBadge($('#total-pft-amt-badge'), 'PFT: $' + Math.round(ORDERS_L30_PFT), Math.round(ORDERS_L30_PFT));
                 // Sales badge = real-orders 30-day sales (matches /amazon/daily-sales). Not filter-dependent.
                 setAmzSummaryBadge($('#total-sales-amt-badge'), 'Sales: $' + Math.round(SERVER_AMZ_SALES_L30).toLocaleString('en-US'), Math.round(SERVER_AMZ_SALES_L30));
                 setAmzSummaryBadge($('#total-qty-sold-badge'), 'Qty: ' + Math.round(SERVER_AMZ_QTY_L30).toLocaleString('en-US'), SERVER_AMZ_QTY_L30);
                 setAmzSummaryBadge($('#amazon-ads-badge'), 'Ads: ' + (isFinite(amazonAdsPercent) ? (Math.round(amazonAdsPercent * 10) / 10) + '%' : 'N/A'), amazonAdsPercent);
                 
-                // AVG GPFT% = (Total_pft / Total_Sales) * 100 (Gross Profit % - before ads)
-                const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
+                const avgGpft = ORDERS_L30_GPFT;
                 setAmzSummaryBadge($('#avg-gpft-badge'), 'GPFT: ' + Math.round(avgGpft) + '%', Math.round(avgGpft));
                 
                 // AVG PFT% (Net Profit %) = GPFT% − Ads%  (Ads% from /all-marketplace-master, Amazon channel)
@@ -5528,7 +5525,7 @@
                         missing_fba_count: 0,
                         missing_nonfba_count: missingAmazonCount,
                         prc_gt_lmp_count: prcGtLmpCount,
-                        total_pft: Math.round(totalPftAmt),
+                        total_pft: Math.round(ORDERS_L30_PFT),
                         total_sales: Math.round(SERVER_AMZ_SALES_L30),
                         gpft_pct: Math.round(avgGpft),
                         npft_pct: Math.round(avgPft),

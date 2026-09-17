@@ -61,6 +61,7 @@
 
     @include('components.ai-chat-widget')
     @include('partials.clear-browser-cache-on-login')
+    @include('partials.user-incentives')
     @auth
         @if(!empty($agent_update_available))
             @include('partials.attendance-agent-update-modal')

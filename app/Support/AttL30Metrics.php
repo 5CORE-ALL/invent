@@ -64,11 +64,19 @@ class AttL30Metrics
     }
 
     /**
-     * Same bands as DAR: >90% pink, 80–90% green, otherwise red.
+     * Colour band for the Task Summary ATT cell.
+     * >90% green text, 75–90% yellow bg / black text, otherwise red text.
      */
     public static function band(int $percent): string
     {
-        return DarL30Metrics::band($percent);
+        if ($percent > 90) {
+            return 'high';
+        }
+        if ($percent >= 75) {
+            return 'mid';
+        }
+
+        return 'low';
     }
 
     /**

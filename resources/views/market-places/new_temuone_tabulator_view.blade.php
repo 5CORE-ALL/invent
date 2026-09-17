@@ -1031,13 +1031,15 @@
     }
 
     /**
-     * Discounted Price = Sprc Dil (OV L30 Dil → Target GROI).
-     * If Dil is missing or over the last slab (no match), Amazon-style fallback:
-     * STD (T Price). Cap compute then takes min(eBay, Amazon, LMP) when cheaper.
-     * Saved S PRC from the server is reused until Dil / CVR / pricing inputs change.
+     * Discounted Price = saved Dil SNROI S PRC after clear-then-save, else live Dil.
+     * Cap compute then takes min(eBay, Amazon, LMP) when cheaper.
      */
     function temuDiscountedPrice(row) {
         if (!row) return 0;
+        if (ntoRowUsesSaved(row)) {
+            const saved = ntoSavedSprice(row);
+            if (saved > 0) return saved;
+        }
         if (typeof ebaySprcDilForRow === 'function') {
             const sprcDil = Number(ebaySprcDilForRow(row));
             if (sprcDil > 0) return +sprcDil.toFixed(2);
@@ -1172,6 +1174,108 @@
     window.temuSBaseFromSprice = temuSBaseFromSprice;
     window.temuSRPriceFromSprice = temuSRPriceFromSprice;
 
+    function ntoCsrf() {
+        return (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+    }
+    function chPromoSku(d) {
+        return String((d && (d['(Child) sku'] || d.sku)) || '').trim();
+    }
+    function chPromoGetSprice(d) {
+        return ntoSavedSprice(d);
+    }
+    function chPromoSpricePatch(price) {
+        const n = +Number(price || 0).toFixed(2);
+        return {
+            SPRICE: n,
+            sprice: n,
+            has_custom_sprice: n > 0,
+            nto_use_saved: n > 0
+        };
+    }
+    function chPromoWipeSpriceRow(row) {
+        if (!row || typeof row.update !== 'function') return;
+        row.update({
+            SPRICE: 0,
+            sprice: 0,
+            sprc_dil: 0,
+            s_base_price: null,
+            s_r_price: null,
+            has_custom_sprice: false,
+            nto_use_saved: false,
+            sgpft_percent: null,
+            sroi_percent: null,
+            sgroi_percent: null,
+            snpft_percent: null,
+            snroi_percent: null
+        });
+    }
+    function chPromoFinalSpriceToSave(d, price) {
+        const cap = temuSpriceCapCompute(d, price, { use_passed_as_discounted: true });
+        return (cap && cap.sprice > 0) ? cap.sprice : (+Number(price || 0).toFixed(2) || 0);
+    }
+    function chPromoEachTableRow(fn) {
+        if (!table || typeof table.getRows !== 'function') return;
+        (table.getRows('all') || []).forEach(function(row) {
+            fn(row, row.getData() || {});
+        });
+    }
+    async function ntoSaveSpriceChunks(updates) {
+        const size = 200;
+        for (let i = 0; i < updates.length; i += size) {
+            const chunk = updates.slice(i, i + size);
+            await $.ajax({
+                url: '{{ route("newtemuone.save.sprice") }}',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': ntoCsrf(),
+                    'Accept': 'application/json'
+                },
+                data: { updates: chunk, _token: ntoCsrf() }
+            });
+        }
+    }
+    /**
+     * Dil Save: wipe stored S PRC (save 0), then reload so PHP back-solves
+     * SNROI and writes the new NTO_SPRICE — same clear-then-save as Amazon.
+     */
+    async function chPromoClearThenApplyAllRules(opts) {
+        opts = opts || {};
+        // Save button only (persist+push). Slab edits / Dil GET must not wipe the catalog.
+        if (opts.persist !== true || opts.push !== true) return 0;
+        const items = [];
+        chPromoEachTableRow(function(row, d) {
+            if (!chPromoIsChildRow(d) || !(chPromoInv(d) > 0)) return;
+            const sku = chPromoSku(d);
+            if (!sku) return;
+            items.push({ row: row, d: d, sku: sku });
+        });
+        if (!items.length) return 0;
+        const blocked = table && typeof table.blockRedraw === 'function';
+        if (blocked) table.blockRedraw();
+        try {
+            items.forEach(function(item) { chPromoWipeSpriceRow(item.row); });
+        } finally {
+            if (blocked) table.restoreRedraw();
+        }
+        temuClearCapMemo();
+        await ntoSaveSpriceChunks(items.map(function(i) { return { sku: i.sku, sprice: 0 }; }));
+        if (table && typeof table.replaceData === 'function') {
+            await table.replaceData();
+        }
+        if (typeof updateSummary === 'function') {
+            try { updateSummary(); } catch (e) { /* ignore */ }
+        }
+        return items.length;
+    }
+    window.chPromoSku = chPromoSku;
+    window.chPromoGetSprice = chPromoGetSprice;
+    window.chPromoSpricePatch = chPromoSpricePatch;
+    window.chPromoWipeSpriceRow = chPromoWipeSpriceRow;
+    window.chPromoFinalSpriceToSave = chPromoFinalSpriceToSave;
+    window.chPromoEachTableRow = chPromoEachTableRow;
+    window.chPromoUsesClearThenApply = function() { return true; };
+    window.chPromoClearThenApplyAllRules = chPromoClearThenApplyAllRules;
+
     const TEMU_MARGIN_FALLBACK = {{ (float) $temuMargin }};
 
     /** Take-home margin from marketplace_percentages "Temu" (passed per row). */
@@ -1289,24 +1393,8 @@
         return (snpft / sprice) * 100;
     }
 
-    /** Dil + CVR Target NROI when S PRC is the Dil price (not eBay / Amazon / LMP capped). */
-    function temuSnroiFromRule(row) {
-        if (typeof ebayDilGroiTargetGroi !== 'function') return null;
-        const rule = ebayDilGroiTargetGroi(row);
-        if (rule == null || !isFinite(rule)) return null;
-        const cap = typeof temuSpriceCapResult === 'function' ? temuSpriceCapResult(row) : null;
-        if (cap && ((cap.labels && cap.labels.length) || cap.lmpAlert)) return null;
-        const meta = typeof ebayDilGroiMetaForRow === 'function' ? ebayDilGroiMetaForRow(row) : null;
-        const sprice = temuDisplayedSprice(row);
-        if (meta && meta.sprc > 0 && sprice > 0
-            && Math.round(sprice * 100) !== Math.round(Number(meta.sprc) * 100)) {
-            return null;
-        }
-        return rule;
-    }
+    /** Live SNROI at the visible S PRC — same shape as Amazon / NROI: SNPFT ÷ LP. */
     function temuSnroiPercent(row) {
-        const fromRule = temuSnroiFromRule(row);
-        if (fromRule != null) return fromRule;
         const snpft = temuSnpftDollars(row);
         const lp = parseFloat(row && row.lp) || 0;
         if (snpft == null || !(lp > 0)) return null;
@@ -3398,22 +3486,15 @@
                     hozAlign: 'center',
                     width: 70,
                     sorter: 'number',
-                    headerTooltip: 'SNROI% = Dil + CVR Target NROI. S PRC is back-solved so this matches the slab (same as eBay / Amazon). If S PRC was capped to eBay / Amazon / LMP, it shows live SNPFT ÷ LP instead.',
+                    headerTooltip: 'SNROI% = live SNPFT ÷ LP at the visible S PRC. Dil + CVR back-solves S PRC so this equals Target NROI (same as Amazon). Ads% lowers it vs SGROI.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSnroiPercent(row);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const fromRule = temuSnroiFromRule(row);
-                        let tip;
-                        if (fromRule != null && typeof ebayDilGroiTipText === 'function') {
-                            const meta = ebayDilGroiMetaForRow(row);
-                            tip = ebayDilGroiTipText(meta) || ('Target NROI ' + fromRule + '%');
-                        } else {
-                            const snpft = temuSnpftDollars(row);
-                            tip = 'SNPFT $' + (snpft != null ? snpft.toFixed(2) : '—')
-                                + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
-                                + ' (capped S PRC)';
-                        }
+                        const snpft = temuSnpftDollars(row);
+                        const tip = 'SNPFT $' + (snpft != null ? snpft.toFixed(2) : '—')
+                            + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
+                            + ' (Ads ' + temuAdsPercentForNet().toFixed(2) + '%)';
                         return temuPercentCell(value, 'roi', tip);
                     }
                 },
@@ -3449,18 +3530,6 @@
             applyFilters();
             window._ntoReloadPushQueued = false;
             setTimeout(function() { ntoTryQueuePushOnReload(); }, 800);
-        });
-
-        $(document).on('ajaxComplete.ntoDilPersist', function(e, xhr, settings) {
-            const url = String((settings && settings.url) || '');
-            if (url.indexOf('/channel-promo-pricing/temu/dil-groi') === -1) return;
-            const method = String((settings && (settings.type || settings.method)) || 'GET').toUpperCase();
-            if (method !== 'POST') return;
-            setTimeout(function() {
-                if (!table || typeof table.replaceData !== 'function') return;
-                temuClearCapMemo();
-                table.replaceData();
-            }, 400);
         });
 
         initNtoReloadPushUi();

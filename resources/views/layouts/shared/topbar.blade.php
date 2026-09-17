@@ -113,6 +113,25 @@
                 transform: translateY(-1px);
             }
             .topbar-dar-btn i { font-size: 0.9rem; }
+            .topbar-incentive-dollar-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 32px;
+                height: 32px;
+                border: none;
+                border-radius: 50%;
+                background: #15803d;
+                color: #fff;
+                font-weight: 800;
+                font-size: 1.05rem;
+                line-height: 1;
+                cursor: pointer;
+            }
+            .topbar-incentive-dollar-btn:hover {
+                background: #166534;
+                color: #fff;
+            }
             @media (max-width: 575.98px) {
                 .topbar-dar-btn__label { display: none; }
                 .topbar-dar-btn { padding: 0.4rem 0.55rem; }
@@ -232,6 +251,15 @@
                 </div>
             </li>
 
+            @auth
+            <li class="d-flex align-items-center">
+                <button type="button"
+                        id="ts-incentive-header-btn"
+                        class="topbar-incentive-dollar-btn"
+                        title="My incentives"
+                        aria-label="Open my incentives">$</button>
+            </li>
+            @endauth
             <li class="dropdown">
                 <a class="nav-link dropdown-toggle arrow-none nav-user" data-bs-toggle="dropdown" href="#"
                     role="button" aria-haspopup="false" aria-expanded="false">
@@ -239,7 +267,7 @@
                         <!-- <img src="/images/users/avatar-1.jpg" alt="user-image" width="32" class="rounded-circle"> -->
                     </span>
                     <span class="d-lg-block d-none">
-                        <h5 class="my-0 fw-normal">5Core <i
+                        <h5 class="my-0 fw-normal">{{ auth()->user()->name ?? '5Core' }} <i
                                 class="ri-arrow-down-s-line d-none d-sm-inline-block align-middle"></i></h5>
                     </span>
                 </a>
