@@ -2498,6 +2498,11 @@
             return ((grossPft - adSpend) / lp) * 100;
         }
 
+        /** NROI% on current Amazon price — same formula as SNROI / NROI badge */
+        function amazonComputeNroi(rowData) {
+            return amazonComputeNroiAtSp(rowData && rowData.price, rowData);
+        }
+
         function amazonModalNroiColoredHtml(fieldVal) {
             if (window.MetricPctColors) {
                 const html = MetricPctColors.htmlFor('nroi', fieldVal, { decimals: 0, empty: '' });
@@ -4585,7 +4590,26 @@
                     },
 
                     {
-                        title: "PFT %",
+                        title: "NROI",
+                        field: "NROI",
+                        hozAlign: "center",
+                        headerTooltip: "NROI% = (gross PFT$ − ad spend$) / LP × 100. Same formula as the NROI badge / SNROI, using current Amazon price.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aNet = amazonComputeNroi(aRow.getData());
+                            const bNet = amazonComputeNroi(bRow.getData());
+                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
+                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
+                        },
+                        formatter: function(cell) {
+                            const percent = amazonComputeNroi(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '';
+                            const _st = (window.MetricPctColors && MetricPctColors.styleFor('nroi', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 65
+                    },
+                    {
+                        title: "NPFT",
                         field: "PFT%",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
@@ -5558,8 +5582,8 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|push_prc|cvr_discount|review_discount|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
-                    /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|push_prc|cvr_discount|review_discount|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';
                 }
