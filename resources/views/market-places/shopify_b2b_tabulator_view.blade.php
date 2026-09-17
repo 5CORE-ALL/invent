@@ -815,6 +815,8 @@
         const price = parseFloat(data && data.Price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
+    window.shopifyB2bHasBlueTriangle = shopifyB2bHasBlueTriangle;
+    window.shopifyB2bDisplayedSprice = shopifyB2bDisplayedSprice;
     function syncShopifyB2bTriangleBadgeState() {
         $('#shopifyb2b-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

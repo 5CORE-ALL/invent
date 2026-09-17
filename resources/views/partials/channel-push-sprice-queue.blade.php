@@ -618,10 +618,11 @@
             function postChannelPushSpriceItems(items, opts) {
                 opts = opts || {};
                 if (!items || !items.length) return $.Deferred().resolve(null).promise();
+                const progressTotal = Number(opts.progressTotal) > 0 ? Number(opts.progressTotal) : items.length;
                 setChannelPushSpriceProgress({
                     active: true,
-                    done: 0,
-                    total: items.length,
+                    done: Number(opts.progressDone) || 0,
+                    total: progressTotal,
                     ok: 0,
                     fail: 0,
                     pct: 0,
@@ -648,7 +649,7 @@
                         setChannelPushSpriceProgress({
                             active: !!resp.active,
                             done: Number(resp.done_count) || 0,
-                            total: Number(resp.total) || items.length,
+                            total: Number(resp.total) || progressTotal,
                             ok: Number(resp.ok_count) || 0,
                             fail: Number(resp.fail_count) || 0,
                             pct: Number(resp.pct) || 0,
@@ -675,17 +676,22 @@
                 chPushSpriceReplacePending = false;
                 chPushSpriceFlushing = true;
                 let i = 0;
+                // Catalog replace must POST the full set first. A 200-SKU first
+                // chunk was showing 200 while the blue badge was 849.
+                const chunkSize = replacePending ? items.length : CH_PUSH_SPRICE_CHUNK;
                 function nextChunk() {
                     if (i >= items.length) {
                         chPushSpriceFlushing = false;
                         return;
                     }
                     const start = i;
-                    const chunk = items.slice(i, i + CH_PUSH_SPRICE_CHUNK);
+                    const chunk = items.slice(i, i + chunkSize);
                     i += chunk.length;
                     postChannelPushSpriceItems(chunk, {
                         exclusive: exclusive && !replacePending,
                         replacePending: replacePending && start === 0,
+                        progressTotal: items.length,
+                        progressDone: start,
                     }).always(nextChunk);
                 }
                 nextChunk();
@@ -1041,6 +1047,15 @@
                     if (nrlVal === 'REQ' && String(d.nr_req || '') !== 'REQ') return true;
                     if (nrlVal === 'NR' && String(d.nr_req || '') !== 'NR') return true;
                 }
+                if (CH_PUSH_SPRICE_CHANNEL === 'shopify_b2b') {
+                    if (typeof global.shopifyB2bHasBlueTriangle === 'function') {
+                        if (!global.shopifyB2bHasBlueTriangle(d)) return true;
+                    } else {
+                        const shown = chPushSpriceSavedFromRow(d);
+                        const live = chPushSpriceLiveFromRow(d);
+                        if (!(shown > 0) || !(live > 0) || chPushSpriceNearlyEqual(shown, live)) return true;
+                    }
+                }
                 if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return true;
                 const flag = String(d.live_inactive || d.listing_status || '').toLowerCase();
                 if (['inactive', 'offline', 'ended', 'disabled'].indexOf(flag) !== -1) return true;
@@ -1075,6 +1090,8 @@
                     if (shown > 0) return shown;
                 }
                 const pageShown = [
+                    'shopifyB2bDisplayedSprice',
+                    'shopifyB2cDisplayedSprice',
                     'ebay3DisplayedSprice',
                     'ebay2DisplayedSprice',
                     'ebayDisplayedSprice',
@@ -1166,7 +1183,8 @@
                 } else {
                     enqueueChannelPushSprice(jobs, {
                         silent: !!opts.silent,
-                        replacePending: CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c',
+                        replacePending: CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c'
+                            || CH_PUSH_SPRICE_CHANNEL === 'shopify_b2b',
                     });
                 }
             }
