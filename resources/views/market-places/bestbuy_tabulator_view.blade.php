@@ -632,10 +632,12 @@
     }
     function bestbuyHasBlueTriangle(data) {
         if (isBestbuyParentRow(data) || !isBbListed(data)) return false;
+        if (!(parseFloat(data && data.INV) > 0)) return false;
         const sprice = bestbuyRowSpriceForAlert(data);
         const price = parseFloat(data && data['BB Price']) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
+    window.bestbuyHasBlueTriangle = bestbuyHasBlueTriangle;
     function syncBestbuyTriangleBadgeState() {
         $('#bestbuy-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

@@ -887,7 +887,7 @@
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay'])
                         <span class="badge fs-6 p-2" id="ebay1-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            title="Blue triangle: S PRC ≠ eBay Price, same scope as auto-push (current INV + REQ filters). Click to show those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay1-ended-listing-badge"
                             style="background-color:#ffc107;color:#212529;font-weight:700;cursor:pointer;"
@@ -1522,8 +1522,22 @@
             const stored = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
             return stored > 0 ? stored : 0;
         }
-        /** Visible S PRC = saved SPRICE (same $ as the cell / DB). Dil is the Sprc Dil column. */
+        /** Visible S PRC = live Dil (same $ Amazon paints), then saved SPRICE. */
         function ebayDisplayedSprice(rowData) {
+            if (!rowData || rowData.is_parent_summary) return 0;
+            if (typeof ebayTiktokRuleDiscount === 'function') {
+                const live = Number(ebayTiktokRuleDiscount(rowData)) || 0;
+                if (live > 0) return live;
+            }
+            if (typeof ebaySprcDilForRow === 'function') {
+                const dil = Number(ebaySprcDilForRow(rowData)) || 0;
+                if (dil > 0) {
+                    const capped = (typeof ebayCapSpriceToLmp === 'function')
+                        ? ebayCapSpriceToLmp(rowData, dil)
+                        : +Number(dil).toFixed(2);
+                    if (capped > 0) return capped;
+                }
+            }
             return ebayRawRuleSprice(rowData);
         }
         window.ebaySgroiAtPrice = ebaySgroiAtPrice;
@@ -3302,13 +3316,23 @@
                 return raw === 'ENDED' || raw === 'INACTIVE' || raw === 'UNSOLD'
                     || raw === 'COMPLETED' || raw === 'SOLD';
             }
+            function ebay1HasPushableListing(data) {
+                if (!data || ebay1IsEndedListing(data)) return false;
+                return !!String(data.eBay_item_id || data.ebay_item_id || data.item_id || '').trim();
+            }
+            /** Same as Amazon: INV > 0, listed, live S PRC ≠ Price. Badge + auto-push share this. */
             function ebay1HasBlueTriangle(data) {
-                if (ebay1IsAlertParentRow(data)) return false;
+                if (!data || ebay1IsAlertParentRow(data)) return false;
+                if (!(parseFloat(data.INV) > 0)) return false;
                 if (ebay1IsEndedListing(data)) return false;
                 const sprice = ebay1RowSpriceForAlert(data);
                 const price = parseFloat(data['eBay Price']) || 0;
                 return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
             }
+            function ebay1BlueTriangleBadgeRow(data) {
+                return ebay1HasBlueTriangle(data);
+            }
+            window.ebay1HasBlueTriangle = ebay1HasBlueTriangle;
             function syncEbay1TriangleBadgeState() {
                 $('#ebay1-blue-triangle-badge').css({
                     outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -4684,7 +4708,21 @@
                         width: 65
                     },
                     {
-                        title: "NROI",
+                        title: "GPFT%",
+                        field: "GPFT%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 50
+                    },
+                    {
+                        title: "NROI%",
                         field: "NROI",
                         hozAlign: "center",
                         // Same formula as Amazon NROI: (PFT$ − Ad Spend$) / LP × 100
@@ -4715,23 +4753,7 @@
                         width: 65
                     },
                     {
-                        title: "GPFT %",
-                        field: "GPFT%",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        },
-                        width: 50
-                    },
-
-
-                    {
-                        title: "NPFT",
+                        title: "NPFT%",
                         field: "PFT %",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
@@ -4957,11 +4979,13 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
-                            const raw = (typeof ebayRawRuleSprice === 'function')
-                                ? ebayRawRuleSprice(rowData)
-                                : ((typeof chPromoSavedOrLiveSprice === 'function')
-                                    ? chPromoSavedOrLiveSprice(rowData)
-                                    : (parseFloat(rowData.SPRICE) || 0));
+                            const raw = (typeof ebayDisplayedSprice === 'function')
+                                ? ebayDisplayedSprice(rowData)
+                                : ((typeof ebayRawRuleSprice === 'function')
+                                    ? ebayRawRuleSprice(rowData)
+                                    : ((typeof chPromoSavedOrLiveSprice === 'function')
+                                        ? chPromoSavedOrLiveSprice(rowData)
+                                        : (parseFloat(rowData.SPRICE) || 0)));
                             if (!(raw > 0)) return '';
 
                             const lmpNow = (typeof ebayEffectiveLmp === 'function')
@@ -5045,7 +5069,7 @@
                     },
 
                     {
-                        title: "S GROI",
+                        title: "S GROI%",
                         field: "SGROI",
                         hozAlign: "center",
                         sorter: "number",
@@ -5060,7 +5084,7 @@
                         width: 80
                     },
                     {
-                        title: "S GPFT",
+                        title: "S GPFT%",
                         field: "SGPFT",
                         visible: false,
                         hozAlign: "center",
@@ -5075,7 +5099,7 @@
                         width: 80
                     },
                     {
-                        title: "SNROI",
+                        title: "SNROI%",
                         field: "SROI",
                         hozAlign: "center",
                         headerTooltip: "SNROI from S PRC (gross PFT$ − S PRC×Ads%/100) / LP × 100.",
@@ -5095,7 +5119,7 @@
                         width: 80
                     },
                     {
-                        title: "SNPFT",
+                        title: "SNPFT%",
                         field: "SPFT",
                         visible: false,
                         hozAlign: "center",
@@ -6011,8 +6035,11 @@
                 let blueTriangleCount = 0;
                 let redTriangleCount = 0;
                 let endedListingCount = 0;
-                allData.forEach(function(row) {
-                    if (ebay1HasBlueTriangle(row)) blueTriangleCount++;
+                const blueSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
+                    ? allTableData
+                    : allData;
+                blueSrc.forEach(function(row) {
+                    if (ebay1BlueTriangleBadgeRow(row)) blueTriangleCount++;
                     if (ebay1HasRedTriangle(row)) redTriangleCount++;
                     if (ebay1IsEndedListing(row)) endedListingCount++;
                 });

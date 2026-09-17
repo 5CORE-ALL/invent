@@ -8,7 +8,7 @@ use Tests\TestCase;
 
 class PurchasingPowerRuleSpriceApplyServiceTest extends TestCase
 {
-    public function test_dil_match_excludes_ship(): void
+    public function test_dil_match_includes_ship_bb(): void
     {
         $out = $this->compute([
             'inv' => 10,
@@ -19,7 +19,7 @@ class PurchasingPowerRuleSpriceApplyServiceTest extends TestCase
         ], [AmazonDilGroiRule::make(0.1, 25, 50)]);
 
         $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(23.08, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(35.38, $out['sprice'], 0.01);
     }
 
     public function test_zero_sold_uses_min_groi_even_when_dil_is_out_of_box(): void

@@ -618,10 +618,11 @@
             function postChannelPushSpriceItems(items, opts) {
                 opts = opts || {};
                 if (!items || !items.length) return $.Deferred().resolve(null).promise();
+                const progressTotal = Number(opts.progressTotal) > 0 ? Number(opts.progressTotal) : items.length;
                 setChannelPushSpriceProgress({
                     active: true,
-                    done: 0,
-                    total: items.length,
+                    done: Number(opts.progressDone) || 0,
+                    total: progressTotal,
                     ok: 0,
                     fail: 0,
                     pct: 0,
@@ -648,7 +649,7 @@
                         setChannelPushSpriceProgress({
                             active: !!resp.active,
                             done: Number(resp.done_count) || 0,
-                            total: Number(resp.total) || items.length,
+                            total: Number(resp.total) || progressTotal,
                             ok: Number(resp.ok_count) || 0,
                             fail: Number(resp.fail_count) || 0,
                             pct: Number(resp.pct) || 0,
@@ -675,17 +676,22 @@
                 chPushSpriceReplacePending = false;
                 chPushSpriceFlushing = true;
                 let i = 0;
+                // Catalog replace must POST the full set first. A 200-SKU first
+                // chunk was showing 200 while the blue badge was 849.
+                const chunkSize = replacePending ? items.length : CH_PUSH_SPRICE_CHUNK;
                 function nextChunk() {
                     if (i >= items.length) {
                         chPushSpriceFlushing = false;
                         return;
                     }
                     const start = i;
-                    const chunk = items.slice(i, i + CH_PUSH_SPRICE_CHUNK);
+                    const chunk = items.slice(i, i + chunkSize);
                     i += chunk.length;
                     postChannelPushSpriceItems(chunk, {
                         exclusive: exclusive && !replacePending,
                         replacePending: replacePending && start === 0,
+                        progressTotal: items.length,
+                        progressDone: start,
                     }).always(nextChunk);
                 }
                 nextChunk();
@@ -865,6 +871,9 @@
                     return 0;
                 }
                 if (!chPushSpriceUsesClientPump()) return 0;
+                if (opts.replacePending) {
+                    chPushClientQ = [];
+                }
                 let n = 0;
                 (items || []).forEach(function(item) {
                     if (!item) return;
@@ -881,9 +890,11 @@
                     const row = (item.row && typeof item.row.getData === 'function')
                         ? item.row
                         : chPushSpriceFindRowBySku(sku);
-                    const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
-                    if (chPushSpriceRowBlocked(d)) return;
-                    chPushClientQ.push({ sku: sku, price: price, row: row });
+                    const d = (row && typeof row.getData === 'function')
+                        ? (row.getData() || {})
+                        : (item.data || {});
+                    if (d && chPushSpriceRowBlocked(d)) return;
+                    chPushClientQ.push({ sku: sku, price: price, row: row, data: d });
                     n++;
                 });
                 if (!n && !chPushClientBusy()) return 0;
@@ -1028,19 +1039,50 @@
                 raw.forEach(walk);
                 return flat;
             }
+            function chPushSpricePageHasBlueTriangle(d) {
+                const named = {
+                    shopify_b2c: 'shopifyB2cHasBlueTriangle',
+                    shopify_b2b: 'shopifyB2bHasBlueTriangle',
+                    ebay1: 'ebay1HasBlueTriangle',
+                    ebay2: 'ebay2HasBlueTriangle',
+                    ebay3: 'ebay3HasBlueTriangle',
+                    walmart: 'walmartHasBlueTriangle',
+                    tiktok: 'ttHasBlueTriangle',
+                    tiktok2: 'ttHasBlueTriangle',
+                    reverb: 'reverbHasBlueTriangle',
+                    doba: 'dobaHasBlueTriangle',
+                    doba_withoutship: 'dobaWithoutshipHasBlueTriangle',
+                    macys: 'macysHasBlueTriangle',
+                    macy: 'macysHasBlueTriangle',
+                    bestbuy: 'bestbuyHasBlueTriangle',
+                    purchasing_power: 'ppHasBlueTriangle',
+                    newegg: 'neHasBlueTriangle',
+                    shein: 'sheinHasBlueTriangle',
+                    mercari_wship: 'mercWsHasBlueTriangle',
+                    mercari_woship: 'mercWosHasBlueTriangle',
+                    topdawg: 'tdHasBlueTriangle',
+                    fb_marketplace: 'fbMpHasBlueTriangle',
+                    temu: 'temuHasBlueTriangle',
+                    temu2: 'temuHasBlueTriangle',
+                    temu3: 'temu2HasBlueTriangle',
+                    aliexpress: 'aeHasBlueTriangle',
+                    vinted: 'vintedHasBlueTriangle',
+                    wayfair: 'wayfairHasBlueTriangle',
+                    pls: 'plsHasBlueTriangle',
+                    faire: 'frHasBlueTriangle',
+                    depop: 'dpHasBlueTriangle',
+                };
+                const fn = global[named[CH_PUSH_SPRICE_CHANNEL]];
+                if (typeof fn === 'function') return !!fn(d);
+                if (!chPushSpriceIsChild(d)) return false;
+                if (!(parseFloat(d && (d.INV != null ? d.INV : d.inv)) > 0)) return false;
+                const saved = chPushSpriceSavedFromRow(d);
+                const live = chPushSpriceLiveFromRow(d);
+                return saved > 0 && live > 0 && !chPushSpriceNearlyEqual(saved, live);
+            }
             function chPushSpriceRowBlocked(d) {
                 if (!d) return true;
-                if (CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c') {
-                    if (typeof global.shopifyB2cHasBlueTriangle === 'function') {
-                        if (!global.shopifyB2cHasBlueTriangle(d)) return true;
-                    } else if (!(parseFloat(d.INV) > 0)) {
-                        return true;
-                    }
-                    const nrlEl = document.getElementById('nrl-filter');
-                    const nrlVal = nrlEl ? String(nrlEl.value || '') : '';
-                    if (nrlVal === 'REQ' && String(d.nr_req || '') !== 'REQ') return true;
-                    if (nrlVal === 'NR' && String(d.nr_req || '') !== 'NR') return true;
-                }
+                if (!chPushSpricePageHasBlueTriangle(d)) return true;
                 if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return true;
                 const flag = String(d.live_inactive || d.listing_status || '').toLowerCase();
                 if (['inactive', 'offline', 'ended', 'disabled'].indexOf(flag) !== -1) return true;
@@ -1075,6 +1117,8 @@
                     if (shown > 0) return shown;
                 }
                 const pageShown = [
+                    'shopifyB2bDisplayedSprice',
+                    'shopifyB2cDisplayedSprice',
                     'ebay3DisplayedSprice',
                     'ebay2DisplayedSprice',
                     'ebayDisplayedSprice',
@@ -1109,7 +1153,16 @@
                 if (opts.once !== false && opts.silent && window._chPushSpricePageChecked) return;
                 if (opts.once !== false && opts.silent) window._chPushSpricePageChecked = true;
                 if (!chPushSpriceAutoPushAllowed()) return;
-                if (chPushSpriceUsesClientPump() && chPushClientBusy()) return;
+                if (chPushSpriceUsesClientPump() && chPushClientBusy() && !opts.catalog) return;
+                if (typeof global.chPromoEbaySpriceSlabsReady === 'function' && !global.chPromoEbaySpriceSlabsReady()) {
+                    const slabRetry = opts.slabRetry || 0;
+                    if (slabRetry < 12) {
+                        setTimeout(function() {
+                            scanAndQueueChannelPushSprice(tbl, Object.assign({}, opts, { slabRetry: slabRetry + 1 }));
+                        }, 400);
+                    }
+                    return;
+                }
                 if (!CH_PUSH_SPRICE_LIVE) {
                     if (!opts.silent) {
                         chPushSpriceToast('error', 'Live S PRC push is disabled on this environment');
@@ -1135,10 +1188,9 @@
                     let saved = chPushSpriceSavedFromRow(d);
                     saved = chPushSpriceCapMacysToAmz(d, saved);
                     if (!(saved > 0)) return;
-                    if (chPushSpriceAlreadyPushedToSaved(d, saved)) return;
                     const live = chPushSpriceLiveFromRow(d);
                     if (!(live > 0) || chPushSpriceNearlyEqual(saved, live)) return;
-                    jobs.push({ sku: sku, price: saved, row: row });
+                    jobs.push({ sku: sku, price: saved, row: row, data: d });
                 }
                 if (tbl) chPushSpriceWalkRows(tbl, consider);
                 extra.forEach(function(d) { if (d) consider(null, d); });
@@ -1162,11 +1214,16 @@
                     return;
                 }
                 if (chPushSpriceUsesClientPump()) {
-                    enqueueChannelPushSpriceClient(jobs);
+                    enqueueChannelPushSpriceClient(jobs, {
+                        replacePending: CH_PUSH_SPRICE_CHANNEL === 'ebay1'
+                            || CH_PUSH_SPRICE_CHANNEL === 'ebay2'
+                            || CH_PUSH_SPRICE_CHANNEL === 'ebay3',
+                    });
                 } else {
                     enqueueChannelPushSprice(jobs, {
                         silent: !!opts.silent,
-                        replacePending: CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c',
+                        replacePending: CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c'
+                            || CH_PUSH_SPRICE_CHANNEL === 'shopify_b2b',
                     });
                 }
             }

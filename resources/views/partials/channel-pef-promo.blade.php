@@ -3461,10 +3461,11 @@
                 : CHANNEL_PROMO_CHANNEL === 'faire') {
                 return false;
             }
-            // TikTok / FB Marketplace / Doba: persist the rule discount. Cell shows saved S PRC; red triangle if ≥ LMP.
+            // TikTok / FB Marketplace / Doba / Shopify B2B: persist the rule discount. No LMP cap.
             if (chPromoIsTiktokPromoChannel() || CHANNEL_PROMO_CHANNEL === 'fb_marketplace'
                 || chPromoIsDobaPromoChannel() || chPromoIsDobaWithoutshipPromoChannel()
-                || CHANNEL_PROMO_CHANNEL === 'topdawg') {
+                || CHANNEL_PROMO_CHANNEL === 'topdawg'
+                || CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
                 return false;
             }
             if (!d) return true;
@@ -3892,6 +3893,9 @@
             // Keep S PRC visible even when it equals listing price (ebay formatter hides matches)
             if (isFinite(n) && n > 0) patch.has_custom_sprice = true;
             if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c') patch.AMZ_SUGG_APPLIED = false;
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
+                patch.calc_price = (isFinite(n) && n > 0) ? n : 0;
+            }
             return patch;
         }
         function chPromoStdBase(d) {
@@ -9220,9 +9224,10 @@
         function chPromoPageDisplayedSprice(d) {
             if (!d) return 0;
             const names = [
+                'shopifyB2bDisplayedSprice', 'shopifyB2cShownSprice',
                 'ebayDisplayedSprice', 'ebay2DisplayedSprice', 'ebay3DisplayedSprice',
                 'aeVisibleSprice', 'aePushablePrice', 'sheinVisibleSprice', 'neShownSprice',
-                'macysDisplayedSprice', 'shopifyB2cShownSprice', 'fbMpDisplayedSprice',
+                'macysDisplayedSprice', 'fbMpDisplayedSprice',
                 'temuDisplayedSprice', 'frPushSprice', 'bestbuyDisplayedSprice',
                 'wayfairRowSpriceForAlert', 'reverbRowSpriceForAlert',
                 'tdDisplayedSprice', 'ppDisplayedSprice', 'ppPushPriceValue', 'ttDisplayedSprice',
@@ -9864,6 +9869,7 @@
                 && (!!CHANNEL_PROMO_HIDE_CVR_CPN || !!chPromoEbaySpriceRulesReady.cvr)
                 && (!CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE || !!chPromoEbaySpriceRulesReady.zeroSold);
         }
+        window.chPromoEbaySpriceSlabsReady = chPromoEbaySpriceSlabsReady;
         function chPromoMarkEbaySpriceRuleReady(kind) {
             if (kind === 'dil') chPromoEbaySpriceRulesReady.dil = true;
             if (kind === 'cvr') chPromoEbaySpriceRulesReady.cvr = true;

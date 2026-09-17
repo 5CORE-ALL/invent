@@ -4,6 +4,11 @@
 
     window.chPromoAutofitColumns = function(table) {
         if (!table || typeof table.getColumns !== 'function') return;
+        const holder = table.element && table.element.querySelector('.tabulator-tableholder');
+        const top = holder ? holder.scrollTop : 0;
+        const left = holder ? holder.scrollLeft : 0;
+        const winY = window.scrollY || window.pageYOffset || 0;
+        const winX = window.scrollX || window.pageXOffset || 0;
         const skip = {
             image_path: 1, image: 1, _select: 1, _ae_select: 1, _fr_select: 1, _push: 1,
             parent_expand: 1, _parent_expand: 1
@@ -24,6 +29,11 @@
                 if (next > measured) col.setWidth(Math.min(next, 260));
             } catch (e) { /* ignore */ }
         });
+        if (holder) {
+            holder.scrollTop = top;
+            holder.scrollLeft = left;
+        }
+        window.scrollTo(winX, winY);
     };
 
     window.chPromoBindTableAutofit = function(table) {

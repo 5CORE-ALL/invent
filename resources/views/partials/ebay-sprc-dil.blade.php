@@ -15,7 +15,10 @@
   Purchasing Power / Best Buy: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
   Best Buy also caps S PRC at LMP (including 0 Sold) after the A Price floor.
-  Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
+  Shopify B2C / B2B: Dil-matching when channel L30 > 0, including Dil below the first slab or above
+  the last (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay.
+  CVR Down/Up uses CVR% vs the overlay thresholds (no L60). Dil S PRC inverts 0.95 take-home
+  so SNROI = target. B2B excludes Ship.
   Dil slab edits and table load recalculate display only.
   Save and Apply deletes old S PRC (saves 0), then writes the new Dil S PRC.
   Macys / Purchasing Power persist in the background (page can close).
@@ -29,11 +32,11 @@
         ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'shein'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
-        ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2b'], true);
+        ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2c', 'shopify_b2b'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'mercari_wship', 'mercari_woship'], true);
-    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship', 'depop'], true);
+    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship', 'depop'], true);
     $ebaySprcDilSoldLabel = match ($ebaySprcDilChannel) {
         'temu', 'temu2', 'temu3' => 'Temu L30',
         'macys', 'macy' => 'MC L30',
@@ -384,6 +387,12 @@
                             <code>(LP × (1 + NROI%/100)) / (take-home − Ads%/100)</code>.
                             If Dil has no price, fall back to <strong>S Pick from /doba-tabulator</strong>.
                         </li>
+@elseif($ebaySprcDilChannel === 'purchasing_power')
+                        <li>
+                            <strong>When</strong> S PRC is calculated:
+                            same as Amazon, using <strong>Ship BB</strong> (not normal Ship):
+                            <code>S PRC = (LP × (1 + GROI%/100) + Ship BB) / margin</code>.
+                        </li>
 @elseif(!empty($ebaySprcDilExcludeShip))
                         <li>
                             <strong>When</strong> S PRC is calculated:
@@ -396,7 +405,11 @@
                         </li>
                         <li>
                             <strong>When</strong> you click <strong>Save and Apply</strong>:
+                            @if($ebaySprcDilChannel === 'shopify_b2b')
+                            old <strong>S PRC / calc_price</strong> is deleted, Dil is calculated and saved, then Push starts for S PRC ≠ Price (same as Amazon).
+                            @else
                             {{ $ebaySprcDilPageLabel }}’s table is stored via <strong>API only</strong>, then old <strong>S PRC</strong> is deleted and the new Dil S PRC is written.
+                            @endif
                         </li>
                         <li>
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
@@ -524,6 +537,12 @@
         function ebayDgIsShopifyB2b() {
             return EBAY_DIL_GROI_CHANNEL === 'shopify_b2b';
         }
+        function ebayDgIsEbay123() {
+            return EBAY_DIL_GROI_CHANNEL === 'ebay1'
+                || EBAY_DIL_GROI_CHANNEL === 'ebay2'
+                || EBAY_DIL_GROI_CHANNEL === 'ebay2op'
+                || EBAY_DIL_GROI_CHANNEL === 'ebay3';
+        }
         function ebayDgIsMercari() {
             return EBAY_DIL_GROI_CHANNEL === 'mercari_wship'
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship';
@@ -536,7 +555,7 @@
         }
         function ebayDgUsesClearThenApply() {
             return ebayDgIsTiktok() || ebayDgIsFbMarketplace() || ebayDgIsShopifyB2c()
-                || ebayDgIsShopifyB2b()
+                || ebayDgIsShopifyB2b() || ebayDgIsEbay123()
                 || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsTopdawg()
                 || ebayDgIsMacys() || ebayDgIsMercari();
         }
@@ -805,6 +824,10 @@
                 return views > 0 ? (sold / views) * 100 : 0;
             }
             if (EBAY_DIL_GROI_CHANNEL === 'shopify_b2c') {
+                if (d && d['CVR%'] != null && d['CVR%'] !== '') {
+                    const n = Number(d['CVR%']);
+                    if (isFinite(n) && n >= 0) return n;
+                }
                 const l30 = Number(d && (d['B2B L30'] != null ? d['B2B L30'] : d['B2C L30'])) || 0;
                 const views = Number(d && (d.Views != null ? d.Views : d.views)) || 0;
                 return views > 0 ? (l30 / views) * 100 : 0;
@@ -843,7 +866,14 @@
                 || (d.cvr_60 != null && d.cvr_60 !== '')
                 || (d.CVR_45 != null && d.CVR_45 !== '')
                 || (d.cvr_45 != null && d.cvr_45 !== '')));
-            if (ebayDgIsShopifyB2b() && !hasCvr60) return 'flat';
+            // Shopify B2C / B2B have no L60 CVR. Do not treat CVR>0 as Up vs a missing 0% L60.
+            // Down / Up follow the editable CVR overlay thresholds (default <7% / >10%).
+            if ((ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) && !hasCvr60) {
+                const cfg = ebayCvrGroiAdjNow();
+                if (cvr < cfg.down_lt) return 'down';
+                if (cvr > cfg.up_gt) return 'up';
+                return 'flat';
+            }
             const cvr60 = ebayDgCvr60(d);
             const tol = 0.1;
             if (cvr === 0 || cvr < cvr60 - tol) return 'down';
@@ -866,11 +896,13 @@
                 || EBAY_DIL_GROI_CHANNEL === 'ebay2'
                 || EBAY_DIL_GROI_CHANNEL === 'ebay2op'
                 || EBAY_DIL_GROI_CHANNEL === 'ebay3'
-                || EBAY_DIL_GROI_CHANNEL === 'shein';
+                || EBAY_DIL_GROI_CHANNEL === 'shein'
+                || EBAY_DIL_GROI_CHANNEL === 'shopify_b2c';
         }
         function ebayDilGroiCvrAdj(d) {
             if (!EBAY_DIL_GROI_CVR_ADJ) return 0;
-            if (ebayDgIsShein() && !(ebayDgViews(d) > 0)) return 0;
+            if ((ebayDgIsShein() || ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) && !(ebayDgViews(d) > 0)) return 0;
+            if ((ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) && ebayDgIsZeroSold(d)) return 0;
             const cvr = ebayDgCvr30(d);
             const cfg = ebayCvrGroiAdjNow();
             const trend = ebayDgCvrTrend(d);
@@ -883,6 +915,11 @@
             return groi < 0 ? 0 : groi;
         }
         function ebayDgIsZeroSold(d) {
+            // Shopify B2C 0 Sold is B2C L30 (stored as B2B L30), not OV L30 / eBay L30.
+            if (ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) {
+                if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
+                return !(Number(d && (d['B2B L30'] != null ? d['B2B L30'] : d['B2C L30'])) > 0);
+            }
             // Temu 1: 0 Sold is Temu orders L30, not Shopify OV / metrics L30.
             if (EBAY_DIL_GROI_CHANNEL === 'temu') {
                 if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
@@ -1028,6 +1065,8 @@
             return 0;
         }
         function ebayDilTakehomeMargin(d) {
+            // Shopify SNROI = ((S PRC × 0.95 − ship? − LP − ads) / LP) × 100. B2B excludes ship.
+            if (ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) return 0.95;
             if (typeof chPromoTakehomeMargin === 'function') {
                 try {
                     const rowM = Number(chPromoTakehomeMargin(d));
@@ -1153,7 +1192,7 @@
             // TikTok 0 Sold: keep the min Target NROI. CVR 0% (1 view, no L60) is
             // treated as a down-arrow (−10) and was pinning S PRC to the listing
             // 40% price instead of back-solving the 50% slab.
-            const skipCvr = ebayDgIsTiktok() && zeroSoldMin;
+            const skipCvr = (ebayDgIsTiktok() || ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) && zeroSoldMin;
             const cvrAdj = skipCvr ? 0 : ebayDilGroiCvrAdj(d);
             groi = skipCvr ? slabGroi : ebayDilGroiApplyCvrAdj(slabGroi, d);
             const rawSprc = ebaySpriceFromGroi(d, groi);
@@ -1697,9 +1736,58 @@
             renderEbayDilGroiModalTable();
             ebayAfterDilGroiRulesChanged();
         }
+        function ebayDgTableScrollEl() {
+            try {
+                if (typeof table !== 'undefined' && table) {
+                    if (table.rowManager && table.rowManager.element) return table.rowManager.element;
+                    if (table.element) return table.element.querySelector('.tabulator-tableholder');
+                }
+            } catch (e) { /* ignore */ }
+            return document.querySelector('.tabulator-tableholder');
+        }
+        function ebayDgCaptureScroll() {
+            const h = ebayDgTableScrollEl();
+            return {
+                top: h ? h.scrollTop : 0,
+                left: h ? h.scrollLeft : 0,
+                winY: window.scrollY || window.pageYOffset || 0,
+                winX: window.scrollX || window.pageXOffset || 0,
+            };
+        }
+        function ebayDgRestoreScroll(s) {
+            if (!s) return;
+            const apply = function() {
+                const h = ebayDgTableScrollEl();
+                if (h) {
+                    h.scrollTop = s.top;
+                    h.scrollLeft = s.left;
+                }
+                window.scrollTo(s.winX, s.winY);
+            };
+            apply();
+            requestAnimationFrame(apply);
+        }
+        function ebayDgRefreshVisibleRows() {
+            if (typeof table === 'undefined' || !table) return;
+            const scroll = ebayDgCaptureScroll();
+            try {
+                const rows = (typeof table.getRows === 'function') ? (table.getRows('visible') || []) : [];
+                rows.forEach(function(row) {
+                    try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+                });
+            } catch (e) { /* ignore */ }
+            ebayDgRestoreScroll(scroll);
+        }
         function redrawEbaySprcDilColumn() {
             if (typeof table === 'undefined' || !table) return;
-            try { table.redraw(true); } catch (e) { /* ignore */ }
+            const scroll = ebayDgCaptureScroll();
+            if ((typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c())
+                || (typeof ebayDgIsShopifyB2b === 'function' && ebayDgIsShopifyB2b())) {
+                ebayDgRefreshVisibleRows();
+            } else {
+                try { table.redraw(true); } catch (e) { /* ignore */ }
+                ebayDgRestoreScroll(scroll);
+            }
             if (typeof window.updateEbay3Summary === 'function') {
                 try { window.updateEbay3Summary(); } catch (e) { /* ignore */ }
             } else if (typeof window.updateSummary === 'function') {
@@ -1711,6 +1799,8 @@
         }
         let ebayDgAutoApplyTimer = null;
         let ebayDgAutoApplyWaits = 0;
+        let ebayDgB2bPersistOnce = false;
+        let ebayDgClearApplyPersistOnce = false;
         let ebayDgApplyBusy = false;
         let ebayDgApplyPending = false;
         function ebaySprcDilRowAdapter(d) {
@@ -1754,11 +1844,28 @@
         }
         function ebayAfterDilGroiRulesChanged() {
             redrawEbaySprcDilColumn();
-            ebayScheduleSprcDilAutoApply({ delay: 250 });
+            // Same as Amazon: Dil edit wipes saved S PRC, then writes the new Dil $.
+            ebayScheduleSprcDilAutoApply({
+                delay: 400,
+                flashClear: true,
+                persist: true,
+                forcePersist: true,
+                toast: false,
+            });
         }
         /** Macys / Purchasing Power load / slab edit: write Dil S PRC in the grid only. No catalog wipe or batch POST. */
         function ebayDgPaintMacysRuleSprice() {
             if (typeof table === 'undefined' || !table) return 0;
+            // Shopify S PRC / SNROI already read live Dil. Mass row.update + redraw jumps the table to the top.
+            if ((typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c())
+                || (typeof ebayDgIsShopifyB2b === 'function' && ebayDgIsShopifyB2b())
+                || (typeof ebayDgIsEbay123 === 'function' && ebayDgIsEbay123())) {
+                ebayDgRefreshVisibleRows();
+                if (typeof window.updateSummary === 'function') {
+                    try { window.updateSummary(); } catch (e) { /* ignore */ }
+                }
+                return 0;
+            }
             const nearly = typeof chPromoNearlyEqual === 'function'
                 ? chPromoNearlyEqual
                 : function(a, b) { return Math.abs((Number(a) || 0) - (Number(b) || 0)) < 0.005; };
@@ -1858,6 +1965,22 @@
                     }
                     return;
                 }
+                if (ebayDgIsShopifyB2b() || ebayDgIsEbay123()) {
+                    const persist = opts.persist === true || !!opts.flashClear;
+                    if (persist && (ebayDgB2bPersistOnce || ebayDgClearApplyPersistOnce) && !opts.forcePersist) {
+                        Promise.resolve(ebayApplySprcDilToTable({ persist: false, push: false })).catch(function() { /* retry */ });
+                        return;
+                    }
+                    if (persist) {
+                        ebayDgB2bPersistOnce = true;
+                        ebayDgClearApplyPersistOnce = true;
+                    }
+                    const push = persist
+                        && typeof chPromoPageReloadPushAllowed === 'function'
+                        && chPromoPageReloadPushAllowed();
+                    Promise.resolve(ebayApplySprcDilToTable({ persist: persist, push: push })).catch(function() { /* retry */ });
+                    return;
+                }
                 Promise.resolve(ebayApplySprcDilToTable({ persist: false, push: false })).catch(function() { /* retry on next change */ });
             }, delay);
         }
@@ -1942,7 +2065,8 @@
                 let price = ebayDgIsFbMarketplace() && typeof fbMpRoundSprice === 'function'
                     ? fbMpRoundSprice(meta.sprc)
                     : ebayDgRound2(meta.sprc);
-                if ((ebayDgIsShopifyB2c() || ebayDgIsMacys()) && typeof chPromoFinalSpriceToSave === 'function') {
+                if ((ebayDgIsShopifyB2c() || ebayDgIsMacys() || ebayDgIsEbay123())
+                    && typeof chPromoFinalSpriceToSave === 'function') {
                     price = chPromoFinalSpriceToSave(d, price);
                 }
                 if (!(price > 0)) return 0;
@@ -1999,7 +2123,7 @@
                     if (item.row && typeof chPromoWipeSpriceRow === 'function') {
                         chPromoWipeSpriceRow(item.row);
                     } else if (item.row && typeof item.row.update === 'function') {
-                        item.row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false, SGPFT: 0, SROI: 0, SPFT: 0 });
+                        item.row.update({ SPRICE: 0, sprice: 0, calc_price: 0, has_custom_sprice: false, SGPFT: 0, SROI: 0, SPFT: 0 });
                     }
                     if (ebayDgIsShopifyB2c() && item.row && typeof item.row.update === 'function') {
                         item.row.update({ AMZ_SUGG_APPLIED: false });
@@ -2047,7 +2171,13 @@
             }
 
             if (opts.push === true && livePushOn && fills.length) {
-                if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
+                if ((ebayDgIsShopifyB2b() || ebayDgIsEbay123()) && typeof scanAndQueueChannelPushSprice === 'function') {
+                    const tbl = (typeof chPromoSafeTable === 'function')
+                        ? chPromoSafeTable()
+                        : ((typeof table !== 'undefined') ? table : null);
+                    scanAndQueueChannelPushSprice(tbl, { catalog: true, once: false, silent: false });
+                    ebayDgToast('success', 'S PRC / calc_price cleared, Dil saved on ' + fills.length + ' SKU(s). Pushing S PRC ≠ Price.');
+                } else if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
                     fills.forEach(function(f) {
                         const d = (f.row && typeof f.row.getData === 'function') ? f.row.getData() : {};
                         const pushPrice = (window.SpriceLmpCap && typeof SpriceLmpCap.prepare === 'function')
@@ -2055,13 +2185,27 @@
                             : f.sprice;
                         enqueueChannelPushSpriceAfterSave(f.sku, pushPrice, f.row);
                     });
+                    ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
+                } else {
+                    ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
                 }
-                ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
             } else if (fills.length) {
-                ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
+                ebayDgToast(
+                    'success',
+                    ebayDgIsShopifyB2b()
+                        ? ('S PRC / calc_price cleared, then Dil saved on ' + fills.length + ' SKU(s)')
+                        : ('S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)')
+                );
             }
             redrawEbaySprcDilColumn();
-            try { if (typeof table !== 'undefined' && table) table.redraw(true); } catch (e) { /* ignore */ }
+            if (ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) {
+                if (typeof ebayDgRefreshVisibleRows === 'function') ebayDgRefreshVisibleRows();
+                if (typeof updateSummary === 'function') {
+                    try { updateSummary(); } catch (e) { /* ignore */ }
+                }
+            } else {
+                try { if (typeof table !== 'undefined' && table) table.redraw(true); } catch (e) { /* ignore */ }
+            }
             return fills.length;
         }
         async function ebayApplySprcDilToTable(opts) {
@@ -2256,6 +2400,10 @@
                     renderEbayDilGroiModalTable();
                 }
                 if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
+                if (ebayDgIsShopifyB2b() || ebayDgIsEbay123()) {
+                    ebayDgB2bPersistOnce = false;
+                    ebayDgClearApplyPersistOnce = false;
+                }
                 const n = ebayDgUsesBackgroundRuleApply()
                     ? await ebayDgFlashThenPaintMacysRuleSprice({ toast: true })
                     : await ebayApplySprcDilToTable({ persist: true, push: true });

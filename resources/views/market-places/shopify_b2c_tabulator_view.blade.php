@@ -1270,6 +1270,10 @@
             if (amz > 0) return Math.round(amz * 100) / 100;
             return stored > 0 ? Math.round(stored * 100) / 100 : 0;
         }
+        if (typeof ebaySprcDilForRow === 'function') {
+            const dil = Number(ebaySprcDilForRow(data)) || 0;
+            if (dil > 0) return Math.round(dil * 100) / 100;
+        }
         if (typeof chPromoTableSprice === 'function') {
             const saved = Number(chPromoTableSprice(data)) || 0;
             if (saved > 0) return saved;
@@ -1333,6 +1337,7 @@
         if (!sku || sku.indexOf('PARENT') === 0) return false;
         // Same as Amazon / Push on reload: INV=0 is not a live listing price.
         if (!(parseFloat(data.INV) > 0)) return false;
+        if (typeof chPromoEbaySpriceSlabsReady === 'function' && !chPromoEbaySpriceSlabsReady()) return false;
         if (shopifyB2cShowAmzLabel(data)) return false;
         const sprice = shopifyB2cShownSprice(data);
         const price = parseFloat(data.Price) || 0;
@@ -1543,8 +1548,16 @@
             if (shopifyB2cWriteRuleSpriceOnRow(row, opts)) changed++;
         });
         if (changed) {
+            const holder = table.element && table.element.querySelector('.tabulator-tableholder');
+            const top = holder ? holder.scrollTop : 0;
+            const left = holder ? holder.scrollLeft : 0;
             try { table.redraw(true); } catch (e) { /* ignore */ }
+            if (holder) {
+                holder.scrollTop = top;
+                holder.scrollLeft = left;
+            }
             if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
+            else if (typeof window.updateSummary === 'function') window.updateSummary();
         }
         return changed;
     }
@@ -2759,14 +2772,33 @@
             google_spend_L30: 0
         };
 
-        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2c'])
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2c', 'channelPromoTakehome' => 0.95])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shopify_b2c'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
+
+        function shopifyB2cTableWrapHeight() {
+            const wrap = document.getElementById('reverb-table-wrapper');
+            return wrap && wrap.clientHeight > 160 ? wrap.clientHeight : 600;
+        }
+        function shopifyB2cSyncTableHeight() {
+            if (!table || typeof table.setHeight !== 'function') return;
+            const wrap = document.getElementById('reverb-table-wrapper');
+            const holder = wrap && wrap.querySelector('.tabulator-tableholder');
+            const sl = holder ? holder.scrollLeft : 0;
+            const st = holder ? holder.scrollTop : 0;
+            try { table.setHeight(shopifyB2cTableWrapHeight()); } catch (e) { /* ignore */ }
+            const holder2 = wrap && wrap.querySelector('.tabulator-tableholder');
+            if (holder2) {
+                holder2.scrollLeft = sl;
+                holder2.scrollTop = st;
+            }
+        }
 
         // Initialize Tabulator
         table = new Tabulator("#reverb-table", {
             ajaxURL: SHOPIFY_B2C_DATA_URL,
             ajaxSorting: false,
+            height: shopifyB2cTableWrapHeight(),
             layout: "fitData",
             rowHeight: 36,
             pagination: true,
@@ -3194,7 +3226,7 @@
                     width: 50
                 },
                 {
-                    title: "PFT %",
+                    title: "NPFT%",
                     field: "NPFT%",
                     hozAlign: "center",
                     sorter: "number",
@@ -3435,7 +3467,7 @@
                     }
                 },
                 {
-                    title: "SGROI",
+                    title: "SGROI%",
                     field: "SROI",
                     hozAlign: "center",
                     sorter: "number",
@@ -3449,7 +3481,7 @@
                     width: 50
                 },
                 {
-                    title: "S GPFT",
+                    title: "S GPFT%",
                     field: "SGPFT",
                     hozAlign: "center",
                     sorter: "number",
@@ -3463,7 +3495,7 @@
                     width: 50
                 },
                 {
-                    title: "SNPFT",
+                    title: "SNPFT%",
                     field: "SNPFT",
                     hozAlign: "center",
                     sorter: "number",
@@ -3477,7 +3509,7 @@
                     width: 50
                 },
                 {
-                    title: "SNROI",
+                    title: "SNROI%",
                     field: "SNROI",
                     hozAlign: "center",
                     sorter: "number",
@@ -4028,7 +4060,10 @@
             }
             let blueTriangleCount = 0;
             let purpleTriangleCount = 0;
-            data.forEach(function(row) {
+            const blueSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
+                ? allTableData
+                : allData;
+            blueSrc.forEach(function(row) {
                 if (shopifyB2cHasBlueTriangle(row)) blueTriangleCount++;
                 if (shopifyB2cHasPurpleTriangle(row)) purpleTriangleCount++;
             });
@@ -4181,14 +4216,21 @@
         });
 
         table.on('dataLoaded', function() {
+            shopifyB2cSyncTableHeight();
             setTimeout(function() {
                 applyFilters();
+                shopifyB2cSyncTableHeight();
                 if (typeof window.chPromoAutofitColumns === 'function') {
                     window.chPromoAutofitColumns(table);
                 }
                 if (typeof loadShopifyB2cBadgePrevDay === 'function') loadShopifyB2cBadgePrevDay();
                 if (typeof loadChartJs === 'function') loadChartJs();
             }, 100);
+        });
+        let shopifyB2cResizeTimer = null;
+        window.addEventListener('resize', function() {
+            if (shopifyB2cResizeTimer) clearTimeout(shopifyB2cResizeTimer);
+            shopifyB2cResizeTimer = setTimeout(shopifyB2cSyncTableHeight, 150);
         });
 
         // Toggle column from dropdown

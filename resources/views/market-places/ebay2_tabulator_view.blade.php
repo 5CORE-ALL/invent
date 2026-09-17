@@ -1161,6 +1161,20 @@
             return stored > 0 ? stored : 0;
         }
         function ebay2DisplayedSprice(rowData) {
+            if (!rowData || rowData.is_parent_summary || rowData.is_parent_row) return 0;
+            if (typeof ebayTiktokRuleDiscount === 'function') {
+                const live = Number(ebayTiktokRuleDiscount(rowData)) || 0;
+                if (live > 0) return live;
+            }
+            if (typeof ebaySprcDilForRow === 'function') {
+                const dil = Number(ebaySprcDilForRow(rowData)) || 0;
+                if (dil > 0) {
+                    const capped = (typeof ebay2CapSpriceToLmp === 'function')
+                        ? ebay2CapSpriceToLmp(rowData, dil)
+                        : +Number(dil).toFixed(2);
+                    if (capped > 0) return capped;
+                }
+            }
             return ebay2RawRuleSprice(rowData);
         }
         function ebay2SpriceAmount(rowData) {
@@ -1649,11 +1663,14 @@
         }
         function ebay2HasBlueTriangle(data) {
             if (isEbay2TabulatorParentRow(data)) return false;
+            if (!(parseFloat(data && data.INV) > 0)) return false;
             if (ebay2IsEndedListing(data)) return false;
             const sprice = ebay2RowSpriceForAlert(data);
             const price = parseFloat(data['eBay Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
+        window.ebay2HasBlueTriangle = ebay2HasBlueTriangle;
+        window.ebay2DisplayedSprice = ebay2DisplayedSprice;
         function ebay2IsEndedListing(data) {
             if (!data) return false;
             const sku = String(data['(Child) sku'] || data.sku || '').trim();
@@ -4036,9 +4053,11 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary || rowData.is_parent_row) return '';
-                            const raw = (typeof ebay2RawRuleSprice === 'function')
-                                ? ebay2RawRuleSprice(rowData)
-                                : ebay2SpriceAmount(rowData);
+                            const raw = (typeof ebay2DisplayedSprice === 'function')
+                                ? ebay2DisplayedSprice(rowData)
+                                : ((typeof ebay2RawRuleSprice === 'function')
+                                    ? ebay2RawRuleSprice(rowData)
+                                    : ebay2SpriceAmount(rowData));
                             if (!(raw > 0)) return '';
 
                             const lmpNow = (typeof ebayEffectiveLmp === 'function')

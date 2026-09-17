@@ -12691,9 +12691,7 @@ class ChannelMasterController extends Controller
 
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
-        // Get PLS marketplace percentage from marketplace_percentages table
-        $percentage = MarketplacePercentage::where('marketplace', 'LIKE', '%PLS%')->value('percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
+        $percentage = MarketplacePercentage::takeHomeDecimal('PLS', 'Pls');
 
         // Load product masters (lp, ship) keyed by normalized SKU (NBSP / space tolerant)
         $productMasters = ProductMaster::all()->keyBy(function ($item) {
@@ -13188,9 +13186,8 @@ class ChannelMasterController extends Controller
     /**
      * Aggregate Purchasing Power sales/profit from purchasing_power_sales (MCM OR11).
      *
-     * Profit per line = (unit_price × pct) − LP, where pct comes from
+     * Profit per line = (unit_price × pct) − LP − Ship BB, where pct comes from
      * marketplace_percentages.marketplace = 'Purchase' (default 65%).
-     * Ship is excluded (matches /purchasing-power-pricing).
      *
      * @return array{sales:float, orders:int, qty:int, pft:float, cogs:float}
      */

@@ -310,10 +310,12 @@
     window.tdDisplayedSprice = tdDisplayedSprice;
     function tdHasBlueTriangle(data) {
         if (tdIsParentRow(data)) return false;
+        if (!(parseFloat(data && data.INV) > 0)) return false;
         const sprice = tdRowSpriceForAlert(data);
         const price = parseFloat(data && data['TD Price']) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
+    window.tdHasBlueTriangle = tdHasBlueTriangle;
     function syncTdTriangleBadgeState() {
         $('#topdawg-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

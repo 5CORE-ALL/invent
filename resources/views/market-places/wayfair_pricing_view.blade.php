@@ -397,10 +397,12 @@
         window.wayfairRowSpriceForAlert = wayfairRowSpriceForAlert;
         function wayfairHasBlueTriangle(data) {
             if (isWayfairParentRow(data)) return false;
+            if (!(parseFloat(data && (data.INV != null ? data.INV : data.inv)) > 0)) return false;
             const sprice = wayfairRowSpriceForAlert(data);
             const price = parseFloat(data && data.price) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
+        window.wayfairHasBlueTriangle = wayfairHasBlueTriangle;
         function syncWayfairTriangleBadgeState() {
             $('#wayfair-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

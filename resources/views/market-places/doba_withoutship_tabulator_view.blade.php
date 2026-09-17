@@ -729,10 +729,12 @@
         }
         function dobaWithoutshipHasBlueTriangle(data) {
             if (isDobaWithoutshipParentRow(data)) return false;
+            if (!(parseFloat(data && data.INV) > 0)) return false;
             const sprice = dobaWithoutshipRowSpriceForAlert(data);
             const price = parseFloat(data && (data.self_pick_price != null ? data.self_pick_price : data['doba Price'])) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
+        window.dobaWithoutshipHasBlueTriangle = dobaWithoutshipHasBlueTriangle;
         function dobaWithoutshipListingPriceEqualsSprice(data, spriceOverride) {
             const price = parseFloat(data && (data.self_pick_price != null ? data.self_pick_price : data['doba Price'])) || 0;
             const sprice = spriceOverride != null

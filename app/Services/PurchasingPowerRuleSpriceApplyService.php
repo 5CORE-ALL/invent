@@ -13,6 +13,7 @@ use App\Models\PurchasingPowerSale;
 use App\Models\ShopifySku;
 use App\Support\AmazonDilGroiRule;
 use App\Support\MacysAmazonPriceCap;
+use App\Support\ProductMasterShipBb;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -20,7 +21,7 @@ use Throwable;
 
 /**
  * Wipe stale SPRICE, write Sprc Dil (A Price floor), then push listed price via MCM PRI01.
- * Dil = (OV L30 / INV) × 100. Ship is excluded.
+ * Dil = (OV L30 / INV) × 100. Ship BB is included (Amazon shape).
  * 0 Sold (PP L30 = 0) uses min Target GROI. Sold + out of box has no Dil SPRICE.
  * If that Dil / min-ROI price is below A Price, SPRICE = A Price.
  */
@@ -197,7 +198,8 @@ class PurchasingPowerRuleSpriceApplyService
             return null;
         }
 
-        $raw = round(($lp * (1 + $groi / 100)) / $margin, 2);
+        $ship = (float) ($row['ship'] ?? 0);
+        $raw = round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
         if (! is_finite($raw) || $raw < 0.01) {
             return null;
         }
@@ -334,6 +336,7 @@ class PurchasingPowerRuleSpriceApplyService
                 'pp_l30' => $ppL30,
                 'pp_price' => $ppPrice,
                 'lp' => $lp,
+                'ship' => ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $master),
                 'amz' => isset($amzBySku[$sku]) ? (float) ($amzBySku[$sku]->price ?? 0) : 0.0,
                 'listed' => $pp !== null,
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
@@ -364,8 +367,9 @@ class PurchasingPowerRuleSpriceApplyService
         }
 
         $lp = (float) ($row['lp'] ?? 0);
-        $sgpft = ($sprice > 0) ? round((($sprice * $margin - $lp) / $sprice) * 100, 2) : 0.0;
-        $sroi = ($lp > 0) ? round((($sprice * $margin - $lp) / $lp) * 100, 2) : 0.0;
+        $ship = (float) ($row['ship'] ?? 0);
+        $sgpft = ($sprice > 0) ? round((($sprice * $margin - $lp - $ship) / $sprice) * 100, 2) : 0.0;
+        $sroi = ($lp > 0) ? round((($sprice * $margin - $lp - $ship) / $lp) * 100, 2) : 0.0;
 
         $existing['SPRICE'] = $sprice > 0 ? round($sprice, 2) : 0;
         $existing['sprice'] = $existing['SPRICE'];

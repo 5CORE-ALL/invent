@@ -244,6 +244,7 @@ class Shopifyb2bController extends Controller
 
             $processedItem['LP_productmaster'] = $lp;
             $processedItem['Ship_productmaster'] = $ship;
+            $processedItem['percentage'] = $percentageValue;
 
             $storeRow = $storeByNorm[ShopifySku::normalizeSkuForShopifyLookup((string) $sku)] ?? null;
 
@@ -760,6 +761,7 @@ class Shopifyb2bController extends Controller
 
         $merged = array_merge($existing, [
             'SPRICE' => $sprice,
+            'calc_price' => $sprice > 0 ? $sprice : 0,
             'SGPFT' => $sgpft,
             'SNPFT' => $snpft,
             'SPFT' => $snpft,

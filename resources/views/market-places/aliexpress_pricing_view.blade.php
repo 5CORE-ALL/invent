@@ -985,6 +985,7 @@
         }
         function aeHasBlueTriangle(data) {
             if (!data || aeIsParentRow(data)) return false;
+            if (!(parseFloat(data.INV != null ? data.INV : data.inv) > 0)) return false;
             const sprice = aeRowSpriceForAlert(data);
             const price = parseFloat(data.price) || 0;
             if (!(sprice > 0) || !(price > 0) || Math.round(sprice * 100) === Math.round(price * 100)) return false;
@@ -992,6 +993,7 @@
             if (aeShouldCapSpriceToLmp(data) && lmp > 0 && sprice + 0.0001 >= lmp) return false;
             return true;
         }
+        window.aeHasBlueTriangle = aeHasBlueTriangle;
         function aeBadgeCountRows() {
             const src = (typeof aeFullTableData !== 'undefined' && aeFullTableData.length)
                 ? aeFullTableData

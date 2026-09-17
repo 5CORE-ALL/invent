@@ -340,10 +340,12 @@
     }
     function dpHasBlueTriangle(data) {
         if (!data || dpIsParentRow(data)) return false;
+        if (!(dpInv(data) > 0)) return false;
         const sprice = dpRowSprice(data);
         const price = parseFloat(data.price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
+    window.dpHasBlueTriangle = dpHasBlueTriangle;
     function dpSpriceMetrics(data, spriceOpt) {
         const sprice = spriceOpt != null ? Number(spriceOpt) : dpRowSprice(data);
         if (!(sprice > 0)) return { sgpft: 0, sroi: 0 };

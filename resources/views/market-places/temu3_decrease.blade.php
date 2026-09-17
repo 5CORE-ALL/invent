@@ -1928,10 +1928,12 @@
     }
     function temu2HasBlueTriangle(data) {
         if (isTemu3ParentRow(data)) return false;
+        if (!(parseFloat(data && data.INV) > 0)) return false;
         const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(data) : temu2RowSpriceForAlert(data);
         const price = parseFloat(data && data.temu_price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
+    window.temu2HasBlueTriangle = temu2HasBlueTriangle;
 
     function temuRawSprice(row) {
         return temuDiscountedPrice(row) || 0;

@@ -685,12 +685,16 @@
         const sku = String(row['(Child) sku'] || '').toUpperCase();
         return sku.includes('PARENT');
     }
-    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2b'])
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2b', 'channelPromoTakehome' => 0.95])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shopify_b2b'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
     function shopifyB2bDisplayedSprice(data) {
         if (!data || isShopifyB2bParentRow(data)) return 0;
+        if (typeof ebaySprcDilForRow === 'function') {
+            const dil = Number(ebaySprcDilForRow(data)) || 0;
+            if (dil > 0) return Math.round(dil * 100) / 100;
+        }
         if (typeof chPromoTableSprice === 'function') {
             const saved = Number(chPromoTableSprice(data)) || 0;
             if (saved > 0) return saved;
@@ -708,11 +712,25 @@
         const snroi = lp > 0 ? ((gross - sprice * (ads / 100)) / lp) * 100 : 0;
         return { sgpft: sgpft, sroi: sroi, snpft: snpft, snroi: snroi };
     }
+    /** Dil Target NROI — SNROI/SGROI follow this, not the 2-decimal S PRC remainder. */
+    function shopifyB2bDilTargetNroi(data) {
+        if (typeof ebayDilGroiMetaForRow !== 'function') return null;
+        const meta = ebayDilGroiMetaForRow(data);
+        if (!meta || !(meta.sprc > 0) || meta.groi == null) return null;
+        const n = Number(meta.groi);
+        return isFinite(n) ? n : null;
+    }
     function shopifyB2bRowPriceMetrics(data) {
         return shopifyB2bSpriceMetrics(data && data.Price, data && data.LP_productmaster);
     }
     function shopifyB2bRowSMetrics(data) {
-        return shopifyB2bSpriceMetrics(shopifyB2bDisplayedSprice(data), data && data.LP_productmaster);
+        const m = shopifyB2bSpriceMetrics(shopifyB2bDisplayedSprice(data), data && data.LP_productmaster);
+        const target = shopifyB2bDilTargetNroi(data);
+        if (target != null) {
+            m.snroi = target;
+            if (!(shopifyChannelAdsPct() > 0)) m.sroi = target;
+        }
+        return m;
     }
     function shopifyB2bRowSpriceForAlert(data) {
         return shopifyB2bDisplayedSprice(data);
@@ -793,10 +811,14 @@
 
     function shopifyB2bHasBlueTriangle(data) {
         if (isShopifyB2bParentRow(data)) return false;
+        if (!(parseFloat(data && data.INV) > 0)) return false;
+        if (typeof chPromoEbaySpriceSlabsReady === 'function' && !chPromoEbaySpriceSlabsReady()) return false;
         const sprice = shopifyB2bRowSpriceForAlert(data);
         const price = parseFloat(data && data.Price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
+    window.shopifyB2bHasBlueTriangle = shopifyB2bHasBlueTriangle;
+    window.shopifyB2bDisplayedSprice = shopifyB2bDisplayedSprice;
     function syncShopifyB2bTriangleBadgeState() {
         $('#shopifyb2b-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -1883,7 +1905,7 @@
                     width: 50
                 },
                 {
-                    title: "GPFT %",
+                    title: "GPFT%",
                     field: "GPFT%",
                     hozAlign: "center",
                     sorter: "number",
@@ -1902,7 +1924,7 @@
                     width: 50
                 },
                 {
-                    title: "PFT %",
+                    title: "NPFT%",
                     field: "NPFT%",
                     hozAlign: "center",
                     sorter: "number",
@@ -2016,7 +2038,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2B L30 > 0; 0 Sold uses the lowest Target NROI. Dil outside the table uses the nearest slab. CVR overlay adjusts Target NROI when CVR 60 exists. B2B formula excludes Ship.",
+                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil-matching when B2B L30 > 0; 0 Sold uses the lowest Target NROI. Dil outside the table uses the nearest slab. CVR overlay: Down < 7% / Up > 10% (editable). 0 Sold and no views skip CVR. B2B formula excludes Ship.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) return '';
@@ -2040,7 +2062,7 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab when B2B L30 > 0; 0 Sold = min Target NROI). CVR overlay when CVR 60 exists. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    headerTooltip: "Not editable. Live from Sprc Dil (Dil slab when B2B L30 > 0; 0 Sold = min Target NROI; then CVR overlay). No LMP cap. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) {
@@ -2050,7 +2072,6 @@
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData.Price) || 0;
-                        const lmp = parseFloat(rowData.lmp_price) || 0;
                         
                         let bgColor = '';
                         if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
@@ -2059,18 +2080,13 @@
                         else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
                         if (!(value > 0)) return '';
-                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                        const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
-                        const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         const formatted = '$' + value.toFixed(2);
-                        const priceHtml = overLmp
-                            ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
-                            : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
+                        const priceHtml = `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
                     },
                     width: 92
                 },
@@ -2106,7 +2122,7 @@
                     }
                 },
                 {
-                    title: "Sroi",
+                    title: "SGROI%",
                     field: "SROI",
                     hozAlign: "center",
                     sorter: "number",
@@ -2124,7 +2140,7 @@
                     width: 50
                 },
                 {
-                    title: "S GPFT",
+                    title: "SGPFT%",
                     field: "SGPFT",
                     hozAlign: "center",
                     sorter: "number",
@@ -2143,7 +2159,7 @@
                     width: 50
                 },
                 {
-                    title: "SNPFT",
+                    title: "SNPFT%",
                     field: "SNPFT",
                     hozAlign: "center",
                     sorter: "number",
@@ -2162,7 +2178,7 @@
                     width: 50
                 },
                 {
-                    title: "SNROI",
+                    title: "SNROI%",
                     field: "SNROI",
                     hozAlign: "center",
                     sorter: "number",
@@ -2603,7 +2619,10 @@
                 PriceLt80LmpBadge.update('#shopifyb2b-price-lt80-lmp-badge', allData, 'shopifyb2b', 'Price');
             }
             let blueTriangleCount = 0;
-            allData.forEach(function(row) {
+            const blueSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
+                ? allTableData
+                : allData;
+            blueSrc.forEach(function(row) {
                 if (shopifyB2bHasBlueTriangle(row)) blueTriangleCount++;
             });
             $('#shopifyb2b-blue-triangle-badge').html(
