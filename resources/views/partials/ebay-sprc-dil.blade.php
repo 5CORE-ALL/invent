@@ -15,7 +15,9 @@
   Purchasing Power / Best Buy: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
   If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
   Best Buy also caps S PRC at LMP (including 0 Sold) after the A Price floor.
-  Shopify B2C / B2B: Dil-matching when channel L30 > 0, including Dil below the first slab or above
+  Shopify B2C: 0–0 slab on top for Dil = 0. Dil-matching when B2C L30 > 0, including Dil below the first slab or above
+  the last (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay.
+  Shopify B2B: 0–0 slab on top for Dil = 0. Dil-matching when B2B L30 > 0, including Dil below the first slab or above
   the last (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay.
   CVR Down/Up uses CVR% vs the overlay thresholds (no L60). Dil S PRC inverts 0.95 take-home
   so SNROI = target. B2B excludes Ship.
@@ -100,7 +102,7 @@
     }
     if ($ebaySprcDilZeroSoldUsesMinGroi) {
         $ebaySprcDilBtnTitle .= ' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target '.$ebaySprcDilTargetLabel.' from the slabs.';
-        if (in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy'], true)) {
+        if (in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b'], true)) {
             $ebaySprcDilBtnTitle .= ' Dil = 0 uses the 0–0 slab.';
         }
         if (!empty($ebaySprcDilUsesAmzFloor)) {
@@ -288,7 +290,7 @@
                             take the <strong>minimum Target {{ $ebaySprcDilTargetLabel }} from the slabs</strong>
                             (not the Dil-matching slab).
                         </li>
-                        @if(in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy'], true))
+                        @if(in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b'], true))
                         <li>
                             <strong>When</strong> Dil = 0 (INV &gt; 0):
                             use the <strong>0–0</strong> slab’s Target {{ $ebaySprcDilTargetLabel }}.
@@ -571,6 +573,8 @@
                 || ebayDgIsReverb()
                 || ebayDgIsWayfair()
                 || ebayDgIsMacys()
+                || ebayDgIsShopifyB2c()
+                || ebayDgIsShopifyB2b()
                 || EBAY_DIL_GROI_CHANNEL === 'pls'
                 || EBAY_DIL_GROI_CHANNEL === 'depop';
         }
