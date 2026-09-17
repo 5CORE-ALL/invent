@@ -55,4 +55,43 @@ class VeeqoShopifyFulfillmentIdRulesTest extends TestCase
         $this->assertFalse(VeeqoShopifyFulfillmentService::isShopifyAdminRestId('GSU1RG5550019KF', '7159464132845'));
         $this->assertFalse(VeeqoShopifyFulfillmentService::isShopifyAdminRestId('249001016086', '7159464132845'));
     }
+
+    public function test_tiktok_shopify_name_yields_platform_order_id(): void
+    {
+        $this->assertSame(
+            '577572569413617223',
+            VeeqoShopifyFulfillmentService::tiktokOrderIdFromShopifyName('#TT-577572569413617223')
+        );
+        $this->assertSame(
+            '577572569413617223',
+            VeeqoShopifyFulfillmentService::tiktokOrderIdFromShopifyName('tiktok-577572569413617223')
+        );
+        $this->assertSame('', VeeqoShopifyFulfillmentService::tiktokOrderIdFromShopifyName('#334262'));
+    }
+
+    public function test_tiktok_package_payload_exposes_gofo_tracking(): void
+    {
+        $hit = VeeqoShopifyFulfillmentService::trackingFromTikTokOrderPayload([
+            'packages' => [
+                [
+                    'tracking_number' => 'GFUSO0107321428770',
+                    'shipping_provider_name' => 'GOFO',
+                ],
+            ],
+        ]);
+
+        $this->assertSame('GFUSO0107321428770', $hit['tracking'] ?? null);
+        $this->assertSame('GOFO', $hit['carrier'] ?? null);
+    }
+
+    public function test_shipped_and_in_transit_statuses_are_ready_unshipped_are_not(): void
+    {
+        $this->assertTrue(VeeqoShopifyFulfillmentService::marketplaceStatusLooksShipped('SHIPPED'));
+        $this->assertTrue(VeeqoShopifyFulfillmentService::marketplaceStatusLooksShipped('IN_TRANSIT'));
+        $this->assertTrue(VeeqoShopifyFulfillmentService::marketplaceStatusLooksShipped('AWAITING_COLLECTION'));
+        $this->assertTrue(VeeqoShopifyFulfillmentService::marketplaceStatusLooksShipped('Delivered'));
+        $this->assertFalse(VeeqoShopifyFulfillmentService::marketplaceStatusLooksShipped('AWAITING_SHIPMENT'));
+        $this->assertFalse(VeeqoShopifyFulfillmentService::marketplaceStatusLooksShipped('CANCELLED'));
+        $this->assertFalse(VeeqoShopifyFulfillmentService::marketplaceStatusLooksShipped(''));
+    }
 }

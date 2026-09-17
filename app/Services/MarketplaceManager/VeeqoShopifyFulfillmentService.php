@@ -28,6 +28,8 @@ use App\Services\ShopifyStoreSelector;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\FourSellerApiService;
 use App\Services\GofoExpressService;
+use App\Services\TikTok2ShopService;
+use App\Services\TikTokShopService;
 use App\Services\VeeqoApiService;
 use App\Support\DobaTrackingNumber;
 use Illuminate\Support\Facades\Cache;
@@ -668,16 +670,19 @@ class VeeqoShopifyFulfillmentService
         }
 
         $localTn = strtoupper(preg_replace('/\s+/', '', (string) ($localTracking['tracking'] ?? '')) ?? '');
-        if (strlen($localTn) >= 8 && $sku === '' && ! isset($exclude[$localTn])) {
-            return [
+        $localHit = strlen($localTn) >= 8 && ! isset($exclude[$localTn])
+            ? [
                 'tracking' => $localTn,
                 'carrier' => (string) ($localTracking['carrier'] ?? 'Other'),
                 'source' => 'marketplace',
-            ];
+            ]
+            : null;
+        if ($localHit !== null && $sku === '') {
+            return $localHit;
         }
 
         if (Cache::get('mm.label_ssl_broken')) {
-            return null;
+            return $localHit;
         }
 
         $clean = [];
@@ -714,7 +719,7 @@ class VeeqoShopifyFulfillmentService
                 }
             }
 
-            return null;
+            return $localHit;
         }
 
         if ($this->veeqo->isConfigured()) {
@@ -752,7 +757,7 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        return null;
+        return $localHit;
     }
 
     /**
@@ -782,8 +787,8 @@ class VeeqoShopifyFulfillmentService
             if (! in_array($ref, $out, true)) {
                 $out[] = $ref;
             }
-            if (preg_match('/^PO-(.+)$/i', $ref, $m)) {
-                $tail = trim((string) ($m[1] ?? ''));
+            if (preg_match('/^(?:PO-|TT2?-|tiktok2?-)/i', $ref, $m)) {
+                $tail = trim((string) preg_replace('/^(?:PO-|TT2?-|tiktok2?-)/i', '', $ref));
                 if (
                     $tail !== ''
                     && ! $this->isCollisionProneOrderRef($tail)
@@ -829,7 +834,7 @@ class VeeqoShopifyFulfillmentService
             'failed' => 0,
         ]);
 
-        $localSweep = $this->syncLocalTrackedLinkedOrders(min(400, max(80, (int) ceil($limit * 0.35))));
+        $localSweep = $this->syncLocalTrackedLinkedOrders(min(800, max(150, (int) ceil($limit * 0.55))));
         $checked += (int) ($localSweep['checked'] ?? 0);
         $fulfilled += (int) ($localSweep['fulfilled'] ?? 0);
         $skipped += (int) ($localSweep['skipped'] ?? 0);
@@ -983,20 +988,16 @@ class VeeqoShopifyFulfillmentService
         $skipped = 0;
         $failed = 0;
         $seenShopify = [];
-        $since = now('America/Los_Angeles')->subDays(3)->startOfDay();
+        $since = now('America/Los_Angeles')->subDays(21)->startOfDay();
+        $map = $this->localTrackedMarketplaceMap();
+        $perMarket = max(40, (int) ceil($limit / max(1, count($map))));
 
-        foreach ($this->localTrackedMarketplaceMap() as $slug => [$class, $dateCol]) {
+        foreach ($map as $slug => [$class, $dateCol]) {
             $table = (new $class)->getTable();
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'shopify_order_id')) {
                 continue;
             }
-            $trackCol = $this->firstTrackingColumn($table);
-            if ($trackCol === null) {
-                continue;
-            }
             $query = $class::query()
-                ->whereNotNull($trackCol)
-                ->where($trackCol, '!=', '')
                 ->whereNotNull('shopify_order_id')
                 ->where('shopify_order_id', '!=', '')
                 ->where('shopify_order_id', 'not like', 'manual%');
@@ -1005,13 +1006,19 @@ class VeeqoShopifyFulfillmentService
             } elseif (Schema::hasColumn($table, 'created_at')) {
                 $query->where('created_at', '>=', $since);
             }
-            $rows = $query->orderByDesc('id')->limit($limit)->get(['id', 'shopify_order_id']);
+            if (Schema::hasColumn($table, $dateCol)) {
+                $query->orderByDesc($dateCol);
+            }
+            $rows = $query->orderByDesc('id')->limit(max(80, $perMarket * 6))->get();
             foreach ($rows as $row) {
                 if ($checked >= $limit) {
                     break 2;
                 }
                 $shopifyId = (string) ($row->shopify_order_id ?? '');
                 if ($shopifyId === '' || isset($seenShopify[$shopifyId])) {
+                    continue;
+                }
+                if (! $this->marketplaceRowReadyToFulfill((string) $slug, $row)) {
                     continue;
                 }
                 $seenShopify[$shopifyId] = true;
@@ -1103,7 +1110,7 @@ class VeeqoShopifyFulfillmentService
                 }
                 $skuPasses = $skus !== [] ? $skus : [''];
                 $checked++;
-                $cacheKey = 'mm_fetch_tracking_shopify_v4:'.$shopifyId;
+                $cacheKey = 'mm_fetch_tracking_shopify_v5:'.$shopifyId;
                 $orderLabel = trim((string) ($order['name'] ?? '')).' '.($marketplace !== '' ? $marketplace : 'marketplace');
                 $isRecent = $this->shopifyOrderIsRecent($order);
                 if (! $fresh && ! $isRecent && Cache::has($cacheKey)) {
@@ -1369,6 +1376,44 @@ class VeeqoShopifyFulfillmentService
         }
 
         return null;
+    }
+
+    /**
+     * True when the marketplace row already has a label or is marked shipped.
+     */
+    protected function marketplaceRowReadyToFulfill(string $marketplace, object $row): bool
+    {
+        $local = $this->trackingFromLoadedMarketplaceModel($marketplace, $row);
+        if ($local !== null && strlen(trim((string) ($local['tracking'] ?? ''))) >= 8) {
+            return true;
+        }
+
+        foreach ([
+            'order_status', 'line_status', 'status', 'fulfillment_status',
+            'shipping_status', 'order_state', 'package_status',
+        ] as $field) {
+            if (self::marketplaceStatusLooksShipped((string) ($row->{$field} ?? ''))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function marketplaceStatusLooksShipped(string $status): bool
+    {
+        $status = strtoupper(trim($status));
+        if ($status === '') {
+            return false;
+        }
+        if (preg_match('/CANCEL|REFUND|RETURN|UNPAID|ON.?HOLD|AWAITING.?SHIPMENT|PENDING|UNFULFILL/', $status)) {
+            return false;
+        }
+
+        return (bool) preg_match(
+            '/SHIP|IN.?TRANSIT|DELIVER|COMPLETE|FULFILL|RTS|AWAITING.?COLLECTION|COLLECTED|DISPATCH|PACKAGE/',
+            $status
+        );
     }
 
     /**
@@ -1701,6 +1746,22 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
+        $nameId = self::tiktokOrderIdFromShopifyName((string) ($order['name'] ?? ''));
+        if ($nameId !== '') {
+            $pushId($nameId);
+            if ($slug === '') {
+                $slug = str_starts_with(strtoupper(ltrim((string) ($order['name'] ?? ''), '#')), 'TT2')
+                    ? 'tiktok2'
+                    : 'tiktok';
+            }
+        }
+        if (preg_match('/tiktok(?:\s+shop)?\s+order\s+(\d{12,20})/i', $rawHay, $noteTikTok)) {
+            $pushId((string) $noteTikTok[1]);
+            if ($slug === '') {
+                $slug = 'tiktok';
+            }
+        }
+
         $uniqueRefs = [];
         foreach (array_merge($refs, $ids) as $ref) {
             $ref = trim((string) $ref);
@@ -1774,6 +1835,12 @@ class VeeqoShopifyFulfillmentService
                 $candidates[] = 'PO-'.$id;
             }
             if (preg_match('/^BBY\d{2}-(.+)$/i', $id, $m)) {
+                $tail = trim((string) ($m[1] ?? ''));
+                if ($tail !== '') {
+                    $candidates[] = $tail;
+                }
+            }
+            if (preg_match('/^(?:TT2?|tiktok2?)-(.+)$/i', $id, $m)) {
                 $tail = trim((string) ($m[1] ?? ''));
                 if ($tail !== '') {
                     $candidates[] = $tail;
@@ -1930,7 +1997,7 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        if (in_array($marketplace, ['newegg', 'reverb', 'aliexpress', 'alibaba', 'faire', 'shein'], true)) {
+        if (in_array($marketplace, ['newegg', 'reverb', 'aliexpress', 'alibaba', 'faire', 'shein', 'bestbuy', 'macy', 'topdawg', 'wayfair'], true)) {
             $fallback = app(ChannelTrackingApiFallbackService::class);
             foreach ($ids as $id) {
                 if (strlen($id) < 5 || $this->isShopifyInternalIdRef($id)) {
@@ -1957,7 +2024,56 @@ class VeeqoShopifyFulfillmentService
                 : null;
         }
 
-        return null;
+        if (in_array($marketplace, ['tiktok', 'tiktok2'], true)) {
+            $api = $marketplace === 'tiktok2'
+                ? app(TikTok2ShopService::class)
+                : app(TikTokShopService::class);
+            foreach ($ids as $id) {
+                $orderId = self::tiktokOrderIdFromShopifyName($id);
+                if ($orderId === '' && preg_match('/^\d{12,20}$/', $id)) {
+                    $orderId = $id;
+                }
+                if ($orderId === '' || $this->isShopifyInternalIdRef($orderId)) {
+                    continue;
+                }
+                try {
+                    if (method_exists($api, 'isAuthenticated') && ! $api->isAuthenticated()) {
+                        break;
+                    }
+                    $details = $api->getOrderDetails([$orderId]);
+                } catch (\Throwable $e) {
+                    Log::info('VeeqoShopifyFulfillmentService: TikTok order detail tracking failed', [
+                        'marketplace' => $marketplace,
+                        'order_id' => $orderId,
+                        'error' => $e->getMessage(),
+                    ]);
+                    continue;
+                }
+                $orders = is_array($details)
+                    ? ($details['orders'] ?? $details['data']['orders'] ?? [])
+                    : [];
+                foreach (is_array($orders) ? $orders : [] as $order) {
+                    if (! is_array($order)) {
+                        continue;
+                    }
+                    $hit = self::trackingFromTikTokOrderPayload($order);
+                    if ($hit !== null) {
+                        return $hit;
+                    }
+                }
+            }
+            $model = $this->findMarketplaceOrderByChannelIds($marketplace, $ids);
+
+            return $model !== null
+                ? $this->trackingFromLoadedMarketplaceModel($marketplace, $model)
+                : null;
+        }
+
+        $model = $this->findMarketplaceOrderByChannelIds($marketplace, $ids);
+
+        return $model !== null
+            ? $this->trackingFromLoadedMarketplaceModel($marketplace, $model)
+            : null;
     }
 
     /**
@@ -2655,6 +2771,60 @@ class VeeqoShopifyFulfillmentService
         $shopifyId = preg_replace('/\D+/', '', $shopifyOrderId) ?? '';
 
         return strlen($shopifyId) === 13 && $n === $shopifyId;
+    }
+
+    public static function tiktokOrderIdFromShopifyName(string $name): string
+    {
+        $name = ltrim(trim($name), '#');
+        if (preg_match('/^TT2?-(\d{12,20})$/i', $name, $m)) {
+            return (string) $m[1];
+        }
+        if (preg_match('/^(?:tiktok2?)-(\d{12,20})$/i', $name, $m)) {
+            return (string) $m[1];
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @return array{tracking: string, carrier: string}|null
+     */
+    public static function trackingFromTikTokOrderPayload(array $order): ?array
+    {
+        $packages = $order['packages'] ?? $order['package_list'] ?? [];
+        if (! is_array($packages)) {
+            $packages = [];
+        }
+        $rows = $packages;
+        $rows[] = $order;
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $tn = $row['tracking_number'] ?? ($row['tracking_number_list'][0] ?? '');
+            if (is_array($tn)) {
+                $tn = $tn[0] ?? '';
+            }
+            $tn = strtoupper(preg_replace('/\s+/', '', (string) $tn) ?? '');
+            if (strlen($tn) < 8 || preg_match('/^\d{3}-\d{7}-\d{7}$/', $tn)) {
+                continue;
+            }
+            $carrier = trim((string) (
+                $row['shipping_provider_name']
+                ?? $row['shipping_provider']
+                ?? $order['shipping_provider_name']
+                ?? $order['shipping_provider']
+                ?? ''
+            ));
+
+            return [
+                'tracking' => $tn,
+                'carrier' => $carrier !== '' ? $carrier : 'GOFO',
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -3901,7 +4071,7 @@ class VeeqoShopifyFulfillmentService
     protected function trackingFromModel(object $model): ?array
     {
         $tn = '';
-        foreach (['tracking_number', 'tracking', 'tracking_no', 'shipment_tracking'] as $field) {
+        foreach (['tracking_number', 'tracking_reference', 'tracking', 'tracking_no', 'shipment_tracking'] as $field) {
             $tn = trim((string) ($model->{$field} ?? ''));
             if (strlen($tn) >= 8) {
                 break;
@@ -4605,7 +4775,7 @@ class VeeqoShopifyFulfillmentService
 
     protected function autoFetchCacheKey(string $marketplace, int $orderId, string $kind): string
     {
-        return 'mm_fetch_tracking_v4_'.$kind.':'.$marketplace.':'.$orderId;
+        return 'mm_fetch_tracking_v5_'.$kind.':'.$marketplace.':'.$orderId;
     }
 
     /**

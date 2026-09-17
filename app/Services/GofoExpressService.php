@@ -166,16 +166,13 @@ class GofoExpressService
             return null;
         }
 
-        $candidates = $this->candidateOrderNos($refs);
-        if ($fast) {
-            $candidates = array_slice($candidates, 0, 2);
-        }
+        $candidates = self::orderNoCandidates($refs, $fast ? 2 : 8);
 
         foreach ($candidates as $orderNo) {
             $fromTrack = null;
             $res = $this->track($orderNo);
             if (! empty($res['ok'])) {
-                $fromTrack = $this->trackingFromPayload($res['data'] ?? null);
+                $fromTrack = self::extractTracking($res['data'] ?? null);
             }
 
             $fromLabel = null;
@@ -183,7 +180,7 @@ class GofoExpressService
             if (! $fast || ! $trackHasNumber) {
                 $label = $this->getLabel($orderNo);
                 if (! empty($label['ok'])) {
-                    $fromLabel = $this->trackingFromPayload($label['data'] ?? null);
+                    $fromLabel = self::extractTracking($label['data'] ?? null);
                 }
             }
 
@@ -212,29 +209,16 @@ class GofoExpressService
     }
 
     /**
+     * 4Seller often stores the platform id as GOFO orderNo, or as TT-/tiktok- prefixed.
+     *
      * @param  list<string>  $refs
      * @return list<string>
      */
-    protected function candidateOrderNos(array $refs): array
+    public static function orderNoCandidates(array $refs, int $max = 8): array
     {
         $out = [];
         foreach ($refs as $ref) {
-            $ref = trim((string) $ref);
-            if ($ref === '') {
-                continue;
-            }
-            $variants = [$ref];
-            if (str_starts_with($ref, '#')) {
-                $variants[] = ltrim($ref, '#');
-            }
-            if (preg_match('/^PO-(.+)$/i', $ref, $m)) {
-                $tail = trim((string) ($m[1] ?? ''));
-                if ($tail !== '') {
-                    $variants[] = $tail;
-                }
-            }
-            foreach ($variants as $candidate) {
-                $candidate = trim($candidate);
+            foreach (self::orderNoVariants((string) $ref) as $candidate) {
                 $plain = strtolower(ltrim($candidate, '#'));
                 if (strlen($candidate) < 6) {
                     continue;
@@ -249,13 +233,51 @@ class GofoExpressService
             }
         }
 
-        return array_slice($out, 0, 6);
+        return array_slice($out, 0, max(1, $max));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function orderNoVariants(string $ref): array
+    {
+        $ref = trim($ref);
+        if ($ref === '') {
+            return [];
+        }
+        $variants = [$ref];
+        $plain = ltrim($ref, '#');
+        if ($plain !== $ref) {
+            $variants[] = $plain;
+        }
+        if (preg_match('/^(?:TT2?|tiktok2?)-(.+)$/i', $plain, $m)) {
+            $tail = trim((string) ($m[1] ?? ''));
+            if ($tail !== '') {
+                $variants[] = $tail;
+            }
+        }
+        if (preg_match('/^PO-(.+)$/i', $plain, $m)) {
+            $tail = trim((string) ($m[1] ?? ''));
+            if ($tail !== '') {
+                $variants[] = $tail;
+            }
+        }
+
+        return $variants;
     }
 
     /**
      * @return array{tracking: string, carrier: string}|null
      */
     protected function trackingFromPayload(mixed $data): ?array
+    {
+        return self::extractTracking($data);
+    }
+
+    /**
+     * @return array{tracking: string, carrier: string}|null
+     */
+    public static function extractTracking(mixed $data): ?array
     {
         if (! is_array($data)) {
             return null;
@@ -279,19 +301,22 @@ class GofoExpressService
             if ($carrier === '' && preg_match('/carrier|last.?mile.?carrier|logistics.?company/', $k) && ! is_numeric($s)) {
                 $carrier = $s;
             }
-            if ($tracking !== null) {
-                return;
-            }
-            if (! preg_match('/(last.?mile|tracking|waybill|mail.?no|hawb|server.?hawb|shipper.?hawb|logistics.?no)/', $k)) {
-                return;
-            }
-            if (preg_match('/url|link|status|time|date|id$|context|move/', $k)) {
-                return;
-            }
             $tn = strtoupper(preg_replace('/\s+/', '', $s) ?? '');
-            if (strlen($tn) >= 8) {
-                $tracking = $tn;
+            if ($tracking !== null || strlen($tn) < 8) {
+                return;
             }
+            if (preg_match('/^GF[A-Z]{2,4}\d{8,}$/', $tn)) {
+                $tracking = $tn;
+
+                return;
+            }
+            if (! preg_match('/(last.?mile|tracking|waybill|mail.?no|hawb|server.?hawb|shipper.?hawb|logistics.?no|label.?no|track.?no|frt.?track)/', $k)) {
+                return;
+            }
+            if (preg_match('/url|link|status|time|date|context|move/', $k) && ! preg_match('/track|hawb|waybill/', $k)) {
+                return;
+            }
+            $tracking = $tn;
         };
         $walk($data);
 
