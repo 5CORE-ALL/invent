@@ -1101,7 +1101,9 @@ class DilRuleSpriceApplyService
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
         if ($unpacked['rules'] === []) {
-            $unpacked['rules'] = AmazonDilGroiRule::defaults();
+            $unpacked['rules'] = AmazonDilGroiRule::defaultsForChannel($this->channel);
+        } elseif (AmazonDilGroiRule::usesZeroToZero($this->channel)) {
+            $unpacked['rules'] = AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
         }
 
         return $unpacked;

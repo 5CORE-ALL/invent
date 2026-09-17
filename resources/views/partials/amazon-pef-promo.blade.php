@@ -1,6 +1,6 @@
 {{--
   CVR Disc. / Rev Disc. / Push Prc / Sprc Dil for Amazon tabulator.
-  Sprc Dil: Amazon-only Dil 0.1–25% (5 slabs) → Target NROI% (amazon_dil_vs_groi).
+  Sprc Dil: Amazon-only Dil 0–0 plus 0.1–25% slabs → Target NROI% (amazon_dil_vs_groi).
   CVR overlay on Target NROI: Down and < 7% = -10; Up and > 10% = +10.
   S PRC so SNROI = target: (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100).
   Amazon path: discount SPRICE via /save-amazon-sprice (no eBay Marketing APIs).
@@ -278,7 +278,7 @@
             background: #fff;
         }
         #amzDilGroiModal .amz-dg-hist-wrap.is-open { display: block; }
-        #amzDilGroiModal .amz-dg-hist-canvas-wrap { height: 160px; }
+        #amzDilGroiModal .amz-dg-hist-canvas-wrap { height: 220px; }
         #amzDilGroiModal .amz-dg-rules {
             margin: 0 0 10px;
             padding-left: 1.15rem;
@@ -537,7 +537,7 @@
                         </ul>
                     </div>
                     <button type="button" class="btn btn-sm" id="amz-dil-groi-btn"
-                        title="Dil slabs → Target NROI%. CVR overlay (editable, with Count) adjusts Target NROI. Every INV &gt; 0 SKU uses the Dil-matching slab.">
+                        title="Dil slabs → Target NROI% (0–0 on top for Dil = 0). CVR overlay (editable, with Count) adjusts Target NROI. Every INV &gt; 0 SKU uses the Dil-matching slab.">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
 @endif
@@ -688,6 +688,10 @@
                     <div class="amz-dg-rules-title">Rules — when each condition applies</div>
                     <ul class="small text-muted amz-dg-rules">
                         <li>
+                            <strong>When</strong> Dil = 0 (INV &gt; 0):
+                            use the <strong>0–0</strong> slab’s Target NROI.
+                        </li>
+                        <li>
                             <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
                             use that slab’s Target NROI (first match; last slab includes the To value).
                             S PRC is set so <strong>SNROI = Target NROI</strong>
@@ -826,6 +830,7 @@
         let amzCdHistChart = null;
         let amzCdLiveCounts = {};
         const AMZ_DIL_GROI_DEFAULTS = [
+            { key: '0-0', label: '0–0%', min: 0, max: 0, groi: 50, nroi: 50 },
             { key: '0.1-5', label: '0.1–5%', min: 0.1, max: 5, groi: 50, nroi: 50 },
             { key: '5-10', label: '5–10%', min: 5, max: 10, groi: 55, nroi: 55 },
             { key: '10-15', label: '10–15%', min: 10, max: 15, groi: 60, nroi: 60 },
@@ -1281,7 +1286,7 @@
                 min = Number(m[1]);
                 max = Number(m[2]);
             }
-            if (!isFinite(min) || !isFinite(max) || min < 0 || max <= min) return null;
+            if (!isFinite(min) || !isFinite(max) || min < 0 || max < min) return null;
             min = amzPefRound2(min);
             max = amzPefRound2(max);
             let groi = Number(raw.nroi != null && raw.nroi !== '' ? raw.nroi : raw.groi);
@@ -1303,17 +1308,31 @@
                 const rule = amzNormalizeDilGroiRule(item);
                 if (rule) out.push(rule);
             });
-            out.sort(function(a, b) { return a.min - b.min; });
+            out.sort(function(a, b) { return a.min - b.min || a.max - b.max; });
             return out;
+        }
+        function amzDilInSlab(n, rule, isLast) {
+            if (!rule) return false;
+            if (rule.max === rule.min) return amzPefRound2(n) === rule.min;
+            const hiOk = isLast ? (n <= rule.max) : (n < rule.max);
+            return n >= rule.min && hiOk;
+        }
+        function amzEnsureZeroToZeroSlab(list) {
+            const rules = amzNormalizeDilGroiList(list);
+            const hasZero = rules.some(function(r) { return r.min === 0 && r.max === 0; });
+            if (hasZero) return rules;
+            const firstGroi = rules.length
+                ? (Number(rules[0].nroi != null ? rules[0].nroi : rules[0].groi) || 0)
+                : 50;
+            const zero = amzNormalizeDilGroiRule({ min: 0, max: 0, groi: firstGroi });
+            return amzNormalizeDilGroiList(zero ? [zero].concat(rules) : rules);
         }
         function amzDilGroiMatchInList(dil, list) {
             const n = Number(dil);
             if (!isFinite(n) || n < 0 || !list || !list.length) return null;
             const last = list.length - 1;
             for (let i = 0; i < list.length; i++) {
-                const rule = list[i];
-                const hiOk = (i === last) ? (n <= rule.max) : (n < rule.max);
-                if (n >= rule.min && hiOk) return rule;
+                if (amzDilInSlab(n, list[i], i === last)) return list[i];
             }
             return null;
         }
@@ -1329,8 +1348,7 @@
             const last = rules.length - 1;
             for (let i = 0; i < rules.length; i++) {
                 const rule = rules[i];
-                const hiOk = (i === last) ? (n <= rule.max) : (n < rule.max);
-                if (n >= rule.min && hiOk) {
+                if (amzDilInSlab(n, rule, i === last)) {
                     return {
                         color: amzDgSlabColor(i),
                         label: rule.label,
@@ -1475,11 +1493,41 @@
                         + '</div>';
                 }).join('');
         }
+        function amzDgHistCountLabelsPlugin() {
+            return {
+                id: 'amzDgHistCountLabels',
+                afterDraw: function(chart) {
+                    const dataset = chart.data.datasets[0];
+                    const meta = chart.getDatasetMeta(0);
+                    const c = chart.ctx;
+                    if (!dataset || !meta || !meta.data) return;
+                    meta.data.forEach(function(point, i) {
+                        const val = dataset.data[i];
+                        if (val == null || !point) return;
+                        const txt = String(Math.round(Number(val) || 0));
+                        c.save();
+                        c.font = 'bold 10px Inter, system-ui, sans-serif';
+                        c.fillStyle = '#111';
+                        c.strokeStyle = 'rgba(255,255,255,0.95)';
+                        c.lineWidth = 3;
+                        c.lineJoin = 'round';
+                        c.textAlign = 'center';
+                        c.textBaseline = 'bottom';
+                        c.strokeText(txt, point.x, point.y - 5);
+                        c.fillText(txt, point.x, point.y - 5);
+                        c.restore();
+                    });
+                },
+            };
+        }
         function amzDgDrawHist(chart, band, rows) {
             const slices = chart === 'cvr' ? amzDgCvrBands() : amzDgDilSlices;
             const spec = slices.find(function(s) { return s.key === band; })
                 || { key: band, label: band, color: '#6f42c1' };
-            $('#amz-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : 'Dil ') + spec.label + ' count');
+            const plot = amzDgPadHistoryDays(rows, 30);
+            const labels = plot.map(function(r) { return r.label || r.date; });
+            const values = plot.map(function(r) { return Number(r[band]) || 0; });
+            $('#amz-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : 'Dil ') + spec.label + ' count · last 30 days');
             $('#amz-dg-hist-wrap').addClass('is-open');
             const draw = function() {
                 const canvas = document.getElementById('amz-dg-hist');
@@ -1491,9 +1539,9 @@
                 amzDgHistChart = new Chart(canvas.getContext('2d'), {
                     type: 'line',
                     data: {
-                        labels: rows.map(function(r) { return r.label || r.date; }),
+                        labels: labels,
                         datasets: [{
-                            data: rows.map(function(r) { return Number(r[band]) || 0; }),
+                            data: values,
                             borderColor: spec.color,
                             backgroundColor: spec.color + '22',
                             fill: true,
@@ -1503,17 +1551,42 @@
                             pointHoverRadius: 5,
                             pointBackgroundColor: spec.color,
                             pointBorderColor: spec.color,
+                            spanGaps: false,
                         }],
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
+                        clip: false,
+                        layout: { padding: { top: 16, right: 8, bottom: 2 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        return ' Count: ' + Math.round(Number(ctx.raw) || 0);
+                                    },
+                                },
+                            },
+                        },
                         scales: {
                             y: { beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 } },
-                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } },
+                            x: {
+                                offset: true,
+                                ticks: {
+                                    maxRotation: 90,
+                                    minRotation: 90,
+                                    autoSkip: false,
+                                    autoSkipPadding: 0,
+                                    font: { size: 8, weight: '600' },
+                                    callback: function(value) {
+                                        return this.getLabelForValue(value);
+                                    },
+                                },
+                            },
                         },
                     },
+                    plugins: [amzDgHistCountLabelsPlugin()],
                 });
             };
             if (typeof window.loadChartJs === 'function') {
@@ -1522,22 +1595,58 @@
                 draw();
             }
         }
+        function amzDgPadHistoryDays(rows, days) {
+            const span = days > 0 ? days : 30;
+            const byDate = {};
+            (rows || []).forEach(function(r) {
+                if (r && r.date) byDate[r.date] = r;
+            });
+            const today = amzDgTodayKey();
+            const parts = today.split('-').map(Number);
+            const end = new Date(Date.UTC(parts[0], (parts[1] || 1) - 1, parts[2] || 1));
+            const out = [];
+            for (let i = span - 1; i >= 0; i--) {
+                const d = new Date(end);
+                d.setUTCDate(d.getUTCDate() - i);
+                const key = d.toISOString().slice(0, 10);
+                const rec = byDate[key] ? Object.assign({}, byDate[key]) : {};
+                rec.date = key;
+                rec.label = key.slice(5);
+                out.push(rec);
+            }
+            return out;
+        }
         function amzDgOpenHist(chart, band) {
             const storeKey = chart === 'cvr' ? 'amz_dil_groi_cvr_hist' : 'amz_dil_groi_dil_hist';
             const live = chart === 'cvr' ? amzDgCvrLiveCounts : amzDgDilLiveCounts;
             const applyToday = function(rows) {
-                const list = (rows || []).slice();
+                const list = amzDgPadHistoryDays(rows, 30);
                 const today = amzDgTodayKey();
                 const rec = Object.assign({ date: today, label: today.slice(5) }, live);
                 const last = list[list.length - 1];
                 if (last && last.date === today) {
                     Object.assign(last, rec);
+                    if (!last.label) last.label = rec.label;
                 } else {
                     list.push(rec);
                 }
                 return list;
             };
-            amzDgDrawHist(chart, band, applyToday(amzDgLocalHistory(storeKey)));
+            const drawLocal = function() {
+                amzDgDrawHist(chart, band, applyToday(amzDgLocalHistory(storeKey)));
+            };
+            if (chart !== 'dil') {
+                drawLocal();
+                return;
+            }
+            $.ajax({
+                url: '/amazon-dil-groi-slab-history',
+                method: 'GET',
+                data: { days: 30 },
+            }).done(function(res) {
+                const rows = (res && res.success && Array.isArray(res.data)) ? res.data : amzDgLocalHistory(storeKey);
+                amzDgDrawHist(chart, band, applyToday(rows));
+            }).fail(drawLocal);
         }
         function amzDgDrawPie(canvasId, chartRefName, slices, counts) {
             const total = slices.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
@@ -1842,7 +1951,9 @@
                         : (res && res.rules && Array.isArray(res.rules.rules) ? res.rules.rules : [])
                 );
                 if (fromServer.length) {
-                    amzDilGroiRules = fromServer;
+                    amzDilGroiRules = amzEnsureZeroToZeroSlab(fromServer);
+                } else {
+                    amzDilGroiRules = AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 }
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
                 renderAmzDilGroiModalTable();
@@ -1850,7 +1961,7 @@
                 if (fromServer.length && !(res && res.is_default)) {
                     $('#amz-dil-groi-status').text('Loaded saved Dil → NROI slabs from API.');
                 } else {
-                    $('#amz-dil-groi-status').text('Using first-time defaults (0.1–5 → 50 … 20–25 → 70, +5 each). Add or delete slabs, then Save and Apply.');
+                    $('#amz-dil-groi-status').text('Using first-time defaults (0–0 → 50, 0.1–5 → 50 … 20–25 → 70). Add or delete slabs, then Save and Apply.');
                 }
             } catch (e) {
                 renderAmzDilGroiModalTable();
@@ -2049,12 +2160,36 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
+                        clip: false,
+                        layout: { padding: { top: 16, right: 8, bottom: 2 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        return ' Count: ' + Math.round(Number(ctx.raw) || 0);
+                                    },
+                                },
+                            },
+                        },
                         scales: {
                             y: { beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 } },
-                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } },
+                            x: {
+                                offset: true,
+                                ticks: {
+                                    maxRotation: 90,
+                                    minRotation: 90,
+                                    autoSkip: false,
+                                    autoSkipPadding: 0,
+                                    font: { size: 8, weight: '600' },
+                                    callback: function(value) {
+                                        return this.getLabelForValue(value);
+                                    },
+                                },
+                            },
                         },
                     },
+                    plugins: [amzDgHistCountLabelsPlugin()],
                 });
             });
         }
@@ -3954,8 +4089,8 @@
                 destroyAmzDilGroiPies();
             });
             $(document).off('click.amzdghist', '.amz-dg-hist-dot').on('click.amzdghist', '.amz-dg-hist-dot', function() {
-                const chart = String($(this).data('chart') || 'dil');
-                const band = String($(this).data('band') || '');
+                const chart = String($(this).attr('data-chart') || 'dil');
+                const band = String($(this).attr('data-band') || '');
                 if (!band) return;
                 amzDgOpenHist(chart, band);
             });

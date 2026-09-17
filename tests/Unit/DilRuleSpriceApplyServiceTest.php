@@ -451,6 +451,30 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(50.0, $out['groi'], 0.01);
     }
 
+    public function test_aliexpress_dil_zero_with_sold_uses_zero_slab(): void
+    {
+        $out = DilRuleSpriceApplyService::for('aliexpress')->computeTarget(
+            [
+                'inv' => 10,
+                'dil' => 0,
+                'al30' => 3,
+                'lp' => 20,
+                'ship' => 0,
+                'lmp' => 100,
+                'std_price' => 99,
+            ],
+            AmazonDilGroiRule::amazonDefaults(),
+            AmazonDilGroiRule::defaultCvrAdj(),
+            0.80
+        );
+
+        $this->assertNotNull($out);
+        // Dil = 0 and AL30 > 0 → 0–0 slab (50), not Std $99.
+        // (20 × 1.50) / 0.80 = 37.50
+        $this->assertEqualsWithDelta(37.50, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(50.0, $out['groi'], 0.01);
+    }
+
     public function test_aliexpress_out_of_slab_uses_std_then_lmp_cap(): void
     {
         $std = $this->compute('aliexpress', [

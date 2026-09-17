@@ -4579,6 +4579,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-cvr-band-history', [OverallAmazonController::class, 'getCvrBandHistory'])->name('amazon.cvr-band.history');
     Route::get('/amazon-zero-sold-history', [OverallAmazonController::class, 'getZeroSoldHistory'])->name('amazon.zero-sold.history');
     Route::get('/amazon-cvr-disc-slab-history', [OverallAmazonController::class, 'getCvrDiscSlabHistory'])->name('amazon.cvr-disc-slab.history');
+    Route::get('/amazon-dil-groi-slab-history', [OverallAmazonController::class, 'getDilGroiSlabHistory'])->name('amazon.dil-groi-slab.history');
 
     // ebay 2
     Route::get('/listing-ebaytwo', [ListingEbayTwoController::class, 'listingEbayTwo'])->name('listing.ebayTwo');
@@ -5601,6 +5602,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/dil-sgroi', [ChannelPromoPricingController::class, 'saveDilSgroiRules'])->name('channel.promo.dil-sgroi.save');
     Route::get('/channel-promo-pricing/{channel}/dil-groi', [ChannelPromoPricingController::class, 'dilGroiRules'])->name('channel.promo.dil-groi.get');
     Route::post('/channel-promo-pricing/{channel}/dil-groi', [ChannelPromoPricingController::class, 'saveDilGroiRules'])->name('channel.promo.dil-groi.save');
+    Route::get('/channel-promo-pricing/{channel}/dil-groi-history', [ChannelPromoPricingController::class, 'dilGroiSlabHistory'])->name('channel.promo.dil-groi.history');
     Route::get('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'gtSoldPrcRules'])->name('channel.promo.gt-sold-prc.get');
     Route::post('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'saveGtSoldPrcRules'])->name('channel.promo.gt-sold-prc.save');
     Route::get('/channel-promo-pricing/{channel}/page-reload-push', [ChannelPromoPricingController::class, 'pageReloadPushSetting'])->name('channel.promo.page-reload-push.get');

@@ -237,6 +237,13 @@
                         <option value="green">Green 7-13%</option>
                         <option value="pink">Pink 13%+</option>
                     </select>
+                    <select id="cvr-trend-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;"
+                        title="CVR 30 vs prior 30 days (L60 sold ÷ current views). Unlisted SKUs show Create.">
+                        <option value="all">CVR trend</option>
+                        <option value="down">Down</option>
+                        <option value="up">Up</option>
+                        <option value="same">Same</option>
+                    </select>
 
                     <div class="dropdown d-inline-block flex-shrink-0">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -523,6 +530,7 @@
         let roiFilter    = 'all';   // 'all' | 'lt40' | '40-75' | '75-125' | 'gt125'
         let dilFilter    = 'all';   // 'all' | 'red' | 'green' | 'pink'
         let cvrFilter    = 'all';   // 'all' | 'red' | 'yellow' | 'green' | 'pink'
+        let cvrTrendFilter = 'all'; // 'all' | 'down' | 'up' | 'same'
 
         // Range helper for numeric bucket filters.
         function inRange(n, lo, hi) { return n >= lo && n < hi; }
@@ -594,6 +602,70 @@
                 case 'pink':   return n > 13;
                 default:       return true;
             }
+        }
+
+        function neCvrValue(row) {
+            const views = parseFloat(row && row.views) || 0;
+            const l30 = parseFloat(row && row.l30) || 0;
+            if (views > 0) return (l30 / views) * 100;
+            return parseFloat(row && row.cvr) || 0;
+        }
+        function neCvr60Value(row) {
+            const raw = row && row.cvr_60;
+            if (raw !== undefined && raw !== null && raw !== '') {
+                const n = parseFloat(raw);
+                if (isFinite(n)) return n;
+            }
+            const views = parseFloat(row && row.views) || 0;
+            const l60 = parseFloat(row && row.l60) || 0;
+            return views > 0 ? (l60 / views) * 100 : null;
+        }
+        function neHasCvr60(row) {
+            const n = neCvr60Value(row);
+            return n !== null && isFinite(n);
+        }
+        // Same ±0.1 rule as Amazon / eBay. No prior window → Dil overlay bands (<7 down, >10 up).
+        function neCvrTrend(row) {
+            const cvr = neCvrValue(row);
+            if (neHasCvr60(row)) {
+                const prior = neCvr60Value(row) || 0;
+                const tol = 0.1;
+                if (cvr === 0 || cvr < prior - tol) return 'down';
+                if (cvr > prior + tol) return 'up';
+                return 'flat';
+            }
+            if (cvr === 0 || cvr < 7) return 'down';
+            if (cvr > 10) return 'up';
+            return 'flat';
+        }
+        function neCvrColor(cvr) {
+            if (cvr <= 4) return '#a00211';
+            if (cvr <= 7) return '#ffc107';
+            if (cvr <= 13) return '#28a745';
+            return '#e83e8c';
+        }
+        function neCvrTrendArrowHtml(row) {
+            const cvr = neCvrValue(row);
+            const trend = neCvrTrend(row);
+            const hasPrior = neHasCvr60(row);
+            const prior = hasPrior ? (neCvr60Value(row) || 0) : null;
+            const priorLabel = hasPrior ? prior.toFixed(1) + '%' : 'level';
+            let icon = 'fa-minus';
+            let color = '#ffc107';
+            let tip = hasPrior ? ('Same as CVR 60 ' + priorLabel) : 'Same (CVR 7–10%)';
+            if (trend === 'down') {
+                icon = 'fa-arrow-down';
+                color = '#a00211';
+                tip = cvr === 0
+                    ? 'CVR 30 is 0 → Down'
+                    : (hasPrior ? ('Down vs CVR 60 ' + priorLabel) : 'Down (CVR < 7%)');
+            } else if (trend === 'up') {
+                icon = 'fa-arrow-up';
+                color = '#28a745';
+                tip = hasPrior ? ('Up vs CVR 60 ' + priorLabel) : 'Up (CVR > 10%)';
+            }
+            return ' <span title="' + tip + '" style="vertical-align:middle;">'
+                + '<i class="fas ' + icon + '" style="color:' + color + ';font-size:12px;"></i></span>';
         }
 
         /** Std Prc vs Amz/channel price: reduce / hold / increase → red / yellow / green. */
@@ -1399,6 +1471,30 @@
                         }
                     },
                     {
+                        title: "CVR",
+                        field: "cvr",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 86,
+                        headerTooltip: "CVR = L30 ÷ Views × 100. Unlisted SKUs show Create. Arrow is CVR 30 vs L60 sold ÷ current views (same up/down rule as Amazon / eBay).",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData() || {};
+                            const listed = row.on_newegg === true || row.on_newegg === 1 || row.on_newegg === '1';
+                            const cvr = neCvrValue(row);
+                            const color = neCvrColor(cvr);
+                            const arrow = neCvrTrendArrowHtml(row);
+                            if (!listed) {
+                                return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
+                                    + '<span style="color:#eab308;font-weight:700;" title="Not listed on Newegg — create the listing">Create</span>'
+                                    + arrow + '</span>';
+                            }
+                            const label = (cvr > 3.5 ? String(Math.round(cvr)) : cvr.toFixed(1)) + '%';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
+                                + '<span style="color:' + color + ';font-weight:600;">' + label + '</span>'
+                                + arrow + '</span>';
+                        }
+                    },
+                    {
                         title: "Std Prc",
                         field: "STANDARD_PRICE",
                         hozAlign: "center",
@@ -2006,6 +2102,12 @@
                     if (!roiMatches(row.roi,     roiFilter)) return false;
                     if (!dilMatches(row.dil,     dilFilter)) return false;
                     if (!cvrMatches(row.cvr,     cvrFilter)) return false;
+                    if (cvrTrendFilter !== 'all') {
+                        const trend = neCvrTrend(row);
+                        if (cvrTrendFilter === 'down' && trend !== 'down') return false;
+                        if (cvrTrendFilter === 'up' && trend !== 'up') return false;
+                        if ((cvrTrendFilter === 'same' || cvrTrendFilter === 'equal') && trend !== 'flat') return false;
+                    }
 
                     // Sold badge filters
                     const l30Val = parseInt(row.l30) || 0;
@@ -2086,6 +2188,7 @@
             $('#roi-filter')      .on('change', function() { roiFilter       = $(this).val(); applyNeFilters(); });
             $('#dil-filter')      .on('change', function() { dilFilter       = $(this).val(); applyNeFilters(); });
             $('#cvr-filter')      .on('change', function() { cvrFilter       = $(this).val(); applyNeFilters(); });
+            $('#cvr-trend-filter').on('change', function() { cvrTrendFilter  = $(this).val(); applyNeFilters(); });
 
             // ── SPRICE bulk tools (single Price Mode dropdown) ────────────────
             function syncSpriceModeBtn() {
@@ -2789,6 +2892,7 @@
                     || inventoryFilter !== 'all' || nStockFilter !== 'all' || l30Filter !== 'all'
                     || nrFilter !== 'all' || statusFilter !== 'all' || pftFilter !== 'all'
                     || roiFilter !== 'all' || dilFilter !== 'all' || cvrFilter !== 'all'
+                    || cvrTrendFilter !== 'all'
                     || neZeroSoldActive || neMoreSoldActive
                     || blueTriangleFilterActive || amzTriangleFilterActive;
                 if (filtered) applyNeFilters({ keepView: true });
@@ -2848,8 +2952,12 @@
                         const sessions = hit ? (parseInt(hit.sessions, 10) || 0) : 0;
                         const l30 = parseInt(d.l30, 10) || 0;
                         const cvr = views > 0 ? Math.round((l30 / views) * 10000) / 100 : 0;
-                        if ((parseInt(d.views, 10) || 0) === views && (parseFloat(d.cvr) || 0) === cvr) return;
-                        row.update({ views: views, sessions: sessions, cvr: cvr });
+                        const l60 = parseInt(d.l60, 10) || 0;
+                        const cvr60 = views > 0 ? Math.round((l60 / views) * 10000) / 100 : null;
+                        if ((parseInt(d.views, 10) || 0) === views
+                            && (parseFloat(d.cvr) || 0) === cvr
+                            && (d.cvr_60 == null ? null : parseFloat(d.cvr_60)) === cvr60) return;
+                        row.update({ views: views, sessions: sessions, cvr: cvr, cvr_60: cvr60 });
                     });
                 } finally {
                     if (blocked) table.restoreRedraw();
