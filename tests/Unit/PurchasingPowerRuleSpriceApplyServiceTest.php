@@ -38,6 +38,22 @@ class PurchasingPowerRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(21.54, $out['sprice'], 0.01);
     }
 
+    public function test_dil_zero_with_sales_uses_zero_to_zero_slab(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 0,
+            'pp_l30' => 2,
+            'lp' => 10,
+        ], [
+            AmazonDilGroiRule::make(0, 0, 30),
+            AmazonDilGroiRule::make(0.1, 5, 50),
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(20.0, $out['sprice'], 0.01);
+    }
+
     public function test_out_of_box_with_sales_has_no_dil_sprice(): void
     {
         $out = $this->compute([

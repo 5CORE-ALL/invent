@@ -22,7 +22,8 @@ use Throwable;
 /**
  * Wipe stale SPRICE, write Sprc Dil (A Price floor), then push listed price via MCM PRI01.
  * Dil = (OV L30 / INV) × 100. Ship BB is included (Amazon shape).
- * 0 Sold (PP L30 = 0) uses min Target GROI. Sold + out of box has no Dil SPRICE.
+ * Dil = 0 uses the 0–0 slab. 0 Sold (PP L30 = 0) uses min Target GROI.
+ * Sold + out of box has no Dil SPRICE.
  * If that Dil / min-ROI price is below A Price, SPRICE = A Price.
  */
 class PurchasingPowerRuleSpriceApplyService
@@ -431,12 +432,12 @@ class PurchasingPowerRuleSpriceApplyService
     {
         $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'purchasing_power_dil_vs_groi')->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
-        if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
-            $saved = $saved['rules'];
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
+        if ($unpacked['rules'] === []) {
+            return AmazonDilGroiRule::defaultsForChannel('purchasing_power');
         }
-        $rules = AmazonDilGroiRule::normalizeList(is_array($saved) ? $saved : []);
 
-        return $rules !== [] ? $rules : AmazonDilGroiRule::defaults();
+        return AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
     }
 
     /** @param  list<string>  $skus */

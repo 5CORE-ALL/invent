@@ -324,6 +324,7 @@
 @endsection
 
 @section('script-bottom')
+    @include('partials.lazy-chart-js')
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'macys'])

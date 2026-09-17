@@ -3140,7 +3140,7 @@
                     width: 50
                 },
                 {
-                    title: "NPFT",
+                    title: "NPFT%",
                     field: "NPFT",
                     hozAlign: "center",
                     sorter: function(a, b, aRow, bRow) {
@@ -3159,7 +3159,7 @@
                     width: 50
                 },
                 {
-                    title: "NROI",
+                    title: "NROI%",
                     field: "NROI",
                     hozAlign: "center",
                     sorter: function(a, b, aRow, bRow) {
@@ -3300,7 +3300,7 @@
                     width: 96
                 },
                 {
-                    title: "Sroi",
+                    title: "SROI%",
                     field: "SROI",
                     hozAlign: "center",
                     headerTooltip: "SGROI from SPRICE.",
@@ -3319,7 +3319,7 @@
                     width: 50
                 },
                 {
-                    title: "SGPFT",
+                    title: "SGPFT%",
                     field: "SGPFT",
                     hozAlign: "center",
                     sorter: function(a, b, aRow, bRow) {
@@ -3338,7 +3338,7 @@
                     width: 50
                 },
                 {
-                    title: "SNPFT",
+                    title: "SNPFT%",
                     field: "SNPFT",
                     hozAlign: "center",
                     sorter: function(a, b, aRow, bRow) {
@@ -3356,7 +3356,7 @@
                     width: 50
                 },
                 {
-                    title: "SNROI",
+                    title: "SNROI%",
                     field: "SNROI",
                     hozAlign: "center",
                     sorter: function(a, b, aRow, bRow) {

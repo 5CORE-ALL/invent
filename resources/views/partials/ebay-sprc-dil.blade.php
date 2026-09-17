@@ -2,18 +2,18 @@
   Sprc Dil — Dil → Target NROI slabs on every Dil tabulator (Ads%=0 → same $ as GROI).
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Shein also has a 0–0 slab on top for Dil = 0.
+  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Shein / Temu 3 also have a 0–0 slab on top for Dil = 0.
   AliExpress / Faire / TikTok / Mercari / PLS / Best Buy / Newegg / Reverb / Wayfair / Depop: 0–0 slab on top for Dil = 0. Channel L30 = 0 uses min Target NROI (same as other 0 Sold pages). Sold rows use the Dil-matching slab;
   Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
   eBay 1–3: 0–0 slab on top for Dil = 0. Dil below the first remaining slab or above the last uses the nearest slab.
-  Temu 1 / New Temu One / New Temu Two: Temu L30 = 0 uses the minimum Target GROI (not the Dil-matching slab). Dil is still OV L30 ÷ INV. New Temu Two uses Temu 2 L30 and the same Temu Dil store.
+  Temu 1 / New Temu One / New Temu Two: 0–0 slab on top for Dil = 0. Temu L30 = 0 uses the minimum Target NROI (not the Dil-matching slab). Dil is still OV L30 ÷ INV. New Temu Two uses Temu 2 L30 and the same Temu Dil store.
   CVR overlay Count and Adj: Down = down-arrow CVR and CVR < threshold; Up = up-arrow CVR and CVR > threshold.
   Horizontal / opposite-arrow rows are excluded. Shein applies the overlay only when the SKU has views.
   Macys: 0–0 slab on top for Dil = 0. Dil-matching when MC L30 > 0. MC L30 = 0 (0 Sold) always uses the minimum Target GROI
   (not the Dil-matching slab). Dil is MC L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price,
   S PRC = A Price (do not keep a lower Dil/Std price). Out of box + sold uses Std Prc, then the same A Price floor.
-  Purchasing Power / Best Buy: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
-  If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
+  Purchasing Power / Best Buy / TopDawg / Doba: 0–0 slab on top for Dil = 0. Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
+  Dil is OV L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
   Best Buy also caps S PRC at LMP (including 0 Sold) after the A Price floor.
   Shopify B2C: 0–0 slab on top for Dil = 0. Dil-matching when B2C L30 > 0, including Dil below the first slab or above
   the last (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay.
@@ -102,7 +102,7 @@
     }
     if ($ebaySprcDilZeroSoldUsesMinGroi) {
         $ebaySprcDilBtnTitle .= ' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target '.$ebaySprcDilTargetLabel.' from the slabs.';
-        if (in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b'], true)) {
+        if (in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'doba'], true)) {
             $ebaySprcDilBtnTitle .= ' Dil = 0 uses the 0–0 slab.';
         }
         if (!empty($ebaySprcDilUsesAmzFloor)) {
@@ -154,6 +154,7 @@
             align-items: center;
             justify-content: center;
             gap: 5px;
+            cursor: pointer;
         }
         #ebayDilGroiModal .ebay-dg-rules {
             margin: 0 0 10px;
@@ -230,7 +231,7 @@
             border-radius: 8px;
             background: #fff;
         }
-        #ebayDilGroiModal .ebay-dg-hist-wrap.is-open { display: block; }
+        #ebayDilGroiModal .ebay-dg-hist-wrap.is-open { display: block; margin-top: 10px; }
         #ebayDilGroiModal .ebay-dg-hist-canvas-wrap { height: 220px; }
         #ebay-dil-groi-btn {
             background: #6f42c1;
@@ -248,7 +249,7 @@
 
 @if($ebaySprcDilPart === 'modals' || $ebaySprcDilPart === 'all')
     <div class="modal fade" id="ebayDilGroiModal" tabindex="-1" aria-labelledby="ebayDilGroiModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="ebayDilGroiModalLabel">
@@ -273,15 +274,6 @@
                         </div>
                         @endunless
                     </div>
-                    <div class="ebay-dg-hist-wrap" id="ebay-dg-hist-wrap">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="small fw-semibold" id="ebay-dg-hist-title">Slab history</span>
-                            <button type="button" class="btn-close" id="ebay-dg-hist-close" aria-label="Close history" style="font-size:10px;"></button>
-                        </div>
-                        <div class="ebay-dg-hist-canvas-wrap">
-                            <canvas id="ebay-dg-hist"></canvas>
-                        </div>
-                    </div>
                     <div class="ebay-dg-rules-title">Rules — when each condition applies</div>
                     <ul class="small text-muted ebay-dg-rules">
 @if($ebaySprcDilZeroSoldUsesMinGroi)
@@ -290,7 +282,7 @@
                             take the <strong>minimum Target {{ $ebaySprcDilTargetLabel }} from the slabs</strong>
                             (not the Dil-matching slab).
                         </li>
-                        @if(in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b'], true))
+                        @if(in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'doba'], true))
                         <li>
                             <strong>When</strong> Dil = 0 (INV &gt; 0):
                             use the <strong>0–0</strong> slab’s Target {{ $ebaySprcDilTargetLabel }}.
@@ -342,7 +334,7 @@
                         </li>
                         @endif
 @else
-                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein'], true))
+                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'temu3'], true))
                         <li>
                             <strong>When</strong> Dil = 0 (INV &gt; 0):
                             use the <strong>0–0</strong> slab’s Target {{ $ebaySprcDilTargetLabel }}.
@@ -434,6 +426,17 @@
                         </li>
                         <li>
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
+                            @if(!empty($ebaySprcDilIsMacys))
+                            Macys also skips parent rows and Missing L (not listed). Dil = MC L30 ÷ INV.
+                            @elseif($ebaySprcDilChannel === 'purchasing_power')
+                            Dil = OV L30 ÷ INV. 0 Sold is PP L30 = 0.
+                            @elseif($ebaySprcDilChannel === 'topdawg')
+                            Dil = OV L30 ÷ INV. 0 Sold is TD L30 = 0. Ship is not used.
+                            @elseif(in_array($ebaySprcDilChannel, ['temu', 'newtemuone', 'newtemutwo', 'temu3'], true))
+                            Dil = OV L30 ÷ INV. 0 Sold is Temu L30 = 0.
+                            @elseif($ebaySprcDilChannel === 'doba')
+                            Dil = OV L30 ÷ INV. 0 Sold is Doba L30 = 0.
+                            @endif
                         </li>
                     </ul>
                     <div class="table-responsive">
@@ -449,6 +452,15 @@
                             </thead>
                             <tbody id="ebay-dil-groi-tbody"></tbody>
                         </table>
+                    </div>
+                    <div class="ebay-dg-hist-wrap" id="ebay-dg-hist-wrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold" id="ebay-dg-hist-title">Slab history</span>
+                            <button type="button" class="btn-close" id="ebay-dg-hist-close" aria-label="Close history" style="font-size:10px;"></button>
+                        </div>
+                        <div class="ebay-dg-hist-canvas-wrap">
+                            <canvas id="ebay-dg-hist"></canvas>
+                        </div>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-primary ebay-dg-add-btn mt-2" id="ebay-dil-groi-add-btn">
                         <i class="fas fa-plus me-1"></i> Add slab
@@ -575,6 +587,13 @@
                 || ebayDgIsMacys()
                 || ebayDgIsShopifyB2c()
                 || ebayDgIsShopifyB2b()
+                || ebayDgIsPurchasingPower()
+                || ebayDgIsTopdawg()
+                || EBAY_DIL_GROI_CHANNEL === 'temu'
+                || EBAY_DIL_GROI_CHANNEL === 'newtemuone'
+                || EBAY_DIL_GROI_CHANNEL === 'newtemutwo'
+                || EBAY_DIL_GROI_CHANNEL === 'temu3'
+                || ebayDgIsDoba()
                 || EBAY_DIL_GROI_CHANNEL === 'pls'
                 || EBAY_DIL_GROI_CHANNEL === 'depop';
         }
@@ -810,6 +829,12 @@
         function ebayDgIsChild(d) {
             if (typeof chPromoIsChildRow === 'function') return chPromoIsChildRow(d);
             return !!(d && !d.is_parent_summary && d['(Child) sku'] && String(d['(Child) sku']).indexOf('PARENT') === -1);
+        }
+        function ebayDgMacysCountEligible(d) {
+            if (!ebayDgIsMacys()) return true;
+            if (d && (d.is_parent_summary || d.is_parent || d.is_parent_row)) return false;
+            if (typeof isMacysListed === 'function' && !isMacysListed(d)) return false;
+            return true;
         }
         function ebayDgInv(d) {
             if (typeof chPromoInv === 'function') return chPromoInv(d);
@@ -1358,11 +1383,21 @@
         window.ebayCvrGroiAdjNow = ebayCvrGroiAdjNow;
 
         function ebayDgEachInvChild(fn) {
+            const seen = {};
             const walk = function(row, d) {
                 const data = d || (row && typeof row.getData === 'function' ? row.getData() : row);
-                if (!ebayDgIsChild(data) || !(ebayDgInv(data) > 0)) return;
+                if (!ebayDgIsChild(data) || !(ebayDgInv(data) > 0) || !ebayDgMacysCountEligible(data)) return;
+                const sku = String((typeof chPromoSku === 'function' ? chPromoSku(data) : (data && (data['(Child) sku'] || data.sku))) || '').trim().toUpperCase();
+                if (sku) {
+                    if (seen[sku]) return;
+                    seen[sku] = true;
+                }
                 fn(data);
             };
+            if (ebayDgIsMacys() && typeof table !== 'undefined' && table && typeof table.getData === 'function') {
+                (table.getData('all') || []).forEach(function(d) { walk(null, d); });
+                return;
+            }
             if (typeof chPromoEachTableRow === 'function') {
                 chPromoEachTableRow(walk);
                 return;
@@ -1518,7 +1553,10 @@
             const labels = plot.map(function(r) { return r.label || r.date; });
             const values = plot.map(function(r) { return Number(r[band]) || 0; });
             $('#ebay-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : 'Dil ') + spec.label + ' count · last 30 days');
-            $('#ebay-dg-hist-wrap').addClass('is-open');
+            const $wrap = $('#ebay-dg-hist-wrap').addClass('is-open');
+            if ($wrap.length && $wrap[0].scrollIntoView) {
+                $wrap[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
             ebayDgWithChart(function() {
                 const canvas = document.getElementById('ebay-dg-hist');
                 if (!canvas || typeof Chart === 'undefined') return;
@@ -1624,10 +1662,8 @@
             const drawLocal = function() {
                 ebayDgDrawHist(chart, band, applyToday(ebayDgLocalHistory(storeKey)));
             };
-            if (chart !== 'dil') {
-                drawLocal();
-                return;
-            }
+            drawLocal();
+            if (chart !== 'dil') return;
             $.ajax({
                 url: ebayDgRulesUrl() + '-history',
                 method: 'GET',
@@ -1635,7 +1671,7 @@
             }).done(function(res) {
                 const rows = (res && res.success && Array.isArray(res.data)) ? res.data : ebayDgLocalHistory(storeKey);
                 ebayDgDrawHist(chart, band, applyToday(rows));
-            }).fail(drawLocal);
+            });
         }
         function ebayDgDrawPie(canvasId, chartRefName, slices, counts) {
             const total = slices.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
@@ -1706,6 +1742,7 @@
                         $cell.find('.ebay-dg-count-n').text(r ? (dilCounts[r.key] || 0) : 0);
                         $cell.find('.ebay-dg-hist-dot').remove();
                         if (r) {
+                            $cell.attr('title', r.label + ' daily history — click to open');
                             $cell.append(' ' + ebayDgHistDotHtml('dil', r.key, ebayDgSlabColor(i), r.label));
                         }
                     });
@@ -1727,6 +1764,7 @@
                     $cell.find('.ebay-dg-count-n').text(r ? (dilCounts[r.key] || 0) : 0);
                     $cell.find('.ebay-dg-hist-dot').remove();
                     if (r) {
+                        $cell.attr('title', r.label + ' daily history — click to open');
                         $cell.append(' ' + ebayDgHistDotHtml('dil', r.key, ebayDgSlabColor(i), r.label));
                     }
                 });
@@ -2578,10 +2616,14 @@
             $('#ebayDilGroiModal').off('hidden.bs.modal.ebaydg').on('hidden.bs.modal.ebaydg', function() {
                 destroyEbayDilGroiPies();
             });
-            $(document).off('click.ebaydghist', '.ebay-dg-hist-dot').on('click.ebaydghist', '.ebay-dg-hist-dot', function() {
-                const chart = String($(this).attr('data-chart') || 'dil');
-                const band = String($(this).attr('data-band') || '');
+            $('#ebayDilGroiModal').off('click.ebaydghist').on('click.ebaydghist', '.ebay-dg-hist-dot, #ebay-dil-groi-table .ebay-dg-count', function(e) {
+                const $dot = $(this).hasClass('ebay-dg-hist-dot')
+                    ? $(this)
+                    : $(this).find('.ebay-dg-hist-dot').first();
+                const chart = String($dot.attr('data-chart') || 'dil');
+                const band = String($dot.attr('data-band') || '');
                 if (!band) return;
+                e.preventDefault();
                 ebayDgOpenHist(chart, band);
             });
             $('#ebay-dg-hist-close').off('click.ebaydghist').on('click.ebaydghist', function() {

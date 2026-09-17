@@ -1596,7 +1596,7 @@ class ChannelPromoPricingController extends Controller
             'aliexpress' => $this->aliexpressHistorySkuSet(),
             'faire' => $this->faireHistorySkuSet(),
             'tiktok', 'tiktok2' => $this->tiktokHistorySkuSet($channel),
-            'mercari_wship', 'mercari_woship', 'shein', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b' => $this->mercariWshipHistorySkuSet(),
+            'mercari_wship', 'mercari_woship', 'shein', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'temu3', 'doba' => $this->mercariWshipHistorySkuSet(),
             'pls' => $this->plsHistorySkuSet(),
             default => null,
         };
@@ -1899,7 +1899,8 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * Macys Dil = MC L30 ÷ INV. Today uses live macy_products.m_l30 + Shopify INV.
+     * Macys Dil = MC L30 ÷ INV for listed MCM SKUs only (same as the Dil column).
+     * Today uses live macy_products.m_l30 + Shopify INV.
      * Earlier days use eBay 1/2 INV snapshots and a rolling 30-day Mirakl qty.
      *
      * @param  array<string, array<string, mixed>>  $out
@@ -1918,6 +1919,45 @@ class ChannelPromoPricingController extends Controller
             return;
         }
 
+        $liveMcL30 = [];
+        $listedSkus = [];
+        $restrictListed = Schema::hasTable('macy_products');
+        if ($restrictListed) {
+            $hasPrice = Schema::hasColumn('macy_products', 'price');
+            $hasStatus = Schema::hasColumn('macy_products', 'listing_status');
+            $cols = ['id', 'sku', 'm_l30'];
+            if ($hasPrice) {
+                $cols[] = 'price';
+            }
+            if ($hasStatus) {
+                $cols[] = 'listing_status';
+            }
+            MacyProduct::query()
+                ->whereNotNull('sku')
+                ->select($cols)
+                ->orderBy('id')
+                ->chunkById(2000, function ($chunk) use (&$liveMcL30, &$listedSkus, $hasPrice, $hasStatus) {
+                    foreach ($chunk as $row) {
+                        $sku = strtoupper(trim((string) ($row->sku ?? '')));
+                        if ($sku === '' || str_contains($sku, 'PARENT')) {
+                            continue;
+                        }
+                        $status = $hasStatus ? strtolower(trim((string) ($row->listing_status ?? ''))) : '';
+                        $inactive = in_array($status, ['inactive', 'offline', 'disabled', 'ended', 'unpublished', '0', 'false'], true);
+                        $listed = $hasPrice ? ((float) ($row->price ?? 0) > 0 && ! $inactive) : ! $inactive;
+                        if (! $listed) {
+                            continue;
+                        }
+                        $listedSkus[$sku] = true;
+                        $liveMcL30[$sku] = (int) ($row->m_l30 ?? 0);
+                    }
+                });
+            if ($listedSkus === []) {
+                return;
+            }
+        }
+        $skuFilter = $restrictListed ? $listedSkus : $skuAllow;
+
         $invBySkuDate = [];
         foreach ([EbaySkuDailyData::class, Ebay2SkuDailyData::class] as $modelClass) {
             if (! class_exists($modelClass)) {
@@ -1931,10 +1971,10 @@ class ChannelPromoPricingController extends Controller
                 ->whereBetween('record_date', [$start->toDateString(), $end->toDateString()])
                 ->select(['id', 'sku', 'record_date', 'daily_data'])
                 ->orderBy('id')
-                ->chunkById(2000, function ($chunk) use (&$invBySkuDate, $skuAllow) {
+                ->chunkById(2000, function ($chunk) use (&$invBySkuDate, $skuFilter) {
                     foreach ($chunk as $record) {
                         $sku = strtoupper(trim((string) ($record->sku ?? '')));
-                        if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuAllow[$sku])) {
+                        if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuFilter[$sku])) {
                             continue;
                         }
                         $dateKey = Carbon::parse($record->record_date)->toDateString();
@@ -1959,10 +1999,10 @@ class ChannelPromoPricingController extends Controller
                 ->whereBetween('order_created_at', [$qtyStart, $end->copy()->endOfDay()])
                 ->select(['id', 'sku', 'quantity', 'order_created_at'])
                 ->orderBy('id')
-                ->chunkById(2000, function ($chunk) use (&$qtyBySkuDate, $skuAllow) {
+                ->chunkById(2000, function ($chunk) use (&$qtyBySkuDate, $skuFilter) {
                     foreach ($chunk as $row) {
                         $sku = strtoupper(trim((string) ($row->sku ?? '')));
-                        if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuAllow[$sku])) {
+                        if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuFilter[$sku])) {
                             continue;
                         }
                         if (! $row->order_created_at) {
@@ -1974,28 +2014,11 @@ class ChannelPromoPricingController extends Controller
                 });
         }
 
-        $liveMcL30 = [];
-        if (Schema::hasTable('macy_products')) {
-            MacyProduct::query()
-                ->whereNotNull('sku')
-                ->select(['id', 'sku', 'm_l30'])
-                ->orderBy('id')
-                ->chunkById(2000, function ($chunk) use (&$liveMcL30) {
-                    foreach ($chunk as $row) {
-                        $sku = strtoupper(trim((string) ($row->sku ?? '')));
-                        if ($sku === '' || str_contains($sku, 'PARENT')) {
-                            continue;
-                        }
-                        $liveMcL30[$sku] = (int) ($row->m_l30 ?? 0);
-                    }
-                });
-        }
-
         $shopifyInv = [];
         if (Schema::hasTable((new ShopifySku)->getTable())) {
             foreach (ShopifySku::query()->select('sku', 'inv')->whereNotNull('sku')->get() as $row) {
                 $sku = strtoupper(trim((string) $row->sku));
-                if ($sku === '' || str_contains($sku, 'PARENT')) {
+                if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuFilter[$sku])) {
                     continue;
                 }
                 $shopifyInv[$sku] = (int) ($row->inv ?? 0);
@@ -2003,14 +2026,29 @@ class ChannelPromoPricingController extends Controller
         }
 
         $todayKey = $end->toDateString();
+        $skuKeys = array_keys($skuFilter);
         $windowDates = [];
         for ($d = $start->copy()->subDays(29); $d->lte($end); $d->addDay()) {
             $windowDates[] = $d->toDateString();
         }
+        $dateIndex = array_flip($windowDates);
+        $qtyPrefix = [];
+        foreach ($skuKeys as $sku) {
+            $running = 0;
+            $prefix = [];
+            foreach ($windowDates as $i => $date) {
+                $running += (int) ($qtyBySkuDate[$sku][$date] ?? 0);
+                $prefix[$i] = $running;
+            }
+            $qtyPrefix[$sku] = $prefix;
+        }
 
         foreach (array_keys($out) as $dateKey) {
-            $windowStart = Carbon::parse($dateKey, 'America/Los_Angeles')->subDays(29)->toDateString();
-            foreach (array_keys($skuAllow) as $sku) {
+            $idx = $dateIndex[$dateKey] ?? null;
+            if ($idx === null) {
+                continue;
+            }
+            foreach ($skuKeys as $sku) {
                 $inv = $invBySkuDate[$sku][$dateKey] ?? null;
                 if ($dateKey === $todayKey && ($shopifyInv[$sku] ?? 0) > 0) {
                     $inv = $shopifyInv[$sku];
@@ -2027,13 +2065,7 @@ class ChannelPromoPricingController extends Controller
                 if ($dateKey === $todayKey && array_key_exists($sku, $liveMcL30)) {
                     $mcL30 = $liveMcL30[$sku];
                 } else {
-                    $mcL30 = 0;
-                    foreach ($windowDates as $qtyDate) {
-                        if ($qtyDate < $windowStart || $qtyDate > $dateKey) {
-                            continue;
-                        }
-                        $mcL30 += (int) ($qtyBySkuDate[$sku][$qtyDate] ?? 0);
-                    }
+                    $mcL30 = $qtyPrefix[$sku][$idx] - ($idx >= 30 ? $qtyPrefix[$sku][$idx - 30] : 0);
                 }
 
                 $dil = ($mcL30 / $inv) * 100;

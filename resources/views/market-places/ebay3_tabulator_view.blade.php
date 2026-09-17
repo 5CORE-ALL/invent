@@ -2732,7 +2732,7 @@
                     width: 65
                 },
                 {
-                    title: "GPFT %",
+                    title: "GPFT%",
                     field: "GPFT%",
                     hozAlign: "center",
                     sorter: "number",
@@ -2766,7 +2766,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil outside the table uses the nearest slab (including 0 Sold). CVR < 7% subtracts 10 from Target NROI%; CVR > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
+                    headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Every INV > 0 SKU Dil-matches, including 0 Sold; Dil outside the table uses the nearest slab. CVR < 7% subtracts 10 from Target NROI%; CVR > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary || rowData.is_parent_row) return '';
@@ -2852,7 +2852,7 @@
                     width: 80
                 },
                 {
-                    title: "S GROI",
+                    title: "SGROI%",
                     field: "SGROI",
                     hozAlign: "center",
                     headerTooltip: "S GROI from the visible S PRC. LMP cap (when SGROI at LMP ≥ 20%) can lower the shown %.",
@@ -2886,7 +2886,7 @@
                     width: 80
                 },
                 {
-                    title: "S GPFT",
+                    title: "SGPFT%",
                     field: "SGPFT",
                     hozAlign: "center",
                     headerTooltip: "S GPFT from S PRC (SPRICE).",

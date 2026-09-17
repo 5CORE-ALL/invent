@@ -218,6 +218,7 @@
 @endsection
 
 @section('script-bottom')
+    @include('partials.lazy-chart-js')
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'purchasing_power'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'purchasing_power'])
@@ -975,7 +976,7 @@
                     }
                 },
                 {
-                    title: 'NPFT', field: 'PFT %', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'NPFT%', field: 'PFT %', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
                         // Purchasing Power has no ads — NPFT% = GPFT%
                         const p = parseFloat(cell.getRow().getData()['GPFT%'] ?? cell.getValue());
@@ -994,7 +995,7 @@
                     }
                 },
                 {
-                    title: 'NROI', field: 'NROI', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'NROI%', field: 'NROI', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
                         // Purchasing Power has no ads — NROI% = GROI% (ROI%)
                         const p = parseFloat(cell.getRow().getData()['ROI%']);
@@ -1068,7 +1069,7 @@
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center',
                     editable: false, sorter: 'number', width: 110,
-                    headerTooltip: 'S PRC from Sprc Dil. Dil-matching Target GROI when PP L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship BB) / margin — same as Amazon, Ship BB not normal Ship. If that price < A Price, S PRC = A Price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
+                    headerTooltip: 'S PRC from Sprc Dil. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Dil-matching Target NROI when PP L30 > 0; 0 Sold uses the lowest Target NROI in the table. S PRC = (LP × (1 + NROI%/100) + Ship BB) / margin — same as Amazon, Ship BB not normal Ship. If that price < A Price, S PRC = A Price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';
@@ -1166,7 +1167,7 @@
                     }
                 },
                 {
-                    title: 'SGPFT', field: 'SGPFT', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'SGPFT%', field: 'SGPFT', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
                         const p = parseFloat(cell.getValue());
                         const color = p < 10 ? '#a00211' : p < 15 ? '#ffc107' : p < 20 ? '#3591dc' : p <= 40 ? '#28a745' : '#e83e8c';
@@ -1174,9 +1175,9 @@
                     }
                 },
                 {
-                    title: 'SNPFT', field: 'SPFT', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'SNPFT%', field: 'SPFT', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
-                        // Purchasing Power has no ads — SNPFT = SGPFT
+                        // Purchasing Power has no ads — SNPFT% = SGPFT%
                         const p = parseFloat(cell.getRow().getData().SGPFT ?? cell.getValue());
                         if (!isFinite(p)) return '';
                         const color = p < 10 ? '#a00211' : p < 15 ? '#ffc107' : p < 20 ? '#3591dc' : p <= 40 ? '#28a745' : '#e83e8c';
@@ -1184,10 +1185,20 @@
                     }
                 },
                 {
-                    title: 'SNROI', field: 'SROI', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'SROI%', field: 'SROI', hozAlign: 'center', sorter: 'number', width: 50,
+                    headerTooltip: 'Gross S ROI from S PRC. Same $ as GROI% using S PRC + Ship BB.',
                     formatter: function(cell) {
-                        // Purchasing Power has no ads — SNROI = gross SROI (no Ads% cut)
                         const p = parseFloat(cell.getValue());
+                        if (!isFinite(p)) return '';
+                        const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
+                        return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
+                    }
+                },
+                {
+                    title: 'SNROI%', field: 'SNROI', hozAlign: 'center', sorter: 'number', width: 50,
+                    headerTooltip: 'Purchasing Power has no Ads% — SNROI% = SROI%.',
+                    formatter: function(cell) {
+                        const p = parseFloat(cell.getRow().getData().SROI ?? cell.getValue());
                         if (!isFinite(p)) return '';
                         const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
