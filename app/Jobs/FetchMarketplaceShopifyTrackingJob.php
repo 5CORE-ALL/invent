@@ -33,6 +33,7 @@ class FetchMarketplaceShopifyTrackingJob implements ShouldQueue, ShouldBeUnique
     public function __construct(
         public int $limit = 500,
         public bool $all = false,
+        public bool $fresh = false,
     ) {
         $this->onQueue(MarketplaceManagerRegistry::QUEUE_TRACKING);
     }
@@ -45,7 +46,7 @@ class FetchMarketplaceShopifyTrackingJob implements ShouldQueue, ShouldBeUnique
     public function handle(VeeqoShopifyFulfillmentService $sync): void
     {
         try {
-            $result = $sync->syncPendingUnfulfilled($this->limit, false, $this->all);
+            $result = $sync->syncPendingUnfulfilled($this->limit, $this->fresh, $this->all);
             \App\Services\MarketplaceManager\MarketplaceChannelFulfillmentHub::dispatchAllTrackingJobs(40);
             Log::info('FetchMarketplaceShopifyTrackingJob: completed', $result);
         } catch (\Throwable $e) {

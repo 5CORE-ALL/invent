@@ -15,7 +15,7 @@ document.addEventListener('click', function (e) {
     var url = btn.getAttribute('data-url');
     if (!url) return;
     e.preventDefault();
-    if (!confirm('Fetch tracking from Veeqo and GOFO (4Seller) for unfulfilled Shopify copies on every marketplace?\n\nThe Shopify customer will not be emailed.')) return;
+    if (!confirm('Fetch tracking from Veeqo and GOFO (4Seller) now, fulfill those Shopify copies, and push tracking to every marketplace (AliExpress, Temu 2, etc.)?\n\nThe Shopify customer will not be emailed. This can take a minute.')) return;
     var original = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<i class="ri-loader-4-line"></i> Fetching…';
