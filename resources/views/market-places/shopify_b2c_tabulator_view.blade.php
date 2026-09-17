@@ -1547,8 +1547,16 @@
             if (shopifyB2cWriteRuleSpriceOnRow(row, opts)) changed++;
         });
         if (changed) {
+            const holder = table.element && table.element.querySelector('.tabulator-tableholder');
+            const top = holder ? holder.scrollTop : 0;
+            const left = holder ? holder.scrollLeft : 0;
             try { table.redraw(true); } catch (e) { /* ignore */ }
+            if (holder) {
+                holder.scrollTop = top;
+                holder.scrollLeft = left;
+            }
             if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
+            else if (typeof window.updateSummary === 'function') window.updateSummary();
         }
         return changed;
     }
@@ -2767,10 +2775,29 @@
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shopify_b2c'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
+        function shopifyB2cTableWrapHeight() {
+            const wrap = document.getElementById('reverb-table-wrapper');
+            return wrap && wrap.clientHeight > 160 ? wrap.clientHeight : 600;
+        }
+        function shopifyB2cSyncTableHeight() {
+            if (!table || typeof table.setHeight !== 'function') return;
+            const wrap = document.getElementById('reverb-table-wrapper');
+            const holder = wrap && wrap.querySelector('.tabulator-tableholder');
+            const sl = holder ? holder.scrollLeft : 0;
+            const st = holder ? holder.scrollTop : 0;
+            try { table.setHeight(shopifyB2cTableWrapHeight()); } catch (e) { /* ignore */ }
+            const holder2 = wrap && wrap.querySelector('.tabulator-tableholder');
+            if (holder2) {
+                holder2.scrollLeft = sl;
+                holder2.scrollTop = st;
+            }
+        }
+
         // Initialize Tabulator
         table = new Tabulator("#reverb-table", {
             ajaxURL: SHOPIFY_B2C_DATA_URL,
             ajaxSorting: false,
+            height: shopifyB2cTableWrapHeight(),
             layout: "fitData",
             rowHeight: 36,
             pagination: true,
@@ -4185,14 +4212,21 @@
         });
 
         table.on('dataLoaded', function() {
+            shopifyB2cSyncTableHeight();
             setTimeout(function() {
                 applyFilters();
+                shopifyB2cSyncTableHeight();
                 if (typeof window.chPromoAutofitColumns === 'function') {
                     window.chPromoAutofitColumns(table);
                 }
                 if (typeof loadShopifyB2cBadgePrevDay === 'function') loadShopifyB2cBadgePrevDay();
                 if (typeof loadChartJs === 'function') loadChartJs();
             }, 100);
+        });
+        let shopifyB2cResizeTimer = null;
+        window.addEventListener('resize', function() {
+            if (shopifyB2cResizeTimer) clearTimeout(shopifyB2cResizeTimer);
+            shopifyB2cResizeTimer = setTimeout(shopifyB2cSyncTableHeight, 150);
         });
 
         // Toggle column from dropdown

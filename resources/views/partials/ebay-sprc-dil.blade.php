@@ -1726,9 +1726,57 @@
             renderEbayDilGroiModalTable();
             ebayAfterDilGroiRulesChanged();
         }
+        function ebayDgTableScrollEl() {
+            try {
+                if (typeof table !== 'undefined' && table) {
+                    if (table.rowManager && table.rowManager.element) return table.rowManager.element;
+                    if (table.element) return table.element.querySelector('.tabulator-tableholder');
+                }
+            } catch (e) { /* ignore */ }
+            return document.querySelector('.tabulator-tableholder');
+        }
+        function ebayDgCaptureScroll() {
+            const h = ebayDgTableScrollEl();
+            return {
+                top: h ? h.scrollTop : 0,
+                left: h ? h.scrollLeft : 0,
+                winY: window.scrollY || window.pageYOffset || 0,
+                winX: window.scrollX || window.pageXOffset || 0,
+            };
+        }
+        function ebayDgRestoreScroll(s) {
+            if (!s) return;
+            const apply = function() {
+                const h = ebayDgTableScrollEl();
+                if (h) {
+                    h.scrollTop = s.top;
+                    h.scrollLeft = s.left;
+                }
+                window.scrollTo(s.winX, s.winY);
+            };
+            apply();
+            requestAnimationFrame(apply);
+        }
+        function ebayDgRefreshVisibleRows() {
+            if (typeof table === 'undefined' || !table) return;
+            const scroll = ebayDgCaptureScroll();
+            try {
+                const rows = (typeof table.getRows === 'function') ? (table.getRows('visible') || []) : [];
+                rows.forEach(function(row) {
+                    try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+                });
+            } catch (e) { /* ignore */ }
+            ebayDgRestoreScroll(scroll);
+        }
         function redrawEbaySprcDilColumn() {
             if (typeof table === 'undefined' || !table) return;
-            try { table.redraw(true); } catch (e) { /* ignore */ }
+            const scroll = ebayDgCaptureScroll();
+            if (typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c()) {
+                ebayDgRefreshVisibleRows();
+            } else {
+                try { table.redraw(true); } catch (e) { /* ignore */ }
+                ebayDgRestoreScroll(scroll);
+            }
             if (typeof window.updateEbay3Summary === 'function') {
                 try { window.updateEbay3Summary(); } catch (e) { /* ignore */ }
             } else if (typeof window.updateSummary === 'function') {
@@ -1788,6 +1836,14 @@
         /** Macys / Purchasing Power load / slab edit: write Dil S PRC in the grid only. No catalog wipe or batch POST. */
         function ebayDgPaintMacysRuleSprice() {
             if (typeof table === 'undefined' || !table) return 0;
+            // Shopify B2C S PRC / SNROI already read live Dil. Mass row.update + redraw jumps the table to the top.
+            if (typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c()) {
+                ebayDgRefreshVisibleRows();
+                if (typeof window.updateSummary === 'function') {
+                    try { window.updateSummary(); } catch (e) { /* ignore */ }
+                }
+                return 0;
+            }
             const nearly = typeof chPromoNearlyEqual === 'function'
                 ? chPromoNearlyEqual
                 : function(a, b) { return Math.abs((Number(a) || 0) - (Number(b) || 0)) < 0.005; };
