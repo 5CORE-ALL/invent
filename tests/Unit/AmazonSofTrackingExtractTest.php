@@ -38,4 +38,16 @@ class AmazonSofTrackingExtractTest extends TestCase
         $this->assertContains('113-1234567-1234567', $variants);
         $this->assertContains('11312345671234567', $variants);
     }
+
+    public function test_reads_tracking_from_order_item_payload(): void
+    {
+        $hit = AmazonOrder::trackingFromDecoded([
+            'OrderItemId' => '123',
+            'tracking_number' => '9400111899351234567890',
+            'carrier' => 'USPS',
+        ]);
+
+        $this->assertSame('9400111899351234567890', $hit['tracking']);
+        $this->assertSame('USPS', $hit['carrier']);
+    }
 }

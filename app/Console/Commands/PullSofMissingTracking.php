@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Log;
 class PullSofMissingTracking extends Command
 {
     protected $signature = 'sof:pull-missing-tracking
-                            {--limit=150 : Max Pending + Label Created rows to look up on Veeqo/GOFO}
+                            {--limit=400 : Max Pending + Label Created rows to look up on Veeqo/GOFO/channel APIs}
                             {--temu-limit=40 : Max Temu parent orders to pull}';
 
     protected $description = 'Pull missing SOF tracking numbers (Temu API + Veeqo/GOFO) for Pending and Label Created.';
@@ -26,7 +26,7 @@ class PullSofMissingTracking extends Command
         TemuOrderTrackingPullService $temuPull,
         Temu2OrderTrackingPullService $temu2Pull,
     ): int {
-        $limit = max(1, min(200, (int) $this->option('limit')));
+        $limit = max(1, min(400, (int) $this->option('limit')));
         $temuLimit = max(1, min(80, (int) $this->option('temu-limit')));
 
         $temu = ['success' => true, 'message' => 'skipped', 'updated' => 0];

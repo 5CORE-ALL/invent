@@ -2818,7 +2818,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         // Pull missing SOF tracking (eBay/Veeqo/GOFO + Temu) every 15 minutes.
-        $schedule->command('sof:pull-missing-tracking --limit=200 --temu-limit=40')
+        $schedule->command('sof:pull-missing-tracking --limit=400 --temu-limit=40')
             ->everyFifteenMinutes()
             ->timezone('America/Los_Angeles')
             ->name('sof-pull-missing-tracking')

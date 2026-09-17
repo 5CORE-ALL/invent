@@ -39,6 +39,7 @@ use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\Temu2OrderTrackingPullService;
 use App\Services\MarketplaceManager\TemuOrderAmountParser;
 use App\Services\MarketplaceManager\TemuOrderTrackingPullService;
+use App\Services\MarketplaceManager\AmazonTrackingSyncService;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Services\SheinApiService;
 use App\Services\ShipmentTrackingService;
@@ -1914,6 +1915,22 @@ class SalesOrderFulfillmentController extends Controller
             $keys[] = 'Amz'.$compact;
             $keys[] = '#Amz'.$compact;
         }
+        foreach (['TT-', 'TT2-', 'tiktok-', 'tiktok2-', 'PO-'] as $prefix) {
+            if ($plain === '' || str_starts_with(strtolower($plain), strtolower($prefix))) {
+                continue;
+            }
+            $keys[] = $prefix.$plain;
+            $keys[] = '#'.$prefix.$plain;
+            $keys[] = $prefix.$compact;
+            $keys[] = '#'.$prefix.$compact;
+        }
+        if (preg_match('/^(?:TT2?-|tiktok2?-|PO-)(.+)$/i', $plain, $m) === 1) {
+            $tail = trim((string) ($m[1] ?? ''));
+            if ($tail !== '') {
+                $keys[] = $tail;
+                $keys[] = '#'.$tail;
+            }
+        }
 
         return array_values(array_unique(array_filter($keys, static fn ($k) => $k !== '')));
     }
@@ -2735,15 +2752,16 @@ class SalesOrderFulfillmentController extends Controller
 
     /**
      * Still waiting on the warehouse — marketplace unfulfilled and no tracking number yet.
+     * One row per marketplace order (Faire/Temu/TikTok store one DB row per SKU line).
      *
      * @return list<array<string, mixed>>
      */
     protected function warehousePendingOrderRows(): array
     {
-        return array_values(array_filter(
+        return $this->uniqueMarketplaceOrdersMatching(
             $this->pendingMarketplaceOrderRows(),
-            fn (array $r) => ! $this->rowHasLabelTracking($r) && ! $this->orderRowIsCancelled($r)
-        ));
+            false
+        );
     }
 
     /**
@@ -2753,10 +2771,118 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function pendingAlreadyLabeledRows(): array
     {
-        return array_values(array_filter(
+        return $this->uniqueMarketplaceOrdersMatching(
             $this->pendingMarketplaceOrderRows(),
-            fn (array $r) => $this->rowHasLabelTracking($r)
-        ));
+            true
+        );
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    protected function marketplaceOrderDedupeKey(array $row): string
+    {
+        $slug = strtolower(trim((string) ($row['mm_slug'] ?? '')));
+        $oid = strtolower(trim((string) (
+            $row['order_id_api']
+            ?? $row['order_id']
+            ?? $row['order_number']
+            ?? ''
+        )));
+        if ($oid === '') {
+            $oid = strtolower(trim((string) ($row['id'] ?? '')));
+        }
+
+        return $slug.'|'.$oid;
+    }
+
+    /**
+     * Collapse SKU lines into one SOF row per marketplace order.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function uniqueMarketplaceOrdersMatching(array $rows, bool $requireLabel): array
+    {
+        $groups = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $groups[$this->marketplaceOrderDedupeKey($row)][] = $row;
+        }
+
+        $out = [];
+        foreach ($groups as $lines) {
+            $anyLabel = false;
+            $allCancelled = true;
+            foreach ($lines as $line) {
+                if ($this->rowHasLabelTracking($line)) {
+                    $anyLabel = true;
+                }
+                if (! $this->orderRowIsCancelled($line)) {
+                    $allCancelled = false;
+                }
+            }
+            if ($allCancelled) {
+                continue;
+            }
+            if ($requireLabel !== $anyLabel) {
+                continue;
+            }
+            $out[] = $this->mergeMarketplaceOrderLines($lines);
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $lines
+     * @return array<string, mixed>
+     */
+    protected function mergeMarketplaceOrderLines(array $lines): array
+    {
+        $base = $lines[0];
+        $qty = 0;
+        $amount = 0.0;
+        $hasAmount = false;
+        $skus = [];
+        foreach ($lines as $line) {
+            $qty += max(0, (int) ($line['quantity'] ?? 0));
+            if (isset($line['amount']) && is_numeric($line['amount'])) {
+                $amount += (float) $line['amount'];
+                $hasAmount = true;
+            }
+            foreach ($this->rowLookupSkus($line) as $sku) {
+                $skus[$sku] = true;
+            }
+            if (
+                trim((string) ($base['tracking_number'] ?? '')) === ''
+                && trim((string) ($line['tracking_number'] ?? '')) !== ''
+            ) {
+                $base['tracking_number'] = $line['tracking_number'];
+                if (trim((string) ($line['tracking_company'] ?? '')) !== '') {
+                    $base['tracking_company'] = $line['tracking_company'];
+                }
+            }
+            if (! empty($line['has_shipping_label'])) {
+                $base['has_shipping_label'] = true;
+            }
+        }
+        $skuList = array_keys($skus);
+        $firstSku = (string) ($skuList[0] ?? $base['sku'] ?? '');
+        if (count($skuList) > 1) {
+            $firstSku .= ' +'.(count($skuList) - 1);
+        }
+        if ($firstSku !== '') {
+            $base['sku'] = $firstSku;
+        }
+        $base['quantity'] = $qty > 0 ? $qty : max(1, (int) ($base['quantity'] ?? 1));
+        if ($hasAmount) {
+            $base['amount'] = $amount;
+        }
+
+        return $base;
     }
 
     /**
@@ -2768,7 +2894,7 @@ class SalesOrderFulfillmentController extends Controller
     {
         $out = [];
         $seen = [];
-        foreach (array_merge($this->warehousePendingOrderRows(), $this->labelCreatedOrderRows()) as $row) {
+        foreach (array_merge($this->labelCreatedNoScanRows(), $this->labelCreatedOrderRows(), $this->warehousePendingOrderRows()) as $row) {
             if (! is_array($row)) {
                 continue;
             }
@@ -3670,7 +3796,7 @@ class SalesOrderFulfillmentController extends Controller
      */
     public function pullMissingLabelCreatedTracking(int $limit = 80): array
     {
-        $limit = max(1, min(200, $limit));
+        $limit = max(1, min(400, $limit));
         $candidates = $this->missingLabelTrackingRows();
         $filtered = [];
         foreach ($candidates as $row) {
@@ -3707,7 +3833,7 @@ class SalesOrderFulfillmentController extends Controller
         ?float $deadline = null,
         bool $fast = false,
     ): array {
-        $limit = max(1, min(200, $limit));
+        $limit = max(1, min(400, $limit));
         $checked = 0;
         $updated = 0;
         $withTracking = 0;
@@ -3756,6 +3882,37 @@ class SalesOrderFulfillmentController extends Controller
                     $processedKeys[] = $this->sofPullRowKey($row);
                     continue;
                 }
+                if ($amazonOrder) {
+                    $checked++;
+                    $processedKeys[] = $this->sofPullRowKey($row);
+                    $filled = app(AmazonTrackingSyncService::class)->fillTrackingForOrder($amazonOrder);
+                    $tn = trim((string) ($filled['tracking'] ?? ''));
+                    if ($tn === '') {
+                        continue;
+                    }
+                    $carrier = TrackingCarrierGuesser::fill(
+                        (string) ($filled['carrier'] ?? ''),
+                        $tn
+                    ) ?? '';
+                    $this->persistPulledChannelTracking($slug, $showId, $row, $tn, $carrier);
+                    $withTracking++;
+                    $updated++;
+                    $outRows[] = [
+                        'id' => (string) ($row['id'] ?? ''),
+                        'mm_slug' => $slug,
+                        'show_id' => $showId,
+                        'order_number' => (string) ($row['order_number'] ?? $row['order_id'] ?? ''),
+                        'shopify_order_id' => $row['shopify_order_id'] ?? null,
+                        'order_id' => (string) ($row['order_id'] ?? ''),
+                        'order_id_api' => (string) ($row['order_id_api'] ?? ''),
+                        'tracking_number' => $tn,
+                        'tracking_company' => $carrier,
+                        'fulfillment_status' => 'AMAZON',
+                        'shipment_status' => '',
+                        'note' => 'Pulled from Shopify/Veeqo/GOFO/Amazon',
+                    ];
+                    continue;
+                }
             }
 
             $checked++;
@@ -3785,6 +3942,9 @@ class SalesOrderFulfillmentController extends Controller
             }
 
             $found = $labels->lookupLabelTracking($refs, $local, $fast);
+            if ($found === null || trim((string) ($found['tracking'] ?? '')) === '') {
+                $found = $labels->lookupLiveChannelTracking($slug, $refs);
+            }
             if ($found === null) {
                 continue;
             }
@@ -3818,6 +3978,7 @@ class SalesOrderFulfillmentController extends Controller
                     'veeqo' => 'Veeqo',
                     'gofo' => 'GOFO',
                     '4seller' => '4Seller',
+                    'channel' => 'channel API',
                     default => 'marketplace order',
                 },
             ];
@@ -3941,26 +4102,18 @@ class SalesOrderFulfillmentController extends Controller
         $this->enrollCarrierTrackingNumber($tracking, $carrier);
 
         try {
-            if ($slug === 'amazon') {
-                $order = AmazonOrder::query()->find($showId);
-                if ($order === null && $showId > 0) {
-                    $item = AmazonOrderItem::query()->find($showId);
-                    $order = $item?->order;
-                }
-                if ($order === null) {
-                    $oid = trim((string) ($sofRow['order_id'] ?? $sofRow['order_id_api'] ?? ''));
-                    if ($oid !== '') {
-                        $order = AmazonOrder::query()->where('amazon_order_id', $oid)->first();
-                    }
-                }
-                if ($order !== null) {
-                    $raw = AmazonOrder::decodeRawPayload($order->raw_data ?? null);
-                    $raw['tracking_number'] = $tracking;
-                    $raw['carrier'] = $carrier;
-                    $order->raw_data = $raw;
-                    $order->save();
-                }
+            $shopifyOrderId = trim((string) ($sofRow['shopify_order_id'] ?? ''));
+            if ($showId > 0) {
+                app(VeeqoShopifyFulfillmentService::class)->persistTrackingOntoMarketplaceOrder(
+                    $slug,
+                    $showId,
+                    $shopifyOrderId,
+                    $tracking,
+                    $carrier
+                );
+            }
 
+            if ($slug === 'amazon') {
                 return;
             }
 
@@ -4101,9 +4254,8 @@ class SalesOrderFulfillmentController extends Controller
                 if ($v === '') {
                     continue;
                 }
-                $candidates[] = $v;
-                if (! str_starts_with($v, 'Amz')) {
-                    $candidates[] = 'Amz'.$v;
+                foreach ($this->shopifyTrackingLookupKeys($v) as $key) {
+                    $candidates[] = $key;
                 }
             }
             $candidates = array_values(array_unique($candidates));
@@ -5228,30 +5380,43 @@ class SalesOrderFulfillmentController extends Controller
                 'tracking_company' => isset($order->carrier) ? trim((string) $order->carrier) ?: null : null,
                 'show_id' => (int) $order->id,
             ],
-            'tiktok', 'tiktok2' => [
-                'status' => (string) ($order->order_status ?: $order->line_status ?: ''),
-                'order_date' => $order->order_created_at ?? null,
-                'updated_at' => $order->order_updated_at ?? $order->updated_at ?? null,
-                'sku' => (string) ($order->seller_sku ?: $order->sku_id ?: ''),
-                'catalog_sku' => (string) ($order->seller_sku ?: ''),
-                'display_title' => (string) ($order->product_name ?? ''),
-                'quantity' => max(1, (int) ($order->quantity ?? 1)),
-                'amount' => $this->firstPositiveAmount(
-                    $order->order_amount ?? null,
-                    isset($order->sale_price)
-                        ? ((float) $order->sale_price) * max(1, (int) ($order->quantity ?? 1))
-                        : null,
-                    $order->original_price ?? null
-                ),
-                'order_id' => (string) ($order->order_id ?? ''),
-                'order_number' => (string) ($order->order_id ?? ''),
-                'import_status' => (string) ($order->import_status ?? ''),
-                'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
-                'raw_payload' => $order->raw_json ?? null,
-                'tracking_number' => isset($order->tracking_number) ? trim((string) $order->tracking_number) ?: null : null,
-                'tracking_company' => isset($order->shipping_provider) ? trim((string) $order->shipping_provider) ?: null : null,
-                'show_id' => (int) $order->id,
-            ],
+            'tiktok', 'tiktok2' => (function () use ($order) {
+                $raw = is_array($order->raw_json ?? null) ? $order->raw_json : [];
+                $fromPayload = VeeqoShopifyFulfillmentService::trackingFromTikTokOrderPayload($raw);
+                $tn = trim((string) ($fromPayload['tracking'] ?? ''));
+                $carrier = trim((string) ($fromPayload['carrier'] ?? ''));
+                if ($tn === '' && isset($order->tracking_number)) {
+                    $tn = trim((string) $order->tracking_number);
+                }
+                if ($carrier === '') {
+                    $carrier = trim((string) ($order->shipping_provider ?? ''));
+                }
+
+                return [
+                    'status' => (string) ($order->order_status ?: $order->line_status ?: ''),
+                    'order_date' => $order->order_created_at ?? null,
+                    'updated_at' => $order->order_updated_at ?? $order->updated_at ?? null,
+                    'sku' => (string) ($order->seller_sku ?: $order->sku_id ?: ''),
+                    'catalog_sku' => (string) ($order->seller_sku ?: ''),
+                    'display_title' => (string) ($order->product_name ?? ''),
+                    'quantity' => max(1, (int) ($order->quantity ?? 1)),
+                    'amount' => $this->firstPositiveAmount(
+                        $order->order_amount ?? null,
+                        isset($order->sale_price)
+                            ? ((float) $order->sale_price) * max(1, (int) ($order->quantity ?? 1))
+                            : null,
+                        $order->original_price ?? null
+                    ),
+                    'order_id' => (string) ($order->order_id ?? ''),
+                    'order_number' => (string) ($order->order_id ?? ''),
+                    'import_status' => (string) ($order->import_status ?? ''),
+                    'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
+                    'raw_payload' => $order->raw_json ?? null,
+                    'tracking_number' => $tn !== '' ? $tn : null,
+                    'tracking_company' => $carrier !== '' ? $carrier : null,
+                    'show_id' => (int) $order->id,
+                ];
+            })(),
             'bestbuy', 'macy' => [
                 'status' => (string) ($order->status ?? ''),
                 'order_date' => $order->order_created_at ?? null,

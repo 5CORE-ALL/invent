@@ -778,6 +778,23 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
+     * Native channel APIs (TikTok / eBay / Shein / Temu / …) after Veeqo/GOFO miss.
+     *
+     * @param  list<string>  $ids
+     * @return array{tracking: string, carrier: string, source?: string}|null
+     */
+    public function lookupLiveChannelTracking(string $marketplace, array $ids): ?array
+    {
+        $hit = $this->pullLiveMarketplaceTracking(strtolower(trim($marketplace)), $ids);
+        if ($hit === null || trim((string) ($hit['tracking'] ?? '')) === '') {
+            return null;
+        }
+        $hit['source'] = $hit['source'] ?? 'channel';
+
+        return $hit;
+    }
+
+    /**
      * Marketplace / customer order numbers suitable for GOFO and Veeqo search.
      * Drops Shopify GIDs and other long internal ids that will never match a label.
      *
@@ -2818,7 +2835,11 @@ class VeeqoShopifyFulfillmentService
         if (! is_array($packages)) {
             $packages = [];
         }
-        $rows = $packages;
+        $lineItems = $order['line_items'] ?? $order['item_list'] ?? [];
+        if (! is_array($lineItems)) {
+            $lineItems = [];
+        }
+        $rows = array_merge($packages, $lineItems);
         $rows[] = $order;
         foreach ($rows as $row) {
             if (! is_array($row)) {
@@ -4905,7 +4926,7 @@ class VeeqoShopifyFulfillmentService
                 $model->tracking_reference = $tn;
             }
             foreach (['raw_payload', 'raw_json', 'raw_data'] as $field) {
-                if (! isset($model->{$field})) {
+                if (! Schema::hasColumn($model->getTable(), $field)) {
                     continue;
                 }
                 $raw = $model->{$field};

@@ -84,6 +84,21 @@ class VeeqoShopifyFulfillmentIdRulesTest extends TestCase
         $this->assertSame('GOFO', $hit['carrier'] ?? null);
     }
 
+    public function test_tiktok_line_item_payload_exposes_tracking(): void
+    {
+        $hit = VeeqoShopifyFulfillmentService::trackingFromTikTokOrderPayload([
+            'line_items' => [
+                [
+                    'tracking_number' => '1213H8950231805516',
+                    'shipping_provider_name' => 'USPS',
+                ],
+            ],
+        ]);
+
+        $this->assertSame('1213H8950231805516', $hit['tracking'] ?? null);
+        $this->assertSame('USPS', $hit['carrier'] ?? null);
+    }
+
     public function test_shipped_and_in_transit_statuses_are_ready_unshipped_are_not(): void
     {
         $this->assertTrue(VeeqoShopifyFulfillmentService::marketplaceStatusLooksShipped('SHIPPED'));
