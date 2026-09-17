@@ -3324,10 +3324,7 @@
             function ebay1HasBlueTriangle(data) {
                 if (!data || ebay1IsAlertParentRow(data)) return false;
                 if (!(parseFloat(data.INV) > 0)) return false;
-                if (typeof chPromoEbaySpriceSlabsReady === 'function' && !chPromoEbaySpriceSlabsReady()) return false;
-                if (!ebay1HasPushableListing(data)) return false;
-                const pushSt = String(data.SPRICE_STATUS || data.push_status || data.PUSH_PRC_STATUS || '').toLowerCase();
-                if (pushSt === 'error' || pushSt === 'failed') return false;
+                if (ebay1IsEndedListing(data)) return false;
                 const sprice = ebay1RowSpriceForAlert(data);
                 const price = parseFloat(data['eBay Price']) || 0;
                 return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);

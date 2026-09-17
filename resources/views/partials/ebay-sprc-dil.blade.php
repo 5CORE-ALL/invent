@@ -1844,7 +1844,14 @@
         }
         function ebayAfterDilGroiRulesChanged() {
             redrawEbaySprcDilColumn();
-            ebayScheduleSprcDilAutoApply({ delay: 250 });
+            // Same as Amazon: Dil edit wipes saved S PRC, then writes the new Dil $.
+            ebayScheduleSprcDilAutoApply({
+                delay: 400,
+                flashClear: true,
+                persist: true,
+                forcePersist: true,
+                toast: false,
+            });
         }
         /** Macys / Purchasing Power load / slab edit: write Dil S PRC in the grid only. No catalog wipe or batch POST. */
         function ebayDgPaintMacysRuleSprice() {

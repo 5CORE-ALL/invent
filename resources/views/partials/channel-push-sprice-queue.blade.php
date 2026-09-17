@@ -1181,8 +1181,6 @@
                 function consider(row, d) {
                     if (!chPushSpriceIsChild(d)) return;
                     if (chPushSpriceRowBlocked(d)) return;
-                    const pushSt = String(d.SPRICE_STATUS || d.push_status || d.PUSH_PRC_STATUS || '').toLowerCase();
-                    if (pushSt === 'error' || pushSt === 'failed') return;
                     const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
                     const key = sku.toUpperCase();
                     if (!sku || seen.has(key)) return;
