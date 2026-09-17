@@ -406,7 +406,9 @@ class ShopifyB2cRuleSpriceApplyService
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
         if ($unpacked['rules'] === []) {
-            $unpacked['rules'] = AmazonDilGroiRule::defaults();
+            $unpacked['rules'] = AmazonDilGroiRule::defaultsForChannel('shopify_b2c');
+        } elseif (AmazonDilGroiRule::usesZeroToZero('shopify_b2c')) {
+            $unpacked['rules'] = AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
         }
 
         return $unpacked;

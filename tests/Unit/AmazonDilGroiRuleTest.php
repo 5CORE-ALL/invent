@@ -151,6 +151,8 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('depop'));
         $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('macys'));
         $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('macy'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('shopify_b2c'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('shopify_b2b'));
         $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('ebay1')[0]['key']);
         $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('ebay3')[0]['key']);
         $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('aliexpress')[0]['key']);
@@ -167,6 +169,8 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('depop')[0]['key']);
         $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('macys')[0]['key']);
         $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('macy')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('shopify_b2c')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('shopify_b2b')[0]['key']);
         $this->assertFalse(AmazonDilGroiRule::usesZeroToZero('temu'));
         $this->assertSame('0.1-5', AmazonDilGroiRule::defaultsForChannel('temu')[0]['key']);
     }

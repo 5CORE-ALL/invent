@@ -1596,7 +1596,7 @@ class ChannelPromoPricingController extends Controller
             'aliexpress' => $this->aliexpressHistorySkuSet(),
             'faire' => $this->faireHistorySkuSet(),
             'tiktok', 'tiktok2' => $this->tiktokHistorySkuSet($channel),
-            'mercari_wship', 'mercari_woship', 'shein', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy' => $this->mercariWshipHistorySkuSet(),
+            'mercari_wship', 'mercari_woship', 'shein', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b' => $this->mercariWshipHistorySkuSet(),
             'pls' => $this->plsHistorySkuSet(),
             default => null,
         };
