@@ -595,10 +595,12 @@
         window.frPushSprice = frPushSprice;
         function frHasBlueTriangle(data) {
             if (frIsParentRow(data)) return false;
+            if (!(parseFloat(data && (data.INV != null ? data.INV : data.inv)) > 0)) return false;
             const sprice = frRowSpriceForAlert(data);
             const price = parseFloat(data && data.price) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
+        window.frHasBlueTriangle = frHasBlueTriangle;
         function syncFrTriangleBadgeState() {
             $('#faire-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

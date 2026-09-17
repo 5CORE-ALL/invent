@@ -3302,46 +3302,24 @@
                 return raw === 'ENDED' || raw === 'INACTIVE' || raw === 'UNSOLD'
                     || raw === 'COMPLETED' || raw === 'SOLD';
             }
+            function ebay1HasPushableListing(data) {
+                if (!data || ebay1IsEndedListing(data)) return false;
+                return !!String(data.eBay_item_id || data.ebay_item_id || data.item_id || '').trim();
+            }
+            /** Same as Amazon: INV > 0, listed, live S PRC ≠ Price. Badge + auto-push share this. */
             function ebay1HasBlueTriangle(data) {
-                if (ebay1IsAlertParentRow(data)) return false;
-                if (ebay1IsEndedListing(data)) return false;
+                if (!data || ebay1IsAlertParentRow(data)) return false;
+                if (!(parseFloat(data.INV) > 0)) return false;
+                if (typeof chPromoEbaySpriceSlabsReady === 'function' && !chPromoEbaySpriceSlabsReady()) return false;
+                if (!ebay1HasPushableListing(data)) return false;
                 const sprice = ebay1RowSpriceForAlert(data);
                 const price = parseFloat(data['eBay Price']) || 0;
                 return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
             }
-            /** Same INV / REQ scope as the page filters and auto-push. */
-            function ebay1InPushFilterScope(data) {
-                if (!data || ebay1IsAlertParentRow(data)) return false;
-                const inventoryFilter = ($('#inventory-filter').val() || 'more');
-                const inv = parseFloat(data.INV) || 0;
-                if (inventoryFilter === 'zero' && inv !== 0) return false;
-                if (inventoryFilter === 'more' && !(inv > 0)) return false;
-                const nrlFilter = ($('#nrl-filter').val() || 'REQ');
-                if (nrlFilter === 'REQ' && data.nr_req !== 'REQ') return false;
-                if (nrlFilter === 'NR' && data.nr_req !== 'NR') return false;
-                return true;
-            }
-            function ebay1AlreadyPushedToShown(data) {
-                const status = String((data && (data.SPRICE_STATUS || data.push_status)) || '').toLowerCase();
-                if (status !== 'pushed') return false;
-                const shown = ebay1RowSpriceForAlert(data);
-                const pushed = parseFloat(data && (data.SPRICE_PUSHED_VALUE != null
-                    ? data.SPRICE_PUSHED_VALUE
-                    : data.CHANNEL_PUSHED_PRICE)) || 0;
-                return shown > 0 && pushed > 0 && Math.round(shown * 100) === Math.round(pushed * 100);
-            }
-            /** Same set auto-push queues: INV/REQ scope, S PRC ≠ Price, not already pushed. */
-            function ebay1NeedsSpricePush(data) {
-                return ebay1InPushFilterScope(data)
-                    && ebay1HasBlueTriangle(data)
-                    && !ebay1AlreadyPushedToShown(data);
-            }
             function ebay1BlueTriangleBadgeRow(data) {
-                return ebay1NeedsSpricePush(data);
+                return ebay1HasBlueTriangle(data);
             }
             window.ebay1HasBlueTriangle = ebay1HasBlueTriangle;
-            window.ebay1InPushFilterScope = ebay1InPushFilterScope;
-            window.ebay1NeedsSpricePush = ebay1NeedsSpricePush;
             function syncEbay1TriangleBadgeState() {
                 $('#ebay1-blue-triangle-badge').css({
                     outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -5812,7 +5790,7 @@
 
                 if (blueTriangleFilterActive) {
                     table.addFilter(function(data) {
-                        return ebay1NeedsSpricePush(data);
+                        return ebay1HasBlueTriangle(data);
                     });
                 }
                 if (endedListingFilterActive) {

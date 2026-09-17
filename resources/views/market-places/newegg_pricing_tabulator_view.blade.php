@@ -804,11 +804,13 @@
         }
         function neHasBlueTriangle(data) {
             if (!data || !data.sku) return false;
+            if (!(parseFloat(data.INV) > 0)) return false;
             if (neShowAmzLabel(data)) return false;
             const sprice = neRowSpriceForAlert(data);
             const price = parseFloat(data.price) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
+        window.neHasBlueTriangle = neHasBlueTriangle;
         function syncNeAmzTriangleBadgeState() {
             $('#newegg-amz-triangle-badge').css({
                 outline: amzTriangleFilterActive ? '3px solid #ffc107' : '',

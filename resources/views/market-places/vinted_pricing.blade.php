@@ -644,10 +644,12 @@
         }
         function vintedHasBlueTriangle(data) {
             if (!data) return false;
+            if (!(parseFloat(data.INV) > 0)) return false;
             const sprice = vintedRowSpriceForAlert(data);
             const price = parseFloat(data['V Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
+        window.vintedHasBlueTriangle = vintedHasBlueTriangle;
         function syncVintedTriangleBadgeState() {
             $('#vinted-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

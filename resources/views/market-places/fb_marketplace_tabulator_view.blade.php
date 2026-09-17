@@ -352,10 +352,12 @@
         }
         function fbMpHasBlueTriangle(data) {
             if (!data) return false;
+            if (!(parseFloat(data.INV) > 0)) return false;
             const sprice = fbMpRowSpriceForAlert(data);
             const price = parseFloat(data.price) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
+        window.fbMpHasBlueTriangle = fbMpHasBlueTriangle;
         function syncFbMpTriangleBadgeState() {
             $('#fbmarketplace-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

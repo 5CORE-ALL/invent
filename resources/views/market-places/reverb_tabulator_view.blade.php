@@ -1149,10 +1149,12 @@
     window.reverbRowSpriceForAlert = reverbRowSpriceForAlert;
     function reverbHasBlueTriangle(data) {
         if (isReverbParentRow(data)) return false;
+        if (!(parseFloat(data && data.INV) > 0)) return false;
         const sprice = reverbRowSpriceForAlert(data);
         const price = parseFloat(data && data['RV Price']) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
+    window.reverbHasBlueTriangle = reverbHasBlueTriangle;
     let blueTriangleFilterActive = false;
     function syncReverbTriangleBadgeState() {
         $('#reverb-blue-triangle-badge').css({

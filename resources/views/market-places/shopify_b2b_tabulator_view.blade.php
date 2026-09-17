@@ -811,6 +811,8 @@
 
     function shopifyB2bHasBlueTriangle(data) {
         if (isShopifyB2bParentRow(data)) return false;
+        if (!(parseFloat(data && data.INV) > 0)) return false;
+        if (typeof chPromoEbaySpriceSlabsReady === 'function' && !chPromoEbaySpriceSlabsReady()) return false;
         const sprice = shopifyB2bRowSpriceForAlert(data);
         const price = parseFloat(data && data.Price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
@@ -2617,7 +2619,10 @@
                 PriceLt80LmpBadge.update('#shopifyb2b-price-lt80-lmp-badge', allData, 'shopifyb2b', 'Price');
             }
             let blueTriangleCount = 0;
-            allData.forEach(function(row) {
+            const blueSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
+                ? allTableData
+                : allData;
+            blueSrc.forEach(function(row) {
                 if (shopifyB2bHasBlueTriangle(row)) blueTriangleCount++;
             });
             $('#shopifyb2b-blue-triangle-badge').html(

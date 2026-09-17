@@ -1513,10 +1513,12 @@
         }
         function ttHasBlueTriangle(data) {
             if (ttIsParentRow(data)) return false;
+            if (!(parseFloat(data && data.INV) > 0)) return false;
             const sprice = ttRowSpriceForAlert(data);
             const price = ttLivePrice(data);
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
+        window.ttHasBlueTriangle = ttHasBlueTriangle;
         function syncTtTriangleBadgeState() {
             $('#tiktok-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

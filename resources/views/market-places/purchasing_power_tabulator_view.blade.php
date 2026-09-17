@@ -688,10 +688,12 @@
         }
         function ppHasBlueTriangle(data) {
             if (ppIsParentRow(data) || !isPpListed(data)) return false;
+            if (!(parseFloat(data && data.INV) > 0)) return false;
             const sprice = ppRowSpriceForAlert(data);
             const price = parseFloat(data && data['PP Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
+        window.ppHasBlueTriangle = ppHasBlueTriangle;
         function syncPpTriangleBadgeState() {
             $('#pp-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

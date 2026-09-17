@@ -689,6 +689,7 @@
         }
         function sheinHasBlueTriangle(data) {
             if (!data || data.is_parent) return false;
+            if (!(parseFloat(data.INV) > 0)) return false;
             const sprice = sheinRowSpriceForAlert(data);
             const price = parseFloat(data.special_offer) || 0;
             if (!(sprice > 0) || !(price > 0) || Math.round(sprice * 100) === Math.round(price * 100)) return false;
@@ -696,6 +697,7 @@
             if (lmp > 0 && sprice + 0.0001 >= lmp) return false;
             return true;
         }
+        window.sheinHasBlueTriangle = sheinHasBlueTriangle;
         function syncSheinTriangleBadgeState() {
             $('#shein-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

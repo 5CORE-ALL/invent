@@ -372,10 +372,12 @@
         }
         function walmartHasBlueTriangle(data) {
             if (isWalmartParentRow(data)) return false;
+            if (!(parseFloat(data && data.INV) > 0)) return false;
             const sprice = walmartRowSpriceForAlert(data);
             const price = parseFloat(data && data.price) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
+        window.walmartHasBlueTriangle = walmartHasBlueTriangle;
         let blueTriangleFilterActive = false;
         function syncWalmartTriangleBadgeState() {
             $('#walmart-blue-triangle-badge').css({

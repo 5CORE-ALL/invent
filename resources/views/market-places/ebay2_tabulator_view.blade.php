@@ -1649,11 +1649,15 @@
         }
         function ebay2HasBlueTriangle(data) {
             if (isEbay2TabulatorParentRow(data)) return false;
+            if (!(parseFloat(data && data.INV) > 0)) return false;
+            if (typeof chPromoEbaySpriceSlabsReady === 'function' && !chPromoEbaySpriceSlabsReady()) return false;
             if (ebay2IsEndedListing(data)) return false;
+            if (!String((data && (data.eBay_item_id || data.ebay_item_id || data.item_id)) || '').trim()) return false;
             const sprice = ebay2RowSpriceForAlert(data);
             const price = parseFloat(data['eBay Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
+        window.ebay2HasBlueTriangle = ebay2HasBlueTriangle;
         function ebay2IsEndedListing(data) {
             if (!data) return false;
             const sku = String(data['(Child) sku'] || data.sku || '').trim();

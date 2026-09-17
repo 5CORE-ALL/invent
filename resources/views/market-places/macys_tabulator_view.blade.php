@@ -391,10 +391,12 @@
     }
     function macysHasBlueTriangle(data) {
         if (isMacysParentRow(data)) return false;
+        if (!(parseFloat(data && data.INV) > 0)) return false;
         const sprice = macysRowSpriceForAlert(data);
         const price = parseFloat(data && data['MC Price']) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
+    window.macysHasBlueTriangle = macysHasBlueTriangle;
     function syncMacysTriangleBadgeState() {
         $('#macys-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

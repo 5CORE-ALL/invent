@@ -757,10 +757,12 @@
         window.dobaDisplayedSprice = dobaDisplayedSprice;
         function dobaHasBlueTriangle(data) {
             if (isDobaParentRow(data)) return false;
+            if (!(parseFloat(data && data.INV) > 0)) return false;
             const sprice = dobaRowSpriceForAlert(data);
             const price = parseFloat(data && data['doba Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
+        window.dobaHasBlueTriangle = dobaHasBlueTriangle;
         function dobaListingPriceEqualsSprice(data, spriceOverride) {
             const price = parseFloat(data && data['doba Price']) || 0;
             const sprice = spriceOverride != null

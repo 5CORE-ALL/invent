@@ -9224,9 +9224,10 @@
         function chPromoPageDisplayedSprice(d) {
             if (!d) return 0;
             const names = [
+                'shopifyB2bDisplayedSprice', 'shopifyB2cShownSprice',
                 'ebayDisplayedSprice', 'ebay2DisplayedSprice', 'ebay3DisplayedSprice',
                 'aeVisibleSprice', 'aePushablePrice', 'sheinVisibleSprice', 'neShownSprice',
-                'macysDisplayedSprice', 'shopifyB2cShownSprice', 'fbMpDisplayedSprice',
+                'macysDisplayedSprice', 'fbMpDisplayedSprice',
                 'temuDisplayedSprice', 'frPushSprice', 'bestbuyDisplayedSprice',
                 'wayfairRowSpriceForAlert', 'reverbRowSpriceForAlert',
                 'tdDisplayedSprice', 'ppDisplayedSprice', 'ppPushPriceValue', 'ttDisplayedSprice',
@@ -9868,6 +9869,7 @@
                 && (!!CHANNEL_PROMO_HIDE_CVR_CPN || !!chPromoEbaySpriceRulesReady.cvr)
                 && (!CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE || !!chPromoEbaySpriceRulesReady.zeroSold);
         }
+        window.chPromoEbaySpriceSlabsReady = chPromoEbaySpriceSlabsReady;
         function chPromoMarkEbaySpriceRuleReady(kind) {
             if (kind === 'dil') chPromoEbaySpriceRulesReady.dil = true;
             if (kind === 'cvr') chPromoEbaySpriceRulesReady.cvr = true;

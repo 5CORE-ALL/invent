@@ -1337,6 +1337,7 @@
         if (!sku || sku.indexOf('PARENT') === 0) return false;
         // Same as Amazon / Push on reload: INV=0 is not a live listing price.
         if (!(parseFloat(data.INV) > 0)) return false;
+        if (typeof chPromoEbaySpriceSlabsReady === 'function' && !chPromoEbaySpriceSlabsReady()) return false;
         if (shopifyB2cShowAmzLabel(data)) return false;
         const sprice = shopifyB2cShownSprice(data);
         const price = parseFloat(data.Price) || 0;
@@ -4059,7 +4060,10 @@
             }
             let blueTriangleCount = 0;
             let purpleTriangleCount = 0;
-            data.forEach(function(row) {
+            const blueSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
+                ? allTableData
+                : allData;
+            blueSrc.forEach(function(row) {
                 if (shopifyB2cHasBlueTriangle(row)) blueTriangleCount++;
                 if (shopifyB2cHasPurpleTriangle(row)) purpleTriangleCount++;
             });

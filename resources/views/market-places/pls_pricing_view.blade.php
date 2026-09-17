@@ -338,10 +338,12 @@
     }
     function plsHasBlueTriangle(data) {
         if (plsIsParentRow(data)) return false;
+        if (!(parseFloat(data && (data.INV != null ? data.INV : data.inv)) > 0)) return false;
         const sprice = plsRowSpriceForAlert(data);
         const price = parseFloat(data && data.price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
+    window.plsHasBlueTriangle = plsHasBlueTriangle;
     function syncPlsTriangleBadgeState() {
         $('#pls-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
