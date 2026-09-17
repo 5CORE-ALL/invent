@@ -558,6 +558,22 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
+        if (
+            $found === null
+            && $existing !== null
+            && self::shouldFulfillRemainingWithExistingTracking(
+                $openQty,
+                (string) ($existing['tracking'] ?? '')
+            )
+        ) {
+            $found = [
+                'tracking' => (string) ($existing['tracking'] ?? ''),
+                'carrier' => (string) ($existing['carrier'] ?? 'Other'),
+                'source' => 'shopify',
+            ];
+            $existing = null;
+        }
+
         if ($existing !== null) {
             $existingTn = (string) ($existing['tracking'] ?? '');
             $existingCarrier = (string) ($existing['carrier'] ?? '');
@@ -609,7 +625,8 @@ class VeeqoShopifyFulfillmentService
             $shopifyOrderId,
             $found['tracking'],
             $carrier,
-            $sku
+            $sku,
+            ((string) ($found['source'] ?? '') === 'shopify' && $openQty > 0) ? $openQty : 0
         );
         if (strtolower(trim($marketplace)) === 'doba') {
             $this->rewriteDobaShopifyPrepaidNote($shopifyConfig, $shopifyOrderId);
@@ -1110,7 +1127,7 @@ class VeeqoShopifyFulfillmentService
                 }
                 $skuPasses = $skus !== [] ? $skus : [''];
                 $checked++;
-                $cacheKey = 'mm_fetch_tracking_shopify_v5:'.$shopifyId;
+                $cacheKey = 'mm_fetch_tracking_shopify_v6:'.$shopifyId;
                 $orderLabel = trim((string) ($order['name'] ?? '')).' '.($marketplace !== '' ? $marketplace : 'marketplace');
                 $isRecent = $this->shopifyOrderIsRecent($order);
                 if (! $fresh && ! $isRecent && Cache::has($cacheKey)) {
@@ -2773,6 +2790,11 @@ class VeeqoShopifyFulfillmentService
         return strlen($shopifyId) === 13 && $n === $shopifyId;
     }
 
+    public static function shouldFulfillRemainingWithExistingTracking(int $openQty, string $existingTracking): bool
+    {
+        return $openQty > 0 && strlen(trim($existingTracking)) >= 8;
+    }
+
     public static function tiktokOrderIdFromShopifyName(string $name): string
     {
         $name = ltrim(trim($name), '#');
@@ -3189,15 +3211,31 @@ class VeeqoShopifyFulfillmentService
         }
 
         try {
+            $tracking = strtoupper(preg_replace('/\s+/', '', $tracking) ?? $tracking);
             $orderRes = $this->shopifyApi(
                     $storeUrl,
                     $token,
                     'GET',
                     "orders/{$shopifyOrderId}.json",
-                    ['fields' => 'id,fulfillments,fulfillment_status']
+                    ['fields' => 'id,fulfillments,fulfillment_status,line_items']
                 );
 
+            $openQty = 0;
             if ($orderRes->successful()) {
+                $want = app(ShopifyFulfillmentTrackingMatcher::class)->normalizeSku($sku);
+                foreach ($orderRes->json('order.line_items') ?? [] as $line) {
+                    if (! is_array($line)) {
+                        continue;
+                    }
+                    $qty = (int) ($line['fulfillable_quantity'] ?? 0);
+                    if ($qty < 1) {
+                        continue;
+                    }
+                    if ($want !== '' && ! app(ShopifyFulfillmentTrackingMatcher::class)->skusEqual((string) ($line['sku'] ?? ''), $want)) {
+                        continue;
+                    }
+                    $openQty += $qty;
+                }
                 foreach ($orderRes->json('order.fulfillments') ?? [] as $fulfillment) {
                     if (! is_array($fulfillment)) {
                         continue;
@@ -3218,7 +3256,7 @@ class VeeqoShopifyFulfillmentService
                     }
                     foreach ($numbers as $n) {
                         $n = strtoupper(preg_replace('/\s+/', '', (string) $n) ?? '');
-                        if ($n !== '' && $n === $tracking) {
+                        if ($n !== '' && $n === $tracking && $openQty < 1) {
                             return ['success' => true, 'already' => true, 'message' => 'Tracking already on Shopify.'];
                         }
                     }
@@ -3757,11 +3795,13 @@ class VeeqoShopifyFulfillmentService
             if ($qty < 1) {
                 continue;
             }
-            $items[] = ['id' => (int) $li['id'], 'quantity' => $qty];
+            $take = $maxQuantity > 0 ? min($qty, $maxQuantity) : $qty;
+            $items[] = ['id' => (int) $li['id'], 'quantity' => $take];
             if ($maxQuantity > 0) {
-                $items[count($items) - 1]['quantity'] = min($qty, $maxQuantity);
-
-                return $items;
+                $maxQuantity -= $take;
+                if ($maxQuantity < 1) {
+                    return $items;
+                }
             }
         }
 
@@ -4775,7 +4815,7 @@ class VeeqoShopifyFulfillmentService
 
     protected function autoFetchCacheKey(string $marketplace, int $orderId, string $kind): string
     {
-        return 'mm_fetch_tracking_v5_'.$kind.':'.$marketplace.':'.$orderId;
+        return 'mm_fetch_tracking_v6_'.$kind.':'.$marketplace.':'.$orderId;
     }
 
     /**

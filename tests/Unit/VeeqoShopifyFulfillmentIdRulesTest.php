@@ -94,4 +94,17 @@ class VeeqoShopifyFulfillmentIdRulesTest extends TestCase
         $this->assertFalse(VeeqoShopifyFulfillmentService::marketplaceStatusLooksShipped('CANCELLED'));
         $this->assertFalse(VeeqoShopifyFulfillmentService::marketplaceStatusLooksShipped(''));
     }
+
+    public function test_partial_same_sku_reuses_existing_tracking_for_open_qty(): void
+    {
+        $this->assertTrue(VeeqoShopifyFulfillmentService::shouldFulfillRemainingWithExistingTracking(
+            1,
+            '923461099037030819380'
+        ));
+        $this->assertFalse(VeeqoShopifyFulfillmentService::shouldFulfillRemainingWithExistingTracking(
+            0,
+            '923461099037030819380'
+        ));
+        $this->assertFalse(VeeqoShopifyFulfillmentService::shouldFulfillRemainingWithExistingTracking(1, ''));
+    }
 }
