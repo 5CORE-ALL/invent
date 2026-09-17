@@ -1102,6 +1102,7 @@
 @endsection
 
 @section('script-bottom')
+    @include('partials.lazy-chart-js')
 <script>
     // Same margin as /temu-decrease — marketplace_percentages.Temu (TEMU_MARGIN)
     const TEMU_MARGIN = {{ (float) ($temuMargin ?? \App\Services\TemuShopifySalesService::temuMarginDecimal()) }};
@@ -3993,7 +3994,7 @@
                     visible: false
                 },
                 {
-                    title: "GROI %",
+                    title: "GROI%",
                     field: "roi_percent",
                     hozAlign: "center",
                     minWidth: 80,
@@ -4015,7 +4016,7 @@
                     }
                 },
                 {
-                    title: "GPRFT %",
+                    title: "GPRFT%",
                     field: "profit_percent",
                     hozAlign: "center",
                     minWidth: 80,
@@ -4041,7 +4042,7 @@
                     }
                 },
                 {
-                    title: "NPFT %",
+                    title: "NPFT%",
                     field: "npft_percent",
                     hozAlign: "center",
                     sorter: temuSortBy(function(d) {
@@ -4063,7 +4064,7 @@
                     }
                 },
                 {
-                    title: "NROI %",
+                    title: "NROI%",
                     field: "nroi_percent",
                     hozAlign: "center",
                     sorter: temuSortBy(function(d) {
@@ -4188,7 +4189,7 @@
                     sorter: temuSortBy(function(d) {
                         return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
                     }),
-                    headerTooltip: "S PRC from Sprc Dil (Dil-matching slab, including Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC from Sprc Dil. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Every INV > 0 SKU uses the Dil-matching slab (including Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(rowData)) return '';

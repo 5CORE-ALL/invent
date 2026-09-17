@@ -867,6 +867,7 @@
 @endsection
 
 @section('script-bottom')
+    @include('partials.lazy-chart-js')
 <script>
     let table = null;
     let newTemuoneEditLinksRow = null;
@@ -3155,7 +3156,7 @@
                     }
                 },
                 {
-                    title: 'GROI',
+                    title: 'GROI%',
                     field: 'roi_percent',
                     hozAlign: 'center',
                     width: 60,
@@ -3173,7 +3174,7 @@
                     }
                 },
                 {
-                    title: 'GPFT',
+                    title: 'GPFT%',
                     field: 'profit_percent',
                     hozAlign: 'center',
                     width: 60,
@@ -3191,7 +3192,7 @@
                     }
                 },
                 {
-                    title: 'GNROI',
+                    title: 'GNROI%',
                     field: 'nroi_percent',
                     hozAlign: 'center',
                     width: 60,
@@ -3209,7 +3210,7 @@
                     }
                 },
                 {
-                    title: 'GNPFT',
+                    title: 'GNPFT%',
                     field: 'npft_percent',
                     hozAlign: 'center',
                     width: 60,

@@ -43,7 +43,7 @@ class AmazonDilGroiRule
 
     public static function usesZeroToZero(string $channel): bool
     {
-        return in_array($channel, ['amazon', 'ebay1', 'ebay2', 'ebay2op', 'ebay3', 'aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'shein', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b'], true);
+        return in_array($channel, ['amazon', 'ebay1', 'ebay2', 'ebay2op', 'ebay3', 'aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'shein', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'temu3', 'doba'], true);
     }
 
     /**

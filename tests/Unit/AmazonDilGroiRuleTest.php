@@ -153,6 +153,8 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('macy'));
         $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('shopify_b2c'));
         $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('shopify_b2b'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('purchasing_power'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('topdawg'));
         $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('ebay1')[0]['key']);
         $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('ebay3')[0]['key']);
         $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('aliexpress')[0]['key']);
@@ -171,8 +173,21 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('macy')[0]['key']);
         $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('shopify_b2c')[0]['key']);
         $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('shopify_b2b')[0]['key']);
-        $this->assertFalse(AmazonDilGroiRule::usesZeroToZero('temu'));
-        $this->assertSame('0.1-5', AmazonDilGroiRule::defaultsForChannel('temu')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('purchasing_power')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('topdawg')[0]['key']);
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('temu'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('newtemuone'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('newtemutwo'));
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('temu')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('newtemuone')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('newtemutwo')[0]['key']);
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('temu3'));
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('temu3')[0]['key']);
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('doba'));
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('doba')[0]['key']);
+        $this->assertFalse(AmazonDilGroiRule::usesZeroToZero('doba_withoutship'));
+        $this->assertFalse(AmazonDilGroiRule::usesZeroToZero('temu2'));
+        $this->assertSame('0.1-5', AmazonDilGroiRule::defaultsForChannel('temu2')[0]['key']);
     }
 
     public function test_normalize_accepts_nroi_alias(): void

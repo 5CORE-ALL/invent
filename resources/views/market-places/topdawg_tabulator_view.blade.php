@@ -272,6 +272,7 @@
 @endsection
 
 @section('script-bottom')
+    @include('partials.lazy-chart-js')
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'topdawg'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'topdawg'])
@@ -1048,7 +1049,7 @@
                         else color = '#e83e8c';
                         return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
                     }},
-                { title: 'PFT%', field: 'PFT %', hozAlign: 'center', width: 50, sorter: 'number', visible: false,
+                { title: 'NPFT%', field: 'PFT %', hozAlign: 'center', width: 50, sorter: 'number', visible: false,
                     formatter: c => {
                         const percent = parseFloat(c.getValue());
                         if (isNaN(percent)) return '';
@@ -1063,6 +1064,18 @@
                 { title: 'ROI%', field: 'ROI%', hozAlign: 'center', width: 50, sorter: 'number',
                     formatter: c => {
                         const percent = parseFloat(c.getValue());
+                        if (isNaN(percent)) return '';
+                        let color = '';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
+                        return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
+                    }},
+                { title: 'NROI%', field: 'NROI', hozAlign: 'center', width: 50, sorter: 'number',
+                    headerTooltip: 'TopDawg has no Ads% — NROI% = ROI%.',
+                    formatter: c => {
+                        const percent = parseFloat(c.getRow().getData()['ROI%']);
                         if (isNaN(percent)) return '';
                         let color = '';
                         if (percent < 40) color = '#a00211';
@@ -1086,7 +1099,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: 'S PRC from Dil → Target GROI% slabs. TD L30 > 0 uses the matching slab; 0 Sold uses the lowest Target GROI. Formula: (LP × (1 + GROI%/100)) / margin (Ship not used).',
+                    headerTooltip: 'S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. TD L30 > 0 uses the matching slab; 0 Sold uses the lowest Target NROI. Formula: (LP × (1 + NROI%/100)) / margin (Ship not used).',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
@@ -1104,7 +1117,7 @@
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 92, sorter: 'number',
                     editable: false,
-                    headerTooltip: 'Not editable. Auto-saved from Sprc Dil (Dil slab when TD L30 > 0; 0 Sold uses the lowest Target GROI). S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.',
+                    headerTooltip: 'Not editable. Auto-saved from Sprc Dil (0–0 when Dil = 0; Dil slab when TD L30 > 0; 0 Sold uses the lowest Target NROI). S PRC = (LP × (1 + NROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.',
                     formatter: c => {
                         const rowData = c.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
@@ -1185,9 +1198,38 @@
                     }
                 },
                 {
-                    // SGPFT% — gross profit % at the seller price (no ship).
-                    //   ((SPRICE × {{ $topdawgPercentage }}% − LP) / LP) × 100,
-                    //   ((SPRICE × {{ $topdawgPercentage }}% − LP) / SPRICE) × 100
+                    title: 'SGPFT%', field: 'SGPFT', hozAlign: 'center', width: 55, sorter: 'number',
+                    headerTooltip: 'GPFT% at S PRC (no ship): ((S PRC × margin − LP) / S PRC) × 100.',
+                    formatter: c => {
+                        const v = c.getValue();
+                        if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
+                        const percent = parseFloat(v);
+                        if (isNaN(percent)) return '';
+                        let color = '';
+                        if (percent < 10) color = '#a00211';
+                        else if (percent < 15) color = '#ffc107';
+                        else if (percent < 20) color = '#3591dc';
+                        else if (percent <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
+                    }
+                },
+                {
+                    title: 'SNPFT%', field: 'SNPFT', hozAlign: 'center', width: 55, sorter: 'number',
+                    headerTooltip: 'TopDawg has no Ads% — SNPFT% = SGPFT%.',
+                    formatter: c => {
+                        const percent = parseFloat(c.getRow().getData().SGPFT);
+                        if (isNaN(percent)) return '<span class="text-muted">-</span>';
+                        let color = '';
+                        if (percent < 10) color = '#a00211';
+                        else if (percent < 15) color = '#ffc107';
+                        else if (percent < 20) color = '#3591dc';
+                        else if (percent <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
+                    }
+                },
+                {
                     title: 'SROI%', field: 'SROI', hozAlign: 'center', width: 55, sorter: 'number',
                     tooltip: 'ROI % at SPRICE (same formula as ROI%, no ship)',
                     formatter: c => {
@@ -1195,6 +1237,20 @@
                         if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
                         const percent = parseFloat(v);
                         if (isNaN(percent)) return '';
+                        let color = '';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
+                        return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
+                    }
+                },
+                {
+                    title: 'SNROI%', field: 'SNROI', hozAlign: 'center', width: 55, sorter: 'number',
+                    headerTooltip: 'TopDawg has no Ads% — SNROI% = SROI%.',
+                    formatter: c => {
+                        const percent = parseFloat(c.getRow().getData().SROI);
+                        if (isNaN(percent)) return '<span class="text-muted">-</span>';
                         let color = '';
                         if (percent < 40) color = '#a00211';
                         else if (percent < 75) color = '#ffc107';

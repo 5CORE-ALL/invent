@@ -3866,7 +3866,7 @@
                         width: 65
                     },
                     {
-                        title: "NROI",
+                        title: "NROI%",
                         field: "NROI",
                         hozAlign: "center",
                         // Same formula as Amazon NROI: (PFT$ − Ad Spend$) / LP × 100
@@ -3897,7 +3897,7 @@
                         width: 65
                     },
                       {
-                        title: "GPFT %",
+                        title: "GPFT%",
                         field: "GPFT%",
                         hozAlign: "center",
                         sorter: "number",
@@ -3913,7 +3913,7 @@
 
 
                      {
-                        title: "NPFT",
+                        title: "NPFT%",
                         field: "PFT %",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
@@ -4015,7 +4015,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil outside the table uses the nearest slab (including 0 Sold). CVR < 7% subtracts 10 from Target NROI%; CVR > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
+                        headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Every INV > 0 SKU Dil-matches, including 0 Sold; Dil outside the table uses the nearest slab. CVR < 7% subtracts 10 from Target NROI%; CVR > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -4142,7 +4142,7 @@
                         width: 80
                     },
                     {
-                        title: "S GPFT",
+                        title: "SGPFT%",
                         field: "SGPFT",
                         hozAlign: "center",
                         headerTooltip: "S GPFT from S PRC (SPRICE), eBay 1 take-home formula.",
@@ -4156,7 +4156,7 @@
                         width: 80
                     },
                     {
-                        title: "SNPFT",
+                        title: "SNPFT%",
                         field: "SPFT",
                         hozAlign: "center",
                         sorter: "number",

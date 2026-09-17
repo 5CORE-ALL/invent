@@ -2,18 +2,18 @@
   Sprc Dil — Dil → Target NROI slabs on every Dil tabulator (Ads%=0 → same $ as GROI).
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Shein also has a 0–0 slab on top for Dil = 0.
+  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Shein / Temu 3 also have a 0–0 slab on top for Dil = 0.
   AliExpress / Faire / TikTok / Mercari / PLS / Best Buy / Newegg / Reverb / Wayfair / Depop: 0–0 slab on top for Dil = 0. Channel L30 = 0 uses min Target NROI (same as other 0 Sold pages). Sold rows use the Dil-matching slab;
   Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
   eBay 1–3: 0–0 slab on top for Dil = 0. Dil below the first remaining slab or above the last uses the nearest slab.
-  Temu 1 / New Temu One / New Temu Two: Temu L30 = 0 uses the minimum Target GROI (not the Dil-matching slab). Dil is still OV L30 ÷ INV. New Temu Two uses Temu 2 L30 and the same Temu Dil store.
+  Temu 1 / New Temu One / New Temu Two: 0–0 slab on top for Dil = 0. Temu L30 = 0 uses the minimum Target NROI (not the Dil-matching slab). Dil is still OV L30 ÷ INV. New Temu Two uses Temu 2 L30 and the same Temu Dil store.
   CVR overlay Count and Adj: Down = down-arrow CVR and CVR < threshold; Up = up-arrow CVR and CVR > threshold.
   Horizontal / opposite-arrow rows are excluded. Shein applies the overlay only when the SKU has views.
   Macys: 0–0 slab on top for Dil = 0. Dil-matching when MC L30 > 0. MC L30 = 0 (0 Sold) always uses the minimum Target GROI
   (not the Dil-matching slab). Dil is MC L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price,
   S PRC = A Price (do not keep a lower Dil/Std price). Out of box + sold uses Std Prc, then the same A Price floor.
-  Purchasing Power / Best Buy: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
-  If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
+  Purchasing Power / Best Buy / TopDawg / Doba: 0–0 slab on top for Dil = 0. Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
+  Dil is OV L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
   Best Buy also caps S PRC at LMP (including 0 Sold) after the A Price floor.
   Shopify B2C: 0–0 slab on top for Dil = 0. Dil-matching when B2C L30 > 0, including Dil below the first slab or above
   the last (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay.
@@ -102,7 +102,7 @@
     }
     if ($ebaySprcDilZeroSoldUsesMinGroi) {
         $ebaySprcDilBtnTitle .= ' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target '.$ebaySprcDilTargetLabel.' from the slabs.';
-        if (in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b'], true)) {
+        if (in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'doba'], true)) {
             $ebaySprcDilBtnTitle .= ' Dil = 0 uses the 0–0 slab.';
         }
         if (!empty($ebaySprcDilUsesAmzFloor)) {
@@ -282,7 +282,7 @@
                             take the <strong>minimum Target {{ $ebaySprcDilTargetLabel }} from the slabs</strong>
                             (not the Dil-matching slab).
                         </li>
-                        @if(in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b'], true))
+                        @if(in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'doba'], true))
                         <li>
                             <strong>When</strong> Dil = 0 (INV &gt; 0):
                             use the <strong>0–0</strong> slab’s Target {{ $ebaySprcDilTargetLabel }}.
@@ -334,7 +334,7 @@
                         </li>
                         @endif
 @else
-                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein'], true))
+                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'temu3'], true))
                         <li>
                             <strong>When</strong> Dil = 0 (INV &gt; 0):
                             use the <strong>0–0</strong> slab’s Target {{ $ebaySprcDilTargetLabel }}.
@@ -428,6 +428,14 @@
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
                             @if(!empty($ebaySprcDilIsMacys))
                             Macys also skips parent rows and Missing L (not listed). Dil = MC L30 ÷ INV.
+                            @elseif($ebaySprcDilChannel === 'purchasing_power')
+                            Dil = OV L30 ÷ INV. 0 Sold is PP L30 = 0.
+                            @elseif($ebaySprcDilChannel === 'topdawg')
+                            Dil = OV L30 ÷ INV. 0 Sold is TD L30 = 0. Ship is not used.
+                            @elseif(in_array($ebaySprcDilChannel, ['temu', 'newtemuone', 'newtemutwo', 'temu3'], true))
+                            Dil = OV L30 ÷ INV. 0 Sold is Temu L30 = 0.
+                            @elseif($ebaySprcDilChannel === 'doba')
+                            Dil = OV L30 ÷ INV. 0 Sold is Doba L30 = 0.
                             @endif
                         </li>
                     </ul>
@@ -579,6 +587,13 @@
                 || ebayDgIsMacys()
                 || ebayDgIsShopifyB2c()
                 || ebayDgIsShopifyB2b()
+                || ebayDgIsPurchasingPower()
+                || ebayDgIsTopdawg()
+                || EBAY_DIL_GROI_CHANNEL === 'temu'
+                || EBAY_DIL_GROI_CHANNEL === 'newtemuone'
+                || EBAY_DIL_GROI_CHANNEL === 'newtemutwo'
+                || EBAY_DIL_GROI_CHANNEL === 'temu3'
+                || ebayDgIsDoba()
                 || EBAY_DIL_GROI_CHANNEL === 'pls'
                 || EBAY_DIL_GROI_CHANNEL === 'depop';
         }

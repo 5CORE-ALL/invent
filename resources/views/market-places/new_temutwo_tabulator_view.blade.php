@@ -934,6 +934,7 @@
 @endsection
 
 @section('script-bottom')
+    @include('partials.lazy-chart-js')
 <script>
     let table = null;
     let newTemuoneEditLinksRow = null;
@@ -3136,7 +3137,7 @@
                     }
                 },
                 {
-                    title: 'GROI',
+                    title: 'GROI%',
                     field: 'roi_percent',
                     hozAlign: 'center',
                     width: 60,
@@ -3154,7 +3155,7 @@
                     }
                 },
                 {
-                    title: 'GPFT',
+                    title: 'GPFT%',
                     field: 'profit_percent',
                     hozAlign: 'center',
                     width: 60,
@@ -3172,7 +3173,7 @@
                     }
                 },
                 {
-                    title: 'GNROI',
+                    title: 'GNROI%',
                     field: 'nroi_percent',
                     hozAlign: 'center',
                     width: 60,
@@ -3190,7 +3191,7 @@
                     }
                 },
                 {
-                    title: 'GNPFT',
+                    title: 'GNPFT%',
                     field: 'npft_percent',
                     hozAlign: 'center',
                     width: 60,
@@ -3273,7 +3274,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: 'Dil → Target NROI price (before eBay / Amazon / LMP caps). Temu L30 = 0 uses the lowest Target NROI. Dil below the first From or above the last To uses the nearest slab.',
+                    headerTooltip: 'Dil → Target NROI price (before eBay / Amazon / LMP caps). Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Temu 2 L30 = 0 uses the lowest Target NROI. Dil below the first From or above the last To uses the nearest slab.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof ebayDilGroiMetaForRow !== 'function') return '';
@@ -3325,7 +3326,7 @@
                     hozAlign: 'center',
                     width: 88,
                     sorter: 'number',
-                    headerTooltip: 'Sprc Dil from Dil (OV L30 ÷ INV) → Target NROI, except Temu L30 = 0 uses the lowest Target NROI. Then the lowest of eBay, Amazon, and LMP.',
+                    headerTooltip: 'Sprc Dil from Dil (OV L30 ÷ INV) → Target NROI. Dil = 0 uses the 0–0 slab. Temu 2 L30 = 0 uses the lowest Target NROI. Then the lowest of eBay, Amazon, and LMP.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const model = typeof temuSpriceCellModel === 'function'
