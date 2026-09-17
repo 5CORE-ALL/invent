@@ -223,7 +223,7 @@ class Temu2DetailFormatter
 
         if ($lineItems === []) {
             foreach ($lines as $line) {
-                $sku = trim((string) ($line->ext_code ?: $line->display_sku ?: ''));
+                $sku = trim($line->resolvedShopifySku());
                 if (in_array($sku, ['__order__', '__unknown__', ''], true)) {
                     continue;
                 }
@@ -1891,7 +1891,7 @@ class Temu2DetailFormatter
         $out = [];
 
         foreach ($lines as $line) {
-            $sku = trim((string) ($line->ext_code ?: $line->display_sku ?: '')) ?: '__unknown__';
+            $sku = trim($line->resolvedShopifySku()) ?: '__unknown__';
             $qty = max(1, (int) ($line->quantity ?? 1));
             $lineTotal = is_numeric($line->order_base_amount)
                 ? (float) $line->order_base_amount

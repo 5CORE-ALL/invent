@@ -1431,7 +1431,7 @@ class Temu2SyncController extends Controller
 
         foreach ($rows as $order) {
             $parent = trim((string) $order->parent_order_sn);
-            $sku = trim((string) ($order->ext_code ?: $order->display_sku ?: ''));
+            $sku = trim($order->resolvedShopifySku());
             $key = $parent.'|'.$sku.'|'.$order->id;
             if (isset($seen[$key])) {
                 $skipped++;

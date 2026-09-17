@@ -5,6 +5,7 @@ namespace App\Services\MarketplaceManager;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\SheinOrderMetric;
 use App\Models\ShopifySku;
+use App\Services\SheinApiService;
 use App\Services\ShopifyStoreSelector;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
@@ -25,7 +26,8 @@ class SheinOrderPushService
 
     public function __construct(
         protected SheinOrderDetailService $orderDetailService,
-        protected SheinDetailFormatter $formatter
+        protected SheinDetailFormatter $formatter,
+        protected SheinApiService $sheinApi
     ) {}
 
     /**
@@ -586,7 +588,7 @@ class SheinOrderPushService
 
         if ($sourceItems === []) {
             foreach ($lines as $line) {
-                $sku = (string) $line->sku;
+                $sku = $this->rematchShopifySku((string) $line->sku, $lines);
                 if (in_array($sku, ['__order__', '__unknown__', ''], true)) {
                     continue;
                 }
@@ -600,7 +602,7 @@ class SheinOrderPushService
         }
 
         foreach ($sourceItems as $item) {
-            $sku = (string) ($item['sku'] ?? '');
+            $sku = $this->rematchShopifySku((string) ($item['sku'] ?? ''), $lines);
             $variantId = $sku !== '' ? $this->findShopifyVariantIdBySku($sku) : null;
             $matchSource = null;
             if ($sku !== '') {
@@ -685,6 +687,43 @@ class SheinOrderPushService
         }
 
         return [$orderPayload, $meta];
+    }
+
+    /**
+     * Prefer shein_metrics.shein_sku_code over a leftover order sellerSku.
+     *
+     * @param  Collection<int, SheinOrderMetric>  $lines
+     */
+    protected function rematchShopifySku(string $sku, Collection $lines): string
+    {
+        if (in_array($sku, ['__order__', '__unknown__', ''], true)) {
+            return $sku;
+        }
+
+        $goods = ['sellerSku' => $sku];
+        foreach ($lines as $line) {
+            $rawLine = is_array($line->raw_payload) ? ($line->raw_payload['line'] ?? []) : [];
+            if (! is_array($rawLine)) {
+                $rawLine = [];
+            }
+            $lineCode = trim((string) ($rawLine['skuCode'] ?? ''));
+            $linePid = trim((string) ($line->product_id ?? ''));
+            if ((string) $line->sku !== $sku && $lineCode !== $sku && $linePid !== $sku) {
+                continue;
+            }
+            $goods = $rawLine !== [] ? $rawLine : $goods;
+            if (trim((string) ($goods['sellerSku'] ?? '')) === '') {
+                $goods['sellerSku'] = $sku;
+            }
+            if (trim((string) ($goods['skuCode'] ?? '')) === '' && $linePid !== '' && $this->sheinApi->isPlatformSkuCode($linePid)) {
+                $goods['skuCode'] = $linePid;
+            }
+            break;
+        }
+
+        $resolved = $this->sheinApi->resolveOrderLineSku($goods);
+
+        return $resolved !== '' ? $resolved : $sku;
     }
 
     /**

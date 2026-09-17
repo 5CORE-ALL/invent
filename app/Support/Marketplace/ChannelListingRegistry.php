@@ -426,12 +426,6 @@ class ChannelListingRegistry
             return ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0, 'MissingL' => 0];
         }
 
-        try {
-            app(\App\Services\MarketplaceManager\MissingListingCatalogRefresh::class)->refreshChannel($key);
-        } catch (\Throwable $e) {
-            // Count from whatever catalog we already have.
-        }
-
         $skus = ListingCountsEngine::countUniverseSkus($requirePositiveInv);
         $dataView = $cfg['dataView'] ?? null;
         $nrValues = ($dataView && class_exists($dataView))
@@ -928,12 +922,6 @@ class ChannelListingRegistry
      */
     public static function listedPls(array $skus): array
     {
-        try {
-            app(\App\Services\MarketplaceManager\MissingListingCatalogRefresh::class)->refreshChannel('pls');
-        } catch (\Throwable $e) {
-            // use current catalog
-        }
-
         $wantedNorm = self::wantedNormalizedSkus($skus);
         if ($wantedNorm === []) {
             return [];
@@ -975,12 +963,6 @@ class ChannelListingRegistry
      */
     public static function listedB5cB2b(array $skus): array
     {
-        try {
-            app(\App\Services\MarketplaceManager\MissingListingCatalogRefresh::class)->refreshChannel('b5cb2b');
-        } catch (\Throwable $e) {
-            // use current catalog
-        }
-
         $wantedNorm = self::wantedNormalizedSkus($skus);
         if ($wantedNorm === [] || ! class_exists(B5cB2bProduct::class) || ! \Illuminate\Support\Facades\Schema::hasTable('b5c_b2b_products')) {
             return [];
@@ -1016,12 +998,6 @@ class ChannelListingRegistry
      */
     public static function listedTopDawg(array $skus): array
     {
-        try {
-            app(\App\Services\MarketplaceManager\MissingListingCatalogRefresh::class)->refreshChannel('topdawg');
-        } catch (\Throwable $e) {
-            // use current catalog
-        }
-
         $wantedNorm = self::wantedNormalizedSkus($skus);
         if ($wantedNorm === []) {
             return [];

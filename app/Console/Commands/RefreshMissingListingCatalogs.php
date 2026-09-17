@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\MarketPlace\MissingListingController;
 use App\Services\MarketplaceManager\MissingListingCatalogRefresh;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -25,6 +26,10 @@ class RefreshMissingListingCatalogs extends Command
         foreach ($results as $channel => $status) {
             $this->line('  '.$channel.': '.$status);
         }
+
+        $this->info('Warming /missing-listing page cache…');
+        $payload = app(MissingListingController::class)->rebuildPagePayload();
+        $this->line('  channels='.($payload['count'] ?? 0).' missing_l='.($payload['total_missing_l'] ?? 0));
 
         return self::SUCCESS;
     }

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\Temu2Order;
+use App\Services\MarketplaceManager\Temu2OrderLineSkuResolver;
 use App\Services\MarketplaceManager\TemuOrderAmountParser;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -169,6 +170,10 @@ class FetchTemu2Orders extends Command
                                 'sku_id' => isset($sub['skuId']) ? (string) $sub['skuId'] : null,
                                 'goods_id' => isset($sub['goodsId']) ? (string) $sub['goodsId'] : null,
                                 'ext_code' => $product['extCode'] ?? null,
+                                'display_sku' => app(Temu2OrderLineSkuResolver::class)->resolve(
+                                    isset($sub['skuId']) ? (string) $sub['skuId'] : null,
+                                    isset($product['extCode']) ? (string) $product['extCode'] : null
+                                ) ?: null,
                                 'product_sku_id' => isset($product['productSkuId']) ? (string) $product['productSkuId'] : null,
                                 'goods_name' => $sub['goodsName'] ?? null,
                                 'spec' => $sub['spec'] ?? null,
