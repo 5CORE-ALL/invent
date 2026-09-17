@@ -158,6 +158,42 @@ class NeweggPricingController extends Controller
             $neweggL30ByNorm[$norm] = ($neweggL30ByNorm[$norm] ?? 0) + $qty;
         }
 
+        // Prior 30 days (L31–L60) for CVR up/down vs current L30.
+        $neweggL60Raw = collect();
+        try {
+            if (Schema::hasTable('newegg_order_items') && Schema::hasTable('newegg_orders')) {
+                $neweggL60Raw = DB::table('newegg_order_items as i')
+                    ->join('newegg_orders as o', 'o.order_number', '=', 'i.order_number')
+                    ->where('o.order_date', '>=', now()->subDays(60))
+                    ->where('o.order_date', '<', now()->subDays(30))
+                    ->where(function ($q) {
+                        $q->whereNull('o.order_status_description')
+                          ->orWhere('o.order_status_description', 'not like', '%void%');
+                    })
+                    ->whereNotNull('i.seller_part_number')
+                    ->groupBy('i.seller_part_number')
+                    ->select('i.seller_part_number', DB::raw('SUM(i.ordered_qty) as qty'))
+                    ->pluck('qty', 'seller_part_number');
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Newegg L60 query failed: '.$e->getMessage());
+        }
+
+        $neweggL60ByExact = [];
+        $neweggL60ByNorm = [];
+        foreach ($neweggL60Raw as $spn => $qty) {
+            $exact = $this->exactSkuKey((string) $spn);
+            $norm = $this->normalizeSkuKey((string) $spn);
+            $qty = (int) $qty;
+            if ($exact !== '') {
+                $neweggL60ByExact[$exact] = ($neweggL60ByExact[$exact] ?? 0) + $qty;
+            }
+            if ($norm === '') {
+                continue;
+            }
+            $neweggL60ByNorm[$norm] = ($neweggL60ByNorm[$norm] ?? 0) + $qty;
+        }
+
         // 6) User-entered SPRICE / SPFT / SROI overlay (newegg_data_views), keyed by exact SKU.
         $dataViews = NeweggDataView::all()->keyBy('sku');
 
@@ -222,6 +258,7 @@ class NeweggPricingController extends Controller
 
             $price = $newegg && $newegg->selling_price !== null ? (float) $newegg->selling_price : null;
             $l30   = (int) ($neweggL30ByExact[$exact] ?? $neweggL30ByNorm[$norm] ?? 0);
+            $l60   = (int) ($neweggL60ByExact[$exact] ?? $neweggL60ByNorm[$norm] ?? 0);
 
             $itemNo = strtoupper(trim((string) ($newegg?->newegg_item_number ?? '')));
             if ($itemNo === '') {
@@ -240,6 +277,7 @@ class NeweggPricingController extends Controller
             if ($cvr <= 0 && $sheetCvr > 0) {
                 $cvr = round($sheetCvr, 2);
             }
+            $cvr60 = $views > 0 ? round(($l60 / $views) * 100, 2) : null;
 
             // DIL% = overall sell-through = OVL30 / INV * 100 (same as "OV DIL" elsewhere).
             $dil = $inv > 0 ? round(($ovl30 / $inv) * 100, 0) : 0;
@@ -348,9 +386,11 @@ class NeweggPricingController extends Controller
                 'price'              => $price !== null ? round($price, 2) : null,
                 'a_price'            => $aPrice,
                 'l30'                => $l30,
+                'l60'                => $l60,
                 'views'              => $views,
                 'sessions'           => $sessions,
                 'cvr'                => $cvr,
+                'cvr_60'             => $cvr60,
                 'lp'                 => round($lp, 2),
                 'ship'               => round($ship, 2),
                 'pft'                => $price !== null ? round($pftEach, 2) : null,

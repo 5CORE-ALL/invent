@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\MonitorsCronExecution;
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
+use App\Models\ShopifySku;
 use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\TiktokOrder;
@@ -51,6 +52,13 @@ class CollectTikTokMetrics extends Command
 
         // TikTok 1 sold = L30 from tiktok_orders (last 30 California calendar days)
         $ordersSoldBySku = TiktokOrder::soldQtyL30(null, 30);
+        $shopifyBySku = ShopifySku::query()
+            ->select('sku', 'inv', 'quantity')
+            ->whereNotNull('sku')
+            ->get()
+            ->keyBy(function ($row) {
+                return ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            });
 
         foreach ($channels as $channel) {
             $this->info("Collecting TikTok metrics for channel={$channel} date={$today}...");
@@ -65,7 +73,7 @@ class CollectTikTokMetrics extends Command
                     ->select('id', 'sku', 'price', 'stock', 'sold')
                     ->whereNotNull('sku')
                     ->orderBy('id'),
-                function ($rows) use ($today, $channel, &$collected, &$skipped, $ordersSoldBySku) {
+                function ($rows) use ($today, $channel, &$collected, &$skipped, $ordersSoldBySku, $shopifyBySku) {
                     $chunkCollected = 0;
                     $chunkSkipped = 0;
 
@@ -80,10 +88,13 @@ class CollectTikTokMetrics extends Command
                             $sold = $channel === 'tiktok'
                                 ? (int) ($ordersSoldBySku[$sku] ?? 0)
                                 : (int) ($row->sold ?? 0);
+                            $shopify = $shopifyBySku->get(ShopifySku::normalizeSkuForShopifyLookup($sku));
                             $dailyData = [
                                 'price' => round((float) ($row->price ?? 0), 2),
                                 'stock' => (int) ($row->stock ?? 0),
                                 'sold' => $sold,
+                                'inv' => (int) ($shopify->inv ?? 0),
+                                'ovl30' => (int) ($shopify->quantity ?? 0),
                             ];
 
                             TiktokSkuDailyData::updateOrCreate(

@@ -2534,7 +2534,7 @@ class ChannelMasterController extends Controller
         }
         $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channelKey)));
 
-        return in_array($key, ['ebaytwo', 'ebay2'], true);
+        return in_array($key, ['ebaytwo', 'ebay2', 'newegg'], true);
     }
 
     /**
@@ -4187,6 +4187,7 @@ class ChannelMasterController extends Controller
             'Ebay 2' => fn () => $this->getEbayTwoLiveMapMissCountsFromListingSource(),
             'eBay 2' => fn () => $this->getEbayTwoLiveMapMissCountsFromListingSource(),
             'eBay Two' => fn () => $this->getEbayTwoLiveMapMissCountsFromListingSource(),
+            'Newegg' => fn () => $this->getNeweggLiveViewsCvrFromListingSheet(),
         ];
 
         foreach ($rows as &$row) {
@@ -4216,7 +4217,7 @@ class ChannelMasterController extends Controller
             // Live Views overlay must also write ChannelMasterSummary or the
             // Views chart stays empty. Temu / Temu 2 use sheet views (no ViewsGuard).
             $historyKey = $this->allMarketplaceSnapshotKey($name);
-            if (in_array($historyKey, ['amazon', 'ebaytwo', 'aliexpress', 'shein', 'temu', 'temu2', 'temu3'], true)
+            if (in_array($historyKey, ['amazon', 'ebaytwo', 'aliexpress', 'shein', 'temu', 'temu2', 'temu3', 'newegg'], true)
                 && array_key_exists('total_views', $counts)) {
                 $this->syncLiveMapMissViewsToChannelHistory($historyKey, $name, $counts);
             }
@@ -12432,6 +12433,7 @@ class ChannelMasterController extends Controller
         $gRoiL60    = $l60['cogs'] > 0 ? ($l60['profit'] / $l60['cogs']) * 100 : 0;
 
         $channelData = ChannelMaster::where('channel', 'Newegg')->first();
+        $listingViews = $this->neweggListingViewsTotal();
 
         $result[] = [
             'Channel '   => 'Newegg',
@@ -12467,7 +12469,8 @@ class ChannelMasterController extends Controller
             'Map' => 0,
             'Miss' => 0,
             'NMap' => 0,
-            'Total Views' => 0,
+            'Total Views' => $listingViews,
+            'CVR' => $this->neweggListingCvrPct($l30['qty'], $listingViews),
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 
@@ -12476,6 +12479,69 @@ class ChannelMasterController extends Controller
             'message' => 'Newegg channel data fetched successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Live Views / CVR for the Newegg row on /all-marketplace-master.
+     * Same sheet + L30÷Views formula as /newegg-pricing-view.
+     *
+     * @return array{map:int,miss:int,nmap:int,total_views:int,cvr_pct:?float}
+     */
+    private function getNeweggLiveViewsCvrFromListingSheet(): array
+    {
+        $counts = $this->getMapAndMissCounts('newegg');
+        $views = $this->neweggListingViewsTotal();
+        $counts['total_views'] = $views;
+        $qty = 0.0;
+        try {
+            if (Schema::hasTable('newegg_order_items') && Schema::hasTable('newegg_orders')) {
+                [$l30Start, $l30End] = $this->completePacificL30L60Windows();
+                $qty = (float) (DB::table('newegg_order_items as i')
+                    ->join('newegg_orders as o', 'o.order_number', '=', 'i.order_number')
+                    ->whereBetween('o.order_date', [$l30Start, $l30End])
+                    ->where(function ($q) {
+                        $q->whereNull('o.order_status')->orWhere('o.order_status', '!=', 4);
+                    })
+                    ->sum('i.ordered_qty') ?? 0);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Newegg live CVR qty failed: '.$e->getMessage());
+        }
+        $counts['cvr_pct'] = $this->neweggListingCvrPct($qty, $views);
+
+        return $counts;
+    }
+
+    /**
+     * Uploaded Newegg Seller Portal views — same Page Views / Sessions fallback as /newegg-pricing-view.
+     */
+    private function neweggListingViewsTotal(): int
+    {
+        if (! Schema::hasTable('newegg_listing_views')) {
+            return 0;
+        }
+
+        try {
+            return (int) (DB::table('newegg_listing_views')
+                ->selectRaw('COALESCE(SUM(CASE WHEN COALESCE(page_views, 0) > 0 THEN page_views ELSE COALESCE(sessions, 0) END), 0) as v')
+                ->value('v') ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('Newegg listing views total failed: '.$e->getMessage());
+
+            return 0;
+        }
+    }
+
+    /**
+     * Listing CVR for /all-marketplace-master Newegg — same as /newegg-pricing-view badge: Qty ÷ Views × 100.
+     */
+    private function neweggListingCvrPct(float $qty, int $views): ?float
+    {
+        if ($views <= 0) {
+            return null;
+        }
+
+        return round(($qty / $views) * 100, 2);
     }
 
     /**
@@ -16770,6 +16836,7 @@ class ChannelMasterController extends Controller
                 'l7_sales' => 'l7_sales',
                 'p_sales' => 'l7_sales',
                 'p_npft' => null,    // computed: GPFT% − (ad spend / P-Sales) on L7 pace
+                'p_npft_amt' => null, // computed: P-Sales × P-Npft% = (P-Sales × GPFT%) − ad spend
                 'p_groi_pct' => null, // computed: (P-Sales × GPFT%) ÷ projected COGS
                 'y_pft' => null,     // computed: Y Sales × GPFT%
                 'y_npft_amt' => null, // computed: Y Sales × NPFT%
@@ -16897,7 +16964,7 @@ class ChannelMasterController extends Controller
                 $this->applyL7WindowToChannelSummaries($history);
             }
 
-            if (! $useDailyWindow && ! $useL7Window && in_array($metric, ['ad_spend', 'ads_pct', 'pft', 'npft', 'nroi', 'acos', 'p_npft'], true)) {
+            if (! $useDailyWindow && ! $useL7Window && in_array($metric, ['ad_spend', 'ads_pct', 'pft', 'npft', 'nroi', 'acos', 'p_npft', 'p_npft_amt'], true)) {
                 try {
                     $this->overlayAmazonRollingL30SpendOnChannelSummaries($history);
                 } catch (\Throwable $e) {
@@ -17026,7 +17093,7 @@ class ChannelMasterController extends Controller
                             $totalPft += $channelPft;
                             $totalSales += $channelL30Sales;
                             $totalSpend += $channelAdSpend;
-                        } elseif ($metric === 'p_npft' || $metric === 'p_groi_pct') {
+                        } elseif ($metric === 'p_npft' || $metric === 'p_npft_amt' || $metric === 'p_groi_pct') {
                             if (array_key_exists('l7_sales', $sd)) {
                                 $hasMetricData = true;
                             }
@@ -17035,6 +17102,10 @@ class ChannelMasterController extends Controller
                             $totalSales += $pSales;
                             if ($metric === 'p_groi_pct') {
                                 $totalCogs += $this->yCogsDollars($pSales, $channelL30Sales, $channelGprofit, $channelCogs);
+                            } elseif ($metric === 'p_npft_amt') {
+                                if ($pSales > 0) {
+                                    $totalSpend += $channelAdSpend;
+                                }
                             } else {
                                 $totalSpend += $channelAdSpend;
                             }
@@ -17128,6 +17199,11 @@ class ChannelMasterController extends Controller
                         $gpft = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
                         $adsPct = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
                         $value = round($gpft - $adsPct, 1);
+                    } elseif ($metric === 'p_npft_amt') {
+                        if (! $hasMetricData) {
+                            continue;
+                        }
+                        $value = round($totalPft - $totalSpend, 2);
                     } elseif ($metric === 'p_groi_pct') {
                         if (! $hasMetricData) {
                             continue;
@@ -17272,6 +17348,19 @@ class ChannelMasterController extends Controller
                             continue;
                         }
                         $value = round($pNpft, 1);
+                    } elseif ($metric === 'p_npft_amt') {
+                        if (! array_key_exists('l7_sales', $summaryData)) {
+                            continue;
+                        }
+                        $pNpftAmt = $this->projectedNpftDollarsFromL7(
+                            $summaryData['l7_sales'],
+                            $summaryData['gprofit_percent'] ?? 0,
+                            $summaryData['total_ad_spend'] ?? 0
+                        );
+                        if ($pNpftAmt === null) {
+                            continue;
+                        }
+                        $value = $pNpftAmt;
                     } elseif ($metric === 'p_groi_pct') {
                         $pGroi = $this->pGroiPercentFromSummary($summaryData);
                         if ($pGroi === null) {
@@ -17751,6 +17840,7 @@ class ChannelMasterController extends Controller
                 'l7_sales' => 'l7_sales',
                 'p_sales' => 'l7_sales',
                 'p_npft' => null,
+                'p_npft_amt' => null,
                 'p_groi_pct' => null,
                 'y_pft' => null,
                 'y_npft_amt' => null,
@@ -17774,7 +17864,7 @@ class ChannelMasterController extends Controller
                 'inventory' => 'inventory_value_amazon',
                 'tat' => 'tat',
             ];
-            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'y_pft', 'y_npft_amt', 'l7_sales', 'p_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'p_npft', 'p_groi_pct', 'y_npft_pct', 'y_groi_pct', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'inv_at_sp', 'inventory', 'tat'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'y_pft', 'y_npft_amt', 'l7_sales', 'p_sales', 'p_npft_amt', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'p_npft', 'p_groi_pct', 'y_npft_pct', 'y_groi_pct', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'inv_at_sp', 'inventory', 'tat'];
             $out = [];
             $processedByChannel = [];
 
@@ -18336,6 +18426,17 @@ class ChannelMasterController extends Controller
                 $summaryData['total_ad_spend'] ?? 0
             );
         }
+        if ($metric === 'p_npft_amt') {
+            if (! array_key_exists('l7_sales', $summaryData)) {
+                return null;
+            }
+
+            return $this->projectedNpftDollarsFromL7(
+                $summaryData['l7_sales'],
+                $summaryData['gprofit_percent'] ?? 0,
+                $summaryData['total_ad_spend'] ?? 0
+            );
+        }
         if ($metric === 'p_groi_pct') {
             return $this->pGroiPercentFromSummary($summaryData);
         }
@@ -18395,6 +18496,21 @@ class ChannelMasterController extends Controller
             }
 
             return $pSales > 0 ? round((($pGross - $spend) / $pSales) * 100, 1) : null;
+        }
+
+        if ($metric === 'p_npft_amt') {
+            $total = 0.0;
+            $any = false;
+            foreach (\App\Models\ChannelMasterCalculatedData::query()->get(['l7_sales', 'gprofit_pct', 'total_ad_spend']) as $row) {
+                $amt = $this->projectedNpftDollarsFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend);
+                if ($amt === null) {
+                    continue;
+                }
+                $total += $amt;
+                $any = true;
+            }
+
+            return $any ? round($total, 2) : null;
         }
 
         if ($metric === 'p_groi_pct') {
@@ -19074,6 +19190,19 @@ class ChannelMasterController extends Controller
         }
 
         return round((float) $gprofitPercent - ((float) $adSpend / $pSales) * 100, 2);
+    }
+
+    /**
+     * Projected NPFT $ at L7 sales pace: P-Sales × GPFT% − ad spend.
+     */
+    private function projectedNpftDollarsFromL7(mixed $l7Sales, mixed $gprofitPercent, mixed $adSpend): ?float
+    {
+        $pSales = $this->projectedSalesFromL7($l7Sales);
+        if ($pSales <= 0) {
+            return null;
+        }
+
+        return round(($pSales * ((float) $gprofitPercent / 100)) - (float) $adSpend, 2);
     }
 
     /**
@@ -20514,6 +20643,7 @@ class ChannelMasterController extends Controller
             'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
             'p_sales' => $row->l7_sales !== null ? $this->projectedSalesFromL7($row->l7_sales) : null,
             'p_npft' => $row->l7_sales !== null ? $this->projectedNpftFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,
+            'p_npft_amt' => $row->l7_sales !== null ? $this->projectedNpftDollarsFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,
             'p_groi_pct' => $row->l7_sales !== null ? $this->pGroiPercentFromL7($row->l7_sales, $row->gprofit_pct, $row->l30_sales, $row->cogs, $row->g_roi) : null,
             'y_pft' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->gprofit_pct) : null,
             'y_npft_amt' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->n_pft) : null,
@@ -20568,6 +20698,7 @@ class ChannelMasterController extends Controller
                 'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
                 'p_sales' => $row->l7_sales !== null ? $this->projectedSalesFromL7($row->l7_sales) : null,
                 'p_npft' => $row->l7_sales !== null ? $this->projectedNpftFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,
+                'p_npft_amt' => $row->l7_sales !== null ? $this->projectedNpftDollarsFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,
                 'p_groi_pct' => $row->l7_sales !== null ? $this->pGroiPercentFromL7($row->l7_sales, $row->gprofit_pct, $row->l30_sales, $row->cogs, $row->g_roi) : null,
                 'y_pft' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->gprofit_pct) : null,
                 'y_npft_amt' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->n_pft) : null,
@@ -20619,7 +20750,7 @@ class ChannelMasterController extends Controller
         }
 
         $sumMetrics = [
-            'y_sales', 'y_pft', 'y_npft_amt', 'p_sales', 'l7_sales', 'l30_sales', 'l60_sales', 'l60_orders', 'l30_orders',
+            'y_sales', 'y_pft', 'y_npft_amt', 'p_sales', 'p_npft_amt', 'l7_sales', 'l30_sales', 'l60_sales', 'l60_orders', 'l30_orders',
             'qty', 'ad_spend', 'total_views', 'clicks', 'ad_sales', 'ad_sold',
             'missing_l', 'map', 'nmap',
         ];
@@ -21033,6 +21164,7 @@ class ChannelMasterController extends Controller
                     'groi_l60' => floatval($row['G RoiL60'] ?? 0),
                     'npft_percent' => round($npftPercent, 2),
                     'p_npft_percent' => $this->projectedNpftFromL7($row['L7 Sales'] ?? 0, $gprofitPercent, $adSpend),
+                    'p_npft_amt' => $this->projectedNpftDollarsFromL7($row['L7 Sales'] ?? 0, $gprofitPercent, $adSpend),
                     'nroi_percent' => floatval($row['N ROI'] ?? 0),
                     'tcos_percent' => round($tcosPercent, 2),
                     'total_ad_spend' => $adSpend,

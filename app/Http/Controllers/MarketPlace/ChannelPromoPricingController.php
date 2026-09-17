@@ -9,13 +9,25 @@ use App\Jobs\RunChannelPushPrcJob;
 use App\Jobs\RunChannelPushPrmtJob;
 use App\Jobs\RunChannelPushSpriceJob;
 use App\Jobs\RunShopifyB2cRuleSpriceApplyJob;
+use App\Models\AliexpressMetric;
+use App\Models\FaireMetric;
 use App\Models\AmazonDataView;
+use App\Models\AmazonSkuDailyData;
+use App\Models\MacyProduct;
+use App\Models\MiraklDailyData;
 use App\Models\ChannelTabulatorColumnSetting;
+use App\Models\Ebay2SkuDailyData;
+use App\Models\Ebay3Metric;
+use App\Models\Ebay3SkuDailyData;
 use App\Models\EbayDataView;
+use App\Models\EbaySkuDailyData;
 use App\Models\EbayMetric;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Models\TikTokProduct;
+use App\Models\TikTokProductTwo;
+use App\Models\TiktokSkuDailyData;
 use App\Services\ChannelPromoPricingService;
 use App\Services\Ebay1CouponService;
 use App\Services\Ebay1PromotionService;
@@ -25,10 +37,12 @@ use App\Services\Support\ChannelPushPrmtJobStore;
 use App\Services\Support\ChannelPushSpriceJobStore;
 use App\Services\Support\ChannelPushSpriceRunner;
 use App\Support\AmazonDilGroiRule;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class ChannelPromoPricingController extends Controller
 {
@@ -1429,7 +1443,7 @@ class ChannelPromoPricingController extends Controller
                 'success' => true,
                 'is_default' => true,
                 'target_metric' => $targetMetric,
-                'rules' => AmazonDilGroiRule::defaults(),
+                'rules' => AmazonDilGroiRule::defaultsForChannel($channel),
                 'cvr_adj' => $unpacked['cvr_adj'],
             ]);
         }
@@ -1438,7 +1452,9 @@ class ChannelPromoPricingController extends Controller
             'success' => true,
             'is_default' => false,
             'target_metric' => $targetMetric,
-            'rules' => $unpacked['rules'],
+            'rules' => AmazonDilGroiRule::usesZeroToZero($channel)
+                ? AmazonDilGroiRule::ensureZeroToZero($unpacked['rules'])
+                : $unpacked['rules'],
             'cvr_adj' => $unpacked['cvr_adj'],
         ]);
     }
@@ -1460,6 +1476,9 @@ class ChannelPromoPricingController extends Controller
         }
 
         $rules = AmazonDilGroiRule::normalizeList($incoming);
+        if (AmazonDilGroiRule::usesZeroToZero($channel)) {
+            $rules = AmazonDilGroiRule::ensureZeroToZero($rules);
+        }
         if ($rules === []) {
             return response()->json(['success' => false, 'message' => 'At least one Dil slab is required'], 422);
         }
@@ -1502,6 +1521,527 @@ class ChannelPromoPricingController extends Controller
             'rules' => $rules,
             'cvr_adj' => $cvrAdj,
         ]);
+    }
+
+    /**
+     * Daily Dil slab counts for Sprc Dil history dots.
+     * Dil = OV L30 ÷ INV (same as the Dil column), except Macys = MC L30 ÷ INV.
+     * Dil = 0 uses the 0–0 slab.
+     */
+    public function dilGroiSlabHistory(Request $request, string $channel): JsonResponse
+    {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $days = (int) $request->input('days', 30);
+        if ($days < 7) {
+            $days = 7;
+        }
+        if ($days > 90) {
+            $days = 90;
+        }
+
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', $channel.'_dil_vs_groi')
+            ->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $rules = $unpacked['rules'] === []
+            ? AmazonDilGroiRule::defaultsForChannel($channel)
+            : (AmazonDilGroiRule::usesZeroToZero($channel)
+                ? AmazonDilGroiRule::ensureZeroToZero($unpacked['rules'])
+                : $unpacked['rules']);
+        $keys = array_values(array_filter(array_map(
+            static fn (array $rule): string => (string) ($rule['key'] ?? ''),
+            $rules
+        )));
+        $keys[] = '_outside';
+        $empty = array_fill_keys($keys, 0);
+
+        $end = Carbon::now('America/Los_Angeles')->startOfDay();
+        $start = $end->copy()->subDays($days - 1);
+        $out = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->toDateString();
+            $out[$key] = array_merge([
+                'date' => $key,
+                'label' => $d->format('m-d'),
+            ], $empty);
+        }
+
+        $seen = [];
+        $model = match ($channel) {
+            'amazon' => AmazonSkuDailyData::class,
+            'ebay1' => EbaySkuDailyData::class,
+            'ebay2', 'ebay2op' => Ebay2SkuDailyData::class,
+            'ebay3' => Ebay3SkuDailyData::class,
+            'tiktok', 'tiktok2' => TiktokSkuDailyData::class,
+            default => null,
+        };
+        if ($model !== null) {
+            $this->applyDilGroiHistorySnapshots(
+                $model,
+                $start,
+                $end,
+                $rules,
+                $out,
+                $seen,
+                null,
+                in_array($channel, ['tiktok', 'tiktok2'], true) ? $channel : null
+            );
+        }
+        $skuAllow = match ($channel) {
+            'ebay3' => $this->ebay3HistorySkuSet(),
+            'aliexpress' => $this->aliexpressHistorySkuSet(),
+            'faire' => $this->faireHistorySkuSet(),
+            'tiktok', 'tiktok2' => $this->tiktokHistorySkuSet($channel),
+            'mercari_wship', 'mercari_woship', 'shein', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy' => $this->mercariWshipHistorySkuSet(),
+            'pls' => $this->plsHistorySkuSet(),
+            default => null,
+        };
+        if (in_array($channel, ['macys', 'macy'], true) && $skuAllow !== null) {
+            $this->applyMacysDilHistory($start, $end, $rules, $out, $seen, $skuAllow);
+        } elseif ($skuAllow !== null) {
+            // No dedicated daily table yet — reuse Shopify inv/OV L30 already
+            // snapshotted on eBay 1 / eBay 2 for the same SKUs (same Dil formula).
+            $this->applyDilGroiHistorySnapshots(EbaySkuDailyData::class, $start, $end, $rules, $out, $seen, $skuAllow);
+            $this->applyDilGroiHistorySnapshots(Ebay2SkuDailyData::class, $start, $end, $rules, $out, $seen, $skuAllow);
+            $this->applyLiveShopifyDilHistory($end, $rules, $out, $seen, $skuAllow);
+        }
+
+        return response()->json([
+            'success' => true,
+            'channel' => $channel,
+            'days' => $days,
+            'data' => array_values($out),
+        ]);
+    }
+
+    /**
+     * Count INV > 0 child SKUs into Dil slabs from a sku_daily_data table.
+     *
+     * @param  class-string  $modelClass
+     * @param  array<string, array<string, mixed>>  $out
+     * @param  array<string, true>  $seen
+     * @param  array<string, true>|null  $skuAllow
+     */
+    private function applyDilGroiHistorySnapshots(
+        string $modelClass,
+        Carbon $start,
+        Carbon $end,
+        array $rules,
+        array &$out,
+        array &$seen,
+        ?array $skuAllow = null,
+        ?string $snapshotChannel = null
+    ): void {
+        if (! class_exists($modelClass)) {
+            return;
+        }
+        $table = (new $modelClass)->getTable();
+        if (! Schema::hasTable($table)) {
+            return;
+        }
+
+        $query = $modelClass::query()
+            ->whereBetween('record_date', [$start->toDateString(), $end->toDateString()]);
+        if ($snapshotChannel !== null && Schema::hasColumn($table, 'channel')) {
+            $query->where('channel', $snapshotChannel);
+        }
+        $query
+            ->select(['id', 'sku', 'record_date', 'daily_data'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($chunk) use (&$out, &$seen, $rules, $skuAllow) {
+                foreach ($chunk as $record) {
+                    $sku = strtoupper(trim((string) ($record->sku ?? '')));
+                    if ($sku === '' || str_contains($sku, 'PARENT')) {
+                        continue;
+                    }
+                    if ($skuAllow !== null && ! isset($skuAllow[$sku])) {
+                        continue;
+                    }
+                    $dateKey = Carbon::parse($record->record_date)->toDateString();
+                    if (! isset($out[$dateKey])) {
+                        continue;
+                    }
+                    $seenKey = $sku.'|'.$dateKey;
+                    if (isset($seen[$seenKey])) {
+                        continue;
+                    }
+                    $data = is_array($record->daily_data)
+                        ? $record->daily_data
+                        : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                    if (! array_key_exists('inv', $data)
+                        && ! array_key_exists('ovl30', $data)
+                        && ! array_key_exists('l30', $data)) {
+                        continue;
+                    }
+                    $inv = (int) ($data['inv'] ?? 0);
+                    if ($inv <= 0) {
+                        continue;
+                    }
+                    $seen[$seenKey] = true;
+                    $ov = (int) ($data['ovl30'] ?? $data['l30'] ?? $data['quantity'] ?? 0);
+                    $dil = ($ov / $inv) * 100;
+                    $rule = AmazonDilGroiRule::match($dil, $rules);
+                    $slab = $rule['key'] ?? '_outside';
+                    $out[$dateKey][$slab] = ((int) ($out[$dateKey][$slab] ?? 0)) + 1;
+                }
+            });
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function ebay3HistorySkuSet(): array
+    {
+        if (! Schema::hasTable('ebay_3_metrics')) {
+            return [];
+        }
+        $out = [];
+        Ebay3Metric::query()
+            ->whereNotNull('sku')
+            ->select(['id', 'sku'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($chunk) use (&$out) {
+                foreach ($chunk as $row) {
+                    $sku = strtoupper(trim((string) ($row->sku ?? '')));
+                    if ($sku === '' || str_contains($sku, 'PARENT')) {
+                        continue;
+                    }
+                    $out[$sku] = true;
+                }
+            });
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function aliexpressHistorySkuSet(): array
+    {
+        if (! Schema::hasTable('aliexpress_metric')) {
+            return [];
+        }
+        $out = [];
+        AliexpressMetric::query()
+            ->whereNotNull('sku')
+            ->select(['id', 'sku'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($chunk) use (&$out) {
+                foreach ($chunk as $row) {
+                    $sku = strtoupper(trim((string) ($row->sku ?? '')));
+                    if ($sku === '' || str_contains($sku, 'PARENT')) {
+                        continue;
+                    }
+                    $out[$sku] = true;
+                }
+            });
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function faireHistorySkuSet(): array
+    {
+        if (! Schema::hasTable('faire_metric')) {
+            return [];
+        }
+        $out = [];
+        FaireMetric::query()
+            ->whereNotNull('sku')
+            ->select(['id', 'sku'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($chunk) use (&$out) {
+                foreach ($chunk as $row) {
+                    $sku = strtoupper(trim((string) ($row->sku ?? '')));
+                    if ($sku === '' || str_contains($sku, 'PARENT')) {
+                        continue;
+                    }
+                    $out[$sku] = true;
+                }
+            });
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function tiktokHistorySkuSet(string $channel): array
+    {
+        $model = $channel === 'tiktok2' ? TikTokProductTwo::class : TikTokProduct::class;
+        $table = $channel === 'tiktok2' ? 'tiktok_products_two' : 'tiktok_products';
+        if (! Schema::hasTable($table)) {
+            return [];
+        }
+        $out = [];
+        $model::query()
+            ->whereNotNull('sku')
+            ->select(['id', 'sku'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($chunk) use (&$out) {
+                foreach ($chunk as $row) {
+                    $sku = strtoupper(trim((string) ($row->sku ?? '')));
+                    if ($sku === '' || str_contains($sku, 'PARENT')) {
+                        continue;
+                    }
+                    $out[$sku] = true;
+                }
+            });
+
+        return $out;
+    }
+
+    /**
+     * Same SKU universe as /mercari-with-ship-tabulator-view (product master children).
+     *
+     * @return array<string, true>
+     */
+    private function mercariWshipHistorySkuSet(): array
+    {
+        if (! Schema::hasTable('product_master')) {
+            return [];
+        }
+        $out = [];
+        ProductMaster::query()
+            ->whereNotNull('sku')
+            ->select(['id', 'sku'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($chunk) use (&$out) {
+                foreach ($chunk as $row) {
+                    $sku = strtoupper(trim((string) ($row->sku ?? '')));
+                    if ($sku === '' || str_contains($sku, 'PARENT')) {
+                        continue;
+                    }
+                    $out[$sku] = true;
+                }
+            });
+
+        return $out;
+    }
+
+    /**
+     * Same SKU universe as /pls-pricing (product master children).
+     *
+     * @return array<string, true>
+     */
+    private function plsHistorySkuSet(): array
+    {
+        if (! Schema::hasTable('product_master')) {
+            return [];
+        }
+        $out = [];
+        ProductMaster::query()
+            ->whereNotNull('sku')
+            ->select(['id', 'sku'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($chunk) use (&$out) {
+                foreach ($chunk as $row) {
+                    $sku = strtoupper(trim((string) ($row->sku ?? '')));
+                    if ($sku === '' || str_contains($sku, 'PARENT')) {
+                        continue;
+                    }
+                    $out[$sku] = true;
+                }
+            });
+
+        return $out;
+    }
+
+    /**
+     * Today's Dil counts from live channel SKUs + Shopify INV / OV L30.
+     *
+     * @param  array<string, array<string, mixed>>  $out
+     * @param  array<string, true>  $seen
+     * @param  array<string, true>  $skuAllow
+     */
+    private function applyLiveShopifyDilHistory(
+        Carbon $today,
+        array $rules,
+        array &$out,
+        array &$seen,
+        array $skuAllow
+    ): void {
+        $dateKey = $today->toDateString();
+        if (! isset($out[$dateKey]) || $skuAllow === []) {
+            return;
+        }
+        $shopifyBySku = ShopifySku::query()
+            ->select('sku', 'inv', 'quantity')
+            ->whereNotNull('sku')
+            ->get()
+            ->keyBy(function ($row) {
+                return ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            });
+
+        foreach (array_keys($skuAllow) as $sku) {
+            $seenKey = $sku.'|'.$dateKey;
+            if (isset($seen[$seenKey])) {
+                continue;
+            }
+            $shopify = $shopifyBySku->get(ShopifySku::normalizeSkuForShopifyLookup($sku));
+            $inv = (int) ($shopify->inv ?? 0);
+            if ($inv <= 0) {
+                continue;
+            }
+            $seen[$seenKey] = true;
+            $ov = (int) ($shopify->quantity ?? 0);
+            $dil = ($ov / $inv) * 100;
+            $rule = AmazonDilGroiRule::match($dil, $rules);
+            $slab = $rule['key'] ?? '_outside';
+            $out[$dateKey][$slab] = ((int) ($out[$dateKey][$slab] ?? 0)) + 1;
+        }
+    }
+
+    /**
+     * Macys Dil = MC L30 ÷ INV. Today uses live macy_products.m_l30 + Shopify INV.
+     * Earlier days use eBay 1/2 INV snapshots and a rolling 30-day Mirakl qty.
+     *
+     * @param  array<string, array<string, mixed>>  $out
+     * @param  array<string, true>  $seen
+     * @param  array<string, true>  $skuAllow
+     */
+    private function applyMacysDilHistory(
+        Carbon $start,
+        Carbon $end,
+        array $rules,
+        array &$out,
+        array &$seen,
+        array $skuAllow
+    ): void {
+        if ($skuAllow === []) {
+            return;
+        }
+
+        $invBySkuDate = [];
+        foreach ([EbaySkuDailyData::class, Ebay2SkuDailyData::class] as $modelClass) {
+            if (! class_exists($modelClass)) {
+                continue;
+            }
+            $table = (new $modelClass)->getTable();
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+            $modelClass::query()
+                ->whereBetween('record_date', [$start->toDateString(), $end->toDateString()])
+                ->select(['id', 'sku', 'record_date', 'daily_data'])
+                ->orderBy('id')
+                ->chunkById(2000, function ($chunk) use (&$invBySkuDate, $skuAllow) {
+                    foreach ($chunk as $record) {
+                        $sku = strtoupper(trim((string) ($record->sku ?? '')));
+                        if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuAllow[$sku])) {
+                            continue;
+                        }
+                        $dateKey = Carbon::parse($record->record_date)->toDateString();
+                        $data = is_array($record->daily_data)
+                            ? $record->daily_data
+                            : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                        $inv = (int) ($data['inv'] ?? 0);
+                        if ($inv <= 0) {
+                            continue;
+                        }
+                        $invBySkuDate[$sku][$dateKey] = $inv;
+                    }
+                });
+        }
+
+        $qtyBySkuDate = [];
+        if (Schema::hasTable('mirakl_daily_data')) {
+            $qtyStart = $start->copy()->subDays(29)->startOfDay();
+            MiraklDailyData::query()
+                ->macys()
+                ->whereNotNull('sku')
+                ->whereBetween('order_created_at', [$qtyStart, $end->copy()->endOfDay()])
+                ->select(['id', 'sku', 'quantity', 'order_created_at'])
+                ->orderBy('id')
+                ->chunkById(2000, function ($chunk) use (&$qtyBySkuDate, $skuAllow) {
+                    foreach ($chunk as $row) {
+                        $sku = strtoupper(trim((string) ($row->sku ?? '')));
+                        if ($sku === '' || str_contains($sku, 'PARENT') || ! isset($skuAllow[$sku])) {
+                            continue;
+                        }
+                        if (! $row->order_created_at) {
+                            continue;
+                        }
+                        $dateKey = Carbon::parse($row->order_created_at)->timezone('America/Los_Angeles')->toDateString();
+                        $qtyBySkuDate[$sku][$dateKey] = ((int) ($qtyBySkuDate[$sku][$dateKey] ?? 0)) + (int) ($row->quantity ?? 0);
+                    }
+                });
+        }
+
+        $liveMcL30 = [];
+        if (Schema::hasTable('macy_products')) {
+            MacyProduct::query()
+                ->whereNotNull('sku')
+                ->select(['id', 'sku', 'm_l30'])
+                ->orderBy('id')
+                ->chunkById(2000, function ($chunk) use (&$liveMcL30) {
+                    foreach ($chunk as $row) {
+                        $sku = strtoupper(trim((string) ($row->sku ?? '')));
+                        if ($sku === '' || str_contains($sku, 'PARENT')) {
+                            continue;
+                        }
+                        $liveMcL30[$sku] = (int) ($row->m_l30 ?? 0);
+                    }
+                });
+        }
+
+        $shopifyInv = [];
+        if (Schema::hasTable((new ShopifySku)->getTable())) {
+            foreach (ShopifySku::query()->select('sku', 'inv')->whereNotNull('sku')->get() as $row) {
+                $sku = strtoupper(trim((string) $row->sku));
+                if ($sku === '' || str_contains($sku, 'PARENT')) {
+                    continue;
+                }
+                $shopifyInv[$sku] = (int) ($row->inv ?? 0);
+            }
+        }
+
+        $todayKey = $end->toDateString();
+        $windowDates = [];
+        for ($d = $start->copy()->subDays(29); $d->lte($end); $d->addDay()) {
+            $windowDates[] = $d->toDateString();
+        }
+
+        foreach (array_keys($out) as $dateKey) {
+            $windowStart = Carbon::parse($dateKey, 'America/Los_Angeles')->subDays(29)->toDateString();
+            foreach (array_keys($skuAllow) as $sku) {
+                $inv = $invBySkuDate[$sku][$dateKey] ?? null;
+                if ($dateKey === $todayKey && ($shopifyInv[$sku] ?? 0) > 0) {
+                    $inv = $shopifyInv[$sku];
+                }
+                if (! ($inv > 0)) {
+                    continue;
+                }
+                $seenKey = $sku.'|'.$dateKey;
+                if (isset($seen[$seenKey])) {
+                    continue;
+                }
+                $seen[$seenKey] = true;
+
+                if ($dateKey === $todayKey && array_key_exists($sku, $liveMcL30)) {
+                    $mcL30 = $liveMcL30[$sku];
+                } else {
+                    $mcL30 = 0;
+                    foreach ($windowDates as $qtyDate) {
+                        if ($qtyDate < $windowStart || $qtyDate > $dateKey) {
+                            continue;
+                        }
+                        $mcL30 += (int) ($qtyBySkuDate[$sku][$qtyDate] ?? 0);
+                    }
+                }
+
+                $dil = ($mcL30 / $inv) * 100;
+                $rule = AmazonDilGroiRule::match($dil, $rules);
+                $slab = $rule['key'] ?? '_outside';
+                $out[$dateKey][$slab] = ((int) ($out[$dateKey][$slab] ?? 0)) + 1;
+            }
+        }
     }
 
     public function gtSoldPrcRules(Request $request, string $channel): JsonResponse

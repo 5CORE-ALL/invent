@@ -788,7 +788,9 @@ class AmazonSprcDilAutoPushService
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
         if ($unpacked['rules'] === []) {
-            $unpacked['rules'] = AmazonDilGroiRule::defaults();
+            $unpacked['rules'] = AmazonDilGroiRule::amazonDefaults();
+        } else {
+            $unpacked['rules'] = AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
         }
 
         return $unpacked;

@@ -7,17 +7,14 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 
     <style>
-        html {
+        html, body, .wrapper {
+            height: 100% !important;
+            max-height: 100% !important;
             max-width: 100%;
-            overflow-x: clip;
-            overflow-y: auto;
+            overflow: hidden !important;
+            overflow-anchor: none;
         }
-        /* Theme sets body { overflow-x: hidden } after this block, which makes
-           overflow-y compute to auto and turns <body> into a non-scrolling
-           scrollport — position:sticky on the table header then never pins. */
         body {
-            max-width: 100%;
-            overflow: visible !important;
             font-family: 'Poppins', sans-serif;
             background-color: #f5f7fa !important;
         }
@@ -91,50 +88,94 @@
             display: none !important;
         }
 
-        /* Contain width so the page never grows sideways; extra columns scroll in the table.
-           Do not set overflow-x on .content-page / card ancestors — a non-visible overflow
-           on one axis makes the other compute to auto/hidden, which creates a scrollport
-           as tall as the content and stops position:sticky from pinning the header. */
-        .content-page,
-        .content-page .content,
-        .content-page .container-fluid,
-        .content-page .row,
-        .content-page .row > [class*="col-"],
-        .content-page .card.shadow-sm,
-        .content-page .card.shadow-sm > .card-body {
+        /* Fill the viewport so the page cannot scroll the table away.
+           Condensed sidenav otherwise forces content-page min-height ~1500px. */
+        .content-page {
+            min-height: 0 !important;
+            height: calc(100vh - var(--tz-topbar-height, 70px)) !important;
+            max-height: calc(100vh - var(--tz-topbar-height, 70px)) !important;
             max-width: 100%;
+            overflow: hidden !important;
+            display: flex !important;
+            flex-direction: column;
+        }
+        .content-page .content,
+        .content-page .container-fluid {
+            flex: 1 1 auto;
+            min-height: 0 !important;
+            max-width: 100%;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .amm-shell {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            max-width: 100%;
+        }
+        .amm-shell .page-title-box,
+        .amm-shell > .toast-container,
+        .amm-shell > .row:not(.amm-page-row) {
+            flex: 0 0 auto;
+        }
+        .amm-page-row,
+        .amm-page-col,
+        .amm-page-card {
+            flex: 1 1 auto;
             min-width: 0;
-            overflow: visible;
+            min-height: 0;
+            max-width: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .amm-page-row { flex-wrap: nowrap; }
+        .amm-toolbar { flex: 0 0 auto; }
+        .amm-table-card-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            padding: 0 !important;
+            overflow: hidden;
         }
         #marketplace-table-wrapper {
-            height: auto;
+            flex: 1 1 auto;
+            height: 100%;
+            min-height: 0;
             width: 100%;
             max-width: 100%;
-            min-width: 0;
-            overflow: visible;
+            overflow: hidden;
         }
+        #marketplace-table,
         #marketplace-table.tabulator {
-            height: auto;
+            height: 100% !important;
+            min-height: 0 !important;
             width: 100% !important;
             max-width: 100%;
-            overflow: visible !important;
+            overflow: hidden !important;
+        }
+        /* Beat global .tabulator-header { position:sticky; top:0 } — that snaps scroll up. */
+        #marketplace-table.tabulator .tabulator-header {
+            position: relative !important;
+            top: auto !important;
+            z-index: 6 !important;
+            background-color: #dbeafe !important;
+        }
+        #marketplace-table.tabulator .tabulator-header .tabulator-header-contents,
+        #marketplace-table.tabulator .tabulator-header .tabulator-col {
+            background-color: #dbeafe !important;
         }
         #marketplace-table.tabulator .tabulator-tableholder {
-            height: auto !important;
-            max-height: none !important;
-            overflow-x: auto !important;
-            overflow-y: hidden !important;
+            overflow: auto !important;
+            overflow-anchor: none !important;
+            scrollbar-gutter: stable;
             -webkit-overflow-scrolling: touch;
-        }
-        #marketplace-table.tabulator .tabulator-col.tabulator-frozen,
-        #marketplace-table.tabulator .tabulator-cell.tabulator-frozen {
-            position: sticky !important;
-            z-index: 6;
-            background-color: #fff;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-col.tabulator-frozen {
             background-color: #dbeafe !important;
-            z-index: 27 !important;
+            z-index: 8 !important;
         }
         #marketplace-table.tabulator .tabulator-row.tabulator-row-even .tabulator-cell.tabulator-frozen {
             background-color: #fff;
@@ -144,22 +185,6 @@
         }
         #marketplace-table.tabulator .tabulator-row.tabulator-calcs .tabulator-cell.tabulator-frozen {
             background-color: #f8f9fa;
-        }
-        /* Beat global .tabulator-header { top: 0 !important } so the header docks
-           under the sticky topbar instead of sliding underneath it. */
-        #marketplace-table.tabulator .tabulator-header {
-            position: sticky !important;
-            top: var(--tz-topbar-height, 70px) !important;
-            z-index: 24 !important;
-            background-color: #dbeafe !important;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-        }
-        #marketplace-table.tabulator .tabulator-header .tabulator-header-contents,
-        #marketplace-table.tabulator .tabulator-header .tabulator-col {
-            background-color: #dbeafe !important;
-        }
-        #marketplace-table.tabulator .tabulator-header .tabulator-frozen {
-            z-index: 26 !important;
         }
 
         /* Vertical column headers */
@@ -493,7 +518,8 @@
             white-space: nowrap;
             letter-spacing: -0.02em;
         }
-        #total-p-sales-vs-sales {
+        #total-p-sales-vs-sales,
+        #total-p-npft-vs-npft {
             margin-left: 4px;
             font-weight: 700;
             letter-spacing: -0.02em;
@@ -551,6 +577,7 @@
 @endsection
 
 @section('content')
+    <div class="amm-shell">
     @include('layouts.shared.page-title', [
         'page_title' => 'Active Channel Master',
         'sub_title' => '',
@@ -558,10 +585,10 @@
 
     <div class="toast-container"></div>
 
-    <div class="row">
-        <div class="col-12">
-        <div class="card shadow-sm">
-            <div class="card-body py-3">
+    <div class="row amm-page-row">
+        <div class="col-12 amm-page-col">
+        <div class="card shadow-sm amm-page-card">
+            <div class="card-body py-3 amm-toolbar">
 
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <!-- Search -->
@@ -674,6 +701,9 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_npft" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Projected NPFT% = blended GPFT% on P-Sales minus Ads% on P-Sales. P-Sales is last-7-day pace × 30; spend is current L30 ad spend.">
                             <span class="summary-trend-dot none" data-metric="p_npft" title="Rolling history"></span>P-Npft%: <span id="avg-p-npft">0.0%</span>
                         </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_npft_amt" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P NPFT $ column. Projected net profit $ = P-Sales × P-Npft%. P-Sales is last-7-day pace × 30; spend is current L30 ad spend. % is P NPFT $ vs NPFT $.">
+                            <span class="summary-trend-dot none" data-metric="p_npft_amt" title="P NPFT $ vs NPFT $"></span>P NPFT: <span id="total-p-npft">$0</span><span id="total-p-npft-vs-npft"></span>
+                        </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_pct" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="yNprft% = blended NPFT% weighted by Y Sales: sum(Y Sales × NPFT%) ÷ sum(Y Sales). Same rate used for the Y NPFT $ column.">
                             <span class="summary-trend-dot none" data-metric="y_npft_pct" title="Rolling history"></span>yNprft%: <span id="avg-y-npft">0.0%</span>
                         </span>
@@ -702,13 +732,14 @@
                 </div>
             </div>
 
-            <div class="card-body" style="padding: 0;">
-                <div id="marketplace-table-wrapper" style="width: 100%;">
+            <div class="card-body amm-table-card-body">
+                <div id="marketplace-table-wrapper">
                     <div id="marketplace-table"></div>
                 </div>
             </div>
         </div>
         </div>
+    </div>
     </div>
 
     <div class="modal fade" id="ammInvModal" tabindex="-1" aria-labelledby="ammInvModalLabel" aria-hidden="true">
@@ -1343,7 +1374,7 @@
         }
 
         var METRIC_DIFF_MONEY = {
-            l30_sales: 1, y_sales: 1, y_pft: 1, y_npft_amt: 1, p_sales: 1, ad_spend: 1, pft: 1, ad_sales: 1,
+            l30_sales: 1, y_sales: 1, y_pft: 1, y_npft_amt: 1, p_sales: 1, p_npft_amt: 1, ad_spend: 1, pft: 1, ad_sales: 1,
             inv_at_lp: 1, inv_at_sp: 1, inventory: 1, l60_sales: 1
         };
 
@@ -1380,6 +1411,27 @@
             if (Math.abs(pct) < 0.1) return 'P-Sales in line with Sales — click for chart';
             const dir = pct > 0 ? 'above' : 'below';
             return Math.abs(pct).toFixed(0) + '% ' + dir + ' Sales — click for chart';
+        }
+        function pNpftAmtVsNpftPct(pAmt, npftAmt) {
+            const p = parseNumber(pAmt);
+            const s = parseNumber(npftAmt);
+            if (!isFinite(p) || !isFinite(s) || Math.abs(s) < 0.5) return null;
+            return ((p - s) / Math.abs(s)) * 100;
+        }
+        function pNpftAmtVsNpftColor(pAmt, npftAmt) {
+            const p = parseNumber(pAmt);
+            const s = parseNumber(npftAmt);
+            if (!isFinite(p) || !isFinite(s)) return DEFAULT_DOT_GRAY;
+            if (Math.abs(s) < 0.5) return p > 0.5 ? '#28a745' : (p < -0.5 ? '#dc3545' : DEFAULT_DOT_GRAY);
+            const diff = p - s;
+            if (Math.abs(diff) < 0.5) return DEFAULT_DOT_GRAY;
+            return diff > 0 ? '#28a745' : '#dc3545';
+        }
+        function pNpftAmtVsNpftTitle(pct) {
+            if (pct == null || !isFinite(pct)) return 'P NPFT $ vs NPFT $ — click for chart';
+            if (Math.abs(pct) < 0.1) return 'P NPFT $ in line with NPFT $ — click for chart';
+            const dir = pct > 0 ? 'above' : 'below';
+            return Math.abs(pct).toFixed(0) + '% ' + dir + ' NPFT $ — click for chart';
         }
         function projectedNpftFromL7(l7, gprofitPercent, adSpend) {
             const pSales = projectedSalesFromL7(l7);
@@ -1423,6 +1475,16 @@
             const l7 = parseNumber(row['L7 Sales'] || 0);
             if (!l7) return null;
             return projectedNpftFromL7(l7, parseNumber(row['Gprofit%'] || 0), rowAdSpendFromRow(row));
+        }
+        function pNetPftFromRow(row) {
+            const l7 = parseNumber(row['L7 Sales'] || 0);
+            if (!l7) return 0;
+            return pGrossPftFromRow(row) - rowAdSpendFromRow(row);
+        }
+        function rowNetPftFromRow(row) {
+            const l30 = parseNumber(row['L30 Sales'] || 0);
+            const gp = parseNumber(row['Gprofit%'] || 0);
+            return (l30 * gp) / 100 - rowAdSpendFromRow(row);
         }
         function yGrossPftFromRow(row) {
             return (parseNumber(row['Y Sales'] || 0) * parseNumber(row['Gprofit%'] || 0)) / 100;
@@ -1824,7 +1886,7 @@
             var lastDotPairByKey = {};
             var invertedDotMetrics = ['acos', 'ads_pct'];
             var ySalesAllChartPrefetch = null;
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','y_pft','y_npft_amt','p_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','y_npft_pct','y_groi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','y_pft','y_npft_amt','p_sales','p_npft_amt','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','y_npft_pct','y_groi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
             var dotTrendsPrefetch = null;
 
             function getMetricDotColor(channelName, metricKey) {
@@ -1905,6 +1967,8 @@
                     }
                     case 'p_npft':
                         return pNpftPctFromRow(row);
+                    case 'p_npft_amt':
+                        return pNetPftFromRow(row);
                     case 'p_groi_pct':
                         return pGroiPctFromRow(row);
                     case 'l60_sales': return n(row['L-60 Sales']);
@@ -1973,6 +2037,15 @@
                         el.title = pSalesVsL30Title(pct);
                         return;
                     }
+                    if (metric === 'p_npft_amt') {
+                        var pAmt = parseFloat(el.getAttribute('data-p-npft'));
+                        var nAmt = parseFloat(el.getAttribute('data-npft-amt'));
+                        var pct = pNpftAmtVsNpftPct(pAmt, nAmt);
+                        el.style.color = pNpftAmtVsNpftColor(pAmt, nAmt);
+                        el.style.display = '';
+                        el.title = pNpftAmtVsNpftTitle(pct);
+                        return;
+                    }
                     var color = getMetricDotColor(ch, metric || 'ad_spend');
                     el.style.color = color;
                     el.style.display = '';
@@ -2011,12 +2084,54 @@
                 }
             });
 
+            function ammTableViewportHeight() {
+                var wrap = document.getElementById('marketplace-table-wrapper');
+                if (!wrap) return 400;
+                var footer = document.querySelector('footer.footer');
+                var footerH = footer ? Math.ceil(footer.getBoundingClientRect().height) : 60;
+                var top = wrap.getBoundingClientRect().top;
+                var fromViewport = Math.floor(window.innerHeight - top - footerH - 6);
+                var fromFlex = Math.floor(wrap.clientHeight || 0);
+                return Math.max(240, fromFlex > 160 ? fromFlex : fromViewport);
+            }
+
+            function pinAmmTableToViewport(force) {
+                var wrap = document.getElementById('marketplace-table-wrapper');
+                if (!wrap) return;
+                var h = ammTableViewportHeight();
+                var same = wrap.dataset.ammH === String(h);
+                wrap.dataset.ammH = String(h);
+                wrap.style.height = h + 'px';
+                if (!table || typeof table.setHeight !== 'function') return;
+                if (same && !force) return;
+                var holder = wrap.querySelector('.tabulator-tableholder');
+                var sl = holder ? holder.scrollLeft : 0;
+                var st = holder ? holder.scrollTop : 0;
+                try { table.setHeight(h); } catch (e) { /* ignore */ }
+                holder = wrap.querySelector('.tabulator-tableholder');
+                if (holder) {
+                    var headerEl = wrap.querySelector('.tabulator-header');
+                    var footerEl = wrap.querySelector('.tabulator-footer');
+                    var inner = h - (headerEl ? headerEl.offsetHeight : 0) - (footerEl ? footerEl.offsetHeight : 0);
+                    if (inner < 80) inner = 80;
+                    holder.style.height = inner + 'px';
+                    holder.style.maxHeight = inner + 'px';
+                    holder.style.overflow = 'auto';
+                    holder.scrollLeft = sl;
+                    holder.scrollTop = st;
+                }
+            }
+
+            pinAmmTableToViewport();
+
             table = new Tabulator("#marketplace-table", {
                 ajaxURL: "/channels-master-data",
                 ajaxParams: { size: 10000, page: 1 },
                 ajaxSorting: false,
                 layout: "fitDataStretch",
-                height: false,
+                height: Math.max(240, (document.getElementById('marketplace-table-wrapper') || {}).clientHeight || 400),
+                renderVertical: "basic",
+                autoResize: false,
                 pagination: false,
                 responsiveLayout: window.innerWidth < 768 ? "hide" : false,
                 columnDefaults: {
@@ -2040,6 +2155,7 @@
                             row['YNPFT%'] = yNpftPctFromRow(row);
                             row['P GROI%'] = pGroiPctFromRow(row);
                             row['PNPFT%'] = pNpftPctFromRow(row);
+                            row['P NPFT'] = pNetPftFromRow(row);
                         });
                         updateSummaryStats(response.data);
                         function setCompactInvBadge(elId, rawVal, titlePrefix) {
@@ -2946,6 +3062,59 @@
                                 return '<strong style="color:#adb5bd;">-</strong>';
                             }
                             return `<strong>${parseNumber(value).toFixed(1)}%</strong>`;
+                        }
+                    },
+                    {
+                        title: "P NPFT",
+                        field: "P NPFT",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 168,
+                        headerTooltip: "Projected net profit $ from last-7-day pace: P-Sales × P-Npft%. P-Sales = (L7 ÷ 7) × 30. % and dot compare P NPFT $ to NPFT $: green = above NPFT $, red = below NPFT $.",
+                        mutator: function(value, data) {
+                            return pNetPftFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const l7 = parseNumber(row['L7 Sales'] || 0);
+                            const value = parseNumber(cell.getValue() != null && cell.getValue() !== '' ? cell.getValue() : pNetPftFromRow(row));
+                            const npftAmt = rowNetPftFromRow(row);
+                            const channel = (row['Channel '] || '').trim();
+                            const pct = pNpftAmtVsNpftPct(value, npftAmt);
+                            const dotColor = pNpftAmtVsNpftColor(value, npftAmt);
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_npft_amt" data-p-npft="${value}" data-npft-amt="${npftAmt}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="${pNpftAmtVsNpftTitle(pct)}"></i>`;
+                            if (!l7 || l7 === 0) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
+                            }
+                            return `<span style="white-space:nowrap;"><span class="p-npft-value" style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${formatPSalesVsL30PctHtml(pct)}${chartIcon}</span>`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('.p-npft-value'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let sum = 0;
+                            data.forEach(function(row) {
+                                sum += pNetPftFromRow(row);
+                            });
+                            return sum;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const pAmt = parseNumber(cell.getValue());
+                            if (!pAmt && pAmt !== 0) return '<strong style="color:#adb5bd;">-</strong>';
+                            let npftAmt = 0;
+                            let hasL7 = false;
+                            try {
+                                const rows = cell.getTable().getData('active') || [];
+                                rows.forEach(function(row) {
+                                    npftAmt += rowNetPftFromRow(row);
+                                    if (parseNumber(row['L7 Sales'] || 0)) hasL7 = true;
+                                });
+                            } catch (e) { /* ignore */ }
+                            if (!hasL7) return '<strong style="color:#adb5bd;">-</strong>';
+                            return `<strong style="color:#0d6efd;">$${Math.round(pAmt).toLocaleString('en-US')}</strong>${formatPSalesVsL30PctHtml(pNpftAmtVsNpftPct(pAmt, npftAmt))}`;
                         }
                     },
                     {
@@ -4662,6 +4831,10 @@
                 ]
             });
 
+            table.on('tableBuilt', function() {
+                pinAmmTableToViewport(true);
+            });
+
             table.on('renderComplete', function() {
                 paintMetricDots(channelKeysFromTableData());
                 bindAmmHorizontalScrollSync();
@@ -4677,8 +4850,14 @@
                 }, { passive: true });
             }
 
-            $(window).on('resize.ammFreezeHeader', function() {
-                if (table && typeof table.redraw === 'function') table.redraw(true);
+            var ammPinTimer = null;
+            $(window).off('resize.ammFreezeHeader').on('resize.ammFreezeHeader', function() {
+                if (ammPinTimer) clearTimeout(ammPinTimer);
+                ammPinTimer = setTimeout(function() {
+                    var wrap = document.getElementById('marketplace-table-wrapper');
+                    if (wrap) delete wrap.dataset.ammH;
+                    pinAmmTableToViewport();
+                }, 150);
             });
 
             function loadMetricDotTrends(tableData) {
@@ -4713,7 +4892,7 @@
             function colorSummaryBadgeDots(channelKeys) {
                 var inverted = invertedDotMetrics;
                 var sumMetrics = {
-                    l30_sales: 1, y_sales: 1, y_pft: 1, y_npft_amt: 1, p_sales: 1, l30_orders: 1, qty: 1, ad_spend: 1, pft: 1,
+                    l30_sales: 1, y_sales: 1, y_pft: 1, y_npft_amt: 1, p_sales: 1, p_npft_amt: 1, l30_orders: 1, qty: 1, ad_spend: 1, pft: 1,
                     clicks: 1, ad_sales: 1, ad_sold: 1, total_views: 1, inv_at_lp: 1,
                     inv_at_sp: 1, inventory: 1, missing_l: 1, map: 1, nmap: 1,
                     reviews: 1, l60_sales: 1, l60_orders: 1
@@ -4756,6 +4935,30 @@
                             pCls = 'up';
                         }
                         $(this).removeClass('up down flat none').addClass(pCls);
+                        return;
+                    }
+                    if (metric === 'p_npft_amt') {
+                        var npftRows = [];
+                        try {
+                            npftRows = (table && table.getData) ? (table.getData('active') || table.getData() || []) : [];
+                        } catch (e) {
+                            npftRows = (table && table.getData) ? (table.getData() || []) : [];
+                        }
+                        var pAmtSum = 0, nAmtSum = 0;
+                        npftRows.forEach(function(row) {
+                            pAmtSum += pNetPftFromRow(row);
+                            nAmtSum += rowNetPftFromRow(row);
+                        });
+                        var nCls = 'none';
+                        if (Math.abs(nAmtSum) > 0.5) {
+                            if (Math.abs(pAmtSum - nAmtSum) < 0.5) nCls = 'flat';
+                            else nCls = pAmtSum > nAmtSum ? 'up' : 'down';
+                        } else if (pAmtSum > 0) {
+                            nCls = 'up';
+                        } else if (pAmtSum < 0) {
+                            nCls = 'down';
+                        }
+                        $(this).removeClass('up down flat none').addClass(nCls);
                         return;
                     }
                     // Prefer the blended All pair. Only treat it as settled when
@@ -5123,6 +5326,37 @@
                     setBadgeExact($el, val);
                 })();
                 (function() {
+                    let totalPNet = 0;
+                    data.forEach(function(row) {
+                        totalPNet += pNetPftFromRow(row);
+                    });
+                    const val = Math.round(totalPNet);
+                    const $el = $('#total-p-npft');
+                    $el.text(toCompact(val));
+                    const pct = pNpftAmtVsNpftPct(totalPNet, netProfit);
+                    const $pct = $('#total-p-npft-vs-npft');
+                    const $dot = $('#summary-stats .summary-trend-dot[data-metric="p_npft_amt"]');
+                    $dot.removeClass('up down flat none');
+                    if (pct == null || !isFinite(pct)) {
+                        $pct.text('');
+                        $dot.addClass(totalPNet > 0 && Math.abs(netProfit) <= 0.5 ? 'up' : (totalPNet < 0 && Math.abs(netProfit) <= 0.5 ? 'down' : 'none'));
+                    } else if (Math.abs(pct) < 0.1) {
+                        $pct.text('0%').css('color', '#e5e7eb');
+                        $dot.addClass('flat');
+                    } else {
+                        const isUp = pct > 0;
+                        $pct.text((isUp ? '+' : '−') + Math.abs(pct).toFixed(0) + '%')
+                            .css('color', isUp ? '#86efac' : '#fecaca');
+                        $dot.addClass(isUp ? 'up' : 'down');
+                    }
+                    const pctLabel = (pct != null && isFinite(pct))
+                        ? (' ' + (pct > 0 ? '+' : (pct < 0 ? '−' : '')) + Math.abs(pct).toFixed(0) + '% vs NPFT $')
+                        : '';
+                    $el.closest('.badge').attr('title',
+                        'Sum of P NPFT $ column. Projected net profit $ = P-Sales × P-Npft%. P-Sales is (L7 ÷ 7) × 30. $' + val.toLocaleString('en-US') + pctLabel + '. Green/red = P NPFT $ vs NPFT $.');
+                    setBadgeExact($el, val);
+                })();
+                (function() {
                     const avgYNpft = totalYSales > 0 ? (totalYNet / totalYSales) * 100 : 0;
                     const val = pct1(avgYNpft);
                     const $el = $('#avg-y-npft');
@@ -5378,9 +5612,9 @@
             table.on('dataLoaded', function() {
                 setTimeout(function() {
                     buildColumnDropdown();
-                    if (typeof table !== 'undefined' && table.redraw) {
-                        table.redraw(true);
-                    }
+                    var wrap = document.getElementById('marketplace-table-wrapper');
+                    if (wrap) delete wrap.dataset.ammH;
+                    pinAmmTableToViewport(true);
                 }, 100);
                 if (!dotTrendsLoadedOnce && table.getData && table.getData().length) {
                     dotTrendsLoadedOnce = true;
@@ -5957,6 +6191,7 @@
                 'y_pft': 'Y PFT',
                 'y_npft_amt': 'Y NPFT',
                 'p_sales': 'P-Sales',
+                'p_npft_amt': 'P NPFT',
                 'l30_orders': 'Orders',
                 'qty': 'Qty',
                 'gprofit': 'Gprofit%',
@@ -6324,7 +6559,7 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'y_pft' || m === 'y_npft_amt' || m === 'p_sales' || m === 'l7_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'y_pft' || m === 'y_npft_amt' || m === 'p_sales' || m === 'p_npft_amt' || m === 'l7_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
                     // Listing CVR / Ads CVR shift slowly inside a rolling window — show 2 decimals

@@ -106,6 +106,7 @@ $salesCmds = [
     'app:fetch-ebay-three-metrics',
     'ebay:collect-metrics',
     'ebay2:collect-metrics',
+    'ebay3:collect-metrics',
     'shopify:sync-orders --days=3',
     'app:fetch-shopify-b2b-metrics --days=60',
     'app:fetch-shopify-b2c-metrics --days=60',

@@ -23,6 +23,7 @@ class AllMarketplaceMasterBadgeAggregator
         $totalTodaySales = 0.0;
         $totalPSales = 0.0;
         $totalPGross = 0.0;
+        $totalPNet = 0.0;
         $totalL30Orders = 0.0;
         $totalQty = 0.0;
         $totalClicks = 0.0;
@@ -73,6 +74,9 @@ class AllMarketplaceMasterBadgeAggregator
             $totalTodaySales += $todaySales;
             $totalPSales += $pSales;
             $totalPGross += ($gprofitPercent / 100) * $pSales;
+            if (self::rowNumber($row, 'L7 Sales') > 0) {
+                $totalPNet += ($pSales * $gprofitPercent / 100) - $adSpend;
+            }
             $totalL30Orders += $l30Orders;
             $totalQty += $qty;
             $totalClicks += $clicks;
@@ -146,6 +150,7 @@ class AllMarketplaceMasterBadgeAggregator
             'y_groi_pct' => round($avgYGroi, 2),
             'today_sales' => round($totalTodaySales, 2),
             'p_sales' => round($totalPSales, 2),
+            'p_npft_amt' => round($totalPNet, 2),
             'l30_orders' => (int) round($totalL30Orders),
             'qty' => (int) round($totalQty),
             'gprofit_pct' => round($avgGprofit, 2),

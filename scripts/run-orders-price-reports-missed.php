@@ -102,6 +102,7 @@ $reports = [
     'app:fetch-ebay-three-metrics',
     'ebay:collect-metrics',
     'ebay2:collect-metrics',
+    'ebay3:collect-metrics',
     'tiktok:collect-metrics',
     'app:fetch-shopify-b2b-metrics --days=60',
     'app:fetch-shopify-b2c-metrics --days=60',

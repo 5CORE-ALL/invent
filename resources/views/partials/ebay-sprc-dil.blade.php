@@ -2,14 +2,14 @@
   Sprc Dil — Dil → Target NROI slabs on every Dil tabulator (Ads%=0 → same $ as GROI).
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
-  AliExpress: AL30 = 0 uses min Target NROI (same as other 0 Sold pages). AL30 > 0 uses the Dil-matching slab;
+  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Shein also has a 0–0 slab on top for Dil = 0.
+  AliExpress / Faire / TikTok / Mercari / PLS / Best Buy / Newegg / Reverb / Wayfair / Depop: 0–0 slab on top for Dil = 0. Channel L30 = 0 uses min Target NROI (same as other 0 Sold pages). Sold rows use the Dil-matching slab;
   Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
-  eBay 1–3 / Shein: Dil below the first slab or above the last slab uses the nearest slab (Dil 0 and fast-seller Dil > last To).
+  eBay 1–3: 0–0 slab on top for Dil = 0. Dil below the first remaining slab or above the last uses the nearest slab.
   Temu 1 / New Temu One / New Temu Two: Temu L30 = 0 uses the minimum Target GROI (not the Dil-matching slab). Dil is still OV L30 ÷ INV. New Temu Two uses Temu 2 L30 and the same Temu Dil store.
   CVR overlay Count and Adj: Down = down-arrow CVR and CVR < threshold; Up = up-arrow CVR and CVR > threshold.
   Horizontal / opposite-arrow rows are excluded. Shein applies the overlay only when the SKU has views.
-  Macys: Dil-matching when MC L30 > 0. MC L30 = 0 (0 Sold) always uses the minimum Target GROI
+  Macys: 0–0 slab on top for Dil = 0. Dil-matching when MC L30 > 0. MC L30 = 0 (0 Sold) always uses the minimum Target GROI
   (not the Dil-matching slab). Dil is MC L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price,
   S PRC = A Price (do not keep a lower Dil/Std price). Out of box + sold uses Std Prc, then the same A Price floor.
   Purchasing Power / Best Buy: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
@@ -19,8 +19,9 @@
   the last (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay.
   CVR Down/Up uses CVR% vs the overlay thresholds (no L60). Dil S PRC inverts 0.95 take-home
   so SNROI = target. B2B excludes Ship.
-  Dil slab edits and table load recalculate display only.
-  Save and Apply deletes old S PRC (saves 0), then writes the new Dil S PRC.
+  Dil slab edits and table load paint S PRC from the Dil rule and persist that
+  same $ to the channel SPRICE table (clear 0, then write Dil). Save and Apply
+  does the same wipe-then-write. Live listing push stays opt-in (S PRC ≠ Price).
   Macys / Purchasing Power persist in the background (page can close).
   Purchasing Power also pushes listed price via MCM when S PRC ≠ PP Price.
   Live push on other pages is only for saved S PRC ≠ Price.
@@ -99,11 +100,17 @@
     }
     if ($ebaySprcDilZeroSoldUsesMinGroi) {
         $ebaySprcDilBtnTitle .= ' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target '.$ebaySprcDilTargetLabel.' from the slabs.';
+        if (in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy'], true)) {
+            $ebaySprcDilBtnTitle .= ' Dil = 0 uses the 0–0 slab.';
+        }
         if (!empty($ebaySprcDilUsesAmzFloor)) {
             $ebaySprcDilBtnTitle .= ' If that S PRC < A Price, use A Price.';
         }
     } else {
         $ebaySprcDilBtnTitle .= ' Every INV > 0 SKU uses the Dil-matching slab.';
+        if (in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein'], true)) {
+            $ebaySprcDilBtnTitle .= ' Dil = 0 uses the 0–0 slab.';
+        }
     }
 @endphp
 
@@ -222,7 +229,7 @@
             background: #fff;
         }
         #ebayDilGroiModal .ebay-dg-hist-wrap.is-open { display: block; }
-        #ebayDilGroiModal .ebay-dg-hist-canvas-wrap { height: 160px; }
+        #ebayDilGroiModal .ebay-dg-hist-canvas-wrap { height: 220px; }
         #ebay-dil-groi-btn {
             background: #6f42c1;
             border-color: #6f42c1;
@@ -281,6 +288,12 @@
                             take the <strong>minimum Target {{ $ebaySprcDilTargetLabel }} from the slabs</strong>
                             (not the Dil-matching slab).
                         </li>
+                        @if(in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy'], true))
+                        <li>
+                            <strong>When</strong> Dil = 0 (INV &gt; 0):
+                            use the <strong>0–0</strong> slab’s Target {{ $ebaySprcDilTargetLabel }}.
+                        </li>
+                        @endif
                         <li>
                             <strong>When</strong> {{ $ebaySprcDilSoldLabel }} &gt; 0 and Dil sits in a From–To range:
                             use that slab’s Target {{ $ebaySprcDilTargetLabel }} (first match; last slab includes the To value).
@@ -327,6 +340,12 @@
                         </li>
                         @endif
 @else
+                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein'], true))
+                        <li>
+                            <strong>When</strong> Dil = 0 (INV &gt; 0):
+                            use the <strong>0–0</strong> slab’s Target {{ $ebaySprcDilTargetLabel }}.
+                        </li>
+                        @endif
                         <li>
                             <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
                             use that slab’s Target {{ $ebaySprcDilTargetLabel }} (first match; last slab includes the To value).
@@ -334,7 +353,7 @@
                         @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'shein'], true))
                         <li>
                             <strong>When</strong> Dil is below the first From or above the last To (INV &gt; 0):
-                            use the <strong>nearest slab</strong> so 0 Sold and high-Dil SKUs still get a Target {{ $ebaySprcDilTargetLabel }}.
+                            use the <strong>nearest slab</strong> so high-Dil SKUs still get a Target {{ $ebaySprcDilTargetLabel }}.
                         </li>
                         @endif
                         @if(!empty($ebaySprcDilCvrGroiAdj))
@@ -542,6 +561,18 @@
                 || EBAY_DIL_GROI_CHANNEL === 'ebay2'
                 || EBAY_DIL_GROI_CHANNEL === 'ebay2op'
                 || EBAY_DIL_GROI_CHANNEL === 'ebay3';
+        }
+        function ebayDgUsesZeroToZeroSlab() {
+            return ebayDgIsEbay123() || ebayDgIsAliexpress() || ebayDgIsFaire() || ebayDgIsTiktok()
+                || ebayDgIsMercari()
+                || ebayDgIsShein()
+                || ebayDgIsBestbuy()
+                || ebayDgIsNewegg()
+                || ebayDgIsReverb()
+                || ebayDgIsWayfair()
+                || ebayDgIsMacys()
+                || EBAY_DIL_GROI_CHANNEL === 'pls'
+                || EBAY_DIL_GROI_CHANNEL === 'depop';
         }
         function ebayDgIsMercari() {
             return EBAY_DIL_GROI_CHANNEL === 'mercari_wship'
@@ -835,6 +866,15 @@
                 const views = Number(d && (d.Views != null ? d.Views : d.views)) || 0;
                 return views > 0 ? (l30 / views) * 100 : 0;
             }
+            if (EBAY_DIL_GROI_CHANNEL === 'newegg') {
+                if (d && d.cvr != null && d.cvr !== '') {
+                    const n = Number(d.cvr);
+                    if (isFinite(n) && n >= 0) return n;
+                }
+                const views = Number(d && d.views) || 0;
+                const l30 = Number(d && d.l30) || 0;
+                return views > 0 ? (l30 / views) * 100 : 0;
+            }
             if (EBAY_DIL_GROI_CHANNEL === 'shopify_b2b') {
                 if (d && d.SCVR != null && d.SCVR !== '') {
                     const n = Number(d.SCVR);
@@ -871,7 +911,7 @@
                 || (d.cvr_45 != null && d.cvr_45 !== '')));
             // Shopify B2C / B2B have no L60 CVR. Do not treat CVR>0 as Up vs a missing 0% L60.
             // Down / Up follow the editable CVR overlay thresholds (default <7% / >10%).
-            if ((ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b()) && !hasCvr60) {
+            if ((ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b() || ebayDgIsNewegg()) && !hasCvr60) {
                 const cfg = ebayCvrGroiAdjNow();
                 if (cvr < cfg.down_lt) return 'down';
                 if (cvr > cfg.up_gt) return 'up';
@@ -949,7 +989,7 @@
                 min = Number(m[1]);
                 max = Number(m[2]);
             }
-            if (!isFinite(min) || !isFinite(max) || min < 0 || max <= min) return null;
+            if (!isFinite(min) || !isFinite(max) || min < 0 || max < min) return null;
             min = ebayDgRound2(min);
             max = ebayDgRound2(max);
             let groi = Number(raw.nroi != null && raw.nroi !== '' ? raw.nroi : raw.groi);
@@ -970,8 +1010,28 @@
                 const rule = ebayNormalizeDilGroiRule(item);
                 if (rule) out.push(rule);
             });
-            out.sort(function(a, b) { return a.min - b.min; });
+            out.sort(function(a, b) { return a.min - b.min || a.max - b.max; });
             return out;
+        }
+        function ebayDilInSlab(n, rule, isLast) {
+            if (!rule) return false;
+            if (rule.max === rule.min) return ebayDgRound2(n) === rule.min;
+            const hiOk = isLast ? (n <= rule.max) : (n < rule.max);
+            return n >= rule.min && hiOk;
+        }
+        function ebayEnsureZeroToZeroSlab(list) {
+            const rules = ebayNormalizeDilGroiList(list);
+            if (!ebayDgUsesZeroToZeroSlab()) return rules;
+            const hasZero = rules.some(function(r) { return r.min === 0 && r.max === 0; });
+            if (hasZero) return rules;
+            const firstGroi = rules.length
+                ? (Number(rules[0].nroi != null ? rules[0].nroi : rules[0].groi) || 0)
+                : 50;
+            const zero = ebayNormalizeDilGroiRule({ min: 0, max: 0, groi: firstGroi });
+            return ebayNormalizeDilGroiList(zero ? [zero].concat(rules) : rules);
+        }
+        if (ebayDgUsesZeroToZeroSlab()) {
+            ebayDilGroiRules = ebayEnsureZeroToZeroSlab(ebayDilGroiRules);
         }
         function ebayDilGroiCurrentList() {
             const fromModal = [];
@@ -984,7 +1044,9 @@
                 if (rule) fromModal.push(rule);
             });
             const list = fromModal.length ? fromModal : ebayNormalizeDilGroiList(ebayDilGroiRules);
-            return list.length ? list : EBAY_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+            if (list.length) return list;
+            const fallback = EBAY_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+            return ebayDgUsesZeroToZeroSlab() ? ebayEnsureZeroToZeroSlab(fallback) : fallback;
         }
         function ebayDilGroiMatch(dil) {
             const n = Number(dil);
@@ -992,9 +1054,7 @@
             if (!isFinite(n) || n < 0 || !list.length) return null;
             const last = list.length - 1;
             for (let i = 0; i < list.length; i++) {
-                const rule = list[i];
-                const hiOk = (i === last) ? (n <= rule.max) : (n < rule.max);
-                if (n >= rule.min && hiOk) return rule;
+                if (ebayDilInSlab(n, list[i], i === last)) return list[i];
             }
             return null;
         }
@@ -1425,11 +1485,35 @@
                         + '</div>';
                 }).join('');
         }
+        function ebayDgPadHistoryDays(rows, days) {
+            const span = days > 0 ? days : 30;
+            const byDate = {};
+            (rows || []).forEach(function(r) {
+                if (r && r.date) byDate[r.date] = r;
+            });
+            const today = ebayDgTodayKey();
+            const parts = today.split('-').map(Number);
+            const end = new Date(Date.UTC(parts[0], (parts[1] || 1) - 1, parts[2] || 1));
+            const out = [];
+            for (let i = span - 1; i >= 0; i--) {
+                const d = new Date(end);
+                d.setUTCDate(d.getUTCDate() - i);
+                const key = d.toISOString().slice(0, 10);
+                const rec = byDate[key] ? Object.assign({}, byDate[key]) : {};
+                rec.date = key;
+                rec.label = key.slice(5);
+                out.push(rec);
+            }
+            return out;
+        }
         function ebayDgDrawHist(chart, band, rows) {
             const slices = chart === 'cvr' ? ebayDgCvrBands() : ebayDgDilSlices;
             const spec = slices.find(function(s) { return s.key === band; })
                 || { key: band, label: band, color: '#6f42c1' };
-            $('#ebay-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : 'Dil ') + spec.label + ' count');
+            const plot = ebayDgPadHistoryDays(rows, 30);
+            const labels = plot.map(function(r) { return r.label || r.date; });
+            const values = plot.map(function(r) { return Number(r[band]) || 0; });
+            $('#ebay-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : 'Dil ') + spec.label + ' count · last 30 days');
             $('#ebay-dg-hist-wrap').addClass('is-open');
             ebayDgWithChart(function() {
                 const canvas = document.getElementById('ebay-dg-hist');
@@ -1438,42 +1522,27 @@
                     ebayDgHistChart.destroy();
                     ebayDgHistChart = null;
                 }
-                const allValues = rows.map(function(r) { return Number(r[band]) || 0; });
-                let startIdx = 0;
-                while (startIdx < allValues.length - 1 && allValues[startIdx] <= 0) startIdx++;
-                const plotRows = rows.slice(startIdx);
-                const values = allValues.slice(startIdx);
-                if (!values.length) return;
-                const dataMin = Math.min.apply(null, values);
-                const dataMax = Math.max.apply(null, values);
-                const range = dataMax - dataMin;
-                const yMin = range < 1e-9
-                    ? Math.max(0, dataMin - Math.max(2, Math.round(dataMin * 0.02)))
-                    : Math.max(0, dataMin - Math.max(1, Math.ceil(range * 0.35)));
-                const yMax = range < 1e-9
-                    ? dataMax + Math.max(2, Math.round(dataMax * 0.02) || 2)
-                    : dataMax + Math.max(1, Math.ceil(range * 0.45));
                 const valueLabelsPlugin = {
                     id: 'ebayDgHistValueLabels',
-                    afterDraw: function(chart) {
-                        const dataset = chart.data.datasets[0];
-                        const meta = chart.getDatasetMeta(0);
-                        const c = chart.ctx;
+                    afterDraw: function(ch) {
+                        const dataset = ch.data.datasets[0];
+                        const meta = ch.getDatasetMeta(0);
+                        const c = ch.ctx;
                         if (!dataset || !meta || !meta.data) return;
                         meta.data.forEach(function(point, i) {
                             const val = dataset.data[i];
                             if (val == null || !point) return;
-                            const txt = String(Math.round(Number(val)));
+                            const txt = String(Math.round(Number(val) || 0));
                             c.save();
-                            c.font = 'bold 11px Inter, system-ui, sans-serif';
+                            c.font = 'bold 10px Inter, system-ui, sans-serif';
                             c.fillStyle = '#111';
                             c.strokeStyle = 'rgba(255,255,255,0.95)';
                             c.lineWidth = 3;
                             c.lineJoin = 'round';
                             c.textAlign = 'center';
                             c.textBaseline = 'bottom';
-                            c.strokeText(txt, point.x, point.y - 6);
-                            c.fillText(txt, point.x, point.y - 6);
+                            c.strokeText(txt, point.x, point.y - 5);
+                            c.fillText(txt, point.x, point.y - 5);
                             c.restore();
                         });
                     }
@@ -1481,7 +1550,7 @@
                 ebayDgHistChart = new Chart(canvas.getContext('2d'), {
                     type: 'line',
                     data: {
-                        labels: plotRows.map(function(r) { return r.label || r.date; }),
+                        labels: labels,
                         datasets: [{
                             data: values,
                             borderColor: spec.color,
@@ -1493,21 +1562,39 @@
                             pointHoverRadius: 5,
                             pointBackgroundColor: spec.color,
                             pointBorderColor: spec.color,
+                            spanGaps: false,
                         }],
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        layout: { padding: { top: 16, right: 8 } },
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            y: {
-                                min: yMin,
-                                max: yMax,
-                                beginAtZero: false,
-                                ticks: { font: { size: 9 }, precision: 0 },
+                        clip: false,
+                        layout: { padding: { top: 16, right: 8, bottom: 2 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        return ' Count: ' + Math.round(Number(ctx.raw) || 0);
+                                    },
+                                },
                             },
-                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } },
+                        },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 } },
+                            x: {
+                                offset: true,
+                                ticks: {
+                                    maxRotation: 90,
+                                    minRotation: 90,
+                                    autoSkip: false,
+                                    autoSkipPadding: 0,
+                                    font: { size: 8, weight: '600' },
+                                    callback: function(value) {
+                                        return this.getLabelForValue(value);
+                                    },
+                                },
+                            },
                         },
                     },
                     plugins: [valueLabelsPlugin],
@@ -1518,18 +1605,33 @@
             const storeKey = chart === 'cvr' ? ebayDgHistKey('cvr') : ebayDgHistKey('dil');
             const live = chart === 'cvr' ? ebayDgCvrLiveCounts : ebayDgDilLiveCounts;
             const applyToday = function(rows) {
-                const list = (rows || []).slice();
+                const list = ebayDgPadHistoryDays(rows, 30);
                 const today = ebayDgTodayKey();
                 const rec = Object.assign({ date: today, label: today.slice(5) }, live);
                 const last = list[list.length - 1];
                 if (last && last.date === today) {
                     Object.assign(last, rec);
+                    if (!last.label) last.label = rec.label;
                 } else {
                     list.push(rec);
                 }
                 return list;
             };
-            ebayDgDrawHist(chart, band, applyToday(ebayDgLocalHistory(storeKey)));
+            const drawLocal = function() {
+                ebayDgDrawHist(chart, band, applyToday(ebayDgLocalHistory(storeKey)));
+            };
+            if (chart !== 'dil') {
+                drawLocal();
+                return;
+            }
+            $.ajax({
+                url: ebayDgRulesUrl() + '-history',
+                method: 'GET',
+                data: { days: 30 },
+            }).done(function(res) {
+                const rows = (res && res.success && Array.isArray(res.data)) ? res.data : ebayDgLocalHistory(storeKey);
+                ebayDgDrawHist(chart, band, applyToday(rows));
+            }).fail(drawLocal);
         }
         function ebayDgDrawPie(canvasId, chartRefName, slices, counts) {
             const total = slices.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
@@ -1654,7 +1756,9 @@
             const list = ebayNormalizeDilGroiList(ebayDilGroiRules);
             ebayDilGroiRules = list.length
                 ? list
-                : EBAY_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+                : (ebayDgUsesZeroToZeroSlab()
+                    ? ebayEnsureZeroToZeroSlab(EBAY_DIL_GROI_DEFAULTS)
+                    : EBAY_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); }));
             const canDelete = ebayDilGroiRules.length > 1;
             ebayDilGroiRules.forEach(function(r, idx) {
                 const first = idx === 0;
@@ -1845,9 +1949,18 @@
                 consider(ebaySprcDilRowAdapter(d), d);
             });
         }
+        /** Exact $ the S PRC cell paints — this is what we persist to the table. */
+        function ebayDgCellSpriceToSave(d) {
+            if (typeof ebayDisplayedSprice === 'function') {
+                const shown = Number(ebayDisplayedSprice(d)) || 0;
+                if (shown > 0) return shown;
+            }
+            const live = Number(ebayTiktokRuleDiscount(d)) || 0;
+            return live > 0 ? live : 0;
+        }
         function ebayAfterDilGroiRulesChanged() {
             redrawEbaySprcDilColumn();
-            // Same as Amazon: Dil edit wipes saved S PRC, then writes the new Dil $.
+            // Same as Amazon: Dil edit wipes saved S PRC, then writes the cell Dil $.
             ebayScheduleSprcDilAutoApply({
                 delay: 400,
                 flashClear: true,
@@ -1856,7 +1969,7 @@
                 toast: false,
             });
         }
-        /** Macys / Purchasing Power load / slab edit: write Dil S PRC in the grid only. No catalog wipe or batch POST. */
+        /** Macys / Purchasing Power: paint Dil S PRC in the grid (persist is ebayApplySprcDilToTable). */
         function ebayDgPaintMacysRuleSprice() {
             if (typeof table === 'undefined' || !table) return 0;
             // Shopify S PRC / SNROI already read live Dil. Mass row.update + redraw jumps the table to the top.
@@ -1878,7 +1991,7 @@
             try {
                 ebaySprcDilEachCatalogRow(function(row, d) {
                     if (!ebayDgIsChild(d) || !row || typeof row.update !== 'function') return;
-                    const price = ebayTiktokRuleDiscount(d);
+                    const price = ebayDgCellSpriceToSave(d);
                     const current = typeof chPromoGetSprice === 'function'
                         ? chPromoGetSprice(d)
                         : (Number(d && d.SPRICE) || 0);
@@ -1958,26 +2071,13 @@
                     return;
                 }
                 ebayDgAutoApplyWaits = 0;
-                if (typeof ebayDgUsesBackgroundRuleApply === 'function' && ebayDgUsesBackgroundRuleApply()) {
-                    if (opts.flashClear) {
-                        Promise.resolve(ebayDgFlashThenPaintMacysRuleSprice({
-                            toast: opts.toast !== false,
-                        })).catch(function() { /* ignore */ });
-                    } else {
-                        ebayDgPaintMacysRuleSprice();
-                    }
-                    return;
-                }
-                if (ebayDgIsShopifyB2b() || ebayDgIsEbay123()) {
-                    // Same as Amazon reload: wipe saved S PRC, then write Dil if it changed.
-                    const persist = opts.persist === true || !!opts.flashClear;
-                    const push = persist
-                        && typeof chPromoPageReloadPushAllowed === 'function'
-                        && chPromoPageReloadPushAllowed();
-                    Promise.resolve(ebayApplySprcDilToTable({ persist: persist, push: push })).catch(function() { /* retry */ });
-                    return;
-                }
-                Promise.resolve(ebayApplySprcDilToTable({ persist: false, push: false })).catch(function() { /* retry on next change */ });
+                // Always persist the Dil S PRC cell $ to the channel table.
+                // Push listing price only when this page already allows reload push.
+                const persist = opts.persist !== false;
+                const push = persist
+                    && typeof chPromoPageReloadPushAllowed === 'function'
+                    && chPromoPageReloadPushAllowed();
+                Promise.resolve(ebayApplySprcDilToTable({ persist: persist, push: push })).catch(function() { /* retry */ });
             }, delay);
         }
         window.ebayScheduleSprcDilAutoApply = ebayScheduleSprcDilAutoApply;
@@ -2143,7 +2243,7 @@
                     const d = (item.row && typeof item.row.getData === 'function')
                         ? (item.row.getData() || item.d)
                         : item.d;
-                    const price = ebayTiktokRuleDiscount(d);
+                    const price = ebayDgCellSpriceToSave(d);
                     if (!(price > 0)) return;
                     if (item.row && typeof item.row.update === 'function') {
                         const patch = (typeof chPromoSpricePatch === 'function')
@@ -2230,17 +2330,20 @@
                 const livePushOn = typeof chPromoPageReloadPushAllowed === 'function'
                     && chPromoPageReloadPushAllowed();
                 ebaySprcDilEachCatalogRow(function(row, d) {
-                    const meta = ebayDilGroiMetaForRow(d);
-                    if (!meta || !(meta.sprc > 0)) return;
                     const sku = (typeof chPromoSku === 'function')
                         ? chPromoSku(d)
                         : String((d && d['(Child) sku']) || '').trim();
                     if (!sku) return;
-                    let price = meta.sprc;
-                    if (typeof chPromoFinalSpriceToSave === 'function') {
-                        price = chPromoFinalSpriceToSave(d, price);
-                    } else if (typeof chPromoCapSpriceToLmp === 'function') {
-                        price = chPromoCapSpriceToLmp(d, price);
+                    let price = ebayDgCellSpriceToSave(d);
+                    if (!(price > 0)) {
+                        const meta = ebayDilGroiMetaForRow(d);
+                        if (!meta || !(meta.sprc > 0)) return;
+                        price = meta.sprc;
+                        if (typeof chPromoFinalSpriceToSave === 'function') {
+                            price = chPromoFinalSpriceToSave(d, price);
+                        } else if (typeof chPromoCapSpriceToLmp === 'function') {
+                            price = chPromoCapSpriceToLmp(d, price);
+                        }
                     }
                     if (!(price > 0)) return;
                     const current = typeof chPromoGetSprice === 'function'
@@ -2357,19 +2460,23 @@
                     (res && Array.isArray(res.rules)) ? res.rules
                         : (res && res.rules && Array.isArray(res.rules.rules) ? res.rules.rules : [])
                 );
-                if (fromServer.length) ebayDilGroiRules = fromServer;
+                if (fromServer.length) {
+                    ebayDilGroiRules = ebayDgUsesZeroToZeroSlab()
+                        ? ebayEnsureZeroToZeroSlab(fromServer)
+                        : fromServer;
+                } else if (ebayDgUsesZeroToZeroSlab()) {
+                    ebayDilGroiRules = ebayEnsureZeroToZeroSlab(EBAY_DIL_GROI_DEFAULTS);
+                }
                 if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
                 renderEbayDilGroiModalTable();
                 redrawEbaySprcDilColumn();
-                if (EBAY_DIL_GROI_CHANNEL === 'mercari_woship' && fromServer.length && !(res && res.is_default)) {
-                    Promise.resolve(ebayApplySprcDilToTable({ persist: true, push: false })).catch(function() { /* retry on next change */ });
-                } else {
-                    ebayScheduleSprcDilAutoApply();
-                }
+                ebayScheduleSprcDilAutoApply({ persist: true, delay: 400 });
                 $('#ebay-dil-groi-status').text(
                     fromServer.length && !(res && res.is_default)
                         ? ('Loaded saved Dil → ' + EBAY_DIL_TARGET_LABEL + ' slabs from API.')
-                        : 'Using first-time defaults (0.1–5 → 50 … 20–25 → 70, +5 each). Then Save and Apply.'
+                        : (ebayDgUsesZeroToZeroSlab()
+                            ? 'Using first-time defaults (0–0 → 50, 0.1–5 → 50 … 20–25 → 70). Then Save and Apply.'
+                            : 'Using first-time defaults (0.1–5 → 50 … 20–25 → 70, +5 each). Then Save and Apply.')
                 );
             } catch (e) {
                 renderEbayDilGroiModalTable();
@@ -2403,9 +2510,7 @@
                     ebayDgB2bPersistOnce = false;
                     ebayDgClearApplyPersistOnce = false;
                 }
-                const n = ebayDgUsesBackgroundRuleApply()
-                    ? await ebayDgFlashThenPaintMacysRuleSprice({ toast: true })
-                    : await ebayApplySprcDilToTable({ persist: true, push: true });
+                const n = await ebayApplySprcDilToTable({ persist: true, push: true });
                 $('#ebay-dil-groi-status').text(ebayDgIsPurchasingPower()
                     ? 'Saved via API. SPRICE cleared, then Dil painted on ' + n + ' SKU(s); apply + MCM price push queued in the background.'
                     : (ebayDgIsMacys()
@@ -2470,8 +2575,8 @@
                 destroyEbayDilGroiPies();
             });
             $(document).off('click.ebaydghist', '.ebay-dg-hist-dot').on('click.ebaydghist', '.ebay-dg-hist-dot', function() {
-                const chart = String($(this).data('chart') || 'dil');
-                const band = String($(this).data('band') || '');
+                const chart = String($(this).attr('data-chart') || 'dil');
+                const band = String($(this).attr('data-band') || '');
                 if (!band) return;
                 ebayDgOpenHist(chart, band);
             });

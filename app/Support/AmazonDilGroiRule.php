@@ -6,7 +6,8 @@ namespace App\Support;
  * Dil% slabs → Target % → Sprc Dil.
  * Every Sprc Dil page treats the slab number as Target NROI%
  * (S PRC so SNROI = target). Ads%=0 → same dollar as Target GROI.
- * First-time defaults: five slabs 0.1–25%. Add/delete is allowed; match is by min/max.
+ * First-time defaults: five slabs 0.1–25%. Amazon also keeps a 0–0 slab on top
+ * (Dil = 0). Add/delete is allowed; match is by min/max (min = max is exact).
  */
 class AmazonDilGroiRule
 {
@@ -27,6 +28,50 @@ class AmazonDilGroiRule
             self::make(15.0, 20.0, 65),
             self::make(20.0, 25.0, 70),
         ];
+    }
+
+    /**
+     * Amazon tabulator defaults: 0–0 on top, then the shared 0.1–25% slabs.
+     * 0–0 uses the same Target % as the next slab until the user edits it.
+     *
+     * @return list<array{key:string,label:string,min:float,max:float,groi:float|int}>
+     */
+    public static function amazonDefaults(): array
+    {
+        return self::ensureZeroToZero(self::defaults());
+    }
+
+    public static function usesZeroToZero(string $channel): bool
+    {
+        return in_array($channel, ['amazon', 'ebay1', 'ebay2', 'ebay2op', 'ebay3', 'aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'shein', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy'], true);
+    }
+
+    /**
+     * @return list<array{key:string,label:string,min:float,max:float,groi:float|int}>
+     */
+    public static function defaultsForChannel(string $channel): array
+    {
+        return self::usesZeroToZero($channel) ? self::amazonDefaults() : self::defaults();
+    }
+
+    /**
+     * Keep a 0–0 slab first so Dil = 0 has its own Target %.
+     * Copies the first existing Target % so prices do not jump until edited.
+     *
+     * @param  list<array<string, mixed>>  $rules
+     * @return list<array{key:string,label:string,min:float,max:float,groi:float}>
+     */
+    public static function ensureZeroToZero(array $rules): array
+    {
+        $list = self::normalizeList($rules);
+        foreach ($list as $rule) {
+            if ((float) $rule['min'] === 0.0 && (float) $rule['max'] === 0.0) {
+                return $list;
+            }
+        }
+        $firstGroi = isset($list[0]['groi']) ? (float) $list[0]['groi'] : 50.0;
+
+        return self::normalizeList(array_merge([self::make(0.0, 0.0, $firstGroi)], $list));
     }
 
     /**
@@ -66,7 +111,7 @@ class AmazonDilGroiRule
                 $max = (float) $m[2];
             }
         }
-        if ($min === null || $max === null || $min < 0 || $max <= $min) {
+        if ($min === null || $max === null || $min < 0 || $max < $min) {
             return null;
         }
         $target = $item['nroi'] ?? $item['groi'] ?? null;
@@ -91,13 +136,16 @@ class AmazonDilGroiRule
                 $out[] = $rule;
             }
         }
-        usort($out, static fn (array $a, array $b): int => $a['min'] <=> $b['min']);
+        usort($out, static function (array $a, array $b): int {
+            return $a['min'] <=> $b['min'] ?: $a['max'] <=> $b['max'];
+        });
 
         return array_values($out);
     }
 
     /**
      * Dil% → first matching slab (min ≤ Dil < max; last slab includes max).
+     * A min = max slab matches that Dil only (0–0 → Dil = 0).
      *
      * @param  list<array<string, mixed>>  $rules
      * @return array{key:string,label:string,min:float,max:float,groi:float}|null
@@ -110,13 +158,27 @@ class AmazonDilGroiRule
         $list = self::normalizeList($rules);
         $last = count($list) - 1;
         foreach ($list as $i => $rule) {
-            $hiOk = $i === $last ? $dil <= $rule['max'] : $dil < $rule['max'];
-            if ($dil >= $rule['min'] && $hiOk) {
+            if (self::dilInSlab($dil, $rule, $i === $last)) {
                 return $rule;
             }
         }
 
         return null;
+    }
+
+    /**
+     * @param  array{min:float,max:float}  $rule
+     */
+    public static function dilInSlab(float $dil, array $rule, bool $isLast): bool
+    {
+        $min = (float) $rule['min'];
+        $max = (float) $rule['max'];
+        if ($max === $min) {
+            return round($dil, 2) === $min;
+        }
+        $hiOk = $isLast ? $dil <= $max : $dil < $max;
+
+        return $dil >= $min && $hiOk;
     }
 
     /**

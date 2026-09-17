@@ -89,6 +89,7 @@ $sales = [
     'app:fetch-ebay-three-metrics',
     'ebay:collect-metrics',
     'ebay2:collect-metrics',
+    'ebay3:collect-metrics',
     'tiktok:collect-metrics',
     'shopify:sync-orders --days=7',
     'shopify:sync-orders --days=60',

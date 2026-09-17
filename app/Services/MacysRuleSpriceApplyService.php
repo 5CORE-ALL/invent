@@ -321,9 +321,12 @@ class MacysRuleSpriceApplyService
         if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
             $saved = $saved['rules'];
         }
-        $rules = AmazonDilGroiRule::normalizeList(is_array($saved) ? $saved : []);
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
+        if ($unpacked['rules'] === []) {
+            return AmazonDilGroiRule::defaultsForChannel('macys');
+        }
 
-        return $rules !== [] ? $rules : AmazonDilGroiRule::defaults();
+        return AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
     }
 
     /** @param  list<string>  $skus */

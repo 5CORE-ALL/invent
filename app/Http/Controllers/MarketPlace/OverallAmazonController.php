@@ -45,6 +45,7 @@ use App\Services\AmazonDilPrmtAutoPushService;
 use App\Services\AmazonLivePriceFetcher;
 use App\Services\AmazonPushedPricePullService;
 use App\Services\LmpSkuGroupService;
+use App\Support\AmazonDilGroiRule;
 
 class OverallAmazonController extends Controller
 {
@@ -3736,6 +3737,84 @@ class OverallAmazonController extends Controller
                         ? ($aL30 / $views) * 100
                         : (float) ($data['cvr_percent'] ?? 0);
                     $slab = $this->amazonCvrDiscSlabKey($cvr);
+                    $out[$dateKey][$slab] = ((int) ($out[$dateKey][$slab] ?? 0)) + 1;
+                }
+            });
+
+        return response()->json([
+            'success' => true,
+            'days' => $days,
+            'data' => array_values($out),
+        ]);
+    }
+
+    /**
+     * Daily Dil → Target NROI slab counts (same keys as /amazon-tabulator-view Sprc Dil).
+     * Dil = OV L30 ÷ INV. INV ≤ 0 skipped. Dil = 0 uses the 0–0 slab.
+     */
+    public function getDilGroiSlabHistory(Request $request)
+    {
+        $days = (int) $request->input('days', 30);
+        if ($days < 7) {
+            $days = 7;
+        }
+        if ($days > 90) {
+            $days = 90;
+        }
+
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'amazon_dil_vs_groi')
+            ->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $rules = $unpacked['rules'] === []
+            ? AmazonDilGroiRule::amazonDefaults()
+            : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
+        $keys = array_values(array_filter(array_map(
+            static fn (array $rule): string => (string) ($rule['key'] ?? ''),
+            $rules
+        )));
+        $keys[] = '_outside';
+        $empty = array_fill_keys($keys, 0);
+
+        $end = Carbon::now('America/Los_Angeles')->startOfDay();
+        $start = $end->copy()->subDays($days - 1);
+        $out = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->toDateString();
+            $out[$key] = array_merge([
+                'date' => $key,
+                'label' => $d->format('M d'),
+            ], $empty);
+        }
+
+        AmazonSkuDailyData::query()
+            ->whereBetween('record_date', [$start->toDateString(), $end->toDateString()])
+            ->select(['id', 'sku', 'record_date', 'daily_data'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($chunk) use (&$out, $rules) {
+                foreach ($chunk as $record) {
+                    $sku = strtoupper(trim((string) ($record->sku ?? '')));
+                    if ($sku === '' || str_contains($sku, 'PARENT')) {
+                        continue;
+                    }
+                    $dateKey = Carbon::parse($record->record_date)->toDateString();
+                    if (! isset($out[$dateKey])) {
+                        continue;
+                    }
+                    $data = is_array($record->daily_data)
+                        ? $record->daily_data
+                        : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                    if (! array_key_exists('inv', $data) && ! array_key_exists('l30', $data)) {
+                        continue;
+                    }
+                    $inv = (int) ($data['inv'] ?? 0);
+                    if ($inv <= 0) {
+                        continue;
+                    }
+                    $l30 = (int) ($data['l30'] ?? $data['quantity'] ?? 0);
+                    $dil = ($l30 / $inv) * 100;
+                    $rule = AmazonDilGroiRule::match($dil, $rules);
+                    $slab = $rule['key'] ?? '_outside';
                     $out[$dateKey][$slab] = ((int) ($out[$dateKey][$slab] ?? 0)) + 1;
                 }
             });

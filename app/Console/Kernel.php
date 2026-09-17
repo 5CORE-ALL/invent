@@ -403,6 +403,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // eBay 3 per-SKU Price / Dil snapshots for /ebay3-tabulator-view Sprc Dil history
+        $ist($schedule->command('ebay3:collect-metrics')
+            ->dailyAt('19:21')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-collect-metrics')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         // TikTok 1 / 2 per-SKU Price snapshots for /tiktok-pricing Price charts
         $ist($schedule->command('tiktok:collect-metrics')
             ->dailyAt('19:20')

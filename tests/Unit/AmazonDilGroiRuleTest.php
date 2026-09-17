@@ -91,6 +91,86 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertNull(AmazonDilGroiRule::suggestedPrice(0, $ship, $groi));
     }
 
+    public function test_zero_to_zero_slab_is_valid_and_matches_dil_zero(): void
+    {
+        $rule = AmazonDilGroiRule::normalize(['min' => 0, 'max' => 0, 'nroi' => 30]);
+        $this->assertNotNull($rule);
+        $this->assertSame('0-0', $rule['key']);
+        $this->assertSame('0–0%', $rule['label']);
+        $this->assertSame(0.0, $rule['min']);
+        $this->assertSame(0.0, $rule['max']);
+        $this->assertSame(30.0, $rule['groi']);
+
+        $rules = AmazonDilGroiRule::normalizeList([
+            ['min' => 0, 'max' => 5, 'groi' => 35],
+            ['min' => 0, 'max' => 0, 'groi' => 30],
+        ]);
+        $this->assertCount(2, $rules);
+        $this->assertSame('0-0', $rules[0]['key']);
+        $this->assertSame('0-5', $rules[1]['key']);
+        $this->assertSame(30.0, AmazonDilGroiRule::groiForDil(0, $rules));
+        $this->assertSame(35.0, AmazonDilGroiRule::groiForDil(0.1, $rules));
+        $this->assertSame(35.0, AmazonDilGroiRule::groiForDil(4.9, $rules));
+        $this->assertNull(AmazonDilGroiRule::normalize(['min' => 5, 'max' => 4, 'groi' => 40]));
+    }
+
+    public function test_ensure_zero_to_zero_prepends_when_missing(): void
+    {
+        $ensured = AmazonDilGroiRule::ensureZeroToZero([
+            ['min' => 0, 'max' => 5, 'groi' => 35],
+            ['min' => 5, 'max' => 10, 'groi' => 40],
+        ]);
+        $this->assertSame('0-0', $ensured[0]['key']);
+        $this->assertSame(35.0, $ensured[0]['groi']);
+        $this->assertCount(3, $ensured);
+
+        $already = AmazonDilGroiRule::ensureZeroToZero($ensured);
+        $this->assertCount(3, $already);
+        $this->assertSame('0-0', $already[0]['key']);
+
+        $amazon = AmazonDilGroiRule::amazonDefaults();
+        $this->assertSame('0-0', $amazon[0]['key']);
+        $this->assertSame(50.0, $amazon[0]['groi']);
+        $this->assertSame('0.1-5', $amazon[1]['key']);
+        $this->assertCount(6, $amazon);
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('ebay1'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('ebay2'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('ebay3'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('aliexpress'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('faire'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('tiktok'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('tiktok2'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('mercari_wship'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('mercari_woship'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('pls'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('shein'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('bestbuy'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('newegg'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('reverb'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('wayfair'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('depop'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('macys'));
+        $this->assertTrue(AmazonDilGroiRule::usesZeroToZero('macy'));
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('ebay1')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('ebay3')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('aliexpress')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('faire')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('tiktok')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('mercari_wship')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('mercari_woship')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('pls')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('shein')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('bestbuy')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('newegg')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('reverb')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('wayfair')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('depop')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('macys')[0]['key']);
+        $this->assertSame('0-0', AmazonDilGroiRule::defaultsForChannel('macy')[0]['key']);
+        $this->assertFalse(AmazonDilGroiRule::usesZeroToZero('temu'));
+        $this->assertSame('0.1-5', AmazonDilGroiRule::defaultsForChannel('temu')[0]['key']);
+    }
+
     public function test_normalize_accepts_nroi_alias(): void
     {
         $rule = AmazonDilGroiRule::normalize(['min' => 0.1, 'max' => 5, 'nroi' => 45]);

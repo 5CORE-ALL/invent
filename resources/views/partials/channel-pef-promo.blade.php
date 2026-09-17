@@ -1556,6 +1556,7 @@
                 saveSpriceBatchUrl: '/newegg-pricing-save-sprice-bulk',
                 pushPriceUrl: '/newegg-pricing-push',
                 priceField: 'price',
+                cvrField: 'cvr',
                 dilField: 'dil',
                 invField: 'inv',
                 skuField: 'sku',
