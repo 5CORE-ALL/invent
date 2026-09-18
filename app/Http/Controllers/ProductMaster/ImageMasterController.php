@@ -147,8 +147,30 @@ class ImageMasterController extends Controller
             'sku' => 'required|string|max:255',
             'account' => 'nullable|string|in:ebay,ebay2,ebay3',
         ]);
-        $sku = $this->normalizeSku($validated['sku']);
-        $account = $validated['account'] ?? 'ebay';
+        $result = $this->fetchEbayGallery(
+            $this->normalizeSku($validated['sku']),
+            $validated['account'] ?? 'ebay'
+        );
+        $ok = (bool) ($result['success'] ?? false);
+        $status = $ok ? 200 : (int) ($result['status'] ?? 422);
+
+        return response()->json([
+            'success' => $ok,
+            'images' => $result['images'] ?? [],
+            'item_id' => $result['item_id'] ?? null,
+            'message' => $result['message'] ?? null,
+        ], $status >= 400 ? $status : 200);
+    }
+
+    /**
+     * Live PictureDetails for one eBay account via Trading GetItem.
+     *
+     * @return array{success: bool, images: list<string>, item_id?: string|null, message?: string, status?: int}
+     */
+    public function fetchEbayGallery(string $sku, string $account = 'ebay'): array
+    {
+        $sku = $this->normalizeSku($sku);
+        $account = in_array($account, ['ebay', 'ebay2', 'ebay3'], true) ? $account : 'ebay';
 
         $tableMap = [
             'ebay' => 'ebay_metrics',
@@ -163,7 +185,7 @@ class ImageMasterController extends Controller
 
         $table = $tableMap[$account];
         if (! Schema::hasTable($table)) {
-            return response()->json(['success' => false, 'images' => [], 'message' => 'Metrics table missing.'], 422);
+            return ['success' => false, 'images' => [], 'message' => 'Metrics table missing.', 'status' => 422];
         }
 
         $row = DB::table($table)->where(function ($q) use ($sku) {
@@ -188,26 +210,27 @@ class ImageMasterController extends Controller
                 );
             }
             if (! $itemId) {
-                return response()->json([
+                return [
                     'success' => false,
                     'images' => [],
                     'message' => 'No eBay listing found for this SKU (metrics item_id empty and Inventory/GetSellerList lookup failed).',
-                ], 422);
+                    'status' => 422,
+                ];
             }
 
             $getItem = $svc->getItem((string) $itemId);
             if (! $getItem) {
-                return response()->json(['success' => false, 'images' => [], 'message' => 'GetItem failed.'], 502);
+                return ['success' => false, 'images' => [], 'item_id' => (string) $itemId, 'message' => 'GetItem failed.', 'status' => 502];
             }
             $urls = EbayTradingReviseItem::extractPictureUrlsFromGetItem($getItem);
 
-            return response()->json([
+            return [
                 'success' => true,
                 'images' => $urls,
                 'item_id' => (string) $itemId,
-            ]);
+            ];
         } catch (\Throwable $e) {
-            return response()->json(['success' => false, 'images' => [], 'message' => $e->getMessage()], 500);
+            return ['success' => false, 'images' => [], 'item_id' => $itemId, 'message' => $e->getMessage(), 'status' => 500];
         }
     }
 

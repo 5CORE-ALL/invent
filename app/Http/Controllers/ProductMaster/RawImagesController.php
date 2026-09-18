@@ -254,6 +254,77 @@ class RawImagesController extends Controller
         ], $ok ? 200 : 422);
     }
 
+    public function pushHero2ToEbay(Request $request): JsonResponse
+    {
+        if ($this->kindFromRequest($request) !== ProductRawImage::KIND_HERO_2) {
+            return response()->json(['success' => false, 'message' => 'eBay push is only available on Hero Image 2.'], 422);
+        }
+
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+            'url' => 'required|string|max:2048',
+            'account' => 'required|string|in:ebay,ebay2,ebay3',
+        ]);
+
+        $sku = $this->normalizeSku($validated['sku']);
+        $url = trim((string) $validated['url']);
+        $account = $validated['account'];
+        $labels = [
+            'ebay' => 'eBay 1',
+            'ebay2' => 'eBay 2',
+            'ebay3' => 'eBay 3',
+        ];
+        $label = $labels[$account] ?? $account;
+
+        if ($sku === '' || $url === '') {
+            return response()->json(['success' => false, 'message' => 'SKU and image URL are required.'], 422);
+        }
+
+        @set_time_limit(180);
+
+        $imageMaster = app(ImageMasterController::class);
+        $live = $imageMaster->fetchEbayGallery($sku, $account);
+        $existing = ($live['success'] ?? false)
+            ? array_values($live['images'] ?? [])
+            : $imageMaster->existingImageUrls($account, $sku);
+
+        if ($existing === [] && ! ($live['success'] ?? false) && empty($live['item_id'])) {
+            return response()->json([
+                'success' => false,
+                'message' => $live['message'] ?? ('No '.$label.' listing found for this SKU.'),
+                'account' => $account,
+                'label' => $label,
+            ], 422);
+        }
+
+        $images = $this->appendUniqueUrls($existing, [$url]);
+
+        try {
+            $result = $imageMaster->runQueuedMarketplacePush($sku, $account, $images, 'replace');
+        } catch (\Throwable $e) {
+            Log::warning('Hero Image 2 eBay push failed', [
+                'sku' => $sku,
+                'account' => $account,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        $ok = (bool) ($result['success'] ?? false);
+        $message = $result['message'] ?? ($ok ? 'Pushed to '.$label.'.' : 'Could not push to '.$label.'.');
+        if ($ok && ! str_contains(strtolower($message), 'ebay')) {
+            $message = 'Pushed to '.$label.'. '.$message;
+        }
+
+        return response()->json([
+            'success' => $ok,
+            'message' => trim($message),
+            'account' => $account,
+            'label' => $label,
+        ], $ok ? 200 : 422);
+    }
+
     public function destroy(Request $request, int $id): JsonResponse
     {
         $kind = $this->kindFromRequest($request);
@@ -1252,6 +1323,7 @@ class RawImagesController extends Controller
                 'cachedImageUrl' => route('raw.images.cached.image'),
                 'savedAiPrompt' => $this->savedAiPrompt($kind),
                 'savedAiLogos' => $this->savedAiLogos($kind),
+                'pushEbayUrl' => route('raw.images.hero.2.push.ebay'),
             ]);
         }
 

@@ -24,6 +24,7 @@
     $savedAiLogos = $savedAiLogos ?? [];
     $stampCooUrl = $stampCooUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.stamp') : '');
     $pushChannelsUrl = $pushChannelsUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.push') : '');
+    $pushEbayUrl = $pushEbayUrl ?? ($isHero2 ? route('raw.images.hero.2.push.ebay') : '');
     $imageChannels = $imageChannels ?? [];
     $cooPresets = $cooPresets ?? \App\Services\BatchCooStampService::PRESETS;
 @endphp
@@ -192,7 +193,7 @@
     .ri-modal-grid { display: flex; flex-wrap: wrap; gap: 12px; min-height: 80px; }
 
     .ri-card {
-        width: 140px;
+        width: {{ $isHero2 ? '168px' : '140px' }};
         border: 1px solid #e2e8f0;
         border-radius: 10px;
         overflow: hidden;
@@ -200,9 +201,9 @@
         position: relative;
         box-shadow: 0 1px 4px rgba(0,0,0,.06);
     }
-    .ri-card img { width: 140px; height: 110px; object-fit: cover; display: block; background: #f1f5f9; }
+    .ri-card img { width: 100%; height: 110px; object-fit: cover; display: block; background: #f1f5f9; }
     .ri-card-file {
-        width: 140px;
+        width: 100%;
         height: 110px;
         display: flex;
         flex-direction: column;
@@ -272,6 +273,33 @@
     }
     .ri-card-actions button:hover,
     .ri-card-actions a:hover { background: #e0e7ff; color: #1d4ed8; }
+    .ri-card-actions { flex-wrap: wrap; }
+    .ri-ebay-push {
+        display: flex;
+        gap: 4px;
+        width: 100%;
+        margin-top: 2px;
+    }
+    .ri-ebay-push button {
+        flex: 1;
+        border: 1px solid #86efac;
+        background: #f0fdf4;
+        color: #166534;
+        border-radius: 4px;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 3px 0;
+        cursor: pointer;
+        line-height: 1.3;
+    }
+    .ri-ebay-push button:hover:not(:disabled) { background: #dcfce7; color: #14532d; }
+    .ri-ebay-push button:disabled { opacity: .65; cursor: wait; }
+    .ri-ebay-push button[data-account="ebay"] { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
+    .ri-ebay-push button[data-account="ebay"]:hover:not(:disabled) { background: #dbeafe; }
+    .ri-ebay-push button[data-account="ebay2"] { border-color: #fcd34d; background: #fffbeb; color: #92400e; }
+    .ri-ebay-push button[data-account="ebay2"]:hover:not(:disabled) { background: #fef3c7; }
+    .ri-ebay-push button[data-account="ebay3"] { border-color: #c4b5fd; background: #f5f3ff; color: #5b21b6; }
+    .ri-ebay-push button[data-account="ebay3"]:hover:not(:disabled) { background: #ede9fe; }
 
     #rainbow-loader { display: none; text-align: center; padding: 40px; }
 
@@ -859,6 +887,7 @@
         const rawImagesIsBatchCoo = @json((bool) $isBatchCoo);
         const rawImagesStampCooUrl = @json($stampCooUrl);
         const rawImagesPushChannelsUrl = @json($pushChannelsUrl);
+        const rawImagesPushEbayUrl = @json($pushEbayUrl ?? '');
         const rawImagesZipFileName = @json($zipFileName);
         const riImageWarm = new Set();
 
@@ -1637,6 +1666,12 @@
                 if (copyBtn) {
                     e.preventDefault();
                     copyToClipboard(copyBtn.getAttribute('data-url') || '', 'Image URL copied.');
+                    return;
+                }
+                const pushBtn = e.target.closest('.js-push-ebay');
+                if (pushBtn) {
+                    e.preventDefault();
+                    pushHero2ImageToEbay(pushBtn);
                 }
             });
 
@@ -1713,6 +1748,13 @@
                 html += '<div class="ri-card-actions">';
                 html += '<a href="' + escapeHtml(url) + '" download="' + escapeHtml(name) + '" title="Download"><i class="fas fa-download"></i> Save</a>';
                 html += '<button type="button" class="js-copy-image-url" data-url="' + escapeHtml(url) + '" title="Copy URL"><i class="fas fa-copy"></i> Copy</button>';
+                if (rawImagesIsHero2 && url) {
+                    html += '<div class="ri-ebay-push">';
+                    html += '<button type="button" class="js-push-ebay" data-account="ebay" data-url="' + escapeHtml(url) + '" title="Push this image to eBay 1">eBay 1</button>';
+                    html += '<button type="button" class="js-push-ebay" data-account="ebay2" data-url="' + escapeHtml(url) + '" title="Push this image to eBay 2">eBay 2</button>';
+                    html += '<button type="button" class="js-push-ebay" data-account="ebay3" data-url="' + escapeHtml(url) + '" title="Push this image to eBay 3">eBay 3</button>';
+                    html += '</div>';
+                }
                 html += '</div></div>';
             });
 
@@ -2807,6 +2849,52 @@
                 document.execCommand('copy');
                 ta.remove();
                 done();
+            });
+        }
+
+        function pushHero2ImageToEbay(btn) {
+            const sku = document.getElementById('modalSku').value;
+            const url = btn.getAttribute('data-url') || '';
+            const account = btn.getAttribute('data-account') || '';
+            const labels = { ebay: 'eBay 1', ebay2: 'eBay 2', ebay3: 'eBay 3' };
+            const label = labels[account] || account;
+            if (!rawImagesPushEbayUrl || !sku || !url || !account) {
+                setUploadErr('Missing SKU, image, or eBay account.');
+                return;
+            }
+
+            const row = btn.closest('.ri-ebay-push');
+            const buttons = row ? row.querySelectorAll('button') : [btn];
+            buttons.forEach(function (b) { b.disabled = true; });
+            setUploadMsg('Pushing to ' + label + '…');
+            setUploadErr('');
+
+            fetch(rawImagesPushEbayUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ sku: sku, url: url, account: account })
+            })
+            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+                if (!result.data.success) {
+                    setUploadMsg('');
+                    setUploadErr(result.data.message || ('Could not push to ' + label + '.'));
+                    return;
+                }
+                setUploadErr('');
+                setUploadMsg(result.data.message || ('Pushed to ' + label + '.'));
+            })
+            .catch(function (err) {
+                setUploadMsg('');
+                setUploadErr('Push to ' + label + ' failed: ' + err.message);
+            })
+            .finally(function () {
+                buttons.forEach(function (b) { b.disabled = false; });
             });
         }
 
