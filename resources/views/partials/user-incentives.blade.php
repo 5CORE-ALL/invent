@@ -331,6 +331,22 @@
         var m = s.match(/^(\d{4}-\d{2}-\d{2})/);
         return m ? m[1] : '';
     }
+    function addMonthsYmd(ymd, months) {
+        var m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return '';
+        var year = parseInt(m[1], 10);
+        var monthIndex = parseInt(m[2], 10) - 1 + months;
+        var day = parseInt(m[3], 10);
+        var first = new Date(year, monthIndex, 1);
+        var lastDay = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+        first.setDate(Math.min(day, lastDay));
+        return first.getFullYear()
+            + '-' + String(first.getMonth() + 1).padStart(2, '0')
+            + '-' + String(first.getDate()).padStart(2, '0');
+    }
+    function defaultCutoffDate() {
+        return addMonthsYmd(cfg.businessToday, 1);
+    }
     function formatTargetDate(value) {
         var iso = toDateInputValue(value);
         if (!iso) return value ? String(value) : '—';
@@ -567,7 +583,7 @@
                     + '<td><input type="text" class="form-control form-control-sm ts-inc-field-title" placeholder="Target" value="' + escapeHtml(item.title || item.target || '') + '" maxlength="200"></td>'
                     + '<td><input type="number" class="form-control form-control-sm ts-inc-field-amount" placeholder="₹" value="' + (item.amount != null ? escapeHtml(item.amount) : '') + '" min="0" step="1"></td>'
                     + '<td><textarea class="form-control form-control-sm ts-inc-field-body" rows="2" placeholder="Condition" maxlength="5000">' + escapeHtml(item.body || item.condition || '') + '</textarea></td>'
-                    + '<td><input type="date" class="form-control form-control-sm ts-inc-field-extra" value="' + escapeHtml(toDateInputValue(item.target_date || item.additional_condition)) + '">'
+                    + '<td><input type="date" class="form-control form-control-sm ts-inc-field-extra" value="' + escapeHtml(toDateInputValue(item.target_date || item.additional_condition) || defaultCutoffDate()) + '">'
                     + '<div class="form-check mt-1"><input class="form-check-input ts-inc-field-active" type="checkbox" ' + (item.is_active !== false ? 'checked' : '') + ' id="ts-inc-active-' + idx + '"><label class="form-check-label small" for="ts-inc-active-' + idx + '">Active</label></div></td>'
                     + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger ts-inc-remove-row" data-edit-idx="' + idx + '"><i class="ri-delete-bin-line"></i></button></td>'
                     + '</tr>';
@@ -713,7 +729,8 @@
         if (t.closest('#ts-inc-add-row')) {
             e.preventDefault();
             pullEditFromDom();
-            state.editItems.push({ title: '', body: '', additional_condition: '', target_date: '', amount: null, is_active: true, sort_order: state.editItems.length });
+            var cutoff = defaultCutoffDate();
+            state.editItems.push({ title: '', body: '', additional_condition: cutoff, target_date: cutoff, amount: null, is_active: true, sort_order: state.editItems.length });
             renderEditRows();
             return;
         }
