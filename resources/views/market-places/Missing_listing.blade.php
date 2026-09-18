@@ -613,24 +613,44 @@
 
         table = new Tabulator("#missing-listing-table", {
             ajaxURL: "{{ route('missing.listing.data') }}",
-            ajaxRequestTimeout: 90000,
+            ajaxRequestTimeout: 20000,
+            ajaxRequestFunc: function(url, _config, params) {
+                return new Promise(function(resolve, reject) {
+                    function attempt(n) {
+                        $.ajax({
+                            url: url,
+                            data: params || {},
+                            method: 'GET',
+                            dataType: 'json',
+                            timeout: 20000,
+                        }).done(resolve).fail(function(xhr) {
+                            if (n < 2) {
+                                setTimeout(function() { attempt(n + 1); }, 1200);
+                                return;
+                            }
+                            reject(xhr);
+                        });
+                    }
+                    attempt(0);
+                });
+            },
             ajaxResponse: function(_url, _params, response) {
                 if (response && response.success === false) {
                     return [];
                 }
                 const data = (response && response.data) ? response.data : [];
                 updateStats(data, response && response.total_missing_l);
-                if (response && response.partial && !window.__mlCountsRetried) {
-                    window.__mlCountsRetried = true;
+                if (response && response.partial && (window.__mlCountsRetries || 0) < 3) {
+                    window.__mlCountsRetries = (window.__mlCountsRetries || 0) + 1;
                     setTimeout(function() {
                         if (table) {
                             table.replaceData();
                         }
-                    }, 12000);
+                    }, 8000);
                 }
                 return data;
             },
-            ajaxError: function(_error, _xhr) {
+            ajaxError: function() {
                 const holder = document.querySelector('#missing-listing-table .tabulator-placeholder-contents');
                 if (holder) {
                     holder.textContent = 'Could not load channels. Refresh the page.';
@@ -641,7 +661,7 @@
             paginationSize: 50,
             paginationSizeSelector: [25, 50, 100, 200, 500],
             initialSort: [{ column: "channel", dir: "asc" }],
-            placeholder: "No channels found.",
+            placeholder: "Loading channels…",
             columns: [
                 {
                     title: "Image",

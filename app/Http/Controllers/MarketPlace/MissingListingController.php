@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
 use App\Models\ChannelMasterSummary;
 use App\Models\MissingListingDar;
-use App\Services\MarketplaceManager\MissingListingCatalogRefresh;
+use App\Jobs\RebuildMissingListingPageJob;
 use App\Support\Marketplace\CpMasterCounts;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingInactiveParentChildCounts;
@@ -37,6 +37,8 @@ class MissingListingController extends Controller
 
     public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v3';
 
+    private const PAGE_CACHE_TTL_DAYS = 7;
+
     /** @var list<string> */
     public const LISTING_MODES = ['Auto', 'CSV', 'Manual', 'Semi'];
 
@@ -50,16 +52,23 @@ class MissingListingController extends Controller
         try {
             $cached = Cache::get(self::PAGE_CACHE_KEY);
             if (is_array($cached) && ! empty($cached['data'])) {
-                $cached['data'] = $this->overlayListingModes($cached['data']);
-                $this->queuePageRebuild($cached);
-                $this->queueCatalogRefreshIfStale();
+                try {
+                    $cached['data'] = $this->overlayListingModes($cached['data']);
+                } catch (\Throwable $e) {
+                    Log::warning('Missing Listing overlayListingModes failed: '.$e->getMessage());
+                }
+                $this->dispatchPageRebuildIfNeeded($cached);
 
                 return response()->json($cached);
             }
 
-            $payload = $this->buildSkeletonPagePayload();
-            $this->queuePageRebuild(null);
-            $this->queueCatalogRefreshIfStale();
+            try {
+                $payload = $this->buildSkeletonPagePayload();
+            } catch (\Throwable $e) {
+                Log::warning('Missing Listing skeleton failed: '.$e->getMessage());
+                $payload = $this->buildMinimalChannelPayload();
+            }
+            $this->dispatchPageRebuildIfNeeded(null);
 
             return response()->json($payload);
         } catch (\Throwable $e) {
@@ -78,7 +87,7 @@ class MissingListingController extends Controller
     {
         @set_time_limit(180);
         $payload = $this->buildFullPagePayload();
-        Cache::put(self::PAGE_CACHE_KEY, $payload, now()->addHours(12));
+        Cache::put(self::PAGE_CACHE_KEY, $payload, now()->addDays(self::PAGE_CACHE_TTL_DAYS));
 
         return $payload;
     }
@@ -245,7 +254,7 @@ class MissingListingController extends Controller
     {
         $hasLogo = Schema::hasTable('channel_master') && Schema::hasColumn('channel_master', 'logo');
         $hasSellerLink = Schema::hasTable('channel_master') && Schema::hasColumn('channel_master', 'seller_link');
-        $cpMasterCounts = CpMasterCounts::counts(false);
+        $cpMasterCounts = $this->cachedCpMasterCounts();
         $cpSkuCount = (int) ($cpMasterCounts['SKU'] ?? 0);
         $cpZeroInv = (int) ($cpMasterCounts['ZeroInv'] ?? 0);
         $snapshots = $this->latestListingSnapshots();
@@ -323,7 +332,7 @@ class MissingListingController extends Controller
     {
         $hasLogo = Schema::hasTable('channel_master') && Schema::hasColumn('channel_master', 'logo');
         $hasSellerLink = Schema::hasTable('channel_master') && Schema::hasColumn('channel_master', 'seller_link');
-        $cpMasterCounts = CpMasterCounts::counts(false);
+        $cpMasterCounts = CpMasterCounts::counts(true);
         $cpSkuCount = (int) ($cpMasterCounts['SKU'] ?? 0);
         $cpZeroInv = (int) ($cpMasterCounts['ZeroInv'] ?? 0);
 
@@ -404,11 +413,73 @@ class MissingListingController extends Controller
     }
 
     /**
+     * @return array{SKU: int, ZeroInv: int}
+     */
+    private function cachedCpMasterCounts(): array
+    {
+        $cached = Cache::get('cp_master_sku_zero_inv_v1');
+        if (is_array($cached)) {
+            return [
+                'SKU' => (int) ($cached['SKU'] ?? 0),
+                'ZeroInv' => (int) ($cached['ZeroInv'] ?? 0),
+            ];
+        }
+
+        return ['SKU' => 0, 'ZeroInv' => 0];
+    }
+
+    /**
+     * Channel rows only — last-resort payload when even the snapshot skeleton fails.
+     *
+     * @return array{success: bool, data: list<array<string, mixed>>, count: int, total_missing_l: int, computed_at: string, partial: bool}
+     */
+    private function buildMinimalChannelPayload(): array
+    {
+        $hasLogo = Schema::hasTable('channel_master') && Schema::hasColumn('channel_master', 'logo');
+        $hasSellerLink = Schema::hasTable('channel_master') && Schema::hasColumn('channel_master', 'seller_link');
+
+        $data = $this->loadMasterRows()->map(function ($master) use ($hasLogo, $hasSellerLink) {
+            $channel = (string) $master->channel;
+
+            return [
+                'id' => $master->id,
+                'image' => $hasLogo ? ($master->logo ?? null) : null,
+                'channel' => $channel,
+                'listing_url' => ListingChannelCounts::listingUrl($channel),
+                'data_source' => ListingChannelCounts::isLiveApiSource($channel) ? 'API' : 'Sheet',
+                'sku' => 0,
+                'zero_inv' => 0,
+                'req' => null,
+                'nrl' => null,
+                'listed' => null,
+                'missing_listing' => null,
+                'inactive_parent' => 0,
+                'inactive_child' => 0,
+                'inactive_listings_url' => null,
+                'listing_mode' => $this->listingModeFor($master),
+                'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
+            ];
+        })->values();
+
+        return [
+            'success' => true,
+            'data' => $data->all(),
+            'count' => $data->count(),
+            'total_missing_l' => 0,
+            'computed_at' => now()->toIso8601String(),
+            'partial' => true,
+        ];
+    }
+
+    /**
+     * Rebuild on a real queue worker only. afterResponse keeps nginx waiting
+     * until every channel recount finishes, which is what 504s this page.
+     *
      * @param  array<string, mixed>|null  $cached
      */
-    private function queuePageRebuild(?array $cached): void
+    private function dispatchPageRebuildIfNeeded(?array $cached): void
     {
-        if (app()->runningInConsole()) {
+        if (app()->runningInConsole() || config('queue.default') === 'sync') {
             return;
         }
 
@@ -425,53 +496,9 @@ class MissingListingController extends Controller
         }
 
         try {
-            $lock = Cache::lock('missing_listing.page_rebuild', 180);
-            if (! $lock->get()) {
-                return;
-            }
-            dispatch(function () use ($lock) {
-                try {
-                    app(self::class)->rebuildPagePayload();
-                } catch (\Throwable $e) {
-                    Log::warning('Missing Listing page rebuild failed: '.$e->getMessage());
-                } finally {
-                    optional($lock)->release();
-                }
-            })->afterResponse();
+            RebuildMissingListingPageJob::dispatch();
         } catch (\Throwable $e) {
-            Log::warning('Missing Listing page rebuild skipped: '.$e->getMessage());
-        }
-    }
-
-    /**
-     * Live catalog pulls (PLS / TopDawg / Faire / Mirakl / B5C) run after the
-     * JSON response so this page is not blocked by marketplace APIs.
-     */
-    private function queueCatalogRefreshIfStale(): void
-    {
-        $channels = ['pls', 'topdawg', 'faire', 'macy', 'bestbuy', 'b5cb2b'];
-        $stale = false;
-        foreach ($channels as $channel) {
-            try {
-                if (! Cache::get('ml.listed_catalog.fresh.'.$channel)) {
-                    $stale = true;
-                    break;
-                }
-            } catch (\Throwable $e) {
-                $stale = true;
-                break;
-            }
-        }
-        if (! $stale || app()->runningInConsole()) {
-            return;
-        }
-
-        try {
-            dispatch(function () {
-                app(MissingListingCatalogRefresh::class)->refreshApiChannelsFromCpMaster();
-            })->afterResponse();
-        } catch (\Throwable $e) {
-            Log::warning('Missing Listing background catalog refresh skipped: '.$e->getMessage());
+            Log::warning('Missing Listing page rebuild dispatch skipped: '.$e->getMessage());
         }
     }
 
@@ -546,7 +573,7 @@ class MissingListingController extends Controller
             $cached['data'][$i]['listing_mode'] = $mode;
         }
 
-        Cache::put(self::PAGE_CACHE_KEY, $cached, now()->addHours(12));
+        Cache::put(self::PAGE_CACHE_KEY, $cached, now()->addDays(self::PAGE_CACHE_TTL_DAYS));
     }
 
     private function sellerPortalFor(ChannelMaster $master, bool $hasSellerLink): ?string
