@@ -13,13 +13,15 @@
         border: none;
         background: transparent;
         color: #15803d;
-        padding: 0.15rem 0.35rem;
+        padding: 0.7rem 0.35rem 0.15rem;
         cursor: pointer;
         border-radius: 6px;
         transition: background 0.15s ease, transform 0.15s ease;
         line-height: 1;
         font-weight: 800;
         font-size: 1.15rem;
+        position: relative;
+        overflow: visible;
     }
     .incentive-bag-btn:hover {
         background: rgba(21, 128, 61, 0.12);
@@ -35,11 +37,16 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 32px;
+        gap: 0.35rem;
+        position: relative;
+        overflow: visible;
+        min-width: 32px;
+        width: auto;
         height: 32px;
         margin-right: 0.15rem;
+        padding: 0 0.65rem;
         border: none;
-        border-radius: 50%;
+        border-radius: 999px;
         background: #15803d;
         color: #fff;
         font-weight: 800;
@@ -47,6 +54,26 @@
         line-height: 1;
         cursor: pointer;
         box-shadow: 0 0 0 2px rgba(21, 128, 61, 0.15);
+    }
+    .topbar-incentive-dollar-btn.has-amount {
+        padding-right: 0.45rem;
+    }
+    .topbar-incentive-amount-badge {
+        display: inline-flex;
+        align-items: center;
+        position: static;
+        transform: none;
+        top: auto;
+        left: auto;
+        padding: 0.12em 0.45em;
+        border-radius: 999px;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+        font-size: 0.68rem;
+        font-weight: 800;
+        line-height: 1.15;
+        white-space: nowrap;
     }
     .topbar-incentive-dollar-btn:hover {
         background: #166534;
@@ -133,15 +160,21 @@
         letter-spacing: 0.02em;
     }
     .incentive-bag-count {
-        margin-left: 0.15rem;
-        font-size: 0.62rem;
+        position: absolute;
+        top: -2px;
+        left: 50%;
+        transform: translateX(-50%);
+        margin-left: 0;
+        font-size: 0.58rem;
         font-weight: 800;
         color: #92400e;
         background: #fef3c7;
         border: 1px solid #fcd34d;
         padding: 0.05em 0.35em;
         border-radius: 999px;
-        vertical-align: middle;
+        white-space: nowrap;
+        line-height: 1.15;
+        z-index: 1;
     }
     #taskSummaryIncentivesModal .modal-content {
         border-radius: 16px;
@@ -398,7 +431,8 @@
     function applyOwnCutoffAlert(items) {
         var urgent = urgentCutoffItems(items);
         var on = urgent.length > 0;
-        var title = on ? cutoffAlertText(urgent[0]) : 'My incentives';
+        var amountTitle = 'My incentives · ' + formatRupee(sumIncentiveAmounts(items));
+        var title = on ? cutoffAlertText(urgent[0]) : amountTitle;
         setCutoffAlertClass(document.getElementById('ts-incentive-header-btn'), on, title);
         setCutoffAlertClass(el('ts-incentive-float-btn'), on, title);
     }
@@ -443,36 +477,53 @@
         if (loading) loading.classList.toggle('d-none', !on);
     }
 
-    function syncFloatCount(count) {
+    function setAmountBadge(badge, amount, count) {
+        if (!badge) return;
+        var total = parseFloat(amount) || 0;
+        var show = total > 0 || (count || 0) > 0;
+        badge.textContent = formatRupee(total);
+        badge.classList.toggle('d-none', !show);
+        if (!show && badge.classList.contains('incentive-bag-count') && badge.parentNode) {
+            badge.remove();
+        }
+    }
+    function syncHeaderAmount(items) {
+        var total = sumIncentiveAmounts(items);
+        var count = (items || []).filter(function (i) { return i && i.is_active !== false; }).length;
+        setAmountBadge(el('ts-incentive-header-amount'), total, count);
+        var header = document.getElementById('ts-incentive-header-btn');
+        if (header) {
+            header.classList.toggle('has-amount', total > 0 || count > 0);
+            header.setAttribute('data-incentive-amount', String(total));
+            header.title = (total > 0 || count > 0) ? ('My incentives · ' + formatRupee(total)) : 'My incentives';
+        }
+    }
+    function syncFloatCount(items) {
         var btn = el('ts-incentive-float-btn');
         var badge = el('ts-incentive-float-count');
         if (!btn) return;
         btn.classList.remove('d-none');
-        if (state.userId === cfg.viewerId) {
-            if (badge) {
-                if (count > 0) {
-                    badge.textContent = String(count);
-                    badge.classList.remove('d-none');
-                } else {
-                    badge.classList.add('d-none');
-                }
-            }
-        }
+        var total = sumIncentiveAmounts(items);
+        var count = (items || []).filter(function (i) { return i && i.is_active !== false; }).length;
+        setAmountBadge(badge, total, count);
+        btn.title = count > 0 ? ('My incentives · ' + formatRupee(total)) : 'My incentives';
     }
 
     function syncRowCount() {
         if (!state.userId) return;
         var n = state.items.filter(function (i) { return i.is_active !== false; }).length;
+        var total = sumIncentiveAmounts(state.items);
         var rowBtn = document.querySelector('.task-summary-incentive-btn[data-user-id="' + state.userId + '"]');
         if (rowBtn) {
             rowBtn.setAttribute('data-incentive-count', String(n));
+            rowBtn.setAttribute('data-incentive-amount', String(total));
             var existing = rowBtn.querySelector('.incentive-bag-count');
-            if (n > 0) {
-                if (existing) existing.textContent = String(n);
+            if (n > 0 || total > 0) {
+                if (existing) existing.textContent = formatRupee(total);
                 else {
                     var span = document.createElement('span');
                     span.className = 'incentive-bag-count';
-                    span.textContent = String(n);
+                    span.textContent = formatRupee(total);
                     rowBtn.appendChild(span);
                 }
             } else if (existing) {
@@ -480,10 +531,16 @@
             }
             var urgent = urgentCutoffItems(state.items);
             setCutoffAlertClass(rowBtn, urgent.length > 0, urgent.length ? cutoffAlertText(urgent[0]) : '');
+            var row = rowBtn.closest('tr.task-summary-row');
+            if (row) row.setAttribute('data-sort-incentive_amount', String(total));
         }
         if (state.userId === cfg.viewerId) {
-            syncFloatCount(n);
+            syncFloatCount(state.items);
+            syncHeaderAmount(state.items);
             applyOwnCutoffAlert(state.items);
+        }
+        if (typeof window.taskSummaryRecomputeBadges === 'function') {
+            window.taskSummaryRecomputeBadges();
         }
     }
 
@@ -779,8 +836,8 @@
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
         }).then(function (r) { return r.json(); }).then(function (data) {
             if (!data || data.success === false) return;
-            var n = (data.items || []).filter(function (i) { return i.is_active !== false; }).length;
-            syncFloatCount(n);
+            syncFloatCount(data.items || []);
+            syncHeaderAmount(data.items || []);
             applyOwnCutoffAlert(data.items || []);
         }).catch(function () {});
     }

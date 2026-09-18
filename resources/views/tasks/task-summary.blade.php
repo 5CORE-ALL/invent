@@ -20,6 +20,10 @@
             white-space: nowrap;
             width: 1%;
         }
+        .task-summary-table td.task-summary-col-incentive {
+            overflow: visible;
+            padding-top: 0.95rem;
+        }
         .task-summary-table th.task-summary-col-member,
         .task-summary-table td.task-summary-col-member {
             text-align: left;
@@ -634,6 +638,12 @@
         .task-summary-analytics-badge-value {
             font-variant-numeric: tabular-nums;
         }
+        .task-summary-analytics-badge-incentive {
+            background: #f59e0b;
+        }
+        .task-summary-analytics-badge-incentive:hover {
+            background: #d97706;
+        }
         .task-summary-analytics-badge .summary-trend-dot {
             background: #fff !important;
             box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
@@ -967,6 +977,16 @@
                                     <span class="task-summary-analytics-badge-label">Done</span>
                                     <span class="task-summary-analytics-badge-value" id="ts-analytics-val-done">{{ number_format($taskDashboardStats['done']) }}</span>
                                 </span>
+                                @php
+                                    $incentivePageTotal = 0;
+                                    foreach ($rows as $incRow) {
+                                        $incentivePageTotal += (float) ($incRow['incentive_amount'] ?? 0);
+                                    }
+                                @endphp
+                                <span class="task-summary-analytics-badge task-summary-analytics-badge-incentive" title="Sum of active incentive amounts for visible members">
+                                    <span class="task-summary-analytics-badge-label">₹ Incentive</span>
+                                    <span class="task-summary-analytics-badge-value" id="ts-analytics-val-incentive">₹{{ number_format($incentivePageTotal, 0) }}</span>
+                                </span>
                             </div>
                            
                         </div>
@@ -1148,7 +1168,8 @@
                                         data-sort-tat_l30="{{ $row['tat_l30_days'] !== null ? (float) $row['tat_l30_days'] : -1 }}"
                                         data-sort-missed_l30="{{ (int) ($row['missed_l30'] ?? 0) }}"
                                         data-sort-a_task_h="{{ (int) ($row['a_task_h'] ?? 0) }}"
-                                        data-sort-done="{{ (int) ($row['done'] ?? 0) }}">
+                                        data-sort-done="{{ (int) ($row['done'] ?? 0) }}"
+                                        data-sort-incentive_amount="{{ (float) ($row['incentive_amount'] ?? 0) }}">
                                         @php
                                             $tmLevel = strtolower((string) ($row['org_level'] ?? ''));
                                             $tmBadgeMod = $tmLevel === 'director'
@@ -1453,13 +1474,14 @@
                                                 <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">@if((int) ($row['kpi_count'] ?? 0) > 0)<span class="kpi-badges-count">{{ (int) $row['kpi_count'] }}</span>@endif
                                             </button>
                                         </td>
-                                        <td class="text-center">
+                                        <td class="text-center task-summary-col-incentive">
                                             <button type="button"
                                                     class="incentive-bag-btn task-summary-incentive-btn{{ !empty($row['incentive_cutoff_alert']) ? ' is-cutoff-alert' : '' }}"
                                                     data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($row['designation'] ?? '') }}"
                                                     data-incentive-count="{{ (int) ($row['incentive_count'] ?? 0) }}"
+                                                    data-incentive-amount="{{ (float) ($row['incentive_amount'] ?? 0) }}"
                                                     data-cutoff-alert="{{ !empty($row['incentive_cutoff_alert']) ? '1' : '0' }}"
                                                     @php
                                                         $incUserId = (int) ($row['user_id'] ?? 0);
@@ -1471,7 +1493,7 @@
                                                     @else title="{{ !empty($canEditIncentives) ? 'Edit' : 'View' }} incentives for {{ e($row['team_member']) }}"
                                                     @endif
                                                     aria-label="Open incentives for {{ e($row['team_member']) }}">
-                                                <span class="incentive-dollar-icon" aria-hidden="true">₹</span>@if((int) ($row['incentive_count'] ?? 0) > 0)<span class="incentive-bag-count">{{ (int) $row['incentive_count'] }}</span>@endif
+                                                <span class="incentive-dollar-icon" aria-hidden="true">₹</span>@if((float) ($row['incentive_amount'] ?? 0) > 0 || (int) ($row['incentive_count'] ?? 0) > 0)<span class="incentive-bag-count">₹{{ number_format((float) ($row['incentive_amount'] ?? 0), 0) }}</span>@endif
                                             </button>
                                         </td>
                                         <td class="task-summary-col-minimize text-center">
@@ -2096,27 +2118,33 @@
                     + ':not(.is-ts-minimized)'
                     + ':not(.is-ts-snoozed)'
                 );
-                var sum = { task: 0, overdue: 0, done: 0, members: 0 };
+                var sum = { task: 0, overdue: 0, done: 0, members: 0, incentive: 0 };
                 rows.forEach(function (tr) {
                     var taskN = parseInt(tr.getAttribute('data-sort-task'), 10) || 0;
                     sum.task += taskN;
                     sum.overdue += parseInt(tr.getAttribute('data-sort-overdue'), 10) || 0;
                     sum.done += parseInt(tr.getAttribute('data-sort-done'), 10) || 0;
+                    sum.incentive += parseFloat(tr.getAttribute('data-sort-incentive_amount')) || 0;
                     if (taskN > 0) sum.members += 1;
                 });
                 var fmt = function (n) {
                     try { return Number(n || 0).toLocaleString(); }
                     catch (e) { return String(n || 0); }
                 };
+                var fmtRs = function (n) {
+                    try { return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
+                    catch (e) { return '₹' + String(Math.round(n || 0)); }
+                };
                 var pairs = {
-                    'ts-analytics-val-total': sum.task,
-                    'ts-analytics-val-assigned': sum.members,
-                    'ts-analytics-val-overdue': sum.overdue,
-                    'ts-analytics-val-done': sum.done
+                    'ts-analytics-val-total': fmt(sum.task),
+                    'ts-analytics-val-assigned': fmt(sum.members),
+                    'ts-analytics-val-overdue': fmt(sum.overdue),
+                    'ts-analytics-val-done': fmt(sum.done),
+                    'ts-analytics-val-incentive': fmtRs(sum.incentive)
                 };
                 Object.keys(pairs).forEach(function (id) {
                     var node = document.getElementById(id);
-                    if (node) node.textContent = fmt(pairs[id]);
+                    if (node) node.textContent = pairs[id];
                 });
             }
             // Expose so other modules (hierarchy collapse, role-change re-render)

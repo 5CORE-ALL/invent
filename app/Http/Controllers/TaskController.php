@@ -621,12 +621,13 @@ class TaskController extends Controller
             ->get()
             ->keyBy('user_id');
 
-        $incentiveCounts = UserIncentive::query()
+        $incentiveStats = UserIncentive::query()
             ->whereIn('user_id', $members->pluck('id'))
             ->where('is_active', true)
-            ->selectRaw('user_id, COUNT(*) as incentive_count')
+            ->selectRaw('user_id, COUNT(*) as incentive_count, COALESCE(SUM(amount), 0) as incentive_amount')
             ->groupBy('user_id')
-            ->pluck('incentive_count', 'user_id');
+            ->get()
+            ->keyBy('user_id');
 
         $incentiveCutoffAlerts = [];
         if (Schema::hasColumn('user_incentives', 'additional_condition') && $members->isNotEmpty()) {
@@ -743,7 +744,8 @@ class TaskController extends Controller
                 'need_approval' => $counts['need_approval'],
                 'done' => $counts['done'],
             ], $kpiFields, [
-                'incentive_count' => (int) ($incentiveCounts[$member->id] ?? 0),
+                'incentive_count' => (int) (optional($incentiveStats->get($member->id))->incentive_count ?? 0),
+                'incentive_amount' => (float) (optional($incentiveStats->get($member->id))->incentive_amount ?? 0),
                 'incentive_cutoff_alert' => ! empty($incentiveCutoffAlerts[$member->id]),
             ]);
         }

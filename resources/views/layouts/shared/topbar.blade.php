@@ -117,16 +117,36 @@
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                width: 32px;
+                gap: 0.35rem;
+                position: relative;
+                overflow: visible;
+                min-width: 32px;
                 height: 32px;
+                padding: 0 0.65rem;
                 border: none;
-                border-radius: 50%;
+                border-radius: 999px;
                 background: #15803d;
                 color: #fff;
                 font-weight: 800;
                 font-size: 1.05rem;
                 line-height: 1;
                 cursor: pointer;
+            }
+            .topbar-incentive-dollar-btn.has-amount {
+                padding-right: 0.45rem;
+            }
+            .topbar-incentive-amount-badge {
+                display: inline-flex;
+                align-items: center;
+                padding: 0.12em 0.45em;
+                border-radius: 999px;
+                background: #fef3c7;
+                color: #92400e;
+                border: 1px solid #fcd34d;
+                font-size: 0.68rem;
+                font-weight: 800;
+                line-height: 1.15;
+                white-space: nowrap;
             }
             .topbar-incentive-dollar-btn:hover {
                 background: #166534;
@@ -265,12 +285,20 @@
             </li>
 
             @auth
+            @php
+                $topbarIncTotal = (float) ($topbarIncentiveTotal ?? 0);
+                $topbarIncCount = (int) ($topbarIncentiveCount ?? 0);
+                $topbarIncAlert = !empty($topbarIncentiveAlert);
+                $topbarIncShow = $topbarIncTotal > 0 || $topbarIncCount > 0;
+                $topbarIncLabel = '₹'.number_format($topbarIncTotal, 0);
+            @endphp
             <li class="d-flex align-items-center">
                 <button type="button"
                         id="ts-incentive-header-btn"
-                        class="topbar-incentive-dollar-btn"
-                        title="My incentives"
-                        aria-label="Open my incentives">₹</button>
+                        class="topbar-incentive-dollar-btn{{ $topbarIncShow ? ' has-amount' : '' }}{{ $topbarIncAlert ? ' is-cutoff-alert' : '' }}"
+                        data-incentive-amount="{{ $topbarIncTotal }}"
+                        title="{{ $topbarIncShow ? 'My incentives · '.$topbarIncLabel : 'My incentives' }}"
+                        aria-label="Open my incentives">₹<span id="ts-incentive-header-amount" class="topbar-incentive-amount-badge{{ $topbarIncShow ? '' : ' d-none' }}">{{ $topbarIncLabel }}</span></button>
             </li>
             @endauth
             <li class="dropdown">

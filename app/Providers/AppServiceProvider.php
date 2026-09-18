@@ -12,6 +12,8 @@ use Illuminate\View\View as ViewInstance;
 use App\Cache\ResilientFileStore;
 use App\Models\Permission;
 use App\Models\FbaManualData;
+use App\Models\UserIncentive;
+use App\Support\TaskBusinessTime;
 use App\Observers\FbaManualDataObserver;
 use App\Services\Attendance\AttendanceService;
 use App\Support\StoragePathGuard;
@@ -78,6 +80,7 @@ class AppServiceProvider extends ServiceProvider
         View::composer(['layouts.vertical', 'layouts.horizontal'], function (ViewInstance $view) {
             $this->composeLayoutFavicon($view);
             $this->composeAgentUpdate($view);
+            $this->composeUserIncentiveBadge($view);
         });
 
         $this->app->booted(fn () => $this->registerListingPublishRoutes());
@@ -123,6 +126,65 @@ class AppServiceProvider extends ServiceProvider
         if ($payload !== null) {
             $view->with($payload);
         }
+    }
+
+    /**
+     * Logged-in user's own incentive total for the topbar ₹ badge.
+     *
+     * @var array{topbarIncentiveTotal: float, topbarIncentiveCount: int, topbarIncentiveAlert: bool}|null
+     */
+    private ?array $userIncentiveBadge = null;
+
+    private function composeUserIncentiveBadge(ViewInstance $view): void
+    {
+        if ($this->userIncentiveBadge === null) {
+            $total = 0.0;
+            $count = 0;
+            $alert = false;
+            $user = Auth::user();
+            if ($user) {
+                try {
+                    if (\Illuminate\Support\Facades\Schema::hasTable('user_incentives')) {
+                        $cols = ['amount'];
+                        if (\Illuminate\Support\Facades\Schema::hasColumn('user_incentives', 'additional_condition')) {
+                            $cols[] = 'additional_condition';
+                        }
+                        $rows = UserIncentive::query()
+                            ->where('user_id', $user->id)
+                            ->where('is_active', true)
+                            ->get($cols);
+                        $count = $rows->count();
+                        $total = (float) $rows->sum('amount');
+                        $alertFrom = TaskBusinessTime::today()->startOfDay()->addDay();
+                        foreach ($rows as $row) {
+                            $raw = trim((string) ($row->additional_condition ?? ''));
+                            if ($raw === '') {
+                                continue;
+                            }
+                            try {
+                                if (\Carbon\Carbon::parse($raw)->startOfDay()->lte($alertFrom)) {
+                                    $alert = true;
+                                    break;
+                                }
+                            } catch (\Throwable $e) {
+                                // ignore malformed dates
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    $total = 0.0;
+                    $count = 0;
+                    $alert = false;
+                }
+            }
+            $this->userIncentiveBadge = [
+                'topbarIncentiveTotal' => $total,
+                'topbarIncentiveCount' => $count,
+                'topbarIncentiveAlert' => $alert,
+            ];
+        }
+
+        $view->with($this->userIncentiveBadge);
     }
 
     private function composeAgentUpdate(ViewInstance $view): void
