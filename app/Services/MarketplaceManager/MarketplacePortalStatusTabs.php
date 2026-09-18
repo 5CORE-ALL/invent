@@ -44,6 +44,52 @@ final class MarketplacePortalStatusTabs
     }
 
     /**
+     * /inactive-listings: listed but not live because of a compliance / quality hold.
+     * Missing Listing, zero-inventory, ended/sold, and seller drafts stay out.
+     */
+    public static function isListedComplianceHold(?string $state, ?string $reason = null): bool
+    {
+        $raw = strtolower(trim((string) $state));
+        $raw = str_replace([' ', '-'], '_', $raw);
+        $bucket = self::bucket($raw);
+        if ($bucket === 'active' || $bucket === 'other') {
+            return false;
+        }
+
+        $lifecycle = [
+            'ended', 'sold', 'unsold', 'closed', 'deleted', 'archived', 'retired',
+            'draft', 'unpublished', 'unlisted', 'service_delete', 'delisted',
+            'seller_deactivated',
+        ];
+        if (in_array($raw, $lifecycle, true)) {
+            return false;
+        }
+
+        $holds = [
+            'inactive', 'offline', 'disabled', 'incomplete', 'suppressed', 'blocked',
+            'rejected', 'failed', 'suspended', 'hidden', 'freeze',
+            'platform_deactivated', 'editingrequired', 'editing_required',
+            'unable', 'unabletolist', 'unable_to_list',
+            'pending', 'under_review', 'underreview', 'in_review', 'auditing',
+        ];
+        if ($raw === '' || in_array($raw, $holds, true)) {
+            $reason = strtolower(trim((string) $reason));
+            if ($reason !== '' && preg_match('/out of stock|zero inventory|sold|ended|draft/', $reason)) {
+                return false;
+            }
+
+            return true;
+        }
+
+        $reason = strtolower(trim((string) $reason));
+
+        return $reason !== '' && (bool) preg_match(
+            '/compliance|policy|violat|unable|reject|suppress|incomplete|blocked|suspend|quality|restricted/',
+            $reason
+        );
+    }
+
+    /**
      * @param  array<int, mixed>|null  $liveRows
      * @return array{active: list<string>, inactive: list<string>}
      */

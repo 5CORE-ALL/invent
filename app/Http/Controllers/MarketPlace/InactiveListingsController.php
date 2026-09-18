@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
+use App\Jobs\RebuildInactiveListingsPageJob;
 use App\Jobs\RefreshInactiveListingsJob;
 use App\Support\Marketplace\ListingInactiveParentChildCounts;
 use App\Support\Marketplace\MappingChannelCounts;
@@ -30,14 +31,19 @@ class InactiveListingsController extends Controller
     public function masterData(Request $request)
     {
         try {
-            @set_time_limit(400);
-            if ($request->boolean('fresh')) {
-                MarketplacePortalInactiveCount::resetMemos();
-                ListingInactiveParentChildCounts::resetMemos();
+            $fresh = $request->boolean('fresh');
+            $cached = MappingChannelCounts::cachedInactiveMasterRows();
+            $partial = $cached === [];
+            $data = collect($partial ? MappingChannelCounts::inactiveMasterSkeletonRows() : $cached)->values();
+
+            if ($fresh || $partial || ! MappingChannelCounts::inactiveMasterRowsAreFresh()) {
+                $this->dispatchPageRebuild();
             }
-            $data = collect(MappingChannelCounts::inactiveMasterRows(! $request->boolean('fresh')))->values();
+
             $cpTotal = (int) $data->sum(fn ($row) => (int) ($row['cp_inactive_child'] ?? 0));
-            MappingChannelCounts::storeCpInactiveTotal($cpTotal);
+            if (! $partial) {
+                MappingChannelCounts::storeCpInactiveTotal($cpTotal);
+            }
 
             $syncStatus = InactiveListingsSyncService::status();
 
@@ -51,11 +57,25 @@ class InactiveListingsController extends Controller
                 'last_sync' => $syncStatus['finished_at'] ?? $syncStatus['started_at'] ?? null,
                 'sync_status' => $syncStatus['status'] ?? 'idle',
                 'sync_message' => $syncStatus['message'] ?? '',
+                'partial' => $partial,
             ]);
         } catch (\Throwable $e) {
             Log::error('Inactive Listings masterData failed: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    private function dispatchPageRebuild(): void
+    {
+        if (app()->runningInConsole() || config('queue.default') === 'sync') {
+            return;
+        }
+
+        try {
+            RebuildInactiveListingsPageJob::dispatch();
+        } catch (\Throwable $e) {
+            Log::warning('Inactive Listings page rebuild dispatch skipped: '.$e->getMessage());
         }
     }
 

@@ -243,7 +243,10 @@ class ListingInactiveParentChildCounts
 
         return array_values(array_filter(
             $rows,
-            static fn (array $row) => MarketplacePortalStatusTabs::bucket((string) ($row['state'] ?? $row['status'] ?? 'inactive')) !== 'active'
+            static fn (array $row) => MarketplacePortalStatusTabs::isListedComplianceHold(
+                (string) ($row['state'] ?? $row['status'] ?? ''),
+                isset($row['inactive_reason']) ? (string) $row['inactive_reason'] : null
+            )
         ));
     }
 
@@ -309,7 +312,7 @@ class ListingInactiveParentChildCounts
     }
 
     /**
-     * Keep marketplace-inactive rows that also exist in CP Master and have inventory.
+     * Keep listed, in-stock CP Master SKUs held by a compliance / quality status.
      *
      * @param  list<array<string, mixed>>  $rows
      * @param  array<string, true>  $cpKeys
@@ -331,8 +334,10 @@ class ListingInactiveParentChildCounts
             if (MarketplacePortalInactiveCount::skuIsActive($sku, $activeKeys)) {
                 continue;
             }
-            $state = MarketplacePortalStatusTabs::bucket((string) ($row['state'] ?? $row['status'] ?? 'inactive'));
-            if ($state === 'active') {
+            if (! MarketplacePortalStatusTabs::isListedComplianceHold(
+                (string) ($row['state'] ?? $row['status'] ?? ''),
+                isset($row['inactive_reason']) ? (string) $row['inactive_reason'] : null
+            )) {
                 continue;
             }
             $key = strtoupper($sku);
@@ -507,7 +512,11 @@ class ListingInactiveParentChildCounts
                 }
             }
         } catch (\Throwable $e) {
-            Log::warning('ListingInactiveParentChildCounts: load inv failed: '.$e->getMessage());
+            try {
+                Log::warning('ListingInactiveParentChildCounts: load inv failed: '.$e->getMessage());
+            } catch (\Throwable $ignored) {
+                // unit tests without a Laravel container
+            }
         }
 
         return self::$positiveInvKeys;
@@ -647,11 +656,15 @@ class ListingInactiveParentChildCounts
      */
     protected static function rowHasPositiveInv(array $row, string $sku): bool
     {
+        if (self::positiveInvKeys() !== []) {
+            return self::skuHasPositiveInv($sku);
+        }
+
         if (array_key_exists('inv', $row) && $row['inv'] !== null && $row['inv'] !== '') {
             return is_numeric($row['inv']) && (float) $row['inv'] > 0;
         }
 
-        return self::skuHasPositiveInv($sku);
+        return false;
     }
 
     /**

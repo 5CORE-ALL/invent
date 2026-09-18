@@ -91,14 +91,14 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-warning text-dark badge-il-stat" id="stat-cp-inactive-listings" title="CP Master SKUs that are also inactive on the marketplace. Zero-inventory SKUs are excluded.">
+                    <span class="badge bg-warning text-dark badge-il-stat" id="stat-cp-inactive-listings" title="In-stock CP Master SKUs whose marketplace listing is inactive because of a compliance / quality hold. Missing Listing and 0 Inv SKUs are excluded.">
                         Inactive Child SKUs: <span id="total-cp-inactive-listings">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedCpInactiveTotalOrZero()) }}</span>
                     </span>
                     <button type="button" id="il-sync-btn" class="btn btn-sm btn-primary" title="Pull current marketplace listing statuses and rebuild this page">
                         <i class="fas fa-sync-alt me-1"></i> Sync
                     </button>
                     <span class="text-muted small" id="il-sync-meta"></span>
-                    <span class="text-muted small">Inactive Listing = listed on the marketplace but not live there, and Active with stock in CP Master. Zero does not mean every CP Master SKU is live on every channel — missing / never-listed SKUs are on Missing Listing.</span>
+                    <span class="text-muted small">Inactive Listing = in-stock CP Master SKUs that are listed but not live because of a compliance / quality hold (unable to list, suppressed, rejected, incomplete). Missing / never-listed SKUs stay on Missing Listing. Zero-inventory SKUs are excluded.</span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -256,7 +256,31 @@
     $(document).ready(function() {
         table = new Tabulator("#inactive-listings-table", {
             ajaxURL: "{{ url('/inactive-listings/channels-data') }}",
+            ajaxRequestTimeout: 20000,
+            ajaxRequestFunc: function(url, _config, params) {
+                return new Promise(function(resolve, reject) {
+                    function attempt(n) {
+                        $.ajax({
+                            url: url,
+                            data: params || {},
+                            method: 'GET',
+                            dataType: 'json',
+                            timeout: 20000,
+                        }).done(resolve).fail(function(xhr) {
+                            if (n < 2) {
+                                setTimeout(function() { attempt(n + 1); }, 1200);
+                                return;
+                            }
+                            reject(xhr);
+                        });
+                    }
+                    attempt(0);
+                });
+            },
             ajaxResponse: function(_url, _params, response) {
+                if (response && response.success === false) {
+                    return [];
+                }
                 const data = (response && response.data) ? response.data : [];
                 updateStats(data, {
                     cp: response && (response.total_cp_inactive_child != null ? response.total_cp_inactive_child : response.total_cp_inactive),
@@ -272,14 +296,28 @@
                         pollIlSync();
                     }
                 }
+                if (response && response.partial && (window.__ilCountsRetries || 0) < 3) {
+                    window.__ilCountsRetries = (window.__ilCountsRetries || 0) + 1;
+                    setTimeout(function() {
+                        if (table) {
+                            table.replaceData();
+                        }
+                    }, 8000);
+                }
                 return data;
+            },
+            ajaxError: function() {
+                const holder = document.querySelector('#inactive-listings-table .tabulator-placeholder-contents');
+                if (holder) {
+                    holder.textContent = 'Could not load channels. Refresh the page.';
+                }
             },
             layout: "fitDataStretch",
             pagination: true,
             paginationSize: 50,
             paginationSizeSelector: [25, 50, 100, 200, 500],
             initialSort: [{ column: "cp_inactive_child", dir: "desc" }],
-            placeholder: "No channels found.",
+            placeholder: "Loading channels…",
             columns: [
                 {
                     title: "Image",
