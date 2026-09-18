@@ -308,12 +308,15 @@ class NewTemutwoController extends Controller
                     ? TemuGoodsIdHelper::normalizeKey($temuMetric->goods_id ?? null)
                     : null;
                 $viewDataItem = $goodsIdKey ? $viewDataByGoodsId->get($goodsIdKey) : null;
-                $oClicks = $viewDataItem ? (int) $viewDataItem->product_clicks : 0;
+                $oClicks = $viewDataItem ? max(0, (int) $viewDataItem->product_clicks) : 0;
                 $productClicks = $viewDataItem
                     ? $oClicks
-                    : (int) ($temuMetric?->product_clicks_l30 ?? 0);
-                $adsViews = $goodsIdKey ? (int) ($adsViewsByGoodsId->get($goodsIdKey) ?? 0) : 0;
+                    : max(0, (int) ($temuMetric?->product_clicks_l30 ?? 0));
+                $adsViews = $goodsIdKey ? max(0, (int) ($adsViewsByGoodsId->get($goodsIdKey) ?? 0)) : 0;
                 $views = $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
+                if ($views < 0) {
+                    $views = 0;
+                }
                 $cvrPercent = $views > 0 ? round(($temuL30 / $views) * 100, 2) : 0.0;
                 // Same CVR 45 / CVR 60 definition as /temu2-decrease: one Views denominator,
                 // L45 units being the midpoint of the current and prior 30-day windows.

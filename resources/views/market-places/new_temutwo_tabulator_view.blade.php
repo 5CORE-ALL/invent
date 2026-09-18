@@ -2417,10 +2417,28 @@
         }
     }
 
+    function ntoSummaryRows() {
+        if (!table || typeof table.getData !== 'function') return [];
+        const active = table.getData('active');
+        if (Array.isArray(active) && active.length) return active;
+        const all = table.getData();
+        return Array.isArray(all) ? all : [];
+    }
+
+    function ntoBadgeInt(n) {
+        const v = Math.round(Number(n) || 0);
+        return (v === 0 ? 0 : v).toLocaleString();
+    }
+
+    function ntoRowViews(row) {
+        const n = parseInt(row && row.views, 10);
+        return (isFinite(n) && n > 0) ? n : 0;
+    }
+
     /** Badge row — all totals follow the filters currently applied to the table. */
     function updateSummary() {
         if (!table) return;
-        const rows = table.getData('active') || [];
+        const rows = ntoSummaryRows();
 
         let rowsCount = 0;
         let zeroSold = 0;
@@ -2443,7 +2461,7 @@
             const tPrice = parseFloat(row.t_price) || 0;
 
             totalL30 += l30;
-            totalViews += parseInt(row.views, 10) || 0;
+            totalViews += ntoRowViews(row);
             if (inv > 0 && l30 === 0) zeroSold++;
             if (inv > 0 && l30 > 0) moreSold++;
 
@@ -2472,8 +2490,8 @@
         $('#rows-count-badge').text('Rows: ' + rowsCount.toLocaleString());
         $('#zero-sold-count-badge').text('0 Sold: ' + zeroSold.toLocaleString());
         $('#more-sold-count-badge').text('> 0 Sold: ' + moreSold.toLocaleString());
-        $('#total-l30-badge').text('L30: ' + totalL30.toLocaleString());
-        $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+        $('#total-l30-badge').text('L30: ' + ntoBadgeInt(totalL30));
+        $('#total-views-badge').text('Views: ' + ntoBadgeInt(totalViews));
         $('#avg-cvr-badge').text('CVR: ' + cvr.toFixed(1) + '%');
         $('#avg-gpft-badge').text('GPFT: ' + Math.round(gpftPct) + '%');
         $('#avg-groi-badge').text('GROI: ' + Math.round(groiPct) + '%');
@@ -3039,7 +3057,10 @@
                     hozAlign: 'center',
                     width: 60,
                     sorter: 'number',
-                    headerTooltip: 'Same as New Temu One Views: SUM(temu2_view_data.product_clicks) by Goods ID; Ads API fallback when the sheet has no row'
+                    headerTooltip: 'Same as New Temu One Views: SUM(temu2_view_data.product_clicks) by Goods ID; Ads API fallback when the sheet has no row',
+                    formatter: function(cell) {
+                        return ntoBadgeInt(ntoRowViews(cell.getRow().getData()));
+                    }
                 },
                 {
                     title: 'CVR',
@@ -3516,7 +3537,11 @@
             temuClearCapMemo();
             applyFilters();
             window._ntoReloadPushQueued = false;
-            setTimeout(function() { ntoTryQueuePushOnReload(); }, 800);
+            setTimeout(function() {
+                temuClearCapMemo();
+                if (typeof updateSummary === 'function') updateSummary();
+                ntoTryQueuePushOnReload();
+            }, 800);
         });
 
         $(document).on('ajaxComplete.ntoDilPersist', function(e, xhr, settings) {
