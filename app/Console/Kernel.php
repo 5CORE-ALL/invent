@@ -1770,6 +1770,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('missing-listing:warm-page')
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('missing-listing-warm-page')
+            ->withoutOverlapping(15)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         /*
         |--------------------------------------------------------------------------
         | TOPDAWG
