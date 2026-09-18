@@ -3572,6 +3572,8 @@
                 sgroi: 0,
                 SROI: 0,
                 sroi: 0,
+                SNROI: 0,
+                snroi: 0,
                 SPFT: 0,
                 spft: 0,
                 'Spft%': 0,
@@ -5364,7 +5366,6 @@
                 return copied > 0 ? chPromoRound2(copied) : 0;
             }
             const ship = (CHANNEL_PROMO_CHANNEL === 'faire'
-                || CHANNEL_PROMO_CHANNEL === 'purchasing_power'
                 || CHANNEL_PROMO_CHANNEL === 'wayfair'
                 || CHANNEL_PROMO_CHANNEL === 'topdawg'
                 || CHANNEL_PROMO_CHANNEL === 'fb_marketplace'

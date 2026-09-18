@@ -417,6 +417,8 @@ class PurchasingPowerController extends Controller
             $row['SGPFT'] = $sgpft;
             $row['SPFT']  = $sgpft;
             $row['SROI']  = round($lp > 0 && $sprice > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
+            $row['SNROI'] = $row['SROI'];
+            $row['SGROI'] = $row['SROI'];
 
             $row['image_path'] = $shopify?->image_src ?? ($values['image_path'] ?? ($pm->image_path ?? null));
             $row = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $pm->sku);
@@ -723,6 +725,8 @@ class PurchasingPowerController extends Controller
             $stored['SGPFT']  = $sgpft;
             $stored['SPFT']   = $sgpft;
             $stored['SROI']   = $sroi;
+            $stored['SNROI']  = $sroi;
+            $stored['SGROI']  = $sroi;
 
             $view->value = $stored;
             $view->save();
@@ -748,6 +752,8 @@ class PurchasingPowerController extends Controller
                 'spft_percent'       => $sgpft,
                 'sroi_percent'       => $sroi,
                 'sgpft_percent'      => $sgpft,
+                'snroi_percent'      => $sroi,
+                'sgroi_percent'      => $sroi,
                 'price_push_success' => (bool) ($pushResult['success'] ?? false),
                 'price_push_message' => (string) ($pushResult['message'] ?? ''),
                 'price_push_status_code' => $pushResult['status_code'] ?? null,
@@ -796,7 +802,7 @@ class PurchasingPowerController extends Controller
                         : (json_decode($view->value, true) ?: []);
 
                 if ($sprice == 0) {
-                    unset($stored['SPRICE'], $stored['SPFT'], $stored['SROI'], $stored['SGPFT']);
+                    unset($stored['SPRICE'], $stored['SPFT'], $stored['SROI'], $stored['SGPFT'], $stored['SNROI'], $stored['SGROI']);
                     $stored['SPRICE_STATUS'] = 'cleared';
                     $stored['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
                 } else {
@@ -807,6 +813,8 @@ class PurchasingPowerController extends Controller
                     $stored['SGPFT']  = $sgpft;
                     $stored['SPFT']   = $sgpft;
                     $stored['SROI']   = $sroi;
+                    $stored['SNROI']  = $sroi;
+                    $stored['SGROI']  = $sroi;
                     $stored['SPRICE_STATUS'] = 'applied';
                     $stored['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
                 }

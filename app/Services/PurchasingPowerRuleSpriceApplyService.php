@@ -22,7 +22,7 @@ use Throwable;
 /**
  * Wipe stale SPRICE, write Sprc Dil (A Price floor), then push listed price via MCM PRI01.
  * Dil = (OV L30 / INV) × 100. Ship BB is included (Amazon shape).
- * Dil = 0 uses the 0–0 slab. 0 Sold (PP L30 = 0) uses min Target GROI.
+ * Dil = 0 uses the 0–0 slab. 0 Sold (PP L30 = 0) uses min Target SNROI.
  * Sold + out of box has no Dil SPRICE.
  * If that Dil / min-ROI price is below A Price, SPRICE = A Price.
  */
@@ -377,6 +377,8 @@ class PurchasingPowerRuleSpriceApplyService
         $existing['SGPFT'] = $sgpft;
         $existing['SPFT'] = $sgpft;
         $existing['SROI'] = $sroi;
+        $existing['SNROI'] = $sroi;
+        $existing['SGROI'] = $sroi;
         $existing['has_custom_sprice'] = $sprice > 0;
         $existing['SPRICE_STATUS'] = $sprice > 0 ? 'applied' : 'cleared';
         $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();

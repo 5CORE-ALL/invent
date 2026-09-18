@@ -676,6 +676,15 @@
             return parseFloat(data.SPRICE) || 0;
         }
         window.ppDisplayedSprice = ppDisplayedSprice;
+        function ppSpriceMetrics(data, sprice) {
+            const price = (sprice != null && sprice !== '') ? Number(sprice) : ppDisplayedSprice(data);
+            if (!(price > 0) || !data || ppIsParentRow(data)) return { sgpft: 0, sroi: 0 };
+            const lp = Number(data.LP_productmaster != null ? data.LP_productmaster : data.lp) || 0;
+            const ship = Number(data.Ship_productmaster != null ? data.Ship_productmaster : data.ship) || 0;
+            const sgpft = Math.round(((price * PP_MARGIN - lp - ship) / price) * 10000) / 100;
+            const sroi = lp > 0 ? Math.round(((price * PP_MARGIN - lp - ship) / lp) * 10000) / 100 : 0;
+            return { sgpft: sgpft, sroi: sroi };
+        }
         function ppRowSpriceForAlert(data) {
             return ppDisplayedSprice(data);
         }
@@ -1046,7 +1055,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: 'S PRC from Dil → Target GROI% slabs. 0 Sold (PP L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship BB) / margin — same as Amazon, Ship BB not normal Ship. If that S PRC < A Price, S PRC = A Price.',
+                    headerTooltip: 'S PRC from Dil → Target SNROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Dil-matching Target SNROI when PP L30 > 0; 0 Sold uses the lowest Target SNROI in the table. S PRC = (LP × (1 + SNROI%/100) + Ship BB) / margin so SNROI = target. If that S PRC < A Price, S PRC = A Price.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (ppIsParentRow(rowData)) return '';
@@ -1056,7 +1065,7 @@
                         const dilShown = (meta.rawSprc > 0) ? meta.rawSprc : meta.sprc;
                         let tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                             + ' → ' + meta.label
-                            + ' → GROI ' + meta.groi + '%'
+                            + ' → SNROI ' + meta.groi + '%'
                             + ' → $' + Number(dilShown).toFixed(2);
                         if (meta.amzApplied) {
                             tip += ' → A Price $' + Number(meta.sprc).toFixed(2);
@@ -1069,7 +1078,7 @@
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center',
                     editable: false, sorter: 'number', width: 110,
-                    headerTooltip: 'S PRC from Sprc Dil. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Dil-matching Target NROI when PP L30 > 0; 0 Sold uses the lowest Target NROI in the table. S PRC = (LP × (1 + NROI%/100) + Ship BB) / margin — same as Amazon, Ship BB not normal Ship. If that price < A Price, S PRC = A Price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
+                    headerTooltip: 'S PRC from Sprc Dil. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Dil-matching Target SNROI when PP L30 > 0; 0 Sold uses the lowest Target SNROI in the table. S PRC = (LP × (1 + SNROI%/100) + Ship BB) / margin so SNROI = target. If that price < A Price, S PRC = A Price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';
@@ -1169,7 +1178,11 @@
                 {
                     title: 'SGPFT%', field: 'SGPFT', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
-                        const p = parseFloat(cell.getValue());
+                        const d = cell.getRow().getData();
+                        const live = ppSpriceMetrics(d);
+                        const stored = parseFloat(cell.getValue());
+                        const p = (live.sgpft || stored || 0);
+                        if (!isFinite(p)) return '';
                         const color = p < 10 ? '#a00211' : p < 15 ? '#ffc107' : p < 20 ? '#3591dc' : p <= 40 ? '#28a745' : '#e83e8c';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
                     }
@@ -1178,7 +1191,10 @@
                     title: 'SNPFT%', field: 'SPFT', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
                         // Purchasing Power has no ads — SNPFT% = SGPFT%
-                        const p = parseFloat(cell.getRow().getData().SGPFT ?? cell.getValue());
+                        const d = cell.getRow().getData();
+                        const live = ppSpriceMetrics(d);
+                        const stored = parseFloat(d.SGPFT ?? cell.getValue());
+                        const p = (live.sgpft || stored || 0);
                         if (!isFinite(p)) return '';
                         const color = p < 10 ? '#a00211' : p < 15 ? '#ffc107' : p < 20 ? '#3591dc' : p <= 40 ? '#28a745' : '#e83e8c';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
@@ -1188,7 +1204,10 @@
                     title: 'SROI%', field: 'SROI', hozAlign: 'center', sorter: 'number', width: 50,
                     headerTooltip: 'Gross S ROI from S PRC. Same $ as GROI% using S PRC + Ship BB.',
                     formatter: function(cell) {
-                        const p = parseFloat(cell.getValue());
+                        const d = cell.getRow().getData();
+                        const live = ppSpriceMetrics(d);
+                        const stored = parseFloat(cell.getValue());
+                        const p = (live.sroi || stored || 0);
                         if (!isFinite(p)) return '';
                         const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
@@ -1196,9 +1215,12 @@
                 },
                 {
                     title: 'SNROI%', field: 'SNROI', hozAlign: 'center', sorter: 'number', width: 50,
-                    headerTooltip: 'Purchasing Power has no Ads% — SNROI% = SROI%.',
+                    headerTooltip: 'Dil Target Rule. SNROI% from S PRC so SNROI = slab Target SNROI. Purchasing Power has no Ads% — SNROI% = SROI%.',
                     formatter: function(cell) {
-                        const p = parseFloat(cell.getRow().getData().SROI ?? cell.getValue());
+                        const d = cell.getRow().getData();
+                        const live = ppSpriceMetrics(d);
+                        const stored = parseFloat(d.SROI ?? cell.getValue());
+                        const p = (live.sroi || stored || 0);
                         if (!isFinite(p)) return '';
                         const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
