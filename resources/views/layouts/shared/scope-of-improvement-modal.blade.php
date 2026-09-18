@@ -585,6 +585,22 @@
             const csrf       = '{{ csrf_token() }}';
             const storeUrl   = @json(route('scope-of-improvement.store'));
             const updateBase = @json(url('scope-of-improvement/update'));
+            const currentUserId = {{ (int) (auth()->id() ?? 0) }};
+
+            function updateSoiTopbarCount(delta) {
+                const btn = document.getElementById('activityTopbarBtn');
+                if (!btn || !delta) return;
+                const next = Math.max(0, (parseInt(btn.getAttribute('data-soi-count'), 10) || 0) + delta);
+                btn.setAttribute('data-soi-count', String(next));
+                btn.classList.toggle('has-points', next > 0);
+                const countEl = btn.querySelector('.topbar-soi-btn__count');
+                if (countEl) countEl.textContent = String(next);
+                const label = next > 0
+                    ? 'Scope of Improvement — ' + next + ' point' + (next === 1 ? '' : 's')
+                    : 'Scope of Improvement';
+                btn.setAttribute('title', 'Scope of Improvement');
+                btn.setAttribute('aria-label', label);
+            }
 
             // Wire the multi-select Issue combobox for this modal.
             const issueCombo = window.SoiIssueCombo.setup({
@@ -750,10 +766,13 @@
                 }
 
                 btn.disabled = true;
-                $.post(url, payload, function () {
+                $.post(url, payload, function (res) {
                     modal.hide();
                     if (window.__soiTable && typeof window.__soiTable.replaceData === 'function') {
                         window.__soiTable.replaceData();
+                    }
+                    if (!id && payload.user_id && parseInt(payload.user_id, 10) === currentUserId) {
+                        updateSoiTopbarCount(parseInt(res && res.created, 10) || 0);
                     }
                 }).fail(function (xhr) {
                     let msg = 'Something went wrong.';

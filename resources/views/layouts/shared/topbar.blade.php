@@ -105,7 +105,7 @@
                 font-weight: 700;
                 text-decoration: none;
                 box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
-                transition: background 0.15s ease, transform 0.15s ease;
+                transition: background 0.15s ease, transform 0.15s ease, color 0.15s ease;
             }
             .topbar-dar-btn:hover {
                 background: #1d4ed8;
@@ -113,6 +113,37 @@
                 transform: translateY(-1px);
             }
             .topbar-dar-btn i { font-size: 0.9rem; }
+            .topbar-dar-btn__pct {
+                font-variant-numeric: tabular-nums;
+                font-weight: 800;
+            }
+            .topbar-dar-btn.is-dar-high {
+                background: #fce7f3;
+                color: #831843;
+                box-shadow: 0 2px 6px rgba(131, 24, 67, 0.18);
+            }
+            .topbar-dar-btn.is-dar-high:hover {
+                background: #fbcfe8;
+                color: #831843;
+            }
+            .topbar-dar-btn.is-dar-mid {
+                background: #dcfce7;
+                color: #166534;
+                box-shadow: 0 2px 6px rgba(22, 101, 52, 0.18);
+            }
+            .topbar-dar-btn.is-dar-mid:hover {
+                background: #bbf7d0;
+                color: #166534;
+            }
+            .topbar-dar-btn.is-dar-low {
+                background: #fee2e2;
+                color: #991b1b;
+                box-shadow: 0 2px 6px rgba(153, 27, 27, 0.18);
+            }
+            .topbar-dar-btn.is-dar-low:hover {
+                background: #fecaca;
+                color: #991b1b;
+            }
             .topbar-incentive-dollar-btn {
                 display: inline-flex;
                 align-items: center;
@@ -214,10 +245,51 @@
                 object-fit: cover;
             }
 
-            .topbar-activity-btn {
+            .topbar-activity-btn,
+            .topbar-soi-btn {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
+                gap: 0.28rem;
+                flex-shrink: 0;
+                margin-right: 0.5rem;
+                min-width: 42px;
+                height: 42px;
+                padding: 0 0.7rem;
+                border: none;
+                border-radius: 999px;
+                background: #f1f5f9;
+                color: #334155;
+                font-size: 0.78rem;
+                font-weight: 800;
+                letter-spacing: 0.04em;
+                line-height: 1;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+                transition: transform 0.2s ease, background 0.15s ease, color 0.15s ease;
+            }
+            .topbar-soi-btn:hover { transform: scale(1.08); }
+            .topbar-soi-btn__count {
+                display: none;
+                min-width: 1.15em;
+                font-variant-numeric: tabular-nums;
+            }
+            .topbar-soi-btn.has-points {
+                background: #dc2626;
+                color: #fff;
+                box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35);
+            }
+            .topbar-soi-btn.has-points:hover {
+                background: #b91c1c;
+                color: #fff;
+            }
+            .topbar-soi-btn.has-points .topbar-soi-btn__count {
+                display: inline;
+            }
+            .topbar-ann-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                position: relative;
                 flex-shrink: 0;
                 margin-right: 0.5rem;
                 width: 42px;
@@ -225,29 +297,81 @@
                 padding: 0;
                 border: none;
                 border-radius: 50%;
-                background: #fff;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-                transition: transform 0.2s ease;
+                background: #f59e0b;
+                color: #fff;
+                box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
+                transition: transform 0.2s ease, background 0.15s ease;
             }
-            .topbar-activity-btn:hover { transform: scale(1.08); }
-            .topbar-activity-btn__icon {
-                width: 100%;
-                height: 100%;
-                border-radius: 50%;
-                object-fit: cover;
+            .topbar-ann-btn:hover { background: #d97706; color: #fff; transform: scale(1.08); }
+            .topbar-ann-btn i { font-size: 1.15rem; }
+            .topbar-ann-btn__count {
+                display: none;
+                position: absolute;
+                top: -4px;
+                right: -4px;
+                min-width: 18px;
+                height: 18px;
+                padding: 0 5px;
+                border-radius: 999px;
+                background: #dc2626;
+                color: #fff;
+                font-size: 0.65rem;
+                font-weight: 800;
+                line-height: 18px;
+                text-align: center;
             }
+            .topbar-ann-btn.has-posts .topbar-ann-btn__count { display: inline-block; }
 
         </style>
 
-        <button type="button" id="activityTopbarBtn" class="topbar-activity-btn"
-            title="Earn Monthly Increments" aria-label="Earn Monthly Increments">
-            <img src="{{ asset('images/rupees-bag-icon.png') }}" alt="Earn Monthly Increments" class="topbar-activity-btn__icon">
+        @php
+            $topbarAnnCount = (int) ($topbarAnnCount ?? 0);
+        @endphp
+        <button type="button" id="annTopbarOpenBtn"
+            class="topbar-ann-btn{{ $topbarAnnCount > 0 ? ' has-posts' : '' }}"
+            data-ann-count="{{ $topbarAnnCount }}"
+            title="5 Core Announcements"
+            aria-label="5 Core Announcements{{ $topbarAnnCount > 0 ? ' — '.$topbarAnnCount : '' }}">
+            <i class="ri-megaphone-fill"></i>
+            <span class="topbar-ann-btn__count">{{ $topbarAnnCount }}</span>
         </button>
 
-        <button type="button" id="darTopbarOpenBtn" class="topbar-dar-btn"
-            title="Daily Activity Report (DAR)" aria-label="Daily Activity Report (DAR)">
+        @php
+            $topbarSoiCount = (int) ($topbarSoiCount ?? 0);
+        @endphp
+        <button type="button" id="activityTopbarBtn"
+            class="topbar-activity-btn topbar-soi-btn{{ $topbarSoiCount > 0 ? ' has-points' : '' }}"
+            data-soi-count="{{ $topbarSoiCount }}"
+            title="Scope of Improvement"
+            aria-label="Scope of Improvement{{ $topbarSoiCount > 0 ? ' — '.$topbarSoiCount.' point'.($topbarSoiCount === 1 ? '' : 's') : '' }}">
+            <span class="topbar-soi-btn__label">SI</span>
+            <span class="topbar-soi-btn__count">{{ $topbarSoiCount }}</span>
+        </button>
+
+        @php
+            $topbarDarPct = (int) ($topbarDarPct ?? 0);
+            $topbarDarCount = (int) ($topbarDarCount ?? 0);
+            $topbarDarTarget = (int) ($topbarDarTarget ?? 25);
+            $topbarDarBand = (string) ($topbarDarBand ?? 'low');
+            $topbarDarShowPct = auth()->check();
+            $topbarDarBandClass = '';
+            if ($topbarDarShowPct) {
+                $topbarDarBandClass = $topbarDarBand === 'high'
+                    ? 'is-dar-high'
+                    : ($topbarDarBand === 'mid' ? 'is-dar-mid' : 'is-dar-low');
+            }
+            $topbarDarTitle = $topbarDarShowPct
+                ? 'DAR — '.$topbarDarCount.'/'.$topbarDarTarget.' last 30 days ('.$topbarDarPct.'%)'
+                : 'Daily Activity Report (DAR)';
+        @endphp
+        <button type="button" id="darTopbarOpenBtn" class="topbar-dar-btn {{ $topbarDarBandClass }}"
+            title="{{ $topbarDarTitle }}"
+            aria-label="{{ $topbarDarTitle }}">
             <i class="fas fa-clipboard-list"></i>
             <span class="topbar-dar-btn__label">DAR</span>
+            @if ($topbarDarShowPct)
+                <span class="topbar-dar-btn__pct">{{ $topbarDarPct }}%</span>
+            @endif
         </button>
 
         @auth

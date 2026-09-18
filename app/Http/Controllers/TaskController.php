@@ -155,9 +155,9 @@ class TaskController extends Controller
                 ? \Carbon\Carbon::parse($task->completion_date)
                 : \Carbon\Carbon::parse($task->updated_at);
             $days = abs($completion->getTimestamp() - $start->getTimestamp()) / 86400;
-            $tatValues[] = (int) round($days);
+            $tatValues[] = $days;
         }
-        $stats['tat_avg_30'] = count($tatValues) > 0 ? (int) round(array_sum($tatValues) / count($tatValues)) : null;
+        $stats['tat_avg_30'] = count($tatValues) > 0 ? round(array_sum($tatValues) / count($tatValues), 1) : null;
 
         // Daily TAT for line chart (last 30 days): date => avg TAT for tasks completed on that day
         $tatByDay = [];
@@ -473,9 +473,9 @@ class TaskController extends Controller
         // tat_sum_days + tat_count are used to compute the average L30 TAT
         // (Turn-Around Time, in calendar days) for tasks the user closed
         // (status=Done) in the last 30 days.
-        // Missed is L30 vs prior 30 (days 31–60). A deleted task counts as
-        // missed unless it was already Done (same rule as /tasks/deleted).
-        // Live is_missed rows are included too.
+        // Missed is last 30 days vs days 31–60, keyed by start_date.
+        // A deleted task counts as missed unless it was already Done
+        // (same rule as /tasks/deleted). Live is_missed rows are included too.
         $defaultCounts = [
             'task' => 0, 'overdue' => 0, 'a_task' => 0, 'a_task_h' => 0,
             'need_approval' => 0, 'assignor_task' => 0, 'done' => 0,
@@ -764,7 +764,7 @@ class TaskController extends Controller
     }
 
     /**
-     * Count one missed task into L30 or prior-30 (days 31–60) for an assignee email.
+     * Count one missed task into last 30 days or days 31–60 for an assignee email.
      *
      * @param  array<string, array<string, mixed>>  $byEmail
      * @param  array<string, mixed>  $defaultCounts
@@ -784,8 +784,9 @@ class TaskController extends Controller
     }
 
     /**
-     * Deleted tasks in the last 60 days count as missed unless they were Done.
-     * Split into L30 vs prior 30 (days 31–60).
+     * Deleted unfinished tasks whose start_date is in the last 60 days.
+     * Split into last 30 days vs days 31–60. Older tasks are ignored even
+     * if they were deleted recently.
      *
      * @param  array<string, array<string, mixed>>  $byEmail
      * @param  array<string, mixed>  $defaultCounts
@@ -798,10 +799,12 @@ class TaskController extends Controller
 
         $archived = DeletedTask::query()
             ->where(function ($q) use ($lookback) {
-                $q->where('deleted_at', '>=', $lookback)
+                $q->where('start_date', '>=', $lookback)
                     ->orWhere(function ($q2) use ($lookback) {
-                        $q2->whereNull('deleted_at')
-                            ->where('start_date', '>=', $lookback);
+                        $q2->where(function ($q3) {
+                            $q3->whereNull('start_date')
+                                ->orWhere('start_date', '');
+                        })->where('deleted_at', '>=', $lookback);
                     });
             })
             ->where(function ($q) {
@@ -813,7 +816,7 @@ class TaskController extends Controller
             ->get(['assign_to', 'deleted_at', 'start_date']);
 
         foreach ($archived as $row) {
-            $when = $row->deleted_at ?: $row->start_date;
+            $when = $row->start_date ?: $row->deleted_at;
             $assignTo = trim((string) ($row->assign_to ?? ''));
             if ($assignTo === '') {
                 continue;

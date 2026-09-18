@@ -1899,13 +1899,13 @@
 
             <!-- TAT Badge -->
             <div class="col">
-                <div class="stat-card stat-card-teal task-stat-trigger" data-metric="tat" data-value="{{ isset($stats['tat_avg_30']) && $stats['tat_avg_30'] !== null ? (int) round((float) $stats['tat_avg_30']) : 0 }}" title="Click to view history">
+                <div class="stat-card stat-card-teal task-stat-trigger" data-metric="tat" data-value="{{ isset($stats['tat_avg_30']) && $stats['tat_avg_30'] !== null ? number_format((float) $stats['tat_avg_30'], 1, '.', '') : 0 }}" title="Click to view history">
                     <div class="stat-icon">
                         <i class="mdi mdi-clock-outline"></i>
                     </div>
                     <div class="stat-content text-center">
                         <div class="stat-label">TAT</div>
-                        <div class="stat-value">{{ isset($stats['tat_avg_30']) && $stats['tat_avg_30'] !== null ? (int) round((float) $stats['tat_avg_30']) : '-' }}</div>
+                        <div class="stat-value">{{ isset($stats['tat_avg_30']) && $stats['tat_avg_30'] !== null ? number_format((float) $stats['tat_avg_30'], 1, '.', '') : '-' }}</div>
                     </div>
                 </div>
             </div>
@@ -4791,11 +4791,11 @@
                     completion.setHours(0, 0, 0, 0);
                     
                     var days = Math.abs(completion.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-                    tatValues.push(Math.round(days));
+                    tatValues.push(days);
                 });
                 
                 stats.tat_avg_30 = tatValues.length > 0
-                    ? Math.round(tatValues.reduce((a, b) => a + b, 0) / tatValues.length)
+                    ? Math.round((tatValues.reduce((a, b) => a + b, 0) / tatValues.length) * 10) / 10
                     : null;
                 
                 // MISSED calculation: Count of tasks with start_date in last 30 days that are not Done/Archived
@@ -4861,8 +4861,8 @@
                             valueEl.text(Math.round(stats.done_atc / 60));
                             break;
                         case 'TAT':
-                            valueEl.text(stats.tat_avg_30 !== null ? String(Math.round(stats.tat_avg_30)) : '-');
-                            $(this).attr('data-value', stats.tat_avg_30 !== null ? Math.round(stats.tat_avg_30) : 0);
+                            valueEl.text(stats.tat_avg_30 !== null ? Number(stats.tat_avg_30).toFixed(1) : '-');
+                            $(this).attr('data-value', stats.tat_avg_30 !== null ? Number(stats.tat_avg_30).toFixed(1) : 0);
                             break;
                         case 'AVG SCORE':
                             if (performanceAverageScore !== null && performanceAverageScore !== undefined && performanceAverageScore !== '') {

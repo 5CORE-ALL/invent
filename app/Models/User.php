@@ -159,6 +159,11 @@ class User extends Authenticatable
         return str_ends_with(strtolower($this->email ?? ''), '@5core.com');
     }
 
+    public function isDirector(): bool
+    {
+        return strtolower((string) ($this->org_level ?? '')) === 'director';
+    }
+
     /**
      * Get performance reviews where this user is the employee
      */

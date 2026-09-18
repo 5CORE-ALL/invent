@@ -49,7 +49,7 @@
             vertical-align: middle;
         }
         :root {
-            --avatar-size: 35px;
+            --avatar-size: 28px;
         }
         .task-summary-avatar {
             width: var(--avatar-size);
@@ -65,18 +65,18 @@
             box-shadow: 0 4px 14px rgba(15, 23, 42, 0.2);
             transform: scale(1.08);
         }
-        /* Large preview above cursor (avoids .table-responsive clipping) */
+        /* Large circular preview above cursor (avoids .table-responsive clipping) */
         #task-summary-avatar-flyout {
             position: fixed;
-            z-index: 1080;
-            width: 96px;
-            height: 96px;
+            z-index: 200070;
+            width: 224px;
+            height: 224px;
             border-radius: 50%;
             overflow: hidden;
-            border: 3px solid #fff;
+            border: 4px solid #fff;
             box-shadow: 0 14px 40px rgba(15, 23, 42, 0.35);
             pointer-events: none;
-            transform: translate(-50%, calc(-100% - 14px));
+            transform: translate(-50%, calc(-100% - 16px));
             opacity: 0;
             visibility: hidden;
             transition: opacity 0.12s ease, visibility 0.12s ease;
@@ -86,10 +86,14 @@
             visibility: visible;
         }
         #task-summary-avatar-flyout img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
+            width: 100% !important;
+            height: 100% !important;
+            max-width: none !important;
+            max-height: none !important;
+            object-fit: cover !important;
+            border-radius: 50% !important;
             display: block;
+            padding: 0 !important;
         }
         .task-summary-col-overdue {
             color: #dc2626 !important;
@@ -1045,13 +1049,13 @@
                                            spellcheck="false" />
                                 </div>
                             </div>
-                            {{-- Avatar size controls hidden by request (fixed at 35px) --}}
+                            {{-- Avatar size controls hidden by request (fixed at 28px) --}}
                             <div class="d-none task-summary-topbar-right">
                                 <span class="text-muted small d-none d-md-inline">Avatar:</span>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="adjustAvatarSize(-5)" title="Decrease size">
                                     <i class="mdi mdi-minus"></i>
                                 </button>
-                                <span id="avatar-size-display" class="badge bg-light text-dark" style="min-width: 42px;">35px</span>
+                                <span id="avatar-size-display" class="badge bg-light text-dark" style="min-width: 42px;">28px</span>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="adjustAvatarSize(5)" title="Increase size">
                                     <i class="mdi mdi-plus"></i>
                                 </button>
@@ -1123,7 +1127,7 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="tat_l30" data-sort-type="float" title="TAT — average Turn-Around Time in days (task start → completion) over the last 30 days" role="button" tabindex="0">
                                         TAT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="missed_l30" data-sort-type="number" title="Miss — last 30 days vs prior 30 days (days 31–60). Any deleted task that was not Done counts as missed." role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="missed_l30" data-sort-type="number" title="Miss — last 30 days vs days 31–60. Deleted unfinished tasks in that window count as missed." role="button" tabindex="0">
                                         Miss <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort task-summary-col-a-task-h" data-sort-key="a_task_h" data-sort-type="number" title="Sort by automated task ETC hours (rounded)" role="button" tabindex="0">
@@ -1187,7 +1191,7 @@
                                         </td>
                                         <td class="task-summary-avatar-cell">
                                             <span class="task-summary-avatar-wrap">
-                                                <img src="{{ $avatarUrl }}" alt="" class="task-summary-avatar" loading="lazy" />
+                                                <img src="{{ $avatarUrl }}" alt="" class="task-summary-avatar no-img-hover" loading="lazy" data-no-img-hover />
                                             </span>
                                         </td>
                                         <td class="task-summary-col-member">
@@ -1438,7 +1442,7 @@
                                             }
                                         @endphp
                                         <td class="task-summary-num task-summary-col-missed {{ $missClass }}"
-                                            title="Last 30 days: {{ $missL30 }} · Prior 30 days (31–60): {{ $missP30 }}">
+                                            title="Last 30 days: {{ $missL30 }} · Days 31–60: {{ $missP30 }}">
                                             {{ $missL30 }} / {{ $missP30 }}
                                         </td>
                                         <td class="task-summary-num task-summary-col-a-task-h" title="Total ETC hours (assignee) for automated tasks, rounded">{{ (int) ($row['a_task_h'] ?? 0) }}</td>
@@ -1532,7 +1536,7 @@
     </div>
 
     <div id="task-summary-avatar-flyout" aria-hidden="true">
-        <img src="" alt="" />
+        <img src="" alt="" class="no-img-hover" data-no-img-hover />
     </div>
 
     @include('partials.r-and-r')
@@ -1682,8 +1686,24 @@
                 if (!avatarFlyout) {
                     return;
                 }
-                avatarFlyout.style.left = clientX + 'px';
-                avatarFlyout.style.top = clientY + 'px';
+                var size = avatarFlyout.offsetWidth || 224;
+                var gap = 16;
+                var pad = 8;
+                var half = size / 2;
+                var left = Math.min(Math.max(clientX, half + pad), window.innerWidth - half - pad);
+                var canSitAbove = (clientY - gap - size) >= pad;
+
+                if (canSitAbove) {
+                    avatarFlyout.style.transform = 'translate(-50%, calc(-100% - ' + gap + 'px))';
+                    avatarFlyout.style.top = clientY + 'px';
+                } else if ((clientY + gap + size) <= (window.innerHeight - pad)) {
+                    avatarFlyout.style.transform = 'translate(-50%, ' + gap + 'px)';
+                    avatarFlyout.style.top = clientY + 'px';
+                } else {
+                    avatarFlyout.style.transform = 'translate(-50%, 0)';
+                    avatarFlyout.style.top = Math.max(pad, window.innerHeight - size - pad) + 'px';
+                }
+                avatarFlyout.style.left = left + 'px';
             }
 
             function tsHideAvatarFlyout() {
@@ -7752,9 +7772,9 @@
             }
         })();
 
-        // Avatar size — controls are hidden; size fixed at 35px regardless
-        // of any value previously persisted in localStorage.
-        const DEFAULT_AVATAR_SIZE = 35;
+        // Avatar size — controls are hidden; size fixed at 28px (0.8× of 35)
+        // regardless of any value previously persisted in localStorage.
+        const DEFAULT_AVATAR_SIZE = 28;
         let currentAvatarSize = DEFAULT_AVATAR_SIZE;
         try { localStorage.setItem('avatarSize', DEFAULT_AVATAR_SIZE); } catch (e) {}
         document.documentElement.style.setProperty('--avatar-size', currentAvatarSize + 'px');

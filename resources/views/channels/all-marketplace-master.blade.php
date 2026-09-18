@@ -7,11 +7,18 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 
     <style>
-        html, body, .wrapper {
+        html, body {
             height: auto !important;
             max-height: none !important;
             max-width: 100%;
-            overflow-x: auto !important;
+            overflow-x: hidden;
+            overflow-y: auto !important;
+        }
+        .wrapper {
+            height: auto !important;
+            max-height: none !important;
+            max-width: 100%;
+            overflow-x: hidden;
             overflow-y: auto !important;
         }
         body {
@@ -101,10 +108,33 @@
         .content-page .container-fluid {
             min-height: 0 !important;
             max-width: 100%;
+            min-width: 0;
             overflow: visible;
         }
         .amm-shell {
             max-width: 100%;
+            min-width: 0;
+        }
+        .amm-shell .page-title-box {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.25rem 1rem;
+            min-width: 0;
+        }
+        .amm-shell .page-title-box .page-title-right {
+            float: none;
+            margin-top: 0;
+            min-width: 0;
+        }
+        .amm-shell .page-title-box .page-title {
+            line-height: 1.3;
+            padding: 0.7rem 0;
+            white-space: normal;
+        }
+        .amm-shell .page-title-box .breadcrumb-item:has(> a:empty) {
+            display: none;
         }
         .amm-page-row,
         .amm-page-col,
@@ -112,13 +142,34 @@
             min-width: 0;
             max-width: 100%;
         }
+        .amm-toolbar {
+            overflow-x: hidden;
+        }
         .amm-table-card-body {
             padding: 0 !important;
             overflow: visible;
+            min-width: 0;
+            max-width: 100%;
+        }
+        .amm-table-hscroll {
+            position: sticky;
+            top: var(--tz-topbar-height, 70px);
+            z-index: 26;
+            overflow-x: auto;
+            overflow-y: hidden;
+            max-width: 100%;
+            height: 14px;
+            background: #dbeafe;
+            border-bottom: 1px solid #bfdbfe;
+            scrollbar-width: thin;
+        }
+        .amm-table-hscroll-inner {
+            height: 1px;
         }
         #marketplace-table-wrapper {
             width: 100%;
             max-width: 100%;
+            min-width: 0;
             overflow: visible;
         }
         #marketplace-table,
@@ -129,9 +180,15 @@
             max-width: 100%;
             overflow: visible !important;
         }
+        #marketplace-table.tabulator .tabulator-header,
+        #marketplace-table.tabulator .tabulator-footer {
+            width: 100% !important;
+            max-width: 100%;
+            overflow: hidden !important;
+        }
         #marketplace-table.tabulator .tabulator-header {
             position: sticky !important;
-            top: var(--tz-topbar-height, 70px) !important;
+            top: calc(var(--tz-topbar-height, 70px) + 14px) !important;
             z-index: 24 !important;
             background-color: #dbeafe !important;
         }
@@ -139,10 +196,26 @@
         #marketplace-table.tabulator .tabulator-header .tabulator-col {
             background-color: #dbeafe !important;
         }
+        #marketplace-table.tabulator .tabulator-header .tabulator-header-contents,
+        #marketplace-table.tabulator .tabulator-footer .tabulator-calcs-holder {
+            overflow: hidden !important;
+        }
         #marketplace-table.tabulator .tabulator-tableholder {
-            overflow: visible !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
             height: auto !important;
             max-height: none !important;
+            width: 100% !important;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+        }
+        #marketplace-table.tabulator .tabulator-tableholder::-webkit-scrollbar {
+            display: none;
+        }
+        #marketplace-table.tabulator .tabulator-cell {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-col.tabulator-frozen {
             background-color: #dbeafe !important;
@@ -177,7 +250,7 @@
 
         .tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
-            overflow: visible;
+            overflow: hidden;
         }
 
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
@@ -340,19 +413,20 @@
             cursor: pointer;
         }
 
-        /* Summary badges — horizontal scroll; each badge keeps full width (no flex-shrink overlap) */
+        /* Summary badges — wrap in the card so the page never scrolls sideways */
+        #summary-stats {
+            max-width: 100%;
+            min-width: 0;
+            overflow: hidden;
+        }
         #summary-stats .ebay2-summary-badge-row {
             display: flex;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
             align-items: center;
             gap: 0.4rem;
             width: 100%;
             max-width: 100%;
-            overflow-x: auto;
-            overflow-y: hidden;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: thin;
-            padding-bottom: 4px; /* room for scrollbar */
+            overflow: visible;
         }
         #summary-stats .ebay2-summary-badge-row > .badge {
             flex: 0 0 auto;
@@ -529,11 +603,28 @@
             #column-dropdown-list {
                 grid-template-columns: repeat(3, minmax(110px, 1fr)) !important;
             }
+            #summary-stats {
+                padding: 0.65rem !important;
+            }
+            #summary-stats .ebay2-summary-badge-row > .badge {
+                font-size: 0.75rem;
+                padding: 0.32rem 0.45rem;
+            }
         }
 
         @media (max-width: 767.98px) {
+            .amm-toolbar .d-flex {
+                width: 100%;
+            }
             #channel-search {
                 width: 100% !important;
+                min-width: 0 !important;
+            }
+            .amm-table-hscroll {
+                top: 56px !important;
+            }
+            #marketplace-table.tabulator .tabulator-header {
+                top: 70px !important;
             }
             .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
                 height: 52px;
@@ -542,9 +633,32 @@
             .tabulator .tabulator-header .tabulator-col {
                 height: 52px !important;
             }
+            #column-dropdown-menu {
+                min-width: min(100vw - 16px, 720px) !important;
+                max-width: calc(100vw - 16px) !important;
+            }
             #column-dropdown-list {
                 grid-template-columns: repeat(2, minmax(100px, 1fr)) !important;
                 max-height: 50vh !important;
+            }
+            #summary-stats .ebay2-summary-badge-row {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: thin;
+                padding-bottom: 4px;
+            }
+            #ammInvModal .modal-dialog,
+            #yesterdayMpModal .modal-dialog,
+            #addChannelModal .modal-dialog,
+            #editChannelModal .modal-dialog {
+                margin: 0.5rem;
+                max-width: calc(100vw - 1rem);
+            }
+            #ammInvModal .amm-inv-pie-wrap {
+                min-width: 0;
+                flex: 1 1 100%;
             }
         }
     </style>
@@ -554,7 +668,7 @@
     <div class="amm-shell">
     @include('layouts.shared.page-title', [
         'page_title' => 'Active Channel Master',
-        'sub_title' => '',
+        'sub_title' => 'Channels',
     ])
 
     <div class="toast-container"></div>
@@ -707,6 +821,9 @@
             </div>
 
             <div class="card-body amm-table-card-body">
+                <div class="amm-table-hscroll" id="amm-table-hscroll" aria-label="Table columns">
+                    <div class="amm-table-hscroll-inner" id="amm-table-hscroll-inner"></div>
+                </div>
                 <div id="marketplace-table-wrapper">
                     <div id="marketplace-table"></div>
                 </div>
@@ -2071,13 +2188,13 @@
                 ajaxURL: "/channels-master-data",
                 ajaxParams: { size: 10000, page: 1 },
                 ajaxSorting: false,
-                layout: "fitDataStretch",
+                layout: window.innerWidth < 768 ? "fitData" : "fitDataStretch",
                 height: false,
                 renderVertical: "basic",
                 pagination: false,
-                responsiveLayout: window.innerWidth < 768 ? "hide" : false,
+                responsiveLayout: false,
                 columnDefaults: {
-                    minWidth: 52,
+                    minWidth: 72,
                 },
                 columnCalcs: "both",
                 initialSort: [{
@@ -4821,15 +4938,74 @@
             });
 
             function bindAmmHorizontalScrollSync() {
-                var wrap = document.getElementById('marketplace-table-wrapper');
                 var holder = document.querySelector('#marketplace-table .tabulator-tableholder');
-                var scroller = wrap || holder;
-                if (!scroller || scroller.dataset.ammScrollBound === '1') return;
-                scroller.dataset.ammScrollBound = '1';
-                scroller.addEventListener('scroll', function() {
-                    var header = document.querySelector('#marketplace-table .tabulator-header .tabulator-header-contents');
-                    if (header) header.scrollLeft = scroller.scrollLeft;
-                }, { passive: true });
+                var header = document.querySelector('#marketplace-table .tabulator-header .tabulator-header-contents');
+                var footer = document.querySelector('#marketplace-table .tabulator-footer .tabulator-calcs-holder');
+                var bar = document.getElementById('amm-table-hscroll');
+                var inner = document.getElementById('amm-table-hscroll-inner');
+                if (!holder) return;
+
+                function paneWidth() {
+                    var tableEl = holder.querySelector('.tabulator-table');
+                    return Math.max(holder.scrollWidth, tableEl ? tableEl.scrollWidth : 0);
+                }
+
+                function applyScroll(left) {
+                    holder.scrollLeft = left;
+                    if (header) header.scrollLeft = left;
+                    if (footer) footer.scrollLeft = left;
+                    if (bar) bar.scrollLeft = left;
+                }
+
+                function syncBarSize() {
+                    if (!inner || !bar) return;
+                    var width = paneWidth();
+                    inner.style.width = width + 'px';
+                    var needsBar = width > bar.clientWidth + 2;
+                    bar.style.display = needsBar ? '' : 'none';
+                    var headerEl = document.querySelector('#marketplace-table .tabulator-header');
+                    if (headerEl) {
+                        headerEl.style.top = needsBar
+                            ? 'calc(var(--tz-topbar-height, 70px) + 14px)'
+                            : 'var(--tz-topbar-height, 70px)';
+                    }
+                }
+
+                if (holder.dataset.ammScrollBound !== '1') {
+                    holder.dataset.ammScrollBound = '1';
+                    var syncing = false;
+                    holder.addEventListener('scroll', function() {
+                        if (syncing) return;
+                        syncing = true;
+                        applyScroll(holder.scrollLeft);
+                        syncing = false;
+                    }, { passive: true });
+                    if (bar) {
+                        bar.addEventListener('scroll', function() {
+                            if (syncing) return;
+                            syncing = true;
+                            applyScroll(bar.scrollLeft);
+                            syncing = false;
+                        }, { passive: true });
+                    }
+                    var resizeTimer = null;
+                    window.addEventListener('resize', function() {
+                        clearTimeout(resizeTimer);
+                        resizeTimer = setTimeout(function() {
+                            if (table) {
+                                try {
+                                    table.setLayout(window.innerWidth < 768 ? 'fitData' : 'fitDataStretch');
+                                } catch (e) { /* ignore */ }
+                                table.redraw(true);
+                            }
+                            requestAnimationFrame(function() {
+                                syncBarSize();
+                                applyScroll(holder.scrollLeft);
+                            });
+                        }, 150);
+                    });
+                }
+                syncBarSize();
             }
 
             function loadMetricDotTrends(tableData) {

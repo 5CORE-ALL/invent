@@ -56,6 +56,7 @@
     {{-- Shared "Add Scope of Improvement" modal (opened from the topbar
          Ideas / Activity buttons on every page). --}}
     @include('layouts.shared.scope-of-improvement-modal')
+    @include('layouts.shared.announcement-board-modal')
 
     @yield('script-after-vite')
 

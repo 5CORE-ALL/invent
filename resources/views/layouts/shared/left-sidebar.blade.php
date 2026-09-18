@@ -70,6 +70,11 @@
                                 <i class="ri-clipboard-line me-2"></i>Tasks DAR
                             </a>
                         </li>
+                        <li>
+                            <a href="{{ route('announcements.index') }}" class="{{ request()->routeIs('announcements.*') ? 'active' : '' }}">
+                                <i class="ri-megaphone-line me-2"></i>Announcement
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </li>

@@ -24,6 +24,7 @@ return [
     'permissions.view' => 'team',
     'permissions' => 'team',
     'tasks.*' => 'task',
+    'announcements.*' => 'task',
     'login' => 'auth',
     'register' => 'auth',
     'password.request' => 'auth',

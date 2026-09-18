@@ -295,6 +295,7 @@ use App\Http\Controllers\PurchaseMaster\QcImprovementReqBeforeItemPkgController;
 use App\Http\Controllers\PurchaseMaster\QcMastersController;
 use App\Http\Controllers\PurchaseMaster\QualityEnhanceController;
 use App\Http\Controllers\PurchaseMaster\ReadyToShipController;
+use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\PurchaseMaster\ScopeOfImprovementController;
 use App\Http\Controllers\PurchaseMaster\DarController as DarReportController;
 use App\Http\Controllers\PurchaseMaster\SourcingController;
@@ -3430,6 +3431,26 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/purchase/save', 'store')->name('purchase.store');
         Route::get('/purchase-data/list', 'getPurchaseSummary');
         Route::post('/purchase/delete', 'deletePurchase');
+    });
+
+    // Announcements (directors post; everyone can read)
+    Route::controller(AnnouncementController::class)->group(function () {
+        Route::get('/announcements', 'index')->name('announcements.index');
+        Route::get('/announcements/data', 'data')->name('announcements.data');
+        Route::get('/announcements/board', 'board')->name('announcements.board');
+        Route::get('/announcements/file/{filename}', 'file')
+            ->where('filename', '[A-Za-z0-9._-]+')
+            ->name('announcements.file');
+        Route::post('/announcements/read-all', 'markAllRead')->name('announcements.read-all');
+        Route::post('/announcements/read/{id}', 'markRead')->name('announcements.read');
+        Route::get('/announcements/{id}/viewers', 'viewers')->name('announcements.viewers');
+        Route::get('/announcements/{id}/comments', 'comments')->name('announcements.comments');
+        Route::post('/announcements/{id}/comments', 'comment')->name('announcements.comment');
+        Route::post('/announcements/store', 'store')->name('announcements.store');
+        Route::post('/announcements/post/{id}', 'post')->name('announcements.post');
+        Route::post('/announcements/ai', 'ai')->name('announcements.ai');
+        Route::post('/announcements/update/{id}', 'update')->name('announcements.update');
+        Route::post('/announcements/delete/{id}', 'destroy')->name('announcements.delete');
     });
 
     // Scope of Improvement
