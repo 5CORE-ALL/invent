@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class MiraklDailyData extends Model
 {
@@ -118,50 +120,93 @@ class MiraklDailyData extends Model
     }
 
     /**
-     * Raw stored order_created_at is Pacific wall-clock (app TZ).
-     * Bucket by DATE() so a 17th order counts on the 17th — no UTC re-window.
+     * Mirakl created_at is UTC. toDateTimeString() stored that UTC clock naive.
+     * Macy's seller page shows US time — a 10:50 PM ET 17th is 02:50 UTC on the 18th.
+     * Bucket and display in California so those orders stay on the 17th.
+     *
+     * @return array{0: string, 1: string} [utcStart, utcEnd]
      */
+    public static function utcBoundsForPacificDate(string $ymd): array
+    {
+        $day = Carbon::parse($ymd, 'America/Los_Angeles');
+
+        return [
+            $day->copy()->startOfDay()->utc()->toDateTimeString(),
+            $day->copy()->endOfDay()->utc()->toDateTimeString(),
+        ];
+    }
+
+    public static function pacificDateTime(?string $rawUtc): ?string
+    {
+        if ($rawUtc === null || $rawUtc === '') {
+            return null;
+        }
+
+        return Carbon::parse($rawUtc, 'UTC')->timezone('America/Los_Angeles')->toDateTimeString();
+    }
+
+    public static function pacificYmd(?string $rawUtc): ?string
+    {
+        if ($rawUtc === null || $rawUtc === '') {
+            return null;
+        }
+
+        return Carbon::parse($rawUtc, 'UTC')->timezone('America/Los_Angeles')->toDateString();
+    }
+
     public static function sumRevenueOnDate(string $channelName, string $ymd): float
     {
-        return round((float) static::query()
+        [$start, $end] = self::utcBoundsForPacificDate($ymd);
+
+        return round((float) DB::table('mirakl_daily_data')
             ->where('channel_name', $channelName)
-            ->whereDate('order_created_at', $ymd)
-            ->notClosed()
+            ->where('order_created_at', '>=', $start)
+            ->where('order_created_at', '<=', $end)
+            ->where('status', '!=', 'CLOSED')
             ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
             ->value('revenue'), 2);
     }
 
     public static function sumRevenueOnDateRange(string $channelName, string $startYmd, string $endYmd): float
     {
-        return round((float) static::query()
+        [$start] = self::utcBoundsForPacificDate($startYmd);
+        [, $end] = self::utcBoundsForPacificDate($endYmd);
+
+        return round((float) DB::table('mirakl_daily_data')
             ->where('channel_name', $channelName)
-            ->whereDate('order_created_at', '>=', $startYmd)
-            ->whereDate('order_created_at', '<=', $endYmd)
-            ->notClosed()
+            ->where('order_created_at', '>=', $start)
+            ->where('order_created_at', '<=', $end)
+            ->where('status', '!=', 'CLOSED')
             ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
             ->value('revenue'), 2);
     }
 
     /**
-     * @return array<string, float> Y-m-d => revenue
+     * @return array<string, float> Pacific Y-m-d => revenue
      */
     public static function revenueByCalendarDate(string $channelName, string $startYmd, string $endYmd): array
     {
-        $rows = static::query()
+        [$start] = self::utcBoundsForPacificDate($startYmd);
+        [, $end] = self::utcBoundsForPacificDate($endYmd);
+
+        $rows = DB::table('mirakl_daily_data')
             ->where('channel_name', $channelName)
-            ->whereDate('order_created_at', '>=', $startYmd)
-            ->whereDate('order_created_at', '<=', $endYmd)
-            ->notClosed()
-            ->selectRaw('DATE(order_created_at) as d, COALESCE(SUM(unit_price * quantity), 0) as revenue')
-            ->groupByRaw('DATE(order_created_at)')
-            ->get();
+            ->where('order_created_at', '>=', $start)
+            ->where('order_created_at', '<=', $end)
+            ->where('status', '!=', 'CLOSED')
+            ->get(['order_created_at', 'unit_price', 'quantity']);
 
         $out = [];
         foreach ($rows as $row) {
-            $d = (string) ($row->d ?? '');
-            if ($d !== '') {
-                $out[$d] = (float) $row->revenue;
+            $d = self::pacificYmd((string) $row->order_created_at);
+            if ($d === null) {
+                continue;
             }
+            $out[$d] = ($out[$d] ?? 0) + ((float) $row->unit_price * (float) $row->quantity);
+        }
+
+        foreach ($out as $d => $amt) {
+            $out[$d] = round($amt, 2);
         }
 
         return $out;

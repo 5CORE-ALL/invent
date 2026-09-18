@@ -296,7 +296,7 @@
                         sorter: "datetime",
                         width: 140,
                         visible: true,
-                        headerTooltip: "Raw Macy's / Mirakl created_at in California time. Not converted to India.",
+                        headerTooltip: "Macy's / Mirakl created_at shown in California. A 10:50 PM US 17th stays on the 17th (UTC 18th is not used as the date).",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (!value) return '';

@@ -636,10 +636,15 @@ class YesterdayMarketplaceMetricsService
             [$start, $end] = $window;
         }
 
+        $fromYmd = $start->copy()->timezone(self::TZ)->toDateString();
+        $toYmd = $end->copy()->timezone(self::TZ)->toDateString();
+        [$utcStart] = \App\Models\MiraklDailyData::utcBoundsForPacificDate($fromYmd);
+        [, $utcEnd] = \App\Models\MiraklDailyData::utcBoundsForPacificDate($toYmd);
+
         $rows = DB::table('mirakl_daily_data')
             ->where('channel_name', $channelName)
-            ->whereDate('order_created_at', '>=', $start->copy()->timezone(self::TZ)->toDateString())
-            ->whereDate('order_created_at', '<=', $end->copy()->timezone(self::TZ)->toDateString())
+            ->where('order_created_at', '>=', $utcStart)
+            ->where('order_created_at', '<=', $utcEnd)
             ->where('status', '!=', 'CLOSED')
             ->get();
 

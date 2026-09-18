@@ -67,12 +67,9 @@ class MacysSalesController extends Controller
             $unitPrice = floatval($order->unit_price);
             $saleAmount = $unitPrice * $quantity;
 
-            // Stored naive datetime is already Pacific (app TZ). Do not JSON-encode
-            // Carbon as UTC — the browser would then paint India dates on /macys/daily-sales.
-            $orderDatePt = $order->getRawOriginal('order_created_at')
-                ?: ($order->order_created_at
-                    ? $order->order_created_at->copy()->timezone('America/Los_Angeles')->toDateTimeString()
-                    : null);
+            // Mirakl stores UTC wall-clock. Show California so a 10:50 PM ET 17th
+            // (02:50 UTC on the 18th) stays on the 17th — same as the Macy's seller page.
+            $orderDatePt = MiraklDailyData::pacificDateTime($order->getRawOriginal('order_created_at'));
 
             // T Weight = Weight Act * Quantity
             $tWeight = $weightAct * $quantity;
