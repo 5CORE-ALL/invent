@@ -1,7 +1,8 @@
 {{--
     User incentives — Task Summary INC column + $ icon beside the login name.
     Table columns: Target, Incentive, Condition, Additional Condition.
-    Editable by president@5core.com only. Everyone else can view their own row.
+    Editable by president@5core.com only. software5@5core.com can view every row.
+    Everyone else can view their own row.
 
     GET  /tasks/user-incentives
     POST /tasks/user-incentives/sync

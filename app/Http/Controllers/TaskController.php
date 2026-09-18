@@ -294,6 +294,11 @@ class TaskController extends Controller
 
     private const INCENTIVE_EDITOR_EMAIL = 'president@5core.com';
 
+    /** Emails allowed to view every team member's incentives (read-only). */
+    private const INCENTIVE_VIEWER_EMAILS = [
+        'software5@5core.com',
+    ];
+
     /** Storage path (relative to storage/app) for the persisted training video link. */
     private const TRAINING_VIDEO_FILE = 'task_training_video.json';
 
@@ -1223,10 +1228,11 @@ class TaskController extends Controller
         ];
 
         $canEditIncentives = $this->canEditIncentives($viewer);
+        $canViewAllIncentives = $this->canViewAllIncentives($viewer);
 
         return view(
             'tasks.task-summary',
-            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl', 'canEditIncentives')
+            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl', 'canEditIncentives', 'canViewAllIncentives')
         );
     }
 
@@ -8139,7 +8145,7 @@ class TaskController extends Controller
         return strtolower((string) ($viewer->email ?? '')) === self::INCENTIVE_EDITOR_EMAIL;
     }
 
-    protected function canViewUserIncentives(?User $viewer, User $target): bool
+    protected function canViewAllIncentives(?User $viewer): bool
     {
         if (! $viewer) {
             return false;
@@ -8148,10 +8154,26 @@ class TaskController extends Controller
             return true;
         }
 
+        return in_array(
+            strtolower((string) ($viewer->email ?? '')),
+            self::INCENTIVE_VIEWER_EMAILS,
+            true
+        );
+    }
+
+    protected function canViewUserIncentives(?User $viewer, User $target): bool
+    {
+        if (! $viewer) {
+            return false;
+        }
+        if ($this->canViewAllIncentives($viewer)) {
+            return true;
+        }
+
         return (int) $viewer->id === (int) $target->id;
     }
 
-    /** GET incentives for a team member (self, mgr juniors, president). */
+    /** GET incentives for a team member (self, privileged viewers, president). */
     public function getUserIncentives(Request $request): JsonResponse
     {
         $validated = $request->validate([

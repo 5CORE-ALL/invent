@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amz CVR Issues', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amz CVR Issues', 'sidenav' => 'condensed', 'skipHighcharts' => true])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -314,6 +314,24 @@
             box-sizing: border-box !important;
             margin: 0 !important;
         }
+
+        /* Metric history modal — same full-width layout as Active Channel */
+        #amzCvrRollingChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #amzCvrRollingChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #amzCvrRollingChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -340,6 +358,12 @@
                             title="Missing L — INV&gt;0, not listed on Amz (price ≤ 0), REQ. Click to filter.">
                             ML: <span id="amz-cvr-ml-count">0</span>
                         </span>
+                        <select id="amz-cvr-inv-filter" class="form-select form-select-sm"
+                            title="Filter by INV">
+                            <option value="all">INV</option>
+                            <option value="zero">0</option>
+                            <option value="more" selected>&gt; 0</option>
+                        </select>
                         <select id="amz-cvr-cvr-filter" class="form-select form-select-sm"
                             title="CVR% slabs — same bands as Analytics Amz / Sprice × CVR Rule">
                             <option value="all">CVR%</option>
@@ -534,49 +558,60 @@
         </div>
     </div>
 
-    {{-- Rolling CVR Graph Modal --}}
-    <div class="modal fade" id="amzCvrRollingChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header bg-info text-white py-2">
-                    <h6 class="modal-title mb-0">
+    {{-- Rolling CVR Graph Modal — same layout/style as Active Channel --}}
+    <div class="modal fade p-0" id="amzCvrRollingChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="amzCvrRollingChartTitle">CVR Rolling History</span>
+                        <span id="amzCvrRollingChartTitle">Amazon - CVR (Rolling L30)</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="amzCvrRollingChartDays" class="form-select form-select-sm bg-white"
-                            style="width: 110px; height: 28px; font-size: 12px;">
+                            style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
                             <option value="7">7 Days</option>
                             <option value="30" selected>30 Days</option>
+                            <option value="31">31 Days</option>
+                            <option value="32">32 Days</option>
+                            <option value="35">35 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
                             <option value="0">Lifetime</option>
                         </select>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
                     </div>
                 </div>
                 <div class="modal-body p-2">
-                    <div class="d-flex align-items-stretch" style="min-height: 260px;">
-                        <div id="amzCvrRollingChartContainer" style="flex: 1; min-width: 0; height: 260px;"></div>
-                        <div style="width: 96px; display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 8px; border-left: 1px solid #e9ecef; background: #f8f9fa;">
-                            <div class="text-center">
-                                <div class="small text-danger fw-bold" style="font-size: 10px;">HIGHEST</div>
-                                <div id="amzCvrChartHighest" class="fw-bold text-danger">—</div>
+                    <div id="amzCvrRollingChartContainer" style="height: 28vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="amzCvrRollingChartCanvas"></canvas>
+                        </div>
+                        <div style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="amzCvrChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
                             </div>
-                            <div class="text-center border-top border-bottom py-2">
-                                <div class="small text-muted fw-bold" style="font-size: 10px;">MEDIAN</div>
-                                <div id="amzCvrChartMedian" class="fw-bold text-muted">—</div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="amzCvrChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
                             </div>
-                            <div class="text-center">
-                                <div class="small text-success fw-bold" style="font-size: 10px;">LOWEST</div>
-                                <div id="amzCvrChartLowest" class="fw-bold text-success">—</div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="amzCvrChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
                             </div>
                         </div>
                     </div>
-                    <div id="amzCvrRollingChartLoading" class="text-center py-4 d-none">
-                        <i class="fa fa-spinner fa-spin me-1"></i> Loading…
+                    <div id="amzCvrRollingChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
                     </div>
-                    <div id="amzCvrRollingChartNoData" class="text-center text-muted py-4 d-none">No rolling CVR data found.</div>
+                    <div id="amzCvrRollingChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No rolling CVR data found.</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -642,6 +677,7 @@
 @endsection
 
 @section('script')
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
@@ -671,6 +707,7 @@
 
         function collectAmzCvrFilterState() {
             return {
+                inv: (document.getElementById('amz-cvr-inv-filter') || {}).value || 'more',
                 cvr: (document.getElementById('amz-cvr-cvr-filter') || {}).value || 'all',
                 views: (document.getElementById('amz-cvr-views-filter') || {}).value || 'all',
                 historyDate: (document.getElementById('amz-cvr-history-date-filter') || {}).value || 'all',
@@ -717,6 +754,11 @@
             const f = data.filters;
             const keepEl = document.getElementById('amz-cvr-keep-filters');
             if (keepEl) keepEl.checked = true;
+
+            const invEl = document.getElementById('amz-cvr-inv-filter');
+            if (invEl && (f.inv === 'all' || f.inv === 'zero' || f.inv === 'more')) {
+                invEl.value = f.inv;
+            }
 
             const cvrEl = document.getElementById('amz-cvr-cvr-filter');
             if (cvrEl && f.cvr) cvrEl.value = f.cvr;
@@ -862,6 +904,19 @@
             return true;
         }
 
+        function amzCvrRowInv(row) {
+            const inv = parseFloat(row && row.INV);
+            return isFinite(inv) ? inv : 0;
+        }
+
+        function amzCvrMatchesInvFilter(row, invFilter) {
+            if (!invFilter || invFilter === 'all') return true;
+            const inv = amzCvrRowInv(row);
+            if (invFilter === 'zero') return inv === 0;
+            if (invFilter === 'more') return inv > 0;
+            return true;
+        }
+
         function amzCvrSetOptionLabel(selectEl, value, label, count) {
             if (!selectEl) return;
             const opt = selectEl.querySelector('option[value="' + value + '"]');
@@ -881,6 +936,7 @@
 
             const cvrCounts = { all: rows.length, zero: 0, yellow: 0, blue: 0, green: 0, pink: 0 };
             const viewsCounts = { all: rows.length, zero: 0, '1-70': 0, '71-300': 0, gt300: 0 };
+            const invCounts = { all: rows.length, zero: 0, more: 0 };
 
             rows.forEach(function(row) {
                 const cvr = amzCvrRowCvrL30(row);
@@ -899,7 +955,16 @@
                 else if (views >= 1 && views <= 70) viewsCounts['1-70']++;
                 else if (views >= 71 && views <= 300) viewsCounts['71-300']++;
                 else if (views > 300) viewsCounts.gt300++;
+
+                const inv = amzCvrRowInv(row);
+                if (inv === 0) invCounts.zero++;
+                else if (inv > 0) invCounts.more++;
             });
+
+            const invSel = document.getElementById('amz-cvr-inv-filter');
+            amzCvrSetOptionLabel(invSel, 'all', 'INV', invCounts.all);
+            amzCvrSetOptionLabel(invSel, 'zero', '0', invCounts.zero);
+            amzCvrSetOptionLabel(invSel, 'more', '> 0', invCounts.more);
 
             const cvrSel = document.getElementById('amz-cvr-cvr-filter');
             amzCvrSetOptionLabel(cvrSel, 'all', 'CVR%', cvrCounts.all);
@@ -998,6 +1063,7 @@
         function applyAmzCvrFilters(opts) {
             opts = opts || {};
             if (!amz_cvr_issues) return;
+            const invFilter = (document.getElementById('amz-cvr-inv-filter') || {}).value || 'more';
             const cvrFilter = (document.getElementById('amz-cvr-cvr-filter') || {}).value || 'all';
             const viewsFilter = (document.getElementById('amz-cvr-views-filter') || {}).value || 'all';
             const historyDateFilter = (document.getElementById('amz-cvr-history-date-filter') || {}).value || 'all';
@@ -1008,6 +1074,11 @@
             if (amzCvrMlFilterActive) {
                 amz_cvr_issues.addFilter(function(data) {
                     return isAmzCvrMissingL(data);
+                });
+            }
+            if (invFilter !== 'all') {
+                amz_cvr_issues.addFilter(function(data) {
+                    return amzCvrMatchesInvFilter(data, invFilter);
                 });
             }
             if (cvrFilter !== 'all') {
@@ -1031,11 +1102,6 @@
                     return sku.indexOf(skuSearch) !== -1;
                 });
             }
-            // Always keep latest history rows on top.
-            amz_cvr_issues.setSort([
-                { column: 'audit_history_ts', dir: 'desc' },
-                { column: 'CVR_L30', dir: 'asc' }
-            ]);
             updateAmzCvrMlBadge();
             updateAmzCvrRowsBadge();
             if (opts.persist) saveAmzCvrFilterState();
@@ -1888,31 +1954,243 @@
         function amzCvrFmtPct(v) {
             const n = Number(v);
             if (!isFinite(n)) return '—';
-            return n.toFixed(1) + '%';
+            return n.toFixed(2) + '%';
+        }
+
+        function amzCvrChartRangeLabel(days) {
+            if (days === 0) return 'Lifetime';
+            return 'L' + days;
+        }
+
+        function amzCvrSetRollingChartTitle() {
+            const title = document.getElementById('amzCvrRollingChartTitle');
+            if (!title) return;
+            const who = amzCvrRollingChartSku || 'Amazon';
+            title.textContent = who + ' - CVR (Rolling ' + amzCvrChartRangeLabel(amzCvrRollingChartDays) + ')';
+        }
+
+        function amzCvrChartDotColors(values) {
+            const gray = '#6c757d';
+            const green = '#28a745';
+            const red = '#dc3545';
+            const eps = 0.005;
+            return values.map(function(v, i) {
+                if (i === 0) return gray;
+                const prev = values[i - 1];
+                if (Math.abs(v - prev) <= eps) return gray;
+                return v > prev ? green : red;
+            });
         }
 
         function openAmzCvrRollingChart(sku) {
             amzCvrRollingChartSku = sku ? String(sku).trim() : null;
-            amzCvrRollingChartDays = parseInt(document.getElementById('amzCvrRollingChartDays')?.value, 10);
-            if (!isFinite(amzCvrRollingChartDays)) amzCvrRollingChartDays = 30;
-            const title = document.getElementById('amzCvrRollingChartTitle');
-            if (title) {
-                title.textContent = amzCvrRollingChartSku
-                    ? ('CVR Rolling — ' + amzCvrRollingChartSku)
-                    : 'CVR Rolling (visible SKUs)';
-            }
+            const daysEl = document.getElementById('amzCvrRollingChartDays');
+            if (daysEl) daysEl.value = '30';
+            amzCvrRollingChartDays = 30;
+            amzCvrSetRollingChartTitle();
             const modalEl = document.getElementById('amzCvrRollingChartModal');
+            if (modalEl) modalEl.style.zIndex = '10050';
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
             loadAmzCvrRollingChart();
+        }
+
+        function renderAmzCvrRollingChart(points) {
+            const canvas = document.getElementById('amzCvrRollingChartCanvas');
+            if (!canvas || typeof Chart === 'undefined') return;
+
+            const labels = points.map(function(p) { return p.label; });
+            const values = points.map(function(p) { return p.value; });
+            const dataMin = Math.min.apply(null, values);
+            const dataMax = Math.max.apply(null, values);
+            const sorted = values.slice().sort(function(a, b) { return a - b; });
+            const mid = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2
+                ? sorted[mid]
+                : ((sorted[mid - 1] + sorted[mid]) / 2);
+            const range = dataMax - dataMin || 1;
+            const yPad = Math.max(range * 0.28, Math.abs(dataMax) * 0.08, range * 0.1);
+            const yMin = Math.max(0, dataMin - range * 0.12);
+            const yMax = dataMax + yPad;
+            const dotColors = amzCvrChartDotColors(values);
+            const labelColors = dotColors.slice();
+            const refGray = '#6c757d';
+            let maxIdx = 0;
+            let minIdx = 0;
+            values.forEach(function(v, i) {
+                if (v >= values[maxIdx]) maxIdx = i;
+                if (v <= values[minIdx]) minIdx = i;
+            });
+
+            const highestEl = document.getElementById('amzCvrChartHighest');
+            const medianEl = document.getElementById('amzCvrChartMedian');
+            const lowestEl = document.getElementById('amzCvrChartLowest');
+            if (highestEl) {
+                highestEl.textContent = amzCvrFmtPct(dataMax);
+                highestEl.style.color = dotColors[maxIdx] || refGray;
+                if (highestEl.previousElementSibling) highestEl.previousElementSibling.style.color = highestEl.style.color;
+            }
+            if (medianEl) {
+                medianEl.textContent = amzCvrFmtPct(median);
+                medianEl.style.color = refGray;
+                if (medianEl.previousElementSibling) medianEl.previousElementSibling.style.color = refGray;
+            }
+            if (lowestEl) {
+                lowestEl.textContent = amzCvrFmtPct(dataMin);
+                lowestEl.style.color = dotColors[minIdx] || refGray;
+                if (lowestEl.previousElementSibling) lowestEl.previousElementSibling.style.color = lowestEl.style.color;
+            }
+
+            const medianLinePlugin = {
+                id: 'amzCvrMedianLine',
+                afterDraw: function(chart) {
+                    const yScale = chart.scales.y;
+                    const xScale = chart.scales.x;
+                    const ctx = chart.ctx;
+                    const yPixel = yScale.getPixelForValue(median);
+                    ctx.save();
+                    ctx.setLineDash([6, 4]);
+                    ctx.strokeStyle = '#6c757d';
+                    ctx.lineWidth = 1.2;
+                    ctx.beginPath();
+                    ctx.moveTo(xScale.left, yPixel);
+                    ctx.lineTo(xScale.right, yPixel);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            };
+
+            const valueLabelsPlugin = {
+                id: 'amzCvrValueLabels',
+                afterDraw: function(chart) {
+                    const dataset = chart.data.datasets[0];
+                    const meta = chart.getDatasetMeta(0);
+                    const ctx = chart.ctx;
+                    const lastIdx = meta.data.length - 1;
+                    const anchors = [];
+                    ctx.save();
+                    ctx.font = 'bold 10px Inter, system-ui, sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    meta.data.forEach(function(point, i) {
+                        const val = dataset.data[i];
+                        let offsetY = (i % 2 === 0) ? -12 : -26;
+                        if (i === lastIdx) {
+                            offsetY = (lastIdx % 2 === 0) ? -26 : -12;
+                        }
+                        if (anchors.length) {
+                            const prev = anchors[anchors.length - 1];
+                            if (Math.abs(point.x - prev.x) < 36 && Math.abs((point.y + offsetY) - prev.y) < 14) {
+                                offsetY = (offsetY === -12) ? -28 : -12;
+                            }
+                        }
+                        anchors.push({ x: point.x, y: point.y + offsetY });
+                        ctx.save();
+                        ctx.fillStyle = labelColors[i];
+                        ctx.translate(point.x, point.y + offsetY);
+                        ctx.rotate(-Math.PI / 5);
+                        ctx.fillText(amzCvrFmtPct(val), 2, 0);
+                        ctx.restore();
+                    });
+                    ctx.restore();
+                }
+            };
+
+            if (amzCvrRollingChart) {
+                amzCvrRollingChart.destroy();
+                amzCvrRollingChart = null;
+            }
+
+            amzCvrRollingChart = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'CVR',
+                        data: values,
+                        backgroundColor: 'rgba(108,117,125,0.08)',
+                        borderColor: '#adb5bd',
+                        borderWidth: 1.5,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: dotColors,
+                        pointBorderColor: dotColors,
+                        pointHoverBackgroundColor: dotColors,
+                        pointHoverBorderColor: dotColors,
+                        pointBorderWidth: 1.5,
+                        pointHoverBorderWidth: 1.5
+                    }]
+                },
+                plugins: [medianLinePlugin, valueLabelsPlugin],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    clip: false,
+                    layout: {
+                        padding: { top: 44, left: 4, right: 22, bottom: 8 }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            titleFont: { size: 10 },
+                            bodyFont: { size: 10 },
+                            padding: 6,
+                            callbacks: {
+                                labelColor: function(context) {
+                                    const c = dotColors[context.dataIndex] || '#6c757d';
+                                    return {
+                                        borderColor: c,
+                                        backgroundColor: c,
+                                        borderWidth: 2,
+                                        borderRadius: 8
+                                    };
+                                },
+                                label: function(context) {
+                                    const idx = context.dataIndex;
+                                    const parts = ['Value: ' + amzCvrFmtPct(context.raw)];
+                                    if (idx > 0) {
+                                        const diff = context.raw - values[idx - 1];
+                                        const arrow = diff < 0 ? '▼' : (diff > 0 ? '▲' : '▬');
+                                        parts.push('vs Yesterday: ' + arrow + ' ' + amzCvrFmtPct(Math.abs(diff)));
+                                    }
+                                    return parts;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: yMin,
+                            max: yMax,
+                            ticks: {
+                                font: { size: 9 },
+                                callback: function(value) {
+                                    return amzCvrFmtPct(value);
+                                }
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 60,
+                                minRotation: 60,
+                                autoSkip: false,
+                                maxTicksLimit: Math.max(labels.length, 31),
+                                font: { size: 8 }
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         function loadAmzCvrRollingChart() {
             const loading = document.getElementById('amzCvrRollingChartLoading');
             const noData = document.getElementById('amzCvrRollingChartNoData');
             const container = document.getElementById('amzCvrRollingChartContainer');
-            if (loading) loading.classList.remove('d-none');
-            if (noData) noData.classList.add('d-none');
-            if (container) container.style.visibility = 'hidden';
+            if (loading) loading.style.display = '';
+            if (noData) noData.style.display = 'none';
+            if (container) container.style.display = 'none';
 
             const params = new URLSearchParams();
             params.set('days', String(amzCvrRollingChartDays || 30));
@@ -1944,7 +2222,7 @@
             })
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
-                    if (loading) loading.classList.add('d-none');
+                    if (loading) loading.style.display = 'none';
                     const rows = Array.isArray(data) ? data : [];
                     const points = rows.map(function(d) {
                         const val = amzCvrRollingChartSku
@@ -1957,95 +2235,38 @@
                     }).filter(function(p) { return p.label; });
 
                     if (!points.length) {
-                        if (noData) noData.classList.remove('d-none');
+                        if (noData) noData.style.display = '';
                         if (amzCvrRollingChart) {
                             amzCvrRollingChart.destroy();
                             amzCvrRollingChart = null;
                         }
-                        document.getElementById('amzCvrChartHighest').textContent = '—';
-                        document.getElementById('amzCvrChartMedian').textContent = '—';
-                        document.getElementById('amzCvrChartLowest').textContent = '—';
+                        const highestEl = document.getElementById('amzCvrChartHighest');
+                        const medianEl = document.getElementById('amzCvrChartMedian');
+                        const lowestEl = document.getElementById('amzCvrChartLowest');
+                        if (highestEl) highestEl.textContent = '-';
+                        if (medianEl) medianEl.textContent = '-';
+                        if (lowestEl) lowestEl.textContent = '-';
                         return;
                     }
 
-                    if (container) container.style.visibility = 'visible';
-                    const values = points.map(function(p) { return p.value; });
-                    const sorted = values.slice().sort(function(a, b) { return a - b; });
-                    const mid = Math.floor(sorted.length / 2);
-                    const median = sorted.length % 2
-                        ? sorted[mid]
-                        : ((sorted[mid - 1] + sorted[mid]) / 2);
-                    const highest = Math.max.apply(null, values);
-                    const lowest = Math.min.apply(null, values);
-                    document.getElementById('amzCvrChartHighest').textContent = amzCvrFmtPct(highest);
-                    document.getElementById('amzCvrChartMedian').textContent = amzCvrFmtPct(median);
-                    document.getElementById('amzCvrChartLowest').textContent = amzCvrFmtPct(lowest);
-
-                    if (typeof Highcharts === 'undefined') {
+                    if (typeof Chart === 'undefined') {
                         if (noData) {
-                            noData.textContent = 'Chart library not loaded.';
-                            noData.classList.remove('d-none');
+                            const p = noData.querySelector('p');
+                            if (p) p.textContent = 'Chart library not loaded.';
+                            noData.style.display = '';
                         }
                         return;
                     }
 
-                    if (amzCvrRollingChart) {
-                        amzCvrRollingChart.destroy();
-                        amzCvrRollingChart = null;
-                    }
-
-                    amzCvrRollingChart = Highcharts.chart('amzCvrRollingChartContainer', {
-                        chart: { type: 'area', height: 260, spacingTop: 16, backgroundColor: 'transparent' },
-                        title: { text: null },
-                        credits: { enabled: false },
-                        legend: { enabled: false },
-                        xAxis: {
-                            categories: points.map(function(p) { return p.label; }),
-                            labels: { rotation: -45, style: { fontSize: '10px' } }
-                        },
-                        yAxis: {
-                            title: { text: 'CVR %' },
-                            labels: { format: '{value}%' },
-                            plotLines: [{
-                                value: median,
-                                color: '#6c757d',
-                                dashStyle: 'Dash',
-                                width: 1,
-                                zIndex: 4,
-                                label: { text: 'Median', style: { color: '#6c757d', fontSize: '10px' } }
-                            }]
-                        },
-                        tooltip: {
-                            shared: true,
-                            formatter: function() {
-                                const p = this.points && this.points[0];
-                                if (!p) return false;
-                                return '<b>' + p.key + '</b><br/>CVR: <b>' + amzCvrFmtPct(p.y) + '</b>';
-                            }
-                        },
-                        plotOptions: {
-                            area: {
-                                fillOpacity: 0.12,
-                                marker: {
-                                    enabled: true,
-                                    radius: 3,
-                                    states: { hover: { radius: 5 } }
-                                }
-                            }
-                        },
-                        series: [{
-                            name: 'CVR',
-                            data: values,
-                            color: '#0d6efd',
-                            lineWidth: 2
-                        }]
-                    });
+                    if (container) container.style.display = 'flex';
+                    renderAmzCvrRollingChart(points);
                 })
                 .catch(function() {
-                    if (loading) loading.classList.add('d-none');
+                    if (loading) loading.style.display = 'none';
                     if (noData) {
-                        noData.textContent = 'Could not load rolling CVR data.';
-                        noData.classList.remove('d-none');
+                        const p = noData.querySelector('p');
+                        if (p) p.textContent = 'Could not load rolling CVR data.';
+                        noData.style.display = '';
                     }
                 });
         }
@@ -2511,7 +2732,20 @@
                 document.body.appendChild(auditModalEl);
             }
 
-            restoreAmzCvrFilterState();
+            clearAmzCvrSavedFilters();
+            amzCvrMlFilterActive = false;
+            const invFilterEl = document.getElementById('amz-cvr-inv-filter');
+            if (invFilterEl) invFilterEl.value = 'more';
+            const cvrFilterEl = document.getElementById('amz-cvr-cvr-filter');
+            if (cvrFilterEl) cvrFilterEl.value = 'all';
+            const viewsFilterEl = document.getElementById('amz-cvr-views-filter');
+            if (viewsFilterEl) viewsFilterEl.value = 'all';
+            const histFilterEl = document.getElementById('amz-cvr-history-date-filter');
+            if (histFilterEl) histFilterEl.value = 'all';
+            const skuSearchEl = document.getElementById('amz-cvr-sku-search');
+            if (skuSearchEl) skuSearchEl.value = '';
+            const keepFiltersEl = document.getElementById('amz-cvr-keep-filters');
+            if (keepFiltersEl) keepFiltersEl.checked = false;
 
             amz_cvr_issues = new Tabulator('#amz_cvr_issues', {
                 ajaxURL: @json(route('amz.cvr.issues.data')),
@@ -2525,8 +2759,9 @@
                 paginationCounter: 'rows',
                 movableColumns: true,
                 initialSort: [
-                    { column: 'audit_history_ts', dir: 'desc' },
-                    { column: 'CVR_L30', dir: 'asc' }
+                    { column: 'CVR_L30', dir: 'asc' },
+                    { column: 'Parent', dir: 'asc' },
+                    { column: '(Child) sku', dir: 'asc' }
                 ],
                 columns: buildAmzCvrIssuesColumns()
             });
@@ -2551,6 +2786,10 @@
 
             document.getElementById('amz-cvr-ml-badge')?.addEventListener('click', function() {
                 amzCvrMlFilterActive = !amzCvrMlFilterActive;
+                applyAmzCvrFilters({ persist: true });
+            });
+
+            document.getElementById('amz-cvr-inv-filter')?.addEventListener('change', function() {
                 applyAmzCvrFilters({ persist: true });
             });
 
@@ -2597,8 +2836,10 @@
 
 
             document.getElementById('amzCvrRollingChartDays')?.addEventListener('change', function() {
-                amzCvrRollingChartDays = parseInt(this.value, 10);
-                if (!isFinite(amzCvrRollingChartDays)) amzCvrRollingChartDays = 30;
+                const days = parseInt(this.value, 10);
+                if (days === amzCvrRollingChartDays) return;
+                amzCvrRollingChartDays = isFinite(days) ? days : 30;
+                amzCvrSetRollingChartTitle();
                 loadAmzCvrRollingChart();
             });
 

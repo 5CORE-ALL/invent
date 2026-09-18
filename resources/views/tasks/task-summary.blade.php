@@ -1462,7 +1462,7 @@
                                                     data-incentive-count="{{ (int) ($row['incentive_count'] ?? 0) }}"
                                                     @php
                                                         $incUserId = (int) ($row['user_id'] ?? 0);
-                                                        $canOpenInc = $incUserId > 0 && (!empty($canEditIncentives) || $incUserId === (int) auth()->id());
+                                                        $canOpenInc = $incUserId > 0 && (!empty($canViewAllIncentives) || !empty($canEditIncentives) || $incUserId === (int) auth()->id());
                                                     @endphp
                                                     @if($incUserId === 0) disabled title="No user record found for this row"
                                                     @elseif(!$canOpenInc) disabled title="You can only view your own incentives"

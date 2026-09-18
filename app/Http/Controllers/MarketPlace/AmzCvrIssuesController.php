@@ -401,9 +401,6 @@ class AmzCvrIssuesController extends Controller
 
             $shopify = $shopifyBySku[$sku] ?? null;
             $inv = (float) ($shopify->inv ?? 0);
-            if ($inv < 1) {
-                continue;
-            }
             $ovL30 = (float) ($shopify->quantity ?? 0);
             $dilPct = $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0;
 
