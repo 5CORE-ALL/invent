@@ -539,8 +539,8 @@ class ChannelMasterController extends Controller
                 'cvr_pct' => $cvrPct,
             ];
 
-            // Temu 1 / Temu 2 / Temu 3 Views/CVR must match the /new-temuone and
-            // /new-temutwo Views badges (sum of every SKU row), not a guarded leftover.
+            // Temu 1 / Temu 2 / Temu 3 Views/CVR must match /new-temuone and
+            // /new-temu2: one Views number per Parent (variations share a listing).
             $pageViews = $this->computeTemuViewsForMasterChannel($channel);
             if (! empty($pageViews['ok'])) {
                 $result['total_views'] = $pageViews['total_views'];
@@ -564,11 +564,11 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * /new-temuone Views badge: sum every Active PM SKU row (skip PARENT).
-     * Per row — same as NewTemuoneController::dataJson:
+     * /new-temuone Views badge: one Views number per Product Master Parent
+     * (variations share the listing). Skip PARENT SKUs. Per-row formula matches
+     * NewTemuoneController::dataJson:
      *   sheet = SUM(temu_view_data.product_clicks) by temu_metrics.goods_id
      *   views = sheet if > 0, else product_clicks_l30 + ads clicks.
-     * Variations that share a Goods ID are counted once per SKU (badge sum).
      *
      * @return array{ok: bool, total_views: int, total_sold: int, cvr_pct: float}
      */
@@ -585,20 +585,25 @@ class ChannelMasterController extends Controller
                 return $sku;
             };
 
-            $pmSkus = ProductMaster::query()
+            $pmRows = ProductMaster::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
-                ->pluck('sku')
-                ->filter(fn ($s) => stripos((string) $s, 'PARENT') === false)
-                ->unique()
-                ->values();
+                ->get(['sku', 'parent']);
 
             $normalizedPm = [];
-            foreach ($pmSkus as $sku) {
-                $n = $normalizeSku($sku);
-                if ($n !== '') {
-                    $normalizedPm[$n] = (string) $sku;
+            $parentByNorm = [];
+            foreach ($pmRows as $pm) {
+                $sku = (string) $pm->sku;
+                if (stripos($sku, 'PARENT') !== false) {
+                    continue;
                 }
+                $n = $normalizeSku($sku);
+                if ($n === '') {
+                    continue;
+                }
+                $normalizedPm[$n] = $sku;
+                $parent = strtoupper(trim((string) preg_replace('/^PARENT\s+/i', '', (string) ($pm->parent ?? ''))));
+                $parentByNorm[$n] = $parent !== '' ? $parent : $n;
             }
 
             $noSpaceToNormalized = [];
@@ -645,17 +650,22 @@ class ChannelMasterController extends Controller
                     });
             }
 
-            $totalViews = 0;
+            $viewsByParent = [];
             foreach ($normalizedPm as $norm => $_sku) {
                 $item = $metricsByNorm[$norm] ?? null;
                 $gid = $item ? TemuGoodsIdHelper::normalizeKey($item->goods_id) : null;
                 $hasSheet = $gid !== null && array_key_exists($gid, $viewByGid);
-                $sheet = $hasSheet ? (int) $viewByGid[$gid] : 0;
+                $sheet = $hasSheet ? max(0, (int) $viewByGid[$gid]) : 0;
                 $oClicks = $sheet;
-                $productClicks = $hasSheet ? $sheet : (int) ($item->product_clicks_l30 ?? 0);
-                $adsViews = $gid ? (int) ($adsByGid[$gid] ?? 0) : 0;
-                $totalViews += $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
+                $productClicks = $hasSheet ? $sheet : max(0, (int) ($item->product_clicks_l30 ?? 0));
+                $adsViews = $gid ? max(0, (int) ($adsByGid[$gid] ?? 0)) : 0;
+                $views = $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
+                $parentKey = $parentByNorm[$norm] ?? $norm;
+                if (! isset($viewsByParent[$parentKey]) || $views > $viewsByParent[$parentKey]) {
+                    $viewsByParent[$parentKey] = $views;
+                }
             }
+            $totalViews = (int) array_sum($viewsByParent);
 
             $totalSold = 0;
             [$apiStart, $apiEnd] = TemuShopifySalesService::channelMasterL30Window();
@@ -862,11 +872,11 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 3 Views on /all-marketplace-master: sum every Active PM SKU row (skip PARENT).
+     * Temu 3 Views on /all-marketplace-master: one Views number per Parent
+     * (variations share the listing). Skip PARENT SKUs.
      * Same per-row Views column as /temu3-decrease:
      *   Goods ID from temu3_pricing, views = SUM(temu3_view_data.product_clicks)
      *   in the L30 sheet window. No ads fallback.
-     * Variations that share a Goods ID each carry the full listing clicks.
      *
      * @return array{ok: bool, total_views: int, total_sold: int, cvr_pct: float}
      */
@@ -883,20 +893,25 @@ class ChannelMasterController extends Controller
                 return $sku;
             };
 
-            $pmSkus = ProductMaster::query()
+            $pmRows = ProductMaster::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
-                ->pluck('sku')
-                ->filter(fn ($s) => stripos((string) $s, 'PARENT') === false)
-                ->unique()
-                ->values();
+                ->get(['sku', 'parent']);
 
             $normalizedPm = [];
-            foreach ($pmSkus as $sku) {
-                $n = $normalizeSku($sku);
-                if ($n !== '') {
-                    $normalizedPm[$n] = (string) $sku;
+            $parentByNorm = [];
+            foreach ($pmRows as $pm) {
+                $sku = (string) $pm->sku;
+                if (stripos($sku, 'PARENT') !== false) {
+                    continue;
                 }
+                $n = $normalizeSku($sku);
+                if ($n === '') {
+                    continue;
+                }
+                $normalizedPm[$n] = $sku;
+                $parent = strtoupper(trim((string) preg_replace('/^PARENT\s+/i', '', (string) ($pm->parent ?? ''))));
+                $parentByNorm[$n] = $parent !== '' ? $parent : $n;
             }
 
             $noSpaceToNormalized = [];
@@ -929,11 +944,16 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            $totalViews = 0;
+            $viewsByParent = [];
             foreach ($normalizedPm as $norm => $_sku) {
                 $gid = $gidByNorm[$norm] ?? null;
-                $totalViews += $gid ? (int) ($viewByGid[$gid] ?? 0) : 0;
+                $views = $gid ? max(0, (int) ($viewByGid[$gid] ?? 0)) : 0;
+                $parentKey = $parentByNorm[$norm] ?? $norm;
+                if (! isset($viewsByParent[$parentKey]) || $views > $viewsByParent[$parentKey]) {
+                    $viewsByParent[$parentKey] = $views;
+                }
             }
+            $totalViews = (int) array_sum($viewsByParent);
 
             $totalSold = 0;
             [$apiStart, $apiEnd] = TemuShopifySalesService::temu3SheetL30Window();
