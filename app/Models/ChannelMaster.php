@@ -16,6 +16,7 @@ class ChannelMaster extends Model
         'alias',
         'logo',
         'seller_link',
+        'listing_mode',
         'sheet_link',
         'type',
         'status',

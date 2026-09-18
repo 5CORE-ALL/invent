@@ -37,6 +37,9 @@ class MissingListingController extends Controller
 
     public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v3';
 
+    /** @var list<string> */
+    public const LISTING_MODES = ['Auto', 'CSV', 'Manual', 'Semi'];
+
     public function index()
     {
         return view('market-places.Missing_listing');
@@ -47,6 +50,7 @@ class MissingListingController extends Controller
         try {
             $cached = Cache::get(self::PAGE_CACHE_KEY);
             if (is_array($cached) && ! empty($cached['data'])) {
+                $cached['data'] = $this->overlayListingModes($cached['data']);
                 $this->queuePageRebuild($cached);
                 $this->queueCatalogRefreshIfStale();
 
@@ -202,6 +206,8 @@ class MissingListingController extends Controller
             && Schema::hasColumn('channel_master', 'logo');
         $hasSellerLink = Schema::hasTable('channel_master')
             && Schema::hasColumn('channel_master', 'seller_link');
+        $hasListingMode = Schema::hasTable('channel_master')
+            && Schema::hasColumn('channel_master', 'listing_mode');
 
         $masterColumns = ['id', 'channel', 'status'];
         if ($hasLogo) {
@@ -209,6 +215,9 @@ class MissingListingController extends Controller
         }
         if ($hasSellerLink) {
             $masterColumns[] = 'seller_link';
+        }
+        if ($hasListingMode) {
+            $masterColumns[] = 'listing_mode';
         }
 
         if (! Schema::hasTable('channel_master')) {
@@ -263,6 +272,7 @@ class MissingListingController extends Controller
                 'inactive_parent' => 0,
                 'inactive_child' => 0,
                 'inactive_listings_url' => null,
+                'listing_mode' => $this->listingModeFor($master),
                 'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
             ];
         })->values();
@@ -344,6 +354,7 @@ class MissingListingController extends Controller
                     'inactive_parent' => (int) ($inactive['parent'] ?? 0),
                     'inactive_child' => (int) ($inactive['child'] ?? 0),
                     'inactive_listings_url' => $inactive['url'] ?? null,
+                    'listing_mode' => $this->listingModeFor($master),
                     'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
                 ];
             }
@@ -370,6 +381,7 @@ class MissingListingController extends Controller
                 'inactive_parent' => (int) ($inactive['parent'] ?? 0),
                 'inactive_child' => (int) ($inactive['child'] ?? 0),
                 'inactive_listings_url' => $inactive['url'] ?? null,
+                'listing_mode' => $this->listingModeFor($master),
                 'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
             ];
         })->values();
@@ -463,6 +475,80 @@ class MissingListingController extends Controller
         }
     }
 
+    public static function normalizeListingMode(mixed $value): ?string
+    {
+        $key = strtolower(trim((string) $value));
+        $map = [
+            'auto' => 'Auto',
+            'csv' => 'CSV',
+            'manual' => 'Manual',
+            'semi' => 'Semi',
+        ];
+
+        return $map[$key] ?? null;
+    }
+
+    private function listingModeFor(ChannelMaster $master): ?string
+    {
+        if (! Schema::hasColumn('channel_master', 'listing_mode')) {
+            return null;
+        }
+
+        return self::normalizeListingMode($master->listing_mode ?? null);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayListingModes(array $rows): array
+    {
+        if (! Schema::hasColumn('channel_master', 'listing_mode') || $rows === []) {
+            return $rows;
+        }
+
+        $ids = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+        if ($ids === []) {
+            return $rows;
+        }
+
+        $modes = ChannelMaster::query()
+            ->whereIn('id', $ids)
+            ->pluck('listing_mode', 'id');
+
+        foreach ($rows as $i => $row) {
+            $id = (int) ($row['id'] ?? 0);
+            $rows[$i]['listing_mode'] = $id > 0
+                ? self::normalizeListingMode($modes[$id] ?? null)
+                : null;
+        }
+
+        return $rows;
+    }
+
+    private function patchCachedListingMode(int $id, ?string $mode): void
+    {
+        $cached = Cache::get(self::PAGE_CACHE_KEY);
+        if (! is_array($cached) || empty($cached['data']) || ! is_array($cached['data'])) {
+            return;
+        }
+
+        foreach ($cached['data'] as $i => $row) {
+            if ((int) ($row['id'] ?? 0) !== $id) {
+                continue;
+            }
+            $cached['data'][$i]['listing_mode'] = $mode;
+        }
+
+        Cache::put(self::PAGE_CACHE_KEY, $cached, now()->addHours(12));
+    }
+
     private function sellerPortalFor(ChannelMaster $master, bool $hasSellerLink): ?string
     {
         if (! $hasSellerLink) {
@@ -520,6 +606,46 @@ class MissingListingController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('Missing Listing updateSellerPortal failed: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function updateListingMode(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|integer|exists:channel_master,id',
+            'listing_mode' => 'nullable|string|in:Auto,CSV,Manual,Semi',
+        ]);
+
+        if (! Schema::hasColumn('channel_master', 'listing_mode')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'channel_master.listing_mode column is not available.',
+            ], 500);
+        }
+
+        try {
+            $channel = ChannelMaster::find($request->integer('id'));
+            if (! $channel) {
+                return response()->json(['success' => false, 'message' => 'Channel not found.'], 404);
+            }
+
+            $value = $this->normalizeListingMode($request->input('listing_mode'));
+            $channel->listing_mode = $value;
+            $channel->save();
+            $this->patchCachedListingMode((int) $channel->id, $value);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Mode updated.',
+                'data' => [
+                    'id' => $channel->id,
+                    'listing_mode' => $channel->listing_mode,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Missing Listing updateListingMode failed: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }

@@ -4020,6 +4020,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/missing-listing/dar/submit',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'submitDar'])->name('missing.listing.dar.submit');
     Route::get('/missing-listing/dar/history',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'darHistory'])->name('missing.listing.dar.history');
     Route::post('/missing-listing/seller-portal/save', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'updateSellerPortal'])->name('missing.listing.seller.portal.save');
+    Route::post('/missing-listing/listing-mode/save', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'updateListingMode'])->name('missing.listing.listing.mode.save');
 
     // LMP Missing data — analytics channels + LMP M. counts
     Route::get('/lmp-missing-data', [\App\Http\Controllers\MarketPlace\LmpMissingController::class, 'index'])->name('lmp.missing');

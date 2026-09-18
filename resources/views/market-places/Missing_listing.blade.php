@@ -78,6 +78,47 @@
             font-weight: 600;
             font-style: italic;
         }
+        .ml-mode-select {
+            width: 100%;
+            max-width: 108px;
+            font-weight: 700;
+            font-size: 12px;
+            line-height: 1.2;
+            border-radius: 4px;
+            border: 1px solid transparent;
+            padding: 3px 6px;
+            text-align: center;
+            cursor: pointer;
+        }
+        .ml-mode-select.ml-mode-empty {
+            background: #f1f3f5;
+            color: #6c757d;
+            border-color: #dee2e6;
+        }
+        .ml-mode-select.ml-mode-auto {
+            background: #d1e7dd;
+            color: #0f5132;
+            border-color: #a3cfbb;
+        }
+        .ml-mode-select.ml-mode-csv {
+            background: #cfe2ff;
+            color: #084298;
+            border-color: #9ec5fe;
+        }
+        .ml-mode-select.ml-mode-manual {
+            background: #ffe5d0;
+            color: #984c0c;
+            border-color: #ffc107;
+        }
+        .ml-mode-select.ml-mode-semi {
+            background: #e2d9f3;
+            color: #432874;
+            border-color: #c5b3e6;
+        }
+        .ml-mode-select option[value="Auto"] { background: #d1e7dd; color: #0f5132; }
+        .ml-mode-select option[value="CSV"] { background: #cfe2ff; color: #084298; }
+        .ml-mode-select option[value="Manual"] { background: #ffe5d0; color: #984c0c; }
+        .ml-mode-select option[value="Semi"] { background: #e2d9f3; color: #432874; }
         .ml-source-api {
             color: #198754;
             font-weight: 700;
@@ -499,6 +540,16 @@
         return '/storage/' + v.replace(/^\/+/, '');
     }
 
+    function applyModeSelectColor($select, value) {
+        $select.removeClass('ml-mode-empty ml-mode-auto ml-mode-csv ml-mode-manual ml-mode-semi');
+        const v = String(value || '').trim();
+        if (v === 'Auto') $select.addClass('ml-mode-auto');
+        else if (v === 'CSV') $select.addClass('ml-mode-csv');
+        else if (v === 'Manual') $select.addClass('ml-mode-manual');
+        else if (v === 'Semi') $select.addClass('ml-mode-semi');
+        else $select.addClass('ml-mode-empty');
+    }
+
     function saveSellerPortal(cell) {
         const row = cell.getRow();
         const data = row.getData();
@@ -622,6 +673,31 @@
                         if (!url) return safeName;
                         const safeUrl = escapeHtml(url);
                         return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="ml-channel-listing-link" title="Open listing page">${safeName}</a>`;
+                    },
+                },
+                {
+                    title: "Mode",
+                    field: "listing_mode",
+                    width: 120,
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "How this channel listing is updated: Auto, CSV, Manual, or Semi",
+                    formatter: function(cell) {
+                        const current = String(cell.getValue() || '').trim();
+                        const id = cell.getRow().getData().id;
+                        const modes = ['Auto', 'CSV', 'Manual', 'Semi'];
+                        const cls = current === 'Auto' ? 'ml-mode-auto'
+                            : current === 'CSV' ? 'ml-mode-csv'
+                            : current === 'Manual' ? 'ml-mode-manual'
+                            : current === 'Semi' ? 'ml-mode-semi'
+                            : 'ml-mode-empty';
+                        let html = `<select class="ml-mode-select ${cls}" data-id="${escapeHtml(String(id || ''))}">`;
+                        html += `<option value=""${current === '' ? ' selected' : ''}>—</option>`;
+                        modes.forEach(function(mode) {
+                            html += `<option value="${mode}"${current === mode ? ' selected' : ''}>${mode}</option>`;
+                        });
+                        html += '</select>';
+                        return html;
                     },
                 },
                 {
@@ -844,6 +920,48 @@
                     },
                 },
             ],
+        });
+
+        $(document).on('mousedown click', '#missing-listing-table .ml-mode-select', function(e) {
+            e.stopPropagation();
+        });
+
+        $(document).on('change', '#missing-listing-table .ml-mode-select', function() {
+            const $select = $(this);
+            const id = $select.data('id');
+            const newValue = String($select.val() || '').trim();
+            const row = table.getRows().find(function(r) {
+                return Number(r.getData().id) === Number(id);
+            });
+            const oldValue = row ? String(row.getData().listing_mode || '').trim() : '';
+            applyModeSelectColor($select, newValue);
+            if (newValue === oldValue) {
+                return;
+            }
+            $.ajax({
+                url: "{{ route('missing.listing.listing.mode.save') }}",
+                method: 'POST',
+                data: { id: id, listing_mode: newValue },
+                dataType: 'json',
+            }).done(function(res) {
+                if (res && res.success) {
+                    if (row) {
+                        row.update({ listing_mode: newValue || null });
+                    }
+                    showToast(res.message || 'Mode updated.', 'success');
+                } else {
+                    showToast((res && res.message) || 'Update failed.', 'error');
+                    $select.val(oldValue);
+                    applyModeSelectColor($select, oldValue);
+                }
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                    ? xhr.responseJSON.message
+                    : 'Update failed.';
+                showToast(msg, 'error');
+                $select.val(oldValue);
+                applyModeSelectColor($select, oldValue);
+            });
         });
 
         $('#missing-listing-search').on('input', function() {

@@ -306,11 +306,11 @@ class ListingCountsEngine
      * @param  list<string>  $skus
      * @return array<string, true>
      */
-    public static function wantedSkuKeySet(array $skus): array
+    public static function wantedSkuKeySet(array $skus, bool $withAliases = false): array
     {
         $wanted = [];
         foreach ($skus as $raw) {
-            foreach (self::skuIndexKeys((string) $raw) as $key) {
+            foreach (self::skuMatchKeys((string) $raw, $withAliases) as $key) {
                 $wanted[$key] = true;
             }
         }
@@ -319,10 +319,91 @@ class ListingCountsEngine
     }
 
     /**
+     * Pack / family aliases used by TopDawg product_code matching.
+     * "HW 405 BLK 2PCS" and "HW 405 BLK" share a listed row; "8OHM GTR" matches "8OHMS".
+     *
+     * @return list<string>
+     */
+    public static function skuAliasBases(string $sku): array
+    {
+        $sku = trim(str_replace(["\xC2\xA0", "\xE2\x80\xAF"], ' ', $sku));
+        if ($sku === '') {
+            return [];
+        }
+
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        $bases = [$norm];
+        if (str_contains($norm, '+')) {
+            $head = trim(explode('+', $norm, 2)[0]);
+            if ($head !== '') {
+                $bases[] = $head;
+            }
+        }
+
+        $collapsed = $norm;
+        $previous = '';
+        while ($collapsed !== '' && $collapsed !== $previous) {
+            $previous = $collapsed;
+            $collapsed = trim((string) preg_replace(
+                '/\s+\d+\s*(PCS?|PIECES?|PK|PACK|PAIRS?)\s*$/i',
+                '',
+                $collapsed
+            ));
+            $collapsed = trim((string) preg_replace(
+                '/\s+(PAIR|PAIRS|PCS?|PIECES?|PK|PACK)\s*$/i',
+                '',
+                $collapsed
+            ));
+            $collapsed = trim((string) preg_replace(
+                '/\s+(GTR|SHORT|SUPER|HYBRID|POWER|REGULAR|WOG|WHLS)\s*$/i',
+                '',
+                $collapsed
+            ));
+        }
+        if ($collapsed !== '') {
+            $bases[] = $collapsed;
+        }
+
+        $withOhm = $bases;
+        foreach ($bases as $base) {
+            if (preg_match('/OHMS\b/', $base)) {
+                $withOhm[] = trim((string) preg_replace('/OHMS\b/', 'OHM', $base));
+            } elseif (preg_match('/OHM\b/', $base)) {
+                $withOhm[] = trim((string) preg_replace('/OHM\b/', 'OHMS', $base));
+            }
+        }
+
+        return array_values(array_unique(array_filter($withOhm)));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function skuAliasIndexKeys(string $sku): array
+    {
+        $keys = self::skuIndexKeys($sku);
+        foreach (self::skuAliasBases($sku) as $base) {
+            foreach (self::skuIndexKeys($base) as $key) {
+                $keys[] = $key;
+            }
+        }
+
+        return array_values(array_unique(array_filter($keys)));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function skuMatchKeys(string $sku, bool $withAliases = false): array
+    {
+        return $withAliases ? self::skuAliasIndexKeys($sku) : self::skuIndexKeys($sku);
+    }
+
+    /**
      * @param  array<string, string>  $byKey
      * @param  array<string, true>  $wanted
      */
-    public static function putListedForSku(array &$byKey, array $wanted, string $sku, string $id): void
+    public static function putListedForSku(array &$byKey, array $wanted, string $sku, string $id, bool $withAliases = false): void
     {
         $sku = trim($sku);
         $id = trim($id);
@@ -330,7 +411,7 @@ class ListingCountsEngine
             return;
         }
 
-        $keys = self::skuIndexKeys($sku);
+        $keys = self::skuMatchKeys($sku, $withAliases);
         $hit = false;
         foreach ($keys as $key) {
             if (isset($wanted[$key])) {
@@ -358,7 +439,7 @@ class ListingCountsEngine
      * @param  array<string, string>  $byKey
      * @return array<string, string>
      */
-    public static function listedMapForProductSkus(array $skus, array $byKey): array
+    public static function listedMapForProductSkus(array $skus, array $byKey, bool $withAliases = false): array
     {
         $map = [];
         foreach ($skus as $raw) {
@@ -367,7 +448,7 @@ class ListingCountsEngine
                 continue;
             }
             $id = '';
-            foreach (self::skuIndexKeys($sku) as $key) {
+            foreach (self::skuMatchKeys($sku, $withAliases) as $key) {
                 $cand = trim((string) ($byKey[$key] ?? ''));
                 if ($cand !== '') {
                     $id = $cand;
@@ -378,7 +459,7 @@ class ListingCountsEngine
                 continue;
             }
             $map[strtolower($sku)] = $id;
-            foreach (self::skuIndexKeys($sku) as $key) {
+            foreach (self::skuMatchKeys($sku, $withAliases) as $key) {
                 $map[$key] = $id;
             }
         }
