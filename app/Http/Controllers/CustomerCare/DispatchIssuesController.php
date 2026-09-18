@@ -33,8 +33,10 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return $this->schemaFlags = [
             'issues_has_image'   => Schema::hasTable($issues)  && Schema::hasColumn($issues,  'image_1_path'),
             'issues_has_claim'   => Schema::hasTable($issues)  && Schema::hasColumn($issues,  'claim_filed'),
+            'issues_has_claim_dates' => Schema::hasTable($issues) && Schema::hasColumn($issues, 'claim_filed_at'),
             'history_has_image'  => Schema::hasTable($history) && Schema::hasColumn($history, 'image_1_path'),
             'history_has_claim'  => Schema::hasTable($history) && Schema::hasColumn($history, 'claim_filed'),
+            'history_has_claim_dates' => Schema::hasTable($history) && Schema::hasColumn($history, 'claim_filed_at'),
         ];
     }
 
@@ -622,8 +624,64 @@ class DispatchIssuesController extends IssueBoardControllerBase
             $remark = trim((string) ($row->claimable_remark ?? ''));
             $slice['claimable_remark'] = $remark !== '' ? $remark : null;
         }
+        $dateKey = $table === $this->historyTable() ? 'history_has_claim_dates' : 'issues_has_claim_dates';
+        if (! empty($flags[$dateKey])) {
+            $slice['claim_filed_at'] = $row->claim_filed_at ?? null;
+            $slice['claim_filed_at_display'] = $this->formatClaimDate($row->claim_filed_at ?? null);
+            $slice['claim_received_at'] = $row->claim_received_at ?? null;
+            $slice['claim_received_at_display'] = $this->formatClaimDate($row->claim_received_at ?? null);
+        }
 
         return $slice;
+    }
+
+    private function formatClaimDate(mixed $raw): ?string
+    {
+        if ($raw === null || trim((string) $raw) === '') {
+            return null;
+        }
+        try {
+            return \Carbon\Carbon::parse($raw)->timezone(config('app.timezone'))->format('d-m-Y H:i');
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function snapshotIssueToHistory(int $issueId, string $eventType = 'updated'): void
+    {
+        $issue = DB::table($this->issuesTable())->where('id', $issueId)->first();
+        if (! $issue) {
+            return;
+        }
+
+        $user = auth()->user();
+        $now = now();
+        $histCols = Schema::getColumnListing($this->historyTable());
+        $payload = [];
+        foreach ((array) $issue as $key => $value) {
+            if ($key === 'id') {
+                continue;
+            }
+            if (in_array($key, $histCols, true)) {
+                $payload[$key] = $value;
+            }
+        }
+        $payload['orders_on_hold_issue_id'] = $issueId;
+        $payload['event_type'] = $eventType;
+        $payload['revision_no'] = ((int) DB::table($this->historyTable())
+            ->where('orders_on_hold_issue_id', $issueId)
+            ->max('revision_no')) + 1;
+        $payload['created_by'] = trim((string) ($user?->name ?? 'System')) ?: 'System';
+        if (in_array('created_by_user_id', $histCols, true)) {
+            $payload['created_by_user_id'] = $user?->id;
+        }
+        if (in_array('logged_at', $histCols, true)) {
+            $payload['logged_at'] = $now;
+        }
+        $payload['created_at'] = $now;
+        $payload['updated_at'] = $now;
+
+        DB::table($this->historyTable())->insert($payload);
     }
 
     private static function parseAmpUsdAmount(mixed $raw): float
@@ -703,18 +761,34 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $validated = $request->validate(['claim_filed' => 'required|boolean']);
         $next = (bool) $validated['claim_filed'];
 
-        $updated = DB::table($this->issuesTable())
+        $existing = DB::table($this->issuesTable())
             ->where('id', $id)
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);
             })
-            ->update(['claim_filed' => $next, 'updated_at' => now()]);
-
-        if ($updated === 0) {
+            ->first();
+        if (! $existing) {
             return response()->json(['message' => 'Record not found.'], 404);
         }
 
-        return response()->json(['message' => 'Updated.', 'claim_filed' => $next]);
+        $updates = ['claim_filed' => $next, 'updated_at' => now()];
+        if (Schema::hasColumn($this->issuesTable(), 'claim_filed_at')) {
+            $updates['claim_filed_at'] = $next
+                ? ($existing->claim_filed_at ?: now())
+                : null;
+        }
+
+        DB::table($this->issuesTable())->where('id', $id)->update($updates);
+        $this->snapshotIssueToHistory($id, 'updated');
+
+        $fresh = DB::table($this->issuesTable())->where('id', $id)->first();
+
+        return response()->json([
+            'message' => 'Updated.',
+            'claim_filed' => $next,
+            'claim_filed_at' => $fresh->claim_filed_at ?? null,
+            'claim_filed_at_display' => $this->formatClaimDate($fresh->claim_filed_at ?? null),
+        ]);
     }
 
     public function updateNfe(Request $request, int $id): JsonResponse
@@ -795,18 +869,34 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $validated = $request->validate(['claim_received' => 'required|boolean']);
         $next = (bool) $validated['claim_received'];
 
-        $updated = DB::table($this->issuesTable())
+        $existing = DB::table($this->issuesTable())
             ->where('id', $id)
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);
             })
-            ->update(['claim_received' => $next, 'updated_at' => now()]);
-
-        if ($updated === 0) {
+            ->first();
+        if (! $existing) {
             return response()->json(['message' => 'Record not found.'], 404);
         }
 
-        return response()->json(['message' => 'Updated.', 'claim_received' => $next]);
+        $updates = ['claim_received' => $next, 'updated_at' => now()];
+        if (Schema::hasColumn($this->issuesTable(), 'claim_received_at')) {
+            $updates['claim_received_at'] = $next
+                ? ($existing->claim_received_at ?: now())
+                : null;
+        }
+
+        DB::table($this->issuesTable())->where('id', $id)->update($updates);
+        $this->snapshotIssueToHistory($id, 'updated');
+
+        $fresh = DB::table($this->issuesTable())->where('id', $id)->first();
+
+        return response()->json([
+            'message' => 'Updated.',
+            'claim_received' => $next,
+            'claim_received_at' => $fresh->claim_received_at ?? null,
+            'claim_received_at_display' => $this->formatClaimDate($fresh->claim_received_at ?? null),
+        ]);
     }
 
     public function updateAmpUsd(Request $request, int $id): JsonResponse
@@ -1342,6 +1432,8 @@ class DispatchIssuesController extends IssueBoardControllerBase
         ->reverse()
         ->values();
 
+        $claimSlice = $this->dispatchClaimCarrierRowSlice($issue, $this->issuesTable());
+
         return response()->json([
             'data'          => $data,
             'issue_id'      => $id,
@@ -1351,6 +1443,10 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'related_ids'   => array_values($relatedIds),
             'count'         => $data->count(),
             'total_raw'     => $rows->count(),
+            'claim_filed' => (bool) ($claimSlice['claim_filed'] ?? false),
+            'claim_filed_at_display' => $claimSlice['claim_filed_at_display'] ?? null,
+            'claim_received' => (bool) ($claimSlice['claim_received'] ?? false),
+            'claim_received_at_display' => $claimSlice['claim_received_at_display'] ?? null,
         ]);
     }
 
@@ -1370,7 +1466,8 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'action_1', 'action_1_remark',
             'replacement_tracking', 'tracking_number', 'issue_link',
             'c_action_1', 'c_action_1_remark', 'close_note',
-            'department',
+            'department', 'claim_filed', 'claim_received',
+            'claim_filed_at', 'claim_received_at',
         ];
         $parts = [];
         foreach ($fields as $f) {

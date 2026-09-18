@@ -234,6 +234,20 @@
         #rowHistoryModal .ai-history-badge.event-updated  { background: #dbeafe; color: #1e40af; }
         #rowHistoryModal .ai-history-badge.event-archived { background: #fee2e2; color: #991b1b; }
         #rowHistoryModal .ai-history-badge.event-default  { background: #f3f4f6; color: #374151; }
+        #rowHistoryModal .ai-history-claim-dates {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 18px;
+            margin: 0 0 12px;
+            padding: 8px 10px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        #rowHistoryModal .ai-history-claim-dates strong {
+            color: #334155;
+        }
         #rowHistoryModal .ai-history-empty {
             text-align: center;
             color: #6b7280;
@@ -990,6 +1004,10 @@
             max-width: 100%;
         }
 
+        .qc-row-history-cell .hold-close-actions {
+            margin-top: 6px;
+        }
+
         .orders-hold-close-cell {
             padding: 0.3rem 0.25rem !important;
             text-align: center;
@@ -1654,7 +1672,9 @@
                                     @if (!($hideDepartmentColumnAndFilter ?? false))
                                         <th class="orders-hold-col-dept">Dept</th>
                                     @endif
-                                    <th class="orders-hold-col-close">Close</th>
+                                    @if (!($hideCloseColumn ?? false))
+                                        <th class="orders-hold-col-close">Close</th>
+                                    @endif
                                     <th class="orders-hold-col-created-by">Created By</th>
                                     {{-- Optional Dept column rendered AFTER Created By
                                          (used by /customer-care/carrier-and-claim where
@@ -1699,7 +1719,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) + $lossColspanExtra - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimableRemarkColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) + $lossColspanExtra - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimableRemarkColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) - ($hideCloseColumn ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
@@ -1760,7 +1780,15 @@
                                     @if (!($hideDepartmentColumnAndFilter ?? false))
                                         <th class="orders-hold-col-dept">Dept</th>
                                     @endif
-                                    <th class="orders-hold-col-action">Close</th>
+                                    @if ($showClaimFiledColumn ?? false)
+                                        <th class="orders-hold-col-claim-filed text-center">Claim<br>Filed</th>
+                                    @endif
+                                    @if ($showClaimReceivedColumn ?? false)
+                                        <th class="orders-hold-col-claim-received text-center">Claim<br>Recd</th>
+                                    @endif
+                                    @if (!($hideCloseColumn ?? false))
+                                        <th class="orders-hold-col-action">Close</th>
+                                    @endif
                                     <th class="orders-hold-col-action">Event</th>
                                     <th class="orders-hold-col-created-by">Created By</th>
                                     {{-- See main table: optional Dept column after Created By. --}}
@@ -1774,7 +1802,7 @@
                             </thead>
                             <tbody id="hold_issue_history_table_body">
                                 <tr id="hold_issue_history_empty_row">
-                                    <td colspan="{{ ($showOrderIdField ?? false ? 20 : 19) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showOrderIdField ?? false ? 20 : 19) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) - ($hideCloseColumn ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No history found.</td>
                                 </tr>
                             </tbody>
@@ -2370,6 +2398,8 @@
             const hideActionRemark = @json((bool) ($hideActionRemark ?? false));
             const requireRootCauseFound = @json((bool) ($requireRootCauseFound ?? true));
             const showRowHistoryColumn = @json((bool) ($showRowHistoryColumn ?? false));
+            const hideCloseColumn = @json((bool) ($hideCloseColumn ?? false));
+            const showClaimDatesInHistory = @json((bool) (($showClaimFiledColumn ?? false) || ($showClaimReceivedColumn ?? false)));
             const rowHistoryBaseUrl = @json($rowHistoryBaseUrl ?? url('/customer-care/all-issues/issues'));
             const singleEntryIssueBoard = @json((bool) ($singleEntryIssueBoard ?? false));
 
@@ -3268,8 +3298,9 @@
                 return '<td class="text-center orders-hold-col-claim-filed">' +
                     '<button type="button" class="btn btn-link p-0 border-0 claim-filed-toggle" ' +
                     'data-issue-id="' + escAttr(String(row.id)) + '" data-claim-filed="' + (filed ? '1' : '0') + '" ' +
-                    'title="' + escAttr(filed ? 'Claim filed — click to mark as not filed' :
-                        'Not filed — click when claim is filed') + '">' +
+                    'title="' + escAttr(filed
+                        ? ('Claim filed' + (row.claim_filed_at_display ? (' · ' + row.claim_filed_at_display) : '') + ' — click to mark as not filed')
+                        : 'Not filed — click when claim is filed') + '">' +
                     '<span class="' + dotClass + '" aria-hidden="true"></span>' +
                     '</button></td>';
             }
@@ -3523,8 +3554,9 @@
                     '<button type="button" class="btn btn-link p-0 border-0 claim-received-toggle" ' +
                     'data-issue-id="' + escAttr(String(row.id)) + '" data-claim-received="' + (received ? '1' : '0') +
                     '" ' +
-                    'title="' + escAttr(received ? 'Claim Recd — click to mark as not received' :
-                        'Not Recd — click when claim is received') + '">' +
+                    'title="' + escAttr(received
+                        ? ('Claim Recd' + (row.claim_received_at_display ? (' · ' + row.claim_received_at_display) : '') + ' — click to mark as not received')
+                        : 'Not Recd — click when claim is received') + '">' +
                     '<span class="' + dotClass + '" aria-hidden="true"></span>' +
                     '</button></td>';
             }
@@ -3557,12 +3589,15 @@
                         dot.classList.toggle('claim-received-dot--on', next);
                         dot.classList.toggle('claim-received-dot--off', !next);
                     }
-                    btn.title = next ? 'Claim Recd — click to mark as not received' :
-                        'Not Recd — click when claim is received';
                     const r = holdIssueRows.find(x => String(x.id) === String(id));
                     if (r) {
                         r.claim_received = next;
+                        r.claim_received_at = data.claim_received_at || null;
+                        r.claim_received_at_display = data.claim_received_at_display || null;
                     }
+                    btn.title = next
+                        ? ('Claim Recd' + (data.claim_received_at_display ? (' · ' + data.claim_received_at_display) : '') + ' — click to mark as not received')
+                        : 'Not Recd — click when claim is received';
                     loadClaimsStats();
                     buildClaimDotFilters();
                     if (anyClaimDotFilterActive()) renderRows();
@@ -3598,12 +3633,15 @@
                         dot.classList.toggle('claim-filed-dot--on', next);
                         dot.classList.toggle('claim-filed-dot--off', !next);
                     }
-                    btn.title = next ? 'Claim filed — click to mark as not filed' :
-                        'Not filed — click when claim is filed';
                     const r = holdIssueRows.find(x => String(x.id) === String(id));
                     if (r) {
                         r.claim_filed = next;
+                        r.claim_filed_at = data.claim_filed_at || null;
+                        r.claim_filed_at_display = data.claim_filed_at_display || null;
                     }
+                    btn.title = next
+                        ? ('Claim filed' + (data.claim_filed_at_display ? (' · ' + data.claim_filed_at_display) : '') + ' — click to mark as not filed')
+                        : 'Not filed — click when claim is filed';
                     loadClaimsStats();
                     buildClaimDotFilters();
                     if (anyClaimDotFilterActive()) renderRows();
@@ -4075,12 +4113,26 @@
                     '<i class="bi bi-search"></i></button></td>';
             }
 
+            function qcRowActionButtonsHtml(row) {
+                return '<div class="hold-close-actions">' +
+                    '<button type="button" class="btn btn-sm hold-action-btn hold-edit-btn" data-id="' + row.id +
+                    '" title="Edit"><i class="bi bi-pencil-fill"></i></button>' +
+                    '<br>' +
+                    (currentUserEmail === 'president@5core.com'
+                        ? '<button type="button" class="btn btn-sm hold-action-btn hold-archive-btn" data-id="' +
+                            row.id + '" title="Archive"><i class="bi bi-archive-fill"></i></button>'
+                        : '') +
+                    '</div>';
+            }
+
             function qcRowHistoryCellHtml(row) {
                 const id = row?.id != null ? String(row.id) : '';
-                return '<td class="orders-hold-col-action text-center">' +
+                return '<td class="orders-hold-col-action text-center qc-row-history-cell">' +
                     '<button type="button" class="qc-row-history-btn" data-id="' + escAttr(id) +
                     '" title="View this issue\'s edit history" aria-label="View history">' +
-                    '<i class="bi bi-clock-history"></i></button></td>';
+                    '<i class="bi bi-clock-history"></i></button>' +
+                    (hideCloseColumn ? qcRowActionButtonsHtml(row) : '') +
+                    '</td>';
             }
 
             function rowHistoryBadge(eventType) {
@@ -4099,16 +4151,37 @@
                 return '<td>' + escapeHtml(t) + '</td>';
             }
 
-            function renderRowHistoryBody(rows) {
+            function claimDatesSummaryHtml(meta) {
+                if (!showClaimDatesInHistory) return '';
+                const filedDate = meta && meta.claim_filed
+                    ? (meta.claim_filed_at_display || 'Yes')
+                    : '—';
+                const recdDate = meta && meta.claim_received
+                    ? (meta.claim_received_at_display || 'Yes')
+                    : '—';
+                return '<div class="ai-history-claim-dates">' +
+                    '<span><strong>Claim filed:</strong> ' + escapeHtml(filedDate) + '</span>' +
+                    '<span><strong>Claim received:</strong> ' + escapeHtml(recdDate) + '</span>' +
+                    '</div>';
+            }
+
+            function renderRowHistoryBody(rows, meta) {
                 if (!Array.isArray(rows) || rows.length === 0) {
-                    return '<div class="ai-history-empty">No history found for this issue.</div>';
+                    return claimDatesSummaryHtml(meta) +
+                        '<div class="ai-history-empty">No history found for this issue.</div>';
                 }
 
                 const headers = [
                     'When', 'Event', 'Ref', 'By', 'Dept',
                     'Issue?', 'Action', 'Root Cause', 'RC Fixed',
-                    'QTY', 'MKT', 'Tracking', 'Track R', 'Close Note',
+                    'QTY', 'MKT', 'Tracking', 'Track R',
                 ];
+                if (showClaimDatesInHistory) {
+                    headers.push('Claim Filed', 'Claim Recd');
+                }
+                if (!hideCloseColumn) {
+                    headers.push('Close Note');
+                }
                 const thead =
                     '<thead><tr>' +
                     headers.map(function(h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('') +
@@ -4153,12 +4226,24 @@
                         rowHistoryCell(r.marketplace_1) +
                         rowHistoryCell(r.tracking_number) +
                         rowHistoryCell(r.replacement_tracking) +
-                        rowHistoryCell(r.close_note) +
+                        (showClaimDatesInHistory
+                            ? claimHistoryDateCell(r.claim_filed, r.claim_filed_at_display)
+                            : '') +
+                        (showClaimDatesInHistory
+                            ? claimHistoryDateCell(r.claim_received, r.claim_received_at_display)
+                            : '') +
+                        (hideCloseColumn ? '' : rowHistoryCell(r.close_note)) +
                         '</tr>';
                 }).join('') + '</tbody>';
 
-                return '<div class="ai-history-table-wrap"><table class="ai-history-table">' +
+                return claimDatesSummaryHtml(meta) + '<div class="ai-history-table-wrap"><table class="ai-history-table">' +
                     thead + tbody + '</table></div>';
+            }
+
+            function claimHistoryDateCell(flag, dateDisplay) {
+                if (!flag) return rowHistoryCell('—');
+                const date = String(dateDisplay || '').trim();
+                return rowHistoryCell(date ? ('Yes · ' + date) : 'Yes');
             }
 
             async function openRowHistoryModal(rowData) {
@@ -4202,7 +4287,7 @@
                     const rows = Array.isArray(json?.data) ? json.data : [];
                     const totalRaw = Number(json?.total_raw ?? rows.length);
                     const hidden = Math.max(0, totalRaw - rows.length);
-                    if (body) body.innerHTML = renderRowHistoryBody(rows);
+                    if (body) body.innerHTML = renderRowHistoryBody(rows, json || {});
                     if (countEl) {
                         const base = rows.length === 1 ? '1 change' : (rows.length + ' changes');
                         countEl.textContent = hidden > 0
@@ -4336,7 +4421,12 @@
                     claimsRows.push(qcDetailsTextRow('Not claimable reason', d.claimable_remark));
                 }
                 if (typeof d.claim_filed !== 'undefined') {
-                    claimsRows.push(qcDetailsTextRow('Claim filed', d.claim_filed ? 'Yes' : 'No'));
+                    claimsRows.push(qcDetailsTextRow(
+                        'Claim filed',
+                        d.claim_filed
+                            ? (d.claim_filed_at_display ? ('Yes · ' + d.claim_filed_at_display) : 'Yes')
+                            : 'No'
+                    ));
                 }
                 if (d.amp_usd != null && String(d.amp_usd).trim() !== '') {
                     claimsRows.push(qcDetailsTextRow('AMT $', d.amp_usd));
@@ -4345,7 +4435,12 @@
                     claimsRows.push(qcDetailsTextRow('Amt Rec', d.amt_rec));
                 }
                 if (typeof d.claim_received !== 'undefined') {
-                    claimsRows.push(qcDetailsTextRow('Claim received', d.claim_received ? 'Yes' : 'No'));
+                    claimsRows.push(qcDetailsTextRow(
+                        'Claim received',
+                        d.claim_received
+                            ? (d.claim_received_at_display ? ('Yes · ' + d.claim_received_at_display) : 'Yes')
+                            : 'No'
+                    ));
                 }
                 if (claimsRows.length) {
                     sections.push(
@@ -4573,18 +4668,7 @@
                 if (emptyRow) emptyRow.classList.add('d-none');
 
                 const dataRowsHtml = filtered.map((row, index) => {
-                    const buttonsHtml =
-                        '<div class="hold-close-actions">' +
-                        '<button type="button" class="btn btn-sm hold-action-btn hold-edit-btn" data-id="' + row
-                        .id +
-                        '" title="Edit"><i class="bi bi-pencil-fill"></i></button>' +
-                        '<br>' +
-                        (currentUserEmail === 'president@5core.com' ?
-                            '<button type="button" class="btn btn-sm hold-action-btn hold-archive-btn" data-id="' +
-                            row.id +
-                            '" title="Archive"><i class="bi bi-archive-fill"></i></button>' :
-                            '') +
-                        '</div>';
+                    const buttonsHtml = qcRowActionButtonsHtml(row);
                     // Group badge: show small colored pill for multi-SKU groups
                     const groupBadge = row.group_id ?
                         '<span class="badge bg-warning text-dark ms-1" style="font-size:0.7rem;" title="Grouped entry (1 error)">G</span>' :
@@ -4701,7 +4785,7 @@
                     @if (!($hideDepartmentColumnAndFilter ?? false))
                         '<td>' + escapeHtml(formatDepartmentsDisplay(row)) + '</td>' +
                     @endif
-                    '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>' +
+                    (hideCloseColumn ? '' : '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>') +
                         @if ($mergeCreatedAtIntoCreatedBy ?? false)
                             combinedCreatedByCellHtml(row, 'created_at') +
                         @else
@@ -4814,7 +4898,13 @@
                     @if (!($hideDepartmentColumnAndFilter ?? false))
                         '<td>' + escapeHtml(formatDepartmentsDisplay(row)) + '</td>' +
                     @endif
-                    '<td>' + escapeHtml(row.close_note) + '</td>' +
+                    @if ($showClaimFiledColumn ?? false)
+                        claimHistoryDateCell(row.claim_filed, row.claim_filed_at_display) +
+                    @endif
+                    @if ($showClaimReceivedColumn ?? false)
+                        claimHistoryDateCell(row.claim_received, row.claim_received_at_display) +
+                    @endif
+                    (hideCloseColumn ? '' : '<td>' + escapeHtml(row.close_note) + '</td>') +
                         '<td>' + escapeHtml(row.event_type) + '</td>' +
                         @if ($mergeCreatedAtIntoCreatedBy ?? false)
                             combinedCreatedByCellHtml(row, 'logged_at') +
@@ -4877,11 +4967,15 @@
                     qc_enhance_action_req: row?.qc_enhance_action_req ?? '',
                     qc_enhance_status_remark: row?.qc_enhance_status_remark ?? '',
                     claim_filed: !!row?.claim_filed,
+                    claim_filed_at: row?.claim_filed_at ?? null,
+                    claim_filed_at_display: row?.claim_filed_at_display ?? null,
                     claimable: row?.claimable === undefined || row?.claimable === null ? true : !!row.claimable,
                     claimable_remark: row?.claimable_remark != null ? String(row.claimable_remark) : '',
                     amp_usd: row?.amp_usd != null && row?.amp_usd !== '' ? String(row.amp_usd).slice(0, 6) : '',
                     amt_rec: row?.amt_rec != null && row?.amt_rec !== '' ? String(row.amt_rec).slice(0, 6) : '',
                     claim_received: !!row?.claim_received,
+                    claim_received_at: row?.claim_received_at ?? null,
+                    claim_received_at_display: row?.claim_received_at_display ?? null,
                     issue_carrier: row?.issue_carrier != null && row?.issue_carrier !== '' ? String(row.issue_carrier)
                         .trim() : '',
                 };
@@ -4927,6 +5021,12 @@
                     qc_enhance_status_remark: row?.qc_enhance_status_remark ?? '',
                     claimable: row?.claimable === undefined || row?.claimable === null ? true : !!row.claimable,
                     claimable_remark: row?.claimable_remark != null ? String(row.claimable_remark) : '',
+                    claim_filed: !!row?.claim_filed,
+                    claim_filed_at: row?.claim_filed_at ?? null,
+                    claim_filed_at_display: row?.claim_filed_at_display ?? null,
+                    claim_received: !!row?.claim_received,
+                    claim_received_at: row?.claim_received_at ?? null,
+                    claim_received_at_display: row?.claim_received_at_display ?? null,
                 };
             }
 

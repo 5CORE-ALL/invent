@@ -588,11 +588,11 @@
                         title="Σ Temu L30 qty of the rows shown">L30: 0</span>
                     <span class="badge bg-info fs-6 p-2" id="total-views-badge"
                         style="color: black; font-weight: bold;"
-                        title="Σ Views of the rows shown">Views: 0</span>
+                        title="Σ Views once per Parent. Variations of the same parent share one listing.">Views: 0</span>
                     @include('partials.analytics-dil-badge', ['dilChannel' => 'temu'])
                     <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge"
                         style="color: white; font-weight: bold;"
-                        title="CVR = (Σ Temu L30 ÷ Σ Views) × 100">CVR: 0%</span>
+                        title="CVR = (Σ Temu L30 ÷ Σ Views) × 100. Views are unique per Parent; L30 is still every child SKU.">CVR: 0%</span>
                     <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge"
                         style="color: black; font-weight: bold;"
                         title="GPFT% = Σ Gpft ÷ Σ T Price × 100 (margin from marketplace_percentages &quot;Temu&quot;)">GPFT: 0%</span>
@@ -2525,6 +2525,30 @@
         return Array.isArray(all) ? all : [];
     }
 
+    function ntoRowViews(row) {
+        const n = parseInt(row && row.views, 10);
+        return (isFinite(n) && n > 0) ? n : 0;
+    }
+
+    function ntoParentKey(row) {
+        const parent = String((row && (row.Parent || row.parent)) || '').replace(/^PARENT\s+/i, '').trim();
+        const sku = String((row && (row.sku || row['(Child) sku'])) || '').trim();
+        return (parent || sku).toUpperCase();
+    }
+
+    function ntoViewsForBadge(rows) {
+        const byParent = {};
+        (rows || []).forEach(function(row) {
+            const key = ntoParentKey(row);
+            if (!key) return;
+            const v = ntoRowViews(row);
+            if (!(key in byParent) || v > byParent[key]) byParent[key] = v;
+        });
+        let total = 0;
+        Object.keys(byParent).forEach(function(k) { total += byParent[k]; });
+        return total;
+    }
+
     function updateSummary() {
         if (!table) return;
         temuClearCapMemo();
@@ -2551,7 +2575,6 @@
             const tPrice = parseFloat(row.t_price) || 0;
 
             totalL30 += l30;
-            totalViews += parseInt(row.views, 10) || 0;
             if (inv > 0 && l30 === 0) zeroSold++;
             if (inv > 0 && l30 > 0) moreSold++;
 
@@ -2573,6 +2596,7 @@
             }
         });
 
+        totalViews = ntoViewsForBadge(rows);
         const cvr = totalViews > 0 ? (totalL30 / totalViews) * 100 : 0;
         const gpftPct = gpftBase > 0 ? (gpftSum / gpftBase) * 100 : 0;
         const groiPct = gpftLp > 0 ? (gpftSum / gpftLp) * 100 : 0;
