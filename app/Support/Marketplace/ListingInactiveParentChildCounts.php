@@ -312,7 +312,7 @@ class ListingInactiveParentChildCounts
     }
 
     /**
-     * Keep listed, in-stock CP Master SKUs held by a compliance / quality status.
+     * Keep in-stock CP Master SKUs that exist on the marketplace with inactive status.
      *
      * @param  list<array<string, mixed>>  $rows
      * @param  array<string, true>  $cpKeys

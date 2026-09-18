@@ -399,13 +399,25 @@ class MappingChannelCounts
      */
     public static function cachedInactiveMasterRows(): array
     {
-        try {
-            $cached = Cache::get(self::INACTIVE_MASTER_ROWS_CACHE_KEY);
-            if (is_array($cached) && $cached !== []) {
-                return array_values($cached);
+        foreach ([
+            self::INACTIVE_MASTER_ROWS_CACHE_KEY,
+            'inactive_listings_master_rows_v22',
+            'inactive_listings_master_rows_v21',
+        ] as $key) {
+            try {
+                $cached = Cache::get($key);
+                if (! is_array($cached) || $cached === []) {
+                    continue;
+                }
+                $rows = array_values($cached);
+                if ($key !== self::INACTIVE_MASTER_ROWS_CACHE_KEY) {
+                    self::persistInactiveMasterRows($rows);
+                }
+
+                return $rows;
+            } catch (\Throwable $e) {
+                // try next key
             }
-        } catch (\Throwable $e) {
-            // ignore
         }
 
         return [];

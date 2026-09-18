@@ -68,12 +68,27 @@ class InactiveListingsController extends Controller
 
     private function dispatchPageRebuild(): void
     {
-        if (app()->runningInConsole() || config('queue.default') === 'sync') {
+        if (app()->runningInConsole()) {
             return;
         }
 
         try {
-            RebuildInactiveListingsPageJob::dispatch();
+            if (config('queue.default') !== 'sync') {
+                RebuildInactiveListingsPageJob::dispatch();
+
+                return;
+            }
+
+            $php = PHP_BINARY;
+            $artisan = base_path('artisan');
+            if ($php === '' || ! is_file($artisan)) {
+                return;
+            }
+            if (PHP_OS_FAMILY === 'Windows') {
+                pclose(popen('start /B "" '.escapeshellarg($php).' '.escapeshellarg($artisan).' inactive-listings:warm-page', 'r'));
+            } else {
+                exec(escapeshellarg($php).' '.escapeshellarg($artisan).' inactive-listings:warm-page > /dev/null 2>&1 &');
+            }
         } catch (\Throwable $e) {
             Log::warning('Inactive Listings page rebuild dispatch skipped: '.$e->getMessage());
         }

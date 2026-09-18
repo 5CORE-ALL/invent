@@ -91,14 +91,14 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-warning text-dark badge-il-stat" id="stat-cp-inactive-listings" title="In-stock CP Master SKUs whose marketplace listing is inactive because of a compliance / quality hold. Missing Listing and 0 Inv SKUs are excluded.">
+                    <span class="badge bg-warning text-dark badge-il-stat" id="stat-cp-inactive-listings" title="In-stock CP Master SKUs that exist on the marketplace with inactive status. Missing Listing and 0 Inv SKUs are excluded.">
                         Inactive Child SKUs: <span id="total-cp-inactive-listings">{{ number_format(\App\Support\Marketplace\MappingChannelCounts::cachedCpInactiveTotalOrZero()) }}</span>
                     </span>
                     <button type="button" id="il-sync-btn" class="btn btn-sm btn-primary" title="Pull current marketplace listing statuses and rebuild this page">
                         <i class="fas fa-sync-alt me-1"></i> Sync
                     </button>
                     <span class="text-muted small" id="il-sync-meta"></span>
-                    <span class="text-muted small">Inactive Listing = in-stock CP Master SKUs that are listed but not live because of a compliance / quality hold (unable to list, suppressed, rejected, incomplete). Missing / never-listed SKUs stay on Missing Listing. Zero-inventory SKUs are excluded.</span>
+                    <span class="text-muted small">Inactive Listing = in-stock CP Master SKUs that are present on the marketplace with inactive status. Missing / never-listed SKUs stay on Missing Listing. Zero-inventory SKUs are excluded.</span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -282,9 +282,10 @@
                     return [];
                 }
                 const data = (response && response.data) ? response.data : [];
-                updateStats(data, {
-                    cp: response && (response.total_cp_inactive_child != null ? response.total_cp_inactive_child : response.total_cp_inactive),
-                });
+                const childTotal = Number(response && (response.total_cp_inactive_child != null ? response.total_cp_inactive_child : response.total_cp_inactive));
+                if (! (response && response.partial && !childTotal)) {
+                    updateStats(data, { cp: childTotal });
+                }
                 if (response && (response.last_sync || response.sync_status)) {
                     setIlSyncMeta({
                         status: response.sync_status || 'idle',
@@ -296,13 +297,13 @@
                         pollIlSync();
                     }
                 }
-                if (response && response.partial && (window.__ilCountsRetries || 0) < 3) {
+                if (response && response.partial && (window.__ilCountsRetries || 0) < 8) {
                     window.__ilCountsRetries = (window.__ilCountsRetries || 0) + 1;
                     setTimeout(function() {
                         if (table) {
                             table.replaceData();
                         }
-                    }, 8000);
+                    }, 5000);
                 }
                 return data;
             },
