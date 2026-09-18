@@ -1469,7 +1469,7 @@
                                                     @else title="{{ !empty($canEditIncentives) ? 'Edit' : 'View' }} incentives for {{ e($row['team_member']) }}"
                                                     @endif
                                                     aria-label="Open incentives for {{ e($row['team_member']) }}">
-                                                <span class="incentive-dollar-icon" aria-hidden="true">$</span>@if((int) ($row['incentive_count'] ?? 0) > 0)<span class="incentive-bag-count">{{ (int) $row['incentive_count'] }}</span>@endif
+                                                <span class="incentive-dollar-icon" aria-hidden="true">₹</span>@if((int) ($row['incentive_count'] ?? 0) > 0)<span class="incentive-bag-count">{{ (int) $row['incentive_count'] }}</span>@endif
                                             </button>
                                         </td>
                                         <td class="task-summary-col-minimize text-center">
