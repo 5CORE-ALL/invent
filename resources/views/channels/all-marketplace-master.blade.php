@@ -518,6 +518,9 @@
             white-space: nowrap;
             letter-spacing: -0.02em;
         }
+        #marketplace-table [tabulator-field="P Growth"] .p-sales-vs-sales-pct {
+            margin-left: 0;
+        }
         #total-p-sales-vs-sales,
         #total-p-npft-vs-npft {
             margin-left: 4px;
@@ -1412,6 +1415,13 @@
             const dir = pct > 0 ? 'above' : 'below';
             return Math.abs(pct).toFixed(0) + '% ' + dir + ' Sales — click for chart';
         }
+        function pGrowthFromRow(row) {
+            const l7 = parseNumber(row['L7 Sales'] || 0);
+            const pSales = parseNumber(row['P-Sales'] != null && row['P-Sales'] !== ''
+                ? row['P-Sales']
+                : projectedSalesFromL7(l7));
+            return pSalesVsL30Pct(pSales, row['L30 Sales'] || 0);
+        }
         function pNpftAmtVsNpftPct(pAmt, npftAmt) {
             const p = parseNumber(pAmt);
             const s = parseNumber(npftAmt);
@@ -2031,11 +2041,13 @@
                     if (metric === 'p_sales') {
                         var p = parseFloat(el.getAttribute('data-p-sales'));
                         var s = parseFloat(el.getAttribute('data-l30-sales'));
-                        var pct = pSalesVsL30Pct(p, s);
-                        el.style.color = pSalesVsL30Color(p, s);
-                        el.style.display = '';
-                        el.title = pSalesVsL30Title(pct);
-                        return;
+                        if (!isNaN(p) && !isNaN(s)) {
+                            var pct = pSalesVsL30Pct(p, s);
+                            el.style.color = pSalesVsL30Color(p, s);
+                            el.style.display = '';
+                            el.title = pSalesVsL30Title(pct);
+                            return;
+                        }
                     }
                     if (metric === 'p_npft_amt') {
                         var pAmt = parseFloat(el.getAttribute('data-p-npft'));
@@ -2149,6 +2161,7 @@
                         }
                         response.data.forEach(function(row) {
                             row['P-Sales'] = projectedSalesFromL7(row['L7 Sales'] || 0);
+                            row['P Growth'] = pGrowthFromRow(row);
                             row['Y PFT'] = yGrossPftFromRow(row);
                             row['Y NPFT'] = yNetPftFromRow(row);
                             row['Y GROI%'] = yGroiPctFromRow(row);
@@ -2932,21 +2945,19 @@
                         field: "P-Sales",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 168,
-                        headerTooltip: "Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. % and dot compare P-Sales to Sales: green = above Sales, red = below Sales.",
+                        width: 120,
+                        headerTooltip: "Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const l7 = parseNumber(row['L7 Sales'] || 0);
                             const value = parseNumber(cell.getValue() != null && cell.getValue() !== '' ? cell.getValue() : projectedSalesFromL7(l7));
-                            const l30 = parseNumber(row['L30 Sales'] || 0);
                             const channel = (row['Channel '] || '').trim();
-                            const pct = pSalesVsL30Pct(value, l30);
-                            const dotColor = pSalesVsL30Color(value, l30);
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_sales" data-p-sales="${value}" data-l30-sales="${l30}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="${pSalesVsL30Title(pct)}"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'p_sales');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             if (!l7 || l7 === 0) {
                                 return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
                             }
-                            return `<span style="white-space:nowrap;"><span class="p-sales-value" style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${formatPSalesVsL30PctHtml(pct)}${chartIcon}</span>`;
+                            return `<span class="p-sales-value" style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -2964,14 +2975,57 @@
                         bottomCalcFormatter: function(cell) {
                             const pSales = parseNumber(cell.getValue());
                             if (!pSales || pSales === 0) return '<strong style="color:#adb5bd;">-</strong>';
-                            let l30 = 0;
-                            try {
-                                const rows = cell.getTable().getData('active') || [];
-                                rows.forEach(function(row) {
-                                    l30 += parseNumber(row['L30 Sales'] || 0);
-                                });
-                            } catch (e) { /* ignore */ }
-                            return `<strong style="color:#0d6efd;">$${Math.round(pSales).toLocaleString('en-US')}</strong>${formatPSalesVsL30PctHtml(pSalesVsL30Pct(pSales, l30))}`;
+                            return `<strong style="color:#0d6efd;">$${Math.round(pSales).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "P Growth",
+                        field: "P Growth",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 88,
+                        headerTooltip: "P-Sales vs Sales: ((P-Sales − Sales) ÷ Sales) × 100. Green = P-Sales above Sales, red = below.",
+                        mutator: function(value, data) {
+                            return pGrowthFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const l7 = parseNumber(row['L7 Sales'] || 0);
+                            const pSales = parseNumber(row['P-Sales'] != null && row['P-Sales'] !== '' ? row['P-Sales'] : projectedSalesFromL7(l7));
+                            const l30 = parseNumber(row['L30 Sales'] || 0);
+                            const rawPct = cell.getValue();
+                            const pct = rawPct !== null && rawPct !== undefined && rawPct !== ''
+                                ? parseNumber(rawPct)
+                                : pSalesVsL30Pct(pSales, l30);
+                            const channel = (row['Channel '] || '').trim();
+                            const dotColor = pSalesVsL30Color(pSales, l30);
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_sales" data-p-sales="${pSales}" data-l30-sales="${l30}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="${pSalesVsL30Title(pct)}"></i>`;
+                            if (!l7 || l7 === 0) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
+                            }
+                            return `<span style="white-space:nowrap;">${formatPSalesVsL30PctHtml(pct)}${chartIcon}</span>`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = parseNumber(cell.getRow().getData()['P-Sales']);
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let pSales = 0, l30 = 0;
+                            data.forEach(function(row) {
+                                pSales += projectedSalesFromL7(row['L7 Sales'] || 0);
+                                l30 += parseNumber(row['L30 Sales'] || 0);
+                            });
+                            return pSalesVsL30Pct(pSales, l30);
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;">-</strong>';
+                            }
+                            return `<strong>${formatPSalesVsL30PctHtml(parseNumber(value))}</strong>`;
                         }
                     },
                     {
