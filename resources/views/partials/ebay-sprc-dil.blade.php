@@ -21,9 +21,10 @@
   the last (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay.
   CVR Down/Up uses CVR% vs the overlay thresholds (no L60). Dil S PRC inverts 0.95 take-home
   so SNROI = target. B2B excludes Ship.
-  Dil slab edits and table load paint S PRC from the Dil rule and persist that
-  same $ to the channel SPRICE table (clear 0, then write Dil). Save and Apply
-  does the same wipe-then-write. Live listing push stays opt-in (S PRC ≠ Price).
+  Dil slab edits autosave the Dil table (no Save click). Table load and slab
+  edits paint S PRC from the Dil rule and persist that same $ to the channel
+  SPRICE table. Save and Apply is optional wipe-then-write + push.
+  Live listing push stays opt-in (S PRC ≠ Price).
   Macys / Purchasing Power persist in the background (page can close).
   Purchasing Power also pushes listed price via MCM when S PRC ≠ PP Price.
   Live push on other pages is only for saved S PRC ≠ Price.
@@ -420,12 +421,8 @@
                             later rows fill as first +5, +10, … (increasing down the table).
                         </li>
                         <li>
-                            <strong>When</strong> you click <strong>Save and Apply</strong>:
-                            @if($ebaySprcDilChannel === 'shopify_b2b')
-                            old <strong>S PRC / calc_price</strong> is deleted, Dil is calculated and saved, then Push starts for S PRC ≠ Price (same as Amazon).
-                            @else
-                            {{ $ebaySprcDilPageLabel }}’s table is stored via <strong>API only</strong>, then old <strong>S PRC</strong> is deleted and the new Dil S PRC is written.
-                            @endif
+                            <strong>When</strong> you change a Dil / Target value (or add/delete a slab):
+                            slabs <strong>autosave</strong>. S PRC updates from the new rule. <strong>Save and Apply</strong> is optional (push / full wipe-then-write).
                         </li>
                         <li>
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
@@ -520,8 +517,8 @@
                     <div class="small text-muted mt-2" id="ebay-dil-groi-status"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
-                    <button type="button" class="btn btn-sm btn-primary" id="ebay-dil-groi-save-btn"
-                        title="Save Dil → Target {{ $ebaySprcDilTargetLabel }}% slabs via API and apply S PRC on matching SKUs.">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="ebay-dil-groi-save-btn"
+                        title="Optional. Slabs already autosave when you change a value. This also wipe-then-writes S PRC and queues push if enabled.">
                         <i class="fas fa-save me-1"></i> Save and Apply
                     </button>
                 </div>
@@ -1886,6 +1883,7 @@
             ebayDilGroiRules = ebayNormalizeDilGroiList(ebayDilGroiRules);
             renderEbayDilGroiModalTable();
             ebayAfterDilGroiRulesChanged();
+            ebayScheduleDilGroiAutosave();
         }
         function ebayDilGroiDeleteSlab(idx) {
             const rules = readEbayDilGroiRulesFromModal();
@@ -1898,6 +1896,7 @@
             ebayDilGroiRules = ebayNormalizeDilGroiList(rules);
             renderEbayDilGroiModalTable();
             ebayAfterDilGroiRulesChanged();
+            ebayScheduleDilGroiAutosave();
         }
         function ebayDgTableScrollEl() {
             try {
@@ -2559,11 +2558,17 @@
                 ebayScheduleSprcDilAutoApply();
             }
         }
-        function saveEbayDilGroiRules() {
+        let ebayDgAutosaveTimer = null;
+        let ebayDgAutosaveXhr = null;
+        let ebayDgAutosaveSeq = 0;
+        function postEbayDilGroiRules() {
             const rules = readEbayDilGroiRulesFromModal();
             const cvrAdj = ebayCvrGroiAdjNow();
             ebayCvrGroiAdj = cvrAdj;
-            return $.ajax({
+            if (ebayDgAutosaveXhr && typeof ebayDgAutosaveXhr.abort === 'function') {
+                try { ebayDgAutosaveXhr.abort(); } catch (e) { /* ignore */ }
+            }
+            ebayDgAutosaveXhr = $.ajax({
                 url: ebayDgRulesUrl(),
                 method: 'POST',
                 headers: {
@@ -2572,7 +2577,48 @@
                     'Content-Type': 'application/json',
                 },
                 data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, _token: ebayDgCsrf() }),
-            }).then(async function(res) {
+            });
+            return ebayDgAutosaveXhr.then(function(res) {
+                ebayDgAutosaveXhr = null;
+                if (res && Array.isArray(res.rules)) {
+                    const saved = ebayNormalizeDilGroiList(res.rules);
+                    if (saved.length) ebayDilGroiRules = saved;
+                }
+                return res;
+            }, function(xhr) {
+                ebayDgAutosaveXhr = null;
+                throw xhr;
+            });
+        }
+        function ebayScheduleDilGroiAutosave() {
+            if (ebayDgAutosaveTimer) clearTimeout(ebayDgAutosaveTimer);
+            ebayDgAutosaveTimer = setTimeout(function() {
+                ebayDgAutosaveTimer = null;
+                const seq = ++ebayDgAutosaveSeq;
+                $('#ebay-dil-groi-status').text('Autosaving Dil slabs…');
+                postEbayDilGroiRules().then(function() {
+                    if (seq !== ebayDgAutosaveSeq) return;
+                    $('#ebay-dil-groi-status').text('Autosaved. S PRC updates as you type — Save and Apply not required.');
+                }, function(xhr) {
+                    if (seq !== ebayDgAutosaveSeq) return;
+                    if (xhr && xhr.statusText === 'abort') return;
+                    const reason = (xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error';
+                    $('#ebay-dil-groi-status').text('Autosave failed: ' + reason);
+                });
+            }, 600);
+        }
+        function ebayFlushDilGroiAutosave() {
+            if (!ebayDgAutosaveTimer) return $.Deferred().resolve().promise();
+            clearTimeout(ebayDgAutosaveTimer);
+            ebayDgAutosaveTimer = null;
+            return postEbayDilGroiRules();
+        }
+        function saveEbayDilGroiRules() {
+            if (ebayDgAutosaveTimer) {
+                clearTimeout(ebayDgAutosaveTimer);
+                ebayDgAutosaveTimer = null;
+            }
+            return postEbayDilGroiRules().then(async function(res) {
                 if (res && Array.isArray(res.rules)) {
                     const saved = ebayNormalizeDilGroiList(res.rules);
                     if (saved.length) ebayDilGroiRules = saved;
@@ -2634,18 +2680,21 @@
                     else readEbayDilGroiRulesFromModal();
                     renderEbayDilGroiCounts();
                     ebayAfterDilGroiRulesChanged();
+                    ebayScheduleDilGroiAutosave();
                 });
             $(document).off('input.ebayCvrGroi change.ebayCvrGroi', '#ebay-cvr-groi-table .ebay-cvr-groi-input')
                 .on('input.ebayCvrGroi change.ebayCvrGroi', '#ebay-cvr-groi-table .ebay-cvr-groi-input', function() {
                     ebayCvrGroiAdj = ebayCvrGroiAdjNow();
                     renderEbayDilGroiCounts();
                     ebayAfterDilGroiRulesChanged();
+                    ebayScheduleDilGroiAutosave();
                 });
             $('#ebayDilGroiModal').off('shown.bs.modal.ebaydg').on('shown.bs.modal.ebaydg', function() {
                 setTimeout(function() { renderEbayDilGroiPies(); }, 50);
             });
             $('#ebayDilGroiModal').off('hidden.bs.modal.ebaydg').on('hidden.bs.modal.ebaydg', function() {
                 destroyEbayDilGroiPies();
+                ebayFlushDilGroiAutosave().then(null, function() { /* ignore abort / close */ });
             });
             $('#ebayDilGroiModal').off('click.ebaydghist').on('click.ebaydghist', '.ebay-dg-hist-dot, #ebay-dil-groi-table .ebay-dg-count', function(e) {
                 const $dot = $(this).hasClass('ebay-dg-hist-dot')
