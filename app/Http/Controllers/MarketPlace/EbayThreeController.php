@@ -1330,16 +1330,20 @@ class EbayThreeController extends Controller
                 return response()->json(['errors' => [['code' => 'NotFound', 'message' => 'eBay3 listing not found for SKU: ' . $sku]]], 404);
             }
 
-            $current = round((float) ($ebayMetric->ebay_price ?? 0), 2);
-            if ($current > 0 && abs($current - $priceFloat) < 0.005) {
-                $this->saveSpriceStatus($sku, 'pushed');
-                return response()->json([
-                    'success' => true,
-                    'message' => 'eBay 3 already at $'.number_format($priceFloat, 2),
-                    'new_price' => $current,
-                    'price' => $current,
-                    'ebay_price' => $current,
-                ]);
+            $liveNow = $this->ebay3PullLivePrice($sku, 0.0);
+            if ($liveNow > 0) {
+                $ebayMetric->ebay_price = $liveNow;
+                $ebayMetric->save();
+                if (abs($liveNow - $priceFloat) < 0.005) {
+                    $this->saveSpriceStatus($sku, 'pushed');
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'eBay 3 already at $'.number_format($priceFloat, 2),
+                        'new_price' => $liveNow,
+                        'price' => $liveNow,
+                        'ebay_price' => $liveNow,
+                    ]);
+                }
             }
 
             // Push price DIRECTLY to eBay via the local EbayThreeApiService (no microservice).

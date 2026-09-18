@@ -539,8 +539,8 @@ class ChannelMasterController extends Controller
                 'cvr_pct' => $cvrPct,
             ];
 
-            // Temu 1 / Temu 2 / Temu 3 Views/CVR must match the /new-temuone and
-            // /new-temutwo Views badges (sum of every SKU row), not a guarded leftover.
+            // Temu 1 / Temu 2 / Temu 3 Views/CVR must match /new-temuone and
+            // /new-temu2: one Views number per Parent (variations share a listing).
             $pageViews = $this->computeTemuViewsForMasterChannel($channel);
             if (! empty($pageViews['ok'])) {
                 $result['total_views'] = $pageViews['total_views'];
@@ -564,11 +564,11 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * /new-temuone Views badge: sum every Active PM SKU row (skip PARENT).
-     * Per row — same as NewTemuoneController::dataJson:
+     * /new-temuone Views badge: one Views number per Product Master Parent
+     * (variations share the listing). Skip PARENT SKUs. Per-row formula matches
+     * NewTemuoneController::dataJson:
      *   sheet = SUM(temu_view_data.product_clicks) by temu_metrics.goods_id
      *   views = sheet if > 0, else product_clicks_l30 + ads clicks.
-     * Variations that share a Goods ID are counted once per SKU (badge sum).
      *
      * @return array{ok: bool, total_views: int, total_sold: int, cvr_pct: float}
      */
@@ -585,20 +585,25 @@ class ChannelMasterController extends Controller
                 return $sku;
             };
 
-            $pmSkus = ProductMaster::query()
+            $pmRows = ProductMaster::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
-                ->pluck('sku')
-                ->filter(fn ($s) => stripos((string) $s, 'PARENT') === false)
-                ->unique()
-                ->values();
+                ->get(['sku', 'parent']);
 
             $normalizedPm = [];
-            foreach ($pmSkus as $sku) {
-                $n = $normalizeSku($sku);
-                if ($n !== '') {
-                    $normalizedPm[$n] = (string) $sku;
+            $parentByNorm = [];
+            foreach ($pmRows as $pm) {
+                $sku = (string) $pm->sku;
+                if (stripos($sku, 'PARENT') !== false) {
+                    continue;
                 }
+                $n = $normalizeSku($sku);
+                if ($n === '') {
+                    continue;
+                }
+                $normalizedPm[$n] = $sku;
+                $parent = strtoupper(trim((string) preg_replace('/^PARENT\s+/i', '', (string) ($pm->parent ?? ''))));
+                $parentByNorm[$n] = $parent !== '' ? $parent : $n;
             }
 
             $noSpaceToNormalized = [];
@@ -645,17 +650,22 @@ class ChannelMasterController extends Controller
                     });
             }
 
-            $totalViews = 0;
+            $viewsByParent = [];
             foreach ($normalizedPm as $norm => $_sku) {
                 $item = $metricsByNorm[$norm] ?? null;
                 $gid = $item ? TemuGoodsIdHelper::normalizeKey($item->goods_id) : null;
                 $hasSheet = $gid !== null && array_key_exists($gid, $viewByGid);
-                $sheet = $hasSheet ? (int) $viewByGid[$gid] : 0;
+                $sheet = $hasSheet ? max(0, (int) $viewByGid[$gid]) : 0;
                 $oClicks = $sheet;
-                $productClicks = $hasSheet ? $sheet : (int) ($item->product_clicks_l30 ?? 0);
-                $adsViews = $gid ? (int) ($adsByGid[$gid] ?? 0) : 0;
-                $totalViews += $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
+                $productClicks = $hasSheet ? $sheet : max(0, (int) ($item->product_clicks_l30 ?? 0));
+                $adsViews = $gid ? max(0, (int) ($adsByGid[$gid] ?? 0)) : 0;
+                $views = $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
+                $parentKey = $parentByNorm[$norm] ?? $norm;
+                if (! isset($viewsByParent[$parentKey]) || $views > $viewsByParent[$parentKey]) {
+                    $viewsByParent[$parentKey] = $views;
+                }
             }
+            $totalViews = (int) array_sum($viewsByParent);
 
             $totalSold = 0;
             [$apiStart, $apiEnd] = TemuShopifySalesService::channelMasterL30Window();
@@ -688,8 +698,9 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * /new-temutwo Views badge: sum every Active PM SKU row (skip PARENT).
-     * Same per-row formula as NewTemutwoController::dataJson:
+     * /new-temu2 Views badge: one Views number per Product Master Parent
+     * (variations share the listing). Skip PARENT SKUs. Per-row formula matches
+     * NewTemutwoController::dataJson:
      *   sheet = SUM(temu2_view_data.product_clicks) by temu2_metrics.goods_id
      *   views = sheet if > 0, else product_clicks_l30 + campaign-report clicks.
      *
@@ -708,20 +719,25 @@ class ChannelMasterController extends Controller
                 return $sku;
             };
 
-            $pmSkus = ProductMaster::query()
+            $pmRows = ProductMaster::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
-                ->pluck('sku')
-                ->filter(fn ($s) => stripos((string) $s, 'PARENT') === false)
-                ->unique()
-                ->values();
+                ->get(['sku', 'parent']);
 
             $normalizedPm = [];
-            foreach ($pmSkus as $sku) {
-                $n = $normalizeSku($sku);
-                if ($n !== '') {
-                    $normalizedPm[$n] = (string) $sku;
+            $parentByNorm = [];
+            foreach ($pmRows as $pm) {
+                $sku = (string) $pm->sku;
+                if (stripos($sku, 'PARENT') !== false) {
+                    continue;
                 }
+                $n = $normalizeSku($sku);
+                if ($n === '') {
+                    continue;
+                }
+                $normalizedPm[$n] = $sku;
+                $parent = strtoupper(trim((string) preg_replace('/^PARENT\s+/i', '', (string) ($pm->parent ?? ''))));
+                $parentByNorm[$n] = $parent !== '' ? $parent : $n;
             }
 
             $noSpaceToNormalized = [];
@@ -777,16 +793,21 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            $totalViews = 0;
+            $viewsByParent = [];
             foreach ($normalizedPm as $norm => $_sku) {
                 $item = $metricsByNorm[$norm] ?? null;
                 $gid = $item ? TemuGoodsIdHelper::normalizeKey($item->goods_id) : null;
                 $hasSheet = $gid !== null && array_key_exists($gid, $viewByGid);
-                $oClicks = $hasSheet ? (int) $viewByGid[$gid] : 0;
-                $productClicks = $hasSheet ? $oClicks : (int) ($item?->product_clicks_l30 ?? 0);
-                $adsViews = $gid ? (int) ($adsByGid[$gid] ?? 0) : 0;
-                $totalViews += $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
+                $oClicks = $hasSheet ? max(0, (int) $viewByGid[$gid]) : 0;
+                $productClicks = $hasSheet ? $oClicks : max(0, (int) ($item?->product_clicks_l30 ?? 0));
+                $adsViews = $gid ? max(0, (int) ($adsByGid[$gid] ?? 0)) : 0;
+                $views = $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
+                $parentKey = $parentByNorm[$norm] ?? $norm;
+                if (! isset($viewsByParent[$parentKey]) || $views > $viewsByParent[$parentKey]) {
+                    $viewsByParent[$parentKey] = $views;
+                }
             }
+            $totalViews = (int) array_sum($viewsByParent);
 
             $totalSold = 0;
             [$apiStart, $apiEnd] = TemuShopifySalesService::channelMasterL30Window();
@@ -851,11 +872,11 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 3 Views on /all-marketplace-master: sum every Active PM SKU row (skip PARENT).
+     * Temu 3 Views on /all-marketplace-master: one Views number per Parent
+     * (variations share the listing). Skip PARENT SKUs.
      * Same per-row Views column as /temu3-decrease:
      *   Goods ID from temu3_pricing, views = SUM(temu3_view_data.product_clicks)
      *   in the L30 sheet window. No ads fallback.
-     * Variations that share a Goods ID each carry the full listing clicks.
      *
      * @return array{ok: bool, total_views: int, total_sold: int, cvr_pct: float}
      */
@@ -872,20 +893,25 @@ class ChannelMasterController extends Controller
                 return $sku;
             };
 
-            $pmSkus = ProductMaster::query()
+            $pmRows = ProductMaster::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
-                ->pluck('sku')
-                ->filter(fn ($s) => stripos((string) $s, 'PARENT') === false)
-                ->unique()
-                ->values();
+                ->get(['sku', 'parent']);
 
             $normalizedPm = [];
-            foreach ($pmSkus as $sku) {
-                $n = $normalizeSku($sku);
-                if ($n !== '') {
-                    $normalizedPm[$n] = (string) $sku;
+            $parentByNorm = [];
+            foreach ($pmRows as $pm) {
+                $sku = (string) $pm->sku;
+                if (stripos($sku, 'PARENT') !== false) {
+                    continue;
                 }
+                $n = $normalizeSku($sku);
+                if ($n === '') {
+                    continue;
+                }
+                $normalizedPm[$n] = $sku;
+                $parent = strtoupper(trim((string) preg_replace('/^PARENT\s+/i', '', (string) ($pm->parent ?? ''))));
+                $parentByNorm[$n] = $parent !== '' ? $parent : $n;
             }
 
             $noSpaceToNormalized = [];
@@ -918,11 +944,16 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            $totalViews = 0;
+            $viewsByParent = [];
             foreach ($normalizedPm as $norm => $_sku) {
                 $gid = $gidByNorm[$norm] ?? null;
-                $totalViews += $gid ? (int) ($viewByGid[$gid] ?? 0) : 0;
+                $views = $gid ? max(0, (int) ($viewByGid[$gid] ?? 0)) : 0;
+                $parentKey = $parentByNorm[$norm] ?? $norm;
+                if (! isset($viewsByParent[$parentKey]) || $views > $viewsByParent[$parentKey]) {
+                    $viewsByParent[$parentKey] = $views;
+                }
             }
+            $totalViews = (int) array_sum($viewsByParent);
 
             $totalSold = 0;
             [$apiStart, $apiEnd] = TemuShopifySalesService::temu3SheetL30Window();
@@ -8520,7 +8551,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Mirakl channels (Best Buy USA, Macy's): unit_price × qty for wall-clock Pacific yesterday, excl. CLOSED.
+     * Mirakl channels (Best Buy USA, Macy's): unit_price × qty for the raw
+     * Pacific calendar date of order_created_at (same 17th as /macys/daily-sales).
      */
     private function computeMiraklYSalesLikeAmazon(string $channelName): ?float
     {
@@ -8528,17 +8560,9 @@ class ChannelMasterController extends Controller
             return null;
         }
 
-        [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
+        [, , $ymd] = $this->pacificYesterdayBounds();
 
-        $sum = (float) DB::table('mirakl_daily_data')
-            ->where('channel_name', $channelName)
-            ->where('order_created_at', '>=', $yStartPacific)
-            ->where('order_created_at', '<=', $yEndPacific)
-            ->where('status', '!=', 'CLOSED')
-            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
-            ->value('revenue');
-
-        return round($sum, 2);
+        return \App\Models\MiraklDailyData::sumRevenueOnDate($channelName, $ymd);
     }
 
     /**
@@ -8764,7 +8788,13 @@ class ChannelMasterController extends Controller
             ->whereDate('order_date', $ymd)
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
-            ->whereNotNull('sku')->where('sku', '!=', '')
+            ->where(function ($q) {
+                $q->where(function ($q2) {
+                    $q2->whereNotNull('sku')->where('sku', '!=', '');
+                })->orWhere(function ($q2) {
+                    $q2->whereNotNull('display_sku')->where('display_sku', '!=', '');
+                });
+            })
             ->whereNotNull('order_number')->where('order_number', '!=', '')
             ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
             ->value('revenue'), 2);
@@ -9158,15 +9188,11 @@ class ChannelMasterController extends Controller
             Carbon::now('America/Los_Angeles')
         );
 
-        $sum = (float) DB::table('mirakl_daily_data')
-            ->where('channel_name', $channelName)
-            ->where('order_created_at', '>=', $l7StartPacific)
-            ->where('order_created_at', '<=', $l7EndPacific)
-            ->where('status', '!=', 'CLOSED')
-            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
-            ->value('revenue');
-
-        return round($sum, 2);
+        return \App\Models\MiraklDailyData::sumRevenueOnDateRange(
+            $channelName,
+            $l7StartPacific->toDateString(),
+            $l7EndPacific->toDateString()
+        );
     }
 
     private function computeBestBuyUsaL7SalesLikeAmazon(): ?float
@@ -18905,6 +18931,18 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
+            if ($channel === 'macys' || $channel === 'macysinc') {
+                self::$pacificDayYSalesCache[$key] = \App\Models\MiraklDailyData::sumRevenueOnDate("Macy's, Inc.", $ymd);
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
+            if ($channel === 'bestbuyusa' || $channel === 'bestbuy') {
+                self::$pacificDayYSalesCache[$key] = \App\Models\MiraklDailyData::sumRevenueOnDate('Best Buy USA', $ymd);
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
             if ($channel === 'wayfair') {
                 self::$pacificDayYSalesCache[$key] = $this->sumWayfairRevenueForPacificDate($ymd);
 
@@ -19909,6 +19947,14 @@ class ChannelMasterController extends Controller
         $startDate = now($tz)->subDays($span + 1)->toDateString();
         $want = $isAll ? null : $this->allMarketplaceSnapshotKey($channel);
 
+        if (! $isAll && in_array($want, ['macys', 'macysinc', 'bestbuyusa', 'bestbuy'], true)) {
+            $channelName = $want === 'bestbuyusa' || $want === 'bestbuy'
+                ? 'Best Buy USA'
+                : "Macy's, Inc.";
+
+            return $this->buildMiraklDailyYSalesChart($channelName, $span);
+        }
+
         $query = DB::table('channel_master_daily_data')
             ->where('snapshot_date', '>=', $startDate)
             ->select([
@@ -19953,6 +19999,37 @@ class ChannelMasterController extends Controller
                 'date' => Carbon::parse($asOf, $tz)->format('M d'),
                 'value' => round($isAll ? array_sum($val) : (float) $val, 2),
             ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Macy's / Best Buy Y Sales chart from raw mirakl_daily_data dates (Pacific DATE()).
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildMiraklDailyYSalesChart(string $channelName, int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = Carbon::yesterday($tz);
+        $start = $end->copy()->subDays(max(1, $days) - 1);
+        $byDate = \App\Models\MiraklDailyData::revenueByCalendarDate(
+            $channelName,
+            $start->toDateString(),
+            $end->toDateString()
+        );
+
+        $out = [];
+        $cursor = $start->copy()->startOfDay();
+        $last = $end->copy()->startOfDay();
+        while ($cursor->lte($last)) {
+            $ymd = $cursor->toDateString();
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round((float) ($byDate[$ymd] ?? 0), 2),
+            ];
+            $cursor->addDay();
         }
 
         return $out;

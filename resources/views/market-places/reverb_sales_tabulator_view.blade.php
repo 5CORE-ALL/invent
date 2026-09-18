@@ -142,13 +142,8 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     const COLUMN_VIS_KEY = "reverb_sales_tabulator_column_visibility";
-    // UTC "yesterday" date (order_date is stored as a UTC date to match Reverb's
-    // dashboard), used for the Y Sales badge independent of the viewer's browser timezone.
-    const CA_YESTERDAY = @json(\Carbon\Carbon::now('UTC')->subDay()->toDateString());
-    // UTC start date for the last-7-days window. Matches Reverb's "last 7 days" which
-    // spans today + 7 previous days (same +1-day convention as the L30 window using
-    // subDays(30)). Rolling window, so it stays correct as the data changes daily.
-    const L7_START = @json(\Carbon\Carbon::now('UTC')->subDays(7)->toDateString());
+    const CA_YESTERDAY = @json(\Carbon\Carbon::now('America/Los_Angeles')->subDay()->toDateString());
+    const L7_START = @json(\Carbon\Carbon::now('America/Los_Angeles')->subDays(7)->toDateString());
     let table = null;
     
     // Toast notification function
@@ -621,7 +616,8 @@
 
             data.forEach(row => {
                 // Skip rows with empty SKU or order_number
-                if (!row.sku || row.sku === '' || !row.order_number || row.order_number === '') {
+                const rowSku = row.sku || row.display_sku || '';
+                if (!rowSku || !row.order_number || row.order_number === '') {
                     return;
                 }
                 

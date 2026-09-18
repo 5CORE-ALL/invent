@@ -4,6 +4,7 @@ namespace App\Services\ListingMirror;
 
 use App\Models\EbayMetric;
 use App\Services\EbayApiService;
+use App\Support\EbayGetItemPrice;
 use Illuminate\Support\Facades\Log;
 
 class EbaySyncService
@@ -185,30 +186,12 @@ class EbaySyncService
     protected function extractPriceFromItem(array $itemDetails): ?float
     {
         try {
-            // Try different paths to find price
-            $price = null;
-
-            if (isset($itemDetails['Item']['StartPrice'])) {
-                $priceStr = $itemDetails['Item']['StartPrice'];
-                if (is_array($priceStr) && isset($priceStr['#'])) {
-                    $price = (float) $priceStr['#'];
-                } else {
-                    $price = (float) $priceStr;
-                }
-            } elseif (isset($itemDetails['Item']['BuyItNowPrice'])) {
-                $priceStr = $itemDetails['Item']['BuyItNowPrice'];
-                if (is_array($priceStr) && isset($priceStr['#'])) {
-                    $price = (float) $priceStr['#'];
-                } else {
-                    $price = (float) $priceStr;
-                }
-            }
-
-            return $price > 0 ? $price : null;
+            return EbayGetItemPrice::fromGetItemPayload($itemDetails);
         } catch (\Exception $e) {
             Log::error('Error extracting price from eBay item', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }

@@ -45,6 +45,7 @@
     'showDetailsColumn' => true,
     // Per-row edit history button (clock icon) opens audit trail modal.
     'showRowHistoryColumn' => true,
+    'hideCloseColumn' => true,
     'rowHistoryBaseUrl' => url('/customer-care/all-issues/issues'),
     // Hide Tracking / Track R / Img / Link from the table — carrier column
     // stays visible; other fields are available via the Details modal.

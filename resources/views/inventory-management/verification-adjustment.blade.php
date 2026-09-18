@@ -1571,9 +1571,8 @@
                                     <i class="fas fa-step-forward"></i>
                                 </button>
                             </div>
-                            <button id="exportToGoogleSheets" class="btn btn-success btn-sm" title="Export to Google Sheets" aria-label="Export to Google Sheets">
-                                <i class="fas fa-download"></i>
-                                <i class="fab fa-google"></i>
+                            <button id="exportToGoogleSheets" class="btn btn-success btn-sm" title="Export CSV" aria-label="Export CSV">
+                                <i class="fas fa-download"></i> CSV
                             </button>
                             <button id="activity-log-btn" class="btn btn-dark btn-sm" data-toggle="modal" data-target="#activityLogModal" title="Activity Log — All history by work date" aria-label="Activity Log">
                                 <i class="fas fa-history"></i>
@@ -4738,49 +4737,62 @@
                 $('#verifiedDateFilterModal').modal('hide');
             });
 
-            // Export to Google Sheets
+            function triggerBlobDownload(blob, filename) {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            }
+
+            function downloadVerificationCsv(rows) {
+                if (!rows || !rows.length) return;
+                const headers = Object.keys(rows[0]);
+                const escapeCsv = function (val) {
+                    const s = val === null || val === undefined ? '' : String(val);
+                    if (/[",\n\r]/.test(s)) {
+                        return '"' + s.replace(/"/g, '""') + '"';
+                    }
+                    return s;
+                };
+                const csv = [headers.map(escapeCsv).join(',')]
+                    .concat(rows.map(function (row) {
+                        return headers.map(function (key) { return escapeCsv(row[key]); }).join(',');
+                    }))
+                    .join('\n');
+                const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+                const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+                triggerBlobDownload(blob, 'verification-adjustment-' + stamp + '.csv');
+            }
+
             $("#exportToGoogleSheets").on("click", function () {
                 if (!filteredData || filteredData.length === 0) {
                     alert("No data to export!");
                     return;
                 }
 
-                // Show loading state
-                const $btn = $(this);
-                const originalHtml = $btn.html();
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Exporting...');
-
-                // Filter out parent rows (SKUs starting with "PARENT")
-                // Only export child/regular SKUs, just like the view shows
                 const exportData = filteredData.filter(item => {
                     const skuVal = (item.sku || item.SKU || '').toString().trim().toUpperCase();
-                    const isParentRow = skuVal.startsWith('PARENT') || item.is_parent;
-                    return !isParentRow; // Exclude parent rows
+                    return !(skuVal.startsWith('PARENT') || item.is_parent);
                 });
 
                 if (exportData.length === 0) {
-                    $btn.prop('disabled', false).html(originalHtml);
                     alert("No data to export after filtering!");
                     return;
                 }
 
-                // Convert filtered data to flat JSON
                 const rows = exportData.map(item => {
-                    // Extract only date from HISTORY (remove time)
+                    const historyRaw = item.HISTORY == null ? '' : String(item.HISTORY);
                     let historyDate = '';
-                    if (item.HISTORY && item.HISTORY.includes(', ')) {
-                        // Split by comma to get date part only
-                        historyDate = item.HISTORY.split(', ')[0];
-                    } else if (item.HISTORY) {
-                        historyDate = item.HISTORY;
+                    if (historyRaw.includes(', ')) {
+                        historyDate = historyRaw.split(', ')[0];
+                    } else if (historyRaw) {
+                        historyDate = historyRaw;
                     }
-                    
-                    // Verified status uses 29-day rule (green dot = ✓)
-                    const verifiedStatus = isVerifiedDotGreen(item) ? '✓' : '✗';
-                    
-                    // Get user who verified (first name)
-                    const lastVerifiedBy = item.VERIFIED_BY_FIRST_NAME || item.verified_by_first_name || '';
-                    
+
                     return {
                         Parent: item.Parent,
                         SKU: item.SKU,
@@ -4792,98 +4804,13 @@
                         AVAILABLE_TO_SELL: item.AVAILABLE_TO_SELL,
                         UNAVAILABLE: item.UNAVAILABLE ?? 0,
                         INCOMING: item.INCOMING ?? 0,
-                        VERIFIED: verifiedStatus,
-                        'Last Verified By': lastVerifiedBy,
-                        HISTORY: historyDate,
-                        // VERIFIED_STOCK: item.VERIFIED_STOCK,
-                        // TO_ADJUST: item.TO_ADJUST,
-                        // REASON: item.REASON,
-                        // APPROVED: item.APPROVED ? "Yes" : "No",
-                        // APPROVED_BY: item.APPROVED_BY,
-                        // APPROVED_AT: item.APPROVED_AT,
-                        // LOSS_GAIN: item.LOSS_GAIN,
-                        // REMARK: item.REMARK || '',
-                        // LAST_APPROVED_AT: item.LAST_APPROVED_AT
+                        VERIFIED: isVerifiedDotGreen(item) ? '✓' : '✗',
+                        'Last Verified By': item.VERIFIED_BY_FIRST_NAME || item.verified_by_first_name || '',
+                        HISTORY: historyDate
                     };
                 });
 
-                // Send data to backend to export to Google Sheets
-                $.ajax({
-                    url: '/export-to-google-sheets',
-                    method: 'POST',
-                    data: {
-                        data: rows,
-                        _token: '{{ csrf_token() }}'
-                    },
-                    success: function(response) {
-                        $btn.prop('disabled', false).html(originalHtml);
-                        
-                        if (response.success) {
-                            // Show success message with link to the spreadsheet
-                            const sheetUrl = response.spreadsheetUrl;
-                            const sharing = response.sharing || null;
-                            let shareNote = '';
-                            if (sharing) {
-                                if (sharing.domainShared) {
-                                    shareNote = `<p style="color:#198754;font-size:13px;margin-top:8px;"><i class="fas fa-user-edit"></i> Shared with all <strong>@5core.com</strong> accounts as <strong>Editor</strong>.</p>`;
-                                } else if ((sharing.editorsAdded || []).length) {
-                                    shareNote = `<p style="color:#198754;font-size:13px;margin-top:8px;"><i class="fas fa-user-edit"></i> Shared as <strong>Editor</strong> with ${sharing.editorsAdded.length} @5core.com teammate(s).</p>`;
-                                } else if (sharing.anyoneWithLink) {
-                                    shareNote = `<p style="color:#fd7e14;font-size:13px;margin-top:8px;"><i class="fas fa-exclamation-triangle"></i> Old Apps Script still live (public link). Paste updated <code>google-apps-script-code.js</code> and Deploy → New version.</p>`;
-                                } else {
-                                    const errs = (sharing.errors || []).slice(0, 2).join('<br>');
-                                    shareNote = `<p style="color:#dc3545;font-size:13px;margin-top:8px;"><i class="fas fa-lock"></i> Sharing failed — paste updated Apps Script and Deploy → New version.<br>${errs}</p>`;
-                                }
-                            } else {
-                                shareNote = `<p style="color:#fd7e14;font-size:13px;margin-top:8px;"><i class="fas fa-exclamation-triangle"></i> Old Apps Script still live. Paste updated <code>google-apps-script-code.js</code> and Deploy → New version.</p>`;
-                            }
-                            const message = `
-                                <div style="text-align: left;">
-                                    <p>Data exported successfully to Google Sheets!</p>
-                                    <p><strong>Spreadsheet Link:</strong></p>
-                                    <p><a href="${sheetUrl}" target="_blank" class="btn btn-sm btn-primary">
-                                        <i class="fas fa-external-link-alt"></i> Open Google Sheet
-                                    </a></p>
-                                    <p style="font-size: 12px; margin-top: 10px; word-break: break-all;">
-                                        <strong>URL:</strong><br>${sheetUrl}
-                                    </p>
-                                    ${shareNote}
-                                </div>
-                            `;
-                            
-                            Swal.fire({
-                                icon: 'success',
-                                title: 'Export Successful',
-                                html: message,
-                                confirmButtonText: 'OK',
-                                width: '600px'
-                            });
-                            
-                            // Optionally open the sheet in a new tab immediately
-                            // window.open(sheetUrl, '_blank');
-                        } else {
-                            Swal.fire({
-                                icon: 'error',
-                                title: 'Export Failed',
-                                text: response.message || 'Failed to export data to Google Sheets',
-                            });
-                        }
-                    },
-                    error: function(xhr) {
-                        $btn.prop('disabled', false).html(originalHtml);
-                        
-                        let errorMessage = 'Failed to export data to Google Sheets';
-                        if (xhr.responseJSON && xhr.responseJSON.message) {
-                            errorMessage = xhr.responseJSON.message;
-                        }
-                        
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Export Failed',
-                            text: errorMessage,
-                        });
-                    }
-                });
+                downloadVerificationCsv(rows);
             });
 
             

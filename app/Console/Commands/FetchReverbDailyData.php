@@ -77,18 +77,25 @@ class FetchReverbDailyData extends Command
             $orders = $data['orders'] ?? [];
             $totalOrders += count($orders);
 
+            $oldStreak = 0;
             foreach ($orders as $order) {
                 $orderData = $this->parseOrderData($order);
-                
-                if (!$orderData) continue;
-                
-                // Check if order is older than cutoff date
-                $orderDate = Carbon::parse($orderData['order_date']);
-                if ($orderDate->lt($cutoffDate)) {
-                    $reachedCutoff = true;
-                    $this->info("Reached cutoff date at page {$pageCount}");
-                    break;
+
+                if (!$orderData) {
+                    continue;
                 }
+
+                $orderDate = Carbon::parse($orderData['order_date'], 'America/Los_Angeles')->startOfDay();
+                if ($orderDate->lt($cutoffDate)) {
+                    $oldStreak++;
+                    if ($oldStreak >= 10) {
+                        $reachedCutoff = true;
+                        $this->info("Reached cutoff date at page {$pageCount}");
+                        break;
+                    }
+                    continue;
+                }
+                $oldStreak = 0;
 
                 $bulkOrders[] = $orderData;
                 $insertedOrders++;
@@ -121,16 +128,21 @@ class FetchReverbDailyData extends Command
         $paidAt = $order['paid_at'] ?? null;
         $createdAt = $order['created_at'] ?? null;
         $shippedAt = $order['shipped_at'] ?? null;
-        
-        $orderDate = $paidAt ?? $createdAt;
-        if (!$orderDate) return null;
 
-        // Calculate period based on order date (in UTC — matches Reverb's dashboard,
-        // which groups orders by UTC date). Use setTimezone() to normalize any offset.
-        $orderDateCarbon = Carbon::parse($orderDate)->setTimezone('UTC');
-        $today = Carbon::now('UTC')->startOfDay();
-        $daysDiff = $today->diffInDays($orderDateCarbon);
+        // Seller "Order Date" is created_at, not paid_at (paid can be the next UTC day).
+        $orderDate = $createdAt ?? $paidAt;
+        if (!$orderDate) {
+            return null;
+        }
+
+        $orderDateCarbon = Carbon::parse($orderDate)->timezone('America/Los_Angeles');
+        $today = Carbon::now('America/Los_Angeles')->startOfDay();
+        $daysDiff = $today->diffInDays($orderDateCarbon->copy()->startOfDay());
         $period = $daysDiff <= 30 ? 'l30' : 'l60';
+
+        $sku = $order['sku']
+            ?? ($order['listing']['sku'] ?? null)
+            ?? ($order['listing']['inventory']['sku'] ?? null);
 
         // Get shipping address info
         $shippingAddress = $order['shipping_address'] ?? [];
@@ -168,13 +180,11 @@ class FetchReverbDailyData extends Command
 
         return [
             'order_number' => $order['order_number'] ?? null,
-            // Store the UTC calendar date so L30/L60/Yesterday windows line up with
-            // Reverb's dashboard, which groups orders by UTC date.
-            'order_date' => Carbon::parse($orderDate)->setTimezone('UTC')->toDateString(),
+            'order_date' => $orderDateCarbon->toDateString(),
             'period' => $period,
             'status' => $order['status'] ?? null,
-            'sku' => $order['sku'] ?? null,
-            'display_sku' => $order['listing']['sku'] ?? $order['title'] ?? null,
+            'sku' => $sku,
+            'display_sku' => $sku ?? ($order['listing']['sku'] ?? $order['title'] ?? null),
             'title' => $order['title'] ?? null,
             'quantity' => $order['quantity'] ?? 1,
             

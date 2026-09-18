@@ -101,7 +101,9 @@ class ChannelLivePriceSync
             ]);
         }
 
-        if ($channel === 'doba_withoutship') {
+        // eBay Price is CurrentPrice from GetItem / inventory reports.
+        // Do not stamp Dil S PRC over a listing that never revised (or was changed later).
+        if ($channel === 'doba_withoutship' || self::isEbayChannel($channel)) {
             return;
         }
 
@@ -114,6 +116,11 @@ class ChannelLivePriceSync
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    public static function isEbayChannel(string $channel): bool
+    {
+        return in_array(self::normalize($channel), ['ebay1', 'ebay2', 'ebay3'], true);
     }
 
     public static function stamp(string $channel, string $sku, float $sprice): void
@@ -281,6 +288,14 @@ class ChannelLivePriceSync
             return PushedListingPrice::temuBaseToWrite($incoming, $pushed);
         }
 
+        if (self::isEbayChannel($channel)) {
+            if ($incoming !== null && $incoming > 0) {
+                return round($incoming, 2);
+            }
+
+            return $pushed;
+        }
+
         return PushedListingPrice::prefer($incoming, $pushed);
     }
 
@@ -303,6 +318,12 @@ class ChannelLivePriceSync
             : $live;
         if (PushedListingPrice::same($next, $liveCompare)) {
             return true;
+        }
+
+        // A leftover SPRICE_PUSHED_VALUE must not skip the revise or overwrite
+        // ebay_price when the live listing is still at another amount.
+        if (self::isEbayChannel($channel)) {
+            return false;
         }
 
         $pushed = (float) ($row['pushed_sprice'] ?? 0);

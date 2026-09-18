@@ -33,12 +33,11 @@ class ReverbSalesController extends Controller
                 return response()->json(['error' => 'Reverb daily data table not found'], 404);
             }
 
-            // Last 31 days in UTC (inclusive of today) to line up with Reverb's dashboard,
-            // which groups orders by UTC date. order_date is stored as a UTC date, so we
-            // anchor on UTC "today" and do NOT run a timezone conversion on the date column.
-            $nowUtc = Carbon::now('UTC');
-            $l30EndDate = $nowUtc->toDateString();
-            $l30StartDate = $nowUtc->copy()->subDays(30)->toDateString();
+            // Last 31 Pacific days (inclusive of today). order_date is the seller
+            // Order Date (created_at) in California — same 17th as the Reverb orders page.
+            $nowPt = Carbon::now('America/Los_Angeles');
+            $l30EndDate = $nowPt->toDateString();
+            $l30StartDate = $nowPt->copy()->subDays(30)->toDateString();
 
             // Fetch L30 data only (last 30 days based on Pacific windows)
             $reverbData = DB::table('reverb_daily_data')
@@ -52,7 +51,7 @@ class ReverbSalesController extends Controller
             ]);
 
             // Get unique SKUs from the data (filter out null/empty values)
-            $skus = $reverbData->pluck('sku')
+            $skus = $reverbData->map(fn ($row) => $row->sku ?: ($row->display_sku ?? ''))
                 ->filter(function($sku) {
                     return !empty($sku);
                 })
@@ -82,7 +81,7 @@ class ReverbSalesController extends Controller
 
             $data = [];
             foreach ($reverbData as $item) {
-                $sku = $item->sku;
+                $sku = $item->sku ?: ($item->display_sku ?? '');
                 $lp = 0;
                 $ship = 0;
 
@@ -146,7 +145,7 @@ class ReverbSalesController extends Controller
                     'order_date' => $item->order_date ? Carbon::parse($item->order_date)->format('Y-m-d') : null,
                     'period' => $item->period,
                     'status' => $item->status,
-                    'sku' => $item->sku ?? '',
+                    'sku' => $sku,
                     'display_sku' => $item->display_sku,
                     'title' => $item->title,
                     'quantity' => $quantity,
@@ -209,12 +208,9 @@ class ReverbSalesController extends Controller
                 ], 404);
             }
 
-            // Last 60 days in UTC, matching Reverb's dashboard. Reverb's "last N days"
-            // spans today + N previous days, so we use subDays(60) (same +1-day convention
-            // as the L30 window). order_date is a UTC date; no timezone conversion needed.
-            $nowUtc = Carbon::now('UTC');
-            $l60EndDate = $nowUtc->toDateString();
-            $l60StartDate = $nowUtc->copy()->subDays(60)->toDateString();
+            $nowPt = Carbon::now('America/Los_Angeles');
+            $l60EndDate = $nowPt->toDateString();
+            $l60StartDate = $nowPt->copy()->subDays(60)->toDateString();
 
             // Fetch L60 data
             $reverbData = DB::table('reverb_daily_data')
@@ -228,7 +224,7 @@ class ReverbSalesController extends Controller
                 ->get();
 
             // Get unique SKUs
-            $skus = $reverbData->pluck('sku')
+            $skus = $reverbData->map(fn ($row) => $row->sku ?: ($row->display_sku ?? ''))
                 ->filter(function($sku) {
                     return !empty($sku);
                 })
@@ -279,7 +275,7 @@ class ReverbSalesController extends Controller
                 // Get LP and Ship for profit calculation
                 $lp = 0;
                 $ship = 0;
-                $sku = $item->sku;
+                $sku = $item->sku ?: ($item->display_sku ?? '');
 
                 if (!empty($sku) && isset($productMasters[$sku])) {
                     $productMaster = $productMasters[$sku];

@@ -167,8 +167,8 @@ class FetchMiraklDailyData extends Command
         $channelId = $order['origin']['channel_id'] ?? null;
         $orderId = $order['id'] ?? null;
         $channelOrderId = $order['channel_order_id'] ?? null;
-        $orderCreatedAt = isset($order['created_at']) ? Carbon::parse($order['created_at']) : null;
-        $orderUpdatedAt = isset($order['updated_at']) ? Carbon::parse($order['updated_at']) : null;
+        $orderCreatedAt = isset($order['created_at']) ? Carbon::parse($order['created_at'])->utc() : null;
+        $orderUpdatedAt = isset($order['updated_at']) ? Carbon::parse($order['updated_at'])->utc() : null;
 
         // Determine period based on order date
         $period = 'l60';

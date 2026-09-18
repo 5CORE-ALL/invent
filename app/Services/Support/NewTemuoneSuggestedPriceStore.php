@@ -147,6 +147,11 @@ class NewTemuoneSuggestedPriceStore
         $view->save();
     }
 
+    public function pendingWriteCount(): int
+    {
+        return count($this->dirty);
+    }
+
     public function flush(): void
     {
         if ($this->dirty === []) {
@@ -207,9 +212,18 @@ class NewTemuoneSuggestedPriceStore
     /**
      * Persist a Dil SNROI S PRC (Amazon-style insert after clear). Empty fingerprint
      * so the next catalog load recomputes if Dil / CVR / ads inputs changed.
+     * $sprcDil is the uncapped Dil $; $labels are Amz/EB caps on the painted cell.
+     *
+     * @param  list<string>  $labels
      */
-    public function writeExactSprice(string $sku, float $sprice, float $lp = 0.0, float $ship = 0.0): void
-    {
+    public function writeExactSprice(
+        string $sku,
+        float $sprice,
+        float $lp = 0.0,
+        float $ship = 0.0,
+        float $sprcDil = 0.0,
+        array $labels = []
+    ): void {
         $sku = trim($sku);
         $sprice = round($sprice, 2);
         if ($sku === '' || ! ($sprice > 0)) {
@@ -221,14 +235,22 @@ class NewTemuoneSuggestedPriceStore
             ? TemuShopifySalesService::sgroiAtSprice($sprice, $lp, $ship, 0.0)
             : null;
         $sBase = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($sprice), 2);
+        $uncapped = $sprcDil > 0 ? round($sprcDil, 2) : $sprice;
+        $cleanLabels = [];
+        foreach ($labels as $label) {
+            $label = trim((string) $label);
+            if ($label !== '' && ! in_array($label, $cleanLabels, true)) {
+                $cleanLabels[] = $label;
+            }
+        }
         $this->queueWrite($sku, [
             'sgroi' => $inverted !== null ? round($inverted, 2) : null,
             'sprice' => $sprice,
             's_base' => $sBase > 0 ? $sBase : 0.0,
-            'sprc_dil' => $sprice,
-            'labels' => [],
+            'sprc_dil' => $uncapped,
+            'labels' => $cleanLabels,
             'lmp_alert' => false,
-            'capped' => false,
+            'capped' => abs($uncapped - $sprice) > 0.01,
             'use_saved' => true,
         ], '');
     }
@@ -557,10 +579,10 @@ class NewTemuoneSuggestedPriceStore
             $sprice = round($lmp, 2);
         }
         $labels = [];
-        if ($ebay > 0 && round($sprice, 2) === $ebay && $discounted > $ebay) {
+        if ($ebay > 0 && abs(round($sprice, 2) - $ebay) < 0.015 && $discounted > ($ebay + 0.004)) {
             $labels[] = 'EB';
         }
-        if ($amz > 0 && round($sprice, 2) === $amz && $discounted > $amz) {
+        if ($amz > 0 && abs(round($sprice, 2) - $amz) < 0.015 && $discounted > ($amz + 0.004)) {
             $labels[] = 'Amz';
         }
 

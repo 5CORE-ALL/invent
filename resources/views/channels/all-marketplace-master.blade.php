@@ -8,11 +8,11 @@
 
     <style>
         html, body, .wrapper {
-            height: 100% !important;
-            max-height: 100% !important;
+            height: auto !important;
+            max-height: none !important;
             max-width: 100%;
-            overflow: hidden !important;
-            overflow-anchor: none;
+            overflow-x: auto !important;
+            overflow-y: auto !important;
         }
         body {
             font-family: 'Poppins', sans-serif;
@@ -88,79 +88,51 @@
             display: none !important;
         }
 
-        /* Fill the viewport so the page cannot scroll the table away.
-           Condensed sidenav otherwise forces content-page min-height ~1500px. */
+        /* Condensed sidenav otherwise forces content-page min-height ~1800px.
+           Keep page scrollable so every channel row is visible. */
         .content-page {
-            min-height: 0 !important;
-            height: calc(100vh - var(--tz-topbar-height, 70px)) !important;
-            max-height: calc(100vh - var(--tz-topbar-height, 70px)) !important;
+            min-height: calc(100vh - var(--tz-topbar-height, 70px)) !important;
+            height: auto !important;
+            max-height: none !important;
             max-width: 100%;
-            overflow: hidden !important;
-            display: flex !important;
-            flex-direction: column;
+            overflow: visible !important;
         }
         .content-page .content,
         .content-page .container-fluid {
-            flex: 1 1 auto;
             min-height: 0 !important;
             max-width: 100%;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
+            overflow: visible;
         }
         .amm-shell {
-            flex: 1 1 auto;
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
             max-width: 100%;
-        }
-        .amm-shell .page-title-box,
-        .amm-shell > .toast-container,
-        .amm-shell > .row:not(.amm-page-row) {
-            flex: 0 0 auto;
         }
         .amm-page-row,
         .amm-page-col,
         .amm-page-card {
-            flex: 1 1 auto;
             min-width: 0;
-            min-height: 0;
             max-width: 100%;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
         }
-        .amm-page-row { flex-wrap: nowrap; }
-        .amm-toolbar { flex: 0 0 auto; }
         .amm-table-card-body {
-            flex: 1 1 auto;
-            min-height: 0;
             padding: 0 !important;
-            overflow: hidden;
+            overflow: visible;
         }
         #marketplace-table-wrapper {
-            flex: 1 1 auto;
-            height: 100%;
-            min-height: 0;
             width: 100%;
             max-width: 100%;
-            overflow: hidden;
+            overflow: visible;
         }
         #marketplace-table,
         #marketplace-table.tabulator {
-            height: 100% !important;
+            height: auto !important;
             min-height: 0 !important;
             width: 100% !important;
             max-width: 100%;
-            overflow: hidden !important;
+            overflow: visible !important;
         }
-        /* Beat global .tabulator-header { position:sticky; top:0 } — that snaps scroll up. */
         #marketplace-table.tabulator .tabulator-header {
-            position: relative !important;
-            top: auto !important;
-            z-index: 6 !important;
+            position: sticky !important;
+            top: var(--tz-topbar-height, 70px) !important;
+            z-index: 24 !important;
             background-color: #dbeafe !important;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-header-contents,
@@ -168,10 +140,9 @@
             background-color: #dbeafe !important;
         }
         #marketplace-table.tabulator .tabulator-tableholder {
-            overflow: auto !important;
-            overflow-anchor: none !important;
-            scrollbar-gutter: stable;
-            -webkit-overflow-scrolling: touch;
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-col.tabulator-frozen {
             background-color: #dbeafe !important;
@@ -517,6 +488,9 @@
             margin-left: 4px;
             white-space: nowrap;
             letter-spacing: -0.02em;
+        }
+        #marketplace-table [tabulator-field="P Growth"] .p-sales-vs-sales-pct {
+            margin-left: 0;
         }
         #total-p-sales-vs-sales,
         #total-p-npft-vs-npft {
@@ -1412,6 +1386,13 @@
             const dir = pct > 0 ? 'above' : 'below';
             return Math.abs(pct).toFixed(0) + '% ' + dir + ' Sales — click for chart';
         }
+        function pGrowthFromRow(row) {
+            const l7 = parseNumber(row['L7 Sales'] || 0);
+            const pSales = parseNumber(row['P-Sales'] != null && row['P-Sales'] !== ''
+                ? row['P-Sales']
+                : projectedSalesFromL7(l7));
+            return pSalesVsL30Pct(pSales, row['L30 Sales'] || 0);
+        }
         function pNpftAmtVsNpftPct(pAmt, npftAmt) {
             const p = parseNumber(pAmt);
             const s = parseNumber(npftAmt);
@@ -2031,11 +2012,13 @@
                     if (metric === 'p_sales') {
                         var p = parseFloat(el.getAttribute('data-p-sales'));
                         var s = parseFloat(el.getAttribute('data-l30-sales'));
-                        var pct = pSalesVsL30Pct(p, s);
-                        el.style.color = pSalesVsL30Color(p, s);
-                        el.style.display = '';
-                        el.title = pSalesVsL30Title(pct);
-                        return;
+                        if (!isNaN(p) && !isNaN(s)) {
+                            var pct = pSalesVsL30Pct(p, s);
+                            el.style.color = pSalesVsL30Color(p, s);
+                            el.style.display = '';
+                            el.title = pSalesVsL30Title(pct);
+                            return;
+                        }
                     }
                     if (metric === 'p_npft_amt') {
                         var pAmt = parseFloat(el.getAttribute('data-p-npft'));
@@ -2084,54 +2067,13 @@
                 }
             });
 
-            function ammTableViewportHeight() {
-                var wrap = document.getElementById('marketplace-table-wrapper');
-                if (!wrap) return 400;
-                var footer = document.querySelector('footer.footer');
-                var footerH = footer ? Math.ceil(footer.getBoundingClientRect().height) : 60;
-                var top = wrap.getBoundingClientRect().top;
-                var fromViewport = Math.floor(window.innerHeight - top - footerH - 6);
-                var fromFlex = Math.floor(wrap.clientHeight || 0);
-                return Math.max(240, fromFlex > 160 ? fromFlex : fromViewport);
-            }
-
-            function pinAmmTableToViewport(force) {
-                var wrap = document.getElementById('marketplace-table-wrapper');
-                if (!wrap) return;
-                var h = ammTableViewportHeight();
-                var same = wrap.dataset.ammH === String(h);
-                wrap.dataset.ammH = String(h);
-                wrap.style.height = h + 'px';
-                if (!table || typeof table.setHeight !== 'function') return;
-                if (same && !force) return;
-                var holder = wrap.querySelector('.tabulator-tableholder');
-                var sl = holder ? holder.scrollLeft : 0;
-                var st = holder ? holder.scrollTop : 0;
-                try { table.setHeight(h); } catch (e) { /* ignore */ }
-                holder = wrap.querySelector('.tabulator-tableholder');
-                if (holder) {
-                    var headerEl = wrap.querySelector('.tabulator-header');
-                    var footerEl = wrap.querySelector('.tabulator-footer');
-                    var inner = h - (headerEl ? headerEl.offsetHeight : 0) - (footerEl ? footerEl.offsetHeight : 0);
-                    if (inner < 80) inner = 80;
-                    holder.style.height = inner + 'px';
-                    holder.style.maxHeight = inner + 'px';
-                    holder.style.overflow = 'auto';
-                    holder.scrollLeft = sl;
-                    holder.scrollTop = st;
-                }
-            }
-
-            pinAmmTableToViewport();
-
             table = new Tabulator("#marketplace-table", {
                 ajaxURL: "/channels-master-data",
                 ajaxParams: { size: 10000, page: 1 },
                 ajaxSorting: false,
                 layout: "fitDataStretch",
-                height: Math.max(240, (document.getElementById('marketplace-table-wrapper') || {}).clientHeight || 400),
+                height: false,
                 renderVertical: "basic",
-                autoResize: false,
                 pagination: false,
                 responsiveLayout: window.innerWidth < 768 ? "hide" : false,
                 columnDefaults: {
@@ -2149,6 +2091,7 @@
                         }
                         response.data.forEach(function(row) {
                             row['P-Sales'] = projectedSalesFromL7(row['L7 Sales'] || 0);
+                            row['P Growth'] = pGrowthFromRow(row);
                             row['Y PFT'] = yGrossPftFromRow(row);
                             row['Y NPFT'] = yNetPftFromRow(row);
                             row['Y GROI%'] = yGroiPctFromRow(row);
@@ -2932,21 +2875,19 @@
                         field: "P-Sales",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 168,
-                        headerTooltip: "Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. % and dot compare P-Sales to Sales: green = above Sales, red = below Sales.",
+                        width: 120,
+                        headerTooltip: "Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const l7 = parseNumber(row['L7 Sales'] || 0);
                             const value = parseNumber(cell.getValue() != null && cell.getValue() !== '' ? cell.getValue() : projectedSalesFromL7(l7));
-                            const l30 = parseNumber(row['L30 Sales'] || 0);
                             const channel = (row['Channel '] || '').trim();
-                            const pct = pSalesVsL30Pct(value, l30);
-                            const dotColor = pSalesVsL30Color(value, l30);
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_sales" data-p-sales="${value}" data-l30-sales="${l30}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="${pSalesVsL30Title(pct)}"></i>`;
+                            const dotColor = getMetricDotColor(channel, 'p_sales');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             if (!l7 || l7 === 0) {
                                 return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
                             }
-                            return `<span style="white-space:nowrap;"><span class="p-sales-value" style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${formatPSalesVsL30PctHtml(pct)}${chartIcon}</span>`;
+                            return `<span class="p-sales-value" style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -2964,14 +2905,57 @@
                         bottomCalcFormatter: function(cell) {
                             const pSales = parseNumber(cell.getValue());
                             if (!pSales || pSales === 0) return '<strong style="color:#adb5bd;">-</strong>';
-                            let l30 = 0;
-                            try {
-                                const rows = cell.getTable().getData('active') || [];
-                                rows.forEach(function(row) {
-                                    l30 += parseNumber(row['L30 Sales'] || 0);
-                                });
-                            } catch (e) { /* ignore */ }
-                            return `<strong style="color:#0d6efd;">$${Math.round(pSales).toLocaleString('en-US')}</strong>${formatPSalesVsL30PctHtml(pSalesVsL30Pct(pSales, l30))}`;
+                            return `<strong style="color:#0d6efd;">$${Math.round(pSales).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "P Growth",
+                        field: "P Growth",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 88,
+                        headerTooltip: "P-Sales vs Sales: ((P-Sales − Sales) ÷ Sales) × 100. Green = P-Sales above Sales, red = below.",
+                        mutator: function(value, data) {
+                            return pGrowthFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const l7 = parseNumber(row['L7 Sales'] || 0);
+                            const pSales = parseNumber(row['P-Sales'] != null && row['P-Sales'] !== '' ? row['P-Sales'] : projectedSalesFromL7(l7));
+                            const l30 = parseNumber(row['L30 Sales'] || 0);
+                            const rawPct = cell.getValue();
+                            const pct = rawPct !== null && rawPct !== undefined && rawPct !== ''
+                                ? parseNumber(rawPct)
+                                : pSalesVsL30Pct(pSales, l30);
+                            const channel = (row['Channel '] || '').trim();
+                            const dotColor = pSalesVsL30Color(pSales, l30);
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_sales" data-p-sales="${pSales}" data-l30-sales="${l30}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="${pSalesVsL30Title(pct)}"></i>`;
+                            if (!l7 || l7 === 0) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
+                            }
+                            return `<span style="white-space:nowrap;">${formatPSalesVsL30PctHtml(pct)}${chartIcon}</span>`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = parseNumber(cell.getRow().getData()['P-Sales']);
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let pSales = 0, l30 = 0;
+                            data.forEach(function(row) {
+                                pSales += projectedSalesFromL7(row['L7 Sales'] || 0);
+                                l30 += parseNumber(row['L30 Sales'] || 0);
+                            });
+                            return pSalesVsL30Pct(pSales, l30);
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;">-</strong>';
+                            }
+                            return `<strong>${formatPSalesVsL30PctHtml(parseNumber(value))}</strong>`;
                         }
                     },
                     {
@@ -4831,34 +4815,22 @@
                 ]
             });
 
-            table.on('tableBuilt', function() {
-                pinAmmTableToViewport(true);
-            });
-
             table.on('renderComplete', function() {
                 paintMetricDots(channelKeysFromTableData());
                 bindAmmHorizontalScrollSync();
             });
 
             function bindAmmHorizontalScrollSync() {
+                var wrap = document.getElementById('marketplace-table-wrapper');
                 var holder = document.querySelector('#marketplace-table .tabulator-tableholder');
-                if (!holder || holder.dataset.ammScrollBound === '1') return;
-                holder.dataset.ammScrollBound = '1';
-                holder.addEventListener('scroll', function() {
+                var scroller = wrap || holder;
+                if (!scroller || scroller.dataset.ammScrollBound === '1') return;
+                scroller.dataset.ammScrollBound = '1';
+                scroller.addEventListener('scroll', function() {
                     var header = document.querySelector('#marketplace-table .tabulator-header .tabulator-header-contents');
-                    if (header) header.scrollLeft = holder.scrollLeft;
+                    if (header) header.scrollLeft = scroller.scrollLeft;
                 }, { passive: true });
             }
-
-            var ammPinTimer = null;
-            $(window).off('resize.ammFreezeHeader').on('resize.ammFreezeHeader', function() {
-                if (ammPinTimer) clearTimeout(ammPinTimer);
-                ammPinTimer = setTimeout(function() {
-                    var wrap = document.getElementById('marketplace-table-wrapper');
-                    if (wrap) delete wrap.dataset.ammH;
-                    pinAmmTableToViewport();
-                }, 150);
-            });
 
             function loadMetricDotTrends(tableData) {
                 var channelKeys = channelKeysFromTableData(tableData);
@@ -5644,9 +5616,6 @@
             table.on('dataLoaded', function() {
                 setTimeout(function() {
                     buildColumnDropdown();
-                    var wrap = document.getElementById('marketplace-table-wrapper');
-                    if (wrap) delete wrap.dataset.ammH;
-                    pinAmmTableToViewport(true);
                 }, 100);
                 if (!dotTrendsLoadedOnce && table.getData && table.getData().length) {
                     dotTrendsLoadedOnce = true;

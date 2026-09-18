@@ -1,6 +1,8 @@
 {{--
   Sprc Dil — Dil → Target NROI slabs on every Dil tabulator (Ads%=0 → same $ as GROI).
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
+  Master page /master-dil-rules writes the same existing store on every site.
+  A slab add/remove/value change on one site also updates that slab on the others.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
   Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Shein / Temu 3 also have a 0–0 slab on top for Dil = 0.
   AliExpress / Faire / TikTok / Mercari / PLS / Best Buy / Newegg / Reverb / Wayfair / Depop: 0–0 slab on top for Dil = 0. Channel L30 = 0 uses min Target NROI (same as other 0 Sold pages). Sold rows use the Dil-matching slab;
@@ -12,8 +14,8 @@
   Macys: 0–0 slab on top for Dil = 0. Dil-matching when MC L30 > 0. MC L30 = 0 (0 Sold) always uses the minimum Target GROI
   (not the Dil-matching slab). Dil is MC L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price,
   S PRC = A Price (do not keep a lower Dil/Std price). Out of box + sold uses Std Prc, then the same A Price floor.
-  Purchasing Power / Best Buy / TopDawg / Doba: 0–0 slab on top for Dil = 0. Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI.
-  Dil is OV L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
+  Purchasing Power / Best Buy / TopDawg / Doba: 0–0 slab on top for Dil = 0. Dil-matching when sold > 0; 0 Sold uses the minimum Target.
+  Purchasing Power Target is SNROI (Ads%=0 → same $ as SROI). Dil is OV L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
   Best Buy also caps S PRC at LMP (including 0 Sold) after the A Price floor.
   Shopify B2C: 0–0 slab on top for Dil = 0. Dil-matching when B2C L30 > 0, including Dil below the first slab or above
   the last (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay.
@@ -21,9 +23,10 @@
   the last (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay.
   CVR Down/Up uses CVR% vs the overlay thresholds (no L60). Dil S PRC inverts 0.95 take-home
   so SNROI = target. B2B excludes Ship.
-  Dil slab edits and table load paint S PRC from the Dil rule and persist that
-  same $ to the channel SPRICE table (clear 0, then write Dil). Save and Apply
-  does the same wipe-then-write. Live listing push stays opt-in (S PRC ≠ Price).
+  Dil slab edits autosave the Dil table (no Save click). Table load and slab
+  edits paint S PRC from the Dil rule and persist that same $ to the channel
+  SPRICE table. Save and Apply is optional wipe-then-write + push.
+  Live listing push stays opt-in (S PRC ≠ Price).
   Macys / Purchasing Power persist in the background (page can close).
   Purchasing Power also pushes listed price via MCM when S PRC ≠ PP Price.
   Live push on other pages is only for saved S PRC ≠ Price.
@@ -63,7 +66,9 @@
         default => 'E L30',
     };
     $ebaySprcDilTargetNroi = true;
-    $ebaySprcDilTargetLabel = $ebaySprcDilTargetNroi ? 'NROI' : 'GROI';
+    $ebaySprcDilTargetLabel = $ebaySprcDilChannel === 'purchasing_power'
+        ? 'SNROI'
+        : ($ebaySprcDilTargetNroi ? 'NROI' : 'GROI');
     $ebaySprcDilPageLabel = match ($ebaySprcDilChannel) {
         'temu' => 'Temu',
         'temu2' => 'Temu 2',
@@ -254,6 +259,7 @@
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="ebayDilGroiModalLabel">
                         <i class="fas fa-sliders-h me-1"></i> Dil vs Target {{ $ebaySprcDilTargetLabel }} — Sprc Dil
+                        <a href="{{ route('master.dil.rules') }}" class="btn btn-sm btn-outline-secondary ms-2" target="_blank" rel="noopener">Master</a>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -325,12 +331,12 @@
                             it auto-applies to <strong>S PRC</strong> and is <strong>queued for Push Prc</strong>
                             (page close OK).
                         </li>
-                        @if(!empty($ebaySprcDilTargetNroi))
+                        @if(!empty($ebaySprcDilTargetNroi) && $ebaySprcDilChannel !== 'purchasing_power')
                         <li>
                             <strong>When</strong> S PRC is calculated:
-                            set it so <strong>SNROI = Target NROI</strong>
+                            set it so <strong>SNROI = Target {{ $ebaySprcDilTargetLabel }}</strong>
                             using channel Ads%:
-                            <code>(LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100)</code>.
+                            <code>(LP × (1 + {{ $ebaySprcDilTargetLabel }}%/100) + Ship) / (take-home − Ads%/100)</code>.
                         </li>
                         @endif
 @else
@@ -386,9 +392,9 @@
                         @if(!empty($ebaySprcDilTargetNroi))
                         <li>
                             <strong>When</strong> S PRC is calculated:
-                            set it so <strong>SNROI = Target NROI</strong>
+                            set it so <strong>SNROI = Target {{ $ebaySprcDilTargetLabel }}</strong>
                             using channel Ads%:
-                            <code>(LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100)</code>.
+                            <code>(LP × (1 + {{ $ebaySprcDilTargetLabel }}%/100) + Ship) / (take-home − Ads%/100)</code>.
                         </li>
                         @endif
 @endif
@@ -403,8 +409,9 @@
 @elseif($ebaySprcDilChannel === 'purchasing_power')
                         <li>
                             <strong>When</strong> S PRC is calculated:
-                            same as Amazon, using <strong>Ship BB</strong> (not normal Ship):
-                            <code>S PRC = (LP × (1 + GROI%/100) + Ship BB) / margin</code>.
+                            set it so <strong>SNROI = Target SNROI</strong>, using <strong>Ship BB</strong>
+                            (Ads% = 0, so SNROI = SROI):
+                            <code>S PRC = (LP × (1 + SNROI%/100) + Ship BB) / margin</code>.
                         </li>
 @elseif(!empty($ebaySprcDilExcludeShip))
                         <li>
@@ -417,12 +424,8 @@
                             later rows fill as first +5, +10, … (increasing down the table).
                         </li>
                         <li>
-                            <strong>When</strong> you click <strong>Save and Apply</strong>:
-                            @if($ebaySprcDilChannel === 'shopify_b2b')
-                            old <strong>S PRC / calc_price</strong> is deleted, Dil is calculated and saved, then Push starts for S PRC ≠ Price (same as Amazon).
-                            @else
-                            {{ $ebaySprcDilPageLabel }}’s table is stored via <strong>API only</strong>, then old <strong>S PRC</strong> is deleted and the new Dil S PRC is written.
-                            @endif
+                            <strong>When</strong> you change a Dil / Target value (or add/delete a slab):
+                            slabs <strong>autosave</strong>. S PRC updates from the new rule. <strong>Save and Apply</strong> is optional (push / full wipe-then-write).
                         </li>
                         <li>
                             <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
@@ -517,8 +520,8 @@
                     <div class="small text-muted mt-2" id="ebay-dil-groi-status"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
-                    <button type="button" class="btn btn-sm btn-primary" id="ebay-dil-groi-save-btn"
-                        title="Save Dil → Target {{ $ebaySprcDilTargetLabel }}% slabs via API and apply S PRC on matching SKUs.">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="ebay-dil-groi-save-btn"
+                        title="Optional. Slabs already autosave when you change a value. This also wipe-then-writes S PRC and queues push if enabled.">
                         <i class="fas fa-save me-1"></i> Save and Apply
                     </button>
                 </div>
@@ -651,7 +654,8 @@
             return true;
         }
         function ebayDgExcludeShip() {
-            return ebayDgIsPurchasingPower() || ebayDgIsWayfair() || ebayDgIsDobaWithoutship() || ebayDgIsFaire() || ebayDgIsTopdawg() || ebayDgIsFbMarketplace()
+            // Purchasing Power uses Ship BB in the Amazon invert — do not drop it here.
+            return ebayDgIsWayfair() || ebayDgIsDobaWithoutship() || ebayDgIsFaire() || ebayDgIsTopdawg() || ebayDgIsFbMarketplace()
                 || EBAY_DIL_GROI_CHANNEL === 'shopify_b2b'
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship'
                 || EBAY_DIL_GROI_CHANNEL === 'depop';
@@ -1271,7 +1275,7 @@
                 const minSlab = ebayDilGroiMinSlab();
                 if (!minSlab) return null;
                 groi = minSlab.groi;
-                label = '0 Sold · min ' + (ebayDilTargetsNroi() ? 'NROI' : 'GROI') + ' ' + minSlab.groi + '% from ' + minSlab.label;
+                label = '0 Sold · min ' + (EBAY_DIL_TARGET_LABEL || (ebayDilTargetsNroi() ? 'NROI' : 'GROI')) + ' ' + minSlab.groi + '% from ' + minSlab.label;
                 key = minSlab.key || 'zero-sold-min';
                 zeroSoldMin = true;
             } else if (rule) {
@@ -1354,7 +1358,7 @@
                 return dilTxt + meta.label + ' → $' + Number(meta.sprc).toFixed(2);
             }
             const slabGroi = (meta.slabGroi != null) ? meta.slabGroi : meta.groi;
-            const metric = ebayDilTargetsNroi() ? 'NROI' : 'GROI';
+            const metric = EBAY_DIL_TARGET_LABEL || (ebayDilTargetsNroi() ? 'NROI' : 'GROI');
             const head = meta.zeroSoldMin
                 ? (opts.zeroSoldLabel || ('0 Sold → min Target ' + metric))
                 : ('Dil ' + (isFinite(meta.dil) ? Number(meta.dil).toFixed(1) : '0') + '%'
@@ -1882,6 +1886,7 @@
             ebayDilGroiRules = ebayNormalizeDilGroiList(ebayDilGroiRules);
             renderEbayDilGroiModalTable();
             ebayAfterDilGroiRulesChanged();
+            ebayScheduleDilGroiAutosave();
         }
         function ebayDilGroiDeleteSlab(idx) {
             const rules = readEbayDilGroiRulesFromModal();
@@ -1894,6 +1899,7 @@
             ebayDilGroiRules = ebayNormalizeDilGroiList(rules);
             renderEbayDilGroiModalTable();
             ebayAfterDilGroiRulesChanged();
+            ebayScheduleDilGroiAutosave();
         }
         function ebayDgTableScrollEl() {
             try {
@@ -2049,11 +2055,16 @@
                         : (Number(d && d.SPRICE) || 0);
                     const live = Number(d && (d['MC Price'] != null ? d['MC Price'] : d.price)) || 0;
                     if (price > 0) {
-                        if (nearly(current, price)) return;
+                        const metrics = ebayTiktokMetricsPatch(d, price);
+                        const sroi = Number(d && (d.SROI != null ? d.SROI : d.sroi));
+                        const sgpft = Number(d && (d.SGPFT != null ? d.SGPFT : d.sgpft));
+                        const metricsMissing = !(isFinite(sroi) && Math.abs(sroi) > 0.049)
+                            && !(isFinite(sgpft) && Math.abs(sgpft) > 0.049);
+                        if (nearly(current, price) && !metricsMissing) return;
                         const patch = (typeof chPromoSpricePatch === 'function')
                             ? chPromoSpricePatch(price)
                             : { SPRICE: price, sprice: price, has_custom_sprice: true };
-                        row.update(Object.assign({}, patch, ebayTiktokMetricsPatch(d, price), {
+                        row.update(Object.assign({}, patch, metrics, {
                             SPRICE_STATUS: 'applied',
                         }));
                         n++;
@@ -2197,7 +2208,10 @@
             const ship = ebayDgShip(d);
             const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 10000) / 100 : 0;
             const sroi = lp > 0 ? Math.round(((sprice * margin - lp - ship) / lp) * 10000) / 100 : 0;
-            const patch = { SGPFT: sgpft, SPFT: sgpft, SROI: sroi, sgpft: sgpft, sroi: sroi, spft: sgpft };
+            const patch = {
+                SGPFT: sgpft, SPFT: sgpft, SROI: sroi, SNROI: sroi, SGROI: sroi,
+                sgpft: sgpft, sroi: sroi, spft: sgpft, snroi: sroi, sgroi: sroi,
+            };
             if (ebayDgIsDoba() || ebayDgIsDobaWithoutship()) {
                 patch.s_self_pick = Math.max(0, ebayDgRound2(sprice - ship));
             }
@@ -2405,7 +2419,12 @@
                         ? chPromoPrice(d)
                         : (Number(d && (d['MC Price'] != null ? d['MC Price'] : d.price)) || 0);
                     const ended = typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d);
-                    const needsFill = persist && !nearly(current, price);
+                    const sroiNow = Number(d && (d.SROI != null ? d.SROI : d.sroi));
+                    const sgpftNow = Number(d && (d.SGPFT != null ? d.SGPFT : d.sgpft));
+                    const metricsMissing = price > 0
+                        && !(isFinite(sroiNow) && Math.abs(sroiNow) > 0.049)
+                        && !(isFinite(sgpftNow) && Math.abs(sgpftNow) > 0.049);
+                    const needsFill = persist && (!nearly(current, price) || metricsMissing);
                     const needsPush = !!(allowPush && livePushOn && !ended && current > 0 && live > 0 && !nearly(current, live));
                     if (!needsFill && !needsPush) return;
                     jobs.push({ row: row, sku: sku, price: price, needsFill: needsFill, needsPush: needsPush });
@@ -2457,10 +2476,14 @@
                     jobs.forEach(function(job) {
                         if (!job.row || typeof job.row.update !== 'function') return;
                         const status = job.needsPush ? 'queued' : 'applied';
+                        const dNow = (typeof job.row.getData === 'function') ? (job.row.getData() || {}) : {};
+                        const metrics = ebayTiktokMetricsPatch(dNow, job.price);
                         if (typeof chPromoSpricePatch === 'function') {
-                            job.row.update(Object.assign({}, chPromoSpricePatch(job.price), { SPRICE_STATUS: status }));
+                            job.row.update(Object.assign({}, chPromoSpricePatch(job.price), metrics, { SPRICE_STATUS: status }));
                         } else {
-                            job.row.update({ SPRICE: job.price, sprice: job.price, has_custom_sprice: true, SPRICE_STATUS: status });
+                            job.row.update(Object.assign({
+                                SPRICE: job.price, sprice: job.price, has_custom_sprice: true, SPRICE_STATUS: status,
+                            }, metrics));
                         }
                     });
                 } finally {
@@ -2538,11 +2561,17 @@
                 ebayScheduleSprcDilAutoApply();
             }
         }
-        function saveEbayDilGroiRules() {
+        let ebayDgAutosaveTimer = null;
+        let ebayDgAutosaveXhr = null;
+        let ebayDgAutosaveSeq = 0;
+        function postEbayDilGroiRules() {
             const rules = readEbayDilGroiRulesFromModal();
             const cvrAdj = ebayCvrGroiAdjNow();
             ebayCvrGroiAdj = cvrAdj;
-            return $.ajax({
+            if (ebayDgAutosaveXhr && typeof ebayDgAutosaveXhr.abort === 'function') {
+                try { ebayDgAutosaveXhr.abort(); } catch (e) { /* ignore */ }
+            }
+            ebayDgAutosaveXhr = $.ajax({
                 url: ebayDgRulesUrl(),
                 method: 'POST',
                 headers: {
@@ -2551,7 +2580,48 @@
                     'Content-Type': 'application/json',
                 },
                 data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, _token: ebayDgCsrf() }),
-            }).then(async function(res) {
+            });
+            return ebayDgAutosaveXhr.then(function(res) {
+                ebayDgAutosaveXhr = null;
+                if (res && Array.isArray(res.rules)) {
+                    const saved = ebayNormalizeDilGroiList(res.rules);
+                    if (saved.length) ebayDilGroiRules = saved;
+                }
+                return res;
+            }, function(xhr) {
+                ebayDgAutosaveXhr = null;
+                throw xhr;
+            });
+        }
+        function ebayScheduleDilGroiAutosave() {
+            if (ebayDgAutosaveTimer) clearTimeout(ebayDgAutosaveTimer);
+            ebayDgAutosaveTimer = setTimeout(function() {
+                ebayDgAutosaveTimer = null;
+                const seq = ++ebayDgAutosaveSeq;
+                $('#ebay-dil-groi-status').text('Autosaving Dil slabs…');
+                postEbayDilGroiRules().then(function() {
+                    if (seq !== ebayDgAutosaveSeq) return;
+                    $('#ebay-dil-groi-status').text('Autosaved. S PRC updates as you type — Save and Apply not required.');
+                }, function(xhr) {
+                    if (seq !== ebayDgAutosaveSeq) return;
+                    if (xhr && xhr.statusText === 'abort') return;
+                    const reason = (xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error';
+                    $('#ebay-dil-groi-status').text('Autosave failed: ' + reason);
+                });
+            }, 600);
+        }
+        function ebayFlushDilGroiAutosave() {
+            if (!ebayDgAutosaveTimer) return $.Deferred().resolve().promise();
+            clearTimeout(ebayDgAutosaveTimer);
+            ebayDgAutosaveTimer = null;
+            return postEbayDilGroiRules();
+        }
+        function saveEbayDilGroiRules() {
+            if (ebayDgAutosaveTimer) {
+                clearTimeout(ebayDgAutosaveTimer);
+                ebayDgAutosaveTimer = null;
+            }
+            return postEbayDilGroiRules().then(async function(res) {
                 if (res && Array.isArray(res.rules)) {
                     const saved = ebayNormalizeDilGroiList(res.rules);
                     if (saved.length) ebayDilGroiRules = saved;
@@ -2613,18 +2683,21 @@
                     else readEbayDilGroiRulesFromModal();
                     renderEbayDilGroiCounts();
                     ebayAfterDilGroiRulesChanged();
+                    ebayScheduleDilGroiAutosave();
                 });
             $(document).off('input.ebayCvrGroi change.ebayCvrGroi', '#ebay-cvr-groi-table .ebay-cvr-groi-input')
                 .on('input.ebayCvrGroi change.ebayCvrGroi', '#ebay-cvr-groi-table .ebay-cvr-groi-input', function() {
                     ebayCvrGroiAdj = ebayCvrGroiAdjNow();
                     renderEbayDilGroiCounts();
                     ebayAfterDilGroiRulesChanged();
+                    ebayScheduleDilGroiAutosave();
                 });
             $('#ebayDilGroiModal').off('shown.bs.modal.ebaydg').on('shown.bs.modal.ebaydg', function() {
                 setTimeout(function() { renderEbayDilGroiPies(); }, 50);
             });
             $('#ebayDilGroiModal').off('hidden.bs.modal.ebaydg').on('hidden.bs.modal.ebaydg', function() {
                 destroyEbayDilGroiPies();
+                ebayFlushDilGroiAutosave().then(null, function() { /* ignore abort / close */ });
             });
             $('#ebayDilGroiModal').off('click.ebaydghist').on('click.ebaydghist', '.ebay-dg-hist-dot, #ebay-dil-groi-table .ebay-dg-count', function(e) {
                 const $dot = $(this).hasClass('ebay-dg-hist-dot')

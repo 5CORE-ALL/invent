@@ -636,10 +636,15 @@ class YesterdayMarketplaceMetricsService
             [$start, $end] = $window;
         }
 
+        $fromYmd = $start->copy()->timezone(self::TZ)->toDateString();
+        $toYmd = $end->copy()->timezone(self::TZ)->toDateString();
+        [$utcStart] = \App\Models\MiraklDailyData::utcBoundsForPacificDate($fromYmd);
+        [, $utcEnd] = \App\Models\MiraklDailyData::utcBoundsForPacificDate($toYmd);
+
         $rows = DB::table('mirakl_daily_data')
             ->where('channel_name', $channelName)
-            ->where('order_created_at', '>=', $start)
-            ->where('order_created_at', '<=', $end)
+            ->where('order_created_at', '>=', $utcStart)
+            ->where('order_created_at', '<=', $utcEnd)
             ->where('status', '!=', 'CLOSED')
             ->get();
 
@@ -1132,7 +1137,13 @@ class YesterdayMarketplaceMetricsService
             ->whereDate('order_date', '<=', $to)
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
-            ->whereNotNull('sku')->where('sku', '!=', '')
+            ->where(function ($q) {
+                $q->where(function ($q2) {
+                    $q2->whereNotNull('sku')->where('sku', '!=', '');
+                })->orWhere(function ($q2) {
+                    $q2->whereNotNull('display_sku')->where('display_sku', '!=', '');
+                });
+            })
             ->whereNotNull('order_number')->where('order_number', '!=', '')
             ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
             ->selectRaw('COALESCE(SUM(quantity), 0) as qty')

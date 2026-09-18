@@ -7,6 +7,7 @@ use App\Http\Controllers\MarketPlace\PurchasingPowerController;
 use App\Http\Controllers\ShopifyRawDataController;
 use App\Models\AmazonOrder;
 use App\Models\ChannelMasterCalculatedData;
+use App\Models\MiraklDailyData;
 use App\Models\FacebookMarketplaceSale;
 use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
@@ -339,29 +340,15 @@ class ChannelTodaySalesService
             return null;
         }
 
-        // order_created_at is stored timezone-naive. Binding an Eastern Carbon
-        // through APP_TIMEZONE (America/Los_Angeles) drops late-day ET rows the
-        // same way shopify_b2c_daily_data did before DATE(). Match Eastern
-        // calendar day, Eastern wall-clock, or the UTC equivalent of that day.
-        $etStart = $start->copy()->timezone(self::TZ)->format('Y-m-d H:i:s');
-        $etEnd = $end->copy()->timezone(self::TZ)->format('Y-m-d H:i:s');
-        $utcStart = $start->copy()->utc()->format('Y-m-d H:i:s');
-        $utcEnd = $end->copy()->utc()->format('Y-m-d H:i:s');
+        // Mirakl created_at is UTC. DATE() on that clock splits a US evening
+        // order onto the next day. Use the UTC window of the Eastern calendar day.
+        [$utcStart, $utcEnd] = MiraklDailyData::utcBoundsForTimezoneDate($ymd, self::TZ);
 
         $sum = (float) DB::table('mirakl_daily_data')
             ->where('channel_name', $channelName)
             ->where('status', '!=', 'CLOSED')
-            ->where(function ($q) use ($ymd, $etStart, $etEnd, $utcStart, $utcEnd) {
-                $q->whereRaw('DATE(order_created_at) = ?', [$ymd])
-                    ->orWhere(function ($q2) use ($etStart, $etEnd) {
-                        $q2->where('order_created_at', '>=', $etStart)
-                            ->where('order_created_at', '<=', $etEnd);
-                    })
-                    ->orWhere(function ($q3) use ($utcStart, $utcEnd) {
-                        $q3->where('order_created_at', '>=', $utcStart)
-                            ->where('order_created_at', '<=', $utcEnd);
-                    });
-            })
+            ->where('order_created_at', '>=', $utcStart)
+            ->where('order_created_at', '<=', $utcEnd)
             ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
             ->value('revenue');
 
@@ -605,7 +592,13 @@ class ChannelTodaySalesService
             ->whereDate('order_date', $ymd)
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
-            ->whereNotNull('sku')->where('sku', '!=', '')
+            ->where(function ($q) {
+                $q->where(function ($q2) {
+                    $q2->whereNotNull('sku')->where('sku', '!=', '');
+                })->orWhere(function ($q2) {
+                    $q2->whereNotNull('display_sku')->where('display_sku', '!=', '');
+                });
+            })
             ->whereNotNull('order_number')->where('order_number', '!=', '')
             ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
             ->value('revenue'), 2);

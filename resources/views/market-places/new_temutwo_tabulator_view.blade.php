@@ -608,11 +608,11 @@
                             onclick="event.stopPropagation();"><i class="fas fa-arrow-up-right-from-square"></i></a></span>
                     <span class="badge bg-info fs-6 p-2" id="total-views-badge"
                         style="color: black; font-weight: bold;"
-                        title="Σ Views of the rows shown">Views: 0</span>
+                        title="Σ Views once per Parent. Variations of the same parent share one listing, so CS04 2W and CS04 2W G both at 154 count as 154, not 308.">Views: 0</span>
                     @include('partials.analytics-dil-badge', ['dilChannel' => 'temu2'])
                     <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge"
                         style="color: white; font-weight: bold;"
-                        title="CVR = (Σ Temu L30 ÷ Σ Views) × 100">CVR: 0%</span>
+                        title="CVR = (Σ Temu L30 ÷ Σ Views) × 100. Views are unique per Parent; L30 is still every child SKU.">CVR: 0%</span>
                     <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge"
                         style="color: black; font-weight: bold;"
                         title="GPFT% = Σ Gpft ÷ Σ T Price × 100 (margin from marketplace_percentages &quot;Temu&quot;)">GPFT: 0%</span>
@@ -2417,10 +2417,48 @@
         }
     }
 
+    function ntoSummaryRows() {
+        if (!table || typeof table.getData !== 'function') return [];
+        const active = table.getData('active');
+        if (Array.isArray(active) && active.length) return active;
+        const all = table.getData();
+        return Array.isArray(all) ? all : [];
+    }
+
+    function ntoBadgeInt(n) {
+        const v = Math.round(Number(n) || 0);
+        return (v === 0 ? 0 : v).toLocaleString();
+    }
+
+    function ntoRowViews(row) {
+        const n = parseInt(row && row.views, 10);
+        return (isFinite(n) && n > 0) ? n : 0;
+    }
+
+    function ntoParentKey(row) {
+        const parent = String((row && (row.Parent || row.parent)) || '').replace(/^PARENT\s+/i, '').trim();
+        const sku = String((row && (row.sku || row['(Child) sku'])) || '').trim();
+        return (parent || sku).toUpperCase();
+    }
+
+    /** One Views number per Parent — variants share the same listing clicks. */
+    function ntoViewsForBadge(rows) {
+        const byParent = {};
+        (rows || []).forEach(function(row) {
+            const key = ntoParentKey(row);
+            if (!key) return;
+            const v = ntoRowViews(row);
+            if (!(key in byParent) || v > byParent[key]) byParent[key] = v;
+        });
+        let total = 0;
+        Object.keys(byParent).forEach(function(k) { total += byParent[k]; });
+        return total;
+    }
+
     /** Badge row — all totals follow the filters currently applied to the table. */
     function updateSummary() {
         if (!table) return;
-        const rows = table.getData('active') || [];
+        const rows = ntoSummaryRows();
 
         let rowsCount = 0;
         let zeroSold = 0;
@@ -2443,7 +2481,6 @@
             const tPrice = parseFloat(row.t_price) || 0;
 
             totalL30 += l30;
-            totalViews += parseInt(row.views, 10) || 0;
             if (inv > 0 && l30 === 0) zeroSold++;
             if (inv > 0 && l30 > 0) moreSold++;
 
@@ -2466,14 +2503,15 @@
             }
         });
 
+        totalViews = ntoViewsForBadge(rows);
         const cvr = totalViews > 0 ? (totalL30 / totalViews) * 100 : 0;
         const gpftPct = gpftBase > 0 ? (gpftSum / gpftBase) * 100 : 0;
         const groiPct = gpftLp > 0 ? (gpftSum / gpftLp) * 100 : 0;
         $('#rows-count-badge').text('Rows: ' + rowsCount.toLocaleString());
         $('#zero-sold-count-badge').text('0 Sold: ' + zeroSold.toLocaleString());
         $('#more-sold-count-badge').text('> 0 Sold: ' + moreSold.toLocaleString());
-        $('#total-l30-badge').text('L30: ' + totalL30.toLocaleString());
-        $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+        $('#total-l30-badge').text('L30: ' + ntoBadgeInt(totalL30));
+        $('#total-views-badge').text('Views: ' + ntoBadgeInt(totalViews));
         $('#avg-cvr-badge').text('CVR: ' + cvr.toFixed(1) + '%');
         $('#avg-gpft-badge').text('GPFT: ' + Math.round(gpftPct) + '%');
         $('#avg-groi-badge').text('GROI: ' + Math.round(groiPct) + '%');
@@ -3039,7 +3077,10 @@
                     hozAlign: 'center',
                     width: 60,
                     sorter: 'number',
-                    headerTooltip: 'Same as New Temu One Views: SUM(temu2_view_data.product_clicks) by Goods ID; Ads API fallback when the sheet has no row'
+                    headerTooltip: 'Same as New Temu One Views: SUM(temu2_view_data.product_clicks) by Goods ID; Ads API fallback when the sheet has no row',
+                    formatter: function(cell) {
+                        return ntoBadgeInt(ntoRowViews(cell.getRow().getData()));
+                    }
                 },
                 {
                     title: 'CVR',
@@ -3516,7 +3557,11 @@
             temuClearCapMemo();
             applyFilters();
             window._ntoReloadPushQueued = false;
-            setTimeout(function() { ntoTryQueuePushOnReload(); }, 800);
+            setTimeout(function() {
+                temuClearCapMemo();
+                if (typeof updateSummary === 'function') updateSummary();
+                ntoTryQueuePushOnReload();
+            }, 800);
         });
 
         $(document).on('ajaxComplete.ntoDilPersist', function(e, xhr, settings) {

@@ -24,11 +24,18 @@ class BestBuySalesController extends Controller
         \Log::info('BestBuySalesController getData called');
 
         $todayYmd = now(ChannelTodaySalesService::TZ)->toDateString();
+        [$todayStartUtc, $todayEndUtc] = MiraklDailyData::utcBoundsForTimezoneDate(
+            $todayYmd,
+            ChannelTodaySalesService::TZ
+        );
         $orders = MiraklDailyData::bestBuyUsa()
             ->where('status', '!=', 'CLOSED')
-            ->where(function ($q) use ($todayYmd) {
+            ->where(function ($q) use ($todayStartUtc, $todayEndUtc) {
                 $q->where('period', 'l30')
-                    ->orWhereRaw('DATE(order_created_at) = ?', [$todayYmd]);
+                    ->orWhere(function ($q2) use ($todayStartUtc, $todayEndUtc) {
+                        $q2->where('order_created_at', '>=', $todayStartUtc)
+                            ->where('order_created_at', '<=', $todayEndUtc);
+                    });
             })
             ->orderBy('order_created_at', 'desc')
             ->get();
@@ -110,7 +117,7 @@ class BestBuySalesController extends Controller
                 'unit_price' => round($unitPrice, 2),
                 'sale_amount' => round($saleAmount, 2),
                 'currency' => $order->currency,
-                'order_date' => $order->order_created_at,
+                'order_date' => MiraklDailyData::pacificDateTime($order->getRawOriginal('order_created_at')),
                 'status' => $order->status,
                 'period' => $order->period,
                 'lp' => round($lp, 2),

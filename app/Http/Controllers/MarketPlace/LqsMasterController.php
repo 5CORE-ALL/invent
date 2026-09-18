@@ -3,7 +3,12 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Models\ChannelMaster;
+use App\Models\ChannelMasterCalculatedData;
+use App\Models\LqsMarketplaceHistory;
+use App\Models\LqsMarketplaceScore;
 use App\Models\ProductMaster;
+use App\Support\Lqs\LqsMarketplaceCatalog;
 use App\Models\ShopifySku;
 use App\Models\JungleScoutProductData;
 use App\Models\LqsHistory;
@@ -11,6 +16,7 @@ use App\Models\AmazonDatasheet;
 use App\Models\LqsAmzHistory;
 use App\Models\LqsAmzAction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class LqsMasterController extends Controller
 {
@@ -47,6 +53,239 @@ class LqsMasterController extends Controller
             \Log::error('JungleScout refresh dispatch error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Display the channel-level LQS Master page (Active Channel image + name).
+     */
+    public function lqsMasterView()
+    {
+        return view('market-places.lqs_master_view');
+    }
+
+    /**
+     * Active Channel rows for LQS Master — same identity columns as /all-marketplace-master.
+     */
+    public function getLqsMasterData()
+    {
+        try {
+            $select = ['channel'];
+            foreach (['logo', 'seller_link', 'missing_link'] as $col) {
+                if (Schema::hasColumn('channel_master', $col)) {
+                    $select[] = $col;
+                }
+            }
+
+            $activeRows = ChannelMaster::query()
+                ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                ->orderBy('id')
+                ->get($select);
+
+            $activeKeys = [];
+            $logoMap = [];
+            $sellerLinkMap = [];
+            $missingLinkMap = [];
+            $nameByKey = [];
+
+            foreach ($activeRows as $row) {
+                $snapshotKey = $this->lqsMasterSnapshotKey($row->channel);
+                if ($snapshotKey === '') {
+                    continue;
+                }
+
+                $activeKeys[$snapshotKey] = true;
+                if (! isset($nameByKey[$snapshotKey])) {
+                    $nameByKey[$snapshotKey] = $this->lqsMasterDisplayName($row->channel);
+                }
+                if (! empty($row->logo) && empty($logoMap[$snapshotKey])) {
+                    $logoMap[$snapshotKey] = $row->logo;
+                }
+                if (! empty($row->seller_link) && empty($sellerLinkMap[$snapshotKey])) {
+                    $sellerLinkMap[$snapshotKey] = $row->seller_link;
+                }
+                if (! empty($row->missing_link) && empty($missingLinkMap[$snapshotKey])) {
+                    $missingLinkMap[$snapshotKey] = $row->missing_link;
+                }
+            }
+
+            $orderedKeys = [];
+            if (Schema::hasTable('channel_master_calculated_data')) {
+                foreach (ChannelMasterCalculatedData::query()->orderByDesc('l30_sales')->get(['channel']) as $calc) {
+                    $snapshotKey = $this->lqsMasterSnapshotKey($calc->channel);
+                    if ($snapshotKey === '' || empty($activeKeys[$snapshotKey]) || isset($orderedKeys[$snapshotKey])) {
+                        continue;
+                    }
+                    $orderedKeys[$snapshotKey] = true;
+                    $nameByKey[$snapshotKey] = $this->lqsMasterDisplayName($calc->channel);
+                }
+            }
+
+            if ($orderedKeys === []) {
+                foreach (array_keys($activeKeys) as $snapshotKey) {
+                    $orderedKeys[$snapshotKey] = true;
+                }
+            }
+
+            $badgeBySource = $this->lqsMasterLatestBadgeScores();
+
+            $data = [];
+            foreach (array_keys($orderedKeys) as $snapshotKey) {
+                $channel = $nameByKey[$snapshotKey] ?? $snapshotKey;
+                $source = LqsMarketplaceCatalog::sourceForSnapshotKey($snapshotKey);
+                $lqs = ($source && isset($badgeBySource[$source])) ? $badgeBySource[$source] : null;
+                $data[] = [
+                    'channel_key' => $snapshotKey,
+                    'lqs_source' => $source,
+                    'logo' => $logoMap[$snapshotKey] ?? null,
+                    'channel' => $channel,
+                    'Channel ' => $channel,
+                    'seller_link' => $sellerLinkMap[$snapshotKey] ?? null,
+                    'missing_link' => $missingLinkMap[$snapshotKey] ?? null,
+                    'lqs' => $lqs,
+                    'has_lqs' => $lqs !== null,
+                ];
+            }
+
+            return response()->json([
+                'status' => 200,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('LQS Master data error: '.$e->getMessage());
+
+            return response()->json([
+                'status' => 500,
+                'message' => 'Failed to load LQS Master channels',
+                'data' => [],
+            ], 500);
+        }
+    }
+
+    /**
+     * Daily avg_lqs trend for one Active Channel (same series as that channel's LQS badge).
+     */
+    public function getLqsMasterChart(Request $request, string $channel)
+    {
+        try {
+            $channelKey = $this->lqsMasterSnapshotKey($channel);
+            $source = LqsMarketplaceCatalog::sourceForSnapshotKey($channelKey);
+            if (! $source) {
+                return response()->json(['success' => true, 'data' => []]);
+            }
+
+            $days = (int) $request->input('days', 32);
+            $startDate = $days > 0 ? now()->subDays($days)->toDateString() : '2000-01-01';
+            $today = now()->toDateString();
+
+            if ($source === 'amz' && Schema::hasTable('lqs_amz_history')) {
+                $rows = LqsAmzHistory::query()
+                    ->where('date', '>=', $startDate)
+                    ->where('date', '<=', $today)
+                    ->orderBy('date')
+                    ->get(['date', 'avg_lqs']);
+            } elseif ($source !== 'amz' && Schema::hasTable('lqs_marketplace_history')) {
+                $rows = LqsMarketplaceHistory::query()
+                    ->where('marketplace', $source)
+                    ->where('date', '>=', $startDate)
+                    ->where('date', '<=', $today)
+                    ->orderBy('date')
+                    ->get(['date', 'avg_lqs']);
+            } else {
+                $rows = collect();
+            }
+
+            $data = $rows->map(fn ($row) => [
+                'date' => $row->date->format('d M'),
+                'value' => (float) ($row->avg_lqs ?? 0),
+            ])->values();
+
+            return response()->json(['success' => true, 'data' => $data]);
+        } catch (\Throwable $e) {
+            \Log::error('LQS Master chart error: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Failed to load LQS chart'], 500);
+        }
+    }
+
+    /**
+     * Latest LQS badge score per marketplace source (Amazon + catalog slugs).
+     *
+     * @return array<string, float>
+     */
+    private function lqsMasterLatestBadgeScores(): array
+    {
+        $scores = [];
+
+        if (Schema::hasTable('lqs_amz_history')) {
+            $avg = LqsAmzHistory::query()->orderByDesc('date')->value('avg_lqs');
+            if ($avg !== null && (float) $avg > 0) {
+                $scores['amz'] = round((float) $avg, 1);
+            }
+        }
+
+        if (Schema::hasTable('lqs_marketplace_history')) {
+            LqsMarketplaceHistory::query()
+                ->orderByDesc('date')
+                ->get(['marketplace', 'avg_lqs'])
+                ->unique('marketplace')
+                ->each(function ($row) use (&$scores) {
+                    if ($row->avg_lqs !== null && (float) $row->avg_lqs > 0) {
+                        $scores[$row->marketplace] = round((float) $row->avg_lqs, 1);
+                    }
+                });
+        }
+
+        if (Schema::hasTable('lqs_marketplace_scores')) {
+            LqsMarketplaceScore::query()
+                ->whereNotNull('lqs')
+                ->where('lqs', '>', 0)
+                ->selectRaw('marketplace, AVG(lqs) as avg_lqs')
+                ->groupBy('marketplace')
+                ->get()
+                ->each(function ($row) use (&$scores) {
+                    if (! isset($scores[$row->marketplace]) && $row->avg_lqs !== null) {
+                        $scores[$row->marketplace] = round((float) $row->avg_lqs, 1);
+                    }
+                });
+        }
+
+        return $scores;
+    }
+
+    /**
+     * Same snapshot key as Active Channel so aliases collapse to one row.
+     */
+    private function lqsMasterSnapshotKey(?string $name): string
+    {
+        $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) $name)));
+
+        return match ($key) {
+            'amz', 'amazon' => 'amazon',
+            'ebay2', 'ebaytwo' => 'ebaytwo',
+            'ebay3', 'ebaythree' => 'ebaythree',
+            'shopify', 'shopifyb2c' => 'shopifyb2c',
+            'tiktok', 'tiktokshop' => 'tiktokshop',
+            'tiktok2', 'tiktokshop2' => 'tiktokshop2',
+            'bestbuy', 'bestbuyusa' => 'bestbuyusa',
+            'facebookmarketplace', 'fbmarketplace' => 'fbmarketplace',
+            'temu3', 'temuthree' => 'temu3',
+            'temu2', 'temutwo' => 'temu2',
+            default => $key,
+        };
+    }
+
+    /**
+     * Same display labels as Active Channel (EbayThree → eBay 3, Temu3 → Temu 3).
+     */
+    private function lqsMasterDisplayName(?string $name): string
+    {
+        $key = $this->lqsMasterSnapshotKey($name);
+
+        return match ($key) {
+            'ebaythree' => 'eBay 3',
+            'temu3' => 'Temu 3',
+            default => trim((string) $name),
+        };
     }
 
     /**

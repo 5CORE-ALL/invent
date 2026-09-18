@@ -25,6 +25,7 @@ use App\Services\MarketplaceManager\ReverbLiveListingsService;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\ShopifyApiService;
 use App\Services\Support\MarketplaceApiConfigService;
+use App\Support\EbayGetItemPrice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -587,15 +588,12 @@ class Ebay3SyncController extends Controller
         $item = is_array($info['Item'] ?? null) ? $info['Item'] : (is_array($info) ? $info : []);
         $title = trim((string) ($item['Title'] ?? $metric->ebay_title ?? ''));
         $qty = EbayLiveListingMapper::quantityFromGetItem($item, $sku);
-        $price = $item['StartPrice'] ?? $item['SellingStatus']['CurrentPrice'] ?? null;
-        if (is_array($price)) {
-            $price = $price['@content'] ?? $price['#text'] ?? $price['_'] ?? reset($price);
-        }
+        $price = EbayGetItemPrice::fromItem($item, $sku);
 
         $updates = array_filter([
             'ebay_title' => $title !== '' ? $title : null,
             'ebay_stock' => $qty !== null ? (int) $qty : null,
-            'ebay_price' => $price !== null && $price !== '' ? (float) $price : null,
+            'ebay_price' => $price,
         ], static fn ($v) => $v !== null);
         if ($updates !== []) {
             $metric->update($updates);
@@ -609,7 +607,7 @@ class Ebay3SyncController extends Controller
             'product_id' => (string) $metric->item_id,
             'title' => $title,
             'inventory' => $qty !== null ? (int) $qty : null,
-            'price' => $price !== null && $price !== '' ? (float) $price : null,
+            'price' => $price,
         ]);
     }
 

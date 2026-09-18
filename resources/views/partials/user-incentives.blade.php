@@ -176,6 +176,10 @@
         line-height: 1.15;
         z-index: 1;
     }
+    #taskSummaryIncentivesModal .modal-dialog {
+        max-width: min(1600px, 96vw);
+        width: min(1600px, 96vw);
+    }
     #taskSummaryIncentivesModal .modal-content {
         border-radius: 16px;
         border: none;
@@ -190,6 +194,12 @@
     }
     #taskSummaryIncentivesModal .modal-header .btn-close {
         filter: brightness(0) invert(1);
+    }
+    #taskSummaryIncentivesModal .modal-title {
+        font-size: 5rem;
+        line-height: 1.15;
+        font-weight: 700;
+        word-break: break-word;
     }
     .ts-inc-item {
         border: 1px solid #fde68a;

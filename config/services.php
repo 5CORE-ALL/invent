@@ -287,6 +287,8 @@ return [
         'export_url' => env('GOOGLE_APPS_SCRIPT_EXPORT_URL', ''),
         'verification_adjustment_sheet_id' => env('GOOGLE_SHEETS_VERIFICATION_ADJUSTMENT_ID', ''),
         'share_domain' => env('GOOGLE_SHEETS_SHARE_DOMAIN', '5core.com'),
+        'share_anyone' => env('GOOGLE_SHEETS_SHARE_ANYONE', true),
+        'share_anyone_role' => env('GOOGLE_SHEETS_SHARE_ANYONE_ROLE', 'writer'),
     ],
 
     /*
@@ -1155,6 +1157,7 @@ return [
     'gemini' => [
         'key' => env('GEMINI_API_KEY', env('GOOGLE_GEMINI_API_KEY')),
         'video_model' => env('GEMINI_VIDEO_MODEL', 'gemini-flash-latest'),
+        'text_model' => env('GEMINI_TEXT_MODEL', 'gemini-3.5-flash-lite'),
     ],
 
     'anthropic' => [

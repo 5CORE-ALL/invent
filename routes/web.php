@@ -110,7 +110,6 @@ use App\Http\Controllers\InventoryHistoryController;
 use App\Http\Controllers\ShopifyOrdersController;
 use App\Http\Controllers\ListingMaster\AmzListingController;
 use App\Http\Controllers\MapIssuesController;
-use App\Http\Controllers\MarketingMaster\EbayCvrLqsController;
 use App\Http\Controllers\MarketingMaster\FacebookAddsManagerController;
 use App\Http\Controllers\Sales\FacebookMarketplaceController;
 use App\Http\Controllers\MarketingMaster\InstagramAdsManagerController;
@@ -211,6 +210,7 @@ use App\Http\Controllers\MarketPlace\PurchasingPowerListingVariationVerifyContro
 use App\Http\Controllers\MarketPlace\PlsListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\NeweggListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\ChannelPromoPricingController;
+use App\Http\Controllers\MarketPlace\MasterDilRuleController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\OverallAmazonFbaController;
 use App\Http\Controllers\MarketPlace\PlsController;
@@ -5129,13 +5129,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/forecast.analysis/archived', [ForecastAnalysisController::class, 'archivedForecastView'])->name('forecast.analysis.archived');
     Route::get('/forecast.analysis/archived/data', [ForecastAnalysisController::class, 'archivedForecastData'])->name('forecast.analysis.archived.data');
 
-    // ebay lqs cvr
-    Route::get('/ebaycvrLQS.master', action: [EbayCvrLqsController::class, 'cvrLQSMaster'])->name('ebaycvrLQS.master');
-    Route::get('/ebaycvrLQS/view-data', [EbayCvrLqsController::class, 'getViewEbayCvrData'])->name('ebaycvrLQS.viewData');
-    Route::post('/ebay-cvr-lqs/save-action', [EbayCvrLqsController::class, 'saveEbayAction']);
-
-    Route::post('/import-ebay-cvr-data', [EbayCvrLqsController::class, 'importEbayCVRData'])->name('import.ebay.cvr');
-
     // To Be DC routes
     Route::get('/tobedc_list', [ToBeDCController::class, 'index'])->name('tobedc.list');
 
@@ -5603,6 +5596,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/zero-sold-prc', [ChannelPromoPricingController::class, 'saveZeroSoldPrcRules'])->name('channel.promo.zero-sold-prc.save');
     Route::get('/channel-promo-pricing/{channel}/dil-sgroi', [ChannelPromoPricingController::class, 'dilSgroiRules'])->name('channel.promo.dil-sgroi.get');
     Route::post('/channel-promo-pricing/{channel}/dil-sgroi', [ChannelPromoPricingController::class, 'saveDilSgroiRules'])->name('channel.promo.dil-sgroi.save');
+    Route::get('/master-dil-rules', [MasterDilRuleController::class, 'index'])->name('master.dil.rules');
+    Route::get('/master-dil-rules/data', [MasterDilRuleController::class, 'data'])->name('master.dil.rules.data');
+    Route::post('/master-dil-rules', [MasterDilRuleController::class, 'save'])->name('master.dil.rules.save');
     Route::get('/channel-promo-pricing/{channel}/dil-groi', [ChannelPromoPricingController::class, 'dilGroiRules'])->name('channel.promo.dil-groi.get');
     Route::post('/channel-promo-pricing/{channel}/dil-groi', [ChannelPromoPricingController::class, 'saveDilGroiRules'])->name('channel.promo.dil-groi.save');
     Route::get('/channel-promo-pricing/{channel}/dil-groi-history', [ChannelPromoPricingController::class, 'dilGroiSlabHistory'])->name('channel.promo.dil-groi.history');
@@ -5737,6 +5733,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/aliexpress-column-visibility', [AliexpressController::class, 'saveAliexpressColumnVisibility'])->name('aliexpress.save.column.visibility');
     Route::get('/aliexpress-column-visibility', [AliexpressController::class, 'getAliexpressColumnVisibility'])->name('aliexpress.get.column.visibility');
 
+    // LQS Master (Active Channel image + channel)
+    Route::get('/lqs-master', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'lqsMasterView'])->name('lqs.master.view');
+    Route::get('/lqs-master/data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsMasterData'])->name('lqs.master.data');
+    Route::get('/lqs-master/lqs-chart/{channel}', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsMasterChart'])->name('lqs.master.chart');
+
     // LQS Data
     Route::get('/lqs-data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'lqsDataView'])->name('lqs.data.view');
     Route::get('/lqs/data', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsData'])->name('lqs.data');
@@ -5750,6 +5751,25 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/amz/action', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'saveLqsAmzAction'])->name('lqs.amz.action.save');
     Route::get('/lqs/amz/action-history/{sku}', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsAmzActionHistory'])->name('lqs.amz.action.history');
     Route::get('/lqs/amz/cvr-history', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsAmzCvrHistory'])->name('lqs.amz.cvr.history');
+
+    // LQS Marketplaces (same functions as /lqs-amz; API metrics when available, sheet upload otherwise)
+    foreach (\App\Support\Lqs\LqsMarketplaceCatalog::all() as $lqsSlug => $_lqsConfig) {
+        $lqsController = \App\Support\Lqs\LqsMarketplaceCatalog::controllerFqn($lqsSlug);
+        Route::get("/lqs-{$lqsSlug}", [$lqsController, 'view'])->name("lqs.{$lqsSlug}.view");
+        Route::get("/lqs/{$lqsSlug}/data", [$lqsController, 'data'])->name("lqs.{$lqsSlug}.data");
+        Route::get("/lqs/{$lqsSlug}/badge-chart-data", [$lqsController, 'badgeChart'])->name("lqs.{$lqsSlug}.badge.chart");
+        Route::post("/lqs/{$lqsSlug}/action", [$lqsController, 'saveAction'])->name("lqs.{$lqsSlug}.action.save");
+        Route::get("/lqs/{$lqsSlug}/action-history/{sku}", [$lqsController, 'actionHistory'])->name("lqs.{$lqsSlug}.action.history");
+        Route::get("/lqs/{$lqsSlug}/cvr-history", [$lqsController, 'cvrHistory'])->name("lqs.{$lqsSlug}.cvr.history");
+        Route::get("/lqs/{$lqsSlug}/sheet/sample", [$lqsController, 'downloadSample'])->name("lqs.{$lqsSlug}.sample");
+        Route::get("/lqs/{$lqsSlug}/sheet/download", [$lqsController, 'downloadSheet'])->name("lqs.{$lqsSlug}.download");
+        Route::post("/lqs/{$lqsSlug}/sheet/upload", [$lqsController, 'uploadSheet'])->name("lqs.{$lqsSlug}.upload");
+    }
+
+    Route::get('/lqs/ebay/audit/prompt', [App\Http\Controllers\MarketPlace\Lqs\LqsEbayController::class, 'auditPrompt'])->name('lqs.ebay.audit.prompt');
+    Route::post('/lqs/ebay/audit/prompt', [App\Http\Controllers\MarketPlace\Lqs\LqsEbayController::class, 'saveAuditPrompt'])->name('lqs.ebay.audit.prompt.save');
+    Route::post('/lqs/ebay/audit/run', [App\Http\Controllers\MarketPlace\Lqs\LqsEbayController::class, 'runAudit'])->name('lqs.ebay.audit.run');
+    Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
 
     // ebay variation
     Route::get('/zero-ebayvariation', [EbayVariationZeroController::class, 'ebayVariationZeroview'])->name('zero.ebayvariation');

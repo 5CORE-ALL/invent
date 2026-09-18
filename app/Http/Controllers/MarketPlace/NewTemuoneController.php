@@ -133,6 +133,23 @@ class NewTemuoneController extends Controller
     public function dataJson()
     {
         try {
+            return response()->json($this->persistSuggestedCatalog()['rows']);
+        } catch (\Exception $e) {
+            Log::error('Error fetching New Temu One data: ' . $e->getMessage());
+
+            return response()->json(['error' => 'Failed to fetch data'], 500);
+        }
+    }
+
+    /**
+     * Hydrate /new-temuone rows and persist NTO_SPRICE (Dil + eBay/Amz/LMP cap).
+     * Shared by the page and newtemuone:sprc-dil-auto-push so Dil $ lands
+     * in temu_data_view even when the tab is closed.
+     *
+     * @return array{rows: list<array<string, mixed>>, stats: array{candidates: int, applied: int, reused: int}}
+     */
+    public function persistSuggestedCatalog(?int $limit = null, bool $dryRun = false): array
+    {
             $productMasters = ProductMaster::orderBy('parent', 'asc')
                 ->orderBy('sku', 'asc')
                 ->get();
@@ -140,6 +157,10 @@ class NewTemuoneController extends Controller
             $productMasters = $productMasters->filter(function ($item) {
                 return stripos((string) $item->sku, 'PARENT') === false;
             })->values();
+
+            if ($limit !== null && $limit > 0) {
+                $productMasters = $productMasters->take($limit)->values();
+            }
 
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
             $shopifyData = ShopifySku::mapByProductSkus($skus);
@@ -451,14 +472,19 @@ class NewTemuoneController extends Controller
                 ];
             }
 
-            $suggestedStore->flush();
+            $applied = $suggestedStore->pendingWriteCount();
+            if (! $dryRun) {
+                $suggestedStore->flush();
+            }
 
-            return response()->json($result);
-        } catch (\Exception $e) {
-            Log::error('Error fetching New Temu One data: ' . $e->getMessage());
-
-            return response()->json(['error' => 'Failed to fetch data'], 500);
-        }
+            return [
+                'rows' => $result,
+                'stats' => [
+                    'candidates' => count($result),
+                    'applied' => $applied,
+                    'reused' => max(0, count($result) - $applied),
+                ],
+            ];
     }
 
     public function saveLinks(Request $request)
@@ -542,7 +568,9 @@ class NewTemuoneController extends Controller
                     $sku,
                     $sprice,
                     (float) ($row['lp'] ?? 0),
-                    (float) ($row['ship'] ?? 0)
+                    (float) ($row['ship'] ?? 0),
+                    (float) ($row['sprc_dil'] ?? 0),
+                    is_array($row['labels'] ?? null) ? $row['labels'] : []
                 );
                 $saved++;
             } else {

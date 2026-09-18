@@ -490,10 +490,10 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
         $ist($schedule->command('reverb:daily --days=60')
-            ->dailyAt('09:55')
+            ->everyTwoHours()
             ->timezone('Asia/Kolkata')
             ->name('reverb-daily')
-            ->withoutOverlapping()
+            ->withoutOverlapping(90)
             ->runInBackground()
             ->appendOutputTo($log));
 
@@ -921,6 +921,24 @@ class Kernel extends ConsoleKernel
             ->dailyAt('20:00')
             ->timezone('Asia/Kolkata')
             ->name('amazon-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // New Temu One Sprc Dil (Dil→SNROI) + CVR + eBay/Amz/LMP cap → NTO_SPRICE.
+        // 04:10 and 20:10 IST — same twice-daily idea as Amazon, offset 10 min.
+        $schedule->command('newtemuone:sprc-dil-auto-push')
+            ->dailyAt('04:10')
+            ->timezone('Asia/Kolkata')
+            ->name('newtemuone-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('newtemuone:sprc-dil-auto-push')
+            ->dailyAt('20:10')
+            ->timezone('Asia/Kolkata')
+            ->name('newtemuone-sprc-dil-auto-push-8pm-ist')
             ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log);
@@ -1712,6 +1730,14 @@ class Kernel extends ConsoleKernel
         $ist($schedule->command('shopify:sync --store=main')
             ->everyThreeHours()
             ->name('shopify-live-catalog-master')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('lqs:sync-shopify-seo')
+            ->dailyAt('04:40')
+            ->timezone('Asia/Kolkata')
+            ->name('lqs-shopify-yoast-seo')
             ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log));
