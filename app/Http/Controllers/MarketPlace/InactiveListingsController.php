@@ -33,12 +33,26 @@ class InactiveListingsController extends Controller
         try {
             $fresh = $request->boolean('fresh');
             $cached = MappingChannelCounts::cachedInactiveMasterRows();
-            $partial = $cached === [];
-            $data = collect($partial ? MappingChannelCounts::inactiveMasterSkeletonRows() : $cached)->values();
+            $childSum = (int) collect($cached)->sum(fn ($row) => (int) ($row['cp_inactive_child'] ?? 0));
+            $meta = MappingChannelCounts::inactiveMasterMeta();
+            $complete = (bool) ($meta['complete'] ?? false) && $childSum > 0;
+            $partial = $cached === [] || ! $complete;
 
             if ($fresh || $partial || ! MappingChannelCounts::inactiveMasterRowsAreFresh()) {
+                try {
+                    @set_time_limit(25);
+                    $cached = MappingChannelCounts::inactiveMasterRows(false, 12, ! $fresh);
+                    $childSum = (int) collect($cached)->sum(fn ($row) => (int) ($row['cp_inactive_child'] ?? 0));
+                    $meta = MappingChannelCounts::inactiveMasterMeta();
+                    $complete = (bool) ($meta['complete'] ?? false) && $childSum > 0;
+                    $partial = $cached === [] || ! $complete;
+                } catch (\Throwable $e) {
+                    Log::warning('Inactive Listings inline rebuild failed: '.$e->getMessage());
+                }
                 $this->dispatchPageRebuild();
             }
+
+            $data = collect($cached !== [] ? $cached : MappingChannelCounts::inactiveMasterSkeletonRows())->values();
 
             $cpTotal = (int) $data->sum(fn ($row) => (int) ($row['cp_inactive_child'] ?? 0));
             if (! $partial) {

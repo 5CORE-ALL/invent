@@ -256,7 +256,7 @@
     $(document).ready(function() {
         table = new Tabulator("#inactive-listings-table", {
             ajaxURL: "{{ url('/inactive-listings/channels-data') }}",
-            ajaxRequestTimeout: 20000,
+            ajaxRequestTimeout: 25000,
             ajaxRequestFunc: function(url, _config, params) {
                 return new Promise(function(resolve, reject) {
                     function attempt(n) {
@@ -265,7 +265,7 @@
                             data: params || {},
                             method: 'GET',
                             dataType: 'json',
-                            timeout: 20000,
+                            timeout: 25000,
                         }).done(resolve).fail(function(xhr) {
                             if (n < 2) {
                                 setTimeout(function() { attempt(n + 1); }, 1200);
@@ -297,7 +297,7 @@
                         pollIlSync();
                     }
                 }
-                if (response && response.partial && (window.__ilCountsRetries || 0) < 8) {
+                if (response && response.partial && (window.__ilCountsRetries || 0) < 16) {
                     window.__ilCountsRetries = (window.__ilCountsRetries || 0) + 1;
                     setTimeout(function() {
                         if (table) {
