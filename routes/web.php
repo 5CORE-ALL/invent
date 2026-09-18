@@ -4232,6 +4232,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/raw-images-hero-2', [RawImagesController::class, 'index'])->name('raw.images.hero.2');
     Route::get('/raw-images-hero-2-data', [RawImagesController::class, 'getData'])->name('raw.images.hero.2.data');
     Route::post('/raw-images-hero-2/upload', [RawImagesController::class, 'upload'])->name('raw.images.hero.2.upload');
+    Route::post('/raw-images-hero-2/push-ebay', [RawImagesController::class, 'pushHero2ToEbay'])->name('raw.images.hero.2.push.ebay');
     Route::post('/raw-images-hero-2/bulk-import', [RawImagesController::class, 'bulkImport'])->name('raw.images.hero.2.bulk.import');
     Route::post('/raw-images-hero-2/download', [RawImagesController::class, 'downloadSelected'])->name('raw.images.hero.2.download');
     Route::get('/raw-images-hero-2/template', [RawImagesController::class, 'downloadTemplate'])->name('raw.images.hero.2.template');

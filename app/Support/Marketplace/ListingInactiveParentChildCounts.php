@@ -295,10 +295,43 @@ class ListingInactiveParentChildCounts
      */
     public static function cpMasterListingCountsForChannel(string $channel): array
     {
+        $norm = ListingChannelCounts::normalize($channel);
+        $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($norm);
+        $skus = [];
+        try {
+            if ($mm !== null) {
+                $skus = MarketplacePortalInactiveCount::skus($mm);
+            }
+            if ($skus === [] && ! in_array($mm, ['temu', 'temu2', 'amazon'], true)) {
+                $skus = self::fallbackInactiveSkus($norm);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ListingInactiveParentChildCounts counts failed for '.$channel.': '.$e->getMessage());
+            $skus = [];
+        }
+
+        $cpKeys = self::cpMasterSkuKeys();
+        $activeKeys = $mm !== null ? MarketplacePortalInactiveCount::activeSkuKeys($mm) : [];
         $parent = 0;
         $child = 0;
-        foreach (self::cpMasterListingRowsForChannel($channel) as $row) {
-            if (($row['kind'] ?? 'child') === 'parent') {
+        $seen = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '' || ! self::skuMatchesCpKeys($sku, $cpKeys)) {
+                continue;
+            }
+            if (! self::skuHasPositiveInv($sku)) {
+                continue;
+            }
+            if (MarketplacePortalInactiveCount::skuIsActive($sku, $activeKeys)) {
+                continue;
+            }
+            $key = strtoupper($sku);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
                 $parent++;
             } else {
                 $child++;

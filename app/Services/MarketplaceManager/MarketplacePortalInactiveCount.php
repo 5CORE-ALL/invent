@@ -33,6 +33,12 @@ final class MarketplacePortalInactiveCount
 
     public static bool $portalSyncIncomplete = false;
 
+    /**
+     * Skip live seller-portal API calls (Amazon Seller Central, eBay Unsold pull, etc.).
+     * Used by /inactive-listings page rebuild so the table can fill from local catalogs.
+     */
+    public static bool $localOnly = false;
+
     public static function resetMemos(): void
     {
         self::$skuMemo = [];
@@ -444,6 +450,9 @@ final class MarketplacePortalInactiveCount
         if ($candidates === []) {
             return [];
         }
+        if (self::$localOnly) {
+            return $candidates;
+        }
 
         try {
             $states = app(AmazonSpApiService::class)->sellerCentralListingStates($candidates);
@@ -452,7 +461,7 @@ final class MarketplacePortalInactiveCount
                 'error' => $e->getMessage(),
             ]);
 
-            return [];
+            return $candidates;
         }
 
         return AmazonListingStatusHelper::keepSellerCentralInactiveSkus($candidates, $states);
@@ -553,7 +562,7 @@ final class MarketplacePortalInactiveCount
      */
     protected static function ensureEbayPortalSynced(int $store): void
     {
-        if (! in_array($store, [2, 3], true)) {
+        if (self::$localOnly || ! in_array($store, [2, 3], true)) {
             return;
         }
         $table = $store === 3 ? 'ebay_3_metrics' : 'ebay_2_metrics';
@@ -657,6 +666,9 @@ final class MarketplacePortalInactiveCount
 
     protected static function ensureMiraklPortalSynced(string $channel): void
     {
+        if (self::$localOnly) {
+            return;
+        }
         $table = $channel === 'bestbuy' ? 'bestbuy_usa_products' : 'macy_products';
         $doneKey = 'mm.'.$channel.'.portal_inactive_synced_v2';
         try {
@@ -710,6 +722,9 @@ final class MarketplacePortalInactiveCount
 
     protected static function ensureFairePortalSynced(): void
     {
+        if (self::$localOnly) {
+            return;
+        }
         $doneKey = 'mm.faire.portal_inactive_synced_v1';
         try {
             if (self::columnHasAnyInactive('faire_metric', 'listing_status')) {
@@ -759,6 +774,9 @@ final class MarketplacePortalInactiveCount
 
     protected static function ensureTopDawgPortalSynced(): void
     {
+        if (self::$localOnly) {
+            return;
+        }
         $doneKey = 'mm.topdawg.portal_inactive_synced_v2';
         try {
             if (self::columnHasAnyInactive('topdawg_products', 'listing_state')) {

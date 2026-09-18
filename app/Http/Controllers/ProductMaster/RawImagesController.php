@@ -137,6 +137,10 @@ class RawImagesController extends Controller
             return $this->saveEbayHeroImages($request);
         }
 
+        if ($request->boolean('hero2_ebay_push')) {
+            return $this->pushHero2ToEbay($request);
+        }
+
         $kind = $this->imageKindFromRequest($request);
 
         $validated = $request->validate([
@@ -251,6 +255,83 @@ class RawImagesController extends Controller
 
                 return ['url' => $url, 'thumb_url' => $thumb];
             }, $images),
+        ], $ok ? 200 : 422);
+    }
+
+    public function pushHero2ToEbay(Request $request): JsonResponse
+    {
+        if ($this->kindFromRequest($request) !== ProductRawImage::KIND_HERO_2) {
+            return response()->json(['success' => false, 'message' => 'eBay push is only available on Hero Image 2.'], 422);
+        }
+
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+            'url' => 'required|string|max:2048',
+            'account' => 'required|string|in:ebay,ebay2,ebay3',
+        ]);
+
+        $sku = $this->normalizeSku($validated['sku']);
+        $url = trim((string) $validated['url']);
+        $account = $validated['account'];
+        $labels = [
+            'ebay' => 'eBay 1',
+            'ebay2' => 'eBay 2',
+            'ebay3' => 'eBay 3',
+        ];
+        $label = $labels[$account] ?? $account;
+
+        if ($sku === '' || $url === '') {
+            return response()->json(['success' => false, 'message' => 'SKU and image URL are required.'], 422);
+        }
+
+        @set_time_limit(180);
+
+        $imageMaster = app(ImageMasterController::class);
+        $live = $imageMaster->fetchEbayGallery($sku, $account);
+        $existing = ($live['success'] ?? false)
+            ? array_values($live['images'] ?? [])
+            : $imageMaster->existingImageUrls($account, $sku);
+
+        if ($existing === [] && ! ($live['success'] ?? false) && empty($live['item_id'])) {
+            return response()->json([
+                'success' => false,
+                'message' => $live['message'] ?? ('No '.$label.' listing found for this SKU.'),
+                'account' => $account,
+                'label' => $label,
+            ], 422);
+        }
+
+        $images = $this->prependAsEbayMainImage($url, $existing);
+
+        try {
+            $result = $imageMaster->runQueuedMarketplacePush(
+                $sku,
+                $account,
+                $images,
+                'replace',
+                [$account => 0]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Hero Image 2 eBay push failed', [
+                'sku' => $sku,
+                'account' => $account,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        $ok = (bool) ($result['success'] ?? false);
+        $message = $result['message'] ?? ($ok ? 'Updated main image on '.$label.'.' : 'Could not update main image on '.$label.'.');
+        if ($ok && ! str_contains(strtolower($message), 'main image')) {
+            $message = 'Updated main image on '.$label.'. '.$message;
+        }
+
+        return response()->json([
+            'success' => $ok,
+            'message' => trim($message),
+            'account' => $account,
+            'label' => $label,
         ], $ok ? 200 : 422);
     }
 
@@ -1252,6 +1333,9 @@ class RawImagesController extends Controller
                 'cachedImageUrl' => route('raw.images.cached.image'),
                 'savedAiPrompt' => $this->savedAiPrompt($kind),
                 'savedAiLogos' => $this->savedAiLogos($kind),
+                'pushEbayUrl' => \Illuminate\Support\Facades\Route::has('raw.images.hero.2.push.ebay')
+                    ? route('raw.images.hero.2.push.ebay')
+                    : route('raw.images.hero.2.upload'),
             ]);
         }
 
@@ -2365,6 +2449,27 @@ class RawImagesController extends Controller
         }
 
         return url('/'.ltrim($url, '/'));
+    }
+
+    /**
+     * @param  list<string>  $existing
+     * @param  list<string>  $extra
+     * @return list<string>
+     */
+    /**
+     * eBay gallery main image is PictureURL[0]. Keep other listing photos after it.
+     *
+     * @param  list<string>  $existing
+     * @return list<string>
+     */
+    private function prependAsEbayMainImage(string $mainUrl, array $existing): array
+    {
+        $mainUrl = trim($mainUrl);
+        if ($mainUrl === '') {
+            return array_slice(array_values(array_filter(array_map('trim', $existing))), 0, 12);
+        }
+
+        return array_slice($this->appendUniqueUrls([$mainUrl], $existing), 0, 12);
     }
 
     /**

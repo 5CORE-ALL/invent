@@ -443,62 +443,97 @@ class MappingChannelCounts
      *
      * @return list<array{channel: string, channel_slug: string, image: ?string, cp_inactive_listings: int, cp_inactive_parent: int, cp_inactive_child: int, detail_url: string, cp_detail_url: string, listings_url: ?string, has_sku_detail: bool, api_status: string, api_connected: bool, api_updated_at: ?string, api_label: string}>
      */
-    public static function inactiveMasterRows(bool $useCache = false): array
+    public static function inactiveMasterRows(bool $useCache = false, ?int $timeBudgetSeconds = null, bool $resume = true): array
     {
-        if ($useCache) {
-            try {
-                $cached = Cache::get(self::INACTIVE_MASTER_ROWS_CACHE_KEY);
-                if (is_array($cached) && $cached !== []) {
-                    return $cached;
-                }
-            } catch (\Throwable $e) {
-                // ignore
-            }
+        $existing = self::cachedInactiveMasterRows();
+        $childSum = (int) collect($existing)->sum(fn ($row) => (int) ($row['cp_inactive_child'] ?? 0));
+        $meta = self::inactiveMasterMeta();
+        $complete = (bool) ($meta['complete'] ?? false) && $childSum > 0;
+        $done = $resume && $childSum > 0
+            ? array_values(array_filter(array_map('strval', $meta['computed_slugs'] ?? [])))
+            : [];
+
+        if ($useCache && $complete && $existing !== []) {
+            return $existing;
         }
 
         $apiStatuses = self::collectApiStatuses();
         $logos = self::logoMap();
         $displayNames = self::displayNameMap();
-        $seen = [];
-        $rows = [];
-
-        foreach (self::inactiveChannelOrder() as $slug) {
-            if (! isset(self::$sources[$slug]) || isset($seen[$slug])) {
-                continue;
+        $rowsBySlug = [];
+        foreach ($existing !== [] ? $existing : self::inactiveMasterSkeletonRows() as $row) {
+            $slug = (string) ($row['channel_slug'] ?? '');
+            if ($slug !== '') {
+                $rowsBySlug[$slug] = $row;
             }
-            $seen[$slug] = true;
-            $label = $displayNames[$slug] ?? self::$sources[$slug]['label'];
-            $api = $apiStatuses[$slug] ?? [
-                'api_status' => 'red',
-                'api_connected' => false,
-                'api_updated_at' => null,
-                'api_label' => 'API not linked',
-            ];
-
-            $cpCounts = ListingInactiveParentChildCounts::cpMasterListingCountsForChannel($slug);
-            $cpChild = (int) ($cpCounts['child'] ?? 0);
-            $cpParent = (int) ($cpCounts['parent'] ?? 0);
-            $detailUrl = url('/inactive-listings/channel/'.$slug);
-
-            $rows[] = [
-                'channel' => $label,
-                'channel_slug' => $slug,
-                'image' => $logos[$slug] ?? null,
-                'cp_inactive_listings' => $cpChild,
-                'cp_inactive_parent' => $cpParent,
-                'cp_inactive_child' => $cpChild,
-                'detail_url' => $detailUrl,
-                'cp_detail_url' => $detailUrl,
-                'listings_url' => self::listingsInactiveUrlForSlug($slug),
-                'has_sku_detail' => MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null,
-                'api_status' => $api['api_status'],
-                'api_connected' => $api['api_connected'],
-                'api_updated_at' => $api['api_updated_at'],
-                'api_label' => $api['api_label'],
-            ];
         }
 
-        self::persistInactiveMasterRows($rows);
+        $deadline = $timeBudgetSeconds !== null ? microtime(true) + max(1, $timeBudgetSeconds) : null;
+        $prevLocalOnly = MarketplacePortalInactiveCount::$localOnly;
+        MarketplacePortalInactiveCount::$localOnly = true;
+        $seen = [];
+
+        try {
+            foreach (self::inactiveChannelOrder() as $slug) {
+                if (! isset(self::$sources[$slug]) || isset($seen[$slug])) {
+                    continue;
+                }
+                $seen[$slug] = true;
+                if ($deadline !== null && microtime(true) >= $deadline && $done !== []) {
+                    break;
+                }
+                if (in_array($slug, $done, true)) {
+                    continue;
+                }
+
+                $label = $displayNames[$slug] ?? self::$sources[$slug]['label'];
+                $api = $apiStatuses[$slug] ?? [
+                    'api_status' => 'red',
+                    'api_connected' => false,
+                    'api_updated_at' => null,
+                    'api_label' => 'API not linked',
+                ];
+                $cpCounts = ListingInactiveParentChildCounts::cpMasterListingCountsForChannel($slug);
+                $cpChild = (int) ($cpCounts['child'] ?? 0);
+                $cpParent = (int) ($cpCounts['parent'] ?? 0);
+                $detailUrl = url('/inactive-listings/channel/'.$slug);
+                $rowsBySlug[$slug] = [
+                    'channel' => $label,
+                    'channel_slug' => $slug,
+                    'image' => $logos[$slug] ?? null,
+                    'cp_inactive_listings' => $cpChild,
+                    'cp_inactive_parent' => $cpParent,
+                    'cp_inactive_child' => $cpChild,
+                    'detail_url' => $detailUrl,
+                    'cp_detail_url' => $detailUrl,
+                    'listings_url' => self::listingsInactiveUrlForSlug($slug),
+                    'has_sku_detail' => MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null,
+                    'api_status' => $api['api_status'],
+                    'api_connected' => $api['api_connected'],
+                    'api_updated_at' => $api['api_updated_at'],
+                    'api_label' => $api['api_label'],
+                ];
+                $done[] = $slug;
+                self::persistInactiveMasterRows(array_values($rowsBySlug), $done, false);
+            }
+        } finally {
+            MarketplacePortalInactiveCount::$localOnly = $prevLocalOnly;
+        }
+
+        $wanted = [];
+        foreach (self::inactiveChannelOrder() as $slug) {
+            if (isset(self::$sources[$slug])) {
+                $wanted[$slug] = true;
+            }
+        }
+        $complete = $wanted !== [] && count(array_intersect(array_keys($wanted), $done)) === count($wanted);
+        $rows = [];
+        foreach (array_keys($wanted) as $slug) {
+            if (isset($rowsBySlug[$slug])) {
+                $rows[] = $rowsBySlug[$slug];
+            }
+        }
+        self::persistInactiveMasterRows($rows, $done, $complete);
 
         return $rows;
     }
@@ -574,14 +609,34 @@ class MappingChannelCounts
     }
 
     /**
-     * @param  list<array<string, mixed>>  $rows
+     * @return array{computed_at?: string, complete?: bool, computed_slugs?: list<string>}
      */
-    private static function persistInactiveMasterRows(array $rows): void
+    public static function inactiveMasterMeta(): array
+    {
+        try {
+            $meta = Cache::get(self::INACTIVE_MASTER_ROWS_META_KEY);
+            if (is_array($meta)) {
+                return $meta;
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @param  list<string>  $computedSlugs
+     */
+    private static function persistInactiveMasterRows(array $rows, array $computedSlugs = [], bool $complete = true): void
     {
         try {
             Cache::put(self::INACTIVE_MASTER_ROWS_CACHE_KEY, $rows, now()->addDays(self::INACTIVE_PAGE_CACHE_TTL_DAYS));
             Cache::put(self::INACTIVE_MASTER_ROWS_META_KEY, [
                 'computed_at' => now()->toIso8601String(),
+                'complete' => $complete,
+                'computed_slugs' => array_values(array_unique($computedSlugs)),
             ], now()->addDays(self::INACTIVE_PAGE_CACHE_TTL_DAYS));
             self::storeCpInactiveTotal((int) collect($rows)->sum('cp_inactive_child'));
         } catch (\Throwable $e) {

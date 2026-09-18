@@ -238,6 +238,8 @@ final class EbayTradingReviseItem
         $itemNode = $xml->addChild('Item');
         $itemNode->addChild('ItemID', $idEsc);
         $pd = $itemNode->addChild('PictureDetails');
+        $pd->addChild('GalleryType', 'Gallery');
+        $pd->addChild('GalleryURL', self::escapeXmlElementText($epsUrls[0]));
         foreach ($epsUrls as $u) {
             $pd->addChild('PictureURL', self::escapeXmlElementText($u));
         }
