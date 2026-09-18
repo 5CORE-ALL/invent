@@ -44,6 +44,22 @@ final class MarketplacePortalStatusTabs
     }
 
     /**
+     * /inactive-listings: SKU exists on the marketplace and portal status is inactive.
+     * Missing / never-listed SKUs stay on Missing Listing. Inventory is checked separately.
+     */
+    public static function isListedComplianceHold(?string $state, ?string $reason = null): bool
+    {
+        $raw = strtolower(trim((string) $state));
+        $raw = str_replace([' ', '-'], '_', $raw);
+        if (in_array($raw, ['missing', 'not_listed'], true)) {
+            return false;
+        }
+
+        // Empty state still counts: the SKU already came from the portal inactive list.
+        return self::bucket($raw === '' ? 'inactive' : $raw) === 'inactive';
+    }
+
+    /**
      * @param  array<int, mixed>|null  $liveRows
      * @return array{active: list<string>, inactive: list<string>}
      */

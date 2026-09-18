@@ -1762,6 +1762,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('inactive-listings:warm-page')
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('inactive-listings-warm-page')
+            ->withoutOverlapping(20)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('missing-listing:refresh-catalogs --force')
             ->dailyAt('10:35')
             ->timezone('Asia/Kolkata')
