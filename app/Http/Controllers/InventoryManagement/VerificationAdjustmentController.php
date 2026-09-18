@@ -24,7 +24,6 @@ use Illuminate\Support\Facades\Schema;
 use App\Models\ShopifyInventoryLog;
 use App\Jobs\UpdateShopifyInventoryJob;
 use App\Models\LostGainAqHistory;
-use App\Models\User;
 use Illuminate\Support\Str;
 
 
@@ -2616,14 +2615,42 @@ GQL;
     }
 
     /**
+     * Fallback editors if Apps Script cannot grant domain-wide access.
+     * Keep this list tiny — posting every teammate times the export out.
+     *
+     * @return array<int, string>
+     */
+    public static function shareEmailsForExport(?string $currentEmail, string $shareDomain = '5core.com'): array
+    {
+        $shareDomain = strtolower(trim($shareDomain)) ?: '5core.com';
+        $shareEmails = [];
+        $normalized = strtolower(trim((string) $currentEmail));
+        if ($normalized !== '' && str_ends_with($normalized, '@'.$shareDomain)) {
+            $shareEmails[] = $normalized;
+        }
+        foreach (['inventory@'.$shareDomain, 'president@'.$shareDomain] as $fallbackEmail) {
+            if (! in_array($fallbackEmail, $shareEmails, true)) {
+                $shareEmails[] = $fallbackEmail;
+            }
+        }
+
+        return $shareEmails;
+    }
+
+    /**
      * Export verification data to Google Sheets (Simple Apps Script approach)
      */
     public function exportToGoogleSheets(Request $request)
     {
         try {
             $data = $request->input('data', []);
-            
-            if (empty($data)) {
+
+            if (is_string($data)) {
+                $decoded = json_decode($data, true);
+                $data = is_array($decoded) ? $decoded : [];
+            }
+
+            if (!is_array($data) || $data === []) {
                 return response()->json([
                     'success' => false,
                     'message' => 'No data to export'
@@ -2645,25 +2672,11 @@ GQL;
             $spreadsheetId = config('services.google_apps_script.verification_adjustment_sheet_id');
 
             $shareDomain = (string) config('services.google_apps_script.share_domain', '5core.com');
-
-            // Everyone with a @5core.com account gets Editor. Domain share is the
-            // primary path; these emails are a fallback if Workspace blocks it.
-            $shareEmails = User::query()
-                ->where('email', 'like', '%@'.$shareDomain)
-                ->pluck('email')
-                ->map(fn ($email) => strtolower(trim((string) $email)))
-                ->filter()
-                ->unique()
-                ->values()
-                ->all();
-
-            $currentEmail = strtolower(trim((string) Auth::user()?->email));
-            if (
-                $currentEmail !== ''
-                && str_ends_with($currentEmail, '@'.$shareDomain)
-                && ! in_array($currentEmail, $shareEmails, true)
-            ) {
-                $shareEmails[] = $currentEmail;
+            $shareEmails = self::shareEmailsForExport(Auth::user()?->email, $shareDomain);
+            $shareAnyone = filter_var(config('services.google_apps_script.share_anyone', true), FILTER_VALIDATE_BOOLEAN);
+            $shareAnyoneRole = strtolower((string) config('services.google_apps_script.share_anyone_role', 'reader')) ?: 'reader';
+            if (! in_array($shareAnyoneRole, ['reader', 'commenter', 'writer'], true)) {
+                $shareAnyoneRole = 'reader';
             }
 
             // Prepare payload
@@ -2671,6 +2684,8 @@ GQL;
                 'data' => $data,
                 'sheetTitle' => 'Verification Adjustment',
                 'spreadsheetId' => $spreadsheetId, // Empty string means create new
+                'shareAnyone' => $shareAnyone,
+                'shareAnyoneRole' => $shareAnyoneRole,
                 'shareDomain' => $shareDomain,
                 'shareRole' => 'writer',
                 'shareEmails' => $shareEmails,
@@ -2682,10 +2697,14 @@ GQL;
                 'rows' => count($data),
                 'spreadsheetId' => $spreadsheetId ?: 'new',
                 'shareDomain' => $shareDomain,
+                'shareAnyone' => $shareAnyone,
+                'shareAnyoneRole' => $shareAnyoneRole,
                 'shareEmailCount' => count($shareEmails),
             ]);
 
-            $response = Http::timeout(120)
+            $response = Http::timeout(90)
+                ->connectTimeout(15)
+                ->acceptJson()
                 ->withHeaders([
                     'Content-Type' => 'application/json',
                 ])
