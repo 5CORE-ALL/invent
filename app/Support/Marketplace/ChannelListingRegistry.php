@@ -991,6 +991,7 @@ class ChannelListingRegistry
 
     /**
      * TopDawg Listed = live/Yes catalog row in topdawg_products.
+     * Pack / GTR / parent product_code aliases count as listed.
      * Uploaded / review / unable-to-list stay in Missing L.
      *
      * @param  list<string>  $skus
@@ -998,7 +999,7 @@ class ChannelListingRegistry
      */
     public static function listedTopDawg(array $skus): array
     {
-        $wantedNorm = self::wantedNormalizedSkus($skus);
+        $wantedNorm = ListingCountsEngine::wantedSkuKeySet($skus, true);
         if ($wantedNorm === []) {
             return [];
         }
@@ -1023,7 +1024,7 @@ class ChannelListingRegistry
                         if ($id === '') {
                             continue;
                         }
-                        self::putListedId($byNorm, $wantedNorm, $sku, $id);
+                        ListingCountsEngine::putListedForSku($byNorm, $wantedNorm, $sku, $id, true);
                     }
                 });
         }
@@ -1040,14 +1041,14 @@ class ChannelListingRegistry
                         continue;
                     }
                     $id = trim((string) ($row['product_id'] ?? ''));
-                    self::putListedId($byNorm, $wantedNorm, $sku, $id !== '' ? $id : $sku);
+                    ListingCountsEngine::putListedForSku($byNorm, $wantedNorm, $sku, $id !== '' ? $id : $sku, true);
                 }
             }
         } catch (\Throwable $e) {
             // ignore cache misses
         }
 
-        return self::listedMapFromByNorm($skus, $byNorm);
+        return ListingCountsEngine::listedMapForProductSkus($skus, $byNorm, true);
     }
 
     /**
