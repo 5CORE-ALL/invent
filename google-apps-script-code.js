@@ -1,28 +1,80 @@
 /**
  * Inventory Management - Google Sheets Export Service
  *
- * New sheets are Anyone with the link (Viewer) so non-5core people can open them.
- * @5core.com accounts still get Editor when Workspace allows it.
+ * doPost = CREATE a brand-new Google Spreadsheet (does NOT touch the 4-sheet file)
+ * doGet  = READ one of those existing 4 sheets as JSON (?sheet=Sheet1)
  *
- * CRITICAL: Editing this file in Laravel does NOTHING until you paste it into
- * Google Apps Script and redeploy:
- *   1. Open https://script.google.com → your Verification Adjustment export project
- *   2. Replace ALL code with this file
- *   3. Deploy → Manage deployments → pencil → Version = New version → Deploy
- *   4. Click "Review permissions" / Allow if prompted (needs Drive access)
+ * Paste into the Apps Script that already has Drive permission.
+ * Deploy → Manage deployments → New version.
+ *
+ * FIXED_SPREADSHEET_ID is ONLY for doGet (the workbook that already has 4 sheets).
  */
+var FIXED_SPREADSHEET_ID = ''; // only for doGet — the 4-sheet workbook ID
+
+function getSpreadsheet_(requestedId) {
+  var id = String(requestedId || FIXED_SPREADSHEET_ID || '').trim();
+  if (id && id !== 'Sheet1') {
+    return SpreadsheetApp.openById(id);
+  }
+
+  var active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active) {
+    return active;
+  }
+
+  throw new Error(
+    'Set FIXED_SPREADSHEET_ID in this script (the file that already has 4 sheets), '
+    + 'or set GOOGLE_SHEETS_VERIFICATION_ADJUSTMENT_ID in Laravel .env'
+  );
+}
+
+function uniqueSheetName_(ss, base) {
+  var safe = String(base || 'Verification Adjustment').substring(0, 80);
+  var name = safe;
+  var n = 1;
+  while (ss.getSheetByName(name)) {
+    n++;
+    name = safe + ' (' + n + ')';
+  }
+  return name;
+}
+
+function writeRowsToSheet_(sheet, rows) {
+  var headers = Object.keys(rows[0]);
+  var values = [headers];
+
+  for (var i = 0; i < rows.length; i++) {
+    var row = [];
+    for (var j = 0; j < headers.length; j++) {
+      var value = rows[i][headers[j]];
+      row.push(value !== null && value !== undefined ? value : '');
+    }
+    values.push(row);
+  }
+
+  var range = sheet.getRange(1, 1, values.length, headers.length);
+  range.setValues(values);
+
+  var headerRange = sheet.getRange(1, 1, 1, headers.length);
+  headerRange.setFontWeight('bold');
+  headerRange.setBackground('#f3f3f3');
+  sheet.setFrozenRows(1);
+
+  for (var col = 1; col <= headers.length; col++) {
+    sheet.autoResizeColumn(col);
+  }
+}
 
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     var rows = data.data || [];
-    var sheetTitle = data.sheetTitle || 'Sheet1';
-    var spreadsheetId = data.spreadsheetId || '';
+    var sheetTitle = data.sheetTitle || 'Verification Adjustment';
     var shareEmails = data.shareEmails || [];
     var shareDomain = data.shareDomain || '5core.com';
     var shareRole = data.shareRole || 'writer';
     var shareAnyone = data.shareAnyone !== false;
-    var shareAnyoneRole = data.shareAnyoneRole || 'reader';
+    var shareAnyoneRole = data.shareAnyoneRole || 'writer';
 
     if (rows.length === 0) {
       return jsonOut_({
@@ -31,54 +83,13 @@ function doPost(e) {
       });
     }
 
-    var spreadsheet;
-    var sheet;
+    var timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+    var spreadsheet = SpreadsheetApp.create(sheetTitle + ' - ' + timestamp);
+    var sheet = spreadsheet.getSheets()[0];
+    sheet.setName(sheetTitle);
+    writeRowsToSheet_(sheet, rows);
 
-    if (spreadsheetId && spreadsheetId !== '') {
-      try {
-        spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-        sheet = spreadsheet.getSheets()[0];
-        sheet.clear();
-        Logger.log('Using existing spreadsheet: ' + spreadsheetId);
-      } catch (error) {
-        Logger.log('Could not open existing spreadsheet, creating new one: ' + error);
-        spreadsheet = null;
-      }
-    }
-
-    if (!spreadsheet) {
-      var timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
-      spreadsheet = SpreadsheetApp.create('Verification Adjustment - ' + timestamp);
-      sheet = spreadsheet.getSheets()[0];
-      sheet.setName(sheetTitle);
-      Logger.log('Created new spreadsheet: ' + spreadsheet.getId());
-    }
-
-    var headers = Object.keys(rows[0]);
-    var values = [headers];
-
-    for (var i = 0; i < rows.length; i++) {
-      var row = [];
-      for (var j = 0; j < headers.length; j++) {
-        var value = rows[i][headers[j]];
-        row.push(value !== null && value !== undefined ? value : '');
-      }
-      values.push(row);
-    }
-
-    if (values.length > 0) {
-      var range = sheet.getRange(1, 1, values.length, headers.length);
-      range.setValues(values);
-
-      var headerRange = sheet.getRange(1, 1, 1, headers.length);
-      headerRange.setFontWeight('bold');
-      headerRange.setBackground('#f3f3f3');
-      sheet.setFrozenRows(1);
-
-      for (var col = 1; col <= headers.length; col++) {
-        sheet.autoResizeColumn(col);
-      }
-    }
+    Logger.log('Created NEW spreadsheet: ' + spreadsheet.getId());
 
     var shareResult = ensureShareAccess_(spreadsheet.getId(), {
       shareEmails: shareEmails,
@@ -90,8 +101,10 @@ function doPost(e) {
 
     return jsonOut_({
       success: true,
-      message: 'Data exported successfully',
+      message: 'New Google Sheet created',
       spreadsheetId: spreadsheet.getId(),
+      sheetName: sheet.getName(),
+      sheetId: sheet.getSheetId(),
       spreadsheetUrl: spreadsheet.getUrl(),
       rowsWritten: rows.length,
       sharing: shareResult
@@ -106,8 +119,58 @@ function doPost(e) {
 }
 
 /**
- * Anyone with the link can open the sheet (Viewer by default).
- * @5core.com still gets Editor when Workspace allows domain sharing.
+ * Return a sheet tab as JSON.
+ * ?sheet=Sheet1
+ * ?range=A1:Z
+ * ?id=SPREADSHEET_ID  (optional override)
+ */
+function doGet(e) {
+  try {
+    var requestedId = (e && e.parameter && e.parameter.id) ? e.parameter.id : '';
+    var sheetName = (e && e.parameter && e.parameter.sheet) ? e.parameter.sheet : 'Sheet1';
+    var rangeParam = (e && e.parameter && e.parameter.range) ? e.parameter.range : null;
+
+    var ss = getSpreadsheet_(requestedId);
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      return jsonOut_({ error: 'Sheet not found: ' + sheetName });
+    }
+
+    var dataRange = rangeParam ? sheet.getRange(rangeParam) : sheet.getDataRange();
+    var values = dataRange.getValues();
+    if (values.length === 0) {
+      return jsonOut_([]);
+    }
+
+    var headers = values[0].map(function (h) {
+      return (h === null || h === undefined) ? '' : String(h).trim();
+    });
+
+    var out = [];
+    for (var r = 1; r < values.length; r++) {
+      var row = values[r];
+      var obj = {};
+      for (var c = 0; c < headers.length; c++) {
+        var key = headers[c] || ('col' + (c + 1));
+        var cell = row[c];
+        obj[key] = (cell === '' || cell === null || cell === undefined) ? '' : cell;
+      }
+      out.push(obj);
+    }
+
+    return jsonOut_(out);
+  } catch (err) {
+    return jsonOut_({
+      error: 'exception',
+      message: err.message,
+      stack: err.stack ? String(err.stack).substring(0, 2000) : null
+    });
+  }
+}
+
+/**
+ * Anyone with the link can open/edit the workbook.
+ * @5core.com also gets Editor when Workspace allows domain sharing.
  */
 function ensureShareAccess_(fileId, opts) {
   opts = opts || {};
@@ -115,7 +178,7 @@ function ensureShareAccess_(fileId, opts) {
   var shareDomain = opts.shareDomain || '5core.com';
   var shareRole = opts.shareRole || 'writer';
   var shareAnyone = opts.shareAnyone !== false;
-  var shareAnyoneRole = opts.shareAnyoneRole || 'reader';
+  var shareAnyoneRole = opts.shareAnyoneRole || 'writer';
 
   var result = {
     domainShared: false,
@@ -138,8 +201,6 @@ function ensureShareAccess_(fileId, opts) {
     addEditorsByEmail_(fileId, shareEmails, shareDomain, result);
   }
 
-  // Public link last. Do not use DriveApp.setSharing(DOMAIN) here —
-  // that replaces permissions and would lock out non-5core people.
   if (shareAnyone) {
     shareAnyoneWithLink_(fileId, shareAnyoneRole, result);
   }
@@ -184,7 +245,7 @@ function ensureDomainEditAccess_(fileId, shareEmails, shareDomain, shareRole) {
     shareDomain: shareDomain,
     shareRole: shareRole,
     shareAnyone: true,
-    shareAnyoneRole: 'reader'
+    shareAnyoneRole: 'writer'
   });
 }
 
@@ -225,7 +286,7 @@ function ensureOpenAccess_(fileId, shareEmails) {
     shareDomain: '5core.com',
     shareRole: 'writer',
     shareAnyone: true,
-    shareAnyoneRole: 'reader'
+    shareAnyoneRole: 'writer'
   });
 }
 
@@ -252,7 +313,6 @@ function createDrivePermission_(fileId, permission, sendEmail) {
       return { ok: true, body: body };
     }
 
-    // Treat "already exists" as success
     if (body.indexOf('alreadyExists') !== -1) {
       return { ok: true, body: body };
     }
@@ -270,13 +330,11 @@ function jsonOut_(obj) {
 }
 
 /**
- * Run this ONCE from the Apps Script editor (Select function → Run)
- * after a failed export, to force-share the latest sheet.
- * Paste the spreadsheet ID from the export URL into SHEET_ID below.
+ * Run this ONCE from the Apps Script editor after a failed share.
  */
 function forceShareLatestSheet() {
-  var SHEET_ID = 'PASTE_SPREADSHEET_ID_HERE'; // e.g. 1b48kfSf3ZzEMIGcXWiX1830wB7blssahVq0ei9WpuUQ
-  var result = ensureShareAccess_(SHEET_ID, {
+  var spreadsheet = getSpreadsheet_('');
+  var result = ensureShareAccess_(spreadsheet.getId(), {
     shareEmails: [
       'inventory@5core.com',
       'president@5core.com'
@@ -284,7 +342,7 @@ function forceShareLatestSheet() {
     shareDomain: '5core.com',
     shareRole: 'writer',
     shareAnyone: true,
-    shareAnyoneRole: 'reader'
+    shareAnyoneRole: 'writer'
   });
   Logger.log(JSON.stringify(result, null, 2));
 }
@@ -297,10 +355,10 @@ function testDoPost() {
           { Parent: 'TEST-PARENT', SKU: 'TEST-001', INV: 10, L30: 5 },
           { Parent: 'TEST-PARENT', SKU: 'TEST-002', INV: 20, L30: 15 }
         ],
-        sheetTitle: 'Test Sheet',
-        spreadsheetId: '',
+        sheetTitle: 'Verification Adjustment',
+        spreadsheetId: FIXED_SPREADSHEET_ID,
         shareAnyone: true,
-        shareAnyoneRole: 'reader',
+        shareAnyoneRole: 'writer',
         shareDomain: '5core.com',
         shareRole: 'writer',
         shareEmails: ['inventory@5core.com', 'president@5core.com']

@@ -3,7 +3,7 @@
 namespace Tests\Unit;
 
 use App\Http\Controllers\InventoryManagement\VerificationAdjustmentController;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class VerificationAdjustmentGoogleSheetExportTest extends TestCase
 {
@@ -28,5 +28,18 @@ class VerificationAdjustmentGoogleSheetExportTest extends TestCase
             'president@5core.com',
         ], $emails);
         $this->assertNotContains('guest@gmail.com', $emails);
+    }
+
+    public function test_excel_payload_is_a_real_xlsx_file(): void
+    {
+        $payload = VerificationAdjustmentController::excelPayloadFromRows([
+            ['Parent' => 'P1', 'SKU' => 'SKU-1', 'Main-INV' => 2],
+            ['Parent' => 'P1', 'SKU' => 'SKU-2', 'Main-INV' => 4],
+        ]);
+
+        $this->assertStringEndsWith('.xlsx', $payload['filename']);
+        $bytes = base64_decode($payload['base64'], true);
+        $this->assertNotFalse($bytes);
+        $this->assertStringStartsWith('PK', $bytes);
     }
 }

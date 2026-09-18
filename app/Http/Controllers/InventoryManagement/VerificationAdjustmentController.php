@@ -25,6 +25,9 @@ use App\Models\ShopifyInventoryLog;
 use App\Jobs\UpdateShopifyInventoryJob;
 use App\Models\LostGainAqHistory;
 use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 
 class VerificationAdjustmentController extends Controller
@@ -2638,7 +2641,66 @@ GQL;
     }
 
     /**
-     * Export verification data to Google Sheets (Simple Apps Script approach)
+     * Build an .xlsx anyone can open — Workspace cannot block this like a public Google link.
+     *
+     * @param  array<int, array<string, mixed>>  $data
+     * @return array{filename: string, base64: string}
+     */
+    public static function excelPayloadFromRows(array $data): array
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Verification Adjustment');
+
+        $headers = array_keys($data[0]);
+        $sheet->fromArray($headers, null, 'A1');
+
+        $rowNum = 2;
+        foreach ($data as $item) {
+            $line = [];
+            foreach ($headers as $header) {
+                $line[] = $item[$header] ?? '';
+            }
+            $sheet->fromArray($line, null, 'A'.$rowNum, true);
+            $rowNum++;
+        }
+
+        $lastCol = $sheet->getHighestColumn();
+        $sheet->getStyle('A1:'.$lastCol.'1')->applyFromArray([
+            'font' => ['bold' => true],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => 'F3F3F3'],
+            ],
+        ]);
+        $sheet->freezePane('A2');
+        foreach (range('A', $lastCol) as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $tmp = tmpfile();
+        if ($tmp === false) {
+            throw new \RuntimeException('Could not create a temporary export file');
+        }
+        $path = stream_get_meta_data($tmp)['uri'];
+        (new Xlsx($spreadsheet))->save($path);
+        $binary = file_get_contents($path);
+        fclose($tmp);
+        $spreadsheet->disconnectWorksheets();
+
+        if ($binary === false) {
+            throw new \RuntimeException('Could not read the export file');
+        }
+
+        return [
+            'filename' => 'verification-adjustment-'.now()->format('Y-m-d-His').'.xlsx',
+            'base64' => base64_encode($binary),
+        ];
+    }
+
+    /**
+     * Export creates a brand-new Google Spreadsheet via Apps Script.
+     * Does not write into the existing 4-sheet workbook.
      */
     public function exportToGoogleSheets(Request $request)
     {
@@ -2657,49 +2719,35 @@ GQL;
                 ], 400);
             }
 
-            // Google Apps Script Web App URL
-            // You'll get this URL after deploying the Apps Script
             $appsScriptUrl = config('services.google_apps_script.export_url');
-            
             if (empty($appsScriptUrl)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Google Apps Script URL not configured. Please add GOOGLE_APPS_SCRIPT_EXPORT_URL to your .env file. See GOOGLE_SHEETS_SIMPLE_SETUP.md for instructions.'
+                    'message' => 'Google Apps Script URL not configured. Please add GOOGLE_APPS_SCRIPT_EXPORT_URL to your .env file.'
                 ], 500);
             }
 
-            // Get the stored spreadsheet ID (if configured to use the same sheet)
-            $spreadsheetId = config('services.google_apps_script.verification_adjustment_sheet_id');
-
             $shareDomain = (string) config('services.google_apps_script.share_domain', '5core.com');
-            $shareEmails = self::shareEmailsForExport(Auth::user()?->email, $shareDomain);
-            $shareAnyone = filter_var(config('services.google_apps_script.share_anyone', true), FILTER_VALIDATE_BOOLEAN);
-            $shareAnyoneRole = strtolower((string) config('services.google_apps_script.share_anyone_role', 'reader')) ?: 'reader';
+            $shareAnyoneRole = strtolower((string) config('services.google_apps_script.share_anyone_role', 'writer')) ?: 'writer';
             if (! in_array($shareAnyoneRole, ['reader', 'commenter', 'writer'], true)) {
-                $shareAnyoneRole = 'reader';
+                $shareAnyoneRole = 'writer';
             }
 
-            // Prepare payload
             $payload = [
                 'data' => $data,
                 'sheetTitle' => 'Verification Adjustment',
-                'spreadsheetId' => $spreadsheetId, // Empty string means create new
-                'shareAnyone' => $shareAnyone,
+                'spreadsheetId' => '',
+                'shareAnyone' => true,
                 'shareAnyoneRole' => $shareAnyoneRole,
                 'shareDomain' => $shareDomain,
                 'shareRole' => 'writer',
-                'shareEmails' => $shareEmails,
+                'shareEmails' => self::shareEmailsForExport(Auth::user()?->email, $shareDomain),
             ];
 
-            // Send data to Google Apps Script
-            Log::info('Sending data to Google Apps Script', [
+            Log::info('Creating new Google Sheet via Apps Script', [
                 'url' => $appsScriptUrl,
                 'rows' => count($data),
-                'spreadsheetId' => $spreadsheetId ?: 'new',
-                'shareDomain' => $shareDomain,
-                'shareAnyone' => $shareAnyone,
                 'shareAnyoneRole' => $shareAnyoneRole,
-                'shareEmailCount' => count($shareEmails),
             ]);
 
             $response = Http::timeout(90)
@@ -2710,41 +2758,34 @@ GQL;
                 ])
                 ->post($appsScriptUrl, $payload);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::error('Google Apps Script request failed', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
-                
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to export to Google Sheets. Please check your Apps Script deployment.'
+                    'message' => 'Failed to create Google Sheet. Check the Apps Script deployment URL and permissions.'
                 ], 500);
             }
 
             $result = $response->json();
-
-            if (!isset($result['success']) || !$result['success']) {
+            if (! is_array($result) || empty($result['success'])) {
                 Log::error('Google Apps Script returned error', ['result' => $result]);
-                
+
                 return response()->json([
                     'success' => false,
                     'message' => $result['message'] ?? 'Export failed'
                 ], 500);
             }
 
-            Log::info('Data exported successfully to Google Sheets', [
-                'spreadsheetId' => $result['spreadsheetId'],
-                'url' => $result['spreadsheetUrl'],
-                'rows' => $result['rowsWritten'] ?? 0,
-                'sharing' => $result['sharing'] ?? null,
-            ]);
-
             return response()->json([
                 'success' => true,
-                'message' => 'Data exported to Google Sheets successfully',
-                'spreadsheetId' => $result['spreadsheetId'],
-                'spreadsheetUrl' => $result['spreadsheetUrl'],
+                'message' => 'New Google Sheet created',
+                'spreadsheetId' => $result['spreadsheetId'] ?? null,
+                'spreadsheetUrl' => $result['spreadsheetUrl'] ?? null,
+                'sheetName' => $result['sheetName'] ?? null,
                 'rowsWritten' => $result['rowsWritten'] ?? count($data),
                 'sharing' => $result['sharing'] ?? null,
             ]);

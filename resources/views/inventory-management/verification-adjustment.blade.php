@@ -1571,9 +1571,8 @@
                                     <i class="fas fa-step-forward"></i>
                                 </button>
                             </div>
-                            <button id="exportToGoogleSheets" class="btn btn-success btn-sm" title="Export to Google Sheets" aria-label="Export to Google Sheets">
-                                <i class="fas fa-download"></i>
-                                <i class="fab fa-google"></i>
+                            <button id="exportToGoogleSheets" class="btn btn-success btn-sm" title="Export CSV" aria-label="Export CSV">
+                                <i class="fas fa-download"></i> CSV
                             </button>
                             <button id="activity-log-btn" class="btn btn-dark btn-sm" data-toggle="modal" data-target="#activityLogModal" title="Activity Log — All history by work date" aria-label="Activity Log">
                                 <i class="fas fa-history"></i>
@@ -4738,6 +4737,17 @@
                 $('#verifiedDateFilterModal').modal('hide');
             });
 
+            function triggerBlobDownload(blob, filename) {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            }
+
             function downloadVerificationCsv(rows) {
                 if (!rows || !rows.length) return;
                 const headers = Object.keys(rows[0]);
@@ -4754,168 +4764,53 @@
                     }))
                     .join('\n');
                 const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
                 const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-                link.href = url;
-                link.download = 'verification-adjustment-' + stamp + '.csv';
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                URL.revokeObjectURL(url);
+                triggerBlobDownload(blob, 'verification-adjustment-' + stamp + '.csv');
             }
 
-            function showExportFailure(message, rows) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Export Failed',
-                    text: message || 'Failed to export data to Google Sheets',
-                    showCancelButton: true,
-                    confirmButtonText: 'Download CSV',
-                    cancelButtonText: 'Close',
-                    width: '560px'
-                }).then(function (result) {
-                    if (result.isConfirmed) {
-                        downloadVerificationCsv(rows);
-                    }
-                });
-            }
-
-            // Export to Google Sheets
             $("#exportToGoogleSheets").on("click", function () {
-                const $btn = $(this);
-                const originalHtml = $btn.html();
-                const restoreBtn = function () {
-                    $btn.prop('disabled', false).html(originalHtml);
-                };
-
                 if (!filteredData || filteredData.length === 0) {
                     alert("No data to export!");
                     return;
                 }
 
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Exporting...');
+                const exportData = filteredData.filter(item => {
+                    const skuVal = (item.sku || item.SKU || '').toString().trim().toUpperCase();
+                    return !(skuVal.startsWith('PARENT') || item.is_parent);
+                });
 
-                try {
-                    // Filter out parent rows (SKUs starting with "PARENT")
-                    const exportData = filteredData.filter(item => {
-                        const skuVal = (item.sku || item.SKU || '').toString().trim().toUpperCase();
-                        const isParentRow = skuVal.startsWith('PARENT') || item.is_parent;
-                        return !isParentRow;
-                    });
+                if (exportData.length === 0) {
+                    alert("No data to export after filtering!");
+                    return;
+                }
 
-                    if (exportData.length === 0) {
-                        restoreBtn();
-                        alert("No data to export after filtering!");
-                        return;
+                const rows = exportData.map(item => {
+                    const historyRaw = item.HISTORY == null ? '' : String(item.HISTORY);
+                    let historyDate = '';
+                    if (historyRaw.includes(', ')) {
+                        historyDate = historyRaw.split(', ')[0];
+                    } else if (historyRaw) {
+                        historyDate = historyRaw;
                     }
 
-                    const rows = exportData.map(item => {
-                        const historyRaw = item.HISTORY == null ? '' : String(item.HISTORY);
-                        let historyDate = '';
-                        if (historyRaw.includes(', ')) {
-                            historyDate = historyRaw.split(', ')[0];
-                        } else if (historyRaw) {
-                            historyDate = historyRaw;
-                        }
+                    return {
+                        Parent: item.Parent,
+                        SKU: item.SKU,
+                        'Main-INV': item.INV,
+                        L30: item.L30,
+                        DIL: item.DIL,
+                        ON_HAND: item.ON_HAND,
+                        COMMITTED: item.COMMITTED,
+                        AVAILABLE_TO_SELL: item.AVAILABLE_TO_SELL,
+                        UNAVAILABLE: item.UNAVAILABLE ?? 0,
+                        INCOMING: item.INCOMING ?? 0,
+                        VERIFIED: isVerifiedDotGreen(item) ? '✓' : '✗',
+                        'Last Verified By': item.VERIFIED_BY_FIRST_NAME || item.verified_by_first_name || '',
+                        HISTORY: historyDate
+                    };
+                });
 
-                        const lastVerifiedBy = item.VERIFIED_BY_FIRST_NAME || item.verified_by_first_name || '';
-
-                        return {
-                            Parent: item.Parent,
-                            SKU: item.SKU,
-                            'Main-INV': item.INV,
-                            L30: item.L30,
-                            DIL: item.DIL,
-                            ON_HAND: item.ON_HAND,
-                            COMMITTED: item.COMMITTED,
-                            AVAILABLE_TO_SELL: item.AVAILABLE_TO_SELL,
-                            UNAVAILABLE: item.UNAVAILABLE ?? 0,
-                            INCOMING: item.INCOMING ?? 0,
-                            VERIFIED: isVerifiedDotGreen(item) ? '✓' : '✗',
-                            'Last Verified By': lastVerifiedBy,
-                            HISTORY: historyDate
-                        };
-                    });
-
-                    // JSON body — form-urlencoded hits PHP max_input_vars (~1000)
-                    // and drops the CSRF token on this page's full catalog.
-                    $.ajax({
-                        url: '/export-to-google-sheets',
-                        method: 'POST',
-                        contentType: 'application/json',
-                        dataType: 'json',
-                        timeout: 120000,
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}'
-                        },
-                        data: JSON.stringify({ data: rows }),
-                        success: function(response) {
-                            if (response.success) {
-                                const sheetUrl = response.spreadsheetUrl;
-                                const sharing = response.sharing || null;
-                                let shareNote = '';
-                                if (sharing) {
-                                    if (sharing.anyoneWithLink) {
-                                        shareNote = `<p style="color:#198754;font-size:13px;margin-top:8px;"><i class="fas fa-unlock"></i> Anyone with this link can <strong>open</strong> the sheet (no @5core.com account needed).`;
-                                        if (sharing.domainShared) {
-                                            shareNote += ` @5core.com accounts can still <strong>Edit</strong>.`;
-                                        }
-                                        shareNote += `</p>`;
-                                    } else if (sharing.domainShared) {
-                                        shareNote = `<p style="color:#fd7e14;font-size:13px;margin-top:8px;"><i class="fas fa-user-edit"></i> Shared with <strong>@5core.com</strong> as Editor, but public link failed. Paste updated <code>google-apps-script-code.js</code> and Deploy → New version.</p>`;
-                                    } else if ((sharing.editorsAdded || []).length) {
-                                        shareNote = `<p style="color:#fd7e14;font-size:13px;margin-top:8px;"><i class="fas fa-user-edit"></i> Shared as Editor with ${sharing.editorsAdded.length} teammate(s). Public link was not set — redeploy Apps Script.</p>`;
-                                    } else {
-                                        const errs = (sharing.errors || []).slice(0, 2).join('<br>');
-                                        shareNote = `<p style="color:#dc3545;font-size:13px;margin-top:8px;"><i class="fas fa-lock"></i> Sharing failed — paste updated Apps Script and Deploy → New version.<br>${errs}</p>`;
-                                    }
-                                } else {
-                                    shareNote = `<p style="color:#fd7e14;font-size:13px;margin-top:8px;"><i class="fas fa-exclamation-triangle"></i> Old Apps Script still live. Paste updated <code>google-apps-script-code.js</code> and Deploy → New version so anyone with the link can open it.</p>`;
-                                }
-                                const message = `
-                                    <div style="text-align: left;">
-                                        <p>Data exported successfully to Google Sheets!</p>
-                                        <p><strong>Spreadsheet Link:</strong></p>
-                                        <p><a href="${sheetUrl}" target="_blank" class="btn btn-sm btn-primary">
-                                            <i class="fas fa-external-link-alt"></i> Open Google Sheet
-                                        </a></p>
-                                        <p style="font-size: 12px; margin-top: 10px; word-break: break-all;">
-                                            <strong>URL:</strong><br>${sheetUrl}
-                                        </p>
-                                        ${shareNote}
-                                    </div>
-                                `;
-
-                                Swal.fire({
-                                    icon: 'success',
-                                    title: 'Export Successful',
-                                    html: message,
-                                    confirmButtonText: 'OK',
-                                    width: '600px'
-                                });
-                            } else {
-                                showExportFailure(response.message || 'Failed to export data to Google Sheets', rows);
-                            }
-                        },
-                        error: function(xhr, status) {
-                            let errorMessage = 'Failed to export data to Google Sheets';
-                            if (status === 'timeout') {
-                                errorMessage = 'Google Sheets export timed out. Download a CSV instead, or try again.';
-                            } else if (xhr.responseJSON && xhr.responseJSON.message) {
-                                errorMessage = xhr.responseJSON.message;
-                            }
-                            showExportFailure(errorMessage, rows);
-                        },
-                        complete: function () {
-                            restoreBtn();
-                        }
-                    });
-                } catch (err) {
-                    restoreBtn();
-                    showExportFailure(err && err.message ? err.message : 'Failed to prepare export data');
-                }
+                downloadVerificationCsv(rows);
             });
 
             
