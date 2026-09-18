@@ -1754,9 +1754,9 @@
                 html += '<button type="button" class="js-copy-image-url" data-url="' + escapeHtml(url) + '" title="Copy URL"><i class="fas fa-copy"></i> Copy</button>';
                 if (rawImagesIsHero2 && url) {
                     html += '<div class="ri-ebay-push">';
-                    html += '<button type="button" class="js-push-ebay" data-account="ebay" data-url="' + escapeHtml(url) + '" title="Push this image to eBay 1">eBay 1</button>';
-                    html += '<button type="button" class="js-push-ebay" data-account="ebay2" data-url="' + escapeHtml(url) + '" title="Push this image to eBay 2">eBay 2</button>';
-                    html += '<button type="button" class="js-push-ebay" data-account="ebay3" data-url="' + escapeHtml(url) + '" title="Push this image to eBay 3">eBay 3</button>';
+                    html += '<button type="button" class="js-push-ebay" data-account="ebay" data-url="' + escapeHtml(url) + '" title="Set this image as the eBay 1 main product photo">eBay 1</button>';
+                    html += '<button type="button" class="js-push-ebay" data-account="ebay2" data-url="' + escapeHtml(url) + '" title="Set this image as the eBay 2 main product photo">eBay 2</button>';
+                    html += '<button type="button" class="js-push-ebay" data-account="ebay3" data-url="' + escapeHtml(url) + '" title="Set this image as the eBay 3 main product photo">eBay 3</button>';
                     html += '</div>';
                 }
                 html += '</div></div>';
@@ -2870,7 +2870,7 @@
             const row = btn.closest('.ri-ebay-push');
             const buttons = row ? row.querySelectorAll('button') : [btn];
             buttons.forEach(function (b) { b.disabled = true; });
-            setUploadMsg('Pushing to ' + label + '…');
+            setUploadMsg('Updating main image on ' + label + '…');
             setUploadErr('');
 
             fetch(rawImagesPushEbayUrl, {

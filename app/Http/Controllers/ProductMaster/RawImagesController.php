@@ -301,10 +301,16 @@ class RawImagesController extends Controller
             ], 422);
         }
 
-        $images = $this->appendUniqueUrls($existing, [$url]);
+        $images = $this->prependAsEbayMainImage($url, $existing);
 
         try {
-            $result = $imageMaster->runQueuedMarketplacePush($sku, $account, $images, 'replace');
+            $result = $imageMaster->runQueuedMarketplacePush(
+                $sku,
+                $account,
+                $images,
+                'replace',
+                [$account => 0]
+            );
         } catch (\Throwable $e) {
             Log::warning('Hero Image 2 eBay push failed', [
                 'sku' => $sku,
@@ -316,9 +322,9 @@ class RawImagesController extends Controller
         }
 
         $ok = (bool) ($result['success'] ?? false);
-        $message = $result['message'] ?? ($ok ? 'Pushed to '.$label.'.' : 'Could not push to '.$label.'.');
-        if ($ok && ! str_contains(strtolower($message), 'ebay')) {
-            $message = 'Pushed to '.$label.'. '.$message;
+        $message = $result['message'] ?? ($ok ? 'Updated main image on '.$label.'.' : 'Could not update main image on '.$label.'.');
+        if ($ok && ! str_contains(strtolower($message), 'main image')) {
+            $message = 'Updated main image on '.$label.'. '.$message;
         }
 
         return response()->json([
@@ -2443,6 +2449,27 @@ class RawImagesController extends Controller
         }
 
         return url('/'.ltrim($url, '/'));
+    }
+
+    /**
+     * @param  list<string>  $existing
+     * @param  list<string>  $extra
+     * @return list<string>
+     */
+    /**
+     * eBay gallery main image is PictureURL[0]. Keep other listing photos after it.
+     *
+     * @param  list<string>  $existing
+     * @return list<string>
+     */
+    private function prependAsEbayMainImage(string $mainUrl, array $existing): array
+    {
+        $mainUrl = trim($mainUrl);
+        if ($mainUrl === '') {
+            return array_slice(array_values(array_filter(array_map('trim', $existing))), 0, 12);
+        }
+
+        return array_slice($this->appendUniqueUrls([$mainUrl], $existing), 0, 12);
     }
 
     /**
