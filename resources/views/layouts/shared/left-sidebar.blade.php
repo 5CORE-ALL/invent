@@ -1226,17 +1226,22 @@
                         <li>
                             <a data-bs-toggle="collapse" href="#lqsSubmenu" aria-expanded="false"
                                 aria-controls="lqsSubmenu">
-                                <span>LQS Masters</span>
+                                <span>LQS</span>
                                 <span class="menu-arrow"></span>
                             </a>
                             <div class="collapse" id="lqsSubmenu">
                                 <ul class="side-nav-fourth-level">
                                     <li>
-                                        <a href="{{ route('ebaycvrLQS.master') }}">Ebay LQS - CVR</a>
+                                        <a href="{{ route('lqs.master.view') }}">LQS Master</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('lqs.amz.view') }}">LQS Amz</a>
                                     </li>
+                                    @foreach(\App\Support\Lqs\LqsMarketplaceCatalog::all() as $lqsSlug => $lqsChannel)
+                                    <li>
+                                        <a href="{{ route('lqs.'.$lqsSlug.'.view') }}">{{ $lqsChannel['title'] }}</a>
+                                    </li>
+                                    @endforeach
                                 </ul>
                             </div>
                         </li>

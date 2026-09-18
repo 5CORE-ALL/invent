@@ -65,6 +65,7 @@ return [
         'Team Management' => 'team',
         'Dashboard' => 'dashboard',
         'Active Channel' => 'marketplace',
+        'LQS Master' => 'marketplace',
     ],
 
     'by_title_contains' => [],

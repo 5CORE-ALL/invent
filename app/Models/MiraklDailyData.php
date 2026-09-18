@@ -121,19 +121,24 @@ class MiraklDailyData extends Model
 
     /**
      * Mirakl created_at is UTC. toDateTimeString() stored that UTC clock naive.
-     * Macy's seller page shows US time — a 10:50 PM ET 17th is 02:50 UTC on the 18th.
-     * Bucket and display in California so those orders stay on the 17th.
+     * Seller pages show US time — a 10:50 PM ET 17th is 02:50 UTC on the 18th.
+     * Bucket and display in the given US zone so those orders stay on the 17th.
      *
      * @return array{0: string, 1: string} [utcStart, utcEnd]
      */
-    public static function utcBoundsForPacificDate(string $ymd): array
+    public static function utcBoundsForTimezoneDate(string $ymd, string $tz = 'America/Los_Angeles'): array
     {
-        $day = Carbon::parse($ymd, 'America/Los_Angeles');
+        $day = Carbon::parse($ymd, $tz);
 
         return [
             $day->copy()->startOfDay()->utc()->toDateTimeString(),
             $day->copy()->endOfDay()->utc()->toDateTimeString(),
         ];
+    }
+
+    public static function utcBoundsForPacificDate(string $ymd): array
+    {
+        return self::utcBoundsForTimezoneDate($ymd, 'America/Los_Angeles');
     }
 
     public static function pacificDateTime(?string $rawUtc): ?string

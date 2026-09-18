@@ -1137,7 +1137,13 @@ class YesterdayMarketplaceMetricsService
             ->whereDate('order_date', '<=', $to)
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
             ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
-            ->whereNotNull('sku')->where('sku', '!=', '')
+            ->where(function ($q) {
+                $q->where(function ($q2) {
+                    $q2->whereNotNull('sku')->where('sku', '!=', '');
+                })->orWhere(function ($q2) {
+                    $q2->whereNotNull('display_sku')->where('display_sku', '!=', '');
+                });
+            })
             ->whereNotNull('order_number')->where('order_number', '!=', '')
             ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
             ->selectRaw('COALESCE(SUM(quantity), 0) as qty')

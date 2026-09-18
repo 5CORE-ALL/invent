@@ -36,6 +36,7 @@ return [
     ['value' => 'mm_video_posted', 'text' => 'Video Posted', 'group' => 'Marketing Masters'],
     ['value' => 'listing_LQS_masters', 'text' => 'LQS - Listing', 'group' => 'Marketing Masters'],
     ['value' => 'cvr_LQS_masters', 'text' => 'LQS - CVR', 'group' => 'Marketing Masters'],
+    ['value' => 'lqs_master', 'text' => 'LQS Master', 'group' => 'LQS'],
     // Channel
     ['value' => 'channel_master', 'text' => 'Channel Master', 'group' => 'Channel'],
     ['value' => 'api_vs_sheet', 'text' => 'API Vs Sheet', 'group' => 'Channel'],

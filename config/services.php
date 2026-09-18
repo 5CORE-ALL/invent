@@ -1157,6 +1157,7 @@ return [
     'gemini' => [
         'key' => env('GEMINI_API_KEY', env('GOOGLE_GEMINI_API_KEY')),
         'video_model' => env('GEMINI_VIDEO_MODEL', 'gemini-flash-latest'),
+        'text_model' => env('GEMINI_TEXT_MODEL', 'gemini-3.5-flash-lite'),
     ],
 
     'anthropic' => [

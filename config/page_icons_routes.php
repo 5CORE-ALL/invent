@@ -19,6 +19,7 @@ return [
     'payroll.*' => 'team',
     'home' => 'dashboard',
     'all.marketplace.master' => 'marketplace',
+    'lqs.master.*' => 'marketplace',
     'roles' => 'team',
     'permissions.view' => 'team',
     'permissions' => 'team',

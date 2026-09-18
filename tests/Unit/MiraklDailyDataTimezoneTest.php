@@ -31,4 +31,13 @@ class MiraklDailyDataTimezoneTest extends TestCase
         $this->assertTrue($start <= '2026-09-18 02:13:00' && '2026-09-18 02:13:00' <= $end);
         $this->assertTrue($start <= '2026-09-18 02:50:00' && '2026-09-18 02:50:00' <= $end);
     }
+
+    public function test_bestbuy_eastern_today_window_uses_utc_not_date(): void
+    {
+        [$start, $end] = MiraklDailyData::utcBoundsForTimezoneDate('2026-09-17', 'America/New_York');
+
+        $this->assertSame('2026-09-17 04:00:00', $start);
+        $this->assertSame('2026-09-18 03:59:59', $end);
+        $this->assertTrue($start <= '2026-09-18 02:50:00' && '2026-09-18 02:50:00' <= $end);
+    }
 }
