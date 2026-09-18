@@ -8301,8 +8301,11 @@ class TaskController extends Controller
             'additional_condition' => Schema::hasColumn('user_incentives', 'additional_condition')
                 ? ($row->additional_condition ?? null)
                 : null,
+            'target_date' => Schema::hasColumn('user_incentives', 'additional_condition')
+                ? ($row->additional_condition ?? null)
+                : null,
             'amount' => $row->amount !== null ? (float) $row->amount : null,
-            'amount_display' => $row->amount !== null ? '$'.number_format((float) $row->amount, 0) : null,
+            'amount_display' => $row->amount !== null ? '₹'.number_format((float) $row->amount, 0) : null,
             'sort_order' => (int) $row->sort_order,
             'is_active' => (bool) $row->is_active,
             'updated_at' => $row->updated_at?->toDateTimeString(),

@@ -257,7 +257,7 @@
                         id="ts-incentive-header-btn"
                         class="topbar-incentive-dollar-btn"
                         title="My incentives"
-                        aria-label="Open my incentives">$</button>
+                        aria-label="Open my incentives">₹</button>
             </li>
             @endauth
             <li class="dropdown">

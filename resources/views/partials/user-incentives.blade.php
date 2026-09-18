@@ -1,6 +1,6 @@
 {{--
-    User incentives — Task Summary INC column + $ icon beside the login name.
-    Table columns: Target, Incentive, Condition, Additional Condition.
+    User incentives — Task Summary INC column + ₹ icon beside the login name.
+    Table columns: Target, Incentive, Condition, Target Date.
     Editable by president@5core.com only. software5@5core.com can view every row.
     Everyone else can view their own row.
 
@@ -187,7 +187,7 @@
         class="d-none"
         title="My incentives"
         aria-label="Open my incentives">
-    <span aria-hidden="true">$</span>
+    <span aria-hidden="true">₹</span>
     <span class="ts-inc-float-count d-none" id="ts-incentive-float-count"></span>
 </button>
 
@@ -198,7 +198,7 @@
                 <div class="d-flex align-items-start w-100">
                     <div class="flex-grow-1 min-w-0">
                         <h5 class="modal-title mb-1" id="taskSummaryIncentivesModalLabel">
-                            <span class="me-2" aria-hidden="true">$</span>
+                            <span class="me-2" aria-hidden="true">₹</span>
                             <span id="ts-inc-modal-user">Incentives</span>
                         </h5>
                         <div class="small opacity-90" id="ts-inc-modal-designation"></div>
@@ -268,6 +268,19 @@
         return String(s == null ? '' : s)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+    function toDateInputValue(value) {
+        var s = String(value == null ? '' : value).trim();
+        var m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+        return m ? m[1] : '';
+    }
+    function formatTargetDate(value) {
+        var iso = toDateInputValue(value);
+        if (!iso) return value ? String(value) : '—';
+        var parts = iso.split('-');
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        var month = months[parseInt(parts[1], 10) - 1] || parts[1];
+        return parseInt(parts[2], 10) + ' ' + month + ' ' + parts[0];
     }
     function getModalEl() { return el('taskSummaryIncentivesModal'); }
     function showModal() {
@@ -354,13 +367,13 @@
         if (empty) empty.classList.add('d-none');
         wrap.classList.remove('d-none');
         wrap.innerHTML = '<div class="table-responsive"><table class="ts-inc-table">'
-            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>Additional Condition</th></tr></thead><tbody>'
+            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>Target Date</th></tr></thead><tbody>'
             + active.map(function (item) {
                 return '<tr>'
                     + '<td>' + escapeHtml(item.target || item.title || '—') + '</td>'
                     + '<td class="ts-inc-amt">' + escapeHtml(item.amount_display || '—') + '</td>'
                     + '<td>' + escapeHtml(item.condition || item.body || '—').replace(/\n/g, '<br>') + '</td>'
-                    + '<td>' + escapeHtml(item.additional_condition || '—').replace(/\n/g, '<br>') + '</td>'
+                    + '<td>' + escapeHtml(formatTargetDate(item.target_date || item.additional_condition)) + '</td>'
                     + '</tr>';
             }).join('')
             + '</tbody></table></div>';
@@ -370,13 +383,13 @@
         var wrap = el('ts-inc-edit-rows');
         if (!wrap) return;
         wrap.innerHTML = '<div class="table-responsive"><table class="ts-inc-table">'
-            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>Additional Condition</th><th></th></tr></thead><tbody>'
+            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>Target Date</th><th></th></tr></thead><tbody>'
             + state.editItems.map(function (item, idx) {
                 return '<tr class="ts-inc-edit-row" data-edit-idx="' + idx + '">'
                     + '<td><input type="text" class="form-control form-control-sm ts-inc-field-title" placeholder="Target" value="' + escapeHtml(item.title || item.target || '') + '" maxlength="200"></td>'
-                    + '<td><input type="number" class="form-control form-control-sm ts-inc-field-amount" placeholder="$" value="' + (item.amount != null ? escapeHtml(item.amount) : '') + '" min="0" step="1"></td>'
+                    + '<td><input type="number" class="form-control form-control-sm ts-inc-field-amount" placeholder="₹" value="' + (item.amount != null ? escapeHtml(item.amount) : '') + '" min="0" step="1"></td>'
                     + '<td><textarea class="form-control form-control-sm ts-inc-field-body" rows="2" placeholder="Condition" maxlength="5000">' + escapeHtml(item.body || item.condition || '') + '</textarea></td>'
-                    + '<td><textarea class="form-control form-control-sm ts-inc-field-extra" rows="2" placeholder="Additional condition" maxlength="5000">' + escapeHtml(item.additional_condition || '') + '</textarea>'
+                    + '<td><input type="date" class="form-control form-control-sm ts-inc-field-extra" value="' + escapeHtml(toDateInputValue(item.target_date || item.additional_condition)) + '">'
                     + '<div class="form-check mt-1"><input class="form-check-input ts-inc-field-active" type="checkbox" ' + (item.is_active !== false ? 'checked' : '') + ' id="ts-inc-active-' + idx + '"><label class="form-check-label small" for="ts-inc-active-' + idx + '">Active</label></div></td>'
                     + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger ts-inc-remove-row" data-edit-idx="' + idx + '"><i class="ri-delete-bin-line"></i></button></td>'
                     + '</tr>';
@@ -516,7 +529,7 @@
         if (t.closest('#ts-inc-add-row')) {
             e.preventDefault();
             pullEditFromDom();
-            state.editItems.push({ title: '', body: '', additional_condition: '', amount: null, is_active: true, sort_order: state.editItems.length });
+            state.editItems.push({ title: '', body: '', additional_condition: '', target_date: '', amount: null, is_active: true, sort_order: state.editItems.length });
             renderEditRows();
             return;
         }
