@@ -925,6 +925,24 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // New Temu One Sprc Dil (Dil→SNROI) + CVR + eBay/Amz/LMP cap → NTO_SPRICE.
+        // 04:10 and 20:10 IST — same twice-daily idea as Amazon, offset 10 min.
+        $schedule->command('newtemuone:sprc-dil-auto-push')
+            ->dailyAt('04:10')
+            ->timezone('Asia/Kolkata')
+            ->name('newtemuone-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('newtemuone:sprc-dil-auto-push')
+            ->dailyAt('20:10')
+            ->timezone('Asia/Kolkata')
+            ->name('newtemuone-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Amazon CVR vs CPN → 5%/10% coupons (1/day) → Listings our_price (4:05 AM ET).
         // Uses shared pef_cvr_vs_cpn rules; pushes only SKUs whose target price/tier changed.
         $schedule->command('amazon:cvr-cpn-auto-push')

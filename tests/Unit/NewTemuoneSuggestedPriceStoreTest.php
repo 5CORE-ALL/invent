@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Services\Support\NewTemuoneSuggestedPriceStore;
 use App\Services\TemuShopifySalesService;
+use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 class NewTemuoneSuggestedPriceStoreTest extends TestCase
@@ -55,5 +56,18 @@ class NewTemuoneSuggestedPriceStoreTest extends TestCase
         $this->assertNotNull($snroi);
         $this->assertEqualsWithDelta(40.0, $sgroi, 0.6);
         $this->assertEqualsWithDelta($sgroi, $snroi, 0.05);
+    }
+
+    public function test_write_exact_sprice_queues_persist(): void
+    {
+        $store = new NewTemuoneSuggestedPriceStore();
+        $this->assertSame(0, $store->pendingWriteCount());
+        $store->writeExactSprice('SKU-1', 19.99, 9.22, 7.2);
+        $this->assertSame(1, $store->pendingWriteCount());
+    }
+
+    public function test_sprc_dil_auto_push_command_is_registered(): void
+    {
+        $this->assertArrayHasKey('newtemuone:sprc-dil-auto-push', Artisan::all());
     }
 }

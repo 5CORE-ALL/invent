@@ -1020,19 +1020,18 @@
     }
 
     /**
-     * Discounted Price = saved Dil SNROI S PRC after clear-then-save, else live Dil.
-     * Cap compute then takes min(eBay, Amazon, LMP) when cheaper.
+     * Discounted Price = live Dil SNROI S PRC (before eBay / Amazon / LMP).
+     * Saved SPRICE is the post-cap cell. Using it as the cap base hides Amz/EB labels
+     * because discounted === capped $ and the "cheaper than Dil" check fails.
      */
     function temuDiscountedPrice(row) {
         if (!row) return 0;
-        if (ntoRowUsesSaved(row)) {
-            const saved = ntoSavedSprice(row);
-            if (saved > 0) return saved;
-        }
         if (typeof ebaySprcDilForRow === 'function') {
             const sprcDil = Number(ebaySprcDilForRow(row));
             if (sprcDil > 0) return +sprcDil.toFixed(2);
         }
+        const storedDil = parseFloat(row.sprc_dil);
+        if (storedDil > 0) return +storedDil.toFixed(2);
         if (typeof chPromoTemuZeroSoldSprice === 'function') {
             const zeroSold = Number(chPromoTemuZeroSoldSprice(row));
             if (zeroSold > 0) return +zeroSold.toFixed(2);
@@ -1045,8 +1044,6 @@
             const calc = chPromoSpriceFromStdTPromo(row, { skip_lmp_cap: true });
             if (calc > 0) return +Number(calc).toFixed(2);
         }
-        const stored = parseFloat(row.sprc_dil);
-        if (stored > 0) return +stored.toFixed(2);
         if (!(chPromoInv(row) > 0)) return 0;
         const std = temuStdPrc(row);
         return std > 0 ? std : 0;
@@ -1224,13 +1221,56 @@
         }
     }
     /**
-     * Dil Save: wipe stored S PRC (save 0), then reload so PHP back-solves
+     * Dil GET / slab edit: persist the painted (capped) S PRC like Amazon.
+     * Only writes SKUs whose cell $ differs from the last saved NTO_SPRICE.
+     */
+    async function ntoPersistDisplayedSprice() {
+        const updates = [];
+        const rows = [];
+        chPromoEachTableRow(function(row, d) {
+            if (!chPromoIsChildRow(d) || !(chPromoInv(d) > 0)) return;
+            const sku = chPromoSku(d);
+            if (!sku) return;
+            const live = typeof temuDiscountedPrice === 'function' ? temuDiscountedPrice(d) : 0;
+            const price = chPromoFinalSpriceToSave(d, live);
+            if (!(price > 0)) return;
+            const current = ntoSavedSprice(d);
+            if (Math.abs(current - price) < 0.015) return;
+            updates.push({
+                sku: sku,
+                sprice: price,
+                lp: parseFloat(d.lp) || 0,
+                ship: parseFloat(d.temu_ship) || 0
+            });
+            rows.push({ row: row, price: price });
+        });
+        if (!updates.length) return 0;
+        await ntoSaveSpriceChunks(updates);
+        const blocked = table && typeof table.blockRedraw === 'function';
+        if (blocked) table.blockRedraw();
+        try {
+            rows.forEach(function(item) {
+                if (item.row && typeof item.row.update === 'function') {
+                    item.row.update(chPromoSpricePatch(item.price));
+                }
+            });
+        } finally {
+            if (blocked) table.restoreRedraw();
+        }
+        temuClearCapMemo();
+        return updates.length;
+    }
+    /**
+     * Dil Save (persist+push): wipe stored S PRC, then reload so PHP back-solves
      * SNROI and writes the new NTO_SPRICE — same clear-then-save as Amazon.
+     * Dil GET / slab edit (persist only): write the painted cell $ immediately.
      */
     async function chPromoClearThenApplyAllRules(opts) {
         opts = opts || {};
-        // Save button only (persist+push). Slab edits / Dil GET must not wipe the catalog.
-        if (opts.persist !== true || opts.push !== true) return 0;
+        if (opts.persist !== true) return 0;
+        if (opts.push !== true) {
+            return await ntoPersistDisplayedSprice();
+        }
         const items = [];
         chPromoEachTableRow(function(row, d) {
             if (!chPromoIsChildRow(d) || !(chPromoInv(d) > 0)) return;

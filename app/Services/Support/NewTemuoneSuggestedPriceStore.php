@@ -147,6 +147,11 @@ class NewTemuoneSuggestedPriceStore
         $view->save();
     }
 
+    public function pendingWriteCount(): int
+    {
+        return count($this->dirty);
+    }
+
     public function flush(): void
     {
         if ($this->dirty === []) {
