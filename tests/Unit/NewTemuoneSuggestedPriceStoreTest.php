@@ -62,7 +62,7 @@ class NewTemuoneSuggestedPriceStoreTest extends TestCase
     {
         $store = new NewTemuoneSuggestedPriceStore();
         $this->assertSame(0, $store->pendingWriteCount());
-        $store->writeExactSprice('SKU-1', 19.99, 9.22, 7.2);
+        $store->writeExactSprice('SKU-1', 19.99, 9.22, 7.2, 24.50, ['EB']);
         $this->assertSame(1, $store->pendingWriteCount());
     }
 

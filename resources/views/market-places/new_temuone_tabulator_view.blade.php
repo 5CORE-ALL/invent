@@ -1102,8 +1102,8 @@
         }
 
         const labels = [];
-        if (ebay > 0 && +sprice.toFixed(2) === ebay && discounted > ebay) labels.push('EB');
-        if (amz > 0 && +sprice.toFixed(2) === amz && discounted > amz) labels.push('Amz');
+        if (ebay > 0 && Math.abs(sprice - ebay) < 0.015 && discounted > ebay + 0.004) labels.push('EB');
+        if (amz > 0 && Math.abs(sprice - amz) < 0.015 && discounted > amz + 0.004) labels.push('Amz');
         const lmpAlert = lmp > 0 && +sprice.toFixed(2) === lmp && discounted > lmp;
         return { sprice: +sprice.toFixed(2), labels: labels, lmpAlert: lmpAlert, amz: amz, ebay: ebay, lmp: lmp };
     }
@@ -1114,7 +1114,7 @@
         const value = (cap && cap.sprice > 0) ? cap.sprice : ntoSavedSprice(row);
         return {
             value: value,
-            labels: (cap && cap.labels) || [],
+            labels: temuRowCapLabels(row),
             lmpAlert: !!(cap && cap.lmpAlert),
             lmp: (cap && cap.lmp) || 0,
             amz: (cap && cap.amz) || 0,
@@ -1232,17 +1232,25 @@
             const sku = chPromoSku(d);
             if (!sku) return;
             const live = typeof temuDiscountedPrice === 'function' ? temuDiscountedPrice(d) : 0;
-            const price = chPromoFinalSpriceToSave(d, live);
+            const cap = typeof temuSpriceCapCompute === 'function'
+                ? temuSpriceCapCompute(d, live, { use_passed_as_discounted: true })
+                : null;
+            const price = (cap && cap.sprice > 0)
+                ? cap.sprice
+                : chPromoFinalSpriceToSave(d, live);
             if (!(price > 0)) return;
             const current = ntoSavedSprice(d);
             if (Math.abs(current - price) < 0.015) return;
+            const labels = (cap && cap.labels) || (typeof temuRowCapLabels === 'function' ? temuRowCapLabels(d) : []);
             updates.push({
                 sku: sku,
                 sprice: price,
                 lp: parseFloat(d.lp) || 0,
-                ship: parseFloat(d.temu_ship) || 0
+                ship: parseFloat(d.temu_ship) || 0,
+                sprc_dil: live,
+                labels: labels
             });
-            rows.push({ row: row, price: price });
+            rows.push({ row: row, price: price, labels: labels, sprcDil: live });
         });
         if (!updates.length) return 0;
         await ntoSaveSpriceChunks(updates);
@@ -1251,13 +1259,19 @@
         try {
             rows.forEach(function(item) {
                 if (item.row && typeof item.row.update === 'function') {
-                    item.row.update(chPromoSpricePatch(item.price));
+                    item.row.update(Object.assign(chPromoSpricePatch(item.price), {
+                        sprc_dil: item.sprcDil > 0 ? item.sprcDil : item.price,
+                        sprice_labels: item.labels || []
+                    }));
                 }
             });
         } finally {
             if (blocked) table.restoreRedraw();
         }
         temuClearCapMemo();
+        if (typeof updateSummary === 'function') {
+            try { updateSummary(); } catch (e) { /* ignore */ }
+        }
         return updates.length;
     }
     /**
@@ -1990,8 +2004,25 @@
     }
 
     function temuRowCapLabels(row) {
+        if (!row || row.is_parent_summary) return [];
         const cap = temuSpriceCapResult(row);
-        return (cap && cap.labels) || [];
+        const seen = {};
+        const out = [];
+        function add(label) {
+            const key = String(label || '').trim();
+            if (!key || seen[key]) return;
+            seen[key] = true;
+            out.push(key);
+        }
+        ((cap && cap.labels) || []).forEach(add);
+        (Array.isArray(row.sprice_labels) ? row.sprice_labels : []).forEach(add);
+        const sprice = (cap && cap.sprice > 0) ? cap.sprice : ntoSavedSprice(row);
+        const dil = typeof temuDiscountedPrice === 'function' ? temuDiscountedPrice(row) : 0;
+        const ebay = (cap && cap.ebay) || temuEbayRefPrice(row);
+        const amz = (cap && cap.amz) || temuAmzRefPrice(row);
+        if (ebay > 0 && sprice > 0 && Math.abs(sprice - ebay) < 0.015 && dil > ebay + 0.004) add('EB');
+        if (amz > 0 && sprice > 0 && Math.abs(sprice - amz) < 0.015 && dil > amz + 0.004) add('Amz');
+        return out;
     }
 
     function temuHasAmzCap(row) {
@@ -2008,11 +2039,20 @@
         return !!cap.lmpAlert || (cap.lmp > 0 && cap.sprice >= cap.lmp);
     }
 
-    /** Blue triangle: INV > 0 and S PRC differs from the live T Price (same as Amazon). */
+    function temuLiveListingPrice(row) {
+        const t = parseFloat(row && row.temu_price);
+        if (isFinite(t) && t > 0) return t;
+        const r = parseFloat(row && row.t_price);
+        return (isFinite(r) && r > 0) ? r : 0;
+    }
+
+    /** Blue triangle: same test the S PRC cell paints — S PRC ≠ T Price. */
     function temuHasBlueTriangle(row) {
-        if (!(parseFloat(row && row.INV) > 0)) return false;
-        const sprice = temuDisplayedSprice(row);
-        const live = parseFloat(row && (row.temu_price || row.t_price)) || 0;
+        if (!row || row.is_parent_summary) return false;
+        const sprice = typeof temuSpriceCellModel === 'function'
+            ? (temuSpriceCellModel(row).value || 0)
+            : temuDisplayedSprice(row);
+        const live = temuLiveListingPrice(row);
         return sprice > 0 && live > 0 && Math.round(sprice * 100) !== Math.round(live * 100);
     }
     window.temuHasBlueTriangle = temuHasBlueTriangle;
@@ -2477,9 +2517,18 @@
     }
 
     /** Badge row — all totals follow the filters currently applied to the table. */
+    function ntoSummaryRows() {
+        if (!table || typeof table.getData !== 'function') return [];
+        const active = table.getData('active');
+        if (Array.isArray(active) && active.length) return active;
+        const all = table.getData();
+        return Array.isArray(all) ? all : [];
+    }
+
     function updateSummary() {
         if (!table) return;
-        const rows = table.getData('active') || [];
+        temuClearCapMemo();
+        const rows = ntoSummaryRows();
 
         let rowsCount = 0;
         let zeroSold = 0;
@@ -2513,13 +2562,12 @@
                 gpftLp += lp;
             }
 
-            // One cap lookup feeds all four flags — the helpers would each redo it.
+            if (temuHasBlueTriangle(row)) blueTriangle++;
             const cap = temuSpriceCapResult(row);
-            const sprice = (cap && cap.sprice > 0) ? cap.sprice : 0;
+            const sprice = (cap && cap.sprice > 0) ? cap.sprice : ntoSavedSprice(row);
             if (sprice > 0) {
-                if (temuHasBlueTriangle(row)) blueTriangle++;
-                if (cap.lmpAlert || (cap.lmp > 0 && sprice >= cap.lmp)) lmpCapped++;
-                const labels = cap.labels || [];
+                if (cap && (cap.lmpAlert || (cap.lmp > 0 && sprice >= cap.lmp))) lmpCapped++;
+                const labels = temuRowCapLabels(row);
                 if (labels.indexOf('Amz') !== -1) amzCap++;
                 if (labels.indexOf('EB') !== -1) ebCap++;
             }
@@ -3392,7 +3440,9 @@
                             ? temuSpriceCellModel(rowData)
                             : { value: parseFloat(cell.getValue()) || 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
                         const value = model.value;
-                        const live = parseFloat(rowData.temu_price || rowData.t_price) || 0;
+                        const live = typeof temuLiveListingPrice === 'function'
+                            ? temuLiveListingPrice(rowData)
+                            : (parseFloat(rowData.temu_price || rowData.t_price) || 0);
                         const lmp = model.lmp || temuParseMoney(rowData.lmp_raw);
                         if (!(value > 0)) return '<span style="color: #6c757d;">—</span>';
                         const formatted = '$' + value.toFixed(2);
@@ -3404,7 +3454,9 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
                                 + Number(lmp || 0).toFixed(2) + '"></i>'
                             : '';
-                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                        const blueTri = (typeof temuHasBlueTriangle === 'function'
+                            ? temuHasBlueTriangle(rowData)
+                            : (live > 0 && Math.round(value * 100) !== Math.round(live * 100)))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ T Price $' + live.toFixed(2) + '"></i>'
                             : '';
@@ -3575,7 +3627,11 @@
             temuClearCapMemo();
             applyFilters();
             window._ntoReloadPushQueued = false;
-            setTimeout(function() { ntoTryQueuePushOnReload(); }, 800);
+            setTimeout(function() {
+                temuClearCapMemo();
+                if (typeof updateSummary === 'function') updateSummary();
+                ntoTryQueuePushOnReload();
+            }, 800);
         });
 
         initNtoReloadPushUi();

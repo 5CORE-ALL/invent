@@ -568,7 +568,9 @@ class NewTemuoneController extends Controller
                     $sku,
                     $sprice,
                     (float) ($row['lp'] ?? 0),
-                    (float) ($row['ship'] ?? 0)
+                    (float) ($row['ship'] ?? 0),
+                    (float) ($row['sprc_dil'] ?? 0),
+                    is_array($row['labels'] ?? null) ? $row['labels'] : []
                 );
                 $saved++;
             } else {
