@@ -8,11 +8,11 @@
 
     <style>
         html, body, .wrapper {
-            height: 100% !important;
-            max-height: 100% !important;
+            height: auto !important;
+            max-height: none !important;
             max-width: 100%;
-            overflow: hidden !important;
-            overflow-anchor: none;
+            overflow-x: auto !important;
+            overflow-y: auto !important;
         }
         body {
             font-family: 'Poppins', sans-serif;
@@ -88,79 +88,51 @@
             display: none !important;
         }
 
-        /* Fill the viewport so the page cannot scroll the table away.
-           Condensed sidenav otherwise forces content-page min-height ~1500px. */
+        /* Condensed sidenav otherwise forces content-page min-height ~1800px.
+           Keep page scrollable so every channel row is visible. */
         .content-page {
-            min-height: 0 !important;
-            height: calc(100vh - var(--tz-topbar-height, 70px)) !important;
-            max-height: calc(100vh - var(--tz-topbar-height, 70px)) !important;
+            min-height: calc(100vh - var(--tz-topbar-height, 70px)) !important;
+            height: auto !important;
+            max-height: none !important;
             max-width: 100%;
-            overflow: hidden !important;
-            display: flex !important;
-            flex-direction: column;
+            overflow: visible !important;
         }
         .content-page .content,
         .content-page .container-fluid {
-            flex: 1 1 auto;
             min-height: 0 !important;
             max-width: 100%;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
+            overflow: visible;
         }
         .amm-shell {
-            flex: 1 1 auto;
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
             max-width: 100%;
-        }
-        .amm-shell .page-title-box,
-        .amm-shell > .toast-container,
-        .amm-shell > .row:not(.amm-page-row) {
-            flex: 0 0 auto;
         }
         .amm-page-row,
         .amm-page-col,
         .amm-page-card {
-            flex: 1 1 auto;
             min-width: 0;
-            min-height: 0;
             max-width: 100%;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
         }
-        .amm-page-row { flex-wrap: nowrap; }
-        .amm-toolbar { flex: 0 0 auto; }
         .amm-table-card-body {
-            flex: 1 1 auto;
-            min-height: 0;
             padding: 0 !important;
-            overflow: hidden;
+            overflow: visible;
         }
         #marketplace-table-wrapper {
-            flex: 1 1 auto;
-            height: 100%;
-            min-height: 0;
             width: 100%;
             max-width: 100%;
-            overflow: hidden;
+            overflow: visible;
         }
         #marketplace-table,
         #marketplace-table.tabulator {
-            height: 100% !important;
+            height: auto !important;
             min-height: 0 !important;
             width: 100% !important;
             max-width: 100%;
-            overflow: hidden !important;
+            overflow: visible !important;
         }
-        /* Beat global .tabulator-header { position:sticky; top:0 } — that snaps scroll up. */
         #marketplace-table.tabulator .tabulator-header {
-            position: relative !important;
-            top: auto !important;
-            z-index: 6 !important;
+            position: sticky !important;
+            top: var(--tz-topbar-height, 70px) !important;
+            z-index: 24 !important;
             background-color: #dbeafe !important;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-header-contents,
@@ -168,10 +140,9 @@
             background-color: #dbeafe !important;
         }
         #marketplace-table.tabulator .tabulator-tableholder {
-            overflow: auto !important;
-            overflow-anchor: none !important;
-            scrollbar-gutter: stable;
-            -webkit-overflow-scrolling: touch;
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-col.tabulator-frozen {
             background-color: #dbeafe !important;
@@ -2096,54 +2067,13 @@
                 }
             });
 
-            function ammTableViewportHeight() {
-                var wrap = document.getElementById('marketplace-table-wrapper');
-                if (!wrap) return 400;
-                var footer = document.querySelector('footer.footer');
-                var footerH = footer ? Math.ceil(footer.getBoundingClientRect().height) : 60;
-                var top = wrap.getBoundingClientRect().top;
-                var fromViewport = Math.floor(window.innerHeight - top - footerH - 6);
-                var fromFlex = Math.floor(wrap.clientHeight || 0);
-                return Math.max(240, fromFlex > 160 ? fromFlex : fromViewport);
-            }
-
-            function pinAmmTableToViewport(force) {
-                var wrap = document.getElementById('marketplace-table-wrapper');
-                if (!wrap) return;
-                var h = ammTableViewportHeight();
-                var same = wrap.dataset.ammH === String(h);
-                wrap.dataset.ammH = String(h);
-                wrap.style.height = h + 'px';
-                if (!table || typeof table.setHeight !== 'function') return;
-                if (same && !force) return;
-                var holder = wrap.querySelector('.tabulator-tableholder');
-                var sl = holder ? holder.scrollLeft : 0;
-                var st = holder ? holder.scrollTop : 0;
-                try { table.setHeight(h); } catch (e) { /* ignore */ }
-                holder = wrap.querySelector('.tabulator-tableholder');
-                if (holder) {
-                    var headerEl = wrap.querySelector('.tabulator-header');
-                    var footerEl = wrap.querySelector('.tabulator-footer');
-                    var inner = h - (headerEl ? headerEl.offsetHeight : 0) - (footerEl ? footerEl.offsetHeight : 0);
-                    if (inner < 80) inner = 80;
-                    holder.style.height = inner + 'px';
-                    holder.style.maxHeight = inner + 'px';
-                    holder.style.overflow = 'auto';
-                    holder.scrollLeft = sl;
-                    holder.scrollTop = st;
-                }
-            }
-
-            pinAmmTableToViewport();
-
             table = new Tabulator("#marketplace-table", {
                 ajaxURL: "/channels-master-data",
                 ajaxParams: { size: 10000, page: 1 },
                 ajaxSorting: false,
                 layout: "fitDataStretch",
-                height: Math.max(240, (document.getElementById('marketplace-table-wrapper') || {}).clientHeight || 400),
+                height: false,
                 renderVertical: "basic",
-                autoResize: false,
                 pagination: false,
                 responsiveLayout: window.innerWidth < 768 ? "hide" : false,
                 columnDefaults: {
@@ -4885,34 +4815,22 @@
                 ]
             });
 
-            table.on('tableBuilt', function() {
-                pinAmmTableToViewport(true);
-            });
-
             table.on('renderComplete', function() {
                 paintMetricDots(channelKeysFromTableData());
                 bindAmmHorizontalScrollSync();
             });
 
             function bindAmmHorizontalScrollSync() {
+                var wrap = document.getElementById('marketplace-table-wrapper');
                 var holder = document.querySelector('#marketplace-table .tabulator-tableholder');
-                if (!holder || holder.dataset.ammScrollBound === '1') return;
-                holder.dataset.ammScrollBound = '1';
-                holder.addEventListener('scroll', function() {
+                var scroller = wrap || holder;
+                if (!scroller || scroller.dataset.ammScrollBound === '1') return;
+                scroller.dataset.ammScrollBound = '1';
+                scroller.addEventListener('scroll', function() {
                     var header = document.querySelector('#marketplace-table .tabulator-header .tabulator-header-contents');
-                    if (header) header.scrollLeft = holder.scrollLeft;
+                    if (header) header.scrollLeft = scroller.scrollLeft;
                 }, { passive: true });
             }
-
-            var ammPinTimer = null;
-            $(window).off('resize.ammFreezeHeader').on('resize.ammFreezeHeader', function() {
-                if (ammPinTimer) clearTimeout(ammPinTimer);
-                ammPinTimer = setTimeout(function() {
-                    var wrap = document.getElementById('marketplace-table-wrapper');
-                    if (wrap) delete wrap.dataset.ammH;
-                    pinAmmTableToViewport();
-                }, 150);
-            });
 
             function loadMetricDotTrends(tableData) {
                 var channelKeys = channelKeysFromTableData(tableData);
@@ -5698,9 +5616,6 @@
             table.on('dataLoaded', function() {
                 setTimeout(function() {
                     buildColumnDropdown();
-                    var wrap = document.getElementById('marketplace-table-wrapper');
-                    if (wrap) delete wrap.dataset.ammH;
-                    pinAmmTableToViewport(true);
                 }, 100);
                 if (!dotTrendsLoadedOnce && table.getData && table.getData().length) {
                     dotTrendsLoadedOnce = true;
