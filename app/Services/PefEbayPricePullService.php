@@ -8,6 +8,7 @@ use App\Models\EbayDataView;
 use App\Models\EbayMetric;
 use App\Models\EbayThreeDataView;
 use App\Models\EbayTwoDataView;
+use App\Support\EbayGetItemPrice;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -174,68 +175,6 @@ class PefEbayPricePullService
 
     private function extractPriceFromGetItem(array $resp, string $sku): ?float
     {
-        $item = $resp['Item'] ?? null;
-        if (! is_array($item)) {
-            return null;
-        }
-
-        $vars = $item['Variations']['Variation'] ?? null;
-        if ($vars !== null && $sku !== '') {
-            $list = (is_array($vars) && (isset($vars['SKU']) || isset($vars['StartPrice'])))
-                ? [$vars]
-                : (is_array($vars) ? $vars : []);
-            foreach ($list as $v) {
-                if (! is_array($v)) {
-                    continue;
-                }
-                if (strcasecmp(trim((string) ($v['SKU'] ?? '')), $sku) !== 0) {
-                    continue;
-                }
-                $p = $this->parseEbayMoney($v['StartPrice'] ?? null)
-                    ?? $this->parseEbayMoney($v['SellingStatus']['CurrentPrice'] ?? null);
-                if ($p !== null && $p > 0) {
-                    return $p;
-                }
-            }
-        }
-
-        return $this->parseEbayMoney($item['SellingStatus']['CurrentPrice'] ?? null)
-            ?? $this->parseEbayMoney($item['StartPrice'] ?? null);
-    }
-
-    private function parseEbayMoney(mixed $node): ?float
-    {
-        if ($node === null || $node === '') {
-            return null;
-        }
-        if (is_numeric($node)) {
-            $n = (float) $node;
-
-            return $n > 0 ? $n : null;
-        }
-        if (is_array($node)) {
-            if (isset($node[0]) && is_numeric($node[0])) {
-                $n = (float) $node[0];
-
-                return $n > 0 ? $n : null;
-            }
-            if (isset($node['value']) && is_numeric($node['value'])) {
-                $n = (float) $node['value'];
-
-                return $n > 0 ? $n : null;
-            }
-            foreach ($node as $k => $v) {
-                if ($k === '@attributes') {
-                    continue;
-                }
-                if (is_numeric($v)) {
-                    $n = (float) $v;
-
-                    return $n > 0 ? $n : null;
-                }
-            }
-        }
-
-        return null;
+        return EbayGetItemPrice::fromGetItemPayload($resp, $sku);
     }
 }

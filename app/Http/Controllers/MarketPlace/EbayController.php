@@ -37,6 +37,7 @@ use App\Models\AmazonChannelSummary;
 use App\Models\ChannelMasterSummary;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Services\ChannelPromoPricingService;
+use App\Support\EbayGetItemPrice;
 use App\Support\Marketplace\ChannelMasterViewsGuard;
 use App\Support\Marketplace\EbayListingEnded;
 
@@ -3987,13 +3988,13 @@ class EbayController extends Controller
             ]);
         }
 
-        $current = round((float) ($ebayMetric->ebay_price ?? 0), 2);
-        if ($current > 0 && abs($current - $priceFloat) < 0.005) {
+        $liveNow = $this->ebay1PullLivePriceAndUpdateMetric($ebayMetric, $sku);
+        if ($liveNow !== null && abs($liveNow - $priceFloat) < 0.005) {
             return [
                 'success' => true,
                 'status' => 'already_live',
                 'message' => 'eBay already at $'.number_format($priceFloat, 2),
-                'ebay_price' => $current,
+                'ebay_price' => $liveNow,
                 'errors' => [],
             ];
         }
@@ -4111,29 +4112,7 @@ class EbayController extends Controller
      */
     private function ebay1LivePriceFromGetItem(array $item, string $sku): ?float
     {
-        $skuNorm = strtoupper(trim($sku));
-        $vars = $item['Variations']['Variation'] ?? null;
-        if (is_array($vars) && $vars !== []) {
-            if (isset($vars['SKU']) || isset($vars['StartPrice'])) {
-                $vars = [$vars];
-            }
-            foreach ($vars as $variation) {
-                if (! is_array($variation)) {
-                    continue;
-                }
-                $vSku = strtoupper(trim((string) ($variation['SKU'] ?? '')));
-                if ($vSku !== '' && $vSku === $skuNorm) {
-                    $price = $this->ebay1ParseMoney($variation['StartPrice'] ?? null)
-                        ?? $this->ebay1ParseMoney($variation['SellingStatus']['CurrentPrice'] ?? null);
-                    if ($price !== null && $price > 0) {
-                        return $price;
-                    }
-                }
-            }
-        }
-
-        return $this->ebay1ParseMoney($item['StartPrice'] ?? null)
-            ?? $this->ebay1ParseMoney($item['SellingStatus']['CurrentPrice'] ?? null);
+        return EbayGetItemPrice::fromItem($item, $sku);
     }
 
     private function ebay1ParseMoney(mixed $raw): ?float

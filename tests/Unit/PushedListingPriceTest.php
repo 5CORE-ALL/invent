@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Services\ChannelLivePriceSync;
 use App\Services\DilRuleSpriceApplyService;
 use App\Services\TemuShopifySalesService;
 use App\Support\PushedListingPrice;
@@ -87,5 +88,43 @@ class PushedListingPriceTest extends TestCase
             'live' => 49.99,
             'pushed_sprice' => 37.50,
         ], 37.50, true));
+    }
+
+    public function test_ebay_prefer_incoming_uses_live_report_over_pushed_dil(): void
+    {
+        $this->assertSame(
+            147.04,
+            ChannelLivePriceSync::preferIncoming('ebay1', 'LS 120 CRANK', 147.04, [
+                'LS 120 CRANK' => 105.99,
+            ])
+        );
+    }
+
+    public function test_ebay_prefer_incoming_falls_back_to_pushed_when_report_has_no_price(): void
+    {
+        $this->assertSame(
+            105.99,
+            ChannelLivePriceSync::preferIncoming('ebay2', 'SKU', null, [
+                'SKU' => 105.99,
+            ])
+        );
+    }
+
+    public function test_ebay_does_not_skip_push_when_pushed_dil_differs_from_live(): void
+    {
+        $this->assertFalse(ChannelLivePriceSync::shouldSkipPushAndRepair('ebay1', [
+            'sku' => 'LS 120 CRANK',
+            'live' => 147.04,
+            'pushed_sprice' => 105.99,
+        ], 105.99, true));
+    }
+
+    public function test_ebay_skips_push_only_when_live_already_matches(): void
+    {
+        $this->assertTrue(ChannelLivePriceSync::shouldSkipPushAndRepair('ebay3', [
+            'sku' => 'SKU',
+            'live' => 105.99,
+            'pushed_sprice' => 105.99,
+        ], 105.99, true));
     }
 }

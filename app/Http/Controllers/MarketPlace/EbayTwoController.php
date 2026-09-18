@@ -2545,16 +2545,20 @@ class EbayTwoController extends Controller
                 ], 422);
             }
 
-            $current = round((float) ($ebayMetric->ebay_price ?? 0), 2);
-            if ($current > 0 && abs($current - $priceFloat) < 0.005) {
-                $this->saveSpriceStatus($sku, 'pushed');
-                return response()->json([
-                    'success' => true,
-                    'message' => 'eBay already at $'.number_format($priceFloat, 2),
-                    'new_price' => $current,
-                    'price' => $current,
-                    'ebay_price' => $current,
-                ]);
+            $liveNow = $this->ebay2PullLivePrice($sku, 0.0);
+            if ($liveNow > 0) {
+                $ebayMetric->ebay_price = $liveNow;
+                $ebayMetric->save();
+                if (abs($liveNow - $priceFloat) < 0.005) {
+                    $this->saveSpriceStatus($sku, 'pushed');
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'eBay already at $'.number_format($priceFloat, 2),
+                        'new_price' => $liveNow,
+                        'price' => $liveNow,
+                        'ebay_price' => $liveNow,
+                    ]);
+                }
             }
 
             // Push price DIRECTLY to eBay via the local Ebay2ApiService (no microservice).
@@ -2645,15 +2649,8 @@ class EbayTwoController extends Controller
         try {
             $pulled = app(PefEbayPricePullService::class)->pullOne($sku, 'ebay2');
             $live = isset($pulled['price']) ? (float) $pulled['price'] : 0;
-            if (! empty($pulled['success']) && $live > 0 && abs($live - $fallback) < 0.05) {
-                return round($live, 2);
-            }
             if (! empty($pulled['success']) && $live > 0) {
-                Log::info('[EbayTwoController] GetItem after push still stale — keeping revised price', [
-                    'sku' => $sku,
-                    'pushed' => $fallback,
-                    'getitem' => $live,
-                ]);
+                return round($live, 2);
             }
             Log::warning('[EbayTwoController] GetItem after S PRC push failed', [
                 'sku' => $sku,
