@@ -201,9 +201,9 @@ class SheinOrderSyncService
             if (! is_array($goods)) {
                 continue;
             }
-            $sku = trim((string) ($goods['sellerSku'] ?? $goods['goodsSn'] ?? ''));
+            $sku = $this->sheinApi->resolveOrderLineSku($goods);
             if ($sku === '') {
-                $sku = trim((string) ($goods['skuCode'] ?? '__unknown__'));
+                $sku = '__unknown__';
             }
             $qty = max(1, (int) ($goods['quantity'] ?? 1));
             $amount = isset($goods['sellerCurrencyPrice'])
@@ -214,6 +214,24 @@ class SheinOrderSyncService
             $goodsId = trim((string) ($goods['goodsId'] ?? $goods['goods_id'] ?? ''));
             $skuCode = trim((string) ($goods['skuCode'] ?? ''));
             $productId = $goodsId !== '' ? $goodsId : $skuCode;
+
+            $existing = $this->existingLineForGoods($orderId, $sku, $skuCode, $goodsId);
+            if ($existing && $existing->sku !== $sku) {
+                $conflict = SheinOrderMetric::query()
+                    ->where('order_id', $orderId)
+                    ->where('sku', $sku)
+                    ->where('id', '!=', $existing->id)
+                    ->first();
+                if ($conflict) {
+                    if (! $existing->shopify_order_id) {
+                        $existing->delete();
+                    }
+                    $existing = $conflict;
+                } else {
+                    $existing->sku = $sku;
+                    $existing->save();
+                }
+            }
 
             SheinOrderMetric::updateOrCreate(
                 ['order_id' => $orderId, 'sku' => $sku],
@@ -228,7 +246,7 @@ class SheinOrderSyncService
                     // Match AliExpress / Reverb: raw['order'] + raw['line'].
                     'raw_payload' => ['order' => $order, 'line' => $goods],
                 ], $this->importStatusForUpsert(
-                    SheinOrderMetric::query()->where('order_id', $orderId)->where('sku', $sku)->first()
+                    $existing ?: SheinOrderMetric::query()->where('order_id', $orderId)->where('sku', $sku)->first()
                 ))
             );
             $count++;
@@ -282,5 +300,33 @@ class SheinOrderSyncService
         }
 
         return $incoming;
+    }
+
+    /**
+     * Prefer the remapped SKU row; otherwise the same listing via skuCode / goodsId.
+     */
+    protected function existingLineForGoods(string $orderId, string $sku, string $skuCode, string $goodsId): ?SheinOrderMetric
+    {
+        $bySku = SheinOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->where('sku', $sku)
+            ->first();
+        if ($bySku) {
+            return $bySku;
+        }
+
+        foreach (SheinOrderMetric::query()->where('order_id', $orderId)->orderBy('id')->get() as $row) {
+            $pid = trim((string) ($row->product_id ?? ''));
+            if ($pid !== '' && ($pid === $goodsId || $pid === $skuCode)) {
+                return $row;
+            }
+            $line = is_array($row->raw_payload) ? ($row->raw_payload['line'] ?? []) : [];
+            $lineCode = trim((string) ($line['skuCode'] ?? ''));
+            if ($skuCode !== '' && $lineCode === $skuCode) {
+                return $row;
+            }
+        }
+
+        return null;
     }
 }

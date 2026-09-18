@@ -5385,7 +5385,9 @@ class SalesOrderFulfillmentController extends Controller
                 'status' => (string) ($order->parent_order_status_text ?: $order->order_status_text ?: ''),
                 'order_date' => $order->parent_order_time ?? null,
                 'updated_at' => $order->order_update_time ?? $order->updated_at ?? null,
-                'sku' => (string) ($order->display_sku ?: $order->ext_code ?: $order->product_sku_id ?: ''),
+                'sku' => $order instanceof Temu2Order
+                    ? (string) ($order->resolvedShopifySku() ?: $order->display_sku ?: $order->ext_code ?: $order->product_sku_id ?: '')
+                    : (string) ($order->display_sku ?: $order->ext_code ?: $order->product_sku_id ?: ''),
                 'catalog_sku' => (string) ($order->ext_code ?: $order->display_sku ?: $order->product_sku_id ?: ''),
                 'display_sku' => (string) ($order->display_sku ?? ''),
                 'display_title' => (string) ($order->goods_name ?? ''),

@@ -350,7 +350,7 @@ class Temu2OrderPushService
     {
         $skus = Temu2Order::query()
             ->where('parent_order_sn', (string) $order->parent_order_sn)
-            ->get()->map(static fn ($r) => trim((string) ($r->ext_code ?: $r->display_sku ?: '')))
+            ->get()->map(static fn ($r) => trim($r->resolvedShopifySku()))
             ->map(static fn ($sku) => trim((string) $sku))
             ->filter(static fn ($sku) => $sku !== '' && ! in_array($sku, ['__order__', '__unknown__'], true))
             ->unique()
@@ -565,7 +565,7 @@ class Temu2OrderPushService
 
         if ($sourceItems === []) {
             foreach ($lines as $line) {
-                $sku = trim((string) ($line->ext_code ?: $line->display_sku ?: ''));
+                $sku = trim($line->resolvedShopifySku());
                 if (in_array($sku, ['__order__', '__unknown__', ''], true)) {
                     continue;
                 }
@@ -587,7 +587,7 @@ class Temu2OrderPushService
         }
 
         foreach ($sourceItems as $item) {
-            $sku = (string) ($item['sku'] ?? '');
+            $sku = $this->rematchShopifySku((string) ($item['sku'] ?? ''), $lines);
             $variantId = $sku !== '' ? $this->findShopifyVariantIdBySku($sku) : null;
             $matchSource = null;
             if ($sku !== '') {
@@ -653,7 +653,7 @@ class Temu2OrderPushService
             $lineTotal = is_numeric($line?->order_base_amount)
                 ? (float) $line->order_base_amount
                 : (is_numeric($line?->order_total_amount) ? (float) $line->order_total_amount : 0.0);
-            $sku = trim((string) ($line?->ext_code ?: $line?->display_sku ?: ''));
+            $sku = trim((string) ($line?->resolvedShopifySku() ?: ''));
             $title = trim((string) ($line?->goods_name ?: 'Temu order item'));
             $unit = number_format($qty > 0 ? ($lineTotal / $qty) : $lineTotal, 2, '.', '');
             $resolved[] = [
@@ -679,6 +679,30 @@ class Temu2OrderPushService
         }
 
         return [$orderPayload, $meta];
+    }
+
+    /**
+     * Prefer temu2_metrics.sku for a unique sku_id over leftover order ext_code.
+     *
+     * @param  Collection<int, Temu2Order>  $lines
+     */
+    protected function rematchShopifySku(string $sku, Collection $lines): string
+    {
+        if (in_array($sku, ['__order__', '__unknown__', ''], true)) {
+            return $sku;
+        }
+
+        foreach ($lines as $line) {
+            $raw = trim((string) ($line->ext_code ?: $line->display_sku ?: ''));
+            $resolved = trim($line->resolvedShopifySku());
+            if ($sku !== $raw && $sku !== $resolved && $sku !== trim((string) ($line->sku_id ?? ''))) {
+                continue;
+            }
+
+            return $resolved !== '' ? $resolved : $sku;
+        }
+
+        return $sku;
     }
 
     /**

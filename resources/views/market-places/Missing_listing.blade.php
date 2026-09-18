@@ -562,10 +562,28 @@
 
         table = new Tabulator("#missing-listing-table", {
             ajaxURL: "{{ route('missing.listing.data') }}",
+            ajaxRequestTimeout: 90000,
             ajaxResponse: function(_url, _params, response) {
+                if (response && response.success === false) {
+                    return [];
+                }
                 const data = (response && response.data) ? response.data : [];
                 updateStats(data, response && response.total_missing_l);
+                if (response && response.partial && !window.__mlCountsRetried) {
+                    window.__mlCountsRetried = true;
+                    setTimeout(function() {
+                        if (table) {
+                            table.replaceData();
+                        }
+                    }, 12000);
+                }
                 return data;
+            },
+            ajaxError: function(_error, _xhr) {
+                const holder = document.querySelector('#missing-listing-table .tabulator-placeholder-contents');
+                if (holder) {
+                    holder.textContent = 'Could not load channels. Refresh the page.';
+                }
             },
             layout: "fitDataStretch",
             pagination: true,

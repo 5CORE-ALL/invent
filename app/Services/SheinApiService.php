@@ -1604,7 +1604,7 @@ class SheinApiService
             if (! is_array($goods)) {
                 continue;
             }
-            $sellerSku = $this->resolveOrderGoodsSellerSku($goods);
+            $sellerSku = $this->resolveOrderLineSku($goods);
             $price = isset($goods['sellerCurrencyPrice'])
                 ? (float) $goods['sellerCurrencyPrice']
                 : (isset($goods['orderCurrencyPrice']) ? (float) $goods['orderCurrencyPrice'] : 0.0);
@@ -1631,22 +1631,50 @@ class SheinApiService
     }
 
     /**
+     * Seller SKU for a Shein order/listing line.
+     *
+     * Listing identity is skuCode → shein_metrics.shein_sku_code (or shein_metric.product_id).
+     * Order sellerSku is used only when that listing row is missing — Shein often
+     * keeps a leftover/copied sellerSku on the order while the live listing SKU is correct.
+     *
      * @param  array<string, mixed>  $goods
      */
-    private function resolveOrderGoodsSellerSku(array $goods): string
+    public function resolveOrderLineSku(array $goods): string
     {
-        $seller = trim((string) ($goods['sellerSku'] ?? ''));
+        $seller = trim((string) ($goods['sellerSku'] ?? $goods['SellerPartNumber'] ?? ''));
+        $goodsSn = trim((string) ($goods['goodsSn'] ?? ''));
+        $code = trim((string) ($goods['skuCode'] ?? $goods['SheinItemNumber'] ?? ''));
+
+        $fromListing = $this->sellerSkuForSheinSkuCode($code);
+        if ($fromListing !== '') {
+            return $fromListing;
+        }
+
         if ($this->isUsableSheinSellerSku($seller)) {
             return $seller;
         }
-
-        $goodsSn = trim((string) ($goods['goodsSn'] ?? ''));
         if ($this->isUsableSheinSellerSku($goodsSn)) {
             return $goodsSn;
         }
 
-        $code = trim((string) ($goods['skuCode'] ?? ''));
-        if ($code !== '' && $this->metricsTableExists()) {
+        if ($code !== '') {
+            return $code;
+        }
+
+        return $seller !== '' ? $seller : $goodsSn;
+    }
+
+    /**
+     * Current seller SKU for a Shein platform skuCode, or '' if unmapped.
+     */
+    public function sellerSkuForSheinSkuCode(string $code): string
+    {
+        $code = trim($code);
+        if ($code === '' || ! $this->isPlatformSkuCode($code)) {
+            return '';
+        }
+
+        if ($this->metricsTableExists()) {
             try {
                 $metric = SheinMetric::query()->where('shein_sku_code', $code)->first();
                 if ($metric && $this->isUsableSheinSellerSku((string) $metric->sku)) {
@@ -1657,7 +1685,22 @@ class SheinApiService
             }
         }
 
-        return $seller !== '' ? $seller : $goodsSn;
+        try {
+            if (Schema::hasTable('shein_metric')) {
+                $row = DB::table('shein_metric')
+                    ->where('product_id', $code)
+                    ->where('sku', '!=', '')
+                    ->whereColumn('sku', '!=', 'product_id')
+                    ->first(['sku']);
+                if ($row && $this->isUsableSheinSellerSku((string) $row->sku)) {
+                    return trim((string) $row->sku);
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return '';
     }
 
     /**

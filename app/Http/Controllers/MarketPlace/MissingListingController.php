@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
 use App\Models\ChannelMasterSummary;
 use App\Models\MissingListingDar;
+use App\Services\MarketplaceManager\MissingListingCatalogRefresh;
 use App\Support\Marketplace\CpMasterCounts;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingInactiveParentChildCounts;
@@ -13,6 +14,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -33,6 +35,8 @@ class MissingListingController extends Controller
         'faire' => 'https://www.faire.com/brand-portal/my-shop/products',
     ];
 
+    public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v3';
+
     public function index()
     {
         return view('market-places.Missing_listing');
@@ -41,117 +45,38 @@ class MissingListingController extends Controller
     public function getData(Request $request)
     {
         try {
-            $hasLogo = Schema::hasTable('channel_master')
-                && Schema::hasColumn('channel_master', 'logo');
-            $hasSellerLink = Schema::hasTable('channel_master')
-                && Schema::hasColumn('channel_master', 'seller_link');
+            $cached = Cache::get(self::PAGE_CACHE_KEY);
+            if (is_array($cached) && ! empty($cached['data'])) {
+                $this->queuePageRebuild($cached);
+                $this->queueCatalogRefreshIfStale();
 
-            $masterColumns = ['id', 'channel', 'status'];
-            if ($hasLogo) {
-                $masterColumns[] = 'logo';
-            }
-            if ($hasSellerLink) {
-                $masterColumns[] = 'seller_link';
+                return response()->json($cached);
             }
 
-            $masterRows = Schema::hasTable('channel_master')
-                ? ChannelMaster::whereNotNull('channel')
-                    ->where('channel', '!=', '')
-                    ->orderBy('channel')
-                    ->get($masterColumns)
-                    ->filter(function ($master) {
-                        return ListingChannelCounts::shouldShowOnMissingListing(
-                            (string) $master->channel,
-                            $master->status ?? ''
-                        );
-                    })
-                    ->values()
-                : collect();
+            $payload = $this->buildSkeletonPagePayload();
+            $this->queuePageRebuild(null);
+            $this->queueCatalogRefreshIfStale();
 
-            @set_time_limit(600);
-            try {
-                app(\App\Services\MarketplaceManager\MissingListingCatalogRefresh::class)
-                    ->refreshApiChannelsFromCpMaster();
-            } catch (\Throwable $e) {
-                Log::warning('Missing Listing catalog refresh failed: '.$e->getMessage());
-            }
-
-            $cpMasterCounts = CpMasterCounts::counts(false);
-            $cpSkuCount = (int) ($cpMasterCounts['SKU'] ?? 0);
-            $cpZeroInv = (int) ($cpMasterCounts['ZeroInv'] ?? 0);
-
-            $data = $masterRows
-                ->filter(fn ($master) => ListingChannelCounts::hasListingSource((string) $master->channel))
-                ->map(function ($master) use ($hasLogo, $hasSellerLink, $cpSkuCount, $cpZeroInv) {
-                    $channel = (string) $master->channel;
-                    $dataSource = ListingChannelCounts::dataSource($channel);
-
-                    // Sheet / Offline: no invented listing numbers
-                    $inactive = ListingInactiveParentChildCounts::forChannel($channel);
-
-                    if (! ListingChannelCounts::isLiveApiSource($channel)) {
-                        return [
-                            'id' => $master->id,
-                            'image' => $hasLogo ? ($master->logo ?? null) : null,
-                            'channel' => $channel,
-                            'listing_url' => ListingChannelCounts::listingUrl($channel),
-                            'data_source' => $dataSource === 'Offline' ? 'Offline' : 'Sheet',
-                            'sku' => $cpSkuCount,
-                            'zero_inv' => $cpZeroInv,
-                            'req' => null,
-                            'nrl' => null,
-                            'listed' => null,
-                            'missing_listing' => null,
-                            'inactive_parent' => (int) ($inactive['parent'] ?? 0),
-                            'inactive_child' => (int) ($inactive['child'] ?? 0),
-                            'inactive_listings_url' => $inactive['url'] ?? null,
-                            'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
-                        ];
-                    }
-
-                    // API: same INV > 0 + REQ + not-listed counts as /listing-*
-                    $listingCounts = ListingChannelCounts::forChannel($channel, false);
-
-                    return [
-                        'id' => $master->id,
-                        'image' => $hasLogo ? ($master->logo ?? null) : null,
-                        'channel' => $channel,
-                        'listing_url' => ListingChannelCounts::listingUrl($channel),
-                        'data_source' => 'API',
-                        'sku' => $cpSkuCount,
-                        'zero_inv' => $cpZeroInv,
-                        'req' => (int) ($listingCounts['REQ'] ?? 0),
-                        'nrl' => (int) ($listingCounts['NRL'] ?? 0),
-                        'listed' => (int) ($listingCounts['Listed'] ?? 0),
-                        'missing_listing' => (int) ($listingCounts['Pending'] ?? 0),
-                        'inactive_parent' => (int) ($inactive['parent'] ?? 0),
-                        'inactive_child' => (int) ($inactive['child'] ?? 0),
-                        'inactive_listings_url' => $inactive['url'] ?? null,
-                        'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
-                    ];
-                })
-                ->values();
-
-            // Persist today's California listing Missing L for history charts (API channels only)
-            $this->persistListingMissingHistory($data);
-
-            $totalMissingL = (int) $data
-                ->filter(fn ($row) => ($row['data_source'] ?? '') === 'API')
-                ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
-            // Keep sidebar badge in sync with this page (listing-page Missing L total)
-            ListingChannelCounts::storeTotalMissingL($totalMissingL);
-
-            return response()->json([
-                'success' => true,
-                'data' => $data,
-                'count' => $data->count(),
-                'total_missing_l' => $totalMissingL,
-            ]);
+            return response()->json($payload);
         } catch (\Throwable $e) {
             Log::error('Missing Listing getData failed: ' . $e->getMessage());
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Full Missing L table from local catalogs (no live marketplace API).
+     *
+     * @return array{success: bool, data: list<array<string, mixed>>, count: int, total_missing_l: int, computed_at: string, partial?: bool}
+     */
+    public function rebuildPagePayload(): array
+    {
+        @set_time_limit(180);
+        $payload = $this->buildFullPagePayload();
+        Cache::put(self::PAGE_CACHE_KEY, $payload, now()->addHours(12));
+
+        return $payload;
     }
 
     /**
@@ -265,6 +190,276 @@ class MissingListingController extends Controller
             Log::error('Missing Listing chartData failed: ' . $e->getMessage());
 
             return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => []], 500);
+        }
+    }
+
+    /**
+     * @return Collection<int, ChannelMaster>
+     */
+    private function loadMasterRows(): Collection
+    {
+        $hasLogo = Schema::hasTable('channel_master')
+            && Schema::hasColumn('channel_master', 'logo');
+        $hasSellerLink = Schema::hasTable('channel_master')
+            && Schema::hasColumn('channel_master', 'seller_link');
+
+        $masterColumns = ['id', 'channel', 'status'];
+        if ($hasLogo) {
+            $masterColumns[] = 'logo';
+        }
+        if ($hasSellerLink) {
+            $masterColumns[] = 'seller_link';
+        }
+
+        if (! Schema::hasTable('channel_master')) {
+            return collect();
+        }
+
+        return ChannelMaster::whereNotNull('channel')
+            ->where('channel', '!=', '')
+            ->orderBy('channel')
+            ->get($masterColumns)
+            ->filter(function ($master) {
+                return ListingChannelCounts::shouldShowOnMissingListing(
+                    (string) $master->channel,
+                    $master->status ?? ''
+                );
+            })
+            ->filter(fn ($master) => ListingChannelCounts::hasListingSource((string) $master->channel))
+            ->values();
+    }
+
+    /**
+     * @return array{success: bool, data: list<array<string, mixed>>, count: int, total_missing_l: int, computed_at: string, partial: bool}
+     */
+    private function buildSkeletonPagePayload(): array
+    {
+        $hasLogo = Schema::hasTable('channel_master') && Schema::hasColumn('channel_master', 'logo');
+        $hasSellerLink = Schema::hasTable('channel_master') && Schema::hasColumn('channel_master', 'seller_link');
+        $cpMasterCounts = CpMasterCounts::counts(false);
+        $cpSkuCount = (int) ($cpMasterCounts['SKU'] ?? 0);
+        $cpZeroInv = (int) ($cpMasterCounts['ZeroInv'] ?? 0);
+        $snapshots = $this->latestListingSnapshots();
+
+        $data = $this->loadMasterRows()->map(function ($master) use ($hasLogo, $hasSellerLink, $cpSkuCount, $cpZeroInv, $snapshots) {
+            $channel = (string) $master->channel;
+            $dataSource = ListingChannelCounts::dataSource($channel);
+            $key = ListingChannelCounts::normalize($channel);
+            $snap = $snapshots[$key] ?? [];
+            $live = ListingChannelCounts::isLiveApiSource($channel);
+
+            return [
+                'id' => $master->id,
+                'image' => $hasLogo ? ($master->logo ?? null) : null,
+                'channel' => $channel,
+                'listing_url' => ListingChannelCounts::listingUrl($channel),
+                'data_source' => $live ? 'API' : ($dataSource === 'Offline' ? 'Offline' : 'Sheet'),
+                'sku' => $cpSkuCount,
+                'zero_inv' => $cpZeroInv,
+                'req' => $live ? (int) ($snap['listing_req'] ?? 0) : null,
+                'nrl' => $live ? (int) ($snap['listing_nrl'] ?? 0) : null,
+                'listed' => $live ? (int) ($snap['listing_listed'] ?? 0) : null,
+                'missing_listing' => $live ? (int) ($snap['listing_miss_count'] ?? 0) : null,
+                'inactive_parent' => 0,
+                'inactive_child' => 0,
+                'inactive_listings_url' => null,
+                'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
+            ];
+        })->values();
+
+        $totalMissingL = (int) $data
+            ->filter(fn ($row) => ($row['data_source'] ?? '') === 'API')
+            ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
+
+        return [
+            'success' => true,
+            'data' => $data->all(),
+            'count' => $data->count(),
+            'total_missing_l' => $totalMissingL,
+            'computed_at' => now()->toIso8601String(),
+            'partial' => true,
+        ];
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function latestListingSnapshots(): array
+    {
+        if (! Schema::hasTable('channel_master_daily_data')) {
+            return [];
+        }
+
+        $out = [];
+        $rows = ChannelMasterSummary::query()
+            ->orderByDesc('snapshot_date')
+            ->orderByDesc('id')
+            ->get(['channel', 'summary_data']);
+        foreach ($rows as $row) {
+            $key = ListingChannelCounts::normalize((string) $row->channel);
+            if ($key === '' || isset($out[$key])) {
+                continue;
+            }
+            $out[$key] = $row->summaryArray();
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{success: bool, data: list<array<string, mixed>>, count: int, total_missing_l: int, computed_at: string, partial: bool}
+     */
+    private function buildFullPagePayload(): array
+    {
+        $hasLogo = Schema::hasTable('channel_master') && Schema::hasColumn('channel_master', 'logo');
+        $hasSellerLink = Schema::hasTable('channel_master') && Schema::hasColumn('channel_master', 'seller_link');
+        $cpMasterCounts = CpMasterCounts::counts(false);
+        $cpSkuCount = (int) ($cpMasterCounts['SKU'] ?? 0);
+        $cpZeroInv = (int) ($cpMasterCounts['ZeroInv'] ?? 0);
+
+        $data = $this->loadMasterRows()->map(function ($master) use ($hasLogo, $hasSellerLink, $cpSkuCount, $cpZeroInv) {
+            $channel = (string) $master->channel;
+            $dataSource = ListingChannelCounts::dataSource($channel);
+
+            try {
+                $inactive = ListingInactiveParentChildCounts::forChannel($channel);
+            } catch (\Throwable $e) {
+                Log::warning('Missing Listing inactive counts failed for '.$channel.': '.$e->getMessage());
+                $inactive = ['parent' => 0, 'child' => 0, 'url' => null];
+            }
+
+            if (! ListingChannelCounts::isLiveApiSource($channel)) {
+                return [
+                    'id' => $master->id,
+                    'image' => $hasLogo ? ($master->logo ?? null) : null,
+                    'channel' => $channel,
+                    'listing_url' => ListingChannelCounts::listingUrl($channel),
+                    'data_source' => $dataSource === 'Offline' ? 'Offline' : 'Sheet',
+                    'sku' => $cpSkuCount,
+                    'zero_inv' => $cpZeroInv,
+                    'req' => null,
+                    'nrl' => null,
+                    'listed' => null,
+                    'missing_listing' => null,
+                    'inactive_parent' => (int) ($inactive['parent'] ?? 0),
+                    'inactive_child' => (int) ($inactive['child'] ?? 0),
+                    'inactive_listings_url' => $inactive['url'] ?? null,
+                    'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
+                ];
+            }
+
+            try {
+                $listingCounts = ListingChannelCounts::forChannel($channel, true);
+            } catch (\Throwable $e) {
+                Log::warning('Missing Listing counts failed for '.$channel.': '.$e->getMessage());
+                $listingCounts = ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0];
+            }
+
+            return [
+                'id' => $master->id,
+                'image' => $hasLogo ? ($master->logo ?? null) : null,
+                'channel' => $channel,
+                'listing_url' => ListingChannelCounts::listingUrl($channel),
+                'data_source' => 'API',
+                'sku' => $cpSkuCount,
+                'zero_inv' => $cpZeroInv,
+                'req' => (int) ($listingCounts['REQ'] ?? 0),
+                'nrl' => (int) ($listingCounts['NRL'] ?? 0),
+                'listed' => (int) ($listingCounts['Listed'] ?? 0),
+                'missing_listing' => (int) ($listingCounts['Pending'] ?? 0),
+                'inactive_parent' => (int) ($inactive['parent'] ?? 0),
+                'inactive_child' => (int) ($inactive['child'] ?? 0),
+                'inactive_listings_url' => $inactive['url'] ?? null,
+                'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
+            ];
+        })->values();
+
+        $this->persistListingMissingHistory($data);
+
+        $totalMissingL = (int) $data
+            ->filter(fn ($row) => ($row['data_source'] ?? '') === 'API')
+            ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
+        ListingChannelCounts::storeTotalMissingL($totalMissingL);
+
+        return [
+            'success' => true,
+            'data' => $data->all(),
+            'count' => $data->count(),
+            'total_missing_l' => $totalMissingL,
+            'computed_at' => now()->toIso8601String(),
+            'partial' => false,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $cached
+     */
+    private function queuePageRebuild(?array $cached): void
+    {
+        if (app()->runningInConsole()) {
+            return;
+        }
+
+        $computedAt = trim((string) ($cached['computed_at'] ?? ''));
+        $partial = ! empty($cached['partial']);
+        if (! $partial && $computedAt !== '') {
+            try {
+                if (now()->diffInSeconds(Carbon::parse($computedAt)) < 180) {
+                    return;
+                }
+            } catch (\Throwable $e) {
+                // rebuild
+            }
+        }
+
+        try {
+            $lock = Cache::lock('missing_listing.page_rebuild', 180);
+            if (! $lock->get()) {
+                return;
+            }
+            dispatch(function () use ($lock) {
+                try {
+                    app(self::class)->rebuildPagePayload();
+                } catch (\Throwable $e) {
+                    Log::warning('Missing Listing page rebuild failed: '.$e->getMessage());
+                } finally {
+                    optional($lock)->release();
+                }
+            })->afterResponse();
+        } catch (\Throwable $e) {
+            Log::warning('Missing Listing page rebuild skipped: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Live catalog pulls (PLS / TopDawg / Faire / Mirakl / B5C) run after the
+     * JSON response so this page is not blocked by marketplace APIs.
+     */
+    private function queueCatalogRefreshIfStale(): void
+    {
+        $channels = ['pls', 'topdawg', 'faire', 'macy', 'bestbuy', 'b5cb2b'];
+        $stale = false;
+        foreach ($channels as $channel) {
+            try {
+                if (! Cache::get('ml.listed_catalog.fresh.'.$channel)) {
+                    $stale = true;
+                    break;
+                }
+            } catch (\Throwable $e) {
+                $stale = true;
+                break;
+            }
+        }
+        if (! $stale || app()->runningInConsole()) {
+            return;
+        }
+
+        try {
+            dispatch(function () {
+                app(MissingListingCatalogRefresh::class)->refreshApiChannelsFromCpMaster();
+            })->afterResponse();
+        } catch (\Throwable $e) {
+            Log::warning('Missing Listing background catalog refresh skipped: '.$e->getMessage());
         }
     }
 

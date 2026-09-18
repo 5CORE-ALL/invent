@@ -119,14 +119,34 @@ class SheinOrderDetailService
             return ['success' => false, 'message' => 'Order not found in local database.'];
         }
 
+        $goodsList = is_array($order['orderGoodsInfoList'] ?? null) ? $order['orderGoodsInfoList'] : [];
+
         foreach ($lines as $line) {
             $raw = is_array($line->raw_payload) ? $line->raw_payload : [];
             $raw['order'] = $order;
             $raw['order_detail_fetched_at'] = now()->toIso8601String();
-            $line->update([
+            $matchedGoods = $this->matchGoodsForLine($line, $goodsList);
+            if (is_array($matchedGoods)) {
+                $raw['line'] = $matchedGoods;
+            }
+            $updates = [
                 'raw_payload' => $raw,
                 'status' => $status,
-            ]);
+            ];
+            if (is_array($matchedGoods)) {
+                $resolvedSku = $this->sheinApi->resolveOrderLineSku($matchedGoods);
+                if ($resolvedSku !== '' && $resolvedSku !== (string) $line->sku) {
+                    $conflict = SheinOrderMetric::query()
+                        ->where('order_id', $orderId)
+                        ->where('sku', $resolvedSku)
+                        ->where('id', '!=', $line->id)
+                        ->exists();
+                    if (! $conflict) {
+                        $updates['sku'] = $resolvedSku;
+                    }
+                }
+            }
+            $line->update($updates);
         }
 
         Log::info('SheinOrderDetailService: persisted order detail', [
@@ -135,6 +155,39 @@ class SheinOrderDetailService
         ]);
 
         return ['success' => true, 'order' => $order, 'message' => 'Order details updated from Shein.'];
+    }
+
+    /**
+     * @param  list<mixed>  $goodsList
+     * @return array<string, mixed>|null
+     */
+    protected function matchGoodsForLine(SheinOrderMetric $line, array $goodsList): ?array
+    {
+        $rawLine = is_array($line->raw_payload) ? ($line->raw_payload['line'] ?? []) : [];
+        $lineCode = trim((string) ($rawLine['skuCode'] ?? ''));
+        $linePid = trim((string) ($line->product_id ?? ''));
+        $lineSku = trim((string) $line->sku);
+
+        $fallback = null;
+        foreach ($goodsList as $goods) {
+            if (! is_array($goods)) {
+                continue;
+            }
+            $skuCode = trim((string) ($goods['skuCode'] ?? ''));
+            $goodsId = trim((string) ($goods['goodsId'] ?? $goods['goods_id'] ?? ''));
+            $seller = trim((string) ($goods['sellerSku'] ?? $goods['goodsSn'] ?? ''));
+            if ($lineCode !== '' && $skuCode === $lineCode) {
+                return $goods;
+            }
+            if ($linePid !== '' && ($goodsId === $linePid || $skuCode === $linePid)) {
+                return $goods;
+            }
+            if ($fallback === null && $lineSku !== '' && strcasecmp($seller, $lineSku) === 0) {
+                $fallback = $goods;
+            }
+        }
+
+        return $fallback;
     }
 
     /**
@@ -596,9 +649,9 @@ class SheinOrderDetailService
             if (! is_array($item)) {
                 continue;
             }
-            $sku = trim((string) ($item['sellerSku'] ?? $item['goodsSn'] ?? $item['SellerPartNumber'] ?? ''));
+            $sku = $this->sheinApi->resolveOrderLineSku($item);
             if ($sku === '') {
-                $sku = trim((string) ($item['skuCode'] ?? $item['SheinItemNumber'] ?? '__unknown__'));
+                $sku = '__unknown__';
             }
             $qty = max(1, (int) ($item['quantity'] ?? $item['OrderedQty'] ?? $item['Quantity'] ?? 1));
             $unit = isset($item['sellerCurrencyPrice']) && is_numeric($item['sellerCurrencyPrice'])

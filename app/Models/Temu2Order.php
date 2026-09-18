@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\MarketplaceManager\Temu2OrderLineSkuResolver;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -70,4 +71,18 @@ class Temu2Order extends Model
         'order_base_amount' => 'decimal:2',
         'order_total_amount' => 'decimal:2',
     ];
+
+    /**
+     * Shopify / MM SKU: listing sku_id when it maps to one temu2_metrics row.
+     * Falls back to order ext_code when the listing is missing or aliased.
+     */
+    public function resolvedShopifySku(): string
+    {
+        return app(Temu2OrderLineSkuResolver::class)
+            ->resolve(
+                $this->sku_id !== null ? (string) $this->sku_id : null,
+                $this->ext_code !== null ? (string) $this->ext_code : null,
+                $this->display_sku !== null ? (string) $this->display_sku : null
+            );
+    }
 }
