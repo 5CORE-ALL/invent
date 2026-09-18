@@ -518,6 +518,164 @@ class AmazonDilGroiRule
         return self::adjustGroiForCvr($groi, $cvr, $trend, $cfg);
     }
 
+    /**
+     * @param  list<array<string, mixed>>  $rules
+     * @return array<string, array{key:string,label:string,min:float,max:float,groi:float}>
+     */
+    public static function rulesByKey(array $rules): array
+    {
+        $out = [];
+        foreach (self::normalizeList($rules) as $rule) {
+            $out[(string) $rule['key']] = $rule;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $a
+     * @param  list<array<string, mixed>>  $b
+     */
+    public static function sameRules(array $a, array $b): bool
+    {
+        $left = self::normalizeList($a);
+        $right = self::normalizeList($b);
+        if (count($left) !== count($right)) {
+            return false;
+        }
+        foreach ($left as $i => $rule) {
+            $other = $right[$i];
+            if ($rule['key'] !== $other['key']
+                || (float) $rule['min'] !== (float) $other['min']
+                || (float) $rule['max'] !== (float) $other['max']
+                || (float) $rule['groi'] !== (float) $other['groi']) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Added / removed slabs plus Target % changes (same From–To key).
+     *
+     * @param  list<array<string, mixed>>  $old
+     * @param  list<array<string, mixed>>  $new
+     * @return array{added:list<array{key:string,label:string,min:float,max:float,groi:float}>,removed:list<string>,changed:array<string,float>}
+     */
+    public static function diff(array $old, array $new): array
+    {
+        $oldBy = self::rulesByKey($old);
+        $newBy = self::rulesByKey($new);
+        $added = [];
+        $removed = [];
+        $changed = [];
+        foreach ($newBy as $key => $rule) {
+            if (! isset($oldBy[$key])) {
+                $added[] = $rule;
+
+                continue;
+            }
+            if ((float) $oldBy[$key]['groi'] !== (float) $rule['groi']) {
+                $changed[$key] = (float) $rule['groi'];
+            }
+        }
+        foreach ($oldBy as $key => $rule) {
+            if (! isset($newBy[$key])) {
+                $removed[] = $key;
+            }
+        }
+
+        return [
+            'added' => $added,
+            'removed' => $removed,
+            'changed' => $changed,
+        ];
+    }
+
+    /**
+     * @param  array{added?:list<array<string, mixed>>,removed?:list<string>,changed?:array<string, float>}  $diff
+     */
+    public static function isEmptyDiff(array $diff): bool
+    {
+        return ($diff['added'] ?? []) === []
+            && ($diff['removed'] ?? []) === []
+            && ($diff['changed'] ?? []) === [];
+    }
+
+    /**
+     * Add / remove slabs everywhere; Target % changes only update keys already present.
+     *
+     * @param  list<array<string, mixed>>  $current
+     * @param  array{added?:list<array<string, mixed>>,removed?:list<string>,changed?:array<string, float>}  $diff
+     * @return list<array{key:string,label:string,min:float,max:float,groi:float}>
+     */
+    public static function applyPatch(array $current, array $diff): array
+    {
+        $byKey = self::rulesByKey($current);
+        foreach ($diff['removed'] ?? [] as $key) {
+            unset($byKey[(string) $key]);
+        }
+        foreach ($diff['changed'] ?? [] as $key => $groi) {
+            $key = (string) $key;
+            if (! isset($byKey[$key])) {
+                continue;
+            }
+            $rule = $byKey[$key];
+            $byKey[$key] = self::make((float) $rule['min'], (float) $rule['max'], (float) $groi);
+        }
+        foreach ($diff['added'] ?? [] as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $rule = self::normalize($item);
+            if ($rule !== null) {
+                $byKey[$rule['key']] = $rule;
+            }
+        }
+
+        return self::normalizeList(array_values($byKey));
+    }
+
+    /**
+     * Union of slab tables by From–To. Conflicting Target % uses the majority value.
+     *
+     * @param  list<list<array<string, mixed>>>  $lists
+     * @return list<array{key:string,label:string,min:float,max:float,groi:float}>
+     */
+    public static function unionByKey(array $lists): array
+    {
+        $first = [];
+        $votes = [];
+        foreach ($lists as $list) {
+            if (! is_array($list)) {
+                continue;
+            }
+            foreach (self::normalizeList($list) as $rule) {
+                $key = (string) $rule['key'];
+                if (! isset($first[$key])) {
+                    $first[$key] = $rule;
+                }
+                $groi = (string) $rule['groi'];
+                $votes[$key][$groi] = ($votes[$key][$groi] ?? 0) + 1;
+            }
+        }
+        $out = [];
+        foreach ($first as $key => $rule) {
+            $bestGroi = (float) $rule['groi'];
+            $bestN = -1;
+            foreach ($votes[$key] ?? [] as $groi => $n) {
+                if ($n > $bestN) {
+                    $bestN = $n;
+                    $bestGroi = (float) $groi;
+                }
+            }
+            $out[] = self::make((float) $rule['min'], (float) $rule['max'], $bestGroi);
+        }
+
+        return self::normalizeList($out);
+    }
+
     public static function keyFor(float $min, float $max): string
     {
         return self::fmtNum($min).'-'.self::fmtNum($max);

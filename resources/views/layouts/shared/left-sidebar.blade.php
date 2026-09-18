@@ -2483,6 +2483,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('master.dil.rules') }}" class="side-nav-link">
+                    <i class="ri-equalizer-line"></i>
+                    <span>Master Dil Rule</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ url('/sold-master') }}" class="side-nav-link">
                     <i class="ri-shopping-cart-line"></i>
                     <span>Sales by Value</span>

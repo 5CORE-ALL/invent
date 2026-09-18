@@ -298,4 +298,73 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame(60.0, AmazonDilGroiRule::adjustGroiForCvrLevel(50, 10.1));
         $this->assertSame(0.0, AmazonDilGroiRule::adjustGroiForCvrLevel(5, 1));
     }
+
+    public function test_diff_detects_add_remove_and_value_change(): void
+    {
+        $old = AmazonDilGroiRule::normalizeList([
+            ['min' => 0, 'max' => 0, 'groi' => 40],
+            ['min' => 0, 'max' => 5, 'groi' => 40],
+            ['min' => 5, 'max' => 10, 'groi' => 45],
+        ]);
+        $new = AmazonDilGroiRule::normalizeList([
+            ['min' => 0, 'max' => 0, 'groi' => 40],
+            ['min' => 0, 'max' => 5, 'groi' => 42],
+            ['min' => 10, 'max' => 15, 'groi' => 50],
+        ]);
+        $diff = AmazonDilGroiRule::diff($old, $new);
+        $this->assertCount(1, $diff['added']);
+        $this->assertSame('10-15', $diff['added'][0]['key']);
+        $this->assertSame(['5-10'], $diff['removed']);
+        $this->assertSame(['0-5' => 42.0], $diff['changed']);
+        $this->assertFalse(AmazonDilGroiRule::isEmptyDiff($diff));
+        $this->assertTrue(AmazonDilGroiRule::isEmptyDiff(AmazonDilGroiRule::diff($old, $old)));
+    }
+
+    public function test_apply_patch_updates_value_only_where_slab_exists(): void
+    {
+        $amazon = AmazonDilGroiRule::defaults();
+        $ebay = AmazonDilGroiRule::normalizeList([
+            ['min' => 0, 'max' => 0, 'groi' => 40],
+            ['min' => 0, 'max' => 5, 'groi' => 40],
+            ['min' => 5, 'max' => 10, 'groi' => 45],
+            ['min' => 25, 'max' => 30, 'groi' => 65],
+        ]);
+        $diff = [
+            'added' => [AmazonDilGroiRule::make(30, 35, 70)],
+            'removed' => ['25-30'],
+            'changed' => ['5-10' => 50.0],
+        ];
+
+        $patchedAmazon = AmazonDilGroiRule::applyPatch($amazon, $diff);
+        $this->assertSame(50.0, AmazonDilGroiRule::rulesByKey($patchedAmazon)['5-10']['groi']);
+        $this->assertArrayHasKey('30-35', AmazonDilGroiRule::rulesByKey($patchedAmazon));
+        $this->assertArrayNotHasKey('25-30', AmazonDilGroiRule::rulesByKey($patchedAmazon));
+        $this->assertArrayNotHasKey('0-5', AmazonDilGroiRule::rulesByKey($patchedAmazon));
+
+        $patchedEbay = AmazonDilGroiRule::applyPatch($ebay, $diff);
+        $this->assertSame(50.0, AmazonDilGroiRule::rulesByKey($patchedEbay)['5-10']['groi']);
+        $this->assertSame(40.0, AmazonDilGroiRule::rulesByKey($patchedEbay)['0-5']['groi']);
+        $this->assertArrayNotHasKey('25-30', AmazonDilGroiRule::rulesByKey($patchedEbay));
+        $this->assertArrayHasKey('30-35', AmazonDilGroiRule::rulesByKey($patchedEbay));
+    }
+
+    public function test_union_by_key_uses_majority_target(): void
+    {
+        $a = AmazonDilGroiRule::normalizeList([
+            ['min' => 5, 'max' => 10, 'groi' => 45],
+            ['min' => 25, 'max' => 30, 'groi' => 65],
+        ]);
+        $b = AmazonDilGroiRule::normalizeList([
+            ['min' => 5, 'max' => 10, 'groi' => 50],
+        ]);
+        $c = AmazonDilGroiRule::normalizeList([
+            ['min' => 5, 'max' => 10, 'groi' => 45],
+        ]);
+        $union = AmazonDilGroiRule::unionByKey([$a, $b, $c]);
+        $byKey = AmazonDilGroiRule::rulesByKey($union);
+        $this->assertSame(45.0, $byKey['5-10']['groi']);
+        $this->assertArrayHasKey('25-30', $byKey);
+        $this->assertFalse(AmazonDilGroiRule::sameRules($a, $b));
+        $this->assertTrue(AmazonDilGroiRule::sameRules($a, $a));
+    }
 }

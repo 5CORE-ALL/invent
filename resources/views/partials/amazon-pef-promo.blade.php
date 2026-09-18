@@ -1,6 +1,7 @@
 {{--
   CVR Disc. / Rev Disc. / Push Prc / Sprc Dil for Amazon tabulator.
   Sprc Dil: Amazon-only Dil 0–0 plus 0.1–25% slabs → Target NROI% (amazon_dil_vs_groi).
+  Master /master-dil-rules writes this same amazon_dil_vs_groi row (no extra table).
   CVR overlay on Target NROI: Down and < 7% = -10; Up and > 10% = +10.
   S PRC so SNROI = target: (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100).
   Amazon path: discount SPRICE via /save-amazon-sprice (no eBay Marketing APIs).
@@ -658,6 +659,7 @@
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="amzDilGroiModalLabel">
                         <i class="fas fa-sliders-h me-1"></i> Dil vs Target NROI — Sprc Dil
+                        <a href="{{ route('master.dil.rules') }}" class="btn btn-sm btn-outline-secondary ms-2" target="_blank" rel="noopener">Master</a>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>

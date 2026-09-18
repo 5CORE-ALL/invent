@@ -211,6 +211,7 @@ use App\Http\Controllers\MarketPlace\PurchasingPowerListingVariationVerifyContro
 use App\Http\Controllers\MarketPlace\PlsListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\NeweggListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\ChannelPromoPricingController;
+use App\Http\Controllers\MarketPlace\MasterDilRuleController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\OverallAmazonFbaController;
 use App\Http\Controllers\MarketPlace\PlsController;
@@ -5602,6 +5603,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/zero-sold-prc', [ChannelPromoPricingController::class, 'saveZeroSoldPrcRules'])->name('channel.promo.zero-sold-prc.save');
     Route::get('/channel-promo-pricing/{channel}/dil-sgroi', [ChannelPromoPricingController::class, 'dilSgroiRules'])->name('channel.promo.dil-sgroi.get');
     Route::post('/channel-promo-pricing/{channel}/dil-sgroi', [ChannelPromoPricingController::class, 'saveDilSgroiRules'])->name('channel.promo.dil-sgroi.save');
+    Route::get('/master-dil-rules', [MasterDilRuleController::class, 'index'])->name('master.dil.rules');
+    Route::get('/master-dil-rules/data', [MasterDilRuleController::class, 'data'])->name('master.dil.rules.data');
+    Route::post('/master-dil-rules', [MasterDilRuleController::class, 'save'])->name('master.dil.rules.save');
     Route::get('/channel-promo-pricing/{channel}/dil-groi', [ChannelPromoPricingController::class, 'dilGroiRules'])->name('channel.promo.dil-groi.get');
     Route::post('/channel-promo-pricing/{channel}/dil-groi', [ChannelPromoPricingController::class, 'saveDilGroiRules'])->name('channel.promo.dil-groi.save');
     Route::get('/channel-promo-pricing/{channel}/dil-groi-history', [ChannelPromoPricingController::class, 'dilGroiSlabHistory'])->name('channel.promo.dil-groi.history');
