@@ -67,6 +67,13 @@ class MacysSalesController extends Controller
             $unitPrice = floatval($order->unit_price);
             $saleAmount = $unitPrice * $quantity;
 
+            // Stored naive datetime is already Pacific (app TZ). Do not JSON-encode
+            // Carbon as UTC — the browser would then paint India dates on /macys/daily-sales.
+            $orderDatePt = $order->getRawOriginal('order_created_at')
+                ?: ($order->order_created_at
+                    ? $order->order_created_at->copy()->timezone('America/Los_Angeles')->toDateTimeString()
+                    : null);
+
             // T Weight = Weight Act * Quantity
             $tWeight = $weightAct * $quantity;
 
@@ -104,7 +111,7 @@ class MacysSalesController extends Controller
                 'unit_price' => round($unitPrice, 2),
                 'sale_amount' => round($saleAmount, 2),
                 'currency' => $order->currency,
-                'order_date' => $order->order_created_at,
+                'order_date' => $orderDatePt,
                 'status' => $order->status,
                 'period' => $order->period,
                 'lp' => round($lp, 2),

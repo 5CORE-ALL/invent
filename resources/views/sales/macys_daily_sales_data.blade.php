@@ -60,7 +60,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => "Macy's Daily Sales Data",
-        'sub_title' => "Macy's Daily Sales Data Analysis (L30)",
+        'sub_title' => "Macy's Daily Sales Data Analysis (L30) — order dates are California / Pacific",
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -291,16 +291,19 @@
                         visible: false
                     },
                     {
-                        title: "Order Date",
+                        title: "Order Date (PT)",
                         field: "order_date",
                         sorter: "datetime",
-                        width: 120,
-                        visible: false,
+                        width: 140,
+                        visible: true,
+                        headerTooltip: "Raw Macy's / Mirakl created_at in California time. Not converted to India.",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (!value) return '';
-                            const date = new Date(value);
-                            return date.toLocaleDateString();
+                            // API already sends Pacific wall-clock. Do not use Date() — browser IST would shift the day.
+                            const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+                            if (!m) return value;
+                            return m[3] + '/' + m[2] + '/' + m[1] + (m[4] ? (' ' + m[4] + ':' + m[5] + ' PT') : ' PT');
                         }
                     },
                     {
@@ -608,6 +611,9 @@
                             const def = col.getDefinition();
                             if (def.field && savedVisibility[def.field] === false) {
                                 col.hide();
+                            }
+                            if (def.field === 'order_date') {
+                                col.show();
                             }
                         });
                     });

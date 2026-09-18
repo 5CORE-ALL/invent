@@ -108,4 +108,62 @@ class MiraklDailyData extends Model
     {
         return $query->where('period', 'l60');
     }
+
+    /**
+     * Canceled / refunded Mirakl lines — excluded from sales totals.
+     */
+    public function scopeNotClosed($query)
+    {
+        return $query->where('status', '!=', 'CLOSED');
+    }
+
+    /**
+     * Raw stored order_created_at is Pacific wall-clock (app TZ).
+     * Bucket by DATE() so a 17th order counts on the 17th — no UTC re-window.
+     */
+    public static function sumRevenueOnDate(string $channelName, string $ymd): float
+    {
+        return round((float) static::query()
+            ->where('channel_name', $channelName)
+            ->whereDate('order_created_at', $ymd)
+            ->notClosed()
+            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
+            ->value('revenue'), 2);
+    }
+
+    public static function sumRevenueOnDateRange(string $channelName, string $startYmd, string $endYmd): float
+    {
+        return round((float) static::query()
+            ->where('channel_name', $channelName)
+            ->whereDate('order_created_at', '>=', $startYmd)
+            ->whereDate('order_created_at', '<=', $endYmd)
+            ->notClosed()
+            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
+            ->value('revenue'), 2);
+    }
+
+    /**
+     * @return array<string, float> Y-m-d => revenue
+     */
+    public static function revenueByCalendarDate(string $channelName, string $startYmd, string $endYmd): array
+    {
+        $rows = static::query()
+            ->where('channel_name', $channelName)
+            ->whereDate('order_created_at', '>=', $startYmd)
+            ->whereDate('order_created_at', '<=', $endYmd)
+            ->notClosed()
+            ->selectRaw('DATE(order_created_at) as d, COALESCE(SUM(unit_price * quantity), 0) as revenue')
+            ->groupByRaw('DATE(order_created_at)')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $d = (string) ($row->d ?? '');
+            if ($d !== '') {
+                $out[$d] = (float) $row->revenue;
+            }
+        }
+
+        return $out;
+    }
 }

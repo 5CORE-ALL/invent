@@ -8551,7 +8551,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Mirakl channels (Best Buy USA, Macy's): unit_price × qty for wall-clock Pacific yesterday, excl. CLOSED.
+     * Mirakl channels (Best Buy USA, Macy's): unit_price × qty for the raw
+     * Pacific calendar date of order_created_at (same 17th as /macys/daily-sales).
      */
     private function computeMiraklYSalesLikeAmazon(string $channelName): ?float
     {
@@ -8559,17 +8560,9 @@ class ChannelMasterController extends Controller
             return null;
         }
 
-        [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
+        [, , $ymd] = $this->pacificYesterdayBounds();
 
-        $sum = (float) DB::table('mirakl_daily_data')
-            ->where('channel_name', $channelName)
-            ->where('order_created_at', '>=', $yStartPacific)
-            ->where('order_created_at', '<=', $yEndPacific)
-            ->where('status', '!=', 'CLOSED')
-            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
-            ->value('revenue');
-
-        return round($sum, 2);
+        return \App\Models\MiraklDailyData::sumRevenueOnDate($channelName, $ymd);
     }
 
     /**
@@ -9189,15 +9182,11 @@ class ChannelMasterController extends Controller
             Carbon::now('America/Los_Angeles')
         );
 
-        $sum = (float) DB::table('mirakl_daily_data')
-            ->where('channel_name', $channelName)
-            ->where('order_created_at', '>=', $l7StartPacific)
-            ->where('order_created_at', '<=', $l7EndPacific)
-            ->where('status', '!=', 'CLOSED')
-            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
-            ->value('revenue');
-
-        return round($sum, 2);
+        return \App\Models\MiraklDailyData::sumRevenueOnDateRange(
+            $channelName,
+            $l7StartPacific->toDateString(),
+            $l7EndPacific->toDateString()
+        );
     }
 
     private function computeBestBuyUsaL7SalesLikeAmazon(): ?float
@@ -18936,6 +18925,18 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
+            if ($channel === 'macys' || $channel === 'macysinc') {
+                self::$pacificDayYSalesCache[$key] = \App\Models\MiraklDailyData::sumRevenueOnDate("Macy's, Inc.", $ymd);
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
+            if ($channel === 'bestbuyusa' || $channel === 'bestbuy') {
+                self::$pacificDayYSalesCache[$key] = \App\Models\MiraklDailyData::sumRevenueOnDate('Best Buy USA', $ymd);
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
             if ($channel === 'wayfair') {
                 self::$pacificDayYSalesCache[$key] = $this->sumWayfairRevenueForPacificDate($ymd);
 
@@ -19940,6 +19941,14 @@ class ChannelMasterController extends Controller
         $startDate = now($tz)->subDays($span + 1)->toDateString();
         $want = $isAll ? null : $this->allMarketplaceSnapshotKey($channel);
 
+        if (! $isAll && in_array($want, ['macys', 'macysinc', 'bestbuyusa', 'bestbuy'], true)) {
+            $channelName = $want === 'bestbuyusa' || $want === 'bestbuy'
+                ? 'Best Buy USA'
+                : "Macy's, Inc.";
+
+            return $this->buildMiraklDailyYSalesChart($channelName, $span);
+        }
+
         $query = DB::table('channel_master_daily_data')
             ->where('snapshot_date', '>=', $startDate)
             ->select([
@@ -19984,6 +19993,37 @@ class ChannelMasterController extends Controller
                 'date' => Carbon::parse($asOf, $tz)->format('M d'),
                 'value' => round($isAll ? array_sum($val) : (float) $val, 2),
             ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Macy's / Best Buy Y Sales chart from raw mirakl_daily_data dates (Pacific DATE()).
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildMiraklDailyYSalesChart(string $channelName, int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = Carbon::yesterday($tz);
+        $start = $end->copy()->subDays(max(1, $days) - 1);
+        $byDate = \App\Models\MiraklDailyData::revenueByCalendarDate(
+            $channelName,
+            $start->toDateString(),
+            $end->toDateString()
+        );
+
+        $out = [];
+        $cursor = $start->copy()->startOfDay();
+        $last = $end->copy()->startOfDay();
+        while ($cursor->lte($last)) {
+            $ymd = $cursor->toDateString();
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round((float) ($byDate[$ymd] ?? 0), 2),
+            ];
+            $cursor->addDay();
         }
 
         return $out;

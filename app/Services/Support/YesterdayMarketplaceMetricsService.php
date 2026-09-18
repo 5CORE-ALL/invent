@@ -638,8 +638,8 @@ class YesterdayMarketplaceMetricsService
 
         $rows = DB::table('mirakl_daily_data')
             ->where('channel_name', $channelName)
-            ->where('order_created_at', '>=', $start)
-            ->where('order_created_at', '<=', $end)
+            ->whereDate('order_created_at', '>=', $start->copy()->timezone(self::TZ)->toDateString())
+            ->whereDate('order_created_at', '<=', $end->copy()->timezone(self::TZ)->toDateString())
             ->where('status', '!=', 'CLOSED')
             ->get();
 
