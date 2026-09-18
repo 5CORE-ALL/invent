@@ -1455,17 +1455,19 @@
                                         </td>
                                         <td class="text-center">
                                             <button type="button"
-                                                    class="incentive-bag-btn task-summary-incentive-btn"
+                                                    class="incentive-bag-btn task-summary-incentive-btn{{ !empty($row['incentive_cutoff_alert']) ? ' is-cutoff-alert' : '' }}"
                                                     data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($row['designation'] ?? '') }}"
                                                     data-incentive-count="{{ (int) ($row['incentive_count'] ?? 0) }}"
+                                                    data-cutoff-alert="{{ !empty($row['incentive_cutoff_alert']) ? '1' : '0' }}"
                                                     @php
                                                         $incUserId = (int) ($row['user_id'] ?? 0);
                                                         $canOpenInc = $incUserId > 0 && (!empty($canViewAllIncentives) || !empty($canEditIncentives) || $incUserId === (int) auth()->id());
                                                     @endphp
                                                     @if($incUserId === 0) disabled title="No user record found for this row"
                                                     @elseif(!$canOpenInc) disabled title="You can only view your own incentives"
+                                                    @elseif(!empty($row['incentive_cutoff_alert'])) title="Red alert: CutOff Date is tomorrow or sooner"
                                                     @else title="{{ !empty($canEditIncentives) ? 'Edit' : 'View' }} incentives for {{ e($row['team_member']) }}"
                                                     @endif
                                                     aria-label="Open incentives for {{ e($row['team_member']) }}">

@@ -628,6 +628,28 @@ class TaskController extends Controller
             ->groupBy('user_id')
             ->pluck('incentive_count', 'user_id');
 
+        $incentiveCutoffAlerts = [];
+        if (Schema::hasColumn('user_incentives', 'additional_condition') && $members->isNotEmpty()) {
+            $today = TaskBusinessTime::today()->startOfDay();
+            $alertFrom = $today->copy()->addDay();
+            UserIncentive::query()
+                ->whereIn('user_id', $members->pluck('id'))
+                ->where('is_active', true)
+                ->whereNotNull('additional_condition')
+                ->where('additional_condition', '!=', '')
+                ->get(['user_id', 'additional_condition'])
+                ->each(function ($row) use (&$incentiveCutoffAlerts, $alertFrom) {
+                    try {
+                        $cutoff = \Carbon\Carbon::parse($row->additional_condition)->startOfDay();
+                    } catch (\Throwable $e) {
+                        return;
+                    }
+                    if ($cutoff->lte($alertFrom)) {
+                        $incentiveCutoffAlerts[(int) $row->user_id] = true;
+                    }
+                });
+        }
+
         $darDatesByUser = [];
         if (Schema::hasTable('dars') && $members->isNotEmpty()) {
             $darCutoff = \Carbon\Carbon::now()->subDays(DarL30Metrics::WINDOW_DAYS - 1)->toDateString();
@@ -722,6 +744,7 @@ class TaskController extends Controller
                 'done' => $counts['done'],
             ], $kpiFields, [
                 'incentive_count' => (int) ($incentiveCounts[$member->id] ?? 0),
+                'incentive_cutoff_alert' => ! empty($incentiveCutoffAlerts[$member->id]),
             ]);
         }
 

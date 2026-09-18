@@ -132,6 +132,19 @@
                 background: #166534;
                 color: #fff;
             }
+            .topbar-incentive-dollar-btn.is-cutoff-alert {
+                background: #dc2626;
+                box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.28);
+                animation: ts-inc-alert-pulse 1.15s ease-in-out infinite;
+            }
+            .topbar-incentive-dollar-btn.is-cutoff-alert:hover {
+                background: #b91c1c;
+                color: #fff;
+            }
+            @keyframes ts-inc-alert-pulse {
+                0%, 100% { transform: scale(1); box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.28); }
+                50% { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.18); }
+            }
             @media (max-width: 575.98px) {
                 .topbar-dar-btn__label { display: none; }
                 .topbar-dar-btn { padding: 0.4rem 0.55rem; }

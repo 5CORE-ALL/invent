@@ -1,6 +1,6 @@
 {{--
     User incentives — Task Summary INC column + ₹ icon beside the login name.
-    Table columns: Target, Incentive, Condition, Target Date.
+    Table columns: Target, Incentive, Condition, CutOff Date.
     Editable by president@5core.com only. software5@5core.com can view every row.
     Everyone else can view their own row.
 
@@ -52,6 +52,45 @@
         background: #166534;
         color: #fff;
     }
+    .topbar-incentive-dollar-btn.is-cutoff-alert {
+        background: #dc2626;
+        box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.28);
+        animation: ts-inc-alert-pulse 1.15s ease-in-out infinite;
+    }
+    .topbar-incentive-dollar-btn.is-cutoff-alert:hover {
+        background: #b91c1c;
+        color: #fff;
+    }
+    .incentive-bag-btn.is-cutoff-alert {
+        background: #fef2f2;
+    }
+    .incentive-bag-btn.is-cutoff-alert .incentive-dollar-icon {
+        color: #dc2626;
+        animation: ts-inc-alert-pulse 1.15s ease-in-out infinite;
+    }
+    #ts-incentive-float-btn.is-cutoff-alert {
+        background: linear-gradient(145deg, #ef4444, #b91c1c);
+        box-shadow: 0 8px 22px rgba(185, 28, 28, 0.4);
+        animation: ts-inc-alert-pulse 1.15s ease-in-out infinite;
+    }
+    .ts-inc-table tr.is-cutoff-alert td {
+        background: #fef2f2;
+    }
+    .ts-inc-table td.ts-inc-cutoff-alert {
+        color: #dc2626;
+        font-weight: 800;
+    }
+    #ts-inc-cutoff-alert {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.45rem;
+        margin-bottom: 0.85rem;
+        font-weight: 600;
+    }
+    @keyframes ts-inc-alert-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.08); }
+    }
     .ts-inc-table {
         width: 100%;
         border-collapse: collapse;
@@ -77,6 +116,21 @@
         color: #15803d;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
+    }
+    .ts-inc-table tfoot td {
+        background: #ecfdf5;
+        font-weight: 800;
+        color: #166534;
+        border-top: 2px solid #86efac;
+    }
+    .ts-inc-table tfoot .ts-inc-amt {
+        color: #166534;
+        font-size: 1rem;
+    }
+    #ts-inc-modal-total {
+        margin-top: 0.2rem;
+        font-weight: 800;
+        letter-spacing: 0.02em;
     }
     .incentive-bag-count {
         margin-left: 0.15rem;
@@ -202,6 +256,7 @@
                             <span id="ts-inc-modal-user">Incentives</span>
                         </h5>
                         <div class="small opacity-90" id="ts-inc-modal-designation"></div>
+                        <div class="small" id="ts-inc-modal-total"></div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -211,6 +266,7 @@
                     <div class="spinner-border text-warning" role="status"><span class="visually-hidden">Loading…</span></div>
                 </div>
                 <div id="ts-inc-error" class="alert alert-danger d-none" role="alert"></div>
+                <div id="ts-inc-cutoff-alert" class="alert alert-danger d-none" role="alert"></div>
                 <div id="ts-inc-view" class="d-none"></div>
                 <div id="ts-inc-edit-wrap" class="d-none">
                     <div class="d-flex align-items-center justify-content-between mb-2">
@@ -243,6 +299,7 @@
         viewerId: @json((int) auth()->id()),
         viewerName: @json(auth()->user()->name ?? ''),
         canEdit: @json(strtolower((string) (auth()->user()->email ?? '')) === 'president@5core.com'),
+        businessToday: @json(\App\Support\TaskBusinessTime::today()->toDateString()),
         routes: {
             get: @json(route('tasks.userIncentives.get')),
             sync: @json(route('tasks.userIncentives.sync'))
@@ -282,11 +339,78 @@
         var month = months[parseInt(parts[1], 10) - 1] || parts[1];
         return parseInt(parts[2], 10) + ' ' + month + ' ' + parts[0];
     }
+    function daysUntilCutoff(value) {
+        var iso = toDateInputValue(value);
+        if (!iso) return null;
+        var today = cfg.businessToday || '';
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+            var now = new Date();
+            today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+        }
+        var t = Date.parse(today + 'T00:00:00');
+        var c = Date.parse(iso + 'T00:00:00');
+        if (isNaN(t) || isNaN(c)) return null;
+        return Math.round((c - t) / 86400000);
+    }
+    function isCutoffAlert(value) {
+        var days = daysUntilCutoff(value);
+        return days !== null && days <= 1;
+    }
+    function itemCutoffValue(item) {
+        return item ? (item.target_date || item.additional_condition || '') : '';
+    }
+    function cutoffAlertText(item) {
+        var days = daysUntilCutoff(itemCutoffValue(item));
+        var name = item && (item.target || item.title) ? (item.target || item.title) + ': ' : '';
+        if (days === null) return '';
+        if (days < 0) return name + 'CutOff Date has passed.';
+        if (days === 0) return name + 'CutOff Date is today.';
+        if (days === 1) return name + 'CutOff Date is tomorrow.';
+        return name + 'CutOff Date in ' + days + ' day' + (days === 1 ? '' : 's') + '.';
+    }
+    function urgentCutoffItems(items) {
+        return (items || []).filter(function (i) {
+            return i && i.is_active !== false && isCutoffAlert(itemCutoffValue(i));
+        });
+    }
+    function setCutoffAlertClass(node, on, title) {
+        if (!node) return;
+        node.classList.toggle('is-cutoff-alert', !!on);
+        node.setAttribute('data-cutoff-alert', on ? '1' : '0');
+        if (on && title) node.setAttribute('title', title);
+    }
+    function applyOwnCutoffAlert(items) {
+        var urgent = urgentCutoffItems(items);
+        var on = urgent.length > 0;
+        var title = on ? cutoffAlertText(urgent[0]) : 'My incentives';
+        setCutoffAlertClass(document.getElementById('ts-incentive-header-btn'), on, title);
+        setCutoffAlertClass(el('ts-incentive-float-btn'), on, title);
+    }
+    function renderCutoffBanner(items) {
+        var box = el('ts-inc-cutoff-alert');
+        if (!box) return;
+        var urgent = urgentCutoffItems(items);
+        if (!urgent.length) {
+            box.classList.add('d-none');
+            box.innerHTML = '';
+            return;
+        }
+        box.innerHTML = '<i class="ri-error-warning-line" aria-hidden="true"></i><div>'
+            + urgent.map(function (item) { return escapeHtml(cutoffAlertText(item)); }).join('<br>')
+            + '</div>';
+        box.classList.remove('d-none');
+    }
     function getModalEl() { return el('taskSummaryIncentivesModal'); }
     function showModal() {
         var m = getModalEl();
         if (!m || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
         bootstrap.Modal.getOrCreateInstance(m).show();
+    }
+    function hideModal() {
+        var m = getModalEl();
+        if (!m || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+        var instance = bootstrap.Modal.getInstance(m);
+        if (instance) instance.hide();
     }
     function showError(msg) {
         var n = el('ts-inc-error');
@@ -338,8 +462,58 @@
             } else if (existing) {
                 existing.remove();
             }
+            var urgent = urgentCutoffItems(state.items);
+            setCutoffAlertClass(rowBtn, urgent.length > 0, urgent.length ? cutoffAlertText(urgent[0]) : '');
         }
-        if (state.userId === cfg.viewerId) syncFloatCount(n);
+        if (state.userId === cfg.viewerId) {
+            syncFloatCount(n);
+            applyOwnCutoffAlert(state.items);
+        }
+    }
+
+    function formatRupee(amount) {
+        var n = parseFloat(amount);
+        if (amount == null || amount === '' || isNaN(n)) return '₹0';
+        return '₹' + Math.round(n).toLocaleString('en-IN');
+    }
+    function sumIncentiveAmounts(items) {
+        return (items || []).reduce(function (sum, item) {
+            if (!item || item.is_active === false) return sum;
+            var n = parseFloat(item.amount);
+            return sum + (isNaN(n) ? 0 : n);
+        }, 0);
+    }
+    function currentIncentiveTotal() {
+        if (state.canEdit) {
+            var rows = document.querySelectorAll('#ts-inc-edit-rows .ts-inc-edit-row');
+            if (rows.length) {
+                var sum = 0;
+                rows.forEach(function (row) {
+                    var activeEl = row.querySelector('.ts-inc-field-active');
+                    if (activeEl && !activeEl.checked) return;
+                    var amountEl = row.querySelector('.ts-inc-field-amount');
+                    var n = amountEl && amountEl.value !== '' ? parseFloat(amountEl.value) : 0;
+                    if (!isNaN(n)) sum += n;
+                });
+                return sum;
+            }
+            return sumIncentiveAmounts(state.editItems);
+        }
+        return sumIncentiveAmounts(state.items);
+    }
+    function incentiveTotalFooter(colCount) {
+        var extra = '';
+        for (var i = 2; i < colCount; i++) extra += '<td></td>';
+        return '<tfoot><tr class="ts-inc-total-row"><td>Total</td><td class="ts-inc-amt" id="ts-inc-total-amount">'
+            + formatRupee(currentIncentiveTotal())
+            + '</td>' + extra + '</tr></tfoot>';
+    }
+    function renderIncentiveTotal() {
+        var total = formatRupee(currentIncentiveTotal());
+        var header = el('ts-inc-modal-total');
+        if (header) header.textContent = 'Total Amount: ' + total;
+        var cell = el('ts-inc-total-amount');
+        if (cell) cell.textContent = total;
     }
 
     function renderView() {
@@ -349,6 +523,7 @@
         if (!wrap) return;
 
         var active = state.items.filter(function (i) { return i.is_active !== false; });
+        renderCutoffBanner(state.canEdit ? state.editItems : state.items);
         if (state.canEdit) {
             wrap.classList.add('d-none');
             if (editWrap) editWrap.classList.remove('d-none');
@@ -362,28 +537,31 @@
             wrap.innerHTML = '';
             wrap.classList.add('d-none');
             if (empty) empty.classList.remove('d-none');
+            renderIncentiveTotal();
             return;
         }
         if (empty) empty.classList.add('d-none');
         wrap.classList.remove('d-none');
         wrap.innerHTML = '<div class="table-responsive"><table class="ts-inc-table">'
-            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>Target Date</th></tr></thead><tbody>'
+            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>CutOff Date</th></tr></thead><tbody>'
             + active.map(function (item) {
-                return '<tr>'
+                var alertOn = isCutoffAlert(itemCutoffValue(item));
+                return '<tr class="' + (alertOn ? 'is-cutoff-alert' : '') + '">'
                     + '<td>' + escapeHtml(item.target || item.title || '—') + '</td>'
                     + '<td class="ts-inc-amt">' + escapeHtml(item.amount_display || '—') + '</td>'
                     + '<td>' + escapeHtml(item.condition || item.body || '—').replace(/\n/g, '<br>') + '</td>'
-                    + '<td>' + escapeHtml(formatTargetDate(item.target_date || item.additional_condition)) + '</td>'
+                    + '<td class="' + (alertOn ? 'ts-inc-cutoff-alert' : '') + '">' + escapeHtml(formatTargetDate(itemCutoffValue(item))) + '</td>'
                     + '</tr>';
             }).join('')
-            + '</tbody></table></div>';
+            + '</tbody>' + incentiveTotalFooter(4) + '</table></div>';
+        renderIncentiveTotal();
     }
 
     function renderEditRows() {
         var wrap = el('ts-inc-edit-rows');
         if (!wrap) return;
         wrap.innerHTML = '<div class="table-responsive"><table class="ts-inc-table">'
-            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>Target Date</th><th></th></tr></thead><tbody>'
+            + '<thead><tr><th>Target</th><th>Incentive</th><th>Condition</th><th>CutOff Date</th><th></th></tr></thead><tbody>'
             + state.editItems.map(function (item, idx) {
                 return '<tr class="ts-inc-edit-row" data-edit-idx="' + idx + '">'
                     + '<td><input type="text" class="form-control form-control-sm ts-inc-field-title" placeholder="Target" value="' + escapeHtml(item.title || item.target || '') + '" maxlength="200"></td>'
@@ -394,7 +572,8 @@
                     + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger ts-inc-remove-row" data-edit-idx="' + idx + '"><i class="ri-delete-bin-line"></i></button></td>'
                     + '</tr>';
             }).join('')
-            + '</tbody></table></div>';
+            + '</tbody>' + incentiveTotalFooter(5) + '</table></div>';
+        renderIncentiveTotal();
     }
 
     function collectEditItems() {
@@ -435,9 +614,11 @@
         var view = el('ts-inc-view');
         var editWrap = el('ts-inc-edit-wrap');
         var empty = el('ts-inc-empty');
+        var cutoff = el('ts-inc-cutoff-alert');
         if (view) view.classList.add('d-none');
         if (editWrap) editWrap.classList.add('d-none');
         if (empty) empty.classList.add('d-none');
+        if (cutoff) cutoff.classList.add('d-none');
 
         return fetch(cfg.routes.get + '?user_id=' + encodeURIComponent(userId), {
             credentials: 'same-origin',
@@ -454,6 +635,7 @@
             setLoading(false);
             renderView();
             syncRowCount();
+            if (state.userId === cfg.viewerId) applyOwnCutoffAlert(state.items);
         }).catch(function (err) {
             setLoading(false);
             showError(err.message || 'Could not load incentives.');
@@ -497,6 +679,8 @@
             state.editItems = state.items.map(function (i) { return Object.assign({}, i); });
             renderView();
             syncRowCount();
+            if (state.userId === cfg.viewerId) applyOwnCutoffAlert(state.items);
+            hideModal();
         }).catch(function (err) {
             showError(err.message || 'Could not save incentives.');
         }).finally(function () {
@@ -550,6 +734,21 @@
         }
     });
 
+    document.addEventListener('input', function (e) {
+        var t = e.target;
+        if (!t || !t.closest) return;
+        if (t.closest('.ts-inc-field-amount') || t.closest('.ts-inc-field-active')) {
+            renderIncentiveTotal();
+        }
+    });
+    document.addEventListener('change', function (e) {
+        var t = e.target;
+        if (!t || !t.closest) return;
+        if (t.closest('.ts-inc-field-active') || t.closest('.ts-inc-field-amount')) {
+            renderIncentiveTotal();
+        }
+    });
+
     window.taskSummaryIncentives = {
         open: openModal,
         refreshFloat: function () {
@@ -565,6 +764,7 @@
             if (!data || data.success === false) return;
             var n = (data.items || []).filter(function (i) { return i.is_active !== false; }).length;
             syncFloatCount(n);
+            applyOwnCutoffAlert(data.items || []);
         }).catch(function () {});
     }
 })();
