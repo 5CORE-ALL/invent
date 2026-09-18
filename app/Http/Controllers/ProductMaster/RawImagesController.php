@@ -137,6 +137,10 @@ class RawImagesController extends Controller
             return $this->saveEbayHeroImages($request);
         }
 
+        if ($request->boolean('hero2_ebay_push')) {
+            return $this->pushHero2ToEbay($request);
+        }
+
         $kind = $this->imageKindFromRequest($request);
 
         $validated = $request->validate([
@@ -1323,7 +1327,9 @@ class RawImagesController extends Controller
                 'cachedImageUrl' => route('raw.images.cached.image'),
                 'savedAiPrompt' => $this->savedAiPrompt($kind),
                 'savedAiLogos' => $this->savedAiLogos($kind),
-                'pushEbayUrl' => route('raw.images.hero.2.push.ebay'),
+                'pushEbayUrl' => \Illuminate\Support\Facades\Route::has('raw.images.hero.2.push.ebay')
+                    ? route('raw.images.hero.2.push.ebay')
+                    : route('raw.images.hero.2.upload'),
             ]);
         }
 

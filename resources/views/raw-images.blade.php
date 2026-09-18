@@ -24,7 +24,11 @@
     $savedAiLogos = $savedAiLogos ?? [];
     $stampCooUrl = $stampCooUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.stamp') : '');
     $pushChannelsUrl = $pushChannelsUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.push') : '');
-    $pushEbayUrl = $pushEbayUrl ?? ($isHero2 ? route('raw.images.hero.2.push.ebay') : '');
+    $pushEbayUrl = $pushEbayUrl ?? ($isHero2
+        ? (\Illuminate\Support\Facades\Route::has('raw.images.hero.2.push.ebay')
+            ? route('raw.images.hero.2.push.ebay')
+            : route('raw.images.hero.2.upload'))
+        : '');
     $imageChannels = $imageChannels ?? [];
     $cooPresets = $cooPresets ?? \App\Services\BatchCooStampService::PRESETS;
 @endphp
@@ -2877,7 +2881,7 @@
                     'Content-Type': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: JSON.stringify({ sku: sku, url: url, account: account })
+                body: JSON.stringify({ sku: sku, url: url, account: account, hero2_ebay_push: true })
             })
             .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
             .then(function (result) {
