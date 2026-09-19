@@ -12,6 +12,7 @@ use App\Http\Controllers\Campaigns\GoogleShoppingAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleYoutubeAdsMissingController;
 use App\Http\Controllers\Campaigns\Temu1MissingAdsController;
 use App\Http\Controllers\Campaigns\Temu2AdsController;
+use App\Http\Controllers\Campaigns\Temu2MissingAdsController;
 use App\Http\Controllers\Campaigns\TemuAdsController;
 use App\Http\Controllers\Campaigns\Tiktok1AdsRawDataController;
 use App\Http\Controllers\Campaigns\TiktokAdsMissingController;
@@ -27,7 +28,6 @@ use App\Models\ChannelMaster;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\ChannelMasterCalculatedData;
 use App\Support\AmazonAdsAdvertisementMasterHistory;
-use App\Support\Marketplace\MappingChannelCounts;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -2112,7 +2112,7 @@ class AdvertisementMasterController extends Controller
 
     /**
      * Missing-ad counts from the same pages as the sidebar:
-     * Ads Missing Amz, Temu 1 Missing Ads, Missing Mapping Temu 2, Missing Google Shopping / SERP,
+     * Ads Missing Amz, Temu 1 Missing Ads, Temu 2 Missing Ads, Missing Google Shopping / SERP,
      * YouTube Missing Ads, TikTok Missing Ads.
      *
      * @param  array<int, array<string, mixed>>  $rows
@@ -2198,8 +2198,8 @@ class AdvertisementMasterController extends Controller
         );
         $put(
             ['temu2'],
-            $safeCount(static fn () => MappingChannelCounts::countForSlug('temu2')),
-            $this->temuMissingMappingHref('temu2')
+            $safeCount(static fn () => Temu2MissingAdsController::missingTotalCount()),
+            $this->namedHref('temu2.ads.missing')
         );
         $put(
             ['ebay', 'ebay1'],
@@ -2213,19 +2213,6 @@ class AdvertisementMasterController extends Controller
         );
 
         return $map;
-    }
-
-    private function temuMissingMappingHref(string $channel = 'temu'): ?string
-    {
-        try {
-            if (! Route::has('map.issues.channel')) {
-                return null;
-            }
-
-            return route('map.issues.channel', ['channel' => $channel]);
-        } catch (\Throwable $e) {
-            return null;
-        }
     }
 
     /**

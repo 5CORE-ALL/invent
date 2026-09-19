@@ -41,6 +41,7 @@ use App\Http\Controllers\Campaigns\EbayPMPAdsController;
 use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
 use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
 use App\Http\Controllers\Campaigns\Temu1MissingAdsController;
+use App\Http\Controllers\Campaigns\Temu2MissingAdsController;
 use App\Http\Controllers\Campaigns\Temu2AdsController;
 use App\Http\Controllers\Campaigns\TemuAdsController;
 use App\Http\Controllers\Campaigns\Ebay3CampaignAdsController;
@@ -5136,6 +5137,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/temu2/ads/badge-history', 'badgeHistory')->name('temu2.ads.badge-history');
         Route::post('/temu2/ads/badge-snapshot', 'saveBadgeSnapshot')->name('temu2.ads.badge-snapshot');
         Route::post('/temu2/ads/upload-campaign-report', 'uploadCampaignReport')->name('temu2.ads.upload.campaign');
+    });
+
+    Route::controller(Temu2MissingAdsController::class)->group(function () {
+        Route::get('/temu2/ads/missing', 'index')->name('temu2.ads.missing');
+        Route::get('/temu2/ads/missing/data', 'data')->name('temu2.ads.missing.data');
     });
     Route::get('/temu-badge-history', [TemuController::class, 'getTemuBadgeHistory']);
     Route::post('/temu-pricing/update-price', [TemuController::class, 'updateTemuPrice']);

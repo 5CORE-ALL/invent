@@ -234,6 +234,7 @@ class Temu2AdsController extends Controller
             $statuses = $temuApi->queryAdStatuses([$goodsId]);
             $status = $statuses['statuses'][$goodsId] ?? 'Inactive';
             Temu2CampaignReport::where('goods_id', $goodsId)->update(['status' => $status]);
+            Temu2MissingAdsController::forgetMissingTotalCache();
         }
 
         Log::info('Temu2AdsController::createAd', [
@@ -304,6 +305,7 @@ class Temu2AdsController extends Controller
                 $status = $statuses['statuses'][$goodsId] ?? 'Inactive';
                 Temu2CampaignReport::where('goods_id', $goodsId)->update(['status' => $status]);
             }
+            Temu2MissingAdsController::forgetMissingTotalCache();
         }
 
         Log::info('Temu2AdsController::createAdsBulk', [

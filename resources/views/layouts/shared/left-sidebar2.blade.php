@@ -1366,6 +1366,15 @@
                                         <li>
                                             <a href="{{ route('temu2.ads') }}">Temu 2 Ads</a>
                                         </li>
+                                        <li>
+                                            <a href="{{ route('temu2.ads.missing') }}" class="temu2-ads-missing-nav">
+                                                Temu 2 Missing Ads
+                                                @php $temu2AdsMissingCount = \App\Http\Controllers\Campaigns\Temu2MissingAdsController::missingTotalCount(); @endphp
+                                                @if($temu2AdsMissingCount > 0)
+                                                    <span class="badge bg-danger rounded-pill">{{ number_format($temu2AdsMissingCount) }}</span>
+                                                @endif
+                                            </a>
+                                        </li>
                                     </ul>
                                 </div>
                             </li>
