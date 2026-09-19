@@ -56,12 +56,16 @@
     {{-- Shared "Add Scope of Improvement" modal (opened from the topbar
          Ideas / Activity buttons on every page). --}}
     @include('layouts.shared.scope-of-improvement-modal')
+    @include('layouts.shared.announcement-board-modal')
 
     @yield('script-after-vite')
 
     @include('components.ai-chat-widget')
     @include('partials.clear-browser-cache-on-login')
     @include('partials.user-incentives')
+    @include('partials.overdue-nudge-modal')
+    @include('partials.dar-logout-nudge-modal')
+    @include('partials.tat-nudge-modal')
     @auth
         @if(!empty($agent_update_available))
             @include('partials.attendance-agent-update-modal')

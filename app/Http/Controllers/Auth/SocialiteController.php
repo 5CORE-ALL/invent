@@ -53,6 +53,7 @@ class SocialiteController extends Controller
                 $user->update(['logined' => 1]);
 
                 Auth::login($user, true);
+                \App\Support\UserTatNudge::markLogin();
                 PermissionHelper::cacheUserPermissions($user->id);
 
                 if ($desktop = AttendanceAgentController::completeDesktopGoogleIfPending($user)) {
@@ -81,6 +82,7 @@ class SocialiteController extends Controller
             ]);
 
             Auth::login($userData, true);
+            \App\Support\UserTatNudge::markLogin();
             PermissionHelper::cacheUserPermissions($userData->id);
 
             if ($desktop = AttendanceAgentController::completeDesktopGoogleIfPending($userData)) {

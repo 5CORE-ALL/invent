@@ -27,7 +27,8 @@
         font-size: 0.78rem;
         opacity: 0.92;
     }
-    .kpi-badges-search-icon-btn {
+    .kpi-badges-search-icon-btn,
+    .kpi-badges-add-btn {
         border: none;
         background: transparent;
         color: #0f766e;
@@ -36,14 +37,47 @@
         border-radius: 6px;
         transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
     }
+    .kpi-badges-add-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.15rem;
+        min-width: 1.7rem;
+        height: 1.7rem;
+        border-radius: 999px;
+        background: #0f766e;
+        color: #fff;
+        padding: 0 0.35rem;
+    }
+    .kpi-badges-add-btn i {
+        font-size: 1.05rem;
+        line-height: 1;
+        font-weight: 800;
+    }
     .kpi-badges-search-icon-btn:hover {
         background: rgba(15, 118, 110, 0.12);
         color: #115e59;
         transform: scale(1.1);
     }
-    .kpi-badges-search-icon-btn:focus-visible {
+    .kpi-badges-add-btn:hover {
+        background: #115e59;
+        color: #fff;
+        transform: scale(1.08);
+    }
+    .kpi-badges-search-icon-btn:focus-visible,
+    .kpi-badges-add-btn:focus-visible {
         outline: 2px solid #0f766e;
         outline-offset: 2px;
+    }
+    .kpi-badges-add-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+        transform: none;
+    }
+    .kpi-badges-add-btn .kpi-badges-count {
+        background: #fff;
+        color: #0f766e;
+        border-color: #fff;
     }
     .kpi-badges-count {
         margin-left: 0.2rem;

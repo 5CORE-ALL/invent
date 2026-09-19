@@ -10,9 +10,13 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\View as ViewInstance;
 use App\Cache\ResilientFileStore;
+use App\Models\Announcement;
 use App\Models\Permission;
 use App\Models\FbaManualData;
+use App\Models\ScopeOfImprovement;
 use App\Models\UserIncentive;
+use App\Support\ChatWorkspace;
+use App\Support\DarL30Metrics;
 use App\Support\TaskBusinessTime;
 use App\Observers\FbaManualDataObserver;
 use App\Services\Attendance\AttendanceService;
@@ -81,6 +85,10 @@ class AppServiceProvider extends ServiceProvider
             $this->composeLayoutFavicon($view);
             $this->composeAgentUpdate($view);
             $this->composeUserIncentiveBadge($view);
+            $this->composeUserDarBadge($view);
+            $this->composeUserSoiBadge($view);
+            $this->composePostedAnnouncementBadge($view);
+            $this->composeChatUnread($view);
         });
 
         $this->app->booted(fn () => $this->registerListingPublishRoutes());
@@ -185,6 +193,137 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $view->with($this->userIncentiveBadge);
+    }
+
+    /**
+     * Logged-in user's own DAR L30 % for the topbar button.
+     *
+     * @var array{topbarDarPct: int, topbarDarCount: int, topbarDarTarget: int, topbarDarBand: string}|null
+     */
+    private ?array $userDarBadge = null;
+
+    private function composeUserDarBadge(ViewInstance $view): void
+    {
+        if ($this->userDarBadge === null) {
+            $metrics = [
+                'dar_l30_pct' => 0,
+                'dar_l30_count' => 0,
+                'dar_l30_target' => DarL30Metrics::TARGET,
+                'dar_l30_band' => 'low',
+            ];
+            $user = Auth::user();
+            if ($user) {
+                try {
+                    $metrics = DarL30Metrics::forUserId((int) $user->id);
+                } catch (\Throwable $e) {
+                    // keep zeros — never break the layout
+                }
+            }
+            $this->userDarBadge = [
+                'topbarDarPct' => (int) ($metrics['dar_l30_pct'] ?? 0),
+                'topbarDarCount' => (int) ($metrics['dar_l30_count'] ?? 0),
+                'topbarDarTarget' => (int) ($metrics['dar_l30_target'] ?? DarL30Metrics::TARGET),
+                'topbarDarBand' => (string) ($metrics['dar_l30_band'] ?? 'low'),
+            ];
+        }
+
+        $view->with($this->userDarBadge);
+    }
+
+    /**
+     * Logged-in user's own Scope of Improvement count for the topbar SI button.
+     *
+     * @var array{topbarSoiCount: int}|null
+     */
+    private ?array $userSoiBadge = null;
+
+    private function composeUserSoiBadge(ViewInstance $view): void
+    {
+        if ($this->userSoiBadge === null) {
+            $count = 0;
+            $user = Auth::user();
+            if ($user) {
+                try {
+                    if (\Illuminate\Support\Facades\Schema::hasTable('scope_of_improvements')) {
+                        $count = (int) ScopeOfImprovement::query()
+                            ->where('user_id', (int) $user->id)
+                            ->count();
+                    }
+                } catch (\Throwable $e) {
+                    $count = 0;
+                }
+            }
+            $this->userSoiBadge = [
+                'topbarSoiCount' => $count,
+            ];
+        }
+
+        $view->with($this->userSoiBadge);
+    }
+
+    /**
+     * Posted notice-board announcements for the topbar megaphone.
+     *
+     * @var array{topbarAnnCount: int}|null
+     */
+    private ?array $postedAnnouncementBadge = null;
+
+    private function composePostedAnnouncementBadge(ViewInstance $view): void
+    {
+        if ($this->postedAnnouncementBadge === null) {
+            $count = 0;
+            if (Auth::check()) {
+                try {
+                    if (
+                        \Illuminate\Support\Facades\Schema::hasTable('announcements')
+                        && \Illuminate\Support\Facades\Schema::hasColumn('announcements', 'posted_at')
+                    ) {
+                        $countQuery = Announcement::query()->posted();
+                        if (
+                            \Illuminate\Support\Facades\Schema::hasTable('announcement_views')
+                            && Auth::id()
+                        ) {
+                            $countQuery->unreadBy((int) Auth::id());
+                        }
+                        $count = (int) $countQuery->count();
+                    }
+                } catch (\Throwable $e) {
+                    $count = 0;
+                }
+            }
+            $this->postedAnnouncementBadge = [
+                'topbarAnnCount' => $count,
+            ];
+        }
+
+        $view->with($this->postedAnnouncementBadge);
+    }
+
+    /**
+     * Unread Invent Chat count for the topbar.
+     *
+     * @var array{topbarChatUnread: int}|null
+     */
+    private ?array $chatUnreadBadge = null;
+
+    private function composeChatUnread(ViewInstance $view): void
+    {
+        if ($this->chatUnreadBadge === null) {
+            $count = 0;
+            $user = Auth::user();
+            if ($user) {
+                try {
+                    $count = ChatWorkspace::unreadTotal($user);
+                } catch (\Throwable $e) {
+                    $count = 0;
+                }
+            }
+            $this->chatUnreadBadge = [
+                'topbarChatUnread' => $count,
+            ];
+        }
+
+        $view->with($this->chatUnreadBadge);
     }
 
     private function composeAgentUpdate(ViewInstance $view): void

@@ -70,6 +70,16 @@
                                 <i class="ri-clipboard-line me-2"></i>Tasks DAR
                             </a>
                         </li>
+                        <li>
+                            <a href="{{ route('announcements.index') }}" class="{{ request()->routeIs('announcements.*') ? 'active' : '' }}">
+                                <i class="ri-megaphone-line me-2"></i>Announcement
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('chat.index') }}" class="{{ request()->routeIs('chat.*') ? 'active' : '' }}">
+                                <i class="ri-chat-3-line me-2"></i>Slack
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </li>

@@ -226,6 +226,134 @@
             .amz-ads-search-bar { flex-wrap: wrap; }
             #amazonAdsU7Pie { min-height: 280px !important; }
         }
+
+        #amz-ads-raw-wrap .tabulator .tabulator-row .tabulator-cell.amz-task-cell {
+            cursor: pointer;
+        }
+        .amz-task-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.4rem;
+            min-width: 1.4rem;
+            height: 1.4rem;
+            padding: 0;
+            margin: 0;
+            border: none;
+            border-radius: 7px;
+            background: linear-gradient(135deg, #0d9488, #14b8a6);
+            color: #fff;
+            font-size: 0.6rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(13, 148, 136, 0.4), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+            transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+        }
+        .amz-task-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(13, 148, 136, 0.5), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+            background: linear-gradient(135deg, #0f766e, #0d9488);
+            color: #fff;
+        }
+
+        #amz-ads-column-dropdown-menu.show {
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.55rem;
+        }
+        #amz-ads-column-dropdown-menu > li.col-vis-full { list-style: none; }
+        #amz-ads-column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #amz-ads-column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #amz-ads-column-dropdown-menu .col-vis-group.col-vis-drop-over {
+            border-color: #0d6efd;
+            background: #eef5ff;
+            box-shadow: inset 0 0 0 1px rgba(13, 110, 253, 0.25);
+        }
+        #amz-ads-column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #amz-ads-column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #amz-ads-column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 320px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #amz-ads-column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            border-radius: 4px;
+            cursor: grab;
+        }
+        #amz-ads-column-dropdown-menu .col-vis-item:active { cursor: grabbing; }
+        #amz-ads-column-dropdown-menu .col-vis-item.col-vis-dragging { opacity: 0.55; }
+        #amz-ads-column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #amz-ads-column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+        }
+        #amz-ads-column-dropdown-menu .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
+        }
+        @media (max-width: 768px) {
+            #amz-ads-column-dropdown-menu .col-vis-groups {
+                grid-template-columns: repeat(2, minmax(120px, 1fr));
+            }
+        }
     </style>
 @endsection
 
@@ -254,6 +382,14 @@
                             <button type="button" id="amz-raw-refresh" class="btn btn-sm btn-outline-primary amz-raw-icon-btn" title="Refresh grid" aria-label="Refresh grid">
                                 <i class="fa fa-refresh"></i>
                             </button>
+                            <div class="dropdown d-inline-block">
+                                <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
+                                    id="amz-ads-column-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                    aria-expanded="false" title="Columns">
+                                    <i class="fas fa-columns"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end" id="amz-ads-column-dropdown-menu" aria-labelledby="amz-ads-column-dropdown"></ul>
+                            </div>
                             <button type="button" id="amazonAdsSectionExportBtn" class="btn btn-sm btn-success amz-raw-icon-btn" title="Export current page as CSV" aria-label="Export current page as CSV">
                                 <i class="fas fa-file-csv"></i>
                             </button>
@@ -818,6 +954,44 @@
                     <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsPrRuleSaveBtn">Save</button>
                     <button type="button" class="btn btn-sm btn-danger" id="amazonAdsPrRuleApplyBtn">Save &amp; apply to Amazon</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="amzTaskModal" tabindex="-1" aria-labelledby="amzTaskLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title mb-0" id="amzTaskLabel">Assign Task</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="amz-task-form">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="amz-task-group">Group</label>
+                            <input type="text" class="form-control" id="amz-task-group" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="amz-task-title">Task <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="amz-task-title" placeholder="Enter Task" maxlength="1000" autocomplete="off" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="amz-task-page-link">Page Link</label>
+                            <input type="text" class="form-control" id="amz-task-page-link" placeholder="" autocomplete="off">
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label fw-semibold" for="amz-task-assignee-search">Assign to <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="amz-task-assignee-search" list="amz-task-assignee-list" placeholder="Search user…" autocomplete="off" required>
+                                <datalist id="amz-task-assignee-list"></datalist>
+                                <button type="submit" class="btn btn-primary" id="amz-task-assign">Assign</button>
+                            </div>
+                            <input type="hidden" id="amz-task-assignee-id" value="">
+                        </div>
+                        <p class="text-danger small mb-0 mt-2 d-none" id="amz-task-error"></p>
+                        <p class="text-success small mb-0 mt-2 d-none" id="amz-task-success"></p>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -1623,6 +1797,20 @@
                     amzApplyColFormat(col, c);
                     defs.push(col);
                 });
+                defs.push({
+                    title: '',
+                    field: '__task',
+                    width: 44,
+                    minWidth: 44,
+                    hozAlign: 'center',
+                    headerHozAlign: 'center',
+                    headerSort: false,
+                    cssClass: 'amz-task-cell',
+                    formatter: function () {
+                        return '<button type="button" class="amz-task-btn" title="Assign Task" aria-label="Assign Task">TM</button>';
+                    },
+                    cellClick: openAmzTaskFromCell,
+                });
                 return defs;
             }
 
@@ -1771,6 +1959,297 @@
                 amzUpdateTotalBadge(NaN);
             });
 
+            var AMZ_COL_VIS_URL = @json(url('/tabulator-column-visibility'));
+            var AMZ_COL_VIS_CHANNEL = 'amazon_ads_all';
+            var AMZ_COL_CAT_STORAGE = 'amazon_ads_all_col_cats_v1';
+            var AMZ_COL_CAT_KEYS = ['basic', 'price', 'ads', 'other'];
+            var AMZ_COL_CAT_LABELS = { basic: 'Basic', price: 'Price', ads: 'Ads', other: 'Other' };
+            var amzColVisMap = {};
+
+            function amzSkipColVisField(field) {
+                if (!field || String(field).indexOf('__') === 0) return true;
+                return HIDDEN_COLUMNS.indexOf(field) !== -1;
+            }
+
+            function amzColVisTitle(def) {
+                var field = def && def.field ? String(def.field) : '';
+                var raw = (def && def.title != null) ? def.title : field;
+                var t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                return t || field;
+            }
+
+            function amzClassifyColumn(field, title) {
+                var f = String(field || '');
+                var t = String(title || field || '').toLowerCase();
+                if (/^(cost|ACOS|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|U7%|U2%|U1%|CPC3|CPC2|costPerClick)$/i.test(f)
+                    || /\b(acos|cvr|click|impr|sold|spend|spl30|cpc|sales|u7|u2|u1)\b/i.test(t)) {
+                    return 'ads';
+                }
+                if (/^(Inv|INV|ovl30|dil|price|reviews|pageCvr|viewsL30|viewsL7)$/i.test(f)
+                    || /\b(inv|dil|price|review|view|page cvr)\b/i.test(t)) {
+                    return 'price';
+                }
+                if (/^(campaignName|campaignStatus|ruleStatus|activeAgain|matchType|state)$/i.test(f)
+                    || /\b(campaign|stat|rule|match|active again)\b/i.test(t)) {
+                    return 'basic';
+                }
+                return 'other';
+            }
+
+            function amzLoadColCats() {
+                try {
+                    var parsed = JSON.parse(localStorage.getItem(AMZ_COL_CAT_STORAGE) || '{}');
+                    return (parsed && typeof parsed === 'object') ? parsed : {};
+                } catch (e) {
+                    return {};
+                }
+            }
+
+            function amzSaveColCats(map) {
+                try { localStorage.setItem(AMZ_COL_CAT_STORAGE, JSON.stringify(map || {})); } catch (e) { /* ignore */ }
+            }
+
+            function amzSyncGroupHeaderCheckbox(groupEl) {
+                if (!groupEl) return;
+                var headerCb = groupEl.querySelector('.col-vis-group-toggle');
+                var itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
+                if (!headerCb || !itemCbs.length) return;
+                var checked = 0;
+                itemCbs.forEach(function (cb) { if (cb.checked) checked++; });
+                headerCb.checked = checked === itemCbs.length;
+                headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+            }
+
+            function amzBindColVisDrag(li, groupEls) {
+                li.draggable = true;
+                li.addEventListener('dragstart', function (e) {
+                    e.stopPropagation();
+                    li.classList.add('col-vis-dragging');
+                    e.dataTransfer.setData('text/plain', li.dataset.field || '');
+                    e.dataTransfer.setData('text/col-vis-field', li.dataset.field || '');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                li.addEventListener('dragend', function () {
+                    li.classList.remove('col-vis-dragging');
+                    Object.keys(groupEls).forEach(function (k) {
+                        groupEls[k].classList.remove('col-vis-drop-over');
+                    });
+                });
+            }
+
+            function amzBindColVisDropZone(group, list, groupEls) {
+                [group, list].forEach(function (zone) {
+                    zone.addEventListener('dragover', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        group.classList.add('col-vis-drop-over');
+                        e.dataTransfer.dropEffect = 'move';
+                    });
+                    zone.addEventListener('dragleave', function (e) {
+                        if (!group.contains(e.relatedTarget)) group.classList.remove('col-vis-drop-over');
+                    });
+                    zone.addEventListener('drop', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        group.classList.remove('col-vis-drop-over');
+                        var field = e.dataTransfer.getData('text/col-vis-field') || e.dataTransfer.getData('text/plain');
+                        if (!field) return;
+                        var menu = document.getElementById('amz-ads-column-dropdown-menu');
+                        var li = menu ? menu.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]') : null;
+                        if (!li) return;
+                        var nextCat = group.dataset.category;
+                        if (!nextCat || li.dataset.group === nextCat) return;
+                        var fromGroup = li.closest('.col-vis-group');
+                        list.appendChild(li);
+                        li.dataset.group = nextCat;
+                        var cb = li.querySelector('input[type="checkbox"]');
+                        if (cb) cb.dataset.group = nextCat;
+                        var cats = amzLoadColCats();
+                        cats[field] = nextCat;
+                        amzSaveColCats(cats);
+                        amzSyncGroupHeaderCheckbox(fromGroup);
+                        amzSyncGroupHeaderCheckbox(group);
+                    });
+                });
+            }
+
+            function amzSaveColumnVisibility() {
+                if (!table) return;
+                var visibility = Object.assign({}, amzColVisMap);
+                table.getColumns().forEach(function (col) {
+                    var field = col.getField();
+                    if (amzSkipColVisField(field)) return;
+                    visibility[field] = col.isVisible();
+                });
+                amzColVisMap = visibility;
+                fetch(AMZ_COL_VIS_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ channel: AMZ_COL_VIS_CHANNEL, visibility: visibility }),
+                }).catch(function (err) { console.error('Error saving column visibility:', err); });
+            }
+
+            function amzApplyColumnVisibility(map) {
+                if (!table || !map || typeof map !== 'object') return;
+                table.getColumns().forEach(function (col) {
+                    var field = col.getField();
+                    if (amzSkipColVisField(field) || !Object.prototype.hasOwnProperty.call(map, field)) return;
+                    if (map[field]) col.show();
+                    else col.hide();
+                });
+            }
+
+            function amzLoadColumnVisibility() {
+                return fetch(AMZ_COL_VIS_URL + '?channel=' + encodeURIComponent(AMZ_COL_VIS_CHANNEL), {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                })
+                    .then(function (res) { return res.json(); })
+                    .then(function (saved) {
+                        amzColVisMap = (saved && typeof saved === 'object' && !Array.isArray(saved)) ? saved : {};
+                        amzApplyColumnVisibility(amzColVisMap);
+                        return amzColVisMap;
+                    })
+                    .catch(function (err) {
+                        console.error('Error loading column visibility:', err);
+                        return amzColVisMap;
+                    });
+            }
+
+            function amzBuildColumnDropdown() {
+                var menu = document.getElementById('amz-ads-column-dropdown-menu');
+                if (!menu || !table) return;
+                menu.innerHTML = '';
+                var map = amzColVisMap || {};
+                var catOverrides = amzLoadColCats();
+
+                var groupsLi = document.createElement('li');
+                groupsLi.className = 'col-vis-full';
+                var groupsWrap = document.createElement('div');
+                groupsWrap.className = 'col-vis-groups';
+                var lists = {};
+                var groupEls = {};
+
+                AMZ_COL_CAT_KEYS.forEach(function (cat) {
+                    var group = document.createElement('div');
+                    group.className = 'col-vis-group';
+                    group.dataset.category = cat;
+
+                    var titleEl = document.createElement('label');
+                    titleEl.className = 'col-vis-group-title';
+                    var groupCb = document.createElement('input');
+                    groupCb.type = 'checkbox';
+                    groupCb.className = 'col-vis-group-toggle';
+                    groupCb.dataset.group = cat;
+                    groupCb.title = 'Select / deselect all in ' + AMZ_COL_CAT_LABELS[cat];
+                    titleEl.appendChild(groupCb);
+                    titleEl.appendChild(document.createTextNode(AMZ_COL_CAT_LABELS[cat]));
+                    group.appendChild(titleEl);
+
+                    var list = document.createElement('ul');
+                    list.className = 'col-vis-group-list';
+                    list.dataset.category = cat;
+                    group.appendChild(list);
+                    groupsWrap.appendChild(group);
+                    lists[cat] = list;
+                    groupEls[cat] = group;
+                    amzBindColVisDropZone(group, list, groupEls);
+                });
+
+                table.getColumns().forEach(function (col) {
+                    var def = col.getDefinition();
+                    var field = def.field;
+                    if (amzSkipColVisField(field)) return;
+                    var title = amzColVisTitle(def);
+                    var cat = catOverrides[field];
+                    if (AMZ_COL_CAT_KEYS.indexOf(cat) === -1) cat = amzClassifyColumn(field, title);
+                    var isVisible = Object.prototype.hasOwnProperty.call(map, field)
+                        ? map[field] !== false
+                        : col.isVisible();
+
+                    var li = document.createElement('li');
+                    li.className = 'col-vis-item';
+                    li.dataset.field = field;
+                    li.dataset.group = cat;
+
+                    var label = document.createElement('label');
+                    var checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = field;
+                    checkbox.setAttribute('data-field', field);
+                    checkbox.className = 'col-vis-field-toggle';
+                    checkbox.dataset.group = cat;
+                    checkbox.checked = isVisible;
+                    label.appendChild(checkbox);
+                    label.appendChild(document.createTextNode(' ' + title));
+                    label.title = title + ' (drag to another header)';
+                    li.appendChild(label);
+                    amzBindColVisDrag(li, groupEls);
+                    lists[cat].appendChild(li);
+                });
+
+                AMZ_COL_CAT_KEYS.forEach(function (cat) {
+                    amzSyncGroupHeaderCheckbox(groupEls[cat]);
+                });
+
+                groupsLi.appendChild(groupsWrap);
+                menu.appendChild(groupsLi);
+            }
+
+            function amzRefreshColumnBox() {
+                return amzLoadColumnVisibility().then(function () {
+                    amzBuildColumnDropdown();
+                });
+            }
+
+            var amzColMenu = document.getElementById('amz-ads-column-dropdown-menu');
+            if (amzColMenu) {
+                amzColMenu.addEventListener('change', function (e) {
+                    if (!e.target || e.target.type !== 'checkbox' || !table) return;
+                    if (e.target.classList.contains('col-vis-group-toggle')) {
+                        var checked = e.target.checked;
+                        var groupEl = e.target.closest('.col-vis-group');
+                        var itemCbs = groupEl ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]') : [];
+                        itemCbs.forEach(function (cb) {
+                            var field = cb.getAttribute('data-field') || cb.value;
+                            cb.checked = checked;
+                            var col = table.getColumn(field);
+                            if (!col) return;
+                            if (checked) col.show();
+                            else col.hide();
+                        });
+                        e.target.indeterminate = false;
+                        amzSaveColumnVisibility();
+                        return;
+                    }
+                    var field = e.target.getAttribute('data-field') || e.target.value;
+                    var col = table.getColumn(field);
+                    if (!col) return;
+                    if (e.target.checked) col.show();
+                    else col.hide();
+                    amzSyncGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
+                    amzSaveColumnVisibility();
+                });
+                amzColMenu.addEventListener('click', function (e) {
+                    if (e.target.closest('label') || e.target.type === 'checkbox') {
+                        e.stopPropagation();
+                    }
+                });
+            }
+
+            amzRefreshColumnBox();
+
             var amzResizeTimer = null;
             window.addEventListener('resize', function () {
                 if (!table) return;
@@ -1835,6 +2314,8 @@
                 amzUpdateSourceLabel();
                 if (table) {
                     table.setColumns(amzBuildColumns(sourceKey));
+                    amzApplyColumnVisibility(amzColVisMap);
+                    amzBuildColumnDropdown();
                     Promise.resolve(table.setData()).catch(function () {});
                 }
             }
@@ -3694,6 +4175,219 @@
                 amzSavePrRule(true);
             });
             amzRefreshPrBtn();
+
+            const amzTaskStoreUrl = "{{ route('tasks.store') }}";
+            const amzAssignorId = {{ (int) (Auth::id() ?? 0) }};
+            let amzTaskUsers = [];
+
+            function amzTaskGroupLabel() {
+                if (activeRawSourceKey === 'sb_reports') return 'Amazon · HL';
+                var search = amzSearchQueryVal().toUpperCase();
+                if (search === 'KW') return 'Amazon · KW';
+                if (search === 'PT') return 'Amazon · PT';
+                return 'Amazon';
+            }
+
+            function amzTaskPageLink() {
+                return window.location.origin + window.location.pathname + (window.location.search || '');
+            }
+
+            function amzShowTaskModal() {
+                const modalEl = document.getElementById('amzTaskModal');
+                if (!modalEl) return;
+                if (window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    return;
+                }
+                modalEl.classList.add('show');
+                modalEl.style.display = 'block';
+                modalEl.removeAttribute('aria-hidden');
+                modalEl.setAttribute('aria-modal', 'true');
+                document.body.classList.add('modal-open');
+            }
+
+            function amzHideTaskModal() {
+                const modalEl = document.getElementById('amzTaskModal');
+                if (!modalEl) return;
+                if (window.bootstrap && bootstrap.Modal) {
+                    const inst = bootstrap.Modal.getInstance(modalEl);
+                    if (inst) { inst.hide(); return; }
+                }
+                modalEl.classList.remove('show');
+                modalEl.style.display = 'none';
+                modalEl.setAttribute('aria-hidden', 'true');
+                modalEl.removeAttribute('aria-modal');
+                document.body.classList.remove('modal-open');
+            }
+
+            function amzFillTaskAssignees(users) {
+                amzTaskUsers = Array.isArray(users) ? users : [];
+                const list = document.getElementById('amz-task-assignee-list');
+                if (!list) return;
+                list.innerHTML = amzTaskUsers.map(function (u) {
+                    const name = String(u.name || '').trim();
+                    return name ? '<option value="' + amzEsc(name) + '"></option>' : '';
+                }).join('');
+            }
+
+            function amzLoadTaskUsers(cb) {
+                if (amzTaskUsers.length) {
+                    cb(amzTaskUsers);
+                    return;
+                }
+                const dataEl = document.getElementById('quick-assignee-users-data');
+                if (dataEl) {
+                    try {
+                        const parsed = JSON.parse(dataEl.textContent || '[]');
+                        if (Array.isArray(parsed) && parsed.length) {
+                            amzFillTaskAssignees(parsed);
+                            cb(amzTaskUsers);
+                            return;
+                        }
+                    } catch (e) { /* fall through */ }
+                }
+                fetch("{{ route('tasks.usersList') }}", {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (users) {
+                        amzFillTaskAssignees(users);
+                        cb(amzTaskUsers);
+                    })
+                    .catch(function () {
+                        amzFillTaskAssignees([]);
+                        cb([]);
+                    });
+            }
+
+            function amzResolveAssigneeId(label) {
+                const q = String(label || '').trim().toLowerCase();
+                if (!q) return 0;
+                const exact = amzTaskUsers.find(function (u) {
+                    return String(u.name || '').trim().toLowerCase() === q;
+                });
+                if (exact) return parseInt(exact.id, 10) || 0;
+                const partial = amzTaskUsers.filter(function (u) {
+                    return String(u.name || '').toLowerCase().indexOf(q) !== -1;
+                });
+                return partial.length === 1 ? (parseInt(partial[0].id, 10) || 0) : 0;
+            }
+
+            function openAmzTaskModal(data) {
+                const groupEl = document.getElementById('amz-task-group');
+                const titleEl = document.getElementById('amz-task-title');
+                const linkEl = document.getElementById('amz-task-page-link');
+                const searchEl = document.getElementById('amz-task-assignee-search');
+                const idEl = document.getElementById('amz-task-assignee-id');
+                const err = document.getElementById('amz-task-error');
+                const ok = document.getElementById('amz-task-success');
+                if (groupEl) groupEl.value = amzTaskGroupLabel(data);
+                if (titleEl) titleEl.value = '';
+                if (linkEl) linkEl.value = '';
+                if (searchEl) searchEl.value = '';
+                if (idEl) idEl.value = '';
+                if (err) { err.textContent = ''; err.classList.add('d-none'); }
+                if (ok) { ok.textContent = ''; ok.classList.add('d-none'); }
+                amzLoadTaskUsers(function () {
+                    amzShowTaskModal();
+                    setTimeout(function () {
+                        if (titleEl) titleEl.focus();
+                    }, 150);
+                });
+            }
+
+            function openAmzTaskFromCell(e, cell) {
+                if (e && e.stopPropagation) e.stopPropagation();
+                openAmzTaskModal((cell && cell.getRow) ? (cell.getRow().getData() || {}) : {});
+            }
+
+            const amzTaskAssigneeSearch = document.getElementById('amz-task-assignee-search');
+            if (amzTaskAssigneeSearch) {
+                amzTaskAssigneeSearch.addEventListener('input', function () {
+                    const idEl = document.getElementById('amz-task-assignee-id');
+                    if (idEl) idEl.value = String(amzResolveAssigneeId(this.value) || '');
+                });
+                amzTaskAssigneeSearch.addEventListener('change', function () {
+                    const idEl = document.getElementById('amz-task-assignee-id');
+                    if (idEl) idEl.value = String(amzResolveAssigneeId(this.value) || '');
+                });
+            }
+
+            const amzTaskForm = document.getElementById('amz-task-form');
+            if (amzTaskForm) {
+                amzTaskForm.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    const err = document.getElementById('amz-task-error');
+                    const ok = document.getElementById('amz-task-success');
+                    const saveBtn = document.getElementById('amz-task-assign');
+                    const group = String((document.getElementById('amz-task-group') || {}).value || '').trim();
+                    const title = String((document.getElementById('amz-task-title') || {}).value || '').trim();
+                    const pageLink = String((document.getElementById('amz-task-page-link') || {}).value || '').trim() || amzTaskPageLink();
+                    const assigneeLabel = String((document.getElementById('amz-task-assignee-search') || {}).value || '').trim();
+                    const assigneeId = amzResolveAssigneeId(assigneeLabel)
+                        || parseInt((document.getElementById('amz-task-assignee-id') || {}).value || '0', 10);
+
+                    if (ok) { ok.textContent = ''; ok.classList.add('d-none'); }
+                    if (!group) {
+                        if (err) { err.textContent = 'Group is required.'; err.classList.remove('d-none'); }
+                        return;
+                    }
+                    if (!title) {
+                        if (err) { err.textContent = 'Task is required.'; err.classList.remove('d-none'); }
+                        return;
+                    }
+                    if (!assigneeId) {
+                        if (err) { err.textContent = 'Select a user to assign.'; err.classList.remove('d-none'); }
+                        return;
+                    }
+                    if (!amzAssignorId) {
+                        if (err) { err.textContent = 'You must be signed in to assign a task.'; err.classList.remove('d-none'); }
+                        return;
+                    }
+                    if (err) { err.textContent = ''; err.classList.add('d-none'); }
+
+                    const body = new FormData();
+                    body.append('title', title);
+                    body.append('group', group);
+                    body.append('priority', 'normal');
+                    body.append('assignor_id', String(amzAssignorId));
+                    body.append('assignee_id', String(assigneeId));
+                    body.append('etc_minutes', '10');
+                    body.append('tid', new Date().toISOString().slice(0, 16));
+                    body.append('l1', pageLink);
+                    body.append('quick_create_more', '1');
+
+                    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Assigning…'; }
+                    fetch(amzTaskStoreUrl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: body,
+                    })
+                        .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+                        .then(function (res) {
+                            if (!res.ok || (res.data && res.data.success === false)) {
+                                throw new Error((res.data && (res.data.message || res.data.error)) || 'Could not assign task.');
+                            }
+                            if (ok) {
+                                ok.textContent = (res.data && res.data.message) || 'Task assigned.';
+                                ok.classList.remove('d-none');
+                            }
+                            setTimeout(amzHideTaskModal, 700);
+                        })
+                        .catch(function (ex) {
+                            if (err) { err.textContent = ex.message || 'Could not assign task.'; err.classList.remove('d-none'); }
+                        })
+                        .finally(function () {
+                            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Assign'; }
+                        });
+                });
+            }
 
             // ---- initial state ----
             (function () {

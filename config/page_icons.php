@@ -43,6 +43,7 @@ return [
     'by_title_exact' => [
         'Task Manager' => 'task',
         'Task Summary' => 'task',
+        'Announcement' => 'task',
         'Automated Tasks' => 'task',
         'Create Task' => 'task',
         'Edit Task' => 'task',

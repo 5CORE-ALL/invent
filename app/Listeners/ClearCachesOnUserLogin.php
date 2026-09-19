@@ -3,6 +3,7 @@
 namespace App\Listeners;
 
 use App\Support\LoginCacheClearer;
+use App\Support\UserTatNudge;
 use Illuminate\Auth\Events\Login;
 
 class ClearCachesOnUserLogin
@@ -14,5 +15,6 @@ class ClearCachesOnUserLogin
         }
 
         LoginCacheClearer::run($event->user?->id);
+        UserTatNudge::markLogin();
     }
 }

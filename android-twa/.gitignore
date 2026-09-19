@@ -1,0 +1,16 @@
+# Generated Bubblewrap / Android Studio output
+/android/
+/app/
+/.gradle/
+/local.properties
+/keystore.properties
+/signing.properties
+/*.apk
+/*.aab
+/*.idsig
+
+# Signing material — never commit
+*.keystore
+*.jks
+*.p12
+*.key

@@ -47,6 +47,19 @@ id_ed25519
 /bootstrap/cache/*
 /database/database.sqlite
 
+# Android TWA generated project + signing material
+/android-twa/android/
+/android-twa/app/
+/android-twa/*.keystore
+/android-twa/*.jks
+/android-twa/*.apk
+/android-twa/*.aab
+/android-twa/keystore.properties
+/android-twa/signing.properties
+*.keystore
+*.jks
+*.p12
+
 # Ignore IDE and system files
 .idea
 .vscode

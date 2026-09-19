@@ -55,6 +55,9 @@
         '[data-no-img-hover]',
         '.cd-sheet-table',
         '.cd-sheet-cell-image',
+        '.task-summary-avatar-wrap',
+        '.task-summary-avatar',
+        '#task-summary-avatar-flyout',
     ].join(',');
 
     function isEligible(img) {

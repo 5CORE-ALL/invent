@@ -1,0 +1,42 @@
+{
+  "packageId": "com.fivecore.invent.chat",
+  "host": "inventory.5coremanagement.com",
+  "name": "Invent Chat",
+  "launcherName": "Invent Chat",
+  "display": "standalone",
+  "themeColor": "#3F0E40",
+  "themeColorDark": "#3F0E40",
+  "navigationColor": "#3F0E40",
+  "navigationColorDark": "#3F0E40",
+  "backgroundColor": "#3F0E40",
+  "enableNotifications": true,
+  "startUrl": "/chat",
+  "iconUrl": "https://inventory.5coremanagement.com/images/pwa-icon-512.png",
+  "maskableIconUrl": "https://inventory.5coremanagement.com/images/pwa-icon-512.png",
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "minSdkVersion": 21,
+  "shortcuts": [
+    {
+      "name": "Open Chat",
+      "shortName": "Chat",
+      "url": "/chat",
+      "chosenIconUrl": "https://inventory.5coremanagement.com/images/pwa-icon-192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://inventory.5coremanagement.com/manifest.json",
+  "fallbackType": "customtabs",
+  "orientation": "portrait",
+  "isChromeOSOnly": false,
+  "enableSiteSettingsShortcut": true,
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "intentFilters": [
+    {
+      "protocol": "https",
+      "host": "inventory.5coremanagement.com",
+      "pathPrefix": "/chat"
+    }
+  ]
+}

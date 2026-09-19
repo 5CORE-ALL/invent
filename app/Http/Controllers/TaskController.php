@@ -17,6 +17,7 @@ use App\Models\DesignationRrItem;
 use App\Models\GeneralChecklistItem;
 use App\Models\ManagerJunior;
 use App\Models\PerformanceReview;
+use App\Models\ScopeOfImprovement;
 use App\Models\Task;
 use App\Models\TeamMemberKpi;
 use App\Models\User;
@@ -155,9 +156,9 @@ class TaskController extends Controller
                 ? \Carbon\Carbon::parse($task->completion_date)
                 : \Carbon\Carbon::parse($task->updated_at);
             $days = abs($completion->getTimestamp() - $start->getTimestamp()) / 86400;
-            $tatValues[] = (int) round($days);
+            $tatValues[] = $days;
         }
-        $stats['tat_avg_30'] = count($tatValues) > 0 ? (int) round(array_sum($tatValues) / count($tatValues)) : null;
+        $stats['tat_avg_30'] = count($tatValues) > 0 ? round(array_sum($tatValues) / count($tatValues), 1) : null;
 
         // Daily TAT for line chart (last 30 days): date => avg TAT for tasks completed on that day
         $tatByDay = [];
@@ -462,25 +463,29 @@ class TaskController extends Controller
      * Does not apply {@see Session::get('selected_user_name')} — Task Summary stays global within that visibility;
      * the /tasks page keeps its own session + UI filters.
      *
-     * @return list<array{team_member: string, email: string, avatar: mixed, designation: mixed, task: int, assignor_task: int, overdue: int, a_task: int, a_task_h: int, need_approval: int, done: int}> assignor_task excludes tasks where assignor appears in assign_to (self-assigned). a_task_h is rounded total ETC hours for automated (is_automate_task) assignee tasks.
+     * @return list<array{team_member: string, email: string, avatar: mixed, designation: mixed, task: int, assignor_task: int, overdue: int, a_task: int, a_task_h: int, need_approval: int, done: int, atc_l30_h: int, etc_l30_h: int}> assignor_task excludes tasks where assignor appears in assign_to (self-assigned). a_task_h is rounded total ETC hours for automated (is_automate_task) assignee tasks. atc_l30_h / etc_l30_h are last-30-days actual/estimated hours.
      */
     protected function getTaskSummaryMemberRows(): array
     {
         $tasksQuery = $this->taskManagerVisibilityQuery();
 
-        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date', 'created_at', 'completion_date', 'is_automate_task', 'is_missed', 'eta_time', 'schedule_type']);
+        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date', 'created_at', 'updated_at', 'completion_date', 'is_automate_task', 'is_missed', 'eta_time', 'etc_done', 'schedule_type']);
 
         // tat_sum_days + tat_count are used to compute the average L30 TAT
         // (Turn-Around Time, in calendar days) for tasks the user closed
         // (status=Done) in the last 30 days.
-        // Missed is L30 vs prior 30 (days 31–60). A deleted task counts as
-        // missed unless it was already Done (same rule as /tasks/deleted).
-        // Live is_missed rows are included too.
+        // Missed is last 30 days vs days 31–60, keyed by start_date.
+        // A deleted task counts as missed unless it was already Done
+        // (same rule as /tasks/deleted). Live is_missed rows are included too.
+        // etc_l30 / atc_l30 are minutes for work closed in the last 30 days:
+        // live Done (completion_date, else updated_at) plus archived
+        // deleted_tasks (deleted_at), same 30-day cutoff as TAT / /tasks L30 badges.
         $defaultCounts = [
             'task' => 0, 'overdue' => 0, 'a_task' => 0, 'a_task_h' => 0,
             'need_approval' => 0, 'assignor_task' => 0, 'done' => 0,
             'tat_sum_days' => 0.0, 'tat_count' => 0,
             'missed_l30' => 0, 'missed_p30' => 0,
+            'etc_l30' => 0.0, 'atc_l30' => 0.0,
         ];
 
         $now = \Carbon\Carbon::now();
@@ -579,6 +584,22 @@ class TaskController extends Controller
                     }
                 }
 
+                // L30 ETC / ATC: live Done tasks closed in the last 30 days.
+                if (($task->status ?? '') === 'Done') {
+                    $closedRaw = $task->completion_date ?: $task->updated_at;
+                    if (! empty($closedRaw)) {
+                        try {
+                            $closed = \Carbon\Carbon::parse($closedRaw);
+                            if ($closed->greaterThanOrEqualTo($tatCutoff)) {
+                                $byEmail[$email]['etc_l30'] += (float) ($task->eta_time ?? 0);
+                                $byEmail[$email]['atc_l30'] += (float) ($task->etc_done ?? 0);
+                            }
+                        } catch (\Throwable $e) {
+                            // Malformed timestamp — skip this row's L30 time.
+                        }
+                    }
+                }
+
                 // Live is_missed (rare after nightly expire) — last 30 vs prior 30.
                 if (! empty($task->is_missed)) {
                     $this->addMissedPeriodCount($byEmail, $defaultCounts, $email, $task->start_date, $now);
@@ -587,6 +608,7 @@ class TaskController extends Controller
         }
 
         $this->addArchivedMissedPeriodCounts($byEmail, $defaultCounts, $missedLookback, $now);
+        $this->addArchivedEtcAtcLast30($byEmail, $defaultCounts, $tatCutoff);
 
         $members = $this->activeTeamUsersQuery()
             ->orderBy('name')
@@ -628,6 +650,16 @@ class TaskController extends Controller
             ->groupBy('user_id')
             ->get()
             ->keyBy('user_id');
+
+        $soiCounts = [];
+        if (Schema::hasTable('scope_of_improvements') && $members->isNotEmpty()) {
+            $soiCounts = ScopeOfImprovement::query()
+                ->whereIn('user_id', $members->pluck('id'))
+                ->selectRaw('user_id, COUNT(*) as soi_count')
+                ->groupBy('user_id')
+                ->pluck('soi_count', 'user_id')
+                ->all();
+        }
 
         $incentiveCutoffAlerts = [];
         if (Schema::hasColumn('user_incentives', 'additional_condition') && $members->isNotEmpty()) {
@@ -733,6 +765,10 @@ class TaskController extends Controller
                 'dar_l30_series' => $darMetrics['dar_l30_series'],
                 'tat_l30_days' => $tatAvgDays,
                 'tat_l30_count' => $tatCount,
+                'atc_l30_min' => (int) round($counts['atc_l30']),
+                'etc_l30_min' => (int) round($counts['etc_l30']),
+                'atc_l30_h' => (int) round($counts['atc_l30'] / 60),
+                'etc_l30_h' => (int) round($counts['etc_l30'] / 60),
                 'missed_l30' => (int) $counts['missed_l30'],
                 'missed_p30' => (int) $counts['missed_p30'],
                 'score_clrr' => (int) ($scoresByUser[$member->id]['clrr'] ?? 0),
@@ -744,6 +780,7 @@ class TaskController extends Controller
                 'need_approval' => $counts['need_approval'],
                 'done' => $counts['done'],
             ], $kpiFields, [
+                'soi_count' => (int) ($soiCounts[$member->id] ?? 0),
                 'incentive_count' => (int) (optional($incentiveStats->get($member->id))->incentive_count ?? 0),
                 'incentive_amount' => (float) (optional($incentiveStats->get($member->id))->incentive_amount ?? 0),
                 'incentive_cutoff_alert' => ! empty($incentiveCutoffAlerts[$member->id]),
@@ -764,7 +801,7 @@ class TaskController extends Controller
     }
 
     /**
-     * Count one missed task into L30 or prior-30 (days 31–60) for an assignee email.
+     * Count one missed task into last 30 days or days 31–60 for an assignee email.
      *
      * @param  array<string, array<string, mixed>>  $byEmail
      * @param  array<string, mixed>  $defaultCounts
@@ -784,8 +821,9 @@ class TaskController extends Controller
     }
 
     /**
-     * Deleted tasks in the last 60 days count as missed unless they were Done.
-     * Split into L30 vs prior 30 (days 31–60).
+     * Deleted unfinished tasks whose start_date is in the last 60 days.
+     * Split into last 30 days vs days 31–60. Older tasks are ignored even
+     * if they were deleted recently.
      *
      * @param  array<string, array<string, mixed>>  $byEmail
      * @param  array<string, mixed>  $defaultCounts
@@ -798,10 +836,12 @@ class TaskController extends Controller
 
         $archived = DeletedTask::query()
             ->where(function ($q) use ($lookback) {
-                $q->where('deleted_at', '>=', $lookback)
+                $q->where('start_date', '>=', $lookback)
                     ->orWhere(function ($q2) use ($lookback) {
-                        $q2->whereNull('deleted_at')
-                            ->where('start_date', '>=', $lookback);
+                        $q2->where(function ($q3) {
+                            $q3->whereNull('start_date')
+                                ->orWhere('start_date', '');
+                        })->where('deleted_at', '>=', $lookback);
                     });
             })
             ->where(function ($q) {
@@ -813,13 +853,55 @@ class TaskController extends Controller
             ->get(['assign_to', 'deleted_at', 'start_date']);
 
         foreach ($archived as $row) {
-            $when = $row->deleted_at ?: $row->start_date;
+            $when = $row->start_date ?: $row->deleted_at;
             $assignTo = trim((string) ($row->assign_to ?? ''));
             if ($assignTo === '') {
                 continue;
             }
             foreach (array_map('trim', explode(',', $assignTo)) as $email) {
                 $this->addMissedPeriodCount($byEmail, $defaultCounts, $email, $when, $now);
+            }
+        }
+    }
+
+    /**
+     * Sum ETC (eta_time) and ATC (etc_done) minutes from deleted_tasks
+     * archived in the last 30 days, credited to each assignee email.
+     * Matches the /tasks ETC L30 D / ATC L30 badges (deleted_at window).
+     *
+     * @param  array<string, array<string, mixed>>  $byEmail
+     * @param  array<string, mixed>  $defaultCounts
+     */
+    protected function addArchivedEtcAtcLast30(array &$byEmail, array $defaultCounts, \Carbon\Carbon $cutoff): void
+    {
+        if (! Schema::hasTable('deleted_tasks')) {
+            return;
+        }
+
+        $archived = DeletedTask::query()
+            ->where('deleted_at', '>=', $cutoff)
+            ->get(['assign_to', 'eta_time', 'etc_done']);
+
+        foreach ($archived as $row) {
+            $assignTo = trim((string) ($row->assign_to ?? ''));
+            if ($assignTo === '') {
+                continue;
+            }
+            $etc = (float) ($row->eta_time ?? 0);
+            $atc = (float) ($row->etc_done ?? 0);
+            if ($etc == 0.0 && $atc == 0.0) {
+                continue;
+            }
+            foreach (array_map('trim', explode(',', $assignTo)) as $email) {
+                $email = trim($email);
+                if ($email === '') {
+                    continue;
+                }
+                if (! isset($byEmail[$email])) {
+                    $byEmail[$email] = $defaultCounts;
+                }
+                $byEmail[$email]['etc_l30'] += $etc;
+                $byEmail[$email]['atc_l30'] += $atc;
             }
         }
     }
@@ -7610,6 +7692,8 @@ class TaskController extends Controller
                 'overdue' => (int) ($row['overdue'] ?? 0),
                 'tat_l30_days' => $row['tat_l30_days'] ?? null,
                 'tat_l30_count' => (int) ($row['tat_l30_count'] ?? 0),
+                'atc_l30_h' => (int) ($row['atc_l30_h'] ?? 0),
+                'etc_l30_h' => (int) ($row['etc_l30_h'] ?? 0),
                 'missed_l30' => (int) ($row['missed_l30'] ?? 0),
                 'missed_p30' => (int) ($row['missed_p30'] ?? 0),
                 'a_task' => (int) ($row['a_task'] ?? 0),
@@ -7618,6 +7702,7 @@ class TaskController extends Controller
             ] : [
                 'task' => 0, 'l30_hrs' => 0, 'att_l30_pct' => 0, 'att_l30_target' => 200, 'assignor_task' => 0,
                 'done' => 0, 'overdue' => 0, 'tat_l30_days' => null, 'tat_l30_count' => 0,
+                'atc_l30_h' => 0, 'etc_l30_h' => 0,
                 'missed_l30' => 0, 'missed_p30' => 0, 'a_task' => 0, 'a_task_h' => 0, 'need_approval' => 0,
             ],
             'scores' => [
@@ -8198,15 +8283,78 @@ class TaskController extends Controller
         return (int) $viewer->id === (int) $target->id;
     }
 
+    /** GET the signed-in user's L30 TAT for the once-a-day 1-hour login nudge. */
+    public function getTatNudge(): JsonResponse
+    {
+        $viewer = Auth::user();
+        if (! $viewer) {
+            return response()->json(['success' => false, 'message' => 'Not signed in.'], 401);
+        }
+
+        $metrics = \App\Support\UserTatNudge::forUser($viewer);
+
+        return response()->json([
+            'success' => true,
+            'user_id' => (int) $viewer->id,
+            'user_name' => (string) ($viewer->name ?? ''),
+            'tat_days' => $metrics['tat_l30_days'],
+            'tat_count' => $metrics['tat_l30_count'],
+            'tat_display' => $metrics['tat_display'],
+            'tat_band' => $metrics['tat_band'],
+            'wait_ms' => \App\Support\UserTatNudge::waitMs(),
+            'business_today' => TaskBusinessTime::today()->toDateString(),
+            'messages' => \App\Support\UserTatNudge::messages(),
+            'tasks_url' => route('tasks.index'),
+        ]);
+    }
+
+    /** GET the signed-in user's overdue count for the once-a-day login nudge. */
+    public function getOverdueNudge(): JsonResponse
+    {
+        $viewer = Auth::user();
+        if (! $viewer) {
+            return response()->json(['success' => false, 'message' => 'Not signed in.'], 401);
+        }
+
+        return response()->json([
+            'success' => true,
+            'user_id' => (int) $viewer->id,
+            'user_name' => (string) ($viewer->name ?? ''),
+            'overdue' => \App\Support\UserOverdueNudge::countForUser($viewer),
+            'business_today' => TaskBusinessTime::today()->toDateString(),
+            'messages' => \App\Support\UserOverdueNudge::messages(),
+            'tasks_url' => route('tasks.index'),
+        ]);
+    }
+
     /** GET incentives for a team member (self, privileged viewers, president). */
     public function getUserIncentives(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'user_id' => 'required|integer|exists:users,id',
+            'user_id' => 'nullable|integer|exists:users,id',
         ]);
 
         $viewer = Auth::user();
-        $user = User::find($validated['user_id']);
+        $canEdit = $this->canEditIncentives($viewer);
+        $userId = isset($validated['user_id']) ? (int) $validated['user_id'] : 0;
+
+        if ($userId <= 0) {
+            if (! $canEdit) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You do not have access to this user\'s incentives.',
+                ], 403);
+            }
+
+            return response()->json([
+                'success' => true,
+                'can_edit' => true,
+                'items' => [],
+                'users' => $this->incentiveAssignableUsers(),
+            ]);
+        }
+
+        $user = User::find($userId);
         if (! $user) {
             return response()->json(['success' => false, 'message' => 'User not found.'], 404);
         }
@@ -8231,12 +8379,16 @@ class TaskController extends Controller
                 'email' => $user->email,
                 'designation' => $user->designation,
             ],
-            'can_edit' => $this->canEditIncentives($viewer),
+            'can_edit' => $canEdit,
             'items' => $items->map(fn (UserIncentive $row) => $this->formatIncentiveItem($row))->values(),
+            'users' => $canEdit ? $this->incentiveAssignableUsers((int) $user->id) : [],
         ]);
     }
 
-    /** President-only: replace/sync incentive rows for a user. */
+    /**
+     * President-only: replace/sync incentive rows for a user, or append the same
+     * rows to multiple users without replacing what they already have.
+     */
     public function syncUserIncentives(Request $request): JsonResponse
     {
         $viewer = Auth::user();
@@ -8248,7 +8400,12 @@ class TaskController extends Controller
         }
 
         $validated = $request->validate([
-            'user_id' => 'required|integer|exists:users,id',
+            'user_id' => 'nullable|integer|exists:users,id',
+            'user_ids' => 'nullable|array|max:300',
+            'user_ids.*' => 'integer|exists:users,id',
+            'also_user_ids' => 'nullable|array|max:300',
+            'also_user_ids.*' => 'integer|exists:users,id',
+            'mode' => 'nullable|in:replace,append',
             'items' => 'present|array|max:25',
             'items.*.id' => 'nullable|integer',
             'items.*.title' => 'required|string|max:200',
@@ -8259,25 +8416,51 @@ class TaskController extends Controller
             'items.*.is_active' => 'nullable|boolean',
         ]);
 
-        $userId = (int) $validated['user_id'];
+        $userId = (int) ($validated['user_id'] ?? 0);
+        $bulkIds = $this->uniquePositiveIds($validated['user_ids'] ?? []);
+        $alsoIds = $this->uniquePositiveIds($validated['also_user_ids'] ?? []);
+        $mode = (string) ($validated['mode'] ?? 'replace');
+        $isAppend = $mode === 'append' || ($userId <= 0 && $bulkIds !== []);
+
+        if ($isAppend) {
+            $targetIds = $bulkIds !== [] ? $bulkIds : $alsoIds;
+            if ($targetIds === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Select at least one user.',
+                ], 422);
+            }
+            if ($validated['items'] === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Add at least one incentive row.',
+                ], 422);
+            }
+
+            $copied = [];
+            foreach ($targetIds as $targetId) {
+                $this->appendIncentiveItemsToUser($targetId, $validated['items'], $viewer);
+                $copied[] = $this->incentiveUserStats($targetId);
+            }
+
+            return response()->json([
+                'success' => true,
+                'items' => [],
+                'copied_to' => $copied,
+            ]);
+        }
+
+        if ($userId <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User is required.',
+            ], 422);
+        }
+
         $keptIds = [];
 
         foreach ($validated['items'] as $index => $item) {
-            $payload = [
-                'title' => trim((string) $item['title']),
-                'body' => isset($item['body']) ? trim((string) $item['body']) : null,
-                'amount' => array_key_exists('amount', $item) && $item['amount'] !== null && $item['amount'] !== ''
-                    ? round((float) $item['amount'], 2)
-                    : null,
-                'sort_order' => (int) ($item['sort_order'] ?? $index),
-                'is_active' => array_key_exists('is_active', $item) ? (bool) $item['is_active'] : true,
-                'updated_by_user_id' => optional($viewer)->id,
-            ];
-            if (Schema::hasColumn('user_incentives', 'additional_condition')) {
-                $payload['additional_condition'] = isset($item['additional_condition'])
-                    ? trim((string) $item['additional_condition'])
-                    : null;
-            }
+            $payload = $this->incentiveItemPayload($item, $index, $viewer);
 
             if (! empty($item['id'])) {
                 $row = UserIncentive::query()
@@ -8300,6 +8483,15 @@ class TaskController extends Controller
             ->when(count($keptIds) === 0, fn ($q) => $q)
             ->delete();
 
+        $copied = [];
+        foreach ($alsoIds as $alsoId) {
+            if ($alsoId === $userId) {
+                continue;
+            }
+            $this->appendIncentiveItemsToUser($alsoId, $validated['items'], $viewer);
+            $copied[] = $this->incentiveUserStats($alsoId);
+        }
+
         $items = UserIncentive::query()
             ->where('user_id', $userId)
             ->orderBy('sort_order')
@@ -8309,7 +8501,130 @@ class TaskController extends Controller
         return response()->json([
             'success' => true,
             'items' => $items->map(fn (UserIncentive $row) => $this->formatIncentiveItem($row))->values(),
+            'copied_to' => $copied,
         ]);
+    }
+
+    /**
+     * @return list<array{id: int, name: string, designation: mixed, org_level: mixed}>
+     */
+    protected function incentiveAssignableUsers(?int $exceptUserId = null): array
+    {
+        return $this->activeTeamUsersQuery()
+            ->when($exceptUserId, fn ($q) => $q->where('id', '!=', $exceptUserId))
+            ->orderBy('name')
+            ->get(['id', 'name', 'designation', 'org_level'])
+            ->map(fn (User $user) => [
+                'id' => (int) $user->id,
+                'name' => (string) $user->name,
+                'designation' => $user->designation,
+                'org_level' => $user->org_level,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  list<mixed>  $ids
+     * @return list<int>
+     */
+    protected function uniquePositiveIds(array $ids): array
+    {
+        $out = [];
+        foreach ($ids as $id) {
+            $n = (int) $id;
+            if ($n > 0) {
+                $out[$n] = $n;
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array<string, mixed>
+     */
+    protected function incentiveItemPayload(array $item, int $index, ?User $viewer): array
+    {
+        $payload = [
+            'title' => trim((string) ($item['title'] ?? '')),
+            'body' => isset($item['body']) ? trim((string) $item['body']) : null,
+            'amount' => array_key_exists('amount', $item) && $item['amount'] !== null && $item['amount'] !== ''
+                ? round((float) $item['amount'], 2)
+                : null,
+            'sort_order' => (int) ($item['sort_order'] ?? $index),
+            'is_active' => array_key_exists('is_active', $item) ? (bool) $item['is_active'] : true,
+            'updated_by_user_id' => optional($viewer)->id,
+        ];
+        if (Schema::hasColumn('user_incentives', 'additional_condition')) {
+            $payload['additional_condition'] = isset($item['additional_condition'])
+                ? trim((string) $item['additional_condition'])
+                : null;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     */
+    protected function appendIncentiveItemsToUser(int $userId, array $items, ?User $viewer): void
+    {
+        $nextOrder = (int) UserIncentive::query()->where('user_id', $userId)->max('sort_order');
+
+        foreach ($items as $index => $item) {
+            $title = trim((string) ($item['title'] ?? ''));
+            if ($title === '') {
+                continue;
+            }
+            $payload = $this->incentiveItemPayload($item, $index, $viewer);
+            $payload['sort_order'] = $nextOrder + $index + 1;
+            UserIncentive::create(array_merge($payload, ['user_id' => $userId]));
+        }
+    }
+
+    /**
+     * @return array{id: int, incentive_count: int, incentive_amount: float, cutoff_alert: bool}
+     */
+    protected function incentiveUserStats(int $userId): array
+    {
+        $stats = UserIncentive::query()
+            ->where('user_id', $userId)
+            ->where('is_active', true)
+            ->selectRaw('COUNT(*) as incentive_count, COALESCE(SUM(amount), 0) as incentive_amount')
+            ->first();
+
+        return [
+            'id' => $userId,
+            'incentive_count' => (int) ($stats->incentive_count ?? 0),
+            'incentive_amount' => (float) ($stats->incentive_amount ?? 0),
+            'cutoff_alert' => $this->userHasIncentiveCutoffAlert($userId),
+        ];
+    }
+
+    protected function userHasIncentiveCutoffAlert(int $userId): bool
+    {
+        if (! Schema::hasColumn('user_incentives', 'additional_condition')) {
+            return false;
+        }
+
+        $today = TaskBusinessTime::today()->startOfDay();
+        $alertFrom = $today->copy()->addDay();
+
+        return UserIncentive::query()
+            ->where('user_id', $userId)
+            ->where('is_active', true)
+            ->whereNotNull('additional_condition')
+            ->where('additional_condition', '!=', '')
+            ->get(['additional_condition'])
+            ->contains(function ($row) use ($alertFrom) {
+                try {
+                    return \Carbon\Carbon::parse($row->additional_condition)->startOfDay()->lte($alertFrom);
+                } catch (\Throwable $e) {
+                    return false;
+                }
+            });
     }
 
     /**

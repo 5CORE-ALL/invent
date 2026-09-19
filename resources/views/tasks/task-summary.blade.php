@@ -49,7 +49,7 @@
             vertical-align: middle;
         }
         :root {
-            --avatar-size: 35px;
+            --avatar-size: 28px;
         }
         .task-summary-avatar {
             width: var(--avatar-size);
@@ -65,18 +65,18 @@
             box-shadow: 0 4px 14px rgba(15, 23, 42, 0.2);
             transform: scale(1.08);
         }
-        /* Large preview above cursor (avoids .table-responsive clipping) */
+        /* Large circular preview above cursor (avoids .table-responsive clipping) */
         #task-summary-avatar-flyout {
             position: fixed;
-            z-index: 1080;
-            width: 96px;
-            height: 96px;
+            z-index: 200070;
+            width: 224px;
+            height: 224px;
             border-radius: 50%;
             overflow: hidden;
-            border: 3px solid #fff;
+            border: 4px solid #fff;
             box-shadow: 0 14px 40px rgba(15, 23, 42, 0.35);
             pointer-events: none;
-            transform: translate(-50%, calc(-100% - 14px));
+            transform: translate(-50%, calc(-100% - 16px));
             opacity: 0;
             visibility: hidden;
             transition: opacity 0.12s ease, visibility 0.12s ease;
@@ -86,10 +86,14 @@
             visibility: visible;
         }
         #task-summary-avatar-flyout img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
+            width: 100% !important;
+            height: 100% !important;
+            max-width: none !important;
+            max-height: none !important;
+            object-fit: cover !important;
+            border-radius: 50% !important;
             display: block;
+            padding: 0 !important;
         }
         .task-summary-col-overdue {
             color: #dc2626 !important;
@@ -134,6 +138,21 @@
             background-color: #fce7f3 !important;
             color: #831843 !important;
             font-weight: 600;
+        }
+        /* ATC / ETC last 30 days (hours). ATC teal, ETC amber — same language as /tasks badges. */
+        .task-summary-col-atc,
+        .task-summary-col-etc {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .task-summary-col-atc {
+            color: #0f766e !important;
+        }
+        .task-summary-col-etc {
+            color: #b45309 !important;
+        }
+        .task-summary-col-atc.is-atc-over {
+            color: #dc2626 !important;
         }
         /* DAR (days/25) — last 30 days.
              > 90%  → pink
@@ -303,6 +322,46 @@
         .task-summary-monitor-btn .task-magnify-icon {
             width: 20px;
             height: 20px;
+        }
+        .task-summary-soi-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.28rem;
+            min-width: 2.4rem;
+            height: 1.85rem;
+            padding: 0 0.5rem;
+            border: none;
+            border-radius: 999px;
+            background: #f8fafc;
+            color: #1e293b;
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            line-height: 1;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+            cursor: pointer;
+            transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+        }
+        .task-summary-soi-btn:hover {
+            transform: scale(1.08);
+        }
+        .task-summary-soi-btn.has-points {
+            background: #dc2626;
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(220, 38, 38, 0.28);
+        }
+        .task-summary-soi-btn.has-points:hover {
+            background: #b91c1c;
+            color: #fff;
+        }
+        .task-summary-soi-btn:disabled {
+            opacity: 0.4;
+            cursor: default;
+            transform: none;
+        }
+        .task-summary-soi-btn__count {
+            font-variant-numeric: tabular-nums;
         }
         .task-summary-monitor-btn:hover {
             background: rgba(15, 23, 42, 0.08);
@@ -987,6 +1046,15 @@
                                     <span class="task-summary-analytics-badge-label">₹ Incentive</span>
                                     <span class="task-summary-analytics-badge-value" id="ts-analytics-val-incentive">₹{{ number_format($incentivePageTotal, 0) }}</span>
                                 </span>
+                                @if (!empty($canEditIncentives))
+                                    <button type="button"
+                                            id="ts-inc-add-multi-btn"
+                                            class="ts-inc-add-multi-top"
+                                            title="Add the same incentive to multiple users">
+                                        <span class="incentive-dollar-icon" aria-hidden="true">₹</span>
+                                        Add incentive
+                                    </button>
+                                @endif
                             </div>
                            
                         </div>
@@ -1045,13 +1113,13 @@
                                            spellcheck="false" />
                                 </div>
                             </div>
-                            {{-- Avatar size controls hidden by request (fixed at 35px) --}}
+                            {{-- Avatar size controls hidden by request (fixed at 28px) --}}
                             <div class="d-none task-summary-topbar-right">
                                 <span class="text-muted small d-none d-md-inline">Avatar:</span>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="adjustAvatarSize(-5)" title="Decrease size">
                                     <i class="mdi mdi-minus"></i>
                                 </button>
-                                <span id="avatar-size-display" class="badge bg-light text-dark" style="min-width: 42px;">35px</span>
+                                <span id="avatar-size-display" class="badge bg-light text-dark" style="min-width: 42px;">28px</span>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="adjustAvatarSize(5)" title="Increase size">
                                     <i class="mdi mdi-plus"></i>
                                 </button>
@@ -1123,7 +1191,13 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="tat_l30" data-sort-type="float" title="TAT — average Turn-Around Time in days (task start → completion) over the last 30 days" role="button" tabindex="0">
                                         TAT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="missed_l30" data-sort-type="number" title="Miss — last 30 days vs prior 30 days (days 31–60). Any deleted task that was not Done counts as missed." role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="atc_l30" data-sort-type="number" title="ATC — actual time to complete (hours) for work closed in the last 30 days" role="button" tabindex="0">
+                                        ATC <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="etc_l30" data-sort-type="number" title="ETC — estimated time to complete (hours) for work closed in the last 30 days" role="button" tabindex="0">
+                                        ETC <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="missed_p30" data-sort-type="number" title="Miss — days 31–60 only. Deleted unfinished tasks in that window count as missed." role="button" tabindex="0">
                                         Miss <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort task-summary-col-a-task-h" data-sort-key="a_task_h" data-sort-type="number" title="Sort by automated task ETC hours (rounded)" role="button" tabindex="0">
@@ -1132,8 +1206,14 @@
                                     <th scope="col" title="Summary — open the team-member dashboard (own metrics + tagged juniors)">
                                         Summ
                                     </th>
-                                    <th scope="col" title="KPI — assign live page badges from badges_data">
+                                    <th scope="col" title="Add or manage KPI badges for this team member">
+                                        +
+                                    </th>
+                                    <th scope="col" title="KPI — open Key Performance Index badges with history">
                                         KPI
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="soi_count" data-sort-type="number" title="SI — Scope of Improvement count" role="button" tabindex="0">
+                                        SI
                                     </th>
                                     <th scope="col" title="Incentives — rupee bag rewards for this team member">
                                         Inc
@@ -1166,9 +1246,12 @@
                                         data-sort-overdue="{{ (int) ($row['overdue'] ?? 0) }}"
                                         data-sort-dar_l30="{{ (int) ($row['dar_l30_pct'] ?? 0) }}"
                                         data-sort-tat_l30="{{ $row['tat_l30_days'] !== null ? (float) $row['tat_l30_days'] : -1 }}"
-                                        data-sort-missed_l30="{{ (int) ($row['missed_l30'] ?? 0) }}"
+                                        data-sort-atc_l30="{{ (int) ($row['atc_l30_h'] ?? 0) }}"
+                                        data-sort-etc_l30="{{ (int) ($row['etc_l30_h'] ?? 0) }}"
+                                        data-sort-missed_p30="{{ (int) ($row['missed_p30'] ?? 0) }}"
                                         data-sort-a_task_h="{{ (int) ($row['a_task_h'] ?? 0) }}"
                                         data-sort-done="{{ (int) ($row['done'] ?? 0) }}"
+                                        data-sort-soi_count="{{ (int) ($row['soi_count'] ?? 0) }}"
                                         data-sort-incentive_amount="{{ (float) ($row['incentive_amount'] ?? 0) }}">
                                         @php
                                             $tmLevel = strtolower((string) ($row['org_level'] ?? ''));
@@ -1187,7 +1270,7 @@
                                         </td>
                                         <td class="task-summary-avatar-cell">
                                             <span class="task-summary-avatar-wrap">
-                                                <img src="{{ $avatarUrl }}" alt="" class="task-summary-avatar" loading="lazy" />
+                                                <img src="{{ $avatarUrl }}" alt="" class="task-summary-avatar no-img-hover" loading="lazy" data-no-img-hover />
                                             </span>
                                         </td>
                                         <td class="task-summary-col-member">
@@ -1426,20 +1509,27 @@
                                             {{ $tatDisplay }}
                                         </td>
                                         @php
-                                            $missL30 = (int) ($row['missed_l30'] ?? 0);
+                                            $atcL30h = (int) ($row['atc_l30_h'] ?? 0);
+                                            $etcL30h = (int) ($row['etc_l30_h'] ?? 0);
+                                            $atcL30min = (int) ($row['atc_l30_min'] ?? 0);
+                                            $etcL30min = (int) ($row['etc_l30_min'] ?? 0);
+                                            $atcOverClass = ($atcL30h > $etcL30h && $etcL30h > 0) ? 'is-atc-over' : '';
+                                        @endphp
+                                        <td class="task-summary-num task-summary-col-atc {{ $atcOverClass }}"
+                                            title="ATC last 30 days · {{ $atcL30min }} min · {{ $atcL30h }}h">
+                                            {{ $atcL30h }}h
+                                        </td>
+                                        <td class="task-summary-num task-summary-col-etc"
+                                            title="ETC last 30 days · {{ $etcL30min }} min · {{ $etcL30h }}h">
+                                            {{ $etcL30h }}h
+                                        </td>
+                                        @php
                                             $missP30 = (int) ($row['missed_p30'] ?? 0);
-                                            $missClass = 'is-miss-zero';
-                                            if ($missL30 > $missP30) {
-                                                $missClass = 'is-miss-worse';
-                                            } elseif ($missL30 < $missP30) {
-                                                $missClass = 'is-miss-better';
-                                            } elseif ($missL30 > 0) {
-                                                $missClass = 'is-miss-same';
-                                            }
+                                            $missClass = $missP30 > 0 ? 'is-miss-worse' : 'is-miss-zero';
                                         @endphp
                                         <td class="task-summary-num task-summary-col-missed {{ $missClass }}"
-                                            title="Last 30 days: {{ $missL30 }} · Prior 30 days (31–60): {{ $missP30 }}">
-                                            {{ $missL30 }} / {{ $missP30 }}
+                                            title="Missed tasks in days 31–60: {{ $missP30 }}">
+                                            {{ $missP30 }}
                                         </td>
                                         <td class="task-summary-num task-summary-col-a-task-h" title="Total ETC hours (assignee) for automated tasks, rounded">{{ (int) ($row['a_task_h'] ?? 0) }}</td>
                                         <td>
@@ -1464,14 +1554,40 @@
                                         </td>
                                         <td class="task-summary-kpi-badges-cell text-center">
                                             <button type="button"
-                                                    class="kpi-badges-search-icon-btn task-summary-kpi-badges-btn"
+                                                    class="kpi-badges-add-btn task-summary-kpi-badges-btn"
                                                     data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($row['designation'] ?? '') }}"
                                                     data-badge-count="{{ (int) ($row['kpi_count'] ?? 0) }}"
-                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row" @else title="Manage KPI badges for {{ e($row['team_member']) }}" @endif
-                                                    aria-label="Open KPI badges for {{ e($row['team_member']) }}">
-                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">@if((int) ($row['kpi_count'] ?? 0) > 0)<span class="kpi-badges-count">{{ (int) $row['kpi_count'] }}</span>@endif
+                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row" @else title="Add KPI badges for {{ e($row['team_member']) }}" @endif
+                                                    aria-label="Add KPI badges for {{ e($row['team_member']) }}">
+                                                <i class="ri-add-line" aria-hidden="true"></i>@if((int) ($row['kpi_count'] ?? 0) > 0)<span class="kpi-badges-count">{{ (int) $row['kpi_count'] }}</span>@endif
+                                            </button>
+                                        </td>
+                                        <td class="task-summary-kpi-index-cell text-center">
+                                            <button type="button"
+                                                    class="kpi-search-icon-btn task-summary-kpi-index-btn"
+                                                    data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
+                                                    data-user-name="{{ e($row['team_member']) }}"
+                                                    data-designation="{{ e($row['designation'] ?? '') }}"
+                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row" @else title="Key Performance Index of {{ e($row['team_member']) }}" @endif
+                                                    aria-label="Open Key Performance Index of {{ e($row['team_member']) }}">
+                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
+                                            </button>
+                                        </td>
+                                        @php $soiCount = (int) ($row['soi_count'] ?? 0); @endphp
+                                        <td class="text-center task-summary-col-soi">
+                                            <button type="button"
+                                                    class="task-summary-soi-btn{{ $soiCount > 0 ? ' has-points' : '' }}"
+                                                    data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
+                                                    data-user-name="{{ e($row['team_member']) }}"
+                                                    data-soi-count="{{ $soiCount }}"
+                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row"
+                                                    @else title="Scope of Improvement for {{ e($row['team_member']) }} — {{ $soiCount }}"
+                                                    @endif
+                                                    aria-label="Open Scope of Improvement for {{ e($row['team_member']) }}">
+                                                <span class="task-summary-soi-btn__label">SI</span>
+                                                <span class="task-summary-soi-btn__count">{{ $soiCount }}</span>
                                             </button>
                                         </td>
                                         <td class="text-center task-summary-col-incentive">
@@ -1480,6 +1596,7 @@
                                                     data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($row['designation'] ?? '') }}"
+                                                    data-org-level="{{ e($row['org_level'] ?? '') }}"
                                                     data-incentive-count="{{ (int) ($row['incentive_count'] ?? 0) }}"
                                                     data-incentive-amount="{{ (float) ($row['incentive_amount'] ?? 0) }}"
                                                     data-cutoff-alert="{{ !empty($row['incentive_cutoff_alert']) ? '1' : '0' }}"
@@ -1509,7 +1626,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="24" class="text-center text-muted py-4">
+                                        <td colspan="28" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -1520,7 +1637,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="24" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="28" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -1532,7 +1649,7 @@
     </div>
 
     <div id="task-summary-avatar-flyout" aria-hidden="true">
-        <img src="" alt="" />
+        <img src="" alt="" class="no-img-hover" data-no-img-hover />
     </div>
 
     @include('partials.r-and-r')
@@ -1545,6 +1662,8 @@
     @include('partials.dar-history')
     @include('partials.team-member-profile')
     @include('partials.user-kpis')
+    @include('partials.user-kpi-index')
+    @include('partials.dashboard-kpi-dots')
 
     <div class="modal fade" id="taskSummaryAnalyticsModal" tabindex="-1" aria-labelledby="taskSummaryAnalyticsModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable">
@@ -1664,6 +1783,7 @@
 
 @section('script')
     <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.54.1/dist/apexcharts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
         (function () {
             var input = document.getElementById('task-summary-search');
@@ -1682,8 +1802,24 @@
                 if (!avatarFlyout) {
                     return;
                 }
-                avatarFlyout.style.left = clientX + 'px';
-                avatarFlyout.style.top = clientY + 'px';
+                var size = avatarFlyout.offsetWidth || 224;
+                var gap = 16;
+                var pad = 8;
+                var half = size / 2;
+                var left = Math.min(Math.max(clientX, half + pad), window.innerWidth - half - pad);
+                var canSitAbove = (clientY - gap - size) >= pad;
+
+                if (canSitAbove) {
+                    avatarFlyout.style.transform = 'translate(-50%, calc(-100% - ' + gap + 'px))';
+                    avatarFlyout.style.top = clientY + 'px';
+                } else if ((clientY + gap + size) <= (window.innerHeight - pad)) {
+                    avatarFlyout.style.transform = 'translate(-50%, ' + gap + 'px)';
+                    avatarFlyout.style.top = clientY + 'px';
+                } else {
+                    avatarFlyout.style.transform = 'translate(-50%, 0)';
+                    avatarFlyout.style.top = Math.max(pad, window.innerHeight - size - pad) + 'px';
+                }
+                avatarFlyout.style.left = left + 'px';
             }
 
             function tsHideAvatarFlyout() {
@@ -2080,6 +2216,22 @@
                     kpiList = [];
                 }
                 openKpiModal(userName, kpiList);
+            });
+
+            tbody.addEventListener('click', function (e) {
+                var btn = e.target && e.target.closest && e.target.closest('.task-summary-soi-btn');
+                if (!btn || !tbody.contains(btn) || btn.disabled) {
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                var userId = parseInt(btn.getAttribute('data-user-id'), 10) || 0;
+                if (window.ScopeOfImprovementTopbarModal && typeof window.ScopeOfImprovementTopbarModal.openForUser === 'function') {
+                    window.ScopeOfImprovementTopbarModal.openForUser(userId || null);
+                    return;
+                }
+                var topbarBtn = document.getElementById('activityTopbarBtn');
+                if (topbarBtn) topbarBtn.click();
             });
 
             function runFilter() {
@@ -3224,7 +3376,9 @@
                 tr.setAttribute('data-level', level); // 'director' | 'mgr' | 'others'
                 tr.setAttribute('data-collapsed', 'false');
                 var td = document.createElement('td');
-                td.setAttribute('colspan', '24');
+                var tsTable = tbody && tbody.closest ? tbody.closest('table') : document.querySelector('.task-summary-table');
+                var tsColspan = tsTable ? tsTable.querySelectorAll('thead tr:first-child th').length : 28;
+                td.setAttribute('colspan', String(tsColspan || 28));
                 td.innerHTML =
                     '<div class="task-summary-group-header-inner">'
                     + '<button type="button" class="task-summary-group-chevron" data-action="toggle-group" aria-label="Toggle group">'
@@ -6391,7 +6545,9 @@
                     + renderMetricTile('Done', m.done || 0, 'is-done')
                     + renderMetricTile('O-Due', m.overdue || 0, 'is-overdue')
                     + renderMetricTile('TAT', tat)
-                    + renderMetricTile('Miss', (m.missed_l30 || 0) + ' / ' + (m.missed_p30 || 0), 'is-overdue');
+                    + renderMetricTile('ATC', (m.atc_l30_h || 0) + 'h')
+                    + renderMetricTile('ETC', (m.etc_l30_h || 0) + 'h')
+                    + renderMetricTile('Miss', (m.missed_p30 || 0), 'is-overdue');
                 return html;
             }
 
@@ -6988,7 +7144,9 @@
                     + renderTile('Done', m.done || 0, 'is-done')
                     + renderTile('O-Due', m.overdue || 0, 'is-overdue')
                     + renderTile('TAT', tat)
-                    + renderTile('Miss', (m.missed_l30 || 0) + ' / ' + (m.missed_p30 || 0), 'is-overdue');
+                    + renderTile('ATC', (m.atc_l30_h || 0) + 'h')
+                    + renderTile('ETC', (m.etc_l30_h || 0) + 'h')
+                    + renderTile('Miss', (m.missed_p30 || 0), 'is-overdue');
             }
 
             function renderPersonRow(p) {
@@ -7752,9 +7910,9 @@
             }
         })();
 
-        // Avatar size — controls are hidden; size fixed at 35px regardless
-        // of any value previously persisted in localStorage.
-        const DEFAULT_AVATAR_SIZE = 35;
+        // Avatar size — controls are hidden; size fixed at 28px (0.8× of 35)
+        // regardless of any value previously persisted in localStorage.
+        const DEFAULT_AVATAR_SIZE = 28;
         let currentAvatarSize = DEFAULT_AVATAR_SIZE;
         try { localStorage.setItem('avatarSize', DEFAULT_AVATAR_SIZE); } catch (e) {}
         document.documentElement.style.setProperty('--avatar-size', currentAvatarSize + 'px');

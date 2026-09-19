@@ -170,7 +170,7 @@
     }
 
     async function applyTones() {
-        const badges = [...document.querySelectorAll('.dashboard-badge-panel__badges .badge[data-kpi-key]')];
+        const badges = [...document.querySelectorAll('.dashboard-badge-panel__badges .badge[data-kpi-key], .ts-kpi-index-badges .badge[data-kpi-key]')];
         if (!badges.length) return;
 
         // Gray immediately so layout is stable
@@ -201,7 +201,7 @@
     }
 
     function wireDots() {
-        document.querySelectorAll('.dashboard-badge-panel__badges .badge[data-kpi-key]').forEach((badge) => {
+        document.querySelectorAll('.dashboard-badge-panel__badges .badge[data-kpi-key], .ts-kpi-index-badges .badge[data-kpi-key]').forEach((badge) => {
             ensureDot(badge, badge.dataset.kpiTone || 'gray');
         });
     }
