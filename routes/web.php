@@ -147,6 +147,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAppscenicControll
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAutoDSController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingBestbuyUSAController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingDepopController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSheetCatalogController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingDobaController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayThreeController;
@@ -4115,6 +4116,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/missing-listing/dar/history',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'darHistory'])->name('missing.listing.dar.history');
     Route::post('/missing-listing/seller-portal/save', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'updateSellerPortal'])->name('missing.listing.seller.portal.save');
     Route::post('/missing-listing/listing-mode/save', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'updateListingMode'])->name('missing.listing.listing.mode.save');
+    Route::post('/missing-listing/csv-import/{channel}', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'importSheetCsv'])
+        ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern())
+        ->name('missing.listing.csv.import');
 
     // LMP Missing data — analytics channels + LMP M. counts
     Route::get('/lmp-missing-data', [\App\Http\Controllers\MarketPlace\LmpMissingController::class, 'index'])->name('lmp.missing');
@@ -5954,6 +5958,23 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_depop/import', [ListingDepopController::class, 'import'])->name('listing.depop.import');
     Route::get('/listing_depop/template', [ListingDepopController::class, 'template'])->name('listing.depop.template');
     Route::get('/listing_depop/export', [ListingDepopController::class, 'export'])->name('listing.depop.export');
+
+    Route::get('/listing-{channel}', [ListingSheetCatalogController::class, 'show'])
+        ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern())
+        ->name('listing.sheet');
+    Route::get('/listing_{channel}/view-data', [ListingSheetCatalogController::class, 'data'])
+        ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern());
+    Route::post('/listing_{channel}/save-status', [ListingSheetCatalogController::class, 'saveStatus'])
+        ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern());
+    Route::post('/listing_{channel}/import', [ListingSheetCatalogController::class, 'import'])
+        ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern())
+        ->name('listing.sheet.import');
+    Route::get('/listing_{channel}/template', [ListingSheetCatalogController::class, 'template'])
+        ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern())
+        ->name('listing.sheet.template');
+    Route::get('/listing_{channel}/export', [ListingSheetCatalogController::class, 'export'])
+        ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern())
+        ->name('listing.sheet.export');
 
     // Shein
     Route::get('/listing-shein', [ListingSheinController::class, 'listingShein'])->name('listing.shein');

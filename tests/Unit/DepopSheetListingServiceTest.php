@@ -20,6 +20,29 @@ class DepopSheetListingServiceTest extends TestCase
     }
 
     #[Test]
+    public function it_treats_vinted_dhgate_and_tiendamia_as_csv_catalogs(): void
+    {
+        foreach (['Vinted', 'DHGate', 'Tiendamia'] as $channel) {
+            $this->assertTrue(ListingChannelCounts::hasListingSource($channel), $channel.' should have a listing source');
+            $this->assertSame('CSV', ListingChannelCounts::dataSource($channel), $channel.' should be CSV');
+            $this->assertTrue(ListingChannelCounts::showsComputedCounts($channel), $channel.' should compute Missing L');
+        }
+        $this->assertSame(url('/listing-vinted'), ListingChannelCounts::listingUrl('Vinted'));
+        $this->assertSame(url('/listing-dhgate'), ListingChannelCounts::listingUrl('DHGate'));
+        $this->assertSame(url('/listing-tiendamia'), ListingChannelCounts::listingUrl('Tiendamia'));
+    }
+
+    #[Test]
+    public function sheet_only_marketplaces_get_csv_upload_and_missing_l(): void
+    {
+        foreach (['FB Marketplace', 'Instagram Shop', 'Mercari w Ship', 'Mercari w/o Ship', 'Poshmark', 'FB Shop'] as $channel) {
+            $this->assertSame('CSV', ListingChannelCounts::dataSource($channel), $channel.' should be CSV');
+            $this->assertTrue(ListingChannelCounts::isCsvCatalogSource($channel), $channel.' should allow CSV upload');
+            $this->assertNotEmpty(ListingChannelCounts::csvImportUrl($channel), $channel.' should have an import URL');
+        }
+    }
+
+    #[Test]
     public function it_reads_sku_from_common_sheet_headers(): void
     {
         $service = new DepopSheetListingService();

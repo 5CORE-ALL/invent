@@ -38,7 +38,6 @@
             text-decoration: underline;
         }
         #stat-missing-listing.badge,
-        #stat-median-missing-listing.badge,
         .badge-ml-stat {
             font-size: 1.35rem !important;
             line-height: 1.35;
@@ -183,18 +182,15 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from connected API channels (same INV &gt; 0 rule as listing pages)" style="background-color:#a71d2a !important;">
+                    <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from API and sheet-CSV channels (same INV &gt; 0 rule as listing pages)" style="background-color:#a71d2a !important;">
                         Missing L: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
-                    </span>
-                    <span class="badge badge-ml-stat badge-ml-chart" id="stat-median-missing-listing" data-metric="missing_l" title="Median Missing L over the rolling 32-day window (same score as the chart Median)" style="background-color:#6c757d !important;">
-                        Median Missing Listing: <span id="median-missing-listing">—</span>
                     </span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <div class="p-2 bg-light border-bottom">
                     <input type="text" id="missing-listing-search" class="form-control form-control-sm" placeholder="Search by Channel...">
-                    <input type="file" id="ml-depop-csv-input" accept=".csv,text/csv,text/plain" hidden>
+                    <input type="file" id="ml-sheet-csv-input" accept=".csv,text/csv,text/plain" hidden>
                 </div>
                 <div id="missing-listing-table" style="height: calc(100vh - 280px);"></div>
             </div>
@@ -273,38 +269,6 @@
     let mlCurrentChartDays = 32;
     let mlCurrentBadgeValue = null;
 
-    function mlComputeMedian(values) {
-        const sorted = (values || [])
-            .map(function (v) { return Number(v); })
-            .filter(function (v) { return !isNaN(v); })
-            .sort(function (a, b) { return a - b; });
-        if (!sorted.length) return null;
-        const mid = Math.floor(sorted.length / 2);
-        return sorted.length % 2 !== 0
-            ? sorted[mid]
-            : (sorted[mid - 1] + sorted[mid]) / 2;
-    }
-
-    function setMedianBadge(median) {
-        if (median === null || median === undefined || isNaN(Number(median))) {
-            $('#median-missing-listing').text('—');
-            return;
-        }
-        $('#median-missing-listing').text(mlFmtVal(median));
-    }
-
-    function loadMedianBadgeFromChart() {
-        $.ajax({
-            url: "{{ route('missing.listing.chart.data') }}",
-            method: 'GET',
-            data: { channel: 'all', metric: 'missing_l', days: 32 },
-        }).done(function (response) {
-            if (!response || !response.data || !response.data.length) return;
-            const values = response.data.map(function (d) { return Number(d.value || 0); });
-            setMedianBadge(mlComputeMedian(values));
-        });
-    }
-
     function updateStats(rows, totalMissingL) {
         if (totalMissingL !== undefined && totalMissingL !== null && !isNaN(Number(totalMissingL))) {
             $('#total-missing-listing').text(Number(totalMissingL).toLocaleString('en-US'));
@@ -314,14 +278,6 @@
                 return sum + Number(r.missing_listing || 0);
             }, 0);
             $('#total-missing-listing').text(total.toLocaleString('en-US'));
-        }
-
-        const current = ($('#median-missing-listing').text() || '').trim();
-        if (current === '' || current === '—') {
-            const channelVals = (rows || [])
-                .filter(function (r) { return isCountableRow(r); })
-                .map(function (r) { return Number(r.missing_listing || 0); });
-            if (channelVals.length) setMedianBadge(mlComputeMedian(channelVals));
         }
     }
 
@@ -455,9 +411,6 @@
         highestEl.style.color = dataMax === 0 ? refGreen : dataMax > 0 ? refRed : refGray;
         medianEl.textContent = mlFmtVal(median);
         medianEl.style.color = median === 0 ? refGreen : median > 0 ? refRed : refGray;
-        if (String(mlCurrentChartDisplayChannel || 'All') === 'All') {
-            setMedianBadge(median);
-        }
         lowestEl.textContent = mlFmtVal(dataMin);
         lowestEl.style.color = dataMin === 0 ? refGreen : dataMin > 0 ? refRed : refGray;
 
@@ -656,12 +609,11 @@
     $(document).ready(function() {
         $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
 
-        $('#stat-missing-listing, #stat-median-missing-listing').on('click', function() {
+        $('#stat-missing-listing').on('click', function() {
             const badgeText = $('#total-missing-listing').text().replace(/[,$%]/g, '').trim();
             const badgeValue = parseFloat(badgeText) || null;
             showMlMetricChart('All', badgeValue);
         });
-        loadMedianBadgeFromChart();
 
         $('#mlChartRangeSelect').on('change', function() {
             const days = parseInt($(this).val(), 10);
@@ -758,7 +710,8 @@
                             ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="ml-channel-listing-link" title="Open listing page">${safeName}</a>`
                             : safeName;
                         if (!row.allows_csv_upload) return nameHtml;
-                        return `${nameHtml}<button type="button" class="btn btn-sm btn-outline-warning ml-csv-upload-btn" data-channel="${escapeHtml(name)}" title="Upload current Depop listings CSV and match to CP Master">Upload CSV</button>`;
+                        const importUrl = String(row.csv_import_url || '').trim();
+                        return `${nameHtml}<button type="button" class="btn btn-sm btn-outline-warning ml-csv-upload-btn" data-import-url="${escapeHtml(importUrl)}" title="Upload current ${safeName} listings CSV and match to CP Master">Upload CSV</button>`;
                     },
                 },
                 {
@@ -1053,30 +1006,33 @@
             });
         });
 
+        let mlSheetImportUrl = '';
         $(document).on('click', '#missing-listing-table .ml-csv-upload-btn', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            const input = document.getElementById('ml-depop-csv-input');
+            mlSheetImportUrl = String($(this).data('import-url') || '').trim();
+            const input = document.getElementById('ml-sheet-csv-input');
             if (input) input.click();
         });
 
-        $('#ml-depop-csv-input').on('change', function() {
+        $('#ml-sheet-csv-input').on('change', function() {
             const file = this.files && this.files[0];
+            const url = mlSheetImportUrl;
             this.value = '';
-            if (!file) return;
+            if (!file || !url) return;
             const body = new FormData();
             body.append('file', file);
             body.append('_token', '{{ csrf_token() }}');
-            showToast('Uploading Depop sheet…', 'success');
+            showToast('Uploading sheet…', 'success');
             $.ajax({
-                url: "{{ route('listing.depop.import') }}",
+                url: url,
                 method: 'POST',
                 data: body,
                 processData: false,
                 contentType: false,
                 dataType: 'json',
             }).done(function(res) {
-                showToast((res && res.message) || 'Depop sheet imported.', 'success');
+                showToast((res && res.message) || 'Sheet imported.', 'success');
                 location.reload();
             }).fail(function(xhr) {
                 const msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
