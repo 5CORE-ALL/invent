@@ -1834,6 +1834,15 @@
                                         <a href="{{ route('temu.ads') }}">Temu Ads (API)</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('temu.ads.missing') }}" class="temu-ads-missing-nav">
+                                            Temu 1 Missing Ads
+                                            @php $temu1AdsMissingCount = \App\Http\Controllers\Campaigns\Temu1MissingAdsController::missingTotalCount(); @endphp
+                                            @if($temu1AdsMissingCount > 0)
+                                                <span class="badge bg-danger rounded-pill">{{ number_format($temu1AdsMissingCount) }}</span>
+                                            @endif
+                                        </a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('map.issues.channel', ['channel' => 'temu']) }}">Missing Mapping Temu</a>
                                     </li>
                                 </ul>
@@ -1856,6 +1865,15 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('temu2.ads') }}">Temu 2 Ads</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('temu2.ads.missing') }}" class="temu2-ads-missing-nav">
+                                            Temu 2 Missing Ads
+                                            @php $temu2AdsMissingCount = \App\Http\Controllers\Campaigns\Temu2MissingAdsController::missingTotalCount(); @endphp
+                                            @if($temu2AdsMissingCount > 0)
+                                                <span class="badge bg-danger rounded-pill">{{ number_format($temu2AdsMissingCount) }}</span>
+                                            @endif
+                                        </a>
                                     </li>
                                     <li>
                                         <a href="{{ route('temu2.variation.verify') }}">Temu 2 Ads Variation Verification</a>
@@ -3159,11 +3177,13 @@
 
     /* Keep Missing Google Shopping / SERP Ads badges beside the label. */
     .side-nav a.gs-ads-missing-nav,
-    .side-nav a.gs-serp-ads-missing-nav {
+    .side-nav a.gs-serp-ads-missing-nav,
+    .side-nav a.temu-ads-missing-nav {
         padding-right: calc(var(--tz-menu-item-padding-x, 0.75rem) * 1.5) !important;
     }
     .side-nav a.gs-ads-missing-nav > .badge,
-    .side-nav a.gs-serp-ads-missing-nav > .badge {
+    .side-nav a.gs-serp-ads-missing-nav > .badge,
+    .side-nav a.temu-ads-missing-nav > .badge {
         position: static !important;
         display: inline-block;
         vertical-align: middle;

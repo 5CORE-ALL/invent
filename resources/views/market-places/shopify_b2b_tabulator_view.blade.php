@@ -620,7 +620,7 @@
                     </button>
 
                     <button type="button" id="shopify-b2b-pull-price-btn" class="btn btn-sm btn-info"
-                            title="Pull Price, Views, and Sold from business5core.com (selected SKUs, or all if none selected)">
+                            title="Pull Price and Views from business5core.com (selected SKUs, or all if none selected)">
                         <i class="fas fa-cloud-download-alt"></i> Pull Price
                     </button>
 
@@ -1129,7 +1129,7 @@
             const scope = skus.length
                 ? (skus.length + ' selected SKU' + (skus.length === 1 ? '' : 's'))
                 : 'ALL listings';
-            if (!confirm('Pull Price, Views, and Sold from business5core.com for ' + scope + '?')) {
+            if (!confirm('Pull Price and Views from business5core.com for ' + scope + '?')) {
                 return;
             }
             $btn.prop('disabled', true);
@@ -1149,7 +1149,6 @@
                 showToast(
                     'Pulled ' + (resp.stored || 0) + ' listing(s) from site'
                         + (resp.with_views != null ? (' · Views ' + resp.with_views) : '')
-                        + (resp.with_sold != null ? (' · Sold ' + resp.with_sold) : '')
                         + (failN ? (' · ' + failN + ' failed') : ''),
                     failN && !(resp.stored) ? 'error' : 'success'
                 );
@@ -1182,7 +1181,6 @@
                         has_custom_sprice: true
                     };
                     if (resp.views != null) patch.Views = parseInt(resp.views, 10) || 0;
-                    if (resp.sold != null) patch.Sold = parseInt(resp.sold, 10) || 0;
                     row.update(patch);
                     try { row.reformat(); } catch (e) { /* ignore */ }
                 }
@@ -1725,22 +1723,6 @@
                     minWidth: 70,
                     sorter: "number",
                     headerTooltip: "Website views from business5core.com (store:sync-prices)",
-                    formatter: function(cell) {
-                        const value = parseInt(cell.getValue() || 0, 10);
-                        if (value === 0) {
-                            return '<span style="color: #6c757d;">0</span>';
-                        }
-                        return `<span style="font-weight: 600;">${value.toLocaleString()}</span>`;
-                    }
-                },
-                {
-                    title: "Sold",
-                    field: "Sold",
-                    hozAlign: "center",
-                    width: 70,
-                    minWidth: 70,
-                    sorter: "number",
-                    headerTooltip: "Website sold units from business5core.com (store:sync-prices)",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue() || 0, 10);
                         if (value === 0) {

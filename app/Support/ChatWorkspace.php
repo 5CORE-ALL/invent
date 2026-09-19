@@ -707,6 +707,16 @@ class ChatWorkspace
         return in_array($mode, ['all', 'mentions', 'dms', 'none'], true) ? $mode : 'all';
     }
 
+    public static function notifyTone(User $user): string
+    {
+        if (! Schema::hasTable('chat_notification_prefs') || ! Schema::hasColumn('chat_notification_prefs', 'tone')) {
+            return 'default';
+        }
+        $tone = ChatNotificationPref::query()->where('user_id', $user->id)->value('tone');
+
+        return in_array($tone, ['default', 'soft', 'bright', 'knock', 'off'], true) ? $tone : 'default';
+    }
+
     /**
      * @return list<int>
      */

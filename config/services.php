@@ -835,6 +835,14 @@ return [
         'currency' => env('TEMU2_CURRENCY', 'USD'),
     ],
 
+    'temu3' => [
+        'app_key' => env('TEMU3_APP_KEY'),
+        'secret_key' => env('TEMU3_SECRET_KEY'),
+        'access_token' => env('TEMU3_ACCESS_TOKEN'),
+        'shop_id' => env('TEMU3_SHOP_ID'),
+        'openapi_router_url' => env('TEMU3_OPENAPI_ROUTER_URL', 'https://openapi-b-us.temu.com/openapi/router'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Shein
@@ -860,6 +868,8 @@ return [
         'sub_site' => env('SHEIN_SUB_SITE', 'shein-us'),
         'language' => env('SHEIN_LANGUAGE', 'en'),
         'currency' => env('SHEIN_CURRENCY', 'USD'),
+        /** Int enum for product/price/save when shopPrice rises (Shein rejects strings). */
+        'price_rise_reason' => (int) env('SHEIN_PRICE_RISE_REASON', 1),
     ],
 
     /*

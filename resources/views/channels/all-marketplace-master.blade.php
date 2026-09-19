@@ -11,15 +11,15 @@
             height: auto !important;
             max-height: none !important;
             max-width: 100%;
-            overflow-x: hidden;
+            overflow-x: clip;
             overflow-y: auto !important;
         }
         .wrapper {
             height: auto !important;
             max-height: none !important;
             max-width: 100%;
-            overflow-x: hidden;
-            overflow-y: auto !important;
+            overflow-x: clip;
+            overflow-y: visible !important;
         }
         body {
             font-family: 'Poppins', sans-serif;
@@ -187,10 +187,21 @@
             overflow: hidden !important;
         }
         #marketplace-table.tabulator .tabulator-header {
+            --amm-header-top: calc(var(--tz-topbar-height, 70px) + 14px);
             position: sticky !important;
-            top: calc(var(--tz-topbar-height, 70px) + 14px) !important;
+            top: var(--amm-header-top) !important;
             z-index: 24 !important;
             background-color: #dbeafe !important;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+        }
+        #marketplace-table.tabulator .tabulator-header.amm-header-frozen {
+            position: fixed !important;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+        }
+        #amm-header-freeze-spacer {
+            display: none;
+            width: 100%;
+            pointer-events: none;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-header-contents,
         #marketplace-table.tabulator .tabulator-header .tabulator-col {
@@ -624,7 +635,7 @@
                 top: 56px !important;
             }
             #marketplace-table.tabulator .tabulator-header {
-                top: 70px !important;
+                --amm-header-top: 70px;
             }
             .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
                 height: 52px;
@@ -4935,7 +4946,60 @@
             table.on('renderComplete', function() {
                 paintMetricDots(channelKeysFromTableData());
                 bindAmmHorizontalScrollSync();
+                pinAmmTableHeader();
             });
+
+            function ammHeaderPinTop() {
+                var bar = document.getElementById('amm-table-hscroll');
+                var topbar = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tz-topbar-height')) || 70;
+                var extra = (bar && bar.style.display !== 'none' && bar.offsetParent !== null) ? (bar.offsetHeight || 14) : 0;
+                return topbar + extra;
+            }
+
+            function pinAmmTableHeader() {
+                var tableEl = document.getElementById('marketplace-table');
+                var header = tableEl && tableEl.querySelector('.tabulator-header');
+                if (!tableEl || !header) return;
+
+                var spacer = document.getElementById('amm-header-freeze-spacer');
+                if (!spacer) {
+                    spacer = document.createElement('div');
+                    spacer.id = 'amm-header-freeze-spacer';
+                    header.parentNode.insertBefore(spacer, header);
+                }
+
+                var top = ammHeaderPinTop();
+                var tableRect = tableEl.getBoundingClientRect();
+                var headerRect = header.getBoundingClientRect();
+                var headerH = header.offsetHeight || headerRect.height || 0;
+                var pinned = header.classList.contains('amm-header-frozen');
+                var inRange = tableRect.top < top && tableRect.bottom > (top + headerH);
+                var stickyFailed = pinned || headerRect.top < (top - 1);
+
+                header.style.setProperty('--amm-header-top', top + 'px');
+                if (inRange && stickyFailed) {
+                    spacer.style.display = 'block';
+                    spacer.style.height = headerH + 'px';
+                    header.classList.add('amm-header-frozen');
+                    header.style.left = tableRect.left + 'px';
+                    header.style.width = tableRect.width + 'px';
+                    header.style.right = 'auto';
+                } else {
+                    spacer.style.display = 'none';
+                    spacer.style.height = '0px';
+                    header.classList.remove('amm-header-frozen');
+                    header.style.left = '';
+                    header.style.width = '';
+                    header.style.right = '';
+                }
+
+                if (!window.__ammHeaderFreezeBound) {
+                    window.__ammHeaderFreezeBound = true;
+                    window.addEventListener('scroll', pinAmmTableHeader, { passive: true, capture: true });
+                    document.addEventListener('scroll', pinAmmTableHeader, { passive: true, capture: true });
+                    window.addEventListener('resize', pinAmmTableHeader);
+                }
+            }
 
             function bindAmmHorizontalScrollSync() {
                 var holder = document.querySelector('#marketplace-table .tabulator-tableholder');
@@ -4963,12 +5027,7 @@
                     inner.style.width = width + 'px';
                     var needsBar = width > bar.clientWidth + 2;
                     bar.style.display = needsBar ? '' : 'none';
-                    var headerEl = document.querySelector('#marketplace-table .tabulator-header');
-                    if (headerEl) {
-                        headerEl.style.top = needsBar
-                            ? 'calc(var(--tz-topbar-height, 70px) + 14px)'
-                            : 'var(--tz-topbar-height, 70px)';
-                    }
+                    pinAmmTableHeader();
                 }
 
                 if (holder.dataset.ammScrollBound !== '1') {

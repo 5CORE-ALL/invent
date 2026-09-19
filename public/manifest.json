@@ -39,24 +39,6 @@
       "short_name": "Chat",
       "url": "/chat",
       "icons": [{ "src": "/images/pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
-    },
-    {
-      "name": "Add Incoming",
-      "short_name": "Incoming",
-      "url": "/incoming-view",
-      "icons": [{ "src": "/images/pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
-    },
-    {
-      "name": "WMS Scan",
-      "short_name": "Scan",
-      "url": "/wms/scan",
-      "icons": [{ "src": "/images/pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
-    },
-    {
-      "name": "WMS Pick",
-      "short_name": "Pick",
-      "url": "/wms/pick",
-      "icons": [{ "src": "/images/pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ],
   "prefer_related_applications": false

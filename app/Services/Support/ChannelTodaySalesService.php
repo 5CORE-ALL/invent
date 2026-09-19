@@ -420,11 +420,12 @@ class ChannelTodaySalesService
             return null;
         }
 
+        [$from, $to] = \App\Services\SheinApiService::shanghaiSqlBounds($start, $end);
         $sum = 0.0;
         foreach (
             DB::table('shein_daily_data')
-                ->where('order_processed_on', '>=', $start)
-                ->where('order_processed_on', '<=', $end)
+                ->where('order_processed_on', '>=', $from)
+                ->where('order_processed_on', '<=', $to)
                 ->cursor() as $row
         ) {
             $orderStatus = strtolower((string) ($row->order_status ?? ''));

@@ -1332,6 +1332,15 @@
                                         <li>
                                             <a href="{{ route('newtemuone.index') }}">Temu 1 Analytics</a>
                                         </li>
+                                        <li>
+                                            <a href="{{ route('temu.ads.missing') }}" class="temu-ads-missing-nav">
+                                                Temu 1 Missing Ads
+                                                @php $temu1AdsMissingCount = \App\Http\Controllers\Campaigns\Temu1MissingAdsController::missingTotalCount(); @endphp
+                                                @if($temu1AdsMissingCount > 0)
+                                                    <span class="badge bg-danger rounded-pill">{{ number_format($temu1AdsMissingCount) }}</span>
+                                                @endif
+                                            </a>
+                                        </li>
 
                                         @if (isset($permissions['listing_temu']) && in_array('view', $permissions['listing_temu']))
                                             <li>
@@ -1356,6 +1365,15 @@
                                         </li>
                                         <li>
                                             <a href="{{ route('temu2.ads') }}">Temu 2 Ads</a>
+                                        </li>
+                                        <li>
+                                            <a href="{{ route('temu2.ads.missing') }}" class="temu2-ads-missing-nav">
+                                                Temu 2 Missing Ads
+                                                @php $temu2AdsMissingCount = \App\Http\Controllers\Campaigns\Temu2MissingAdsController::missingTotalCount(); @endphp
+                                                @if($temu2AdsMissingCount > 0)
+                                                    <span class="badge bg-danger rounded-pill">{{ number_format($temu2AdsMissingCount) }}</span>
+                                                @endif
+                                            </a>
                                         </li>
                                     </ul>
                                 </div>

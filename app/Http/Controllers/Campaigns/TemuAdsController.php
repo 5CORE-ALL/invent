@@ -8,6 +8,7 @@ use App\Models\MarketplaceDailyMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuAdsApiReport;
+use App\Models\TemuMetric;
 use App\Services\TemuAdCreateRejectService;
 use App\Services\TemuAdsApiReportService;
 use App\Services\TemuAdsAutoPauseService;
@@ -309,8 +310,9 @@ class TemuAdsController extends Controller
             $statuses = $temuApi->queryAdStatuses([$goodsId]);
             $status = $statuses['statuses'][$goodsId] ?? 'Inactive';
             TemuAdsApiReport::where('goods_id', $goodsId)->update(['ad_status' => $status]);
+            Temu1MissingAdsController::forgetMissingTotalCache();
         } else {
-            $sku = TemuAdsApiReport::query()->where('goods_id', $goodsId)->value('sku');
+            $sku = $this->skuForGoodsId($goodsId);
             $rejectInfo = $rejects->handleFailedCreate(
                 $goodsId,
                 $sku !== null ? (string) $sku : null,
@@ -373,12 +375,7 @@ class TemuAdsController extends Controller
             }
         }
 
-        $skuByGoods = TemuAdsApiReport::query()
-            ->whereIn('goods_id', $ids)
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->get(['goods_id', 'sku'])
-            ->mapWithKeys(fn (TemuAdsApiReport $r) => [(string) $r->goods_id => (string) $r->sku]);
+        $skuByGoods = $this->skusForGoodsIds($ids);
 
         $created = [];
         $failed = [];
@@ -414,6 +411,7 @@ class TemuAdsController extends Controller
                 $status = $statuses['statuses'][$goodsId] ?? 'Inactive';
                 TemuAdsApiReport::where('goods_id', $goodsId)->update(['ad_status' => $status]);
             }
+            Temu1MissingAdsController::forgetMissingTotalCache();
         }
 
         Log::info('TemuAdsController::createAdsBulk', [
@@ -1233,6 +1231,56 @@ class TemuAdsController extends Controller
         return is_array($bucket) ? $bucket : [];
     }
 
+    private function skuForGoodsId(string $goodsId): ?string
+    {
+        $sku = TemuAdsApiReport::query()
+            ->where('goods_id', $goodsId)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->value('sku');
+        if ($sku) {
+            return (string) $sku;
+        }
+
+        $sku = TemuMetric::query()
+            ->where('goods_id', $goodsId)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->value('sku');
+
+        return $sku !== null ? (string) $sku : null;
+    }
+
+    /**
+     * @param  array<int, string>  $ids
+     * @return \Illuminate\Support\Collection<string, string>
+     */
+    private function skusForGoodsIds(array $ids)
+    {
+        $skuByGoods = TemuAdsApiReport::query()
+            ->whereIn('goods_id', $ids)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['goods_id', 'sku'])
+            ->mapWithKeys(fn (TemuAdsApiReport $r) => [(string) $r->goods_id => (string) $r->sku]);
+
+        $missing = array_values(array_filter($ids, fn ($id) => ! $skuByGoods->has((string) $id)));
+        if ($missing === []) {
+            return $skuByGoods;
+        }
+
+        $fromMetrics = TemuMetric::query()
+            ->whereIn('goods_id', $missing)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['goods_id', 'sku']);
+        foreach ($fromMetrics as $row) {
+            $skuByGoods->put((string) $row->goods_id, (string) $row->sku);
+        }
+
+        return $skuByGoods;
+    }
+
     /**
      * @param  array<int, string>  $skus
      * @return array<string, ProductMaster>
@@ -1354,7 +1402,7 @@ class TemuAdsController extends Controller
     }
 
     /**
-     * Single Temu row for /advertisement-master — L30 spend / clicks / orders /
+     * Single Temu 1 row for /advertisement-master — L30 spend / clicks / orders /
      * sales from temu_ads_api_reports, same period as /temu/ads default.
      *
      * @return array<int, array<string, mixed>>
@@ -1362,10 +1410,10 @@ class TemuAdsController extends Controller
     public function getAdvertisementMasterChannelRows(): array
     {
         $metrics = $this->advertisementMasterL30Metrics();
+        $row = self::advertisementMasterMetricRow('Temu', 'temu', (object) $metrics);
+        $row['channel'] = 'Temu 1';
 
-        return [
-            self::advertisementMasterMetricRow('Temu', 'temu', (object) $metrics),
-        ];
+        return [$row];
     }
 
     /**

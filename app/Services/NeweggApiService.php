@@ -897,7 +897,7 @@ class NeweggApiService
         }
 
         $obj = $json;
-        $wrappers = ['NeweggAPIResponse', 'ResponseBody', 'PriceResult', 'InventoryResult'];
+        $wrappers = ['NeweggAPIResponse', 'ResponseBody', 'PriceResult', 'InventoryResult', 'UpdatePriceResult'];
         $changed = true;
         while ($changed) {
             $changed = false;
@@ -1097,15 +1097,23 @@ class NeweggApiService
             $ok = $this->extractPriceUpdateSuccess($res);
             $err = $ok ? null : $this->extractItemError($res);
             $confirmed = $ok ? $this->extractUpdatedSellingPrice($res, $country) : null;
+            $live = null;
             if ($ok && ($confirmed === null || ! $this->pricesMatch($confirmed, $price))) {
-                $confirmed = $this->confirmSellingPriceWithRetry($spn, $price, $country);
-                if ($confirmed === null || ! $this->pricesMatch($confirmed, $price)) {
-                    $ok = false;
-                    $got = $confirmed !== null ? number_format($confirmed, 2, '.', '') : 'n/a';
-                    $err = 'Newegg did not confirm SellingPrice $'.number_format($price, 2, '.', '')
-                        .' (live $'.$got.').';
-                    $confirmed = null;
+                $live = $this->confirmSellingPriceWithRetry($spn, $price, $country);
+                if ($live !== null && ! $this->pricesMatch($live, $price)) {
+                    Log::warning('Newegg price write accepted but live GET still differs', [
+                        'seller_part_number' => $spn,
+                        'requested' => $price,
+                        'write_echo' => $confirmed,
+                        'live' => $live,
+                    ]);
                 }
+            }
+            $resolved = $this->resolvePriceUpdateConfirmation($ok, $confirmed, $live, $price);
+            $ok = $resolved['ok'];
+            $confirmed = $resolved['confirmed'];
+            if (! $ok && $err === null) {
+                $err = $resolved['error'];
             }
             if ($res['blocked_by_cloudflare']) {
                 $blockedAny = true;
@@ -1223,21 +1231,44 @@ class NeweggApiService
     }
 
     /**
+     * After Newegg accepts a write, pick the price to store locally.
+     * A lagging GET must not flip a successful write to failure (CT / Dil pushes
+     * were failing with "Newegg did not confirm SellingPrice").
+     *
+     * @return array{ok: bool, confirmed: ?float, error: ?string}
+     */
+    public function resolvePriceUpdateConfirmation(bool $writeOk, ?float $fromWrite, ?float $fromLive, float $requested): array
+    {
+        $requested = round($requested, 2);
+        if (! $writeOk) {
+            return ['ok' => false, 'confirmed' => null, 'error' => null];
+        }
+        if ($fromWrite !== null && $this->pricesMatch($fromWrite, $requested)) {
+            return ['ok' => true, 'confirmed' => round($fromWrite, 2), 'error' => null];
+        }
+        if ($fromLive !== null && $this->pricesMatch($fromLive, $requested)) {
+            return ['ok' => true, 'confirmed' => round($fromLive, 2), 'error' => null];
+        }
+
+        return ['ok' => true, 'confirmed' => $requested, 'error' => null];
+    }
+
+    /**
+     * Price row for Update Item Price. Always keeps MSRP >= SellingPrice (CT029).
+     *
      * @param  array<string, mixed>  $item
+     * @param  array<string, mixed>|null  $existing
      * @return array<string, string>
      */
-    private function priceUpdateRow(string $spn, string $country, string $currency, float $price, array $item): array
+    public function buildPriceUpdateRow(string $country, string $currency, float $price, array $item = [], ?array $existing = null): array
     {
+        $price = round($price, 2);
         $priceRow = [
-            'CountryCode' => $country,
-            'Currency' => $currency,
+            'CountryCode' => strtoupper($country),
+            'Currency' => strtoupper($currency),
             'SellingPrice' => number_format($price, 2, '.', ''),
         ];
 
-        $existing = $this->extractPriceRowForCountry(
-            $this->getItemPrice($spn, [$country])['json'] ?? null,
-            $country
-        );
         if (is_array($existing)) {
             foreach (['MAP', 'CheckoutMAP', 'EnableFreeShipping', 'LimitQuantity', 'MSRP'] as $key) {
                 if (! array_key_exists($key, $existing) || $existing[$key] === null || $existing[$key] === '') {
@@ -1262,7 +1293,26 @@ class NeweggApiService
             $priceRow['Active'] = $item['active'] ? '1' : '0';
         }
 
+        $msrp = isset($priceRow['MSRP']) ? (float) $priceRow['MSRP'] : 0.0;
+        if ($msrp < $price) {
+            $priceRow['MSRP'] = number_format($price, 2, '.', '');
+        }
+
         return $priceRow;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array<string, string>
+     */
+    private function priceUpdateRow(string $spn, string $country, string $currency, float $price, array $item): array
+    {
+        $existing = $this->extractPriceRowForCountry(
+            $this->getItemPrice($spn, [$country])['json'] ?? null,
+            $country
+        );
+
+        return $this->buildPriceUpdateRow($country, $currency, $price, $item, is_array($existing) ? $existing : null);
     }
 
     /**

@@ -134,6 +134,7 @@ use App\Models\EbayListingStatus;
 use App\Models\TemuListingStatus;
 use App\Services\EbayChannelMetricsService;
 use App\Services\LmpSkuGroupService;
+use App\Services\SheinApiService;
 use App\Services\SheinShopifySalesService;
 use App\Services\TemuShopifySalesService;
 use App\Models\BestbuyUSAListingStatus;
@@ -8995,11 +8996,12 @@ class ChannelMasterController extends Controller
      */
     private function sumSheinDailyDataRevenue(Carbon $start, Carbon $end): float
     {
+        [$from, $to] = SheinApiService::shanghaiSqlBounds($start, $end);
         $sum = 0.0;
         foreach (
             DB::table('shein_daily_data')
-                ->where('order_processed_on', '>=', $start)
-                ->where('order_processed_on', '<=', $end)
+                ->where('order_processed_on', '>=', $from)
+                ->where('order_processed_on', '<=', $to)
                 ->cursor() as $row
         ) {
             $orderNum = trim((string) ($row->order_number ?? ''));
@@ -9433,11 +9435,12 @@ class ChannelMasterController extends Controller
             Carbon::now('America/Los_Angeles')
         );
 
+        [$from, $to] = SheinApiService::shanghaiSqlBounds($l7Start, $l7End);
         $sum = 0.0;
         foreach (
             DB::table('shein_daily_data')
-                ->where('order_processed_on', '>=', $l7Start)
-                ->where('order_processed_on', '<=', $l7End)
+                ->where('order_processed_on', '>=', $from)
+                ->where('order_processed_on', '<=', $to)
                 ->cursor() as $row
         ) {
             $orderNum = trim((string) ($row->order_number ?? ''));
@@ -20121,10 +20124,11 @@ class ChannelMasterController extends Controller
             $cursor->addDay();
         }
 
+        [$from, $to] = SheinApiService::shanghaiSqlBounds($start, $end);
         foreach (
             DB::table('shein_daily_data')
-                ->where('order_processed_on', '>=', $start)
-                ->where('order_processed_on', '<=', $end)
+                ->where('order_processed_on', '>=', $from)
+                ->where('order_processed_on', '<=', $to)
                 ->cursor() as $row
         ) {
             $orderNum = trim((string) ($row->order_number ?? ''));
@@ -20140,9 +20144,8 @@ class ChannelMasterController extends Controller
                 || str_contains($orderStatus, 'exchange')) {
                 continue;
             }
-            try {
-                $d = Carbon::parse((string) ($row->order_processed_on), 'America/Los_Angeles')->toDateString();
-            } catch (\Throwable $e) {
+            $d = SheinApiService::pacificDateFromStored($row->order_processed_on);
+            if ($d === null) {
                 continue;
             }
             if (! isset($out[$d])) {

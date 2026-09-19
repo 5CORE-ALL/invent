@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\WayfairDailyData;
 use App\Services\WayfairApiService;
+use App\Services\WayfairDailyOrderFetchService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,7 @@ class FetchWayfairDailyData extends Command
      *
      * @var string
      */
-    protected $signature = 'wayfair:daily {--days=60 : Number of days to fetch}';
+    protected $signature = 'wayfair:daily {--days=60 : Number of days to fetch} {--no-sleep : Do not pause between Wayfair pages}';
 
     /**
      * The console command description.
@@ -65,8 +66,8 @@ class FetchWayfairDailyData extends Command
             return 1;
         }
 
-        $this->info("Access token received. Fetching all purchase orders...");
-        
+        $this->info("Access token received. Fetching dropship purchase orders from {$cutoffDate->toDateString()}...");
+
         $this->fetchAndStoreOrders($token, $cutoffDate);
 
         $endTime = microtime(true);
@@ -94,126 +95,44 @@ class FetchWayfairDailyData extends Command
     }
 
     /**
-     * Fetch all orders from Wayfair API and store raw data
-     * Note: Wayfair API returns orders oldest-first and doesn't support date filtering
-     * So we fetch ALL orders and store them (period calculated based on date)
+     * Fetch POs from the dropship API (fromDate) and upsert daily-sales rows.
      */
     protected function fetchAndStoreOrders(string $token, Carbon $cutoffDate): void
     {
-        $limit = 100;
-        $offset = 0;
-        $totalOrders = 0;
+        $result = app(WayfairDailyOrderFetchService::class)
+            ->fetchPurchaseOrders($cutoffDate, $token, ! $this->option('no-sleep'));
+
+        if (! empty($result['errors'])) {
+            $this->error('Wayfair GraphQL errors: '.json_encode($result['errors']));
+        }
+
+        $purchaseOrders = $result['orders'] ?? [];
+        $this->info('Source: '.($result['source'] ?? 'unknown').', POs: '.count($purchaseOrders));
+
         $insertedProducts = 0;
         $bulkData = [];
 
-        do {
-            $purchaseOrders = $this->fetchPurchaseOrders($token, $limit, $offset);
-
-            if (empty($purchaseOrders)) {
-                break;
-            }
-
-            $totalOrders += count($purchaseOrders);
-
-            foreach ($purchaseOrders as $po) {
-                $products = $po['products'] ?? [];
-                foreach ($products as $product) {
-                    $orderData = $this->parseOrderData($po, $product);
-                    if ($orderData) {
-                        $bulkData[] = $orderData;
-                        $insertedProducts++;
-                    }
+        foreach ($purchaseOrders as $po) {
+            $products = $po['products'] ?? [];
+            foreach ($products as $product) {
+                $orderData = $this->parseOrderData($po, $product);
+                if ($orderData) {
+                    $bulkData[] = $orderData;
+                    $insertedProducts++;
                 }
             }
 
-            // Bulk insert in chunks of 100
             if (count($bulkData) >= 100) {
                 $this->bulkUpsertOrders($bulkData);
                 $bulkData = [];
             }
+        }
 
-            $offset += $limit;
-            $this->info("  Processed offset {$offset} ({$totalOrders} POs fetched, {$insertedProducts} products)...");
-
-        } while (!empty($purchaseOrders));
-
-        // Insert remaining orders
-        if (!empty($bulkData)) {
+        if (! empty($bulkData)) {
             $this->bulkUpsertOrders($bulkData);
         }
 
-        $this->info("Fetched {$totalOrders} total POs, stored {$insertedProducts} products.");
-    }
-
-    /**
-     * Fetch purchase orders from Wayfair GraphQL API
-     */
-    private function fetchPurchaseOrders(string $token, int $limit, int $offset): array
-    {
-        $query = <<<'GRAPHQL'
-        query GetPurchaseOrders($limit: Int!, $offset: Int!) {
-            purchaseOrders(
-                limit: $limit,
-                offset: $offset
-            ) {
-                poNumber
-                poDate
-                estimatedShipDate
-                customerName
-                customerAddress1
-                customerAddress2
-                customerCity
-                customerState
-                customerPostalCode
-                shippingInfo {
-                    shipSpeed
-                    carrierCode
-                }
-                packingSlipUrl
-                warehouse {
-                    id
-                    name
-                }
-                products {
-                    partNumber
-                    quantity
-                    price
-                    event {
-                        id
-                        type
-                        name
-                    }
-                }
-                shipTo {
-                    name
-                    address1
-                    address2
-                    city
-                    state
-                    country
-                    postalCode
-                    phoneNumber
-                }
-            }
-        }
-        GRAPHQL;
-
-        $response = app(WayfairApiService::class)->apiHttpClient()
-            ->withToken($token)
-            ->post($this->graphqlUrl, [
-                'query' => $query,
-                'variables' => [
-                    'limit' => $limit,
-                    'offset' => $offset,
-                ]
-            ]);
-
-        if (!$response->successful()) {
-            $this->error("Wayfair API Error: " . $response->body());
-            return [];
-        }
-
-        return $response->json()['data']['purchaseOrders'] ?? [];
+        $this->info('Fetched '.count($purchaseOrders).' POs, stored '.$insertedProducts.' products.');
     }
 
     /**

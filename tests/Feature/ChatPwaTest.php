@@ -15,6 +15,10 @@ class ChatPwaTest extends TestCase
         $this->assertSame('/chat', $manifest['start_url'] ?? null);
         $this->assertSame('standalone', $manifest['display'] ?? null);
         $this->assertNotEmpty($manifest['icons'] ?? []);
+        $shortcutUrls = array_map(static fn ($s) => $s['url'] ?? '', $manifest['shortcuts'] ?? []);
+        $this->assertSame(['/chat'], $shortcutUrls);
+        $this->assertStringNotContainsString('/incoming-view', json_encode($manifest));
+        $this->assertStringNotContainsString('/wms/', json_encode($manifest));
     }
 
     public function test_service_worker_does_not_cache_private_chat(): void

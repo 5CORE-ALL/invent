@@ -10,7 +10,9 @@ use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
 use App\Http\Controllers\Campaigns\GoogleSerpAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleShoppingAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleYoutubeAdsMissingController;
+use App\Http\Controllers\Campaigns\Temu1MissingAdsController;
 use App\Http\Controllers\Campaigns\Temu2AdsController;
+use App\Http\Controllers\Campaigns\Temu2MissingAdsController;
 use App\Http\Controllers\Campaigns\TemuAdsController;
 use App\Http\Controllers\Campaigns\Tiktok1AdsRawDataController;
 use App\Http\Controllers\Campaigns\TiktokAdsMissingController;
@@ -26,7 +28,6 @@ use App\Models\ChannelMaster;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\ChannelMasterCalculatedData;
 use App\Support\AmazonAdsAdvertisementMasterHistory;
-use App\Support\Marketplace\MappingChannelCounts;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -560,17 +561,43 @@ class AdvertisementMasterController extends Controller
             return;
         }
 
-        foreach (['eBay', 'eBay 2', 'eBay 3', 'TikTok 1', 'Temu', 'Temu 2'] as $key) {
+        foreach (['eBay', 'eBay 2', 'eBay 3', 'TikTok 1', 'Temu', 'Temu 1', 'Temu 2'] as $key) {
             $label = AdvertisementMasterChannelLabel::query()->where('channel_key', $key)->first();
             if (! $label) {
                 continue;
             }
             $name = trim((string) $label->channel_name);
             if ($name !== '' && preg_match('/\s+Total$/i', $name)) {
-                $label->channel_name = $key;
+                $label->channel_name = $key === 'Temu' ? 'Temu 1' : $key;
                 $label->save();
             }
         }
+
+        $this->ensureTemu1TypeLabel();
+    }
+
+    /**
+     * The Temu ads source row is Temu 1. Keep the saved Type name in sync
+     * unless someone has already customized it.
+     */
+    private function ensureTemu1TypeLabel(): void
+    {
+        $label = AdvertisementMasterChannelLabel::query()->where('channel_key', 'Temu')->first();
+        if (! $label) {
+            return;
+        }
+
+        $name = trim((string) $label->channel_name);
+        if ($name !== '' && strcasecmp($name, 'Temu') !== 0) {
+            return;
+        }
+
+        $label->channel_name = 'Temu 1';
+        if (trim((string) $label->group_name) === '') {
+            $label->group_name = 'Temu';
+        }
+        $label->save();
+        $this->channelLabelMapCache = null;
     }
 
     /**
@@ -594,7 +621,7 @@ class AdvertisementMasterController extends Controller
             'marketplace' => 'tiktok',
             'source' => 'tiktok_group_total',
         ]);
-        $this->wrapRowsAsGroupTotal($rows, ['Temu', 'Temu 2'], [
+        $this->wrapRowsAsGroupTotal($rows, ['Temu', 'Temu 1', 'Temu 2'], [
             'channel' => 'Temu Total',
             'channel_key' => 'Temu Total',
             'channel_group' => 'Temu',
@@ -786,6 +813,7 @@ class AdvertisementMasterController extends Controller
             'tiktokshop' => 'tiktok1',
             'tiktoks' => 'tiktok1',
             'tiktok' => 'tiktok1',
+            'temuone' => 'temu1',
         ];
 
         return $aliases[$n] ?? $n;
@@ -2084,7 +2112,7 @@ class AdvertisementMasterController extends Controller
 
     /**
      * Missing-ad counts from the same pages as the sidebar:
-     * Ads Missing Amz, Missing Mapping Temu, Missing Google Shopping / SERP,
+     * Ads Missing Amz, Temu 1 Missing Ads, Temu 2 Missing Ads, Missing Google Shopping / SERP,
      * YouTube Missing Ads, TikTok Missing Ads.
      *
      * @param  array<int, array<string, mixed>>  $rows
@@ -2165,13 +2193,13 @@ class AdvertisementMasterController extends Controller
         );
         $put(
             ['temu', 'temu1'],
-            $safeCount(static fn () => MappingChannelCounts::countForSlug('temu')),
-            $this->temuMissingMappingHref('temu')
+            $safeCount(static fn () => Temu1MissingAdsController::missingTotalCount()),
+            $this->namedHref('temu.ads.missing')
         );
         $put(
             ['temu2'],
-            $safeCount(static fn () => MappingChannelCounts::countForSlug('temu2')),
-            $this->temuMissingMappingHref('temu2')
+            $safeCount(static fn () => Temu2MissingAdsController::missingTotalCount()),
+            $this->namedHref('temu2.ads.missing')
         );
         $put(
             ['ebay', 'ebay1'],
@@ -2185,19 +2213,6 @@ class AdvertisementMasterController extends Controller
         );
 
         return $map;
-    }
-
-    private function temuMissingMappingHref(string $channel = 'temu'): ?string
-    {
-        try {
-            if (! Route::has('map.issues.channel')) {
-                return null;
-            }
-
-            return route('map.issues.channel', ['channel' => $channel]);
-        } catch (\Throwable $e) {
-            return null;
-        }
     }
 
     /**
@@ -2254,7 +2269,7 @@ class AdvertisementMasterController extends Controller
             return null;
         }
 
-        foreach (['channel_key', 'channel'] as $field) {
+        foreach (['channel_key', 'channel', 'source'] as $field) {
             $norm = $this->normalizeChannelMatchKey((string) ($row[$field] ?? ''));
             if ($norm !== '' && isset($sources[$norm])) {
                 return $sources[$norm];

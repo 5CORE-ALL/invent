@@ -1248,6 +1248,41 @@ class SheinApiService
     }
 
     /**
+     * Convert a display-timezone window into naive Asia/Shanghai SQL bounds
+     * matching shein_daily_data.order_processed_on storage.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function shanghaiSqlBounds(Carbon $start, Carbon $end): array
+    {
+        return [
+            $start->copy()->timezone(self::API_TIMEZONE)->format('Y-m-d H:i:s'),
+            $end->copy()->timezone(self::API_TIMEZONE)->format('Y-m-d H:i:s'),
+        ];
+    }
+
+    /**
+     * Pacific calendar date for a stored Shein timestamp (Shanghai wall clock).
+     */
+    public static function pacificDateFromStored(mixed $stored): ?string
+    {
+        $raw = $stored instanceof \DateTimeInterface
+            ? $stored->format('Y-m-d H:i:s')
+            : trim((string) $stored);
+        if ($raw === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($raw, self::API_TIMEZONE)
+                ->timezone('America/Los_Angeles')
+                ->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * Order list — POST /open-api/order/order-list
      * start/end must be within 48 hours (Shein limit). Timezone: Asia/Shanghai.
      *
@@ -3292,9 +3327,15 @@ class SheinApiService
     }
 
     /**
+     * Shein OpenapiChangeSalePriceReq.riseReason is an int enum (API 3001682).
+     * A label like "Market price adjustment" 400s the whole product/price/save batch.
+     */
+    public const PRICE_RISE_REASON_MARKET_ADJUSTMENT = 1;
+
+    /**
      * Build one product/price/save row (Shein productCode = platform skuCode).
      *
-     * @return array{currencyCode: string, productCode: string, site: string, shopPrice: float, specialPrice: float|null, riseReason: string|null}
+     * @return array{currencyCode: string, productCode: string, site: string, shopPrice: float, specialPrice: float|null, riseReason?: int}
      */
     public function buildPriceSaveEntry(
         string $productCode,
@@ -3315,27 +3356,34 @@ class SheinApiService
             'site' => $site,
             'shopPrice' => $shop,
             'specialPrice' => $shop > $sale + 0.001 ? $sale : null,
-            'riseReason' => null,
         ];
         if ($previousShopPrice !== null && $shop > ((float) $previousShopPrice) + 0.001) {
-            $entry['riseReason'] = 'Market price adjustment';
+            $entry['riseReason'] = $this->priceRiseReasonCode();
         }
 
         return $entry;
     }
 
+    protected function priceRiseReasonCode(): int
+    {
+        $code = (int) config('services.shein.price_rise_reason', self::PRICE_RISE_REASON_MARKET_ADJUSTMENT);
+
+        return $code > 0 ? $code : self::PRICE_RISE_REASON_MARKET_ADJUSTMENT;
+    }
+
     /**
      * Bulk price push (up to 100 SKUs per Shein API request).
      *
-     * @param  list<array{sku?: string, price: float|int|string, shop_price?: float|int|string|null}>  $items
+     * @param  list<array{sku?: string, seller_part_number?: string, price: float|int|string, shop_price?: float|int|string|null}>  $items
      * @return array{ok: bool, pushed: int, failed: int, error_message: ?string, results: list<array<string, mixed>>}
      */
-    public function updateItemPriceBulk(array $items): array
+    public function updateItemPriceBulk(array $items, ?string $defaultCountry = null): array
     {
         $results = [];
         $pushed = 0;
         $failed = 0;
         $lastError = null;
+        unset($defaultCountry);
 
         if (! $this->isConfigured()) {
             return [
@@ -3354,7 +3402,7 @@ class SheinApiService
 
         $prepared = [];
         foreach ($items as $item) {
-            $sku = trim((string) ($item['sku'] ?? ''));
+            $sku = trim((string) ($item['sku'] ?? $item['seller_part_number'] ?? $item['sellerSku'] ?? ''));
             $sale = isset($item['price']) ? (float) $item['price'] : 0.0;
             $shopHint = isset($item['shop_price']) && is_numeric($item['shop_price'])
                 ? (float) $item['shop_price']

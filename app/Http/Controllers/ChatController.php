@@ -46,6 +46,7 @@ class ChatController extends Controller
             'canPin' => ChatWorkspace::canPin($user),
             'canInspect' => ChatWorkspace::canInspectOther($user),
             'notifyMode' => ChatWorkspace::notifyMode($user),
+            'notifyTone' => ChatWorkspace::notifyTone($user),
             'presenceStatus' => ChatPresence::statusFor((int) $user->id),
             'broadcastDriver' => (string) config('broadcasting.default'),
         ]);
@@ -682,18 +683,29 @@ class ChatController extends Controller
         $user = Auth::user();
         abort_unless($user, 403);
         if ($request->isMethod('post')) {
-            $validated = $request->validate(['mode' => 'required|in:all,mentions,dms,none']);
+            $validated = $request->validate([
+                'mode' => 'required|in:all,mentions,dms,none',
+                'tone' => 'nullable|in:default,soft,bright,knock,off',
+            ]);
+            $tone = $validated['tone'] ?? ChatWorkspace::notifyTone($user);
             if (Schema::hasTable('chat_notification_prefs')) {
+                $attrs = ['mode' => $validated['mode']];
+                if (Schema::hasColumn('chat_notification_prefs', 'tone')) {
+                    $attrs['tone'] = $tone;
+                }
                 ChatNotificationPref::query()->updateOrCreate(
                     ['user_id' => $user->id],
-                    ['mode' => $validated['mode']]
+                    $attrs
                 );
             }
 
-            return response()->json(['ok' => true, 'mode' => $validated['mode']]);
+            return response()->json(['ok' => true, 'mode' => $validated['mode'], 'tone' => $tone]);
         }
 
-        return response()->json(['mode' => ChatWorkspace::notifyMode($user)]);
+        return response()->json([
+            'mode' => ChatWorkspace::notifyMode($user),
+            'tone' => ChatWorkspace::notifyTone($user),
+        ]);
     }
 
     public function members(Request $request, int $channel): JsonResponse
