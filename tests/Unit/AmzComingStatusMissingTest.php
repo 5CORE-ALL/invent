@@ -264,6 +264,20 @@ class AmzComingStatusMissingTest extends TestCase
         $this->assertTrue($created[0]['page_created']);
         $this->assertSame('User #9', $created[0]['created_by']);
         $this->assertNotSame('', $created[0]['created_at']);
+
+        $legacy = AmazonAdsMissingLinks::linkListForType(collect([
+            (object) [
+                'id' => 4,
+                'type' => 'PT',
+                'campaign_id' => '44',
+                'campaign_name' => 'PARENT DEMO PT',
+                'user_id' => 12,
+                'created_at' => '2026-07-08 10:00:00',
+            ],
+        ]), 'PT', $statusMap);
+        $this->assertFalse($legacy[0]['page_created']);
+        $this->assertSame('User #12', $legacy[0]['created_by']);
+        $this->assertNotSame('', $legacy[0]['created_at']);
     }
 
     /**

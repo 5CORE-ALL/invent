@@ -609,22 +609,27 @@
             }
 
             function createdTooltip(c) {
+                var verb = (c && c.page_created) ? 'Created' : 'Added';
                 var when = (c && c.created_at) ? String(c.created_at) : '';
                 var who = (c && c.created_by) ? String(c.created_by) : '';
                 if (when && who) {
-                    return 'Created ' + when + ' by ' + who;
+                    return verb + ' ' + when + ' by ' + who;
                 }
                 if (when) {
-                    return 'Created ' + when;
+                    return verb + ' ' + when;
                 }
                 if (who) {
-                    return 'Created by ' + who;
+                    return verb + ' by ' + who;
                 }
-                return 'Created on this page';
+                return verb + ' on this page';
+            }
+
+            function hasCreateHistory(c) {
+                return !!(c && (c.page_created || c.created_at || c.created_by));
             }
 
             function createdCheck(c) {
-                if (!c || !c.page_created) {
+                if (!hasCreateHistory(c)) {
                     return '';
                 }
                 return ' <i class="fa fa-check-circle chip-created" title="' + esc(createdTooltip(c)) + '"></i>';
@@ -636,7 +641,7 @@
                     var list = (type === 'PT' ? d.pt : d.kw) || [];
                     var chips = list.map(function (c) {
                         var canArchive = !!(c && (c.campaign_id || c.campaign_name));
-                        var chipTitle = c.page_created
+                        var chipTitle = hasCreateHistory(c)
                             ? (c.campaign_name + ' — ' + createdTooltip(c))
                             : c.campaign_name;
                         return '<span class="link-chip" title="' + esc(chipTitle) + '">'
