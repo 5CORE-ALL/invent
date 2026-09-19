@@ -868,6 +868,8 @@ return [
         'sub_site' => env('SHEIN_SUB_SITE', 'shein-us'),
         'language' => env('SHEIN_LANGUAGE', 'en'),
         'currency' => env('SHEIN_CURRENCY', 'USD'),
+        /** Int enum for product/price/save when shopPrice rises (Shein rejects strings). */
+        'price_rise_reason' => (int) env('SHEIN_PRICE_RISE_REASON', 1),
     ],
 
     /*

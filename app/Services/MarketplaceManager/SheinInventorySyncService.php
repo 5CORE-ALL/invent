@@ -501,9 +501,9 @@ class SheinInventorySyncService
 
         if ($priceRows !== []) {
             $bulk = $this->sheinApi->updateItemPriceBulk(array_map(static fn ($r) => [
-                'seller_part_number' => $r['sku_code'],
+                'sku' => $r['sku'] ?? $r['sku_code'] ?? '',
                 'price' => $r['price'],
-            ], $priceRows), 'USA');
+            ], $priceRows));
             $priceUpdated = (int) ($bulk['pushed'] ?? 0);
             if ($priceUpdated > 0) {
                 $this->updateLocalPrices($priceRows);

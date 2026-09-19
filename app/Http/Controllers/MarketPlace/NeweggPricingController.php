@@ -742,7 +742,8 @@ class NeweggPricingController extends Controller
             // Build a SKU → SellerPartNumber index once (avoids N queries).
             $spnByExact = [];
             $spnByNorm = [];
-            foreach (NeweggPricing::query()->select('seller_part_number')->get() as $row) {
+            $msrpBySpn = [];
+            foreach (NeweggPricing::query()->select('seller_part_number', 'msrp')->get() as $row) {
                 $spn = (string) $row->seller_part_number;
                 $exact = $this->exactSkuKey($spn);
                 $norm = $this->normalizeSkuKey($spn);
@@ -750,6 +751,20 @@ class NeweggPricingController extends Controller
                     $spnByExact[$exact] = $spn;
                 }
                 if ($norm !== '' && !isset($spnByNorm[$norm])) {
+                    $spnByNorm[$norm] = $spn;
+                }
+                if ($spn !== '' && $row->msrp !== null && (float) $row->msrp > 0) {
+                    $msrpBySpn[$spn] = (float) $row->msrp;
+                }
+            }
+            foreach (NeweggItem::query()->select('seller_part_number')->get() as $row) {
+                $spn = (string) $row->seller_part_number;
+                $exact = $this->exactSkuKey($spn);
+                $norm = $this->normalizeSkuKey($spn);
+                if ($exact !== '' && ! isset($spnByExact[$exact])) {
+                    $spnByExact[$exact] = $spn;
+                }
+                if ($norm !== '' && ! isset($spnByNorm[$norm])) {
                     $spnByNorm[$norm] = $spn;
                 }
             }
@@ -775,7 +790,11 @@ class NeweggPricingController extends Controller
                     $errors[] = ['sku' => $sku, 'success' => false, 'error' => 'No Newegg listing (SPN) found for SKU'];
                     continue;
                 }
-                $items[] = ['seller_part_number' => $spn, 'price' => round($price, 2), 'currency' => 'USD'];
+                $item = ['seller_part_number' => $spn, 'price' => round($price, 2), 'currency' => 'USD'];
+                if (isset($msrpBySpn[$spn])) {
+                    $item['msrp'] = $msrpBySpn[$spn];
+                }
+                $items[] = $item;
                 $skuBySpn[$spn] = $sku;
             }
 
