@@ -895,9 +895,9 @@
                         <span class="lc-suggested" id="lc-category-suggested" style="display:none">Suggested</span>
                     </div>
                     <div class="mb-3 lc-mp-category-manual d-none">
-                        <label class="form-label">Category ID <span class="lc-req">*</span></label>
+                        <label class="form-label" id="lc-category-manual-id-label">Category ID <span class="lc-req">*</span></label>
                         <input type="text" id="lc-category-id-visible" class="form-control" placeholder="Marketplace category ID">
-                        <label class="form-label mt-2">Category path / name</label>
+                        <label class="form-label mt-2" id="lc-category-manual-path-label">Category path / name</label>
                         <input type="text" id="lc-category-path-visible" class="form-control" placeholder="Optional category name">
                     </div>
                     <input type="hidden" id="lc-category-id">
@@ -2878,14 +2878,17 @@
         $('#lc-attr-help').text(ed.wayfair && !ed.amazon
             ? 'Color and country of origin are sent with the Wayfair class questions. Color is taken from the SKU when possible.'
             : 'Amazon will reject the listing without these. Color is taken from the SKU when possible.');
-        $('.lc-mp-category-manual').toggleClass('d-none', !(ed.temu || ed.newegg));
+        $('.lc-mp-category-manual').toggleClass('d-none', !(ed.temu || ed.newegg || ed.wayfair));
         $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.reverb || ed.amazon || ed.temu || ed.newegg || ed.faire || ed.wayfair));
         $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon || ed.newegg || ed.faire || ed.wayfair));
         $('.lc-category-star').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.newegg || ed.faire || ed.wayfair));
         $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon || ed.wayfair));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
         $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.faire ? 'Faire Product Type' : (ed.wayfair ? 'Wayfair Class' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.newegg ? 'Newegg Subcategory' : (ed.reverb ? 'Reverb Category' : 'Category')))))));
-        $('#lc-category-id-visible').attr('placeholder', ed.category_placeholder || 'Category ID');
+        $('#lc-category-id-visible').attr('placeholder', ed.wayfair ? 'Numeric class ID from Partner Home' : (ed.category_placeholder || 'Category ID'));
+        $('#lc-category-manual-id-label').html((ed.wayfair ? 'Class ID' : 'Category ID') + ' <span class="lc-req">*</span>');
+        $('#lc-category-manual-path-label').text(ed.wayfair ? 'Class name' : 'Category path / name');
+        $('#lc-category-path-visible').attr('placeholder', ed.wayfair ? 'Optional class name' : 'Optional category name');
         $('#lc-category-search').attr('placeholder', ed.category_placeholder || 'Search categories');
         $('#lc-optimize-desc-label').text(ed.optimize_label || 'Optimize Description');
         $('#lc-policies-title').text(

@@ -2130,64 +2130,52 @@ XML;
     public function searchListingClasses(string $query, string $title = '', bool $fallbackToCatalog = false): array
     {
         $q = trim($query !== '' ? $query : $title);
-        if (mb_strlen($q) > 40) {
-            foreach ($this->classSearchHints($q, $title) as $hint) {
-                if (mb_strlen($hint) > 40) {
-                    continue;
-                }
-                $found = $this->searchListingClasses($hint, $hint, $fallbackToCatalog);
-                if (($found['categories'] ?? []) !== []) {
-                    return $found;
-                }
-            }
+        if (preg_match('/^\d{2,}$/', $q)) {
+            return $this->classResultFromTypedId((int) $q);
         }
+
         $categories = $this->taxonomyCategories();
-        if ($categories === [] && preg_match('/^\d{2,}$/', $q)) {
-            return [
-                'success' => true,
-                'categories' => [[
-                    'id' => $q,
-                    'path' => 'Class '.$q,
-                    'name' => 'Class '.$q,
-                ]],
-            ];
+        if ($categories === []) {
+            $categories = array_values($this->listingStatusClassDirectory());
         }
         if ($categories === []) {
             return [
-                'success' => false,
+                'success' => true,
                 'categories' => [],
-                'message' => 'Wayfair class list is empty. Type a numeric class ID from Partner Home, or Publish to copy the class from a listed sibling.',
+                'message' => 'Wayfair class search is unavailable. Type the numeric class ID from Partner Home in Class ID, then save.',
             ];
         }
 
-        $scored = [];
-        if (preg_match('/^\d{2,}$/', $q)) {
-            $want = (int) $q;
-            foreach ($categories as $row) {
-                if (! is_array($row)) {
-                    continue;
-                }
-                $id = (int) ($row['taxonomyCategoryId'] ?? $row['classId'] ?? $row['class_id'] ?? 0);
-                if ($id !== $want) {
-                    continue;
-                }
-                $name = trim((string) ($row['name'] ?? $row['className'] ?? ''));
-
-                return [
-                    'success' => true,
-                    'categories' => [[
-                        'id' => (string) $id,
-                        'path' => ($name !== '' ? $name : 'Class '.$id).' ('.$id.')',
-                        'name' => $name !== '' ? $name : ('Class '.$id),
-                    ]],
-                ];
+        $queries = $this->classSearchQueries($q, $title);
+        $best = ['success' => true, 'categories' => []];
+        foreach ($queries as $hint) {
+            $found = $this->scoreListingClasses($categories, $hint, $fallbackToCatalog && $hint === $queries[0]);
+            if (($found['categories'] ?? []) !== []) {
+                return $found;
+            }
+            if ($best['categories'] === []) {
+                $best = $found;
             }
         }
 
+        return $best;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $categories
+     * @return array{success: bool, categories: list<array{id: string, path: string, name: string}>, message?: string}
+     */
+    private function scoreListingClasses(array $categories, string $q, bool $fallbackToCatalog = false): array
+    {
+        $q = trim($q);
+        if (preg_match('/^\d{2,}$/', $q)) {
+            return $this->classResultFromTypedId((int) $q);
+        }
         if (mb_strlen($q) < 2) {
             return ['success' => true, 'categories' => []];
         }
 
+        $scored = [];
         $qLower = mb_strtolower($q);
         $words = preg_split('/\s+/', $qLower) ?: [];
         foreach ($categories as $row) {
@@ -2252,6 +2240,61 @@ XML;
         }
 
         return ['success' => true, 'categories' => $out];
+    }
+
+    /**
+     * @return array{success: bool, categories: list<array{id: string, path: string, name: string}>}
+     */
+    private function classResultFromTypedId(int $classId): array
+    {
+        $name = 'Class '.$classId;
+        if ($this->productAdditionClassExists($classId)) {
+            $name = 'Wayfair class '.$classId;
+        }
+
+        return [
+            'success' => true,
+            'categories' => [[
+                'id' => (string) $classId,
+                'path' => $name.' ('.$classId.')',
+                'name' => $name,
+            ]],
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function classSearchQueries(string $query, string $title = ''): array
+    {
+        $out = [];
+        foreach ([$query, $title] as $raw) {
+            $raw = trim((string) $raw);
+            if ($raw === '') {
+                continue;
+            }
+            $out[] = $raw;
+            $split = $this->splitCompoundClassQuery($raw);
+            if ($split !== '' && strcasecmp($split, $raw) !== 0) {
+                $out[] = $split;
+            }
+        }
+        foreach ($this->classSearchHints($query, $title) as $hint) {
+            $out[] = $hint;
+        }
+
+        return array_values(array_unique(array_filter($out, static fn ($h) => mb_strlen($h) >= 2 && mb_strlen($h) <= 40)));
+    }
+
+    private function splitCompoundClassQuery(string $q): string
+    {
+        $q = trim($q);
+        $q = preg_replace('/([a-z])([A-Z])/', '$1 $2', $q) ?? $q;
+        $q = preg_replace('/\b(light)(stand|ing)\b/i', '$1 $2', $q) ?? $q;
+        $q = preg_replace('/\b(lighting)(stand|kit|accessory|accessories)\b/i', '$1 $2', $q) ?? $q;
+        $q = preg_replace('/\b(tripod)(stand|light|lighting)\b/i', '$1 $2', $q) ?? $q;
+
+        return trim(preg_replace('/\s+/', ' ', $q) ?? $q);
     }
 
     /**
@@ -2339,6 +2382,9 @@ XML;
         if (preg_match('/\bSTAND\b/', $upper)) {
             $extra[] = 'stand';
         }
+        if (preg_match('/\bLS\b|LIGHT|LGT|TRIPOD|LIGHTSTAND|LIGHTING/', $upper)) {
+            $extra = array_merge($extra, ['light stand', 'lighting stand', 'photography lighting', 'tripod', 'stand']);
+        }
         foreach ($extra as $hint) {
             $hints[] = $hint;
         }
@@ -2397,7 +2443,7 @@ XML;
                     'errors' => $json['errors'] ?? null,
                 ]);
                 if ($page === 1) {
-                    Cache::put('wayfair.taxonomy_unavailable', true, 600);
+                    Cache::put('wayfair.taxonomy_unavailable', true, 60);
                 }
                 break;
             }
@@ -2680,7 +2726,7 @@ XML;
             && (str_contains($name, 'in wall') || str_contains($name, 'in-wall') || str_contains($name, 'inwall'))) {
             $score += 30;
         }
-        foreach (['folder', 'stand', 'capo', 'guitar', 'microphone', 'mixer', 'amp', 'pedal', 'cable', 'stool', 'throne'] as $word) {
+        foreach (['folder', 'stand', 'capo', 'guitar', 'microphone', 'mixer', 'amp', 'pedal', 'cable', 'stool', 'throne', 'light', 'lighting', 'tripod'] as $word) {
             if (str_contains($title, $word) && str_contains($name, $word)) {
                 $score += 35;
             }
