@@ -25,9 +25,10 @@ class FaireListingPublishService
 
     /**
      * @param  list<string>  $skus
+     * @param  array{title?: string, images?: list<string>, price?: float|null}  $overrides
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation'): array
+    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', array $overrides = []): array
     {
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
@@ -43,12 +44,14 @@ class FaireListingPublishService
 
         $publishSkus = $expandSiblings
             ? $this->expandToPublishableSiblings($skus)
-            : $this->filterPublishable($skus);
+            : $this->listingManagerSkus($skus);
 
         if ($publishSkus === []) {
             return [
                 'success' => false,
-                'message' => 'No Missing L child SKUs left to publish (already listed, NRL, or missing images).',
+                'message' => $expandSiblings
+                    ? 'No Missing L child SKUs left to publish (already listed, NRL, or missing images).'
+                    : 'No SKUs left to publish.',
             ];
         }
 
@@ -75,15 +78,35 @@ class FaireListingPublishService
 
         $primarySku = $publishSkus[0];
         $primary = $products->get($primarySku);
-        $title = $this->resolveTitle($primary, $primarySku);
+        $title = trim((string) ($overrides['title'] ?? ''));
+        if ($title === '') {
+            $title = $this->resolveTitle($primary, $primarySku);
+        }
+        if ($title !== '' && mb_strlen($title) > 60) {
+            $title = mb_substr($title, 0, 60);
+        }
         if ($title === '') {
             return ['success' => false, 'message' => 'No title found (product_master title60 or Shopify product_title).'];
         }
+
+        $overrideImages = [];
+        foreach ((array) ($overrides['images'] ?? []) as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && ! in_array($url, $overrideImages, true)) {
+                $overrideImages[] = $url;
+            }
+        }
+        $overridePrice = isset($overrides['price']) && is_numeric($overrides['price'])
+            ? (float) $overrides['price']
+            : null;
 
         $prepared = [];
         foreach ($publishSkus as $sku) {
             $product = $products->get($sku);
             $price = $this->resolveWholesalePrice($sku, $product);
+            if (($price === null || $price <= 0) && $overridePrice !== null && $overridePrice > 0) {
+                $price = $overridePrice;
+            }
             if ($price === null || $price <= 0) {
                 return [
                     'success' => false,
@@ -91,6 +114,12 @@ class FaireListingPublishService
                 ];
             }
             $images = $this->productImages($product);
+            if ($images === [] && $overrideImages !== []) {
+                $images = $overrideImages;
+            }
+            if ($images === []) {
+                $images = ListingManagerAmazonHydrator::imageMasterUrls($sku);
+            }
             if ($images === []) {
                 return ['success' => false, 'message' => 'No images on product master for '.$sku.'.'];
             }
@@ -167,6 +196,26 @@ class FaireListingPublishService
         return $this->filterPublishable(
             $children->map(fn ($p) => trim((string) $p->sku))->filter()->unique()->values()->all()
         );
+    }
+
+    /**
+     * Listing Manager publish: keep the requested SKUs (no Missing L / already-listed filter).
+     *
+     * @param  list<string>  $skus
+     * @return list<string>
+     */
+    private function listingManagerSkus(array $skus): array
+    {
+        $out = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            $out[] = $sku;
+        }
+
+        return array_values(array_unique($out));
     }
 
     /**

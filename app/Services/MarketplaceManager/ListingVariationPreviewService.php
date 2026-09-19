@@ -93,7 +93,7 @@ class ListingVariationPreviewService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, string $channel, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryUuid = null, ?string $categoryName = null, ?float $weightLb = null, ?float $weightKg = null): array
+    public function publishSkus(array $skus, string $channel, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryUuid = null, ?string $categoryName = null, ?float $weightLb = null, ?float $weightKg = null, array $overrides = []): array
     {
         $channel = strtolower(trim($channel));
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
@@ -103,7 +103,7 @@ class ListingVariationPreviewService
             return $this->temu->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
         }
         if ($channel === 'faire') {
-            return $this->faire->publishSkus($skus, $expandSiblings, $mode);
+            return $this->faire->publishSkus($skus, $expandSiblings, $mode, $overrides);
         }
         if ($channel === 'aliexpress') {
             return $this->aliexpress->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName, $weightLb, $weightKg);

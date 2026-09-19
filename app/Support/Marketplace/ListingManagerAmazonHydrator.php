@@ -657,10 +657,18 @@ class ListingManagerAmazonHydrator
         return $key === 'faire' || str_contains($key, 'faire');
     }
 
-    public static function titleFromProductMaster(array $pm, ?string $channelName, array $fallbacks = []): string
+    public static function titleFromProductMaster(array $pm, ?string $channelName, array $fallbacks = [], bool $strict = false): string
     {
         if (self::isFaireChannel($channelName)) {
             $title = trim((string) ($pm['title60'] ?? ''));
+            if ($title === '' && ! $strict) {
+                $title = self::firstNonEmpty(array_merge([
+                    $pm['title75'] ?? null,
+                    $pm['title80'] ?? null,
+                    $pm['title100'] ?? null,
+                    $pm['title150'] ?? null,
+                ], $fallbacks));
+            }
 
             return $title !== '' ? mb_substr($title, 0, 60) : '';
         }

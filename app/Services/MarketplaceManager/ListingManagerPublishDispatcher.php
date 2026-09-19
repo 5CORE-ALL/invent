@@ -37,6 +37,15 @@ class ListingManagerPublishDispatcher
             $categoryUuid = trim((string) ($details['category_uuid'] ?? $details['primary_category_id'] ?? '')) ?: null;
             $categoryName = trim((string) ($details['primary_category_path'] ?? $details['category_name'] ?? '')) ?: null;
             $weightLb = $this->weightLbFromDetails($details);
+            $overrides = [];
+            if (in_array($key, ['faire'], true) || str_contains($key, 'faire')) {
+                $images = is_array($details['images'] ?? null) ? $details['images'] : [];
+                $overrides = [
+                    'title' => trim((string) $draft->title),
+                    'price' => $draft->price !== null ? (float) $draft->price : null,
+                    'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
+                ];
+            }
             $result = app(ListingVariationPreviewService::class)->publishSkus(
                 $skus !== [] ? $skus : [$sku],
                 $key,
@@ -46,7 +55,9 @@ class ListingManagerPublishDispatcher
                 $categoryId,
                 $categoryUuid,
                 $categoryName,
-                $weightLb
+                $weightLb,
+                null,
+                $overrides
             );
             if (! ($result['success'] ?? false)) {
                 return $result;

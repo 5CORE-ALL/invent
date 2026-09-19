@@ -2320,6 +2320,7 @@ class ListingManagerController extends Controller
         $draft->save();
 
         $channelName = (string) ($draft->channel->channel ?? '');
+        $this->applyFaireDraftTitle($draft, $channelName);
         $ready = ListingManagerPublishStatus::readiness(
             $draft->title,
             $draft->price,
@@ -2933,6 +2934,28 @@ class ListingManagerController extends Controller
         return $details;
     }
 
+    private function applyFaireDraftTitle(ListingManagerChannelDraft $draft, string $channelName): void
+    {
+        if (! ListingManagerAmazonHydrator::isFaireChannel($channelName) || (string) $draft->status === 'listed') {
+            return;
+        }
+
+        $loaded = ListingManagerMasterLoader::load((string) $draft->seller_sku, 'title', $channelName);
+        $title = trim((string) ($loaded['title'] ?? ''));
+        if ($title === '') {
+            $title = trim((string) $draft->title);
+        }
+        if ($title !== '' && mb_strlen($title) > 60) {
+            $title = mb_substr($title, 0, 60);
+        }
+        if ($title === '' || $title === trim((string) $draft->title)) {
+            return;
+        }
+
+        $draft->title = $title;
+        $draft->save();
+    }
+
     private function serializeDraft(ListingManagerChannelDraft $d, bool $full = false): array
     {
         $this->demoteUnverifiedAmazonDraft($d);
@@ -2946,6 +2969,13 @@ class ListingManagerController extends Controller
         if (in_array(ListingChannelCounts::normalize($channelName), ['ebay3', 'ebaythree'], true)) {
             $details = $this->stripForeignEbay2PoliciesFromEbay3($details);
         }
+        $limits = ListingManagerAmazonHydrator::limitsForChannel($channelName);
+        if (ListingManagerAmazonHydrator::isFaireChannel($channelName)) {
+            $limits['title'] = 60;
+            if ($full) {
+                $this->applyFaireDraftTitle($d, $channelName);
+            }
+        }
         $ready = ListingManagerPublishStatus::readiness(
             $d->title,
             $d->price,
@@ -2954,18 +2984,6 @@ class ListingManagerController extends Controller
             (string) $d->status,
             $channelName
         );
-        $limits = ListingManagerAmazonHydrator::limitsForChannel($channelName);
-        if (ListingManagerAmazonHydrator::isFaireChannel($channelName)) {
-            $limits['title'] = 60;
-            $loadedTitle = ListingManagerMasterLoader::load((string) $d->seller_sku, 'title', $channelName);
-            $faireTitle = trim((string) ($loadedTitle['title'] ?? ''));
-            if ($faireTitle !== '') {
-                $d->title = $faireTitle;
-                if ($d->isDirty('title') && (string) $d->status !== 'listed') {
-                    $d->save();
-                }
-            }
-        }
 
         $payload = [
             'id' => $d->id,
