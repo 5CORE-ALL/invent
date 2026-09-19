@@ -112,7 +112,7 @@ class ListingVariationPreviewService
             return $this->reverb->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryUuid, $categoryName);
         }
         if ($channel === 'wayfair') {
-            return $this->wayfair->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName);
+            return $this->wayfair->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName, $overrides);
         }
         if ($this->isEbayChannel($channel)) {
             return $this->ebay->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName);

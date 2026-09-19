@@ -21,6 +21,9 @@ use Illuminate\Support\Facades\Schema;
  */
 class WayfairListingPublishService
 {
+    /** @var array<string, mixed> */
+    private array $overrides = [];
+
     public function __construct(private WayfairApiService $api)
     {
     }
@@ -102,7 +105,7 @@ class WayfairListingPublishService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $classId = null, ?string $className = null): array
+    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $classId = null, ?string $className = null, array $overrides = []): array
     {
         if (function_exists('ignore_user_abort')) {
             @ignore_user_abort(true);
@@ -119,6 +122,7 @@ class WayfairListingPublishService
             ];
         }
 
+        $this->overrides = is_array($overrides) ? $overrides : [];
         $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
         if ($expandSiblings && $mode === 'variation') {
             $publishSkus = $this->expandToPublishableSiblings($skus);
@@ -138,7 +142,7 @@ class WayfairListingPublishService
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
-                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $classId, $className);
+                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $classId, $className, $this->overrides);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -195,11 +199,11 @@ class WayfairListingPublishService
             if (! $product) {
                 return ['success' => false, 'message' => 'SKU not found in product master: '.$sku];
             }
-            $title = $this->resolveTitle($product, $sku);
+            $title = trim((string) ($this->overrides['title'] ?? '')) ?: $this->resolveTitle($product, $sku);
             if ($title === '') {
                 return ['success' => false, 'message' => $sku.': Title missing in Title Master'];
             }
-            $images = $this->productImages($product, $sku);
+            $images = $this->overrideImages() ?: $this->productImages($product, $sku);
             if ($images === []) {
                 return ['success' => false, 'message' => 'No public https image for '.$sku.'. Add images on CP / Image Master.'];
             }
@@ -209,7 +213,9 @@ class WayfairListingPublishService
                 'product' => $product,
                 'title' => $title,
                 'images' => $images,
-                'price' => $this->resolvePrice($sku, $product),
+                'price' => (isset($this->overrides['price']) && is_numeric($this->overrides['price']) && (float) $this->overrides['price'] > 0)
+                    ? (float) $this->overrides['price']
+                    : $this->resolvePrice($sku, $product),
                 'inv' => $this->shopifyInv($sku),
                 'pkg' => $pkg,
             ];
@@ -570,7 +576,9 @@ class WayfairListingPublishService
             }
         }
         if (preg_match('/country of origin|made in|origin country/', $hay)) {
-            return $this->choiceOrValue($question, ['China', 'CHN', 'CN', 'People\'s Republic of China']);
+            $origin = $this->originChoices();
+
+            return $this->choiceOrValue($question, $origin);
         }
         if (preg_match('/\bbrand\b/', $hay)) {
             return $this->choiceOrValue($question, ['5 Core', $ctx['manufacturer']['name'] ?? '']);
@@ -1232,10 +1240,46 @@ class WayfairListingPublishService
     /**
      * @return list<string>
      */
+    private function originChoices(): array
+    {
+        $code = strtoupper(trim((string) ($this->overrides['country_of_origin'] ?? '')));
+        $map = [
+            'CN' => ['China', 'CHN', 'CN', 'People\'s Republic of China'],
+            'US' => ['United States', 'USA', 'US'],
+            'IN' => ['India', 'IND', 'IN'],
+            'VN' => ['Vietnam', 'VNM', 'VN'],
+            'TW' => ['Taiwan', 'TWN', 'TW'],
+            'MX' => ['Mexico', 'MEX', 'MX'],
+            'CA' => ['Canada', 'CAN', 'CA'],
+        ];
+
+        return $map[$code] ?? ['China', 'CHN', 'CN', 'People\'s Republic of China'];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function overrideImages(): array
+    {
+        $out = [];
+        foreach ((array) ($this->overrides['images'] ?? []) as $url) {
+            $url = $this->absoluteImageUrl(trim((string) $url));
+            if ($url !== '' && ! in_array($url, $out, true)) {
+                $out[] = $url;
+            }
+        }
+
+        return $out;
+    }
+
     private function colorGuess(string $sku, ProductMaster $product): array
     {
         $values = is_array($product->Values) ? $product->Values : [];
         $out = [];
+        $override = trim((string) ($this->overrides['color'] ?? ''));
+        if ($override !== '') {
+            $out[] = $override;
+        }
         foreach (['color', 'Color', 'colour'] as $key) {
             $value = trim((string) ($values[$key] ?? ''));
             if ($value !== '') {
@@ -1287,6 +1331,22 @@ class WayfairListingPublishService
             'weight_lb' => $num($values, 'wt_act', 'itm_wt_gw', 'wt_decl'),
             'weight_kg' => $num($values, 'wt_act_kg'),
         ];
+        foreach ([
+            'length_in' => 'package_length',
+            'width_in' => 'package_width',
+            'height_in' => 'package_height',
+        ] as $pkgKey => $overrideKey) {
+            $n = $this->overrides[$overrideKey] ?? null;
+            if (is_numeric($n) && (float) $n > 0) {
+                $pkg[$pkgKey] = (float) $n;
+            }
+        }
+        $lb = (float) ($this->overrides['package_weight_lb'] ?? 0);
+        $oz = (float) ($this->overrides['package_weight_oz'] ?? 0);
+        $totalLb = $lb + ($oz / 16);
+        if ($totalLb > 0) {
+            $pkg['weight_lb'] = $totalLb;
+        }
         if (($pkg['weight_lb'] ?? null) === null && ($pkg['weight_kg'] ?? null) !== null) {
             $pkg['weight_lb'] = (float) $pkg['weight_kg'] / 0.45359237;
         }

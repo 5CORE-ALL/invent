@@ -48,6 +48,21 @@ class ListingManagerPublishDispatcher
                     'tags' => is_array($details['faire_tags'] ?? null) ? $details['faire_tags'] : [],
                 ];
             }
+            if ($key === 'wayfair') {
+                $images = is_array($details['images'] ?? null) ? $details['images'] : [];
+                $overrides = [
+                    'title' => trim((string) $draft->title),
+                    'price' => $draft->price !== null ? (float) $draft->price : null,
+                    'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
+                    'color' => trim((string) ($details['color'] ?? '')),
+                    'country_of_origin' => trim((string) ($details['country_of_origin'] ?? '')),
+                    'package_length' => $details['package_length'] ?? '',
+                    'package_width' => $details['package_width'] ?? '',
+                    'package_height' => $details['package_height'] ?? '',
+                    'package_weight_lb' => $details['package_weight_lb'] ?? '',
+                    'package_weight_oz' => $details['package_weight_oz'] ?? '',
+                ];
+            }
             $result = app(ListingVariationPreviewService::class)->publishSkus(
                 $skus !== [] ? $skus : [$sku],
                 $key,

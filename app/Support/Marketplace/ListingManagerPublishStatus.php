@@ -277,6 +277,7 @@ class ListingManagerPublishStatus
         $isAmazon = $family === 'amazon';
         $isNewegg = $family === 'newegg';
         $isFaire = $family === 'faire';
+        $isWayfair = $family === 'wayfair';
 
         if ($isEbay) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
@@ -332,6 +333,30 @@ class ListingManagerPublishStatus
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
             if ($categoryId === '') {
                 $tabErrors['category'][] = 'Faire product type is required.';
+            }
+        }
+
+        if ($isWayfair) {
+            $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
+            if ($categoryId === '' || ! preg_match('/^\d+$/', $categoryId)) {
+                $tabErrors['category'][] = 'Wayfair class is required. Search and select a class.';
+            }
+            if (trim((string) ($details['color'] ?? '')) === '') {
+                $tabErrors['identifiers'][] = 'Color is required.';
+            }
+            if (trim((string) ($details['country_of_origin'] ?? '')) === '') {
+                $tabErrors['identifiers'][] = 'Country of origin is required.';
+            }
+            $length = (float) ($details['package_length'] ?? 0);
+            $width = (float) ($details['package_width'] ?? 0);
+            $height = (float) ($details['package_height'] ?? 0);
+            if ($length <= 0 || $width <= 0 || $height <= 0) {
+                $tabErrors['logistics'][] = 'Package length, width, and height are required.';
+            }
+            $weightLb = (float) ($details['package_weight_lb'] ?? 0);
+            $weightOz = (float) ($details['package_weight_oz'] ?? 0);
+            if (($weightLb + ($weightOz / 16)) <= 0) {
+                $tabErrors['logistics'][] = 'Package weight is required.';
             }
         }
 
