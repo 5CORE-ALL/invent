@@ -3433,6 +3433,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/purchase/delete', 'deletePurchase');
     });
 
+    Route::controller(\App\Http\Controllers\ChatController::class)->middleware('auth')->group(function () {
+        Route::get('/chat', 'index')->name('chat.index');
+        Route::get('/chat/inbox', 'inbox')->name('chat.inbox');
+        Route::get('/chat/unread', 'unread')->name('chat.unread');
+        Route::get('/chat/files/{message}', 'file')->whereNumber('message')->name('chat.file');
+        Route::get('/chat/channels/{channel}/messages', 'messages')->whereNumber('channel')->name('chat.messages');
+        Route::post('/chat/channels/{channel}/messages', 'storeMessage')->whereNumber('channel')->name('chat.messages.store');
+        Route::post('/chat/channels', 'storeChannel')->name('chat.channels.store');
+        Route::post('/chat/dms', 'storeDm')->name('chat.dms.store');
+    });
+
     // Announcements (directors post; everyone can read)
     Route::controller(AnnouncementController::class)->group(function () {
         Route::get('/announcements', 'index')->name('announcements.index');

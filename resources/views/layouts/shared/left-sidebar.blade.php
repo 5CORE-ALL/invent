@@ -75,6 +75,11 @@
                                 <i class="ri-megaphone-line me-2"></i>Announcement
                             </a>
                         </li>
+                        <li>
+                            <a href="{{ route('chat.index') }}" class="{{ request()->routeIs('chat.*') ? 'active' : '' }}">
+                                <i class="ri-chat-3-line me-2"></i>Chat
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </li>

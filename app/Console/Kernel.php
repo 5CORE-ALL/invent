@@ -1235,6 +1235,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        $schedule->command('chat:daily-nudges')
+            ->dailyAt('10:00')
+            ->timezone(\App\Support\TaskBusinessTime::tz())
+            ->name('chat-daily-nudges')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
        
         $schedule->command('tasks:expire-missed-automated')
             ->everyMinute()

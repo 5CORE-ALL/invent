@@ -15,6 +15,7 @@ use App\Models\Permission;
 use App\Models\FbaManualData;
 use App\Models\ScopeOfImprovement;
 use App\Models\UserIncentive;
+use App\Support\ChatWorkspace;
 use App\Support\DarL30Metrics;
 use App\Support\TaskBusinessTime;
 use App\Observers\FbaManualDataObserver;
@@ -87,6 +88,7 @@ class AppServiceProvider extends ServiceProvider
             $this->composeUserDarBadge($view);
             $this->composeUserSoiBadge($view);
             $this->composePostedAnnouncementBadge($view);
+            $this->composeChatUnread($view);
         });
 
         $this->app->booted(fn () => $this->registerListingPublishRoutes());
@@ -295,6 +297,33 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $view->with($this->postedAnnouncementBadge);
+    }
+
+    /**
+     * Unread Invent Chat count for the topbar.
+     *
+     * @var array{topbarChatUnread: int}|null
+     */
+    private ?array $chatUnreadBadge = null;
+
+    private function composeChatUnread(ViewInstance $view): void
+    {
+        if ($this->chatUnreadBadge === null) {
+            $count = 0;
+            $user = Auth::user();
+            if ($user) {
+                try {
+                    $count = ChatWorkspace::unreadTotal($user);
+                } catch (\Throwable $e) {
+                    $count = 0;
+                }
+            }
+            $this->chatUnreadBadge = [
+                'topbarChatUnread' => $count,
+            ];
+        }
+
+        $view->with($this->chatUnreadBadge);
     }
 
     private function composeAgentUpdate(ViewInstance $view): void

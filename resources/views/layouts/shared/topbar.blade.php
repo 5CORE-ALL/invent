@@ -323,8 +323,56 @@
                 text-align: center;
             }
             .topbar-ann-btn.has-posts .topbar-ann-btn__count { display: inline-block; }
+            .topbar-chat-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+                flex-shrink: 0;
+                margin-right: 0.5rem;
+                width: 42px;
+                height: 42px;
+                padding: 0;
+                border: none;
+                border-radius: 50%;
+                background: #0f766e;
+                color: #fff;
+                box-shadow: 0 4px 12px rgba(15, 118, 110, 0.35);
+                transition: transform 0.2s ease, background 0.15s ease;
+            }
+            .topbar-chat-btn:hover { background: #0d9488; color: #fff; transform: scale(1.08); }
+            .topbar-chat-btn i { font-size: 1.15rem; }
+            .topbar-chat-btn__count {
+                display: none;
+                position: absolute;
+                top: -4px;
+                right: -4px;
+                min-width: 18px;
+                height: 18px;
+                padding: 0 5px;
+                border-radius: 999px;
+                background: #dc2626;
+                color: #fff;
+                font-size: 0.65rem;
+                font-weight: 800;
+                line-height: 18px;
+                text-align: center;
+            }
+            .topbar-chat-btn.has-unread .topbar-chat-btn__count { display: inline-block; }
 
         </style>
+
+        @php
+            $topbarChatUnread = (int) ($topbarChatUnread ?? 0);
+        @endphp
+        <a href="{{ route('chat.index') }}" id="chatTopbarBtn"
+            class="topbar-chat-btn{{ $topbarChatUnread > 0 ? ' has-unread' : '' }}"
+            data-chat-unread="{{ $topbarChatUnread }}"
+            title="5Core Chat"
+            aria-label="5Core Chat{{ $topbarChatUnread > 0 ? ' — '.$topbarChatUnread.' unread' : '' }}">
+            <i class="ri-chat-3-fill"></i>
+            <span class="topbar-chat-btn__count">{{ $topbarChatUnread > 99 ? '99+' : $topbarChatUnread }}</span>
+        </a>
 
         @php
             $topbarAnnCount = (int) ($topbarAnnCount ?? 0);
@@ -481,3 +529,31 @@
     </div>
 </div>
 <!-- ========== Topbar End ========== -->
+@auth
+<script>
+(function () {
+    const btn = document.getElementById('chatTopbarBtn');
+    if (!btn || window.__inventChatUnreadPoll) return;
+    window.__inventChatUnreadPoll = true;
+    function paint(n) {
+        n = parseInt(n, 10) || 0;
+        btn.classList.toggle('has-unread', n > 0);
+        btn.dataset.chatUnread = String(n);
+        const el = btn.querySelector('.topbar-chat-btn__count');
+        if (el) el.textContent = n > 99 ? '99+' : String(n);
+        btn.setAttribute('aria-label', n > 0 ? '5Core Chat — ' + n + ' unread' : '5Core Chat');
+    }
+    async function tick() {
+        try {
+            const res = await fetch(@json(route('chat.unread')), {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            paint(data.unread || 0);
+        } catch (e) {}
+    }
+    setInterval(tick, 15000);
+})();
+</script>
+@endauth
