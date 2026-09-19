@@ -10,6 +10,7 @@ use App\Models\ShopifySku;
 use App\Services\FaireApiService;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingCountsEngine;
+use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -76,7 +77,7 @@ class FaireListingPublishService
         $primary = $products->get($primarySku);
         $title = $this->resolveTitle($primary, $primarySku);
         if ($title === '') {
-            return ['success' => false, 'message' => 'No title found (product_master title80/title100/title150 or Shopify product_title).'];
+            return ['success' => false, 'message' => 'No title found (product_master title60 or Shopify product_title).'];
         }
 
         $prepared = [];
@@ -801,15 +802,18 @@ class FaireListingPublishService
 
     private function resolveTitle(ProductMaster $product, string $sku): string
     {
-        foreach (['title80', 'title100', 'title150', 'title60'] as $field) {
-            $title = trim((string) ($product->{$field} ?? ''));
-            if ($title !== '') {
-                return $title;
-            }
-        }
         $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
 
-        return trim((string) ($shopify->product_title ?? $shopify->title ?? $product->parent ?? $sku));
+        return ListingManagerAmazonHydrator::titleFromProductMaster(
+            $product->toArray(),
+            'faire',
+            [
+                $shopify?->product_title,
+                $shopify?->title,
+                $product->parent,
+                $sku,
+            ]
+        );
     }
 
     private function resolveWholesalePrice(string $sku, ProductMaster $product): ?float
