@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Schema;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
+use App\Support\Marketplace\WayfairPartnerClassCatalog;
 
 class WayfairApiService
 {
@@ -2125,40 +2126,68 @@ XML;
     /**
      * Search Wayfair taxonomy classes by name or ID for the listing-page picker.
      *
-     * @return array{success: bool, categories: list<array{id: string, path: string, name: string}>, message?: string}
+     * @return array{success: bool, categories: list<array{id: string, path: string, name: string, category?: string, definition?: string}>, groups?: list<array{name: string, count: int}>, classes?: list<array{id: string, path: string, name: string, category?: string, definition?: string}>, message?: string}
      */
-    public function searchListingClasses(string $query, string $title = '', bool $fallbackToCatalog = false): array
+    public function searchListingClasses(string $query, string $title = '', bool $fallbackToCatalog = false, string $group = ''): array
     {
-        $q = trim($query !== '' ? $query : $title);
+        $q = trim($query);
+        if ($q === '' && preg_match('/^\d{2,}$/', trim($title))) {
+            $q = trim($title);
+        }
         if (preg_match('/^\d{2,}$/', $q)) {
             return $this->classResultFromTypedId((int) $q);
         }
 
-        $categories = $this->taxonomyCategories();
-        if ($categories === []) {
-            $categories = array_values($this->listingStatusClassDirectory());
-        }
-        if ($categories === []) {
-            return [
-                'success' => true,
-                'categories' => [],
-                'message' => 'Wayfair class search is unavailable. Type the numeric class ID from Partner Home in Class ID, then save.',
-            ];
+        $picker = WayfairPartnerClassCatalog::search($q, $group);
+        $merged = [];
+        foreach ($picker['classes'] as $row) {
+            $key = strtolower($row['name']).'|'.$row['id'];
+            $merged[$key] = $row;
         }
 
-        $queries = $this->classSearchQueries($q, $title);
-        $best = ['success' => true, 'categories' => []];
-        foreach ($queries as $hint) {
-            $found = $this->scoreListingClasses($categories, $hint, $fallbackToCatalog && $hint === $queries[0]);
-            if (($found['categories'] ?? []) !== []) {
-                return $found;
+        $live = [];
+        if ($q !== '') {
+            $live = $this->taxonomyCategories();
+            if ($live === []) {
+                $live = array_values($this->listingStatusClassDirectory());
             }
-            if ($best['categories'] === []) {
-                $best = $found;
+        }
+        if ($live !== [] && $q !== '') {
+            foreach ($this->classSearchQueries($q, $title) as $i => $hint) {
+                $found = $this->scoreListingClasses($live, $hint, $fallbackToCatalog && $i === 0);
+                foreach ($found['categories'] ?? [] as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $known = WayfairPartnerClassCatalog::findById((string) ($row['id'] ?? ''))
+                        ?: WayfairPartnerClassCatalog::findByName((string) ($row['name'] ?? ''));
+                    $row = $known ?: WayfairPartnerClassCatalog::present([
+                        'id' => (string) ($row['id'] ?? ''),
+                        'name' => (string) ($row['name'] ?? ''),
+                        'category' => (string) ($row['category'] ?? 'Your catalog'),
+                        'definition' => (string) ($row['definition'] ?? ''),
+                    ]);
+                    if ($group !== '' && strcasecmp((string) ($row['category'] ?? ''), $group) !== 0) {
+                        continue;
+                    }
+                    $key = strtolower((string) $row['name']).'|'.$row['id'];
+                    if (! isset($merged[$key])) {
+                        $merged[$key] = $row;
+                    }
+                }
             }
         }
 
-        return $best;
+        $classes = array_values($merged);
+        if ($q === '' && $group === '') {
+            $classes = array_map(
+                static fn (array $row) => WayfairPartnerClassCatalog::present($row),
+                WayfairPartnerClassCatalog::classes()
+            );
+            $picker = WayfairPartnerClassCatalog::search('', '');
+        }
+
+        return $this->classPickerResult($classes, $picker['groups']);
     }
 
     /**
@@ -2243,22 +2272,41 @@ XML;
     }
 
     /**
-     * @return array{success: bool, categories: list<array{id: string, path: string, name: string}>}
+     * @return array{success: bool, categories: list<array{id: string, path: string, name: string, category?: string, definition?: string}>, groups?: list<array{name: string, count: int}>, classes?: list<array{id: string, path: string, name: string, category?: string, definition?: string}>}
      */
     private function classResultFromTypedId(int $classId): array
     {
+        $known = WayfairPartnerClassCatalog::findById((string) $classId);
+        if ($known !== null) {
+            return $this->classPickerResult([$known], WayfairPartnerClassCatalog::search('', '')['groups']);
+        }
+
         $name = 'Class '.$classId;
         if ($this->productAdditionClassExists($classId)) {
             $name = 'Wayfair class '.$classId;
         }
+        $row = WayfairPartnerClassCatalog::present([
+            'id' => (string) $classId,
+            'name' => $name,
+            'category' => 'Typed class ID',
+            'definition' => 'Numeric class ID '.$classId.' from Partner Home. Select this class if this is the ID shown in the Wayfair class picker.',
+        ]);
 
+        return $this->classPickerResult([$row], WayfairPartnerClassCatalog::search('', '')['groups']);
+    }
+
+    /**
+     * @param  list<array{id: string, path: string, name: string, category?: string, definition?: string}>  $classes
+     * @param  list<array{name: string, count: int}>  $groups
+     * @return array{success: bool, categories: list<array{id: string, path: string, name: string, category?: string, definition?: string}>, groups: list<array{name: string, count: int}>, classes: list<array{id: string, path: string, name: string, category?: string, definition?: string}>}
+     */
+    private function classPickerResult(array $classes, array $groups): array
+    {
         return [
             'success' => true,
-            'categories' => [[
-                'id' => (string) $classId,
-                'path' => $name.' ('.$classId.')',
-                'name' => $name,
-            ]],
+            'categories' => $classes,
+            'groups' => $groups,
+            'classes' => $classes,
         ];
     }
 

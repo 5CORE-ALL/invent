@@ -156,7 +156,7 @@ class ListingManagerEditorProfile
                     ['id' => 'policies', 'label' => 'Package'],
                 ],
                 'identifier_fields' => ['sku', 'asin', 'brand', 'manufacturer', 'upc'],
-                'category_placeholder' => 'Search classes or type a numeric class ID',
+                'category_placeholder' => 'Search categories or product classes',
                 'optimize_label' => 'Optimize Description for Wayfair',
                 'header_quick' => 'Quick/Auto List to Wayfair',
                 'header_import' => 'Import from Wayfair',
@@ -164,7 +164,7 @@ class ListingManagerEditorProfile
                 'title_heading' => 'Title & Description',
                 'identifier_help' => 'Brand is always 5 Core. Model/MPN is the SKU. Color and country of origin are sent with the Wayfair class questions.',
                 'images_help' => 'Load photos from Image Master. Wayfair uses the first 8 HTTPS images.',
-                'category_help' => 'Search a class name, or type the numeric class ID from Partner Home. Publish uses this class ID.',
+                'category_help' => 'Search categories or product classes, then pick a class. Publish uses the selected Wayfair class ID.',
                 'policies_help' => 'Package size and weight come from Dim/Wt Master and are required for Wayfair class questions.',
             ],
             'newegg' => [
