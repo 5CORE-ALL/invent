@@ -94,6 +94,7 @@ class Kernel extends ConsoleKernel
         AmazonSdCampaignReports::class,
         AmazonSpKeywordReports::class,
         AmazonSpNegativeKeywords::class,
+        \App\Console\Commands\AmazonAdsPullAdGroups::class,
         FetchGoogleAdsCampaigns::class,
         \App\Console\Commands\FetchGoogleAdsNegativeKeywords::class,
         \App\Console\Commands\SaveGoogleAdsBadgeL30Snapshots::class,
@@ -1330,6 +1331,7 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('app:amazon-sb-campaign-reports', 'amazon-sb-campaign-reports', '18:05');
         $retryFiveTimesUntil('app:amazon-sd-campaign-reports', 'amazon-sd-campaign-reports', '18:10');
         $retryFiveTimesUntil('amazon:ads-pull-product-ads', 'amazon-ads-pull-product-ads', '18:12');
+        $retryFiveTimesUntil('amazon:ads-pull-ad-groups --prune', 'amazon-ads-pull-ad-groups', '18:13');
 
       
         $retryFiveTimesUntil('app:amazon-sp-keyword-reports', 'amazon-sp-keyword-reports', '18:15');

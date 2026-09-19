@@ -402,6 +402,215 @@ class AmazonAdsService
     }
 
     /**
+     * One page of SP ad groups (POST /sp/adGroups/list).
+     *
+     * @param  list<string>|null  $campaignIds
+     * @param  list<string>  $states
+     * @return array<string, mixed>
+     */
+    public function listSpAdGroupsPage(?array $campaignIds = null, array $states = ['ENABLED', 'PAUSED'], ?string $nextToken = null): array
+    {
+        return $this->listAdGroupsPage(
+            '/sp/adGroups/list',
+            'application/vnd.spAdGroup.v3+json',
+            $campaignIds,
+            $states,
+            $nextToken
+        );
+    }
+
+    /**
+     * One page of SB ad groups (POST /sb/v4/adGroups/list).
+     *
+     * @param  list<string>|null  $campaignIds
+     * @param  list<string>  $states
+     * @return array<string, mixed>
+     */
+    public function listSbAdGroupsPage(?array $campaignIds = null, array $states = ['ENABLED', 'PAUSED'], ?string $nextToken = null): array
+    {
+        return $this->listAdGroupsPage(
+            '/sb/v4/adGroups/list',
+            'application/vnd.sbadgroupresource.v4+json',
+            $campaignIds,
+            $states,
+            $nextToken
+        );
+    }
+
+    /**
+     * All SP ad groups (walks nextToken). Pass campaign IDs to limit to those campaigns.
+     *
+     * @param  list<string>  $states
+     * @param  list<string>|null  $campaignIds
+     * @return array{success: bool, message?: string, count?: int, adGroups?: list<array<string, mixed>>, profile_id?: string}
+     */
+    public function fetchAllSpAdGroups(array $states = ['ENABLED', 'PAUSED'], ?array $campaignIds = null): array
+    {
+        return $this->fetchAllAdGroups(
+            fn (?array $ids, array $st, ?string $token) => $this->listSpAdGroupsPage($ids, $st, $token),
+            $states,
+            $campaignIds
+        );
+    }
+
+    /**
+     * All SB ad groups (walks nextToken). Pass campaign IDs to limit to those campaigns.
+     *
+     * @param  list<string>  $states
+     * @param  list<string>|null  $campaignIds
+     * @return array{success: bool, message?: string, count?: int, adGroups?: list<array<string, mixed>>, profile_id?: string}
+     */
+    public function fetchAllSbAdGroups(array $states = ['ENABLED', 'PAUSED'], ?array $campaignIds = null): array
+    {
+        return $this->fetchAllAdGroups(
+            fn (?array $ids, array $st, ?string $token) => $this->listSbAdGroupsPage($ids, $st, $token),
+            $states,
+            $campaignIds
+        );
+    }
+
+    /**
+     * Download ad groups for each campaign (SP + SB). Empty $campaignIds = every live campaign.
+     *
+     * @param  list<string>|null  $campaignIds
+     * @param  list<string>  $states
+     * @return array{
+     *   success: bool,
+     *   message?: string,
+     *   profile_id: string,
+     *   sp: array{success: bool, message?: string, count?: int, adGroups?: list<array<string, mixed>>},
+     *   sb: array{success: bool, message?: string, count?: int, adGroups?: list<array<string, mixed>>}
+     * }
+     */
+    public function downloadAdGroupsForCampaigns(?array $campaignIds = null, array $states = ['ENABLED', 'PAUSED']): array
+    {
+        $ids = $campaignIds === null ? null : array_values(array_unique(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $campaignIds
+        ), static fn (string $id) => $id !== '')));
+
+        $sp = $this->fetchAllSpAdGroups($states, $ids);
+        $sb = $this->fetchAllSbAdGroups($states, $ids);
+        $spOk = ! empty($sp['success']);
+        $sbOk = ! empty($sb['success']);
+
+        $out = [
+            'success' => $spOk || $sbOk,
+            'profile_id' => $this->resolvedProfileId(),
+            'sp' => $sp,
+            'sb' => $sb,
+        ];
+        if (! $out['success']) {
+            $out['message'] = trim((string) ($sp['message'] ?? '').' '.(string) ($sb['message'] ?? ''));
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>|null  $campaignIds
+     * @param  list<string>  $states
+     * @return array<string, mixed>
+     */
+    protected function listAdGroupsPage(
+        string $path,
+        string $accept,
+        ?array $campaignIds,
+        array $states,
+        ?string $nextToken
+    ): array {
+        $states = array_values(array_filter(array_map('strval', $states)));
+        if ($states === []) {
+            $states = ['ENABLED', 'PAUSED'];
+        }
+
+        $body = [
+            'stateFilter' => ['include' => $states],
+            'maxResults' => 100,
+        ];
+        if ($campaignIds !== null && $campaignIds !== []) {
+            $body['campaignIdFilter'] = [
+                'include' => array_values(array_map('strval', $campaignIds)),
+            ];
+        }
+        if (is_string($nextToken) && $nextToken !== '') {
+            $body['nextToken'] = $nextToken;
+        }
+
+        return $this->post($path, $body, [
+            'Content-Type' => $accept,
+            'Accept' => $accept,
+        ]);
+    }
+
+    /**
+     * @param  callable(?array, array, ?string): array<string, mixed>  $pageFn
+     * @param  list<string>  $states
+     * @param  list<string>|null  $campaignIds
+     * @return array{success: bool, message?: string, count?: int, adGroups?: list<array<string, mixed>>, profile_id?: string}
+     */
+    protected function fetchAllAdGroups(callable $pageFn, array $states, ?array $campaignIds): array
+    {
+        try {
+            $this->assertOAuthConfig();
+            $this->assertProfileScope();
+
+            $ids = null;
+            if ($campaignIds !== null) {
+                $ids = array_values(array_unique(array_filter(array_map(
+                    static fn ($id) => trim((string) $id),
+                    $campaignIds
+                ), static fn (string $id) => $id !== '')));
+                if ($ids === []) {
+                    return [
+                        'success' => true,
+                        'count' => 0,
+                        'adGroups' => [],
+                        'profile_id' => $this->resolvedProfileId(),
+                    ];
+                }
+            }
+
+            $chunks = $ids === null ? [null] : array_chunk($ids, 100);
+            $all = [];
+            foreach ($chunks as $chunk) {
+                $nextToken = null;
+                $pages = 0;
+                $maxPages = 500;
+                do {
+                    $pages++;
+                    $response = $pageFn($chunk, $states, $nextToken);
+                    $batch = $response['adGroups'] ?? $response['adGroupList'] ?? [];
+                    if (! is_array($batch)) {
+                        $batch = [];
+                    }
+                    foreach ($batch as $row) {
+                        if (is_array($row)) {
+                            $all[] = $row;
+                        }
+                    }
+                    $nextToken = $response['nextToken'] ?? null;
+                    if ($pages >= $maxPages) {
+                        break;
+                    }
+                } while (is_string($nextToken) && $nextToken !== '');
+            }
+
+            return [
+                'success' => true,
+                'count' => count($all),
+                'adGroups' => $all,
+                'profile_id' => $this->resolvedProfileId(),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * Sponsored Products keywords for an ad group.
      *
      */

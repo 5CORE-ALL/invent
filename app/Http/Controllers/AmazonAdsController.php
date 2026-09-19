@@ -41,6 +41,7 @@ class AmazonAdsController extends Controller
      * - bid_caps: SKU bid caps
      * - sd_reports: SD campaign reports
      * - fbm_targeting: FBM targeting check records
+     * - ad_groups: SP + SB ad groups pulled per campaign
      */
     private const RAW_TABLE_SOURCES = [
         'sp_reports' => 'amazon_sp_campaign_reports',
@@ -50,13 +51,13 @@ class AmazonAdsController extends Controller
         'fbm_targeting' => 'amazon_fbm_targeting_checks',
         'sp_keywords' => 'amazon_sp_keyword_reports',
         'sp_negatives' => 'amazon_sp_negative_keywords',
+        'ad_groups' => 'amazon_ads_ad_groups',
     ];
 
     /**
-     * Curated, fixed display columns for the keyword performance / negative keyword sources.
-     * These tables have a keyword-level shape (not the campaign-report shape), so they skip the
-     * campaign overlays (U7/U2/U1, BGT/SBGT, L-spends, CPC block) applied to SP/SB reports and
-     * show their own columns in a fixed order instead.
+     * Curated, fixed display columns for keyword / negative / ad-group sources.
+     * These tables are not campaign-report shaped, so they skip campaign overlays
+     * (U7/U2/U1, BGT/SBGT, L-spends, CPC block) and show their own columns instead.
      *
      * @var array<string, array<int, string>>
      */
@@ -67,6 +68,10 @@ class AmazonAdsController extends Controller
         ],
         'amazon_sp_negative_keywords' => [
             'id', 'level', 'campaignName', 'campaign_id', 'ad_group_id', 'keywordText', 'matchType', 'state',
+        ],
+        'amazon_ads_ad_groups' => [
+            'id', 'ad_type', 'campaignName', 'adGroupName', 'state', 'defaultBid',
+            'campaign_id', 'ad_group_id', 'pulled_at',
         ],
     ];
 
@@ -2737,14 +2742,18 @@ class AmazonAdsController extends Controller
     private static function applyCampaignStatusFilter(Builder $query, string $table, Request $request): void
     {
         $cols = Schema::getColumnListing($table);
-        if (! in_array('campaignStatus', $cols, true)) {
-            return;
-        }
         $status = self::normalizeCampaignStatusFilter($request->input('filter_campaign_status'));
         if ($status === null) {
             return;
         }
-        $query->where('campaignStatus', $status);
+        if (in_array('campaignStatus', $cols, true)) {
+            $query->where('campaignStatus', $status);
+
+            return;
+        }
+        if (in_array('state', $cols, true)) {
+            $query->where('state', $status);
+        }
     }
 
     /**
@@ -3133,9 +3142,10 @@ class AmazonAdsController extends Controller
         ];
         $defaultReportRangeDates['all_reports'] = self::latestAvailableReportDayYmd('amazon_sp_campaign_reports');
 
-        // Negative keywords have no report date/range — don't pin the calendar date for them
-        // (otherwise the grid would filter to only negatives whose created_at matches that day).
+        // Negative keywords / ad groups have no report date/range — don't pin the calendar date
+        // (otherwise the grid would filter to only rows whose created_at matches that day).
         $defaultReportRangeDates['sp_negatives'] = null;
+        $defaultReportRangeDates['ad_groups'] = null;
 
         return view('amazon_ads.all', [
             'rawSources' => $rawSources,
@@ -3885,9 +3895,21 @@ class AmazonAdsController extends Controller
         $usedCalendarSearchFallback = self::applyCalendarSearchWithL30Fallback($query, $table, $dbColumns, $request, $search);
         if (! $usedCalendarSearchFallback) {
             self::applyDateFilters($query, $table, $request);
-            if ($search !== '' && in_array('campaignName', $dbColumns, true)) {
+            if ($search !== '') {
                 $escaped = addcslashes($search, '%_\\');
-                $query->where('campaignName', 'LIKE', '%'.$escaped.'%');
+                $like = '%'.$escaped.'%';
+                if ($table === 'amazon_ads_ad_groups') {
+                    $query->where(function (Builder $q) use ($like, $dbColumns) {
+                        if (in_array('campaignName', $dbColumns, true)) {
+                            $q->orWhere('campaignName', 'LIKE', $like);
+                        }
+                        if (in_array('adGroupName', $dbColumns, true)) {
+                            $q->orWhere('adGroupName', 'LIKE', $like);
+                        }
+                    });
+                } elseif (in_array('campaignName', $dbColumns, true)) {
+                    $query->where('campaignName', 'LIKE', $like);
+                }
             }
         }
         self::applyUtilizationPercentRangeFilters($query, $table, $request, true);
