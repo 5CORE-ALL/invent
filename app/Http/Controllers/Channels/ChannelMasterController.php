@@ -48,6 +48,7 @@ use App\Support\EbayCampaignReportRollup;
 use App\Support\AmazonAdsAdvertisementMasterHistory;
 use App\Support\Marketplace\ChannelMasterInventoryGuard;
 use App\Support\Marketplace\ChannelMasterViewsGuard;
+use App\Support\Marketplace\PlsActiveChannelSales;
 use App\Support\Marketplace\ChannelMetricDotPair;
 use App\Support\Marketplace\ChartDatePad;
 use App\Support\Marketplace\EbayListingEnded;
@@ -2210,6 +2211,11 @@ class ChannelMasterController extends Controller
         } catch (\Throwable $e) {
             Log::warning('Fast-path TikTok 2 overlay failed: '.$e->getMessage());
         }
+        try {
+            $rows = $this->overlayLivePlsMetricsOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path PLS overlay failed: '.$e->getMessage());
+        }
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
@@ -2272,6 +2278,7 @@ class ChannelMasterController extends Controller
             'macys' => fn () => $this->computeMiraklYSalesLikeAmazon("Macy's, Inc."),
             'macysinc' => fn () => $this->computeMiraklYSalesLikeAmazon("Macy's, Inc."),
             'purchasingpower' => fn () => $this->computePurchasingPowerYSalesLikeAmazon(),
+            'pls' => fn () => $this->computePlsYSalesLikeAmazon(),
         ];
     }
 
@@ -2996,6 +3003,112 @@ class ChannelMasterController extends Controller
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * Overlay / inject PLS from pls_sales so /all-marketplace-master shows the
+     * Active Channel row even before channel:calculate-data writes it.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLivePlsMetricsOnChannelRows(array $rows): array
+    {
+        $channel = ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(channel)) = ?', ['pls'])
+            ->first();
+        if (! $channel || strtolower(trim((string) $channel->status)) !== 'active') {
+            return $rows;
+        }
+
+        $live = $this->getPlsLiveSalesSummary();
+        if ($live === null) {
+            return $rows;
+        }
+
+        $section = request()?->input('section');
+        $type = trim((string) ($channel->type ?? 'B2C'));
+        if (is_string($section) && $section !== '' && strcasecmp($section, $type) !== 0) {
+            return $rows;
+        }
+
+        $found = false;
+        foreach ($rows as &$row) {
+            if ($this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? '')) !== 'pls') {
+                continue;
+            }
+            $found = true;
+            $row = PlsActiveChannelSales::applyToRow($row, $live);
+            $l7 = (float) $live['l7_sales'];
+            $row['P-Sales'] = $this->projectedSalesFromL7($l7);
+        }
+        unset($row);
+
+        if (! $found) {
+            $rows[] = PlsActiveChannelSales::stubRow([
+                'alias' => $channel->alias ?? null,
+                'type' => $type !== '' ? $type : 'B2C',
+                'sheet_link' => $channel->sheet_link ?? null,
+                'missing_link' => $channel->missing_link ?: '/pls-pricing',
+                'channel_percentage' => $channel->channel_percentage ?? '',
+                'base' => $channel->base ?? 0,
+                'target' => $channel->target ?? 0,
+                'w_ads' => $channel->w_ads ?? 0,
+                'nr' => $channel->nr ?? 0,
+                'update' => $channel->update ?? 0,
+            ], $live);
+            $rows[array_key_last($rows)]['P-Sales'] = $this->projectedSalesFromL7((float) $live['l7_sales']);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array{l30_sales: float, l60_sales: float, l30_orders: int, l60_orders: int, qty: int, y_sales: float, l7_sales: float}|null
+     */
+    private function getPlsLiveSalesSummary(): ?array
+    {
+        if (! Schema::hasTable('pls_sales')) {
+            return null;
+        }
+
+        [$l30Start, $l30End, $l60Start, $l60End] = $this->completePacificL30L60Windows();
+        $l30 = $this->sumPlsSalesBetween($l30Start, $l30End);
+        $l60 = $this->sumPlsSalesBetween($l60Start, $l60End);
+        $y = $this->computePlsYSalesLikeAmazon();
+        $l7 = $this->computePlsL7SalesLikeAmazon();
+
+        return [
+            'l30_sales' => $l30['sales'],
+            'l60_sales' => $l60['sales'],
+            'l30_orders' => $l30['orders'],
+            'l60_orders' => $l60['orders'],
+            'qty' => $l30['qty'],
+            'y_sales' => $y ?? 0.0,
+            'l7_sales' => $l7 ?? 0.0,
+        ];
+    }
+
+    /**
+     * @return array{sales: float, orders: int, qty: int}
+     */
+    private function sumPlsSalesBetween(Carbon $start, Carbon $end): array
+    {
+        if (! Schema::hasTable('pls_sales')) {
+            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0];
+        }
+
+        $row = DB::table('pls_sales')
+            ->where('order_date', '>=', $start)
+            ->where('order_date', '<=', $end)
+            ->selectRaw('COALESCE(SUM(total_amount), 0) as sales, COUNT(DISTINCT order_number) as orders, COALESCE(SUM(quantity), 0) as qty')
+            ->first();
+
+        return [
+            'sales' => round((float) ($row->sales ?? 0), 2),
+            'orders' => (int) ($row->orders ?? 0),
+            'qty' => (int) ($row->qty ?? 0),
+        ];
     }
 
     /**
@@ -7876,14 +7989,12 @@ class ChannelMasterController extends Controller
             Log::warning('eBay 3 Y Sales calculation failed: ' . $e->getMessage());
         }
 
-        // PLS Y Sales: actual transactions from pls_sales table for yesterday
+        // PLS Y Sales: pls_sales, Pacific yesterday (same clock as Amazon Y Sales).
         try {
-            $yesterday = now()->subDay()->startOfDay();
-            $yesterdayEnd = now()->subDay()->endOfDay();
-            $plsYSales = \App\Models\PlsSale::where('order_date', '>=', $yesterday)
-                ->where('order_date', '<=', $yesterdayEnd)
-                ->sum('total_amount');
-            $yesterdaySummaries['pls'] = round($plsYSales, 2);
+            $plsYSales = $this->computePlsYSalesLikeAmazon();
+            if ($plsYSales !== null) {
+                $yesterdaySummaries['pls'] = $plsYSales;
+            }
         } catch (\Throwable $e) {
             Log::warning('PLS Y Sales calculation failed: ' . $e->getMessage());
         }
@@ -8126,6 +8237,15 @@ class ChannelMasterController extends Controller
             }
         } catch (\Throwable $e) {
             Log::warning('Vinted L7 Sales failed: ' . $e->getMessage());
+        }
+
+        try {
+            $plsL7 = $this->computePlsL7SalesLikeAmazon();
+            if ($plsL7 !== null) {
+                $l7Summaries['pls'] = $plsL7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('PLS L7 Sales failed: ' . $e->getMessage());
         }
 
         try {
@@ -9032,6 +9152,36 @@ class ChannelMasterController extends Controller
         [$yStart, $yEnd] = $this->pacificYesterdayBounds();
 
         return app(AliexpressController::class)->sumApiOrderSalesBetween($yStart, $yEnd);
+    }
+
+    /**
+     * PLS Y Sales from pls_sales — Pacific calendar yesterday.
+     */
+    private function computePlsYSalesLikeAmazon(): ?float
+    {
+        if (! Schema::hasTable('pls_sales')) {
+            return null;
+        }
+
+        [$yStart, $yEnd] = $this->pacificYesterdayBounds();
+
+        return $this->sumPlsSalesBetween($yStart, $yEnd)['sales'];
+    }
+
+    /**
+     * PLS L7 Sales from pls_sales, seven Pacific days ending yesterday.
+     */
+    private function computePlsL7SalesLikeAmazon(): ?float
+    {
+        if (! Schema::hasTable('pls_sales')) {
+            return null;
+        }
+
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+        $start = $yesterday->copy()->subDays(6)->startOfDay();
+        $end = $yesterday->copy()->endOfDay();
+
+        return $this->sumPlsSalesBetween($start, $end)['sales'];
     }
 
     /**
@@ -12755,34 +12905,23 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Use actual sales data from pls_sales table (last 30 days)
-        $thirtyDaysAgo = now()->subDays(30);
-        $sixtyDaysAgo = now()->subDays(60);
+        // Same Pacific L30/L60/Y windows as /all-marketplace-master overlays.
+        $live = $this->getPlsLiveSalesSummary() ?? [
+            'l30_sales' => 0.0,
+            'l60_sales' => 0.0,
+            'l30_orders' => 0,
+            'l60_orders' => 0,
+            'qty' => 0,
+            'y_sales' => 0.0,
+            'l7_sales' => 0.0,
+        ];
 
-        // L30 Sales: Last 30 days actual transactions
-        $l30SalesData = \App\Models\PlsSale::where('order_date', '>=', $thirtyDaysAgo)
-            ->selectRaw('COUNT(DISTINCT order_number) as orders, SUM(quantity) as qty, SUM(total_amount) as sales')
-            ->first();
-        
-        $l30Orders = (int) ($l30SalesData->orders ?? 0);
-        $totalQuantity = (int) ($l30SalesData->qty ?? 0);
-        $l30Sales = (float) ($l30SalesData->sales ?? 0);
-
-        // L60 Sales: 60-30 days ago actual transactions
-        $l60SalesData = \App\Models\PlsSale::where('order_date', '>=', $sixtyDaysAgo)
-            ->where('order_date', '<', $thirtyDaysAgo)
-            ->selectRaw('COUNT(DISTINCT order_number) as orders, SUM(total_amount) as sales')
-            ->first();
-        
-        $l60Orders = (int) ($l60SalesData->orders ?? 0);
-        $l60Sales = (float) ($l60SalesData->sales ?? 0);
-
-        // Y Sales: Yesterday's actual transactions
-        $yesterday = now()->subDay()->startOfDay();
-        $yesterdayEnd = now()->subDay()->endOfDay();
-        $ySales = \App\Models\PlsSale::where('order_date', '>=', $yesterday)
-            ->where('order_date', '<=', $yesterdayEnd)
-            ->sum('total_amount');
+        $l30Orders = (int) $live['l30_orders'];
+        $totalQuantity = (int) $live['qty'];
+        $l30Sales = (float) $live['l30_sales'];
+        $l60Orders = (int) $live['l60_orders'];
+        $l60Sales = (float) $live['l60_sales'];
+        $ySales = (float) $live['y_sales'];
 
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
@@ -12851,6 +12990,7 @@ class ChannelMasterController extends Controller
             'L-60 Sales' => round($l60Sales),
             'L30 Sales'  => round($l30Sales),
             'Y Sales'    => round($ySales),
+            'L7 Sales'   => round((float) $live['l7_sales'], 2),
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,

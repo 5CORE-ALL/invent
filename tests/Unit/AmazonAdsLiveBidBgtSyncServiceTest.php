@@ -299,6 +299,7 @@ class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
     public function test_retry_helper_marks_timeouts_retryable(): void
     {
         $this->assertTrue(AmazonAdsApiRetry::isRetryable(new RuntimeException('Connection timed out')));
+        $this->assertTrue(AmazonAdsApiRetry::isRetryable(new RuntimeException('Amazon Ads /sp/keywords/list list truncated after 80 pages')));
         $this->assertTrue(AmazonAdsApiRetry::valuesMatch(12.0, 12.4, 0.51));
         $this->assertFalse(AmazonAdsApiRetry::valuesMatch(12.0, 13.0, 0.51));
         $this->assertSame(12.5, AmazonAdsEnabledCampaignSync::budgetAmount(['budget' => ['budget' => 12.5]]));
