@@ -33,9 +33,10 @@ class MissingListingController extends Controller
     /** Default Seller Portal when channel_master.seller_link is empty. */
     private const DEFAULT_SELLER_PORTALS = [
         'faire' => 'https://www.faire.com/brand-portal/my-shop/products',
+        'depop' => 'https://www.depop.com/sellinghub/',
     ];
 
-    public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v3';
+    public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v4';
 
     private const PAGE_CACHE_TTL_DAYS = 7;
 
@@ -264,20 +265,21 @@ class MissingListingController extends Controller
             $dataSource = ListingChannelCounts::dataSource($channel);
             $key = ListingChannelCounts::normalize($channel);
             $snap = $snapshots[$key] ?? [];
-            $live = ListingChannelCounts::isLiveApiSource($channel);
+            $counts = ListingChannelCounts::showsComputedCounts($channel);
 
             return [
                 'id' => $master->id,
                 'image' => $hasLogo ? ($master->logo ?? null) : null,
                 'channel' => $channel,
                 'listing_url' => ListingChannelCounts::listingUrl($channel),
-                'data_source' => $live ? 'API' : ($dataSource === 'Offline' ? 'Offline' : 'Sheet'),
+                'data_source' => $dataSource,
+                'allows_csv_upload' => ListingChannelCounts::isCsvCatalogSource($channel),
                 'sku' => $cpSkuCount,
                 'zero_inv' => $cpZeroInv,
-                'req' => $live ? (int) ($snap['listing_req'] ?? 0) : null,
-                'nrl' => $live ? (int) ($snap['listing_nrl'] ?? 0) : null,
-                'listed' => $live ? (int) ($snap['listing_listed'] ?? 0) : null,
-                'missing_listing' => $live ? (int) ($snap['listing_miss_count'] ?? 0) : null,
+                'req' => $counts ? (int) ($snap['listing_req'] ?? 0) : null,
+                'nrl' => $counts ? (int) ($snap['listing_nrl'] ?? 0) : null,
+                'listed' => $counts ? (int) ($snap['listing_listed'] ?? 0) : null,
+                'missing_listing' => $counts ? (int) ($snap['listing_miss_count'] ?? 0) : null,
                 'inactive_parent' => 0,
                 'inactive_child' => 0,
                 'inactive_listings_url' => null,
@@ -287,7 +289,7 @@ class MissingListingController extends Controller
         })->values();
 
         $totalMissingL = (int) $data
-            ->filter(fn ($row) => ($row['data_source'] ?? '') === 'API')
+            ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
             ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
 
         return [
@@ -347,13 +349,14 @@ class MissingListingController extends Controller
                 $inactive = ['parent' => 0, 'child' => 0, 'url' => null];
             }
 
-            if (! ListingChannelCounts::isLiveApiSource($channel)) {
+            if (! ListingChannelCounts::showsComputedCounts($channel)) {
                 return [
                     'id' => $master->id,
                     'image' => $hasLogo ? ($master->logo ?? null) : null,
                     'channel' => $channel,
                     'listing_url' => ListingChannelCounts::listingUrl($channel),
                     'data_source' => $dataSource === 'Offline' ? 'Offline' : 'Sheet',
+                    'allows_csv_upload' => false,
                     'sku' => $cpSkuCount,
                     'zero_inv' => $cpZeroInv,
                     'req' => null,
@@ -380,7 +383,8 @@ class MissingListingController extends Controller
                 'image' => $hasLogo ? ($master->logo ?? null) : null,
                 'channel' => $channel,
                 'listing_url' => ListingChannelCounts::listingUrl($channel),
-                'data_source' => 'API',
+                'data_source' => $dataSource,
+                'allows_csv_upload' => ListingChannelCounts::isCsvCatalogSource($channel),
                 'sku' => $cpSkuCount,
                 'zero_inv' => $cpZeroInv,
                 'req' => (int) ($listingCounts['REQ'] ?? 0),
@@ -398,7 +402,7 @@ class MissingListingController extends Controller
         $this->persistListingMissingHistory($data);
 
         $totalMissingL = (int) $data
-            ->filter(fn ($row) => ($row['data_source'] ?? '') === 'API')
+            ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
             ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
         ListingChannelCounts::storeTotalMissingL($totalMissingL);
 
@@ -446,7 +450,8 @@ class MissingListingController extends Controller
                 'image' => $hasLogo ? ($master->logo ?? null) : null,
                 'channel' => $channel,
                 'listing_url' => ListingChannelCounts::listingUrl($channel),
-                'data_source' => ListingChannelCounts::isLiveApiSource($channel) ? 'API' : 'Sheet',
+                'data_source' => ListingChannelCounts::dataSource($channel),
+                'allows_csv_upload' => ListingChannelCounts::isCsvCatalogSource($channel),
                 'sku' => 0,
                 'zero_inv' => 0,
                 'req' => null,
@@ -521,7 +526,12 @@ class MissingListingController extends Controller
             return null;
         }
 
-        return self::normalizeListingMode($master->listing_mode ?? null);
+        $mode = self::normalizeListingMode($master->listing_mode ?? null);
+        if ($mode === null && ListingChannelCounts::isCsvCatalogSource((string) $master->channel)) {
+            return 'CSV';
+        }
+
+        return $mode;
     }
 
     /**
@@ -769,7 +779,8 @@ class MissingListingController extends Controller
                 }
 
                 // Do not snapshot Sheet / disconnected channels (no live listing counts)
-                if (($row['data_source'] ?? '') !== 'API' || ! ListingChannelCounts::isLiveApiSource((string) ($row['channel'] ?? ''))) {
+                if (! in_array($row['data_source'] ?? '', ['API', 'CSV'], true)
+                    || ! ListingChannelCounts::showsComputedCounts((string) ($row['channel'] ?? ''))) {
                     continue;
                 }
 
@@ -805,7 +816,7 @@ class MissingListingController extends Controller
                     continue;
                 }
                 $seen[$key] = true;
-                if (! ListingChannelCounts::isLiveApiSource((string) $name)) {
+                if (! ListingChannelCounts::showsComputedCounts((string) $name)) {
                     continue;
                 }
                 $c = ListingChannelCounts::forChannel((string) $name, false);
@@ -815,7 +826,7 @@ class MissingListingController extends Controller
             return (float) $total;
         }
 
-        if (! ListingChannelCounts::isLiveApiSource($channelKey)) {
+        if (! ListingChannelCounts::showsComputedCounts($channelKey)) {
             return 0.0;
         }
 

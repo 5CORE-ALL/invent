@@ -2673,10 +2673,10 @@ class ListingManagerController extends Controller
         $hydrated = ListingManagerAmazonHydrator::hydrate((string) $draft->seller_sku, $needsMainStoreDesc, $channelName);
 
         $currentTitle = trim((string) $draft->title);
-        $titleLimit = (int) (ListingManagerAmazonHydrator::limitsForChannel($channelName)['title'] ?? 200);
-        $isFaire = ListingChannelCounts::normalize($channelName) === 'faire';
+        $isFaire = ListingManagerAmazonHydrator::isFaireChannel($channelName);
+        $faireTitle = $isFaire ? trim((string) ($hydrated['title'] ?? '')) : '';
         $needsTitle = $force || $currentTitle === ''
-            || ($isFaire && $titleLimit > 0 && mb_strlen($currentTitle) > $titleLimit);
+            || ($isFaire && $faireTitle !== '' && $faireTitle !== $currentTitle);
         $needsDesc = $needsMainStoreDesc;
         $needsImages = $force || $images === [];
         $needsPrice = $force || $draft->price === null || (float) $draft->price <= 0;
@@ -2955,6 +2955,17 @@ class ListingManagerController extends Controller
             $channelName
         );
         $limits = ListingManagerAmazonHydrator::limitsForChannel($channelName);
+        if (ListingManagerAmazonHydrator::isFaireChannel($channelName)) {
+            $limits['title'] = 60;
+            $loadedTitle = ListingManagerMasterLoader::load((string) $d->seller_sku, 'title', $channelName);
+            $faireTitle = trim((string) ($loadedTitle['title'] ?? ''));
+            if ($faireTitle !== '') {
+                $d->title = $faireTitle;
+                if ($d->isDirty('title') && (string) $d->status !== 'listed') {
+                    $d->save();
+                }
+            }
+        }
 
         $payload = [
             'id' => $d->id,

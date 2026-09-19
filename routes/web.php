@@ -146,6 +146,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAmazonController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAppscenicController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAutoDSController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingBestbuyUSAController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingDepopController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingDobaController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayThreeController;
@@ -5929,6 +5930,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_poshmark/save-status', [ListingPoshmarkController::class, 'saveStatus']);
     Route::post('/listing_poshmark/import', [ListingPoshmarkController::class, 'import'])->name('listing_poshmark.import');
     Route::get('/listing_poshmark/export', [ListingPoshmarkController::class, 'export'])->name('listing_poshmark.export');
+
+    // Depop (manual / CSV catalog until API exists)
+    Route::get('/listing-depop', [ListingDepopController::class, 'listingDepop'])->name('listing.depop');
+    Route::get('/listing_depop/view-data', [ListingDepopController::class, 'getViewListingDepopData']);
+    Route::post('/listing_depop/save-status', [ListingDepopController::class, 'saveStatus']);
+    Route::post('/listing_depop/import', [ListingDepopController::class, 'import'])->name('listing.depop.import');
+    Route::get('/listing_depop/template', [ListingDepopController::class, 'template'])->name('listing.depop.template');
+    Route::get('/listing_depop/export', [ListingDepopController::class, 'export'])->name('listing.depop.export');
 
     // Shein
     Route::get('/listing-shein', [ListingSheinController::class, 'listingShein'])->name('listing.shein');
