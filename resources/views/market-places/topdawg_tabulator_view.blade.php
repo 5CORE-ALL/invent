@@ -71,7 +71,7 @@
                         <span class="badge bg-danger text-center" id="missing-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="REQ + INV&gt;0 + TD Price=0">Missing L: 0</span>
                         <span class="badge text-center" id="topdawg-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
-                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            title="Blue triangle: S PRC ≠ Price and not yet submitted at this S PRC. Click to show only those rows. Already-pushed SKUs stay yellow until TopDawg approves the review (1–24h).">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'topdawg'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'topdawg-price-gt-lmp-badge', 'pglChannelKey' => 'topdawg', 'pglPriceField' => 'TD Price'])
@@ -313,7 +313,17 @@
         if (!(parseFloat(data && data.INV) > 0)) return false;
         const sprice = tdRowSpriceForAlert(data);
         const price = parseFloat(data && data['TD Price']) || 0;
-        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        if (!(sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100))) {
+            return false;
+        }
+        // Already submitted to TopDawg review at this S PRC — waiting on TD,
+        // not another push. Yellow SPRICE cell shows "queued in review".
+        const status = String((data && (data.SPRICE_STATUS || data.push_status)) || '').toLowerCase();
+        const pushed = parseFloat(data && (data.SPRICE_PUSHED_VALUE != null ? data.SPRICE_PUSHED_VALUE : data.CHANNEL_PUSHED_PRICE)) || 0;
+        if (status === 'pushed' && pushed > 0 && Math.round(pushed * 100) === Math.round(sprice * 100)) {
+            return false;
+        }
+        return true;
     }
     window.tdHasBlueTriangle = tdHasBlueTriangle;
     function syncTdTriangleBadgeState() {
