@@ -178,16 +178,34 @@ class ListingManagerEbayTradingPublisher
             $shippingId = trim((string) ($payload['shipping_policy_id'] ?? ''));
             $paymentId = trim((string) ($payload['payment_policy_id'] ?? ''));
             $returnId = trim((string) ($payload['return_policy_id'] ?? ''));
-            if ($shippingId !== '' || $paymentId !== '' || $returnId !== '') {
+            $shippingName = trim((string) ($payload['shipping_policy_name'] ?? ''));
+            $paymentName = trim((string) ($payload['payment_policy_name'] ?? ''));
+            $returnName = trim((string) ($payload['return_policy_name'] ?? ''));
+            if ($shippingId !== '' || $paymentId !== '' || $returnId !== '' || $shippingName !== '' || $paymentName !== '' || $returnName !== '') {
                 $profiles = $item->addChild('SellerProfiles');
                 if ($shippingId !== '') {
                     $profiles->addChild('SellerShippingProfile')->addChild('ShippingProfileID', $shippingId);
+                } elseif ($shippingName !== '') {
+                    $profiles->addChild('SellerShippingProfile')->addChild(
+                        'ShippingProfileName',
+                        htmlspecialchars($shippingName, ENT_XML1 | ENT_COMPAT, 'UTF-8')
+                    );
                 }
                 if ($paymentId !== '') {
                     $profiles->addChild('SellerPaymentProfile')->addChild('PaymentProfileID', $paymentId);
+                } elseif ($paymentName !== '') {
+                    $profiles->addChild('SellerPaymentProfile')->addChild(
+                        'PaymentProfileName',
+                        htmlspecialchars($paymentName, ENT_XML1 | ENT_COMPAT, 'UTF-8')
+                    );
                 }
                 if ($returnId !== '') {
                     $profiles->addChild('SellerReturnProfile')->addChild('ReturnProfileID', $returnId);
+                } elseif ($returnName !== '') {
+                    $profiles->addChild('SellerReturnProfile')->addChild(
+                        'ReturnProfileName',
+                        htmlspecialchars($returnName, ENT_XML1 | ENT_COMPAT, 'UTF-8')
+                    );
                 }
             } elseif (($ctx['channel'] ?? '') === 'ebaythree') {
                 self::appendEbay3FallbackShippingAndReturns($item);
@@ -521,15 +539,24 @@ class ListingManagerEbayTradingPublisher
     {
         try {
             $svc = new EbayApiService();
-            if (! $svc->isConfigured()) {
-                return $payload;
+            if ($svc->isConfigured()) {
+                $resolved = $svc->policyIdsForPayload($payload);
+                $payload['shipping_policy_id'] = $resolved['shipping'];
+                $payload['payment_policy_id'] = $resolved['payment'];
+                $payload['return_policy_id'] = $resolved['return'];
             }
-            $resolved = $svc->policyIdsForPayload($payload);
-            $payload['shipping_policy_id'] = $resolved['shipping'];
-            $payload['payment_policy_id'] = $resolved['payment'];
-            $payload['return_policy_id'] = $resolved['return'];
         } catch (\Throwable $e) {
             Log::warning('Ebay 1 policy resolve failed: '.$e->getMessage());
+        }
+        $defaults = EbaySellAccountPolicies::defaultsForChannel('ebay');
+        if (trim((string) ($payload['shipping_policy_id'] ?? '')) === '') {
+            $payload['shipping_policy_name'] = trim((string) ($defaults['shipping_policy_name'] ?? 'As Per Weight')) ?: 'As Per Weight';
+        }
+        if (trim((string) ($payload['payment_policy_id'] ?? '')) === '') {
+            $payload['payment_policy_name'] = trim((string) ($defaults['payment_policy_name'] ?? 'eBay Managed Payments')) ?: 'eBay Managed Payments';
+        }
+        if (trim((string) ($payload['return_policy_id'] ?? '')) === '') {
+            $payload['return_policy_name'] = trim((string) ($defaults['return_policy_name'] ?? '30 days money back')) ?: '30 days money back';
         }
 
         return $payload;
