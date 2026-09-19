@@ -1899,12 +1899,17 @@ class ListingManagerController extends Controller
         $isEbay3 = in_array($channelKey, ['ebay3', 'ebaythree'], true);
         $isEbay1 = in_array($channelKey, ['ebay', 'ebay1', 'ebayone'], true);
         $defaults = EbaySellAccountPolicies::defaultsForChannel($channelKey);
-        $ebay = $isEbay3
-            ? new EbayThreeApiService()
-            : ($isEbay1 ? new EbayApiService() : new Ebay2ApiService());
-        $result = $ebay->isConfigured()
-            ? $ebay->getBusinessPolicies()
-            : ['success' => false, 'shipping' => [], 'payment' => [], 'return' => []];
+        $result = ['success' => false, 'shipping' => [], 'payment' => [], 'return' => []];
+        try {
+            $ebay = $isEbay3
+                ? new EbayThreeApiService()
+                : ($isEbay1 ? new EbayApiService() : new Ebay2ApiService());
+            if ($ebay->isConfigured()) {
+                $result = $ebay->getBusinessPolicies();
+            }
+        } catch (\Throwable $e) {
+            $result['message'] = $e->getMessage();
+        }
 
         // Ensure screenshot defaults appear even if Account API scope is missing
         $ensure = function (array $list, string $id, string $name): array {
@@ -2326,10 +2331,11 @@ class ListingManagerController extends Controller
             ),
             (string) $draft->seller_sku
         );
+        $channelName = (string) ($draft->channel->channel ?? '');
+        $details = $this->applyLiveEbayPolicies($details, $channelName);
         $draft->listing_details = $details;
         $draft->save();
 
-        $channelName = (string) ($draft->channel->channel ?? '');
         $this->applyFaireDraftTitle($draft, $channelName);
         $ready = ListingManagerPublishStatus::readiness(
             $draft->title,
@@ -2942,6 +2948,45 @@ class ListingManagerController extends Controller
         $key = ListingChannelCounts::normalize($channelName);
         if (in_array($key, ['ebay3', 'ebaythree'], true)) {
             $details['best_offer'] = false;
+        }
+
+        return $details;
+    }
+
+    /**
+     * @param  array<string, mixed>  $details
+     * @return array<string, mixed>
+     */
+    private function applyLiveEbayPolicies(array $details, string $channelName): array
+    {
+        $key = ListingChannelCounts::normalize($channelName);
+        try {
+            if (in_array($key, ['ebay', 'ebay1', 'ebayone'], true)) {
+                $svc = new EbayApiService();
+                if (! $svc->isConfigured()) {
+                    return $details;
+                }
+                $resolved = $svc->policyIdsForPayload($details);
+            } elseif (in_array($key, ['ebay3', 'ebaythree'], true)) {
+                $svc = new EbayThreeApiService();
+                if (! $svc->isConfigured()) {
+                    return $details;
+                }
+                $resolved = $svc->policyIdsForPayload($details);
+            } else {
+                return $details;
+            }
+            if (trim((string) ($resolved['shipping'] ?? '')) !== '') {
+                $details['shipping_policy_id'] = $resolved['shipping'];
+            }
+            if (trim((string) ($resolved['payment'] ?? '')) !== '') {
+                $details['payment_policy_id'] = $resolved['payment'];
+            }
+            if (trim((string) ($resolved['return'] ?? '')) !== '') {
+                $details['return_policy_id'] = $resolved['return'];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Listing manager live eBay policies failed: '.$e->getMessage());
         }
 
         return $details;

@@ -2520,9 +2520,11 @@
         if (isEbay) {
             if (!d.primary_category_id) errors.category.push('Category');
             if (!d.condition) errors.category.push('Condition');
-            if (!d.shipping_policy_id) errors.policies.push('Shipping');
-            if (!d.payment_policy_id) errors.policies.push('Payment');
-            if (!d.return_policy_id) errors.policies.push('Return');
+            if (!isEbay1Channel(channel) && !isEbay3Channel(channel)) {
+                if (!d.shipping_policy_id) errors.policies.push('Shipping');
+                if (!d.payment_policy_id) errors.policies.push('Payment');
+                if (!d.return_policy_id) errors.policies.push('Return');
+            }
             if (!d.location_country) errors.policies.push('Country');
             if (!d.location_postal_code) errors.policies.push('Postal');
         }

@@ -38,7 +38,7 @@ class EbaySellAccountPolicies
                 $response = Http::withoutVerifying()
                     ->withToken($token)
                     ->acceptJson()
-                    ->timeout(30)
+                    ->timeout(10)
                     ->get($url);
                 if ($response->failed()) {
                     Log::warning("eBay {$key} policies failed", [

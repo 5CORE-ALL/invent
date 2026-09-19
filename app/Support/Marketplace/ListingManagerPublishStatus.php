@@ -288,9 +288,12 @@ class ListingManagerPublishStatus
                 $tabErrors['category'][] = 'Condition is required.';
             }
 
-            foreach (['shipping_policy_id' => 'Shipping Policy', 'payment_policy_id' => 'Payment Policy', 'return_policy_id' => 'Return Policy'] as $key => $label) {
-                if (trim((string) ($details[$key] ?? '')) === '') {
-                    $tabErrors['business_policies'][] = "{$label} is required.";
+            // Ebay 1 / 3 attach this store's live policies (or policy names) at publish.
+            if (! self::usesLiveEbayPolicies($channelName)) {
+                foreach (['shipping_policy_id' => 'Shipping Policy', 'payment_policy_id' => 'Payment Policy', 'return_policy_id' => 'Return Policy'] as $key => $label) {
+                    if (trim((string) ($details[$key] ?? '')) === '') {
+                        $tabErrors['business_policies'][] = "{$label} is required.";
+                    }
                 }
             }
             if (trim((string) ($details['location_country'] ?? '')) === '') {
@@ -650,5 +653,12 @@ class ListingManagerPublishStatus
         ];
 
         return $map[strtolower(trim($condition))] ?? '1000';
+    }
+
+    public static function usesLiveEbayPolicies(?string $channelName): bool
+    {
+        $key = ListingChannelCounts::normalize((string) $channelName);
+
+        return in_array($key, ['ebay', 'ebay1', 'ebayone', 'ebay3', 'ebaythree'], true);
     }
 }
