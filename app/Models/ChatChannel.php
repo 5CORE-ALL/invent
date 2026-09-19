@@ -13,6 +13,8 @@ class ChatChannel extends Model
 
     public const TYPE_DM = 'dm';
 
+    public const TYPE_GROUP = 'group';
+
     public const TYPE_BOT = 'bot';
 
     protected $fillable = [
@@ -47,5 +49,10 @@ class ChatChannel extends Model
     public function isBotInbox(): bool
     {
         return $this->type === self::TYPE_BOT;
+    }
+
+    public function isGroup(): bool
+    {
+        return $this->type === self::TYPE_GROUP;
     }
 }

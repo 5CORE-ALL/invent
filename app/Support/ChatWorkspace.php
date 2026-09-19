@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\ChatChannel;
 use App\Models\ChatChannelMember;
 use App\Models\ChatMessage;
+use App\Models\ChatNotificationPref;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -14,6 +15,11 @@ use Illuminate\Support\Str;
 class ChatWorkspace
 {
     public const BOT_NAME = '@invent';
+
+    public const ATTACH_MAX_KB = 10240;
+
+    /** @var list<string> */
+    public const ATTACH_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'txt', 'csv', 'xlsx', 'xls', 'doc', 'docx', 'zip'];
 
     /**
      * @return list<array{name: string, slug: string, topic: string}>
@@ -153,16 +159,38 @@ class ChatWorkspace
         );
         self::ensureMember($channel, (int) $user->id);
 
-        $hasMessage = ChatMessage::query()->where('channel_id', $channel->id)->exists();
-        if (! $hasMessage) {
-            ChatMessage::query()->create([
-                'channel_id' => $channel->id,
-                'user_id' => null,
-                'is_bot' => true,
-                'bot_name' => self::BOT_NAME,
-                'body' => InventChatBot::welcomeText(),
-                'command' => 'welcome',
-            ]);
+        ChatMessage::query()
+            ->where('channel_id', $channel->id)
+            ->where('is_bot', true)
+            ->where(function ($q) {
+                $q->where('body', 'like', '%/task Buy packing tape%')
+                    ->orWhere('body', 'like', "Hi — I'm @invent%")
+                    ->orWhere('body', 'like', 'Unknown command%')
+                    ->orWhere('body', 'like', 'Commands:%');
+            })
+            ->delete();
+
+        $welcome = ChatMessage::query()
+            ->where('channel_id', $channel->id)
+            ->where('command', 'welcome')
+            ->first();
+        if ($welcome) {
+            if ($welcome->body !== InventChatBot::welcomeText()) {
+                $welcome->body = InventChatBot::welcomeText();
+                $welcome->save();
+            }
+        } else {
+            $hasMessage = ChatMessage::query()->where('channel_id', $channel->id)->exists();
+            if (! $hasMessage) {
+                ChatMessage::query()->create([
+                    'channel_id' => $channel->id,
+                    'user_id' => null,
+                    'is_bot' => true,
+                    'bot_name' => self::BOT_NAME,
+                    'body' => InventChatBot::welcomeText(),
+                    'command' => 'welcome',
+                ]);
+            }
         }
 
         return $channel;
@@ -189,6 +217,59 @@ class ChatWorkspace
         return $channel;
     }
 
+    /**
+     * @param  list<int>  $memberIds
+     */
+    public static function createGroup(User $creator, array $memberIds, ?string $name = null): ChatChannel
+    {
+        $ids = array_values(array_unique(array_merge([(int) $creator->id], array_map('intval', $memberIds))));
+        $ids = array_values(array_filter($ids, fn ($id) => $id > 0));
+        if (count($ids) < 2) {
+            abort(422, 'Pick at least one teammate.');
+        }
+
+        if (count($ids) === 2) {
+            $other = User::query()->findOrFail($ids[0] === (int) $creator->id ? $ids[1] : $ids[0]);
+
+            return self::dmBetween($creator, $other);
+        }
+
+        $people = User::query()->whereIn('id', $ids)->get(['id', 'name']);
+        $label = trim((string) $name);
+        if ($label === '') {
+            $label = $people->pluck('name')->map(fn ($n) => explode(' ', trim((string) $n))[0] ?? $n)->take(4)->implode(', ');
+        }
+
+        $channel = ChatChannel::query()->create([
+            'type' => ChatChannel::TYPE_GROUP,
+            'name' => $label,
+            'created_by' => $creator->id,
+        ]);
+
+        $now = now();
+        $rows = [];
+        foreach ($ids as $id) {
+            $rows[] = [
+                'channel_id' => $channel->id,
+                'user_id' => $id,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        ChatChannelMember::query()->insert($rows);
+
+        ChatMessage::query()->create([
+            'channel_id' => $channel->id,
+            'user_id' => null,
+            'is_bot' => true,
+            'bot_name' => self::BOT_NAME,
+            'body' => $creator->name.' created this group.',
+            'command' => 'group',
+        ]);
+
+        return $channel;
+    }
+
     public static function memberOrFail(User $user, int $channelId): ChatChannel
     {
         $channel = ChatChannel::query()->findOrFail($channelId);
@@ -205,14 +286,16 @@ class ChatWorkspace
     /**
      * @return list<array<string, mixed>>
      */
-    public static function inboxFor(User $user): array
+    public static function inboxFor(User $user, bool $bootstrap = true): array
     {
-        self::bootstrap($user);
-        Cache::remember('chat_public_member_sync', now()->addHour(), function () {
-            self::syncPublicMembers();
+        if ($bootstrap) {
+            self::bootstrap($user);
+            Cache::remember('chat_public_member_sync', now()->addHour(), function () {
+                self::syncPublicMembers();
 
-            return 1;
-        });
+                return 1;
+            });
+        }
 
         $memberChannelIds = ChatChannelMember::query()
             ->where('user_id', $user->id)
@@ -221,7 +304,7 @@ class ChatWorkspace
         $channels = ChatChannel::query()
             ->whereIn('id', $memberChannelIds)
             ->where('is_archived', false)
-            ->orderByRaw("FIELD(type, 'bot', 'public', 'private', 'dm')")
+            ->orderByRaw("FIELD(type, 'bot', 'public', 'private', 'group', 'dm')")
             ->orderBy('name')
             ->get();
 
@@ -231,6 +314,17 @@ class ChatWorkspace
             ->whereIn('channel_id', $channels->pluck('id'))
             ->groupBy('channel_id')
             ->pluck('last_id', 'channel_id');
+
+        $reads = ChatChannelMember::query()
+            ->where('user_id', $user->id)
+            ->whereIn('channel_id', $channels->pluck('id'))
+            ->pluck('last_read_message_id', 'channel_id');
+
+        $memberCounts = ChatChannelMember::query()
+            ->selectRaw('channel_id, COUNT(*) as c')
+            ->whereIn('channel_id', $channels->pluck('id'))
+            ->groupBy('channel_id')
+            ->pluck('c', 'channel_id');
 
         $peerIds = [];
         foreach ($channels as $channel) {
@@ -245,6 +339,7 @@ class ChatWorkspace
         $peers = $peerIds === []
             ? collect()
             : User::query()->whereIn('id', $peerIds)->get(['id', 'name', 'email', 'avatar'])->keyBy('id');
+        $presence = ChatPresence::map($peerIds);
 
         $out = [];
         foreach ($channels as $channel) {
@@ -257,6 +352,10 @@ class ChatWorkspace
                 $label = $peer?->name ?: $label;
             }
 
+            $lastRead = (int) ($reads[$channel->id] ?? 0);
+            $lastId = (int) ($lastByChannel[$channel->id] ?? 0);
+            $peerPresence = $peer ? ($presence[(int) $peer->id] ?? null) : null;
+
             $out[] = [
                 'id' => (int) $channel->id,
                 'type' => $channel->type,
@@ -264,14 +363,19 @@ class ChatWorkspace
                 'slug' => $channel->slug,
                 'topic' => $channel->topic,
                 'unread' => (int) ($unread[$channel->id] ?? 0),
-                'last_id' => (int) ($lastByChannel[$channel->id] ?? 0),
+                'last_id' => $lastId,
+                'last_read_message_id' => $lastRead,
+                'first_unread_id' => $lastRead > 0 ? $lastRead + 1 : null,
                 'peer_id' => $peer?->id,
                 'avatar' => $channel->isBotInbox() ? null : self::avatarUrl($peer),
+                'member_count' => (int) ($memberCounts[$channel->id] ?? 0),
+                'online' => (bool) ($peerPresence['online'] ?? false),
+                'last_seen_label' => $peerPresence['last_seen_label'] ?? null,
             ];
         }
 
         usort($out, function (array $a, array $b) {
-            $rank = ['bot' => 0, 'public' => 1, 'private' => 2, 'dm' => 3];
+            $rank = ['bot' => 0, 'public' => 1, 'private' => 2, 'group' => 3, 'dm' => 4];
             $ra = $rank[$a['type']] ?? 9;
             $rb = $rank[$b['type']] ?? 9;
             if ($ra !== $rb) {
@@ -329,7 +433,7 @@ class ChatWorkspace
 
         $cacheKey = 'chat_unread_total_'.$user->id;
 
-        return (int) Cache::remember($cacheKey, now()->addSeconds(15), function () use ($user) {
+        return (int) Cache::remember($cacheKey, now()->addSeconds(3), function () use ($user) {
             return (int) array_sum(self::unreadByChannel($user));
         });
     }
@@ -337,6 +441,7 @@ class ChatWorkspace
     public static function forgetUnreadCache(int $userId): void
     {
         Cache::forget('chat_unread_total_'.$userId);
+        Cache::forget('chat_inbox_'.$userId);
     }
 
     public static function markRead(User $user, ChatChannel $channel, ?int $messageId = null): void
@@ -428,7 +533,7 @@ class ChatWorkspace
             $text
         ) ?? $text;
         $text = preg_replace(
-            '/@([A-Za-z0-9._-]+)/',
+            '/@(channel|everyone|[A-Za-z0-9._-]+)/',
             '<span class="invent-chat-mention">@$1</span>',
             $text
         ) ?? $text;
@@ -444,16 +549,86 @@ class ChatWorkspace
     }
 
     /**
+     * @param  list<int>  $messageIds
+     * @return array<int, array{seen: bool, seen_by: list<array{id: int, name: string}>, seen_label: string}>
+     */
+    public static function receiptsFor(ChatChannel $channel, array $messageIds, int $viewerId): array
+    {
+        $messageIds = array_values(array_filter(array_map('intval', $messageIds)));
+        if ($messageIds === []) {
+            return [];
+        }
+
+        $members = ChatChannelMember::query()
+            ->where('channel_id', $channel->id)
+            ->where('user_id', '!=', $viewerId)
+            ->get(['user_id', 'last_read_message_id']);
+
+        $users = User::query()
+            ->whereIn('id', $members->pluck('user_id'))
+            ->get(['id', 'name'])
+            ->keyBy('id');
+
+        $out = [];
+        foreach ($messageIds as $mid) {
+            $seenBy = [];
+            foreach ($members as $member) {
+                if ((int) $member->last_read_message_id >= $mid) {
+                    $person = $users->get($member->user_id);
+                    if ($person) {
+                        $seenBy[] = [
+                            'id' => (int) $person->id,
+                            'name' => (string) $person->name,
+                        ];
+                    }
+                }
+            }
+            $label = 'Sent';
+            if ($seenBy !== []) {
+                $label = $channel->isDm() || $channel->isBotInbox()
+                    ? 'Seen'
+                    : 'Seen by '.collect($seenBy)->pluck('name')->take(3)->implode(', ');
+            }
+            $out[$mid] = [
+                'seen' => $seenBy !== [],
+                'seen_by' => $seenBy,
+                'seen_label' => $label,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array{seen?: bool, seen_by?: list<array{id: int, name: string}>, seen_label?: string}|null  $receipt
      * @return array<string, mixed>
      */
-    public static function serializeMessage(ChatMessage $message): array
+    public static function serializeMessage(ChatMessage $message, ?array $receipt = null): array
     {
         $user = $message->relationLoaded('user') ? $message->user : $message->user()->first();
         $tz = TaskBusinessTime::tz();
+        $forwarded = null;
+        if ($message->forwarded_from_id) {
+            $orig = $message->relationLoaded('forwardedFrom')
+                ? $message->forwardedFrom
+                : $message->forwardedFrom()->with('user:id,name')->first();
+            if ($orig) {
+                $origUser = $orig->user;
+                $forwarded = [
+                    'id' => (int) $orig->id,
+                    'name' => $orig->is_bot ? ($orig->bot_name ?: self::BOT_NAME) : ($origUser->name ?? 'Member'),
+                    'preview' => Str::limit(trim((string) ($orig->body ?: $orig->attachment_name ?: 'Attachment')), 140),
+                ];
+            }
+        }
+
+        $deleted = $message->deleted_at !== null;
 
         return [
             'id' => (int) $message->id,
+            'client_id' => $message->client_id,
             'channel_id' => (int) $message->channel_id,
+            'parent_id' => $message->parent_id ? (int) $message->parent_id : null,
             'user_id' => $message->user_id ? (int) $message->user_id : null,
             'is_bot' => (bool) $message->is_bot,
             'bot_name' => $message->bot_name ?: self::BOT_NAME,
@@ -461,15 +636,255 @@ class ChatWorkspace
                 ? ($message->bot_name ?: self::BOT_NAME)
                 : ($user->name ?? 'Member'),
             'avatar' => $message->is_bot ? null : self::avatarUrl($user),
-            'body' => $message->body,
-            'html' => self::formatBody($message->body),
-            'attachment_url' => $message->attachment_path ? route('chat.file', $message->id) : null,
-            'attachment_name' => $message->attachment_name,
+            'body' => $deleted ? null : $message->body,
+            'html' => $deleted ? '<em>This message was deleted.</em>' : self::formatBody($message->body),
+            'attachment_url' => (! $deleted && $message->attachment_path) ? route('chat.file', $message->id) : null,
+            'attachment_name' => $deleted ? null : $message->attachment_name,
             'attachment_is_image' => self::isImageName($message->attachment_name),
             'command' => $message->command,
+            'forwarded' => $forwarded,
+            'edited' => (bool) $message->edited_at,
+            'deleted' => $deleted,
+            'pinned' => (bool) $message->pinned_at,
+            'task_id' => $message->task_id ? (int) $message->task_id : null,
+            'task_url' => $message->task_id ? url('/tasks?highlight='.$message->task_id) : null,
+            'reply_count' => (int) ($message->reply_count ?? 0),
+            'reactions' => $message->reaction_summary ?? [],
+            'bookmarked' => (bool) ($message->bookmarked ?? false),
+            'seen' => (bool) ($receipt['seen'] ?? false),
+            'seen_by' => $receipt['seen_by'] ?? [],
+            'seen_label' => $receipt['seen_label'] ?? ($message->user_id ? 'Sent' : ''),
             'created_at' => optional($message->created_at)->toIso8601String(),
             'created_label' => optional($message->created_at)->timezone($tz)->format('g:i A'),
+            'permalink' => url('/chat?channel='.$message->channel_id.'&message='.$message->id),
         ];
+    }
+
+    public static function canEditMessage(?User $user, ChatMessage $message): bool
+    {
+        if (! $user || $message->is_bot || $message->deleted_at) {
+            return false;
+        }
+
+        return (int) $message->user_id === (int) $user->id || self::canManageChannels($user);
+    }
+
+    public static function canDeleteMessage(?User $user, ChatMessage $message): bool
+    {
+        return self::canEditMessage($user, $message);
+    }
+
+    public static function canPin(?User $user): bool
+    {
+        return self::canManageChannels($user);
+    }
+
+    public static function canAnnounce(?User $user): bool
+    {
+        return self::canManageChannels($user);
+    }
+
+    public static function canManageMembers(?User $user, ChatChannel $channel): bool
+    {
+        if (! $user) {
+            return false;
+        }
+        if (self::canManageChannels($user)) {
+            return true;
+        }
+
+        return (int) $channel->created_by === (int) $user->id && ($channel->isGroup() || $channel->type === ChatChannel::TYPE_PRIVATE);
+    }
+
+    public static function notifyMode(User $user): string
+    {
+        if (! Schema::hasTable('chat_notification_prefs')) {
+            return 'all';
+        }
+        $mode = ChatNotificationPref::query()->where('user_id', $user->id)->value('mode');
+
+        return in_array($mode, ['all', 'mentions', 'dms', 'none'], true) ? $mode : 'all';
+    }
+
+    /**
+     * @return list<int>
+     */
+    public static function mentionUserIds(string $text, ChatChannel $channel, User $actor): array
+    {
+        $ids = self::mentionIds($text);
+        $lower = strtolower($text);
+        $blast = str_contains($lower, '@everyone') || str_contains($lower, '@channel');
+        if ($blast && self::canAnnounce($actor)) {
+            $ids = array_values(array_unique(array_merge(
+                $ids,
+                $channel->members()->pluck('user_id')->map(fn ($id) => (int) $id)->all()
+            )));
+        }
+
+        return array_values(array_filter($ids, fn ($id) => $id !== (int) $actor->id));
+    }
+
+    public static function markAllRead(User $user): void
+    {
+        $ids = ChatChannelMember::query()->where('user_id', $user->id)->pluck('channel_id');
+        $maxByChannel = ChatMessage::query()
+            ->selectRaw('channel_id, MAX(id) as max_id')
+            ->whereIn('channel_id', $ids)
+            ->groupBy('channel_id')
+            ->pluck('max_id', 'channel_id');
+        foreach ($maxByChannel as $channelId => $maxId) {
+            ChatChannelMember::query()
+                ->where('user_id', $user->id)
+                ->where('channel_id', $channelId)
+                ->update([
+                    'last_read_message_id' => (int) $maxId,
+                    'last_read_at' => now(),
+                ]);
+        }
+        self::forgetUnreadCache((int) $user->id);
+    }
+
+    /**
+     * Queue browser-notification payloads for other members (sync pulls them).
+     */
+    public static function queueAlerts(ChatMessage $message, ChatChannel $channel, User $actor, array $mentionIds = []): void
+    {
+        if ($message->deleted_at) {
+            return;
+        }
+
+        $isDm = $channel->isDm() || $channel->isBotInbox();
+        $isThread = (bool) $message->parent_id;
+        $preview = Str::limit(trim((string) ($message->body ?: $message->attachment_name ?: 'New message')), 120);
+        $title = $isDm
+            ? ($actor->name ?: 'Direct message')
+            : (($channel->isGroup() ? '' : '#').($channel->name ?: 'Chat'));
+
+        $members = ChatChannelMember::query()
+            ->where('channel_id', $channel->id)
+            ->where('user_id', '!=', $actor->id)
+            ->get(['user_id', 'muted']);
+
+        foreach ($members as $member) {
+            if ($member->muted) {
+                continue;
+            }
+            if (ChatPresence::statusFor((int) $member->user_id) === 'dnd') {
+                continue;
+            }
+
+            $user = User::query()->find($member->user_id);
+            if (! $user) {
+                continue;
+            }
+
+            $mode = self::notifyMode($user);
+            $mentioned = in_array((int) $member->user_id, $mentionIds, true);
+            $allow = match ($mode) {
+                'none' => false,
+                'dms' => $isDm,
+                'mentions' => $mentioned || $isThread,
+                default => true,
+            };
+            if (! $allow) {
+                continue;
+            }
+
+            $kind = $mentioned ? 'mention' : ($isThread ? 'thread' : ($isDm ? 'dm' : 'message'));
+            $alert = [
+                'kind' => $kind,
+                'title' => $mentioned ? $actor->name.' mentioned you' : $title,
+                'body' => $preview,
+                'channel_id' => (int) $channel->id,
+                'message_id' => (int) $message->id,
+            ];
+            $key = 'chat_alerts_'.$member->user_id;
+            $cur = Cache::get($key, []);
+            if (! is_array($cur)) {
+                $cur = [];
+            }
+            $cur[] = $alert;
+            Cache::put($key, array_slice($cur, -20), now()->addMinutes(10));
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public static function pullAlerts(User $user): array
+    {
+        $key = 'chat_alerts_'.$user->id;
+        $alerts = Cache::pull($key, []);
+
+        return is_array($alerts) ? array_values($alerts) : [];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public static function search(User $user, array $filters): array
+    {
+        $memberIds = ChatChannelMember::query()->where('user_id', $user->id)->pluck('channel_id');
+        $q = ChatMessage::query()
+            ->with('user:id,name,avatar')
+            ->whereIn('channel_id', $memberIds)
+            ->orderByDesc('id')
+            ->limit(50);
+
+        $term = trim((string) ($filters['q'] ?? ''));
+        if ($term !== '') {
+            $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $term).'%';
+            $q->where(function ($w) use ($like) {
+                $w->where('body', 'like', $like)
+                    ->orWhere('attachment_name', 'like', $like);
+            });
+        }
+        if (! empty($filters['user_id'])) {
+            $q->where('user_id', (int) $filters['user_id']);
+        }
+        if (! empty($filters['channel_id'])) {
+            $q->where('channel_id', (int) $filters['channel_id']);
+        }
+        if (! empty($filters['room_type'])) {
+            $typeIds = ChatChannel::query()
+                ->whereIn('id', $memberIds)
+                ->where('type', $filters['room_type'])
+                ->pluck('id');
+            $q->whereIn('channel_id', $typeIds);
+        }
+        if (! empty($filters['from'])) {
+            $q->whereDate('created_at', '>=', $filters['from']);
+        }
+        if (! empty($filters['to'])) {
+            $q->whereDate('created_at', '<=', $filters['to']);
+        }
+        if (! empty($filters['has_attachment'])) {
+            $q->whereNotNull('attachment_path');
+        }
+        if (! empty($filters['has_mention'])) {
+            $q->where(function ($w) use ($user) {
+                $w->where('body', 'like', '%@%')
+                    ->orWhereJsonContains('mentions', (int) $user->id);
+            });
+        }
+
+        $channels = ChatChannel::query()->whereIn('id', $memberIds)->get(['id', 'name', 'type'])->keyBy('id');
+
+        return $q->get()->map(function (ChatMessage $m) use ($channels) {
+            $ch = $channels->get($m->channel_id);
+
+            return [
+                'id' => (int) $m->id,
+                'channel_id' => (int) $m->channel_id,
+                'channel_name' => $ch?->name,
+                'channel_type' => $ch?->type,
+                'name' => $m->user->name ?? ($m->is_bot ? self::BOT_NAME : 'Member'),
+                'preview' => Str::limit((string) ($m->body ?: $m->attachment_name), 160),
+                'created_label' => optional($m->created_at)->timezone(TaskBusinessTime::tz())->format('M j, g:i A'),
+                'has_attachment' => (bool) $m->attachment_path,
+                'permalink' => url('/chat?channel='.$m->channel_id.'&message='.$m->id),
+            ];
+        })->all();
     }
 
     /**
@@ -477,18 +892,27 @@ class ChatWorkspace
      */
     public static function directory(User $viewer): array
     {
-        return self::activeUsersQuery()
+        $users = self::activeUsersQuery()
             ->where('id', '!=', $viewer->id)
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'avatar', 'designation', 'org_level'])
-            ->map(fn (User $u) => [
-                'id' => (int) $u->id,
-                'name' => $u->name,
-                'email' => $u->email,
-                'avatar' => self::avatarUrl($u),
-                'designation' => $u->designation,
-                'org_level' => $u->org_level,
-            ])
+            ->get(['id', 'name', 'email', 'avatar', 'designation', 'org_level']);
+        $presence = ChatPresence::map($users->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+        return $users
+            ->map(function (User $u) use ($presence) {
+                $p = $presence[(int) $u->id] ?? null;
+
+                return [
+                    'id' => (int) $u->id,
+                    'name' => $u->name,
+                    'email' => $u->email,
+                    'avatar' => self::avatarUrl($u),
+                    'designation' => $u->designation,
+                    'org_level' => $u->org_level,
+                    'online' => (bool) ($p['online'] ?? false),
+                    'last_seen_label' => $p['last_seen_label'] ?? 'Offline',
+                ];
+            })
             ->all();
     }
 }

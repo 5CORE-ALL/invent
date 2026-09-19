@@ -15,35 +15,35 @@ class InventChatBot
 {
     public static function welcomeText(): string
     {
-        return "Hi — I'm @invent.\n"
-            ."I can create tasks and report overdue, DAR, and SI.\n\n"
-            .self::helpText();
+        return "Hi, I'm Invent.\n"
+            .'I can create a task or check overdue, DAR, and SI. Tap a button or just tell me what you need.';
     }
 
     public static function helpText(): string
     {
-        return "Commands:\n"
-            ."/task Buy packing tape @name high\n"
-            ."/overdue\n"
-            ."/overdue @name\n"
-            ."/dar\n"
-            ."/dar @name\n"
-            ."/si\n"
-            ."/si @name\n"
-            ."/help\n\n"
-            .'Mention someone with @firstname or @emaillocal. Priority can be low, normal, or high.';
+        return "Here's what I can do:\n"
+            ."• Create a task Buy packing tape @aman tomorrow\n"
+            ."• Complete task 123\n"
+            ."• Assign task 123 @aman\n"
+            ."• Change deadline 123 tomorrow\n"
+            ."• Show my overdue / Show @aman overdue\n"
+            ."• Show today's DAR / Show my DAR\n"
+            ."• SI count\n";
     }
 
     public static function looksLikeCommand(string $body): bool
     {
         $trim = ltrim($body);
+        $lower = strtolower($trim);
 
-        return Str::startsWith($trim, '/') || Str::startsWith(strtolower($trim), '@invent');
+        return Str::startsWith($trim, '/')
+            || Str::startsWith($lower, '@invent')
+            || (bool) preg_match('/\b(overdue|dar|daily activity|scope of improvement|si|task|help|complete|assign|deadline|due)\b/i', $trim);
     }
 
-    public static function reply(User $user, ChatChannel $channel, string $body): ?ChatMessage
+    public static function reply(User $user, ChatChannel $channel, string $body, bool $force = false): ?ChatMessage
     {
-        if (! self::looksLikeCommand($body)) {
+        if (! $force && ! self::looksLikeCommand($body) && ! $channel->isBotInbox()) {
             return null;
         }
 
@@ -54,10 +54,13 @@ class InventChatBot
         $text = match ($command) {
             'help', 'invent', '' => self::helpText(),
             'task' => self::handleTask($user, $args),
+            'complete' => self::handleComplete($user, $args),
+            'assign' => self::handleAssign($user, $args),
+            'deadline', 'due' => self::handleDeadline($user, $args),
             'overdue' => self::handleOverdue($user, $args),
             'dar' => self::handleDar($user, $args),
             'si' => self::handleSi($user, $args),
-            default => 'Unknown command `'.$command.'`.'."\n\n".self::helpText(),
+            default => "I can create, complete, assign, or reschedule a task, and check overdue, DAR, and SI.",
         };
 
         return ChatMessage::query()->create([
@@ -84,7 +87,7 @@ class InventChatBot
         }
 
         if (! str_starts_with($trim, '/')) {
-            return ['command' => 'help', 'args' => $trim];
+            return self::parseNatural($trim);
         }
 
         if (! preg_match('/^\/([A-Za-z]+)(?:\s+([\s\S]+))?$/', $trim, $m)) {
@@ -97,11 +100,48 @@ class InventChatBot
         ];
     }
 
+    /**
+     * @return array{command: string, args: string}
+     */
+    private static function parseNatural(string $trim): array
+    {
+        $lower = strtolower($trim);
+
+        if (preg_match('/\b(complete|done|close)\b.*\btasks?\b|\bcomplete task\b/i', $trim)) {
+            return ['command' => 'complete', 'args' => $trim];
+        }
+        if (preg_match('/\bassign\b.*\btasks?\b/i', $trim)) {
+            return ['command' => 'assign', 'args' => $trim];
+        }
+        if (preg_match('/\b(deadline|due date|change deadline)\b/i', $trim)) {
+            return ['command' => 'deadline', 'args' => $trim];
+        }
+        if (preg_match('/\b(overdue|overdues)\b/', $lower)) {
+            return ['command' => 'overdue', 'args' => $trim];
+        }
+        if (preg_match('/\b(dar|daily activity)\b/', $lower)) {
+            return ['command' => 'dar', 'args' => $trim];
+        }
+        if (preg_match('/\b(scope of improvement|si)\b/', $lower)) {
+            return ['command' => 'si', 'args' => $trim];
+        }
+        if (preg_match('/\b(create|add|make)\b.*\btasks?\b/i', $trim) || preg_match('/^task\b/i', $trim)) {
+            $args = trim((string) preg_replace('/^(\/)?((please|pls)\s+)?(create|add|make)\s*(a\s+|an\s+)?tasks?\b[:\s-]*/i', '', $trim));
+
+            return ['command' => 'task', 'args' => $args];
+        }
+        if ($lower === 'help' || $lower === 'hi' || $lower === 'hello' || $lower === 'hey') {
+            return ['command' => 'help', 'args' => ''];
+        }
+
+        return ['command' => 'unknown', 'args' => $trim];
+    }
+
     public static function handleTask(User $user, string $args): string
     {
         $args = trim($args);
         if ($args === '') {
-            return "Please include a title.\nExample: `/task Buy packing tape @aman high`";
+            return 'What should the task say? Example: Create a task Buy packing tape @aman';
         }
 
         $priority = 'normal';
@@ -116,7 +156,7 @@ class InventChatBot
         $title = trim($title);
 
         if ($title === '') {
-            return "Please include a title after /task.\nExample: `/task Buy packing tape @aman high`";
+            return 'What should the task say? Example: Create a task Buy packing tape @aman';
         }
 
         $assignees = $mentions->isNotEmpty() ? $mentions : collect([$user]);
@@ -126,7 +166,9 @@ class InventChatBot
         }
 
         $startDate = TaskBusinessTime::now();
-        $completionDate = $startDate->copy()->addDays(5);
+        $completionDate = self::parseWhen($args) ?: $startDate->copy()->addDays(5);
+        $title = trim((string) preg_replace('/\b(today|tomorrow|tonight)\b/i', '', $title));
+        $title = trim((string) preg_replace('/\s+/', ' ', $title));
 
         $taskData = [
             'title' => Str::limit($title, 1000, ''),
@@ -235,6 +277,116 @@ class InventChatBot
 
         return $who.' '.$count.' '.$noun.".\n"
             .'Open SI from the SI button on Task Summary or the top bar.';
+    }
+
+    public static function handleComplete(User $viewer, string $args): string
+    {
+        $task = self::findTaskFromArgs($viewer, $args);
+        if (is_string($task)) {
+            return $task;
+        }
+
+        $task->status = 'Done';
+        $task->save();
+
+        return 'Marked task #'.$task->id.' as Done — '.$task->title."\n"
+            .'Open: '.url('/tasks?highlight='.$task->id);
+    }
+
+    public static function handleAssign(User $viewer, string $args): string
+    {
+        $task = self::findTaskFromArgs($viewer, $args);
+        if (is_string($task)) {
+            return $task;
+        }
+
+        $people = ChatWorkspace::resolveMentions($args);
+        if ($people->isEmpty()) {
+            return 'Assign who? Example: Assign task '.$task->id.' @aman';
+        }
+        if (! ChatWorkspace::canInspectOther($viewer) && $people->every(fn (User $u) => (int) $u->id !== (int) $viewer->id)) {
+            return 'You can only reassign to yourself unless you manage tasks.';
+        }
+
+        $task->assign_to = $people->pluck('name')->implode(', ');
+        $task->save();
+
+        return 'Assigned task #'.$task->id.' to '.$task->assign_to."\n"
+            .'Open: '.url('/tasks?highlight='.$task->id);
+    }
+
+    public static function handleDeadline(User $viewer, string $args): string
+    {
+        $task = self::findTaskFromArgs($viewer, $args);
+        if (is_string($task)) {
+            return $task;
+        }
+
+        $when = self::parseWhen($args);
+        if (! $when) {
+            return 'When? Example: Change deadline '.$task->id.' tomorrow';
+        }
+
+        $task->completion_date = $when;
+        $task->save();
+
+        return 'Deadline for task #'.$task->id.' is now '.$when->format('M j, Y')."\n"
+            .'Open: '.url('/tasks?highlight='.$task->id);
+    }
+
+    /**
+     * @return Task|string
+     */
+    private static function findTaskFromArgs(User $viewer, string $args): Task|string
+    {
+        if (! preg_match('/#?(\d{1,10})/', $args, $m)) {
+            return 'Which task? Include the task number, e.g. Complete task 123.';
+        }
+        $task = Task::query()->find((int) $m[1]);
+        if (! $task) {
+            return 'I could not find task #'.$m[1].'.';
+        }
+        if (! self::canTouchTask($viewer, $task)) {
+            return 'You do not have access to task #'.$task->id.'.';
+        }
+
+        return $task;
+    }
+
+    private static function canTouchTask(User $viewer, Task $task): bool
+    {
+        if (ChatWorkspace::canInspectOther($viewer)) {
+            return true;
+        }
+        $names = array_map('strtolower', array_filter(array_map('trim', explode(',', (string) $task->assign_to))));
+
+        return in_array(strtolower((string) $viewer->name), $names, true)
+            || strcasecmp((string) $task->created_by, (string) $viewer->name) === 0;
+    }
+
+    private static function parseWhen(string $args): ?\Carbon\Carbon
+    {
+        $lower = strtolower($args);
+        $now = TaskBusinessTime::now();
+        if (preg_match('/\btomorrow\b/', $lower)) {
+            return $now->copy()->addDay()->startOfDay();
+        }
+        if (preg_match('/\btoday\b/', $lower)) {
+            return $now->copy()->endOfDay();
+        }
+        if (preg_match('/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/', $args, $m)) {
+            $year = isset($m[3]) ? (int) $m[3] : (int) $now->year;
+            if ($year < 100) {
+                $year += 2000;
+            }
+            try {
+                return \Carbon\Carbon::create($year, (int) $m[1], (int) $m[2], 18, 0, 0, TaskBusinessTime::tz());
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     /**

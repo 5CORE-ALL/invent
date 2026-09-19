@@ -13,6 +13,7 @@ class ChatChannelMember extends Model
         'last_read_message_id',
         'last_read_at',
         'muted',
+        'notify_pref',
     ];
 
     protected $casts = [

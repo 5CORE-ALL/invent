@@ -338,6 +338,25 @@ use Symfony\Component\HttpFoundation\Request;
 |
 */
 
+Route::get('/.well-known/{file}', function ($file) {
+    $allowedFiles = ['assetlinks.json', 'apple-app-site-association', 'com.chrome.devtools.json'];
+    if (! in_array($file, $allowedFiles, true)) {
+        abort(404);
+    }
+
+    $path = public_path('.well-known/'.$file);
+    if (! is_file($path)) {
+        abort(404);
+    }
+
+    $headers = ['Cache-Control' => 'public, max-age=300'];
+    if (str_ends_with($file, '.json')) {
+        $headers['Content-Type'] = 'application/json';
+    }
+
+    return response()->file($path, $headers);
+})->name('well-known.file');
+
 // =============================================================================
 // STEP 1: AI ROUTES (with auth) – must be before any two-segment wildcard
 // =============================================================================
@@ -3436,12 +3455,34 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(\App\Http\Controllers\ChatController::class)->middleware('auth')->group(function () {
         Route::get('/chat', 'index')->name('chat.index');
         Route::get('/chat/inbox', 'inbox')->name('chat.inbox');
+        Route::get('/chat/sync', 'sync')->name('chat.sync');
+        Route::post('/chat/presence', 'presence')->name('chat.presence');
         Route::get('/chat/unread', 'unread')->name('chat.unread');
         Route::get('/chat/files/{message}', 'file')->whereNumber('message')->name('chat.file');
         Route::get('/chat/channels/{channel}/messages', 'messages')->whereNumber('channel')->name('chat.messages');
         Route::post('/chat/channels/{channel}/messages', 'storeMessage')->whereNumber('channel')->name('chat.messages.store');
         Route::post('/chat/channels', 'storeChannel')->name('chat.channels.store');
+        Route::post('/chat/groups', 'storeGroup')->name('chat.groups.store');
         Route::post('/chat/dms', 'storeDm')->name('chat.dms.store');
+        Route::post('/chat/messages/{message}/forward', 'forward')->whereNumber('message')->name('chat.messages.forward');
+        Route::patch('/chat/messages/{message}', 'updateMessage')->whereNumber('message')->name('chat.messages.update');
+        Route::delete('/chat/messages/{message}', 'destroyMessage')->whereNumber('message')->name('chat.messages.destroy');
+        Route::post('/chat/messages/{message}/react', 'react')->whereNumber('message')->name('chat.messages.react');
+        Route::post('/chat/messages/{message}/pin', 'pin')->whereNumber('message')->name('chat.messages.pin');
+        Route::post('/chat/messages/{message}/bookmark', 'bookmark')->whereNumber('message')->name('chat.messages.bookmark');
+        Route::post('/chat/messages/{message}/task', 'createTask')->whereNumber('message')->name('chat.messages.task');
+        Route::post('/chat/channels/{channel}/read', 'markRead')->whereNumber('channel')->name('chat.channels.read');
+        Route::post('/chat/channels/{channel}/members', 'members')->whereNumber('channel')->name('chat.channels.members');
+        Route::post('/chat/read-all', 'markAllRead')->name('chat.read-all');
+        Route::get('/chat/search', 'search')->name('chat.search');
+        Route::match(['get', 'post'], '/chat/prefs', 'prefs')->name('chat.prefs');
+        Route::post('/chat/health-event', 'healthEvent')->name('chat.health-event');
+    });
+
+    Route::controller(\App\Http\Controllers\ChatHealthController::class)->middleware('auth')->group(function () {
+        Route::get('/chat/health', 'index')->name('chat.health');
+        Route::get('/chat/health/data', 'data')->name('chat.health.data');
+        Route::post('/chat/health/retry', 'retry')->name('chat.health.retry');
     });
 
     // Announcements (directors post; everyone can read)
@@ -7558,20 +7599,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     Route::get('', [RoutingController::class, 'index'])->name('root');
-    Route::get('{first}/{second}', [RoutingController::class, 'secondLevel'])->name('second');
-    Route::get('/.well-known/{file}', function ($file) {
-        $allowedFiles = ['assetlinks.json', 'apple-app-site-association', 'com.chrome.devtools.json'];
-        if (! in_array($file, $allowedFiles)) {
-            abort(404);
-        }
-
-        $path = public_path(".well-known/{$file}");
-        if (! file_exists($path)) {
-            abort(404);
-        }
-
-        return response()->file($path);
-    })->where('file', '.*');
+    Route::get('{first}/{second}', [RoutingController::class, 'secondLevel'])->name('second')->where('first', '^(?!\.well-known$).+');
     Route::get('{first}/{second}/{third}', [RoutingController::class, 'thirdLevel'])->name('third');
     Route::post('/ebay-product-price-update', [EbayDataUpdateController::class, 'updatePrice'])->name('ebay_product_price_update');
 
@@ -7716,7 +7744,7 @@ Route::get('/css/{path}', function (string $path) {
 // STEP 7: SHOPIFY WILDCARD – MUST BE ABSOLUTELY LAST (catches /{first}/{second} only)
 // =============================================================================
 Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView'])
-    ->where('first', '^(?!listing_temu2$)(?!listing-temu2$)(?!listing-common$)(?!listing_faire$)(?!listing-faire$).+');
+    ->where('first', '^(?!\.well-known$)(?!listing_temu2$)(?!listing-temu2$)(?!listing-common$)(?!listing_faire$)(?!listing-faire$).+');
 
 // Temporary test route to debug On Sea Transit
 Route::get('/test-on-sea', function() {

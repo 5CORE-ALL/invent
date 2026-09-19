@@ -77,7 +77,7 @@
                         </li>
                         <li>
                             <a href="{{ route('chat.index') }}" class="{{ request()->routeIs('chat.*') ? 'active' : '' }}">
-                                <i class="ri-chat-3-line me-2"></i>Chat
+                                <i class="ri-chat-3-line me-2"></i>Slack
                             </a>
                         </li>
                     </ul>

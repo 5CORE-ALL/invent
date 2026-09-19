@@ -19,14 +19,15 @@
     @yield('css')
     @include('layouts.shared/head-css', ['mode' => $mode ?? '', 'demo' => $demo ?? ''])
     
-    <!-- PWA Meta Tags -->
+    <!-- PWA Meta Tags (single Invent PWA — reused by /chat) -->
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#667eea">
-    <link rel="apple-touch-icon" href="{{ $appleTouchIcon ?? '/images/chat-icon.png' }}">
+    <meta name="theme-color" content="{{ ($title ?? '') === 'Invent Chat' || ($title ?? '') === 'Chat' ? '#3f0e40' : '#667eea' }}">
+    <link rel="apple-touch-icon" href="{{ $appleTouchIcon ?? '/images/pwa-icon-192.png' }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Invent">
+    <meta name="apple-mobile-web-app-title" content="Invent Chat">
     <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Invent Chat">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 </head>
 
@@ -899,64 +900,47 @@
 
     @include('components.ai-chat-widget')
     
-    <!-- PWA Service Worker Registration with Error Handling -->
+    <!-- Single Invent PWA service worker. HTML/JSON/chat APIs are never cached. -->
     <script>
+        window.__inventPwaInstall = null;
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-                @if (config('app.debug'))
-                // Local dev: SW caches HTML and causes stale CSRF meta → 419 on POST. Disable SW when APP_DEBUG=true.
-                navigator.serviceWorker.getRegistrations().then(function (registrations) {
-                    registrations.forEach(function (r) { r.unregister(); });
-                });
-                return;
-                @endif
-                // Unregister old service workers first
-                navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                    for(let registration of registrations) {
-                        if (registration.active && registration.active.scriptURL.includes('/sw.js')) {
-                            console.log('Updating existing service worker...');
-                        }
-                    }
-                });
-                
-                // Register new service worker
-                navigator.serviceWorker.register('/sw.js')
-                    .then(function(registration) {
-                        console.log('✓ ServiceWorker registered successfully');
-                        
-                        // Update on new version
-                        registration.addEventListener('updatefound', function() {
-                            console.log('ServiceWorker update found!');
+                navigator.serviceWorker.register('/sw.js').then(function(registration) {
+                    registration.addEventListener('updatefound', function() {
+                        var worker = registration.installing;
+                        if (!worker) return;
+                        worker.addEventListener('statechange', function() {
+                            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                                if (confirm('Invent Chat has an update. Reload now?')) {
+                                    worker.postMessage({ type: 'SKIP_WAITING' });
+                                }
+                            }
                         });
-                    })
-                    .catch(function(error) {
-                        console.warn('⚠️ ServiceWorker registration failed (non-critical):', error);
-                        // Don't block app if service worker fails
                     });
+                }).catch(function() {});
+                var refreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', function() {
+                    if (refreshing) return;
+                    refreshing = true;
+                    window.location.reload();
+                });
             });
-        } else {
-            console.log('Service Worker not supported in this browser');
         }
 
-        // PWA Install Prompt
-        let deferredPrompt;
-        window.addEventListener('beforeinstallprompt', (e) => {
+        window.addEventListener('beforeinstallprompt', function (e) {
             e.preventDefault();
-            deferredPrompt = e;
-            console.log('✓ PWA Install prompt ready');
+            window.__inventPwaInstall = e;
+            window.dispatchEvent(new CustomEvent('invent-pwa-install-ready'));
         });
 
-        // Function to trigger PWA install
         function installPWA() {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                deferredPrompt.userChoice.then((choiceResult) => {
-                    if (choiceResult.outcome === 'accepted') {
-                        console.log('✓ User accepted PWA install');
-                    }
-                    deferredPrompt = null;
-                });
-            }
+            var promptEvent = window.__inventPwaInstall;
+            if (!promptEvent) return Promise.resolve(false);
+            promptEvent.prompt();
+            return promptEvent.userChoice.then(function (choice) {
+                window.__inventPwaInstall = null;
+                return choice.outcome === 'accepted';
+            });
         }
     </script>
     @include('partials.clear-browser-cache-on-login')

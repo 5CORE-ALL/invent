@@ -368,8 +368,8 @@
         <a href="{{ route('chat.index') }}" id="chatTopbarBtn"
             class="topbar-chat-btn{{ $topbarChatUnread > 0 ? ' has-unread' : '' }}"
             data-chat-unread="{{ $topbarChatUnread }}"
-            title="5Core Chat"
-            aria-label="5Core Chat{{ $topbarChatUnread > 0 ? ' — '.$topbarChatUnread.' unread' : '' }}">
+            title="Slack"
+            aria-label="Slack{{ $topbarChatUnread > 0 ? ' — '.$topbarChatUnread.' unread' : '' }}">
             <i class="ri-chat-3-fill"></i>
             <span class="topbar-chat-btn__count">{{ $topbarChatUnread > 99 ? '99+' : $topbarChatUnread }}</span>
         </a>
