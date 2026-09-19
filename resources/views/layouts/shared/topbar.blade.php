@@ -116,6 +116,8 @@
             .topbar-dar-btn__pct {
                 font-variant-numeric: tabular-nums;
                 font-weight: 800;
+                font-size: 0.92rem;
+                line-height: 1;
             }
             .topbar-dar-btn.is-dar-high {
                 background: #fce7f3;
@@ -469,8 +471,7 @@
                         @csrf
                     </form>
 
-                    <a href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();"
-                        class="dropdown-item">
+                    <a href="#" id="ts-logout-link" class="dropdown-item">
                         <i class="ri-logout-box-line fs-18 align-middle me-1"></i>
                         <span>Logout</span>
                     </a>

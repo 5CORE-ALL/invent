@@ -19332,10 +19332,10 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Reverb listing views on /all-marketplace-master are 1/100 of the pricing-page total.
+     * Reverb listing views on /all-marketplace-master are 1/1000 of the pricing-page total.
      * CVR is recalculated on the scaled views. Stored snapshots stay raw.
      */
-    private const REVERB_MASTER_VIEWS_DIVISOR = 100;
+    private const REVERB_MASTER_VIEWS_DIVISOR = 1000;
 
     /**
      * @param  list<array<string, mixed>>  $rows

@@ -38,6 +38,7 @@
             text-decoration: underline;
         }
         #stat-missing-listing.badge,
+        #stat-median-missing-listing.badge,
         .badge-ml-stat {
             font-size: 1.35rem !important;
             line-height: 1.35;
@@ -176,6 +177,9 @@
                     <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from connected API channels (same INV &gt; 0 rule as listing pages)" style="background-color:#a71d2a !important;">
                         Missing L: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
                     </span>
+                    <span class="badge badge-ml-stat badge-ml-chart" id="stat-median-missing-listing" data-metric="missing_l" title="Median Missing L over the rolling 32-day window (same score as the chart Median)" style="background-color:#6c757d !important;">
+                        Median Missing Listing: <span id="median-missing-listing">—</span>
+                    </span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -259,16 +263,56 @@
     let mlCurrentChartDays = 32;
     let mlCurrentBadgeValue = null;
 
+    function mlComputeMedian(values) {
+        const sorted = (values || [])
+            .map(function (v) { return Number(v); })
+            .filter(function (v) { return !isNaN(v); })
+            .sort(function (a, b) { return a - b; });
+        if (!sorted.length) return null;
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 !== 0
+            ? sorted[mid]
+            : (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+
+    function setMedianBadge(median) {
+        if (median === null || median === undefined || isNaN(Number(median))) {
+            $('#median-missing-listing').text('—');
+            return;
+        }
+        $('#median-missing-listing').text(mlFmtVal(median));
+    }
+
+    function loadMedianBadgeFromChart() {
+        $.ajax({
+            url: "{{ route('missing.listing.chart.data') }}",
+            method: 'GET',
+            data: { channel: 'all', metric: 'missing_l', days: 32 },
+        }).done(function (response) {
+            if (!response || !response.data || !response.data.length) return;
+            const values = response.data.map(function (d) { return Number(d.value || 0); });
+            setMedianBadge(mlComputeMedian(values));
+        });
+    }
+
     function updateStats(rows, totalMissingL) {
         if (totalMissingL !== undefined && totalMissingL !== null && !isNaN(Number(totalMissingL))) {
             $('#total-missing-listing').text(Number(totalMissingL).toLocaleString('en-US'));
-            return;
+        } else {
+            const total = (rows || []).reduce((sum, r) => {
+                if (!isLiveApiRow(r)) return sum;
+                return sum + Number(r.missing_listing || 0);
+            }, 0);
+            $('#total-missing-listing').text(total.toLocaleString('en-US'));
         }
-        const total = (rows || []).reduce((sum, r) => {
-            if (!isLiveApiRow(r)) return sum;
-            return sum + Number(r.missing_listing || 0);
-        }, 0);
-        $('#total-missing-listing').text(total.toLocaleString('en-US'));
+
+        const current = ($('#median-missing-listing').text() || '').trim();
+        if (current === '' || current === '—') {
+            const channelVals = (rows || [])
+                .filter(function (r) { return isLiveApiRow(r); })
+                .map(function (r) { return Number(r.missing_listing || 0); });
+            if (channelVals.length) setMedianBadge(mlComputeMedian(channelVals));
+        }
     }
 
     function listingSource(rowData) {
@@ -396,6 +440,9 @@
         highestEl.style.color = dataMax === 0 ? refGreen : dataMax > 0 ? refRed : refGray;
         medianEl.textContent = mlFmtVal(median);
         medianEl.style.color = median === 0 ? refGreen : median > 0 ? refRed : refGray;
+        if (String(mlCurrentChartDisplayChannel || 'All') === 'All') {
+            setMedianBadge(median);
+        }
         lowestEl.textContent = mlFmtVal(dataMin);
         lowestEl.style.color = dataMin === 0 ? refGreen : dataMin > 0 ? refRed : refGray;
 
@@ -594,11 +641,12 @@
     $(document).ready(function() {
         $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
 
-        $('#stat-missing-listing').on('click', function() {
+        $('#stat-missing-listing, #stat-median-missing-listing').on('click', function() {
             const badgeText = $('#total-missing-listing').text().replace(/[,$%]/g, '').trim();
             const badgeValue = parseFloat(badgeText) || null;
             showMlMetricChart('All', badgeValue);
         });
+        loadMedianBadgeFromChart();
 
         $('#mlChartRangeSelect').on('change', function() {
             const days = parseInt($(this).val(), 10);

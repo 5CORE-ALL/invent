@@ -33,6 +33,7 @@ class AuthenticatedSessionController extends Controller
     {
         $request->authenticate();
         $request->session()->regenerate();
+        \App\Support\UserTatNudge::markLogin();
 
         $user = $request->user();
         

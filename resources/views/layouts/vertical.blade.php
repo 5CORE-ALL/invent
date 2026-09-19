@@ -962,6 +962,9 @@
     @include('partials.clear-browser-cache-on-login')
     @auth
         @include('partials.user-incentives')
+        @include('partials.overdue-nudge-modal')
+        @include('partials.dar-logout-nudge-modal')
+        @include('partials.tat-nudge-modal')
         @if(!empty($agent_update_available))
             @include('partials.attendance-agent-update-modal')
         @endif

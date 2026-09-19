@@ -67,6 +67,34 @@ class DarL30Metrics
     }
 
     /**
+     * Same L30 DAR metrics as /tasks/summary for one user id.
+     *
+     * @return array{dar_l30_count: int, dar_l30_target: int, dar_l30_pct: int, dar_l30_band: string, dar_l30_series: list<array{date: string, label: string, submitted: int, weekend: bool}>}
+     */
+    public static function forUserId(?int $userId, ?Carbon $end = null): array
+    {
+        $empty = self::forUser([], $end);
+        if (! $userId || ! \Illuminate\Support\Facades\Schema::hasTable('dars')) {
+            return $empty;
+        }
+
+        $cutoff = ($end ?? Carbon::now())->copy()
+            ->subDays(self::WINDOW_DAYS - 1)
+            ->toDateString();
+        $dates = \App\Models\Dar::query()
+            ->where('user_id', $userId)
+            ->whereDate('report_date', '>=', $cutoff)
+            ->pluck('report_date')
+            ->map(fn ($d) => optional($d)->format('Y-m-d'))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        return self::forUser($dates, $end);
+    }
+
+    /**
      * @param  list<string>  $submittedYmd
      * @return array{dar_l30_count: int, dar_l30_target: int, dar_l30_pct: int, dar_l30_band: string, dar_l30_series: list<array{date: string, label: string, submitted: int, weekend: bool}>}
      */

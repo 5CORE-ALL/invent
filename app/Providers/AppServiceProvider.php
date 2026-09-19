@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\View;
 use Illuminate\View\View as ViewInstance;
 use App\Cache\ResilientFileStore;
 use App\Models\Announcement;
-use App\Models\Dar;
 use App\Models\Permission;
 use App\Models\FbaManualData;
 use App\Models\ScopeOfImprovement;
@@ -213,21 +212,7 @@ class AppServiceProvider extends ServiceProvider
             $user = Auth::user();
             if ($user) {
                 try {
-                    if (\Illuminate\Support\Facades\Schema::hasTable('dars')) {
-                        $cutoff = \Carbon\Carbon::now()
-                            ->subDays(DarL30Metrics::WINDOW_DAYS - 1)
-                            ->toDateString();
-                        $dates = Dar::query()
-                            ->where('user_id', (int) $user->id)
-                            ->whereDate('report_date', '>=', $cutoff)
-                            ->pluck('report_date')
-                            ->map(fn ($d) => optional($d)->format('Y-m-d'))
-                            ->filter()
-                            ->unique()
-                            ->values()
-                            ->all();
-                        $metrics = DarL30Metrics::forUser($dates);
-                    }
+                    $metrics = DarL30Metrics::forUserId((int) $user->id);
                 } catch (\Throwable $e) {
                     // keep zeros — never break the layout
                 }

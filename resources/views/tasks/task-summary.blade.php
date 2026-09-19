@@ -323,6 +323,46 @@
             width: 20px;
             height: 20px;
         }
+        .task-summary-soi-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.28rem;
+            min-width: 2.4rem;
+            height: 1.85rem;
+            padding: 0 0.5rem;
+            border: none;
+            border-radius: 999px;
+            background: #f8fafc;
+            color: #1e293b;
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            line-height: 1;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+            cursor: pointer;
+            transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+        }
+        .task-summary-soi-btn:hover {
+            transform: scale(1.08);
+        }
+        .task-summary-soi-btn.has-points {
+            background: #dc2626;
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(220, 38, 38, 0.28);
+        }
+        .task-summary-soi-btn.has-points:hover {
+            background: #b91c1c;
+            color: #fff;
+        }
+        .task-summary-soi-btn:disabled {
+            opacity: 0.4;
+            cursor: default;
+            transform: none;
+        }
+        .task-summary-soi-btn__count {
+            font-variant-numeric: tabular-nums;
+        }
         .task-summary-monitor-btn:hover {
             background: rgba(15, 23, 42, 0.08);
             color: #0f172a;
@@ -1006,6 +1046,15 @@
                                     <span class="task-summary-analytics-badge-label">₹ Incentive</span>
                                     <span class="task-summary-analytics-badge-value" id="ts-analytics-val-incentive">₹{{ number_format($incentivePageTotal, 0) }}</span>
                                 </span>
+                                @if (!empty($canEditIncentives))
+                                    <button type="button"
+                                            id="ts-inc-add-multi-btn"
+                                            class="ts-inc-add-multi-top"
+                                            title="Add the same incentive to multiple users">
+                                        <span class="incentive-dollar-icon" aria-hidden="true">₹</span>
+                                        Add incentive
+                                    </button>
+                                @endif
                             </div>
                            
                         </div>
@@ -1148,7 +1197,7 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="etc_l30" data-sort-type="number" title="ETC — estimated time to complete (hours) for work closed in the last 30 days" role="button" tabindex="0">
                                         ETC <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="missed_l30" data-sort-type="number" title="Miss — last 30 days vs days 31–60. Deleted unfinished tasks in that window count as missed." role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="missed_p30" data-sort-type="number" title="Miss — days 31–60 only. Deleted unfinished tasks in that window count as missed." role="button" tabindex="0">
                                         Miss <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort task-summary-col-a-task-h" data-sort-key="a_task_h" data-sort-type="number" title="Sort by automated task ETC hours (rounded)" role="button" tabindex="0">
@@ -1157,8 +1206,14 @@
                                     <th scope="col" title="Summary — open the team-member dashboard (own metrics + tagged juniors)">
                                         Summ
                                     </th>
-                                    <th scope="col" title="KPI — assign live page badges from badges_data">
+                                    <th scope="col" title="Add or manage KPI badges for this team member">
+                                        +
+                                    </th>
+                                    <th scope="col" title="KPI — open Key Performance Index badges with history">
                                         KPI
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="soi_count" data-sort-type="number" title="SI — Scope of Improvement count" role="button" tabindex="0">
+                                        SI
                                     </th>
                                     <th scope="col" title="Incentives — rupee bag rewards for this team member">
                                         Inc
@@ -1193,9 +1248,10 @@
                                         data-sort-tat_l30="{{ $row['tat_l30_days'] !== null ? (float) $row['tat_l30_days'] : -1 }}"
                                         data-sort-atc_l30="{{ (int) ($row['atc_l30_h'] ?? 0) }}"
                                         data-sort-etc_l30="{{ (int) ($row['etc_l30_h'] ?? 0) }}"
-                                        data-sort-missed_l30="{{ (int) ($row['missed_l30'] ?? 0) }}"
+                                        data-sort-missed_p30="{{ (int) ($row['missed_p30'] ?? 0) }}"
                                         data-sort-a_task_h="{{ (int) ($row['a_task_h'] ?? 0) }}"
                                         data-sort-done="{{ (int) ($row['done'] ?? 0) }}"
+                                        data-sort-soi_count="{{ (int) ($row['soi_count'] ?? 0) }}"
                                         data-sort-incentive_amount="{{ (float) ($row['incentive_amount'] ?? 0) }}">
                                         @php
                                             $tmLevel = strtolower((string) ($row['org_level'] ?? ''));
@@ -1468,20 +1524,12 @@
                                             {{ $etcL30h }}h
                                         </td>
                                         @php
-                                            $missL30 = (int) ($row['missed_l30'] ?? 0);
                                             $missP30 = (int) ($row['missed_p30'] ?? 0);
-                                            $missClass = 'is-miss-zero';
-                                            if ($missL30 > $missP30) {
-                                                $missClass = 'is-miss-worse';
-                                            } elseif ($missL30 < $missP30) {
-                                                $missClass = 'is-miss-better';
-                                            } elseif ($missL30 > 0) {
-                                                $missClass = 'is-miss-same';
-                                            }
+                                            $missClass = $missP30 > 0 ? 'is-miss-worse' : 'is-miss-zero';
                                         @endphp
                                         <td class="task-summary-num task-summary-col-missed {{ $missClass }}"
-                                            title="Last 30 days: {{ $missL30 }} · Days 31–60: {{ $missP30 }}">
-                                            {{ $missL30 }} / {{ $missP30 }}
+                                            title="Missed tasks in days 31–60: {{ $missP30 }}">
+                                            {{ $missP30 }}
                                         </td>
                                         <td class="task-summary-num task-summary-col-a-task-h" title="Total ETC hours (assignee) for automated tasks, rounded">{{ (int) ($row['a_task_h'] ?? 0) }}</td>
                                         <td>
@@ -1506,14 +1554,40 @@
                                         </td>
                                         <td class="task-summary-kpi-badges-cell text-center">
                                             <button type="button"
-                                                    class="kpi-badges-search-icon-btn task-summary-kpi-badges-btn"
+                                                    class="kpi-badges-add-btn task-summary-kpi-badges-btn"
                                                     data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($row['designation'] ?? '') }}"
                                                     data-badge-count="{{ (int) ($row['kpi_count'] ?? 0) }}"
-                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row" @else title="Manage KPI badges for {{ e($row['team_member']) }}" @endif
-                                                    aria-label="Open KPI badges for {{ e($row['team_member']) }}">
-                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">@if((int) ($row['kpi_count'] ?? 0) > 0)<span class="kpi-badges-count">{{ (int) $row['kpi_count'] }}</span>@endif
+                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row" @else title="Add KPI badges for {{ e($row['team_member']) }}" @endif
+                                                    aria-label="Add KPI badges for {{ e($row['team_member']) }}">
+                                                <i class="ri-add-line" aria-hidden="true"></i>@if((int) ($row['kpi_count'] ?? 0) > 0)<span class="kpi-badges-count">{{ (int) $row['kpi_count'] }}</span>@endif
+                                            </button>
+                                        </td>
+                                        <td class="task-summary-kpi-index-cell text-center">
+                                            <button type="button"
+                                                    class="kpi-search-icon-btn task-summary-kpi-index-btn"
+                                                    data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
+                                                    data-user-name="{{ e($row['team_member']) }}"
+                                                    data-designation="{{ e($row['designation'] ?? '') }}"
+                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row" @else title="Key Performance Index of {{ e($row['team_member']) }}" @endif
+                                                    aria-label="Open Key Performance Index of {{ e($row['team_member']) }}">
+                                                <img src="{{ asset('assets/images/task-magnify-icon.png') }}" alt="" class="task-magnify-icon" aria-hidden="true">
+                                            </button>
+                                        </td>
+                                        @php $soiCount = (int) ($row['soi_count'] ?? 0); @endphp
+                                        <td class="text-center task-summary-col-soi">
+                                            <button type="button"
+                                                    class="task-summary-soi-btn{{ $soiCount > 0 ? ' has-points' : '' }}"
+                                                    data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
+                                                    data-user-name="{{ e($row['team_member']) }}"
+                                                    data-soi-count="{{ $soiCount }}"
+                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row"
+                                                    @else title="Scope of Improvement for {{ e($row['team_member']) }} — {{ $soiCount }}"
+                                                    @endif
+                                                    aria-label="Open Scope of Improvement for {{ e($row['team_member']) }}">
+                                                <span class="task-summary-soi-btn__label">SI</span>
+                                                <span class="task-summary-soi-btn__count">{{ $soiCount }}</span>
                                             </button>
                                         </td>
                                         <td class="text-center task-summary-col-incentive">
@@ -1522,6 +1596,7 @@
                                                     data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($row['designation'] ?? '') }}"
+                                                    data-org-level="{{ e($row['org_level'] ?? '') }}"
                                                     data-incentive-count="{{ (int) ($row['incentive_count'] ?? 0) }}"
                                                     data-incentive-amount="{{ (float) ($row['incentive_amount'] ?? 0) }}"
                                                     data-cutoff-alert="{{ !empty($row['incentive_cutoff_alert']) ? '1' : '0' }}"
@@ -1551,7 +1626,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="26" class="text-center text-muted py-4">
+                                        <td colspan="28" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -1562,7 +1637,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="26" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="28" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -1587,6 +1662,8 @@
     @include('partials.dar-history')
     @include('partials.team-member-profile')
     @include('partials.user-kpis')
+    @include('partials.user-kpi-index')
+    @include('partials.dashboard-kpi-dots')
 
     <div class="modal fade" id="taskSummaryAnalyticsModal" tabindex="-1" aria-labelledby="taskSummaryAnalyticsModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable">
@@ -1706,6 +1783,7 @@
 
 @section('script')
     <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.54.1/dist/apexcharts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
         (function () {
             var input = document.getElementById('task-summary-search');
@@ -2138,6 +2216,22 @@
                     kpiList = [];
                 }
                 openKpiModal(userName, kpiList);
+            });
+
+            tbody.addEventListener('click', function (e) {
+                var btn = e.target && e.target.closest && e.target.closest('.task-summary-soi-btn');
+                if (!btn || !tbody.contains(btn) || btn.disabled) {
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                var userId = parseInt(btn.getAttribute('data-user-id'), 10) || 0;
+                if (window.ScopeOfImprovementTopbarModal && typeof window.ScopeOfImprovementTopbarModal.openForUser === 'function') {
+                    window.ScopeOfImprovementTopbarModal.openForUser(userId || null);
+                    return;
+                }
+                var topbarBtn = document.getElementById('activityTopbarBtn');
+                if (topbarBtn) topbarBtn.click();
             });
 
             function runFilter() {
@@ -3283,8 +3377,8 @@
                 tr.setAttribute('data-collapsed', 'false');
                 var td = document.createElement('td');
                 var tsTable = tbody && tbody.closest ? tbody.closest('table') : document.querySelector('.task-summary-table');
-                var tsColspan = tsTable ? tsTable.querySelectorAll('thead tr:first-child th').length : 26;
-                td.setAttribute('colspan', String(tsColspan || 26));
+                var tsColspan = tsTable ? tsTable.querySelectorAll('thead tr:first-child th').length : 28;
+                td.setAttribute('colspan', String(tsColspan || 28));
                 td.innerHTML =
                     '<div class="task-summary-group-header-inner">'
                     + '<button type="button" class="task-summary-group-chevron" data-action="toggle-group" aria-label="Toggle group">'
@@ -6453,7 +6547,7 @@
                     + renderMetricTile('TAT', tat)
                     + renderMetricTile('ATC', (m.atc_l30_h || 0) + 'h')
                     + renderMetricTile('ETC', (m.etc_l30_h || 0) + 'h')
-                    + renderMetricTile('Miss', (m.missed_l30 || 0) + ' / ' + (m.missed_p30 || 0), 'is-overdue');
+                    + renderMetricTile('Miss', (m.missed_p30 || 0), 'is-overdue');
                 return html;
             }
 
@@ -7052,7 +7146,7 @@
                     + renderTile('TAT', tat)
                     + renderTile('ATC', (m.atc_l30_h || 0) + 'h')
                     + renderTile('ETC', (m.etc_l30_h || 0) + 'h')
-                    + renderTile('Miss', (m.missed_l30 || 0) + ' / ' + (m.missed_p30 || 0), 'is-overdue');
+                    + renderTile('Miss', (m.missed_p30 || 0), 'is-overdue');
             }
 
             function renderPersonRow(p) {

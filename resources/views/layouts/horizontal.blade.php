@@ -63,6 +63,9 @@
     @include('components.ai-chat-widget')
     @include('partials.clear-browser-cache-on-login')
     @include('partials.user-incentives')
+    @include('partials.overdue-nudge-modal')
+    @include('partials.dar-logout-nudge-modal')
+    @include('partials.tat-nudge-modal')
     @auth
         @if(!empty($agent_update_available))
             @include('partials.attendance-agent-update-modal')

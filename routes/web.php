@@ -7137,6 +7137,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/user-kpis', [\App\Http\Controllers\TaskController::class, 'getUserKpis'])->name('tasks.userKpis.get');
     Route::post('/tasks/user-kpis', [\App\Http\Controllers\TaskController::class, 'addUserKpi'])->name('tasks.userKpis.add');
     Route::delete('/tasks/user-kpis', [\App\Http\Controllers\TaskController::class, 'removeUserKpi'])->name('tasks.userKpis.remove');
+    Route::get('/tasks/overdue-nudge', [\App\Http\Controllers\TaskController::class, 'getOverdueNudge'])->name('tasks.overdueNudge.get');
+    Route::get('/tasks/tat-nudge', [\App\Http\Controllers\TaskController::class, 'getTatNudge'])->name('tasks.tatNudge.get');
     Route::get('/tasks/user-incentives', [\App\Http\Controllers\TaskController::class, 'getUserIncentives'])->name('tasks.userIncentives.get');
     Route::post('/tasks/user-incentives/sync', [\App\Http\Controllers\TaskController::class, 'syncUserIncentives'])->name('tasks.userIncentives.sync');
     // Legacy recognition badges (pool + awards)

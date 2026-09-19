@@ -3300,7 +3300,7 @@
                     {
                         title: "views",
                         field: "Total Views",
-                        headerTooltip: "Listing/Map traffic. eBay 2 = /ebay2-tabulator-view Views (child rows, E Stock &gt; 0, PARENT excluded). Reverb views are ÷ 100 (then CVR uses that scaled total).",
+                        headerTooltip: "Listing/Map traffic. eBay 2 = /ebay2-tabulator-view Views (child rows, E Stock &gt; 0, PARENT excluded). Reverb views are ÷ 1000 (then CVR uses that scaled total).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
@@ -3331,7 +3331,7 @@
                     {
                         title: "CVR",
                         field: "CVR",
-                        headerTooltip: "Per channel: server CVR when present (eBay 2 = eBay L30 ÷ Views, same as /ebay2-tabulator-view CVR). Else Qty ÷ Total Views. Reverb Views are ÷ 100 first. Compare to &quot;AD CVR&quot; (ad sold ÷ clicks).",
+                        headerTooltip: "Per channel: server CVR when present (eBay 2 = eBay L30 ÷ Views, same as /ebay2-tabulator-view CVR). Else Qty ÷ Total Views. Reverb Views are ÷ 1000 first. Compare to &quot;AD CVR&quot; (ad sold ÷ clicks).",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
                             // Prefer server-provided CVR (Temu / Temu 2 / Temu 3 use temu_l30 ÷ product_clicks
