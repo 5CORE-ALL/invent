@@ -6,41 +6,61 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         #temu-missing-ads-table .tabulator-header {
-            background: #fd7e14;
+            background: #fd7e14 !important;
             font-size: 0.8rem;
-            color: #fff;
+            color: #fff !important;
         }
         #temu-missing-ads-table .tabulator-header .tabulator-col {
-            background: #fd7e14;
-            color: #fff;
+            background: #fd7e14 !important;
+            color: #fff !important;
             border-right: 1px solid rgba(255,255,255,0.25);
             text-align: center;
+            padding: 0 !important;
         }
         #temu-missing-ads-table .tabulator-header .tabulator-col .tabulator-col-content,
+        #temu-missing-ads-table .tabulator-header .tabulator-col .tabulator-col-title-holder,
         #temu-missing-ads-table .tabulator-header .tabulator-col .tabulator-col-title {
             text-align: center;
             justify-content: center;
+            color: #fff !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #temu-missing-ads-table .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0 !important;
         }
         #temu-missing-ads-table .tabulator-col .tabulator-col-sorter,
         #temu-missing-ads-table .tabulator-col .tabulator-col-sorter-element,
         #temu-missing-ads-table .tabulator-col .tabulator-arrow {
             display: none !important;
         }
+        #temu-missing-ads-table .tabulator-header .tabulator-col.tabulator-sortable {
+            cursor: pointer;
+        }
         #temu-missing-ads-table .tabulator-header .tabulator-col .tabulator-col-content {
-            padding: 4px 3px;
+            padding: 6px 4px;
         }
         #temu-missing-ads-table .tabulator-cell {
             font-size: 0.85rem;
             text-align: center !important;
             justify-content: center;
             align-items: center;
-            padding: 2px 4px !important;
+            padding: 4px 6px !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #temu-missing-ads-table .tabulator-cell[tabulator-field="sku"],
+        #temu-missing-ads-table .tabulator-cell[tabulator-field="goods_id"] {
+            text-align: left !important;
+            justify-content: flex-start;
         }
         #temu-missing-ads-table .tabulator-cell[tabulator-field="image_path"] {
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 1px 2px !important;
+            padding: 2px !important;
             overflow: hidden;
         }
         #temu-missing-ads-table .temu-ads-thumb {
@@ -74,7 +94,7 @@
             cursor: help;
         }
         .create-row-ad-btn {
-            padding: 1px 6px;
+            padding: 2px 8px;
             font-size: 11px;
             line-height: 1.2;
         }
@@ -310,15 +330,21 @@
                     return (response && Array.isArray(response.data)) ? response.data : [];
                 },
                 index: 'goods_id',
-                layout: 'fitColumns',
+                layout: 'fitDataStretch',
                 height: 'calc(100vh - 280px)',
                 placeholder: 'No missing Temu 1 ads (Status No ad and Inv > 0)',
                 initialSort: [{ column: 'sku', dir: 'asc' }],
+                columnDefaults: {
+                    hozAlign: 'center',
+                    headerHozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerVertAlign: 'middle',
+                },
                 columns: [
                     {
                         title: '<input type="checkbox" class="temu-ads-select-all" id="temu-ads-select-all">',
                         field: '_select',
-                        width: 40,
+                        width: 44,
                         hozAlign: 'center',
                         headerSort: false,
                         headerHozAlign: 'center',
@@ -345,7 +371,8 @@
                     {
                         title: 'Image',
                         field: 'image_path',
-                        width: 52,
+                        width: 70,
+                        minWidth: 64,
                         hozAlign: 'center',
                         headerSort: false,
                         formatter: function (cell) {
@@ -354,15 +381,15 @@
                             return '<img class="temu-ads-thumb" src="' + src.replace(/"/g, '&quot;') + '" alt="">';
                         },
                     },
-                    { title: 'SKU', field: 'sku', width: 140, minWidth: 90, sorter: 'string' },
-                    { title: 'Goods ID', field: 'goods_id', width: 160, minWidth: 120, sorter: 'string' },
-                    { title: 'Inv', field: 'inv', width: 60, hozAlign: 'center', formatter: numFmt, sorter: 'number' },
-                    { title: 'Ovl30', field: 'ovl30', width: 70, hozAlign: 'center', formatter: numFmt, sorter: 'number' },
+                    { title: 'SKU', field: 'sku', width: 160, minWidth: 120, hozAlign: 'left', headerHozAlign: 'center', sorter: 'string' },
+                    { title: 'Goods ID', field: 'goods_id', width: 170, minWidth: 140, hozAlign: 'left', headerHozAlign: 'center', sorter: 'string' },
+                    { title: 'Inv', field: 'inv', width: 70, minWidth: 60, formatter: numFmt, sorter: 'number' },
+                    { title: 'Ovl30', field: 'ovl30', width: 80, minWidth: 70, formatter: numFmt, sorter: 'number' },
                     {
                         title: 'Dil%',
                         field: 'dil_percent',
-                        width: 70,
-                        hozAlign: 'center',
+                        width: 80,
+                        minWidth: 70,
                         sorter: 'number',
                         formatter: function (cell) {
                             const dil = parseFloat(cell.getValue()) || 0;
@@ -372,12 +399,12 @@
                             return Math.round(dil) + '%';
                         }
                     },
-                    { title: 'Clicks 7', field: 'clicks_l7', width: 80, hozAlign: 'center', formatter: numFmt, sorter: 'number' },
+                    { title: 'Clicks 7', field: 'clicks_l7', width: 90, minWidth: 80, formatter: numFmt, sorter: 'number' },
                     {
                         title: 'Status',
                         field: 'ad_status',
-                        width: 88,
-                        hozAlign: 'center',
+                        width: 90,
+                        minWidth: 80,
                         formatter: function (cell) {
                             const v = String(cell.getValue() || 'No ad');
                             return '<span class="badge bg-danger">' + v + '</span>';
@@ -387,7 +414,7 @@
                         title: 'Ad',
                         field: 'create_ad',
                         width: 110,
-                        hozAlign: 'center',
+                        minWidth: 96,
                         headerSort: false,
                         headerTooltip: 'Create is shown only when Status is No ad and Inv > 0. Same as /temu/ads.',
                         formatter: function (cell) {
