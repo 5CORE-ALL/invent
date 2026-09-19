@@ -1248,6 +1248,41 @@ class SheinApiService
     }
 
     /**
+     * Convert a display-timezone window into naive Asia/Shanghai SQL bounds
+     * matching shein_daily_data.order_processed_on storage.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function shanghaiSqlBounds(Carbon $start, Carbon $end): array
+    {
+        return [
+            $start->copy()->timezone(self::API_TIMEZONE)->format('Y-m-d H:i:s'),
+            $end->copy()->timezone(self::API_TIMEZONE)->format('Y-m-d H:i:s'),
+        ];
+    }
+
+    /**
+     * Pacific calendar date for a stored Shein timestamp (Shanghai wall clock).
+     */
+    public static function pacificDateFromStored(mixed $stored): ?string
+    {
+        $raw = $stored instanceof \DateTimeInterface
+            ? $stored->format('Y-m-d H:i:s')
+            : trim((string) $stored);
+        if ($raw === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($raw, self::API_TIMEZONE)
+                ->timezone('America/Los_Angeles')
+                ->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * Order list — POST /open-api/order/order-list
      * start/end must be within 48 hours (Shein limit). Timezone: Asia/Shanghai.
      *

@@ -43,4 +43,27 @@ class SheinOrderDateTimezoneTest extends TestCase
             $method->invoke($ctrl, $eloquentPacific, SheinApiService::API_TIMEZONE)
         );
     }
+
+    public function test_pacific_yesterday_sql_bounds_are_shanghai_not_pacific_wall_clock(): void
+    {
+        $start = Carbon::parse('2026-09-18 00:00:00', 'America/Los_Angeles');
+        $end = Carbon::parse('2026-09-18 23:59:59', 'America/Los_Angeles');
+
+        [$from, $to] = SheinApiService::shanghaiSqlBounds($start, $end);
+
+        $this->assertSame('2026-09-18 15:00:00', $from);
+        $this->assertSame('2026-09-19 14:59:59', $to);
+    }
+
+    public function test_stored_shanghai_morning_maps_to_previous_pacific_day(): void
+    {
+        $this->assertSame(
+            '2026-09-17',
+            SheinApiService::pacificDateFromStored('2026-09-18 02:13:00')
+        );
+        $this->assertSame(
+            '2026-09-18',
+            SheinApiService::pacificDateFromStored('2026-09-18 16:00:00')
+        );
+    }
 }

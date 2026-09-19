@@ -65,7 +65,8 @@ class SheinShopifySalesService
     {
         $query = SheinDailyData::query()->orderByDesc('order_processed_on')->orderByDesc('id');
         if ($startDate && $endDate) {
-            $query->whereBetween('order_processed_on', [$startDate, $endDate]);
+            [$from, $to] = SheinApiService::shanghaiSqlBounds($startDate, $endDate);
+            $query->whereBetween('order_processed_on', [$from, $to]);
         }
 
         $rows = $query->get();
