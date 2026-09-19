@@ -43,8 +43,8 @@
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2c', 'shopify_b2b'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
     $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy', 'newegg'], true);
-    $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'mercari_wship', 'mercari_woship'], true);
-    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship', 'depop'], true);
+    $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'instagram', 'mercari_wship', 'mercari_woship'], true);
+    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship', 'depop', 'vinted', 'instagram'], true);
     $ebaySprcDilSoldLabel = match ($ebaySprcDilChannel) {
         'temu', 'temu2', 'temu3' => 'Temu L30',
         'macys', 'macy' => 'MC L30',
@@ -64,6 +64,7 @@
         'pls' => 'P L30',
         'depop' => 'D L30',
         'vinted' => 'V L30',
+        'instagram' => 'I L30',
         'mercari_wship', 'mercari_woship' => 'L30',
         default => 'E L30',
     };
@@ -98,6 +99,7 @@
         'pls' => 'PLS',
         'depop' => 'Depop',
         'vinted' => 'Vinted',
+        'instagram' => 'Instagram Shop',
         'mercari_wship' => 'Mercari w Ship',
         'mercari_woship' => 'Mercari Pickup',
         'ebay2op' => 'eBay 2 OP',
@@ -109,7 +111,7 @@
     }
     if ($ebaySprcDilZeroSoldUsesMinGroi) {
         $ebaySprcDilBtnTitle .= ' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target '.$ebaySprcDilTargetLabel.' from the slabs.';
-        if (in_array($ebaySprcDilChannel, ['aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'doba'], true)) {
+        if (in_array($ebaySprcDilChannel, ['aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'vinted', 'instagram', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'doba'], true)) {
             $ebaySprcDilBtnTitle .= ' Dil = 0 uses the 0–0 slab.';
         }
         if (!empty($ebaySprcDilUsesAmzFloor)) {
@@ -290,7 +292,7 @@
                             take the <strong>minimum Target {{ $ebaySprcDilTargetLabel }} from the slabs</strong>
                             (not the Dil-matching slab).
                         </li>
-                        @if(in_array($ebaySprcDilChannel, ['aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'doba'], true))
+                        @if(in_array($ebaySprcDilChannel, ['aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'vinted', 'instagram', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'doba'], true))
                         <li>
                             <strong>When</strong> Dil = 0 (INV &gt; 0):
                             use the <strong>0–0</strong> slab’s Target {{ $ebaySprcDilTargetLabel }}.
@@ -619,7 +621,9 @@
                 || EBAY_DIL_GROI_CHANNEL === 'temu3'
                 || ebayDgIsDoba()
                 || EBAY_DIL_GROI_CHANNEL === 'pls'
-                || EBAY_DIL_GROI_CHANNEL === 'depop';
+                || EBAY_DIL_GROI_CHANNEL === 'depop'
+                || EBAY_DIL_GROI_CHANNEL === 'vinted'
+                || EBAY_DIL_GROI_CHANNEL === 'instagram';
         }
         function ebayDgIsMercari() {
             return EBAY_DIL_GROI_CHANNEL === 'mercari_wship'
@@ -658,6 +662,7 @@
                 || EBAY_DIL_GROI_CHANNEL === 'pls'
                 || EBAY_DIL_GROI_CHANNEL === 'depop'
                 || EBAY_DIL_GROI_CHANNEL === 'vinted'
+                || EBAY_DIL_GROI_CHANNEL === 'instagram'
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_wship'
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship';
         }
@@ -669,7 +674,9 @@
             return ebayDgIsWayfair() || ebayDgIsDobaWithoutship() || ebayDgIsFaire() || ebayDgIsTopdawg() || ebayDgIsFbMarketplace()
                 || EBAY_DIL_GROI_CHANNEL === 'shopify_b2b'
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship'
-                || EBAY_DIL_GROI_CHANNEL === 'depop';
+                || EBAY_DIL_GROI_CHANNEL === 'depop'
+                || EBAY_DIL_GROI_CHANNEL === 'vinted'
+                || EBAY_DIL_GROI_CHANNEL === 'instagram';
         }
         function ebayDgRulesUrl() {
             return '/channel-promo-pricing/' + encodeURIComponent(EBAY_DIL_GROI_CHANNEL) + '/dil-groi';

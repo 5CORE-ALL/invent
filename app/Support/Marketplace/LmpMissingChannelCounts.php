@@ -95,9 +95,16 @@ class LmpMissingChannelCounts
         ],
         'vinted' => [
             'label' => 'Vinted',
-            'url' => '/vinted/pricing',
+            'url' => '/vinted/analytics',
             'aliases' => ['vinted'],
             'sku_table' => 'vinted_pricing',
+            'sku_col' => 'sku',
+        ],
+        'instagram' => [
+            'label' => 'Instagram Shop',
+            'url' => '/instagram/analytics',
+            'aliases' => ['instagram', 'instagramshop'],
+            'sku_table' => 'instagram_pricing',
             'sku_col' => 'sku',
         ],
         'purchasingpower' => [

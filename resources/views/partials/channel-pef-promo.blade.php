@@ -13,13 +13,13 @@
     $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'mercari_wship', 'mercari_woship', 'depop'], true);
+    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'mercari_wship', 'mercari_woship', 'depop', 'vinted', 'instagram'], true);
     $channelPromoShowZeroSoldDilRule = !$channelPromoUsesSprcDil;
     $channelPromoZeroSoldDilColorSlabs = true;
     $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['temu', 'temu2', 'temu3'], true) && empty($channelPromoUsesSprcDil);
     $channelPromoZeroSoldMinRoi = $channelPromoChannel === 'shopify_b2c';
     $channelPromoZeroSoldSoldLabel = $channelPromoChannel === 'shopify_b2c' ? 'B2C L30' : 'L30';
-    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'depop'], true);
+    $channelPromoHideDilPrmt = in_array($channelPromoChannel, ['shopify_b2c', 'shopify_b2b', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg', 'topdawg', 'fb_marketplace', 'depop', 'vinted', 'instagram'], true);
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'fb_marketplace'], true);
     $channelPromoUsesAmazonCvrDisc = $channelPromoChannel === 'shopify_b2c';
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
@@ -1190,6 +1190,7 @@
                 || CHANNEL_PROMO_CHANNEL === 'pls'
                 || CHANNEL_PROMO_CHANNEL === 'depop'
                 || CHANNEL_PROMO_CHANNEL === 'vinted'
+                || CHANNEL_PROMO_CHANNEL === 'instagram'
                 || CHANNEL_PROMO_CHANNEL === 'mercari_wship'
                 || CHANNEL_PROMO_CHANNEL === 'mercari_woship'
                 || CHANNEL_PROMO_CHANNEL === 'ebay2op';
@@ -1617,15 +1618,31 @@
             },
             vinted: {
                 label: 'Vinted',
-                saveSpriceUrl: '/vinted/pricing/save-sprice-tabulator',
+                saveSpriceUrl: '/vinted/analytics/save-sprice',
+                saveSpriceBatchUrl: '/vinted/analytics/save-sprice',
                 pushPriceUrl: null,
-                priceField: 'V Price',
-                cvrField: 'CVR%',
-                dilField: 'Dil%',
-                invField: 'INV',
-                skuField: '(Child) sku',
-                soldField: 'V L30',
-                saveSpriceMode: 'sku',
+                priceField: 'price',
+                cvrField: 'cvr',
+                dilField: 'dil_percent',
+                invField: 'inv',
+                skuField: 'sku',
+                soldField: 'al30',
+                soldFieldLabel: 'V L30',
+                saveSpriceMode: 'updates',
+            },
+            instagram: {
+                label: 'Instagram Shop',
+                saveSpriceUrl: '/instagram/analytics/save-sprice',
+                saveSpriceBatchUrl: '/instagram/analytics/save-sprice',
+                pushPriceUrl: null,
+                priceField: 'price',
+                cvrField: 'cvr',
+                dilField: 'dil_percent',
+                invField: 'inv',
+                skuField: 'sku',
+                soldField: 'al30',
+                soldFieldLabel: 'I L30',
+                saveSpriceMode: 'updates',
             },
             depop: {
                 label: 'Depop',
@@ -3978,7 +3995,9 @@
             if (CHANNEL_PROMO_CHANNEL === 'aliexpress' || CHANNEL_PROMO_CHANNEL === 'shein'
                 || CHANNEL_PROMO_CHANNEL === 'newegg'
                 || CHANNEL_PROMO_CHANNEL === 'faire' || CHANNEL_PROMO_CHANNEL === 'pls'
-                || CHANNEL_PROMO_CHANNEL === 'depop') {
+                || CHANNEL_PROMO_CHANNEL === 'depop'
+                || CHANNEL_PROMO_CHANNEL === 'vinted'
+                || CHANNEL_PROMO_CHANNEL === 'instagram') {
                 let dil = Number(d.dil_percent != null ? d.dil_percent : d[chPromoCfg.dilField]);
                 if (isFinite(dil)) return dil;
                 if (inv <= 0) return 0;
@@ -5016,7 +5035,9 @@
             return (isFinite(lp) && lp > 0) ? lp : 0;
         }
         function chPromoShipCost(d) {
-            if (CHANNEL_PROMO_CHANNEL === 'depop') return 0;
+            if (CHANNEL_PROMO_CHANNEL === 'depop'
+                || CHANNEL_PROMO_CHANNEL === 'vinted'
+                || CHANNEL_PROMO_CHANNEL === 'instagram') return 0;
             if (chPromoIsTemuPromoChannel()) {
                 const temuShip = Number(d && (d.temu_ship != null ? d.temu_ship : d.temuShip));
                 return isFinite(temuShip) && temuShip > 0 ? temuShip : 0;
@@ -5342,7 +5363,9 @@
                 || CHANNEL_PROMO_CHANNEL === 'topdawg'
                 || CHANNEL_PROMO_CHANNEL === 'fb_marketplace'
                 || CHANNEL_PROMO_CHANNEL === 'mercari_woship'
-                || CHANNEL_PROMO_CHANNEL === 'depop')
+                || CHANNEL_PROMO_CHANNEL === 'depop'
+                || CHANNEL_PROMO_CHANNEL === 'vinted'
+                || CHANNEL_PROMO_CHANNEL === 'instagram')
                 ? 0
                 : chPromoShipCost(d);
             // Target NROI pages (eBay 1–3, etc.): include Ads% so SNROI = target.

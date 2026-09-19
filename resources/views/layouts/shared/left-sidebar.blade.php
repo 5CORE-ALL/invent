@@ -1725,7 +1725,7 @@
                             <div class="collapse" id="sidebarVinted">
                                 <ul class="side-nav-third-level">
                                     <li>
-                                        <a href="{{ route('vinted.pricing') }}">Vinted - Analytics</a>
+                                        <a href="{{ route('vinted.analytics') }}">Vinted - Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('vinted.sheet') }}">Vinted Sales Data</a>
@@ -2349,6 +2349,9 @@
                 </a>
                 <div class="collapse" id="sidebarInstagramShop">
                     <ul class="side-nav-third-level">
+                        <li>
+                            <a href="{{ route('instagram.analytics') }}">Instagram Shop - Analytics</a>
+                        </li>
                         <li>
                             <a href="{{ route('zero.instagramshop') }}">Instagram Shop 0
                                 view</a>

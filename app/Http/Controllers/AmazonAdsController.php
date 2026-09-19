@@ -2292,13 +2292,14 @@ class AmazonAdsController extends Controller
             return;
         }
         // SBID rule bands are driven by U7% (interchanged from U2%) and U1%.
-        $u2 = $u['U7'];
-        $u1 = $u['U1'];
-        if ($u2 === null || $u1 === null) {
+        $utils = self::sbidRuleUtilsFromUtilization($u, $rowArr);
+        if ($utils === null) {
             $arr['sbid'] = null;
 
             return;
         }
+        $u2 = $utils['u2'];
+        $u1 = $utils['u1'];
 
         $cpc1 = self::rowPositiveFloatFromKeys($arr, ['costPerClick']);
         if ($cpc1 <= 0) {
@@ -2317,6 +2318,29 @@ class AmazonAdsController extends Controller
         );
 
         $arr['sbid'] = $out['sbid'];
+    }
+
+    /**
+     * Missing L7/L1 spend is 0% util when BGT exists — same as bid crons and the
+     * SBID rule fallback (e.g. $0.75 when both below low and CPC is 0).
+     *
+     * @param  array{U7: mixed, U1: mixed}  $u
+     * @param  array<string, mixed>  $rowArr
+     * @return array{u2: float, u1: float}|null
+     */
+    private static function sbidRuleUtilsFromUtilization(array $u, array $rowArr): ?array
+    {
+        $u2 = $u['U7'] ?? null;
+        $u1 = $u['U1'] ?? null;
+        if (self::rowBudgetForUtilization($rowArr) !== null) {
+            $u2 = $u2 ?? 0.0;
+            $u1 = $u1 ?? 0.0;
+        }
+        if ($u2 === null || $u1 === null || ! is_numeric($u2) || ! is_numeric($u1)) {
+            return null;
+        }
+
+        return ['u2' => (float) $u2, 'u1' => (float) $u1];
     }
 
     private static function normalizeDateInput(?string $value): ?string

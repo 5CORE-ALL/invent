@@ -59,7 +59,7 @@ class ChannelPromoPricingController extends Controller
         'tiktok', 'tiktok2', 'topdawg', 'purchasing_power',
         'aliexpress', 'shein', 'newegg', 'faire', 'pls',
         'mercari_wship', 'mercari_woship', 'fb_marketplace',
-        'vinted', 'depop',
+        'vinted', 'instagram', 'depop',
     ];
 
     /** Push PRMT % sale-event queue retired — no channel creates markdown sales. */
@@ -1606,7 +1606,7 @@ class ChannelPromoPricingController extends Controller
             'aliexpress' => $this->aliexpressHistorySkuSet(),
             'faire' => $this->faireHistorySkuSet(),
             'tiktok', 'tiktok2' => $this->tiktokHistorySkuSet($channel),
-            'mercari_wship', 'mercari_woship', 'shein', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'temu3', 'doba' => $this->mercariWshipHistorySkuSet(),
+            'mercari_wship', 'mercari_woship', 'shein', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'vinted', 'instagram', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'temu3', 'doba' => $this->mercariWshipHistorySkuSet(),
             'pls' => $this->plsHistorySkuSet(),
             default => null,
         };
@@ -2443,7 +2443,7 @@ class ChannelPromoPricingController extends Controller
         if ($this->promo->isSupported($channel)) {
             return $channel;
         }
-        if (in_array($channel, ['amazon', 'pef', 'vinted', 'depop', 'macy'], true)) {
+        if (in_array($channel, ['amazon', 'pef', 'vinted', 'instagram', 'depop', 'macy'], true)) {
             return $channel;
         }
 
