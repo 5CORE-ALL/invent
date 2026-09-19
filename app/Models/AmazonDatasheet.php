@@ -80,6 +80,53 @@ class AmazonDatasheet extends Model
     }
 
     /**
+     * Map Product Master / grid SKUs to ASINs the same way /amazon-tabulator-view does:
+     * compact lookup via {@see normalizeSkuForLookup}, then {@see pickBestForProductSku}.
+     * Results are keyed by the original requested SKU so "GS EL Power" still resolves
+     * when the datasheet row is stored as "GS EL POWER".
+     *
+     * @param  list<string>  $productSkus
+     * @param  Collection<int, self>|iterable<int, object>|null  $candidates
+     * @return array<string, string> product sku => ASIN
+     */
+    public static function asinsByProductSkus(array $productSkus, $candidates = null): array
+    {
+        $productSkus = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => trim((string) $s),
+            $productSkus
+        ))));
+        if ($productSkus === []) {
+            return [];
+        }
+
+        if ($candidates === null) {
+            $candidates = self::query()
+                ->whereNotNull('asin')
+                ->where('asin', '!=', '')
+                ->get(['id', 'sku', 'asin', 'price', 'updated_at']);
+        }
+
+        $grouped = collect($candidates)
+            ->filter(static fn ($row) => trim((string) ($row->asin ?? '')) !== '')
+            ->groupBy(static fn ($row) => self::normalizeSkuForLookup($row->sku ?? ''));
+
+        $out = [];
+        foreach ($productSkus as $sku) {
+            $key = self::normalizeSkuForLookup($sku);
+            if ($key === '') {
+                continue;
+            }
+            $sheet = self::pickBestForProductSku($sku, $grouped->get($key));
+            $asin = strtoupper(trim((string) ($sheet->asin ?? '')));
+            if ($asin !== '') {
+                $out[$sku] = $asin;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * When several amazon_datsheets rows share one compact key (e.g. "SS ECO 2PK ORG WoB"
      * and "SSECO2PKORGWoB"), prefer the space-normalized exact Product Master MSKU.
      * Otherwise prefer a priced row with the newest updated_at.
