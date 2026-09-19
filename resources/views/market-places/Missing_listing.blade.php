@@ -128,6 +128,15 @@
             color: #6c757d;
             font-weight: 700;
         }
+        .ml-source-csv {
+            color: #084298;
+            font-weight: 700;
+        }
+        .ml-csv-upload-btn {
+            font-size: 11px;
+            padding: 1px 7px;
+            margin-left: 6px;
+        }
         .tabulator .tabulator-header .tabulator-col.tabulator-col-group {
             background: #eef4fb;
             text-align: center;
@@ -185,6 +194,7 @@
             <div class="card-body" style="padding: 0;">
                 <div class="p-2 bg-light border-bottom">
                     <input type="text" id="missing-listing-search" class="form-control form-control-sm" placeholder="Search by Channel...">
+                    <input type="file" id="ml-depop-csv-input" accept=".csv,text/csv,text/plain" hidden>
                 </div>
                 <div id="missing-listing-table" style="height: calc(100vh - 280px);"></div>
             </div>
@@ -300,7 +310,7 @@
             $('#total-missing-listing').text(Number(totalMissingL).toLocaleString('en-US'));
         } else {
             const total = (rows || []).reduce((sum, r) => {
-                if (!isLiveApiRow(r)) return sum;
+                if (!isCountableRow(r)) return sum;
                 return sum + Number(r.missing_listing || 0);
             }, 0);
             $('#total-missing-listing').text(total.toLocaleString('en-US'));
@@ -309,7 +319,7 @@
         const current = ($('#median-missing-listing').text() || '').trim();
         if (current === '' || current === '—') {
             const channelVals = (rows || [])
-                .filter(function (r) { return isLiveApiRow(r); })
+                .filter(function (r) { return isCountableRow(r); })
                 .map(function (r) { return Number(r.missing_listing || 0); });
             if (channelVals.length) setMedianBadge(mlComputeMedian(channelVals));
         }
@@ -323,8 +333,13 @@
         return listingSource(rowData) === 'API';
     }
 
+    function isCountableRow(rowData) {
+        const source = listingSource(rowData);
+        return source === 'API' || source === 'CSV';
+    }
+
     function isSheetRow(rowData) {
-        return !isLiveApiRow(rowData);
+        return !isCountableRow(rowData);
     }
 
     function fromSheetCell(rowData) {
@@ -735,12 +750,15 @@
                     minWidth: 220,
                     formatter: function(cell) {
                         const name = (cell.getValue() || '').trim();
-                        const url = (cell.getRow().getData().listing_url || '').trim();
+                        const row = cell.getRow().getData();
+                        const url = (row.listing_url || '').trim();
                         if (!name) return '';
                         const safeName = escapeHtml(name);
-                        if (!url) return safeName;
-                        const safeUrl = escapeHtml(url);
-                        return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="ml-channel-listing-link" title="Open listing page">${safeName}</a>`;
+                        const nameHtml = url
+                            ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="ml-channel-listing-link" title="Open listing page">${safeName}</a>`
+                            : safeName;
+                        if (!row.allows_csv_upload) return nameHtml;
+                        return `${nameHtml}<button type="button" class="btn btn-sm btn-outline-warning ml-csv-upload-btn" data-channel="${escapeHtml(name)}" title="Upload current Depop listings CSV and match to CP Master">Upload CSV</button>`;
                     },
                 },
                 {
@@ -773,11 +791,14 @@
                     field: "data_source",
                     width: 140,
                     hozAlign: "center",
-                    headerTooltip: "API = live listing-page counts; Sheet = From Sheet; Not connected = marketplace API credentials missing",
+                    headerTooltip: "API = live listing-page counts; CSV = uploaded current listings vs CP Master; Sheet = From Sheet; Not connected = marketplace API credentials missing",
                     formatter: function(cell) {
                         const v = String(cell.getValue() || '').trim().toUpperCase();
                         if (v === 'API') {
                             return '<span class="ml-source-api">API</span>';
+                        }
+                        if (v === 'CSV') {
+                            return '<span class="ml-source-csv" title="Current listings come from the uploaded sheet until an API exists">CSV</span>';
                         }
                         if (v === 'SHEET') {
                             return '<span class="ml-source-sheet">Sheet</span>';
@@ -1029,6 +1050,39 @@
                 showToast(msg, 'error');
                 $select.val(oldValue);
                 applyModeSelectColor($select, oldValue);
+            });
+        });
+
+        $(document).on('click', '#missing-listing-table .ml-csv-upload-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const input = document.getElementById('ml-depop-csv-input');
+            if (input) input.click();
+        });
+
+        $('#ml-depop-csv-input').on('change', function() {
+            const file = this.files && this.files[0];
+            this.value = '';
+            if (!file) return;
+            const body = new FormData();
+            body.append('file', file);
+            body.append('_token', '{{ csrf_token() }}');
+            showToast('Uploading Depop sheet…', 'success');
+            $.ajax({
+                url: "{{ route('listing.depop.import') }}",
+                method: 'POST',
+                data: body,
+                processData: false,
+                contentType: false,
+                dataType: 'json',
+            }).done(function(res) {
+                showToast((res && res.message) || 'Depop sheet imported.', 'success');
+                location.reload();
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                    ? (xhr.responseJSON.message || xhr.responseJSON.error)
+                    : 'Upload failed.';
+                showToast(msg, 'error');
             });
         });
 

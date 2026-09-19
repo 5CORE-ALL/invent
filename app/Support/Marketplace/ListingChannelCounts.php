@@ -8,6 +8,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAppscenicControll
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAutoDSController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingBestbuyUSAController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingBusiness5CoreController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingDepopController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingDobaController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayThreeController;
@@ -116,6 +117,7 @@ class ListingChannelCounts
         'purchasingpower' => ListingPurchasingPowerController::class,
         'swgearexchange' => ListingSWGearExchangeController::class,
         'pls' => ListingPlsController::class,
+        'depop' => ListingDepopController::class,
     ];
 
     /**
@@ -181,6 +183,7 @@ class ListingChannelCounts
         'b5cb2b' => '/marketplace/b5cb2b/products',
         'business5coreb2b' => '/marketplace/b5cb2b/products',
         'business5core(b2b)' => '/marketplace/b5cb2b/products',
+        'depop' => '/listing-depop',
     ];
 
     /**
@@ -298,6 +301,17 @@ class ListingChannelCounts
         'yamibuy',
         'swgearexchange',
         'business5core',
+        'depop',
+    ];
+
+    /**
+     * Manual / sheet catalog channels that still compute Missing L
+     * (uploaded current listings vs CP Master).
+     *
+     * @var list<string>
+     */
+    private static array $csvListingSources = [
+        'depop',
     ];
 
     /**
@@ -310,6 +324,10 @@ class ListingChannelCounts
         $key = self::normalize($channel);
         if ($key === '') {
             return 'Sheet';
+        }
+
+        if (in_array($key, self::$csvListingSources, true)) {
+            return 'CSV';
         }
 
         if (in_array($key, self::$forceApiListingSources, true)) {
@@ -340,6 +358,16 @@ class ListingChannelCounts
     public static function isLiveApiSource(string $channel): bool
     {
         return self::dataSource($channel) === 'API';
+    }
+
+    public static function isCsvCatalogSource(string $channel): bool
+    {
+        return self::dataSource($channel) === 'CSV';
+    }
+
+    public static function showsComputedCounts(string $channel): bool
+    {
+        return self::isLiveApiSource($channel) || self::isCsvCatalogSource($channel);
     }
 
     /**
@@ -475,8 +503,8 @@ class ListingChannelCounts
             }
             $seen[$key] = true;
 
-            // Sheet / disconnected APIs are not counted
-            if (! self::isLiveApiSource((string) $name)) {
+            // Sheet / disconnected APIs are not counted; CSV catalogs are.
+            if (! self::showsComputedCounts((string) $name)) {
                 continue;
             }
 
