@@ -83,7 +83,9 @@
             background: #2bac76; box-shadow: 0 0 0 2px rgba(43,172,118,.2);
             flex-shrink: 0;
         }
-        .slack-dot.is-off { background: transparent; border: 1.5px solid #ab9bab; box-shadow: none; }
+        .slack-dot.is-off { background: #e01e5a; box-shadow: 0 0 0 2px rgba(224,30,90,.2); border: 0; }
+        .slack-dot.is-away { background: #ecb22e; box-shadow: 0 0 0 2px rgba(236,178,46,.2); }
+        .slack-dot.is-dnd { background: #e01e5a; box-shadow: none; }
         .slack-item__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .slack-item__badge {
             min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
@@ -98,7 +100,15 @@
             justify-content: space-between;
             gap: 12px;
         }
-        .slack-head__name { margin: 0; font-size: 16px; font-weight: 800; color: #1d1c1d; }
+        .slack-head__name { margin: 0; font-size: 16px; font-weight: 800; color: #1d1c1d; display: flex; align-items: center; gap: 8px; }
+        .slack-presence-dot {
+            width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+            background: #2bac76; box-shadow: 0 0 0 2px rgba(43,172,118,.18);
+        }
+        .slack-presence-dot.is-off { background: #e01e5a; box-shadow: 0 0 0 2px rgba(224,30,90,.16); }
+        .slack-presence-dot.is-away { background: #ecb22e; box-shadow: 0 0 0 2px rgba(236,178,46,.18); }
+        .slack-presence-dot.is-dnd { background: #e01e5a; box-shadow: none; }
+        .slack-presence-dot.is-hidden { display: none; }
         .slack-head__sub { margin: 2px 0 0; font-size: 12px; color: #616061; }
         .slack-feed { flex: 1; overflow: auto; padding: 12px 0 8px; }
         .slack-empty { color: #616061; text-align: center; margin-top: 18vh; }
@@ -284,7 +294,10 @@
                 <div class="d-flex align-items-start">
                     <button type="button" class="slack-back" id="slackBackBtn" aria-label="Back">‹</button>
                     <div>
-                    <h2 class="slack-head__name" id="slackRoomName">Invent Chat</h2>
+                    <h2 class="slack-head__name">
+                        <span class="slack-presence-dot is-hidden" id="slackRoomDot" title=""></span>
+                        <span id="slackRoomName">Invent Chat</span>
+                    </h2>
                     <p class="slack-head__sub" id="slackRoomSub">Pick a channel or teammate</p>
                     </div>
                 </div>
@@ -603,7 +616,7 @@
             btn.className = 'slack-item' + (ch.id === activeId ? ' is-active' : '') + (ch.unread > 0 ? ' is-unread' : '');
             const prefix = (ch.type === 'public' || ch.type === 'private') ? '<span class="slack-item__hash">#</span>' : '';
             const avatar = ch.avatar ? '<img src="' + esc(ch.avatar) + '" alt="">' : (ch.type === 'bot' ? '<i class="ri-robot-2-line"></i>' : (ch.type === 'group' ? '<i class="ri-group-line"></i>' : ''));
-            const dot = (ch.type === 'dm') ? '<span class="slack-dot' + (ch.online ? '' : ' is-off') + '"></span>' : '';
+            const dot = (ch.type === 'dm') ? '<span class="' + presenceDotClass('slack-dot', ch) + '" title="' + esc(presenceTitle(ch)) + '"></span>' : '';
             const badge = ch.unread > 0 ? '<span class="slack-item__badge">' + ch.unread + '</span>' : '';
             btn.innerHTML = avatar + prefix + dot + '<span class="slack-item__name">' + esc(ch.name) + '</span>' + badge;
             btn.addEventListener('click', function () { openChannel(ch.id); });
@@ -804,15 +817,45 @@
         if (incoming && !initialLoad) playTone();
     }
 
+    function presenceState(src) {
+        const online = !!(src && src.online);
+        const status = (src && src.status) || 'active';
+        if (online && status === 'away') return 'away';
+        if (online && status === 'dnd') return 'dnd';
+        return online ? 'online' : 'offline';
+    }
+
+    function presenceDotClass(base, src) {
+        const state = presenceState(src);
+        if (state === 'offline') return base + ' is-off';
+        if (state === 'away') return base + ' is-away';
+        if (state === 'dnd') return base + ' is-dnd';
+        return base;
+    }
+
+    function presenceTitle(src) {
+        const state = presenceState(src);
+        if (state === 'offline') return 'Offline';
+        if (state === 'away') return 'Away';
+        if (state === 'dnd') return 'Do not disturb';
+        return 'Online';
+    }
+
     function setHead(ch, detail) {
         const name = ch ? ((ch.type === 'public' || ch.type === 'private') ? '#' + ch.name : ch.name) : 'Slack';
         document.getElementById('slackRoomName').textContent = name;
+        const src = detail || ch || {};
         let sub = 'Message';
-        if (detail && detail.last_seen_label) sub = detail.last_seen_label;
-        else if (ch && ch.last_seen_label) sub = ch.last_seen_label;
+        if (src.last_seen_label) sub = src.last_seen_label;
         else if (ch && ch.type === 'group') sub = (ch.member_count || 0) + ' members';
         else if (ch && ch.type === 'bot') sub = 'Create a task, or check overdue, DAR, and SI';
         document.getElementById('slackRoomSub').textContent = sub;
+        const dot = document.getElementById('slackRoomDot');
+        if (dot) {
+            const isDm = !!(ch && ch.type === 'dm');
+            dot.className = isDm ? presenceDotClass('slack-presence-dot', src) : 'slack-presence-dot is-hidden';
+            dot.title = isDm ? presenceTitle(src) : '';
+        }
         bodyEl.placeholder = ch ? 'Message ' + name : 'Message';
     }
 
@@ -1160,7 +1203,7 @@
             return (u.name || '').toLowerCase().indexOf(query) >= 0 || (u.email || '').toLowerCase().indexOf(query) >= 0;
         }).slice(0, 12);
         peopleList.innerHTML = rows.map(function (u) {
-            return '<button type="button" data-user="' + u.id + '"><img src="' + esc(u.avatar || '') + '" alt=""><span>' + esc(u.name) + (u.online ? ' · Active' : '') + '</span></button>';
+            return '<button type="button" data-user="' + u.id + '"><img src="' + esc(u.avatar || '') + '" alt=""><span class="' + presenceDotClass('slack-dot', u) + '" title="' + esc(presenceTitle(u)) + '"></span><span>' + esc(u.name) + (u.online ? ' · Active' : ' · Offline') + '</span></button>';
         }).join('');
         peopleList.classList.toggle('is-open', rows.length > 0);
         peopleList.querySelectorAll('button').forEach(function (btn) {

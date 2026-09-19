@@ -931,6 +931,7 @@ class ChatController extends Controller
             'topic' => $channel->topic,
             'peer_id' => $peerId,
             'online' => (bool) ($presence['online'] ?? false),
+            'status' => $presence['status'] ?? 'active',
             'last_seen_label' => $presence['last_seen_label'] ?? ($channel->isGroup() ? $channel->members()->count().' members' : null),
             'member_count' => (int) $channel->members()->count(),
             'last_read_message_id' => (int) ($member->last_read_message_id ?? 0),

@@ -370,6 +370,7 @@ class ChatWorkspace
                 'avatar' => $channel->isBotInbox() ? null : self::avatarUrl($peer),
                 'member_count' => (int) ($memberCounts[$channel->id] ?? 0),
                 'online' => (bool) ($peerPresence['online'] ?? false),
+                'status' => $peerPresence['status'] ?? 'active',
                 'last_seen_label' => $peerPresence['last_seen_label'] ?? null,
             ];
         }
@@ -910,6 +911,7 @@ class ChatWorkspace
                     'designation' => $u->designation,
                     'org_level' => $u->org_level,
                     'online' => (bool) ($p['online'] ?? false),
+                    'status' => $p['status'] ?? 'active',
                     'last_seen_label' => $p['last_seen_label'] ?? 'Offline',
                 ];
             })
