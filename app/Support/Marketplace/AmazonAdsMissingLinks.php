@@ -3,6 +3,8 @@
 namespace App\Support\Marketplace;
 
 use App\Models\AmazonAdsMissingLink;
+use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -84,16 +86,26 @@ class AmazonAdsMissingLinks
     /**
      * @param  \Illuminate\Support\Collection|iterable  $links
      * @param  array<string, string>  $statusMap
-     * @return array<int, array{id: int, campaign_id: mixed, campaign_name: string, status: string, dot: string}>
+     * @return array<int, array{id: int, campaign_id: mixed, campaign_name: string, status: string, dot: string, page_created: bool, created_at: string, created_by: string}>
      */
     public static function linkListForType($links, string $type, array $statusMap = []): array
     {
-        return collect($links)
-            ->filter(fn ($l) => (string) ($l->type ?? '') === $type)
-            ->map(function ($l) use ($statusMap) {
+        $rows = collect($links)->filter(fn ($l) => (string) ($l->type ?? '') === $type)->values();
+        $userIds = $rows
+            ->map(fn ($l) => (int) ($l->user_id ?? 0))
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+        $names = self::namesForUserIds($userIds);
+
+        return $rows
+            ->map(function ($l) use ($statusMap, $names) {
                 $name = (string) ($l->campaign_name ?? '');
                 $status = $statusMap[self::normalizeCampaignName($name)] ?? '';
                 $dot = $status === 'ENABLED' ? 'green' : ($status !== '' ? 'red' : '');
+                $userId = (int) ($l->user_id ?? 0);
+                $createdBy = $userId > 0 ? ($names[$userId] ?? ('User #'.$userId)) : '';
 
                 return [
                     'id' => (int) ($l->id ?? 0),
@@ -101,10 +113,73 @@ class AmazonAdsMissingLinks
                     'campaign_name' => $name,
                     'status' => $status,
                     'dot' => $dot,
+                    'page_created' => (bool) ($l->page_created ?? false),
+                    'created_at' => self::formatCreatedAt($l->created_at ?? null),
+                    'created_by' => $createdBy,
                 ];
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  list<int>  $ids
+     * @return array<int, string>
+     */
+    private static function namesForUserIds(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if ($ids === []) {
+            return [];
+        }
+
+        try {
+            if (! Schema::hasTable('users')) {
+                return [];
+            }
+
+            return User::query()
+                ->whereIn('id', $ids)
+                ->get(['id', 'name', 'email'])
+                ->mapWithKeys(function ($user) {
+                    $label = trim((string) ($user->name ?? ''));
+                    if ($label === '') {
+                        $label = trim((string) ($user->email ?? ''));
+                    }
+                    if ($label === '') {
+                        $label = 'User #'.(int) $user->id;
+                    }
+
+                    return [(int) $user->id => $label];
+                })
+                ->all();
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    private static function formatCreatedAt(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        try {
+            $dt = $value instanceof \DateTimeInterface
+                ? Carbon::instance(\DateTimeImmutable::createFromInterface($value))
+                : Carbon::parse((string) $value);
+            $tz = 'America/Los_Angeles';
+            if (function_exists('config')) {
+                $cfg = config('app.timezone');
+                if (is_string($cfg) && $cfg !== '') {
+                    $tz = $cfg;
+                }
+            }
+
+            return $dt->timezone($tz)->format('M j, Y g:i A');
+        } catch (\Throwable $e) {
+            return trim((string) $value);
+        }
     }
 
     /**

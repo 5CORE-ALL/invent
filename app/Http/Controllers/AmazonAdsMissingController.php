@@ -204,11 +204,7 @@ class AmazonAdsMissingController extends Controller
                 'type' => $validated['type'],
                 'campaign_name' => $validated['campaign_name'],
             ],
-            [
-                'campaign_id' => $campaignId,
-                'user_id' => Auth::id(),
-                'created_at' => Carbon::now(),
-            ]
+            $this->missingLinkCreateAttrs($campaignId, false)
         );
 
         self::forgetMissingTotalCache();
@@ -350,11 +346,7 @@ class AmazonAdsMissingController extends Controller
                 'type' => $type,
                 'campaign_name' => $campaignName,
             ],
-            [
-                'campaign_id' => $campaignId !== '' ? $campaignId : null,
-                'user_id' => Auth::id(),
-                'created_at' => Carbon::now(),
-            ]
+            $this->missingLinkCreateAttrs($campaignId !== '' ? $campaignId : null, true)
         );
 
         $this->upsertLocalSpCampaignRow($campaignId, $campaignName, 'PAUSED', $budget);
@@ -1203,6 +1195,23 @@ PROMPT;
         }
 
         return strtoupper(trim((string) ($values['status'] ?? ''))) === 'DC';
+    }
+
+    /**
+     * @return array{campaign_id: mixed, user_id: mixed, created_at: Carbon, page_created?: bool}
+     */
+    private function missingLinkCreateAttrs(?string $campaignId, bool $pageCreated): array
+    {
+        $attrs = [
+            'campaign_id' => $campaignId,
+            'user_id' => Auth::id(),
+            'created_at' => Carbon::now(),
+        ];
+        if (Schema::hasColumn('amazon_ads_missing_links', 'page_created')) {
+            $attrs['page_created'] = $pageCreated;
+        }
+
+        return $attrs;
     }
 
     /**

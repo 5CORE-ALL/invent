@@ -119,6 +119,11 @@
         .amz-ads-missing .link-chip .chip-trash:hover {
             color: #c92a2a;
         }
+        .amz-ads-missing .link-chip .chip-created {
+            color: #2f9e44;
+            cursor: help;
+            margin-left: 2px;
+        }
         .amz-ads-missing .amz-create-btn {
             border: 1px solid #2f9e44;
             background: #fff;
@@ -603,15 +608,41 @@
                 return '<span class="campaign-dot campaign-dot-' + dot + '" title="' + esc(title) + '"></span>';
             }
 
+            function createdTooltip(c) {
+                var when = (c && c.created_at) ? String(c.created_at) : '';
+                var who = (c && c.created_by) ? String(c.created_by) : '';
+                if (when && who) {
+                    return 'Created ' + when + ' by ' + who;
+                }
+                if (when) {
+                    return 'Created ' + when;
+                }
+                if (who) {
+                    return 'Created by ' + who;
+                }
+                return 'Created on this page';
+            }
+
+            function createdCheck(c) {
+                if (!c || !c.page_created) {
+                    return '';
+                }
+                return ' <i class="fa fa-check-circle chip-created" title="' + esc(createdTooltip(c)) + '"></i>';
+            }
+
             function chipsFormatter(type) {
                 return function (cell) {
                     var d = cell.getData();
                     var list = (type === 'PT' ? d.pt : d.kw) || [];
                     var chips = list.map(function (c) {
                         var canArchive = !!(c && (c.campaign_id || c.campaign_name));
-                        return '<span class="link-chip" title="' + esc(c.campaign_name) + '">'
+                        var chipTitle = c.page_created
+                            ? (c.campaign_name + ' — ' + createdTooltip(c))
+                            : c.campaign_name;
+                        return '<span class="link-chip" title="' + esc(chipTitle) + '">'
                             + statusDot(c)
                             + esc(c.campaign_name)
+                            + createdCheck(c)
                             + ' <i class="fa fa-times chip-x" title="Unlink only" data-id="' + c.id + '" data-sku="' + esc(d.sku) + '"></i>'
                             + (canArchive
                                 ? ' <i class="fa fa-trash chip-trash" title="Archive campaign in Amz Ads"'

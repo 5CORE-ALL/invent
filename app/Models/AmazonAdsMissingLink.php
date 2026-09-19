@@ -16,10 +16,12 @@ class AmazonAdsMissingLink extends Model
         'campaign_id',
         'campaign_name',
         'user_id',
+        'page_created',
         'created_at',
     ];
 
     protected $casts = [
+        'page_created' => 'boolean',
         'created_at' => 'datetime',
     ];
 }
