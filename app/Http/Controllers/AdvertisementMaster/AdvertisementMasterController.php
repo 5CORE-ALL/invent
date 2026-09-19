@@ -561,17 +561,43 @@ class AdvertisementMasterController extends Controller
             return;
         }
 
-        foreach (['eBay', 'eBay 2', 'eBay 3', 'TikTok 1', 'Temu', 'Temu 2'] as $key) {
+        foreach (['eBay', 'eBay 2', 'eBay 3', 'TikTok 1', 'Temu', 'Temu 1', 'Temu 2'] as $key) {
             $label = AdvertisementMasterChannelLabel::query()->where('channel_key', $key)->first();
             if (! $label) {
                 continue;
             }
             $name = trim((string) $label->channel_name);
             if ($name !== '' && preg_match('/\s+Total$/i', $name)) {
-                $label->channel_name = $key;
+                $label->channel_name = $key === 'Temu' ? 'Temu 1' : $key;
                 $label->save();
             }
         }
+
+        $this->ensureTemu1TypeLabel();
+    }
+
+    /**
+     * The Temu ads source row is Temu 1. Keep the saved Type name in sync
+     * unless someone has already customized it.
+     */
+    private function ensureTemu1TypeLabel(): void
+    {
+        $label = AdvertisementMasterChannelLabel::query()->where('channel_key', 'Temu')->first();
+        if (! $label) {
+            return;
+        }
+
+        $name = trim((string) $label->channel_name);
+        if ($name !== '' && strcasecmp($name, 'Temu') !== 0) {
+            return;
+        }
+
+        $label->channel_name = 'Temu 1';
+        if (trim((string) $label->group_name) === '') {
+            $label->group_name = 'Temu';
+        }
+        $label->save();
+        $this->channelLabelMapCache = null;
     }
 
     /**
@@ -595,7 +621,7 @@ class AdvertisementMasterController extends Controller
             'marketplace' => 'tiktok',
             'source' => 'tiktok_group_total',
         ]);
-        $this->wrapRowsAsGroupTotal($rows, ['Temu', 'Temu 2'], [
+        $this->wrapRowsAsGroupTotal($rows, ['Temu', 'Temu 1', 'Temu 2'], [
             'channel' => 'Temu Total',
             'channel_key' => 'Temu Total',
             'channel_group' => 'Temu',
@@ -787,6 +813,7 @@ class AdvertisementMasterController extends Controller
             'tiktokshop' => 'tiktok1',
             'tiktoks' => 'tiktok1',
             'tiktok' => 'tiktok1',
+            'temuone' => 'temu1',
         ];
 
         return $aliases[$n] ?? $n;
@@ -2255,7 +2282,7 @@ class AdvertisementMasterController extends Controller
             return null;
         }
 
-        foreach (['channel_key', 'channel'] as $field) {
+        foreach (['channel_key', 'channel', 'source'] as $field) {
             $norm = $this->normalizeChannelMatchKey((string) ($row[$field] ?? ''));
             if ($norm !== '' && isset($sources[$norm])) {
                 return $sources[$norm];

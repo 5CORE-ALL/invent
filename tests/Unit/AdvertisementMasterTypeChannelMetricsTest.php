@@ -126,6 +126,71 @@ class AdvertisementMasterTypeChannelMetricsTest extends TestCase
         $this->assertSame('Amazon · KW', $rows[0]['_children'][0]['channel_key']);
     }
 
+    public function test_temu_1_type_row_gets_missing_ads_count_and_rolls_up(): void
+    {
+        $rows = [[
+            'channel' => 'Temu Total',
+            'channel_key' => 'Temu Total',
+            'channel_group' => 'Temu',
+            'marketplace' => 'temu',
+            'is_group_total' => true,
+            '_children' => [
+                [
+                    'channel' => 'Temu 1',
+                    'channel_key' => 'Temu',
+                    'channel_group' => 'Temu',
+                    'source' => 'temu',
+                    'marketplace' => 'temu',
+                    'is_sub_row' => true,
+                ],
+                [
+                    'channel' => 'Temu 2',
+                    'channel_key' => 'Temu 2',
+                    'channel_group' => 'Temu',
+                    'source' => 'temu2',
+                    'marketplace' => 'temu2',
+                    'is_sub_row' => true,
+                ],
+            ],
+        ]];
+
+        $sources = [
+            'temu' => ['count' => 271, 'href' => '/temu/ads/missing'],
+            'temu1' => ['count' => 271, 'href' => '/temu/ads/missing'],
+            'temu2' => ['count' => 4, 'href' => '/map-issues/channel/temu2'],
+        ];
+
+        $this->invoke('attachMissingAdsWalk', $rows, $sources);
+
+        $temu1 = $rows[0]['_children'][0];
+        $this->assertTrue($temu1['has_missing_ads']);
+        $this->assertSame(271, $temu1['missing_ads']);
+        $this->assertSame('/temu/ads/missing', $temu1['missing_ads_href']);
+
+        $this->assertTrue($rows[0]['has_missing_ads']);
+        $this->assertSame(275, $rows[0]['missing_ads']);
+        $this->assertNull($rows[0]['missing_ads_href']);
+    }
+
+    public function test_temu_missing_ads_match_source_when_type_is_renamed(): void
+    {
+        $rows = [[
+            'channel' => 'Search',
+            'channel_key' => 'Temu',
+            'source' => 'temu',
+            'is_sub_row' => true,
+        ]];
+
+        $this->invoke('attachMissingAdsWalk', $rows, [
+            'temu' => ['count' => 12, 'href' => '/temu/ads/missing'],
+            'temu1' => ['count' => 12, 'href' => '/temu/ads/missing'],
+        ]);
+
+        $this->assertSame(12, $rows[0]['missing_ads']);
+        $this->assertTrue($rows[0]['has_missing_ads']);
+        $this->assertSame('/temu/ads/missing', $rows[0]['missing_ads_href']);
+    }
+
     /**
      * @param  array<int, array<string, mixed>>  $rows
      * @param  mixed  ...$extra

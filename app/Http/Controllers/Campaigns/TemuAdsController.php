@@ -1402,7 +1402,7 @@ class TemuAdsController extends Controller
     }
 
     /**
-     * Single Temu row for /advertisement-master — L30 spend / clicks / orders /
+     * Single Temu 1 row for /advertisement-master — L30 spend / clicks / orders /
      * sales from temu_ads_api_reports, same period as /temu/ads default.
      *
      * @return array<int, array<string, mixed>>
@@ -1410,10 +1410,10 @@ class TemuAdsController extends Controller
     public function getAdvertisementMasterChannelRows(): array
     {
         $metrics = $this->advertisementMasterL30Metrics();
+        $row = self::advertisementMasterMetricRow('Temu', 'temu', (object) $metrics);
+        $row['channel'] = 'Temu 1';
 
-        return [
-            self::advertisementMasterMetricRow('Temu', 'temu', (object) $metrics),
-        ];
+        return [$row];
     }
 
     /**
