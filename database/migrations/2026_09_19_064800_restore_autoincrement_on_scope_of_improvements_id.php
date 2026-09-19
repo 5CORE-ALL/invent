@@ -20,7 +20,7 @@ return new class extends Migration
             $hasPrimary = ! empty(DB::select("SHOW INDEX FROM `scope_of_improvements` WHERE Key_name = 'PRIMARY'"));
             if (! $hasPrimary) {
                 DB::statement('ALTER TABLE `scope_of_improvements` ADD PRIMARY KEY (`id`)');
-            }
+            } 
 
             $col = DB::selectOne("SHOW COLUMNS FROM `scope_of_improvements` WHERE Field = 'id'");
             $extra = strtolower((string) ($col->Extra ?? ''));
