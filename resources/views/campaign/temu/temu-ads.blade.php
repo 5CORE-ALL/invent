@@ -405,6 +405,10 @@
                                     title="Sync Active/Inactive from Temu ad.detail.query (adsDetail.adShowStatus)">
                                 <i class="fa fa-toggle-on"></i> Refresh Status
                             </button>
+                            <a href="{{ route('temu.ads.missing') }}" class="btn btn-sm btn-outline-danger pricing-filter-item"
+                               title="Temu 1 goods with Status No ad and Inv > 0">
+                                Temu 1 Missing Ads
+                            </a>
                             <button type="button" id="create-ad-btn" class="btn btn-sm btn-warning pricing-filter-item d-none"
                                     title="Create ads Rule — budget and target ROAS used for Create">
                                 <i class="fa fa-plus"></i> Create ads Rule

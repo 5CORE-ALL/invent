@@ -10,6 +10,7 @@ use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
 use App\Http\Controllers\Campaigns\GoogleSerpAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleShoppingAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleYoutubeAdsMissingController;
+use App\Http\Controllers\Campaigns\Temu1MissingAdsController;
 use App\Http\Controllers\Campaigns\Temu2AdsController;
 use App\Http\Controllers\Campaigns\TemuAdsController;
 use App\Http\Controllers\Campaigns\Tiktok1AdsRawDataController;
@@ -2084,7 +2085,7 @@ class AdvertisementMasterController extends Controller
 
     /**
      * Missing-ad counts from the same pages as the sidebar:
-     * Ads Missing Amz, Missing Mapping Temu, Missing Google Shopping / SERP,
+     * Ads Missing Amz, Temu 1 Missing Ads, Missing Mapping Temu 2, Missing Google Shopping / SERP,
      * YouTube Missing Ads, TikTok Missing Ads.
      *
      * @param  array<int, array<string, mixed>>  $rows
@@ -2165,8 +2166,8 @@ class AdvertisementMasterController extends Controller
         );
         $put(
             ['temu', 'temu1'],
-            $safeCount(static fn () => MappingChannelCounts::countForSlug('temu')),
-            $this->temuMissingMappingHref('temu')
+            $safeCount(static fn () => Temu1MissingAdsController::missingTotalCount()),
+            $this->namedHref('temu.ads.missing')
         );
         $put(
             ['temu2'],

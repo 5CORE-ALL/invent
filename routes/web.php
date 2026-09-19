@@ -40,6 +40,7 @@ use App\Http\Controllers\Campaigns\EbayPinkDilAdController;
 use App\Http\Controllers\Campaigns\EbayPMPAdsController;
 use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
 use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
+use App\Http\Controllers\Campaigns\Temu1MissingAdsController;
 use App\Http\Controllers\Campaigns\Temu2AdsController;
 use App\Http\Controllers\Campaigns\TemuAdsController;
 use App\Http\Controllers\Campaigns\Ebay3CampaignAdsController;
@@ -5110,6 +5111,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/temu/ads/toggle', 'toggleAd')->name('temu.ads.toggle');
         Route::get('/temu/ads/badge-history', 'badgeHistory')->name('temu.ads.badge-history');
         Route::post('/temu/ads/badge-snapshot', 'saveBadgeSnapshot')->name('temu.ads.badge-snapshot');
+    });
+
+    Route::controller(Temu1MissingAdsController::class)->group(function () {
+        Route::get('/temu/ads/missing', 'index')->name('temu.ads.missing');
+        Route::get('/temu/ads/missing/data', 'data')->name('temu.ads.missing.data');
     });
 
     // Temu 2 Ads (API) — same features as /temu/ads, using TEMU2_* credentials
