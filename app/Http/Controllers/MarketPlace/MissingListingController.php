@@ -10,6 +10,8 @@ use App\Jobs\RebuildMissingListingPageJob;
 use App\Support\Marketplace\CpMasterCounts;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingInactiveParentChildCounts;
+use App\Support\Marketplace\SheetListingCatalog;
+use App\Support\Marketplace\SheetListingCatalogService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -34,9 +36,12 @@ class MissingListingController extends Controller
     private const DEFAULT_SELLER_PORTALS = [
         'faire' => 'https://www.faire.com/brand-portal/my-shop/products',
         'depop' => 'https://www.depop.com/sellinghub/',
+        'vinted' => 'https://www.vinted.com/inbox',
+        'dhgate' => 'https://seller.dhgate.com/',
+        'tiendamia' => 'https://www.tiendamia.com/',
     ];
 
-    public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v4';
+    public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v6';
 
     private const PAGE_CACHE_TTL_DAYS = 7;
 
@@ -274,6 +279,7 @@ class MissingListingController extends Controller
                 'listing_url' => ListingChannelCounts::listingUrl($channel),
                 'data_source' => $dataSource,
                 'allows_csv_upload' => ListingChannelCounts::isCsvCatalogSource($channel),
+                'csv_import_url' => ListingChannelCounts::csvImportUrl($channel),
                 'sku' => $cpSkuCount,
                 'zero_inv' => $cpZeroInv,
                 'req' => $counts ? (int) ($snap['listing_req'] ?? 0) : null,
@@ -357,6 +363,7 @@ class MissingListingController extends Controller
                     'listing_url' => ListingChannelCounts::listingUrl($channel),
                     'data_source' => $dataSource === 'Offline' ? 'Offline' : 'Sheet',
                     'allows_csv_upload' => false,
+                    'csv_import_url' => null,
                     'sku' => $cpSkuCount,
                     'zero_inv' => $cpZeroInv,
                     'req' => null,
@@ -385,6 +392,7 @@ class MissingListingController extends Controller
                 'listing_url' => ListingChannelCounts::listingUrl($channel),
                 'data_source' => $dataSource,
                 'allows_csv_upload' => ListingChannelCounts::isCsvCatalogSource($channel),
+                'csv_import_url' => ListingChannelCounts::csvImportUrl($channel),
                 'sku' => $cpSkuCount,
                 'zero_inv' => $cpZeroInv,
                 'req' => (int) ($listingCounts['REQ'] ?? 0),
@@ -452,6 +460,7 @@ class MissingListingController extends Controller
                 'listing_url' => ListingChannelCounts::listingUrl($channel),
                 'data_source' => ListingChannelCounts::dataSource($channel),
                 'allows_csv_upload' => ListingChannelCounts::isCsvCatalogSource($channel),
+                'csv_import_url' => ListingChannelCounts::csvImportUrl($channel),
                 'sku' => 0,
                 'zero_inv' => 0,
                 'req' => null,
@@ -645,6 +654,43 @@ class MissingListingController extends Controller
             Log::error('Missing Listing updateSellerPortal failed: ' . $e->getMessage());
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function importSheetCsv(Request $request, string $channel)
+    {
+        $slug = SheetListingCatalog::canonical($channel);
+        if (! SheetListingCatalog::has($slug)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This channel does not accept a sheet catalog.',
+            ], 404);
+        }
+
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt',
+        ]);
+
+        try {
+            $result = app(SheetListingCatalogService::class)->importUploadedCatalog($slug, $request->file('file'));
+            $counts = ListingChannelCounts::forChannel($slug, false);
+
+            return response()->json([
+                'success' => true,
+                'message' => $result['message'],
+                'processed' => $result['processed'],
+                'listed' => $result['listed'],
+                'skipped' => $result['skipped'],
+                'unmatched' => $result['unmatched'],
+                'counts' => $counts,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Missing Listing CSV import failed for '.$slug.': '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         }
     }
 

@@ -394,6 +394,30 @@ class ChannelListingRegistry
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
             ],
+            'vinted' => [
+                'dataView' => null,
+                'status' => \App\Models\VintedListingStatus::class,
+                'listed' => ['type' => 'status', 'model' => \App\Models\VintedListingStatus::class],
+                'id_field' => 'listing_id',
+                'buyer_tpl' => null,
+                'seller_tpl' => null,
+            ],
+            'dhgate' => [
+                'dataView' => null,
+                'status' => \App\Models\DHGateListingStatus::class,
+                'listed' => ['type' => 'status', 'model' => \App\Models\DHGateListingStatus::class],
+                'id_field' => 'listing_id',
+                'buyer_tpl' => null,
+                'seller_tpl' => null,
+            ],
+            'tiendamia' => [
+                'dataView' => null,
+                'status' => \App\Models\TiendamiaListingStatus::class,
+                'listed' => ['type' => 'status', 'model' => \App\Models\TiendamiaListingStatus::class],
+                'id_field' => 'listing_id',
+                'buyer_tpl' => null,
+                'seller_tpl' => null,
+            ],
         ];
     }
 

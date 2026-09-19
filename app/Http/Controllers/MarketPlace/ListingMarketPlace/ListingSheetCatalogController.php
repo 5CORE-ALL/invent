@@ -3,35 +3,39 @@
 namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 
 use App\Http\Controllers\Controller;
-use App\Models\DepopListingStatus;
 use App\Support\Marketplace\AutomatedListingPage;
 use App\Support\Marketplace\ChannelListingRegistry;
-use App\Support\Marketplace\DepopSheetListingService;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\SheetListingCatalog;
+use App\Support\Marketplace\SheetListingCatalogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-class ListingDepopController extends Controller
+class ListingSheetCatalogController extends Controller
 {
-    public function listingDepop(Request $request): View
+    public function show(Request $request, string $channel): View
     {
+        $slug = $this->requireSlug($channel);
+
         return view('market-places.listing-market-places.listingSheetCatalog', [
             'mode' => $request->query('mode'),
             'demo' => $request->query('demo'),
-            'channel' => 'depop',
-            'label' => 'Depop',
-            'counts' => ChannelListingRegistry::nrReqCountArray('depop'),
+            'channel' => $slug,
+            'label' => SheetListingCatalog::label($slug),
+            'counts' => ChannelListingRegistry::nrReqCountArray($slug),
         ]);
     }
 
-    public function getViewListingDepopData(): JsonResponse
+    public function data(string $channel): JsonResponse
     {
+        $slug = $this->requireSlug($channel);
+
         return response()->json([
             'status' => 200,
-            'data' => AutomatedListingPage::rows('depop'),
+            'data' => AutomatedListingPage::rows($slug),
         ]);
     }
 
@@ -40,10 +44,12 @@ class ListingDepopController extends Controller
         return ChannelListingRegistry::nrReqCountArray('depop');
     }
 
-    public function saveStatus(Request $request): JsonResponse
+    public function saveStatus(Request $request, string $channel): JsonResponse
     {
-        if (! Schema::hasTable('depop_listing_statuses')) {
-            return response()->json(['error' => 'Depop listing table is not ready. Run migrations.'], 503);
+        $slug = $this->requireSlug($channel);
+        $statusClass = SheetListingCatalog::statusClass($slug);
+        if ($statusClass === null || ! Schema::hasTable((new $statusClass)->getTable())) {
+            return response()->json(['error' => 'Listing table is not ready. Run migrations.'], 503);
         }
 
         $validated = $request->validate([
@@ -55,7 +61,7 @@ class ListingDepopController extends Controller
         ]);
 
         $sku = trim((string) $validated['sku']);
-        $status = DepopListingStatus::where('sku', $sku)->first();
+        $status = $statusClass::where('sku', $sku)->first();
         $existing = $status && is_array($status->value) ? $status->value : [];
 
         foreach (['nr_req', 'listed', 'buyer_link', 'seller_link'] as $field) {
@@ -64,20 +70,21 @@ class ListingDepopController extends Controller
             }
         }
 
-        DepopListingStatus::updateOrCreate(['sku' => $sku], ['value' => $existing]);
+        $statusClass::updateOrCreate(['sku' => $sku], ['value' => $existing]);
 
         return response()->json(['status' => 'success']);
     }
 
-    public function import(Request $request): JsonResponse
+    public function import(Request $request, string $channel): JsonResponse
     {
+        $slug = $this->requireSlug($channel);
         $request->validate([
             'file' => 'required|file|mimes:csv,txt',
         ]);
 
         try {
-            $result = app(DepopSheetListingService::class)->importUploadedCatalog($request->file('file'));
-            $counts = ListingChannelCounts::forChannel('depop', false);
+            $result = app(SheetListingCatalogService::class)->importUploadedCatalog($slug, $request->file('file'));
+            $counts = ListingChannelCounts::forChannel($slug, false);
 
             return response()->json([
                 'success' => true,
@@ -97,26 +104,31 @@ class ListingDepopController extends Controller
         }
     }
 
-    public function template(): StreamedResponse
+    public function template(string $channel): StreamedResponse
     {
+        $slug = $this->requireSlug($channel);
+
         return response()->streamDownload(function () {
             $file = fopen('php://output', 'w');
             fputcsv($file, ['sku', 'listing_id', 'buyer_link']);
             fputcsv($file, ['EXAMPLE-SKU-1', '', '']);
             fputcsv($file, ['EXAMPLE-SKU-2', '', '']);
             fclose($file);
-        }, 'depop-current-listings-template.csv', [
+        }, $slug.'-current-listings-template.csv', [
             'Content-Type' => 'text/csv',
         ]);
     }
 
-    public function export(): StreamedResponse
+    public function export(string $channel): StreamedResponse
     {
-        return response()->streamDownload(function () {
+        $slug = $this->requireSlug($channel);
+        $statusClass = SheetListingCatalog::statusClass($slug);
+
+        return response()->streamDownload(function () use ($statusClass) {
             $file = fopen('php://output', 'w');
             fputcsv($file, ['sku', 'listed', 'listing_id', 'buyer_link', 'seller_link']);
-            if (Schema::hasTable('depop_listing_statuses')) {
-                foreach (DepopListingStatus::query()->orderBy('sku')->get() as $row) {
+            if ($statusClass && Schema::hasTable((new $statusClass)->getTable())) {
+                foreach ($statusClass::query()->orderBy('sku')->get() as $row) {
                     $value = is_array($row->value) ? $row->value : [];
                     fputcsv($file, [
                         $row->sku,
@@ -128,8 +140,18 @@ class ListingDepopController extends Controller
                 }
             }
             fclose($file);
-        }, 'depop-current-listings.csv', [
+        }, $slug.'-current-listings.csv', [
             'Content-Type' => 'text/csv',
         ]);
+    }
+
+    private function requireSlug(string $channel): string
+    {
+        $slug = ListingChannelCounts::normalize($channel);
+        if (! SheetListingCatalog::has($slug)) {
+            abort(404, 'Sheet listing channel not found');
+        }
+
+        return $slug;
     }
 }

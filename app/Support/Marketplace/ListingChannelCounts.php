@@ -9,6 +9,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAutoDSController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingBestbuyUSAController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingBusiness5CoreController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingDepopController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSheetCatalogController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingDobaController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingEbayThreeController;
@@ -118,6 +119,9 @@ class ListingChannelCounts
         'swgearexchange' => ListingSWGearExchangeController::class,
         'pls' => ListingPlsController::class,
         'depop' => ListingDepopController::class,
+        'vinted' => ListingSheetCatalogController::class,
+        'dhgate' => ListingSheetCatalogController::class,
+        'tiendamia' => ListingSheetCatalogController::class,
     ];
 
     /**
@@ -184,6 +188,9 @@ class ListingChannelCounts
         'business5coreb2b' => '/marketplace/b5cb2b/products',
         'business5core(b2b)' => '/marketplace/b5cb2b/products',
         'depop' => '/listing-depop',
+        'vinted' => '/listing-vinted',
+        'dhgate' => '/listing-dhgate',
+        'tiendamia' => '/listing-tiendamia',
     ];
 
     /**
@@ -302,16 +309,9 @@ class ListingChannelCounts
         'swgearexchange',
         'business5core',
         'depop',
-    ];
-
-    /**
-     * Manual / sheet catalog channels that still compute Missing L
-     * (uploaded current listings vs CP Master).
-     *
-     * @var list<string>
-     */
-    private static array $csvListingSources = [
-        'depop',
+        'vinted',
+        'dhgate',
+        'tiendamia',
     ];
 
     /**
@@ -326,7 +326,7 @@ class ListingChannelCounts
             return 'Sheet';
         }
 
-        if (in_array($key, self::$csvListingSources, true)) {
+        if (SheetListingCatalog::has($key) || in_array($key, self::$sheetListingSources, true)) {
             return 'CSV';
         }
 
@@ -341,10 +341,6 @@ class ListingChannelCounts
             }
 
             return $fromSettings;
-        }
-
-        if (in_array($key, self::$sheetListingSources, true)) {
-            return 'Sheet';
         }
 
         return self::marketplaceApiIsReady($key) ? 'API' : 'Offline';
@@ -368,6 +364,11 @@ class ListingChannelCounts
     public static function showsComputedCounts(string $channel): bool
     {
         return self::isLiveApiSource($channel) || self::isCsvCatalogSource($channel);
+    }
+
+    public static function csvImportUrl(string $channel): ?string
+    {
+        return self::isCsvCatalogSource($channel) ? SheetListingCatalog::importUrl($channel) : null;
     }
 
     /**
