@@ -10,7 +10,9 @@ use App\Models\ListingManagerEnabledChannel;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
+use App\Services\EbayApiService;
 use App\Services\Ebay2ApiService;
+use App\Services\FaireApiService;
 use App\Services\EbayThreeApiService;
 use App\Services\NeweggApiService;
 use App\Services\ReverbApiService;
@@ -24,6 +26,7 @@ use App\Services\ShopifyCatalogSyncService;
 use App\Services\Support\MarketplaceApiConfigService;
 use App\Services\TikTok2ShopService;
 use App\Services\TikTokShopService;
+use App\Support\Marketplace\EbaySellAccountPolicies;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerImageStore;
@@ -1858,6 +1861,12 @@ class ListingManagerController extends Controller
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }
 
+        if ($family === 'faire') {
+            $result = app(FaireApiService::class)->searchTaxonomyTypes($q !== '' ? $q : $title);
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        }
+
         if ($family === 'newegg') {
             $key = ListingChannelCounts::normalize($channel);
             $platform = in_array($key, ['neweggb2b', 'newegg-b2b', 'newegg_b2b'], true) ? 'b2b' : 'b2c';
@@ -1888,10 +1897,11 @@ class ListingManagerController extends Controller
     {
         $channelKey = ListingChannelCounts::normalize((string) $request->input('channel', ''));
         $isEbay3 = in_array($channelKey, ['ebay3', 'ebaythree'], true);
-        $defaults = $isEbay3
-            ? (array) config('listing_manager.ebay3_defaults', [])
-            : (array) config('listing_manager.ebay2_defaults', []);
-        $ebay = $isEbay3 ? new EbayThreeApiService() : new Ebay2ApiService();
+        $isEbay1 = in_array($channelKey, ['ebay', 'ebay1', 'ebayone'], true);
+        $defaults = EbaySellAccountPolicies::defaultsForChannel($channelKey);
+        $ebay = $isEbay3
+            ? new EbayThreeApiService()
+            : ($isEbay1 ? new EbayApiService() : new Ebay2ApiService());
         $result = $ebay->isConfigured()
             ? $ebay->getBusinessPolicies()
             : ['success' => false, 'shipping' => [], 'payment' => [], 'return' => []];
@@ -2914,12 +2924,12 @@ class ListingManagerController extends Controller
     }
 
     /**
-     * Ebay 3 drafts must not keep Ebay 2 business-policy IDs.
+     * Ebay 1 / 3 drafts must not keep Ebay 2 business-policy IDs.
      *
      * @param  array<string, mixed>  $details
      * @return array<string, mixed>
      */
-    private function stripForeignEbay2PoliciesFromEbay3(array $details): array
+    private function stripForeignEbay2Policies(array $details, string $channelName = ''): array
     {
         $ebay2 = (array) config('listing_manager.ebay2_defaults', []);
         foreach (['shipping_policy_id', 'payment_policy_id', 'return_policy_id'] as $field) {
@@ -2929,7 +2939,10 @@ class ListingManagerController extends Controller
                 $details[$field] = '';
             }
         }
-        $details['best_offer'] = false;
+        $key = ListingChannelCounts::normalize($channelName);
+        if (in_array($key, ['ebay3', 'ebaythree'], true)) {
+            $details['best_offer'] = false;
+        }
 
         return $details;
     }
@@ -2966,8 +2979,8 @@ class ListingManagerController extends Controller
             ),
             (string) $d->seller_sku
         );
-        if (in_array(ListingChannelCounts::normalize($channelName), ['ebay3', 'ebaythree'], true)) {
-            $details = $this->stripForeignEbay2PoliciesFromEbay3($details);
+        if (in_array(ListingChannelCounts::normalize($channelName), ['ebay', 'ebay1', 'ebayone', 'ebay3', 'ebaythree'], true)) {
+            $details = $this->stripForeignEbay2Policies($details, $channelName);
         }
         $limits = ListingManagerAmazonHydrator::limitsForChannel($channelName);
         if (ListingManagerAmazonHydrator::isFaireChannel($channelName)) {

@@ -44,6 +44,8 @@ class ListingManagerPublishDispatcher
                     'title' => trim((string) $draft->title),
                     'price' => $draft->price !== null ? (float) $draft->price : null,
                     'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
+                    'taxonomy_type_id' => trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? '')),
+                    'tags' => is_array($details['faire_tags'] ?? null) ? $details['faire_tags'] : [],
                 ];
             }
             $result = app(ListingVariationPreviewService::class)->publishSkus(

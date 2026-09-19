@@ -197,6 +197,14 @@
             display: none; padding: 2.5rem 1.25rem; text-align: center; color: #64748b; font-size: .9rem;
         }
         .lc-section-title { font-weight: 700; margin-bottom: .65rem; }
+        .lc-tag-chip {
+            display: inline-flex; align-items: center; gap: .35rem;
+            background: #eef2ff; color: #3730a3; border-radius: 999px;
+            padding: .2rem .65rem; font-size: .78rem; font-weight: 600;
+        }
+        .lc-tag-chip button {
+            border: 0; background: transparent; color: #4338ca; line-height: 1; padding: 0;
+        }
         .lc-help { font-size: .78rem; color: var(--lc-muted); margin-bottom: .85rem; }
         .lc-req { color: var(--lc-danger); }
         .lc-char-warn { color: var(--lc-danger); font-size: .78rem; }
@@ -881,7 +889,7 @@
                     </div>
 
                     <div class="mb-2 lc-mp-category-selected">
-                        <label class="form-label mb-1">Category <span class="lc-req lc-category-star d-none">*</span></label>
+                        <label class="form-label mb-1" id="lc-category-selected-label">Category <span class="lc-req lc-category-star d-none">*</span></label>
                         <span id="lc-category-path" class="lc-primary-path ms-2">Select a category</span>
                         <span class="text-muted small" id="lc-category-id-chip"></span>
                         <span class="lc-suggested" id="lc-category-suggested" style="display:none">Suggested</span>
@@ -909,6 +917,16 @@
                         <div class="lc-cat-results" id="lc-category-results">
                             <div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>
                         </div>
+                    </div>
+
+                    <div class="lc-faire-only d-none mt-4">
+                        <div class="lc-section-title">Product Organization</div>
+                        <p class="lc-help">Add tags to create collections and manage products in the Faire brand portal. Each tag can be up to 20 characters.</p>
+                        <div class="d-flex gap-2 mb-2">
+                            <input type="text" id="lc-faire-tag-input" class="form-control" maxlength="20" placeholder="Add tags">
+                            <button type="button" id="lc-faire-tag-add" class="btn-lc btn-lc-ghost">Add</button>
+                        </div>
+                        <div id="lc-faire-tags" class="d-flex flex-wrap gap-2"></div>
                     </div>
 
                     <div class="row g-3 mb-3 lc-ebay-only">
@@ -1475,6 +1493,7 @@
     let editorImages = [];
     let imageSortable = null;
     let titleLimit = 80;
+    let faireTags = [];
     let descLimit = 500000;
     let categoryTimer = null;
     let policyDefaults = {};
@@ -2334,7 +2353,36 @@
             publish_mode: selectedPublishMode(),
             variation_skus: selectedVariationSkus(),
             parent_group: String($('#lc-parent-group').val() || (currentDraft && currentDraft.family && currentDraft.family.parent) || '').trim(),
+            faire_tags: faireTags.slice(),
         };
+    }
+
+    function renderFaireTags() {
+        const $box = $('#lc-faire-tags');
+        if (!$box.length) return;
+        if (!faireTags.length) {
+            $box.html('<span class="text-muted small">No organization tags yet.</span>');
+            return;
+        }
+        $box.html(faireTags.map((tag, i) => (
+            '<span class="lc-tag-chip">' + escapeHtml(tag)
+            + ' <button type="button" class="lc-faire-tag-remove" data-i="' + i + '" aria-label="Remove tag">&times;</button></span>'
+        )).join(''));
+    }
+
+    function addFaireTag(raw) {
+        const tag = String(raw || '').trim().slice(0, 20);
+        if (!tag) return;
+        if (faireTags.some(t => t.toLowerCase() === tag.toLowerCase())) return;
+        if (faireTags.length >= 250) {
+            toast('Faire allows up to 250 organization tags.', 'error');
+            return;
+        }
+        faireTags.push(tag);
+        $('#lc-faire-tag-input').val('');
+        renderFaireTags();
+        dirty = true;
+        refreshEditorUi(currentDraft);
     }
 
     function selectedPublishMode() {
@@ -2512,6 +2560,8 @@
         if (isNewegg) {
             if (!d.primary_category_id || !/^\d+$/.test(String(d.primary_category_id))) errors.category.push('Category');
         }
+        const isFaire = ((currentDraft && currentDraft.editor && currentDraft.editor.faire) || ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'faire') || /faire/.test(channel));
+        if (isFaire && !d.primary_category_id) errors.category.push('Product Type');
         if (isTiktok || isTemu) {
             if (!d.primary_category_id) errors.category.push('Category');
             else if (isTiktok && !/^\d+$/.test(String(d.primary_category_id))) errors.category.push('Category');
@@ -2576,7 +2626,7 @@
         $('#lc-banners').html(banners.map(([t, m]) => `<div class="lc-banner lc-banner-${t}">${escapeHtml(m)}</div>`).join(''));
 
         const catOk = catId !== '' && (family !== 'tiktok' || /^\d+$/.test(catId));
-        $('#lc-category-id-warn').toggleClass('d-none', !['ebay', 'tiktok', 'temu', 'reverb', 'newegg'].includes(family) || catOk);
+        $('#lc-category-id-warn').toggleClass('d-none', !['ebay', 'tiktok', 'temu', 'reverb', 'newegg', 'faire'].includes(family) || catOk);
         $('#lc-reverb-condition-warn').toggleClass('d-none', family !== 'reverb' || !!$('#lc-reverb-condition').val());
         $('#lc-condition-warn').toggleClass('d-none', family !== 'ebay' || !!$('#lc-condition').val());
         $('#lc-shipping-warn').toggle(family === 'ebay' && !$('#lc-shipping-policy').val());
@@ -2621,6 +2671,11 @@
         return key === 'ebay3' || key === 'ebaythree';
     }
 
+    function isEbay1Channel(channel) {
+        const key = String(channel || '').toLowerCase().replace(/[\s\-_&/]/g, '');
+        return key === 'ebay' || key === 'ebay1' || key === 'ebayone';
+    }
+
     function pickLivePolicyId(list, selected, fallback) {
         const ids = (list || []).map(r => String(r.id || ''));
         if (selected && ids.includes(String(selected))) return String(selected);
@@ -2633,13 +2688,14 @@
         return $.getJSON("{{ route('listing.manager.ebay.policies') }}", { channel }).then(function (res) {
             policyDefaults = res.defaults || {};
             const sel = selected || {};
-            const shippingSel = isEbay3Channel(channel)
+            const useLivePolicies = isEbay1Channel(channel) || isEbay3Channel(channel);
+            const shippingSel = useLivePolicies
                 ? pickLivePolicyId(res.shipping || [], sel.shipping_policy_id, policyDefaults.shipping_policy_id)
                 : (sel.shipping_policy_id || policyDefaults.shipping_policy_id);
-            const paymentSel = isEbay3Channel(channel)
+            const paymentSel = useLivePolicies
                 ? pickLivePolicyId(res.payment || [], sel.payment_policy_id, policyDefaults.payment_policy_id)
                 : (sel.payment_policy_id || policyDefaults.payment_policy_id);
-            const returnSel = isEbay3Channel(channel)
+            const returnSel = useLivePolicies
                 ? pickLivePolicyId(res.return || [], sel.return_policy_id, policyDefaults.return_policy_id)
                 : (sel.return_policy_id || policyDefaults.return_policy_id);
             fillPolicySelect($('#lc-shipping-policy'), res.shipping || [], shippingSel);
@@ -2650,11 +2706,13 @@
             }
             return res;
         }).fail(function () {
-            if (isEbay3Channel(channel)) {
+            if (isEbay1Channel(channel) || isEbay3Channel(channel)) {
                 fillPolicySelect($('#lc-shipping-policy'), [], selected?.shipping_policy_id);
                 fillPolicySelect($('#lc-payment-policy'), [], selected?.payment_policy_id);
                 fillPolicySelect($('#lc-return-policy'), [], selected?.return_policy_id);
-                $('#lc-best-offer').prop('checked', false);
+                if (isEbay3Channel(channel)) {
+                    $('#lc-best-offer').prop('checked', false);
+                }
                 return;
             }
             fillPolicySelect($('#lc-shipping-policy'), [], selected?.shipping_policy_id);
@@ -2696,7 +2754,7 @@
         const family = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
         const channel = (currentDraft && currentDraft.channel) || '';
         const title = String($('#lc-title').val() || (currentDraft && currentDraft.title) || '').trim();
-        if (family !== 'tiktok' && family !== 'reverb' && family !== 'amazon' && family !== 'temu' && family !== 'newegg' && (!q || q.length < 2)) {
+        if (family !== 'tiktok' && family !== 'reverb' && family !== 'amazon' && family !== 'temu' && family !== 'newegg' && family !== 'faire' && (!q || q.length < 2)) {
             $box.html('<div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>');
             return;
         }
@@ -2718,7 +2776,7 @@
         }
         const searchingLabel = family === 'tiktok'
             ? 'Searching TikTok Shop categories…'
-            : (family === 'reverb' ? 'Searching Reverb categories…' : (family === 'amazon' ? 'Searching Amazon product types…' : (family === 'temu' ? 'Searching Temu categories…' : (family === 'newegg' ? 'Searching Newegg subcategories…' : 'Searching…'))));
+            : (family === 'reverb' ? 'Searching Reverb categories…' : (family === 'amazon' ? 'Searching Amazon product types…' : (family === 'temu' ? 'Searching Temu categories…' : (family === 'newegg' ? 'Searching Newegg subcategories…' : (family === 'faire' ? 'Searching Faire product types…' : 'Searching…')))));
         $box.html('<div class="text-muted small p-3">' + searchingLabel + '</div>');
         const desc = String(getDescriptionValue() || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
         if (window._lcCatXhr && window._lcCatXhr.abort) {
@@ -2789,13 +2847,14 @@
         $('.lc-temu-only').toggleClass('d-none', !ed.temu);
         $('.lc-reverb-only').toggleClass('d-none', !ed.reverb);
         $('.lc-amazon-only').toggleClass('d-none', !ed.amazon);
+        $('.lc-faire-only').toggleClass('d-none', !ed.faire);
         $('.lc-mp-category-manual').toggleClass('d-none', !(ed.temu || ed.newegg));
-        $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.reverb || ed.amazon || ed.temu || ed.newegg));
-        $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon || ed.newegg));
-        $('.lc-category-star').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.newegg));
+        $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.reverb || ed.amazon || ed.temu || ed.newegg || ed.faire));
+        $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.amazon || ed.newegg || ed.faire));
+        $('.lc-category-star').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb || ed.newegg || ed.faire));
         $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
-        $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.newegg ? 'Newegg Subcategory' : (ed.reverb ? 'Reverb Category' : 'Category')))));
+        $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.faire ? 'Faire Product Type' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.newegg ? 'Newegg Subcategory' : (ed.reverb ? 'Reverb Category' : 'Category'))))));
         $('#lc-category-id-visible').attr('placeholder', ed.category_placeholder || 'Category ID');
         $('#lc-category-search').attr('placeholder', ed.category_placeholder || 'Search categories');
         $('#lc-optimize-desc-label').text(ed.optimize_label || 'Optimize Description');
@@ -2842,6 +2901,8 @@
         $('#lc-ean').val(d.ean || '');
         $('#lc-isbn').val(d.isbn || '');
         $('#lc-epid').val(d.epid || '');
+        faireTags = Array.isArray(d.faire_tags) ? d.faire_tags.map(t => String(t || '').trim()).filter(Boolean) : [];
+        renderFaireTags();
         $('#lc-title').val(isFaire ? (draft.title || '') : (draft.title || snap.item_name || snap.title || ''));
         setDescriptionValue(d.description || snap.product_description || '');
         const loadedBullets = [d.bullet_1, d.bullet_2, d.bullet_3, d.bullet_4, d.bullet_5]
@@ -2948,7 +3009,7 @@
             const family = (draft.editor && draft.editor.family) || '';
             if ((family === 'tiktok' || family === 'reverb') && !String($('#lc-category-id').val() || '').trim()) {
                 searchCategories(family === 'reverb' ? String($('#lc-title').val() || '').trim() : '');
-            } else if (family === 'reverb' || family === 'amazon' || family === 'temu' || family === 'newegg') {
+            } else if (family === 'reverb' || family === 'amazon' || family === 'temu' || family === 'newegg' || family === 'faire') {
                 const amazonQ = String($('#lc-category-search').val() || $('#lc-amazon-product-type').val() || $('#lc-title').val() || '').trim();
                 searchCategories(family === 'amazon' ? amazonQ : String($('#lc-category-search').val() || $('#lc-title').val() || '').trim());
             }
@@ -4228,6 +4289,23 @@
         $('#lc-parent-group').on('change', function () {
             applyParentGroup($(this).val());
         });
+        $('#lc-faire-tag-add').on('click', function () {
+            addFaireTag($('#lc-faire-tag-input').val());
+        });
+        $('#lc-faire-tag-input').on('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addFaireTag($(this).val());
+            }
+        });
+        $(document).on('click', '.lc-faire-tag-remove', function () {
+            const i = parseInt($(this).attr('data-i'), 10);
+            if (Number.isNaN(i)) return;
+            faireTags.splice(i, 1);
+            renderFaireTags();
+            dirty = true;
+            refreshEditorUi(currentDraft);
+        });
         $('#lc-category-search, #lc-amazon-product-type').on('input', function () {
             const q = String($(this).val() || '').trim();
             clearTimeout(categoryTimer);
@@ -4245,7 +4323,9 @@
             }
             dirty = true;
             refreshEditorUi(currentDraft);
-            toast((currentDraft && currentDraft.editor && currentDraft.editor.amazon) ? 'Amazon product type selected.' : 'Category selected.', 'success');
+            toast((currentDraft && currentDraft.editor && currentDraft.editor.amazon)
+                ? 'Amazon product type selected.'
+                : ((currentDraft && currentDraft.editor && currentDraft.editor.faire) ? 'Faire product type selected.' : 'Category selected.'), 'success');
         });
         $('#lc-refresh-policies').on('click', function () {
             loadPolicies({

@@ -132,12 +132,18 @@ class FaireListingPublishService
             ];
         }
 
+        $taxonomyOverride = null;
+        $taxonomyId = trim((string) ($overrides['taxonomy_type_id'] ?? $overrides['category_id'] ?? ''));
+        if ($taxonomyId !== '') {
+            $taxonomyOverride = ['id' => $taxonomyId];
+        }
+
         $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
         $existingProductId = $mode === 'variation' ? $this->existingParentProductId($primary) : '';
         if ($existingProductId !== '') {
             $result = $this->addVariantsToProduct($existingProductId, $prepared, $title, $primary);
         } else {
-            $result = $this->createProduct($title, $primary, $prepared);
+            $result = $this->createProduct($title, $primary, $prepared, '', $taxonomyOverride);
         }
 
         if (! ($result['success'] ?? false)) {
@@ -145,6 +151,14 @@ class FaireListingPublishService
         }
 
         $productId = (string) ($result['goods_id'] ?? '');
+        $tags = $this->normalizeOrganizationTags($overrides['tags'] ?? []);
+        if ($productId !== '' && $tags !== []) {
+            try {
+                $this->api->replaceProductCustomTags($productId, $tags);
+            } catch (\Throwable $e) {
+                // Product is live; tags can be added later in the Faire brand portal.
+            }
+        }
         try {
             $this->persistListed($prepared, $productId, $title);
         } catch (\Throwable $e) {
@@ -268,7 +282,7 @@ class FaireListingPublishService
         if ($taxonomy === null) {
             return [
                 'success' => false,
-                'message' => 'Faire taxonomy type is missing. Set FAIRE_TAXONOMY_TYPE_ID or sync at least one existing Faire product.',
+                'message' => 'Faire product type is missing. Select a product type on the Product Type tab.',
             ];
         }
 
@@ -847,6 +861,34 @@ class FaireListingPublishService
         }
 
         return null;
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return list<string>
+     */
+    private function normalizeOrganizationTags(mixed $raw): array
+    {
+        if (is_string($raw)) {
+            $raw = preg_split('/\s*,\s*/', $raw) ?: [];
+        }
+        $out = [];
+        foreach ((array) $raw as $tag) {
+            $tag = mb_substr(trim((string) $tag), 0, 20);
+            if ($tag === '') {
+                continue;
+            }
+            $key = strtolower($tag);
+            if (isset($out[$key])) {
+                continue;
+            }
+            $out[$key] = $tag;
+            if (count($out) >= 250) {
+                break;
+            }
+        }
+
+        return array_values($out);
     }
 
     private function resolveTitle(ProductMaster $product, string $sku): string

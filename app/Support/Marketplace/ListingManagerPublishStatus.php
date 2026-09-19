@@ -276,6 +276,7 @@ class ListingManagerPublishStatus
         $isReverb = $family === 'reverb';
         $isAmazon = $family === 'amazon';
         $isNewegg = $family === 'newegg';
+        $isFaire = $family === 'faire';
 
         if ($isEbay) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
@@ -321,6 +322,13 @@ class ListingManagerPublishStatus
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
             if ($categoryId === '' || ! preg_match('/^\d+$/', $categoryId)) {
                 $tabErrors['category'][] = 'Newegg subcategory is required. Search Seller Portal categories and select a leaf.';
+            }
+        }
+
+        if ($isFaire) {
+            $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
+            if ($categoryId === '') {
+                $tabErrors['category'][] = 'Faire product type is required.';
             }
         }
 
@@ -545,6 +553,7 @@ class ListingManagerPublishStatus
             'country_of_origin' => 'CN',
             'dangerous_goods_regulations' => 'not_applicable',
             'list_price' => '',
+            'faire_tags' => [],
         ], $details, [
             'brand' => $brand,
             'manufacturer' => $manufacturer,
@@ -564,9 +573,6 @@ class ListingManagerPublishStatus
             'location_city' => 'location_city',
             'location_country' => 'location_country',
             'location_postal_code' => 'location_postal_code',
-            'shipping_policy_id' => 'shipping_policy_id',
-            'payment_policy_id' => 'payment_policy_id',
-            'return_policy_id' => 'return_policy_id',
         ] as $field => $cfgKey) {
             if (trim((string) ($merged[$field] ?? '')) === '' && trim((string) ($defaults[$cfgKey] ?? '')) !== '') {
                 $merged[$field] = $defaults[$cfgKey];
@@ -583,6 +589,26 @@ class ListingManagerPublishStatus
         if ($merged['category_name'] !== '' && trim((string) ($merged['primary_category_path'] ?? '')) === '') {
             $merged['primary_category_path'] = $merged['category_name'];
         }
+        $tags = $merged['faire_tags'] ?? [];
+        if (is_string($tags)) {
+            $tags = preg_split('/\s*,\s*/', $tags) ?: [];
+        }
+        $cleanTags = [];
+        foreach ((array) $tags as $tag) {
+            $tag = mb_substr(trim((string) $tag), 0, 20);
+            if ($tag === '') {
+                continue;
+            }
+            $key = strtolower($tag);
+            if (isset($cleanTags[$key])) {
+                continue;
+            }
+            $cleanTags[$key] = $tag;
+            if (count($cleanTags) >= 250) {
+                break;
+            }
+        }
+        $merged['faire_tags'] = array_values($cleanTags);
         if (! is_array($merged['shipping_rates'] ?? null)) {
             $decoded = json_decode((string) ($merged['shipping_rates'] ?? ''), true);
             $merged['shipping_rates'] = is_array($decoded) ? $decoded : [];
