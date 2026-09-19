@@ -263,9 +263,6 @@ class Shopifyb2bController extends Controller
             $processedItem['Views'] = $storeRow && $storeRow->views !== null
                 ? (int) $storeRow->views
                 : 0;
-            $processedItem['Sold'] = $storeRow && $storeRow->sold !== null
-                ? (int) $storeRow->sold
-                : 0;
             $processedItem['image_path'] = $this->shopifyB2bImageUrl($storeRow, $shopifyItem, $values, $productMaster);
 
             $b2bOrder = $shopifyB2BOrders[$sku] ?? null;
@@ -440,7 +437,6 @@ class Shopifyb2bController extends Controller
             $ovL30 = (float) $rows->sum(fn ($r) => floatval($r['L30'] ?? 0));
             $b2bL30 = (float) $rows->sum(fn ($r) => floatval($r['B2B L30'] ?? 0));
             $views = (float) $rows->sum(fn ($r) => floatval($r['Views'] ?? 0));
-            $sold = (float) $rows->sum(fn ($r) => floatval($r['Sold'] ?? 0));
             $profit = (float) $rows->sum(fn ($r) => floatval($r['Profit'] ?? 0));
             $sales = (float) $rows->sum(fn ($r) => floatval($r['Sales L30'] ?? 0));
             $adSpend = (float) $rows->sum(fn ($r) => floatval($r['googleSpent'] ?? 0));
@@ -467,7 +463,6 @@ class Shopifyb2bController extends Controller
                 'L30' => $ovL30,
                 'B2B L30' => $b2bL30,
                 'Views' => $views,
-                'Sold' => $sold,
                 'Price' => $childPrices->count() > 0 ? round($childPrices->avg(), 2) : 0,
                 'image_path' => $imagePath,
                 'nr_req' => $hasReqChild ? 'REQ' : 'NR',
@@ -833,7 +828,7 @@ class Shopifyb2bController extends Controller
     }
 
     /**
-     * Pull Price / Views / Sold from business5core.com into store_listing_prices
+     * Pull Price / Views from business5core.com into store_listing_prices
      * (same store API as push-website-sprice).
      */
     public function pullWebsitePrices(Request $request, StorePriceSyncService $sync)
