@@ -306,6 +306,12 @@ class ChannelPushSpriceRunner
                     } else {
                         ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, $stamp);
                     }
+                    if ($this->channel === 'topdawg') {
+                        $pulled = $this->pullLivePriceAfterPush($sku, $stamp);
+                        if ($pulled > 0 && abs($pulled - $stamp) < 0.05) {
+                            $live = $pulled;
+                        }
+                    }
                 }
             } catch (\Throwable $e) {
                 $ok = false;
