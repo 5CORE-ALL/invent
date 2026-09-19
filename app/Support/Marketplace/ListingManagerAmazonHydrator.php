@@ -650,8 +650,21 @@ class ListingManagerAmazonHydrator
      * @param  array<string, mixed>  $pm
      * @param  list<mixed>  $fallbacks
      */
+    public static function isFaireChannel(?string $channelName): bool
+    {
+        $key = ListingChannelCounts::normalize((string) $channelName);
+
+        return $key === 'faire' || str_contains($key, 'faire');
+    }
+
     public static function titleFromProductMaster(array $pm, ?string $channelName, array $fallbacks = []): string
     {
+        if (self::isFaireChannel($channelName)) {
+            $title = trim((string) ($pm['title60'] ?? ''));
+
+            return $title !== '' ? mb_substr($title, 0, 60) : '';
+        }
+
         $limit = (int) (self::limitsForChannel($channelName)['title'] ?? 80);
         $values = [];
         foreach (self::titleColumnsForLimit($limit) as $col) {
@@ -673,6 +686,10 @@ class ListingManagerAmazonHydrator
      */
     public static function limitsForChannel(?string $channelName): array
     {
+        if (self::isFaireChannel($channelName)) {
+            return ['title' => 60, 'description' => 5000];
+        }
+
         $key = ListingChannelCounts::normalize((string) $channelName);
         $all = (array) config('listing_manager.limits', []);
         $limits = $all[$key] ?? $all['default'] ?? ['title' => 200, 'description' => 5000];

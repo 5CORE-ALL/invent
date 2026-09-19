@@ -2827,7 +2827,8 @@
         const d = draft.listing_details || {};
         const snap = draft.amazon_snapshot || {};
         const editorFamilyName = String((draft.editor && draft.editor.family) || editorProfileForChannel(draft.channel || '').family || '');
-        titleLimit = Number((draft.limits && draft.limits.title) || (editorFamilyName === 'faire' ? 60 : 80));
+        const isFaire = !!(draft.editor && draft.editor.faire) || editorFamilyName === 'faire' || /faire/i.test(String(draft.channel || ''));
+        titleLimit = isFaire ? 60 : Number((draft.limits && draft.limits.title) || 80);
         descLimit = Number((draft.limits && draft.limits.description) || 500000);
         $('#lc-draft-id').val(draft.id);
         $('#lc-editor-title').text(draft.title || draft.sku || 'Listing');
@@ -2841,7 +2842,7 @@
         $('#lc-ean').val(d.ean || '');
         $('#lc-isbn').val(d.isbn || '');
         $('#lc-epid').val(d.epid || '');
-        $('#lc-title').val(draft.title || snap.item_name || snap.title || '');
+        $('#lc-title').val(isFaire ? (draft.title || '') : (draft.title || snap.item_name || snap.title || ''));
         setDescriptionValue(d.description || snap.product_description || '');
         const loadedBullets = [d.bullet_1, d.bullet_2, d.bullet_3, d.bullet_4, d.bullet_5]
             .map(b => String(b || '').trim()).filter(Boolean);
@@ -2950,6 +2951,18 @@
             } else if (family === 'reverb' || family === 'amazon' || family === 'temu' || family === 'newegg') {
                 const amazonQ = String($('#lc-category-search').val() || $('#lc-amazon-product-type').val() || $('#lc-title').val() || '').trim();
                 searchCategories(family === 'amazon' ? amazonQ : String($('#lc-category-search').val() || $('#lc-title').val() || '').trim());
+            }
+            if (isFaire && draft.id) {
+                $.ajax({
+                    url: "{{ url('/listing-manager/drafts') }}/" + draft.id + '/load-master',
+                    method: 'POST',
+                    data: { source: 'title' },
+                    timeout: 20000,
+                }).done(function (res) {
+                    if (res && res.title) {
+                        applyMasterPayload(res);
+                    }
+                });
             }
             if (!editorImages.length && draft.id) {
                 $.ajax({

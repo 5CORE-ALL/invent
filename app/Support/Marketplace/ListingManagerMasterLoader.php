@@ -219,7 +219,11 @@ class ListingManagerMasterLoader
         $pm = self::productMaster($sku);
         $title = ListingManagerAmazonHydrator::titleFromProductMaster($pm, $channelName);
         if ($title === '') {
-            return ['success' => false, 'message' => 'No title found on Title Master for this SKU.', 'source' => 'title'];
+            $message = ListingManagerAmazonHydrator::isFaireChannel($channelName)
+                ? 'No Title 60 found on Title Master for this SKU. Add it on /title-master (60 / F).'
+                : 'No title found on Title Master for this SKU.';
+
+            return ['success' => false, 'message' => $message, 'source' => 'title'];
         }
 
         return [
