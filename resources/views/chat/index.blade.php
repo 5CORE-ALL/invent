@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Invent Chat', 'sidenav' => 'condensed', 'skipHighcharts' => true])
+@extends('layouts.vertical', ['title' => 'Invent Chat', 'sidenav' => 'full', 'skipHighcharts' => true, 'hideInventSidebar' => true])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -212,6 +212,17 @@
         .slack-progress span { display: block; height: 100%; width: 0; background: #007a5a; }
         body.invent-chat-page .page-title-box,
         body.invent-chat-page .footer { display: none !important; }
+        body.invent-chat-page .leftside-menu,
+        body.invent-chat-page .button-toggle-menu,
+        body.invent-chat-page .mobile-header,
+        body.invent-chat-page .mobile-bottom-nav,
+        body.invent-chat-page #mobile-sidebar-overlay { display: none !important; }
+        body.invent-chat-page .content-page,
+        body.invent-chat-page .navbar-custom {
+            margin-left: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+        }
         @media (max-width: 992px) {
             body.invent-chat-page .navbar-custom,
             body.invent-chat-page .leftside-menu,

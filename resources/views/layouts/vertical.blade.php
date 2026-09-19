@@ -31,7 +31,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 </head>
 
-<body>
+<body class="{{ ($hideInventSidebar ?? false) ? 'invent-chat-page' : '' }}">
     <!-- Mobile Splash Screen -->
     @include('layouts.mobile-splash')
     
@@ -40,10 +40,14 @@
 
         <!-- Desktop Navigation -->
         @include('layouts.shared/topbar')
+        @unless($hideInventSidebar ?? false)
         @include('layouts.shared/left-sidebar')
+        @endunless
         
         <!-- Mobile Header -->
+        @unless($hideInventSidebar ?? false)
         @include('layouts.mobile-header')
+        @endunless
 
         <div class="content-page">
             <div class="content">
@@ -874,7 +878,9 @@
     @include('layouts.shared/right-sidebar')
     
     <!-- Mobile Bottom Navigation -->
+    @unless($hideInventSidebar ?? false)
     @include('layouts.mobile-bottom-nav')
+    @endunless
 
     @include('layouts.shared/footer-scripts')
 

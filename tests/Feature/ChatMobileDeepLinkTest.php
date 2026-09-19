@@ -33,6 +33,9 @@ class ChatMobileDeepLinkTest extends TestCase
             ->assertOk()
             ->assertSee('Invent Chat', false)
             ->assertSee('slackCameraBtn', false)
-            ->assertSee('/chat?channel=', false);
+            ->assertSee('/chat?channel=', false)
+            ->assertSee('slack-nav', false)
+            ->assertSee('invent-chat-page', false)
+            ->assertDontSee('id="searchMenuItem"', false);
     }
 }
