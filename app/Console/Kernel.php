@@ -90,6 +90,7 @@ class Kernel extends ConsoleKernel
         AmazonSpCampaignReports::class,
         AmazonSbCampaignReports::class,
         \App\Console\Commands\AmazonAdsSyncEnabledCampaigns::class,
+        \App\Console\Commands\AmazonAdsLiveBidBgtSync::class,
         AmazonSdCampaignReports::class,
         AmazonSpKeywordReports::class,
         AmazonSpNegativeKeywords::class,
@@ -1433,6 +1434,14 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('amazon-bgt-hl-catchup')
             ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:ads-live-bid-bgt-sync --failed-only')
+            ->dailyAt('21:50')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-ads-live-bid-bgt-sync')
+            ->withoutOverlapping(120)
             ->runInBackground()
             ->appendOutputTo($log);
 

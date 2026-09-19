@@ -5820,7 +5820,7 @@
                 }
                 if (lmpMissingFilterActive && window.LmpMissingBadge) {
                     table.addFilter(function(data) {
-                        return !LmpMissingBadge.isParentRow(data) && !LmpMissingBadge.hasLmp(data);
+                        return LmpMissingBadge.isMissingLmp(data);
                     });
                 }
                 if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {

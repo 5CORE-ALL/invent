@@ -35,6 +35,7 @@ class LmpMissingChannelCounts
             'aliases' => ['amazon', 'amz', 'amzfbm'],
             'sku_table' => 'product_master',
             'sku_col' => 'sku',
+            'require_inv' => true,
             'competitor' => ['table' => 'amazon_sku_competitors', 'sku' => 'sku', 'price' => 'price', 'marketplace' => 'amazon'],
         ],
         'ebay' => [
@@ -424,6 +425,9 @@ class LmpMissingChannelCounts
             }
             $normalized[$n] = true;
         }
+        if (! empty($meta['require_inv'])) {
+            $normalized = self::keepShopifyInStockSkus($normalized);
+        }
         $total = count($normalized);
         if ($total === 0) {
             return 0;
@@ -482,6 +486,54 @@ class LmpMissingChannelCounts
     private static function normSku(string $sku): string
     {
         return strtoupper(preg_replace('/\s+/', ' ', trim($sku)) ?? '');
+    }
+
+    /**
+     * Drop INV = 0 SKUs so the computed Amazon LMP M. count matches the analytics badge.
+     *
+     * @param  array<string, true>  $normalized
+     * @return array<string, true>
+     */
+    private static function keepShopifyInStockSkus(array $normalized): array
+    {
+        if ($normalized === [] || ! Schema::hasTable('shopify_skus') || ! Schema::hasColumn('shopify_skus', 'inv')) {
+            return $normalized;
+        }
+
+        try {
+            $shopifySkus = DB::table('shopify_skus')
+                ->where('inv', '>', 0)
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->pluck('sku');
+        } catch (\Throwable $e) {
+            Log::warning('LmpMissingChannelCounts shopify inv filter failed: '.$e->getMessage());
+
+            return $normalized;
+        }
+
+        $inStock = [];
+        foreach ($shopifySkus as $raw) {
+            $n = self::normSku((string) $raw);
+            if ($n === '') {
+                continue;
+            }
+            $inStock[$n] = true;
+            $compact = str_replace(' ', '', $n);
+            if ($compact !== '') {
+                $inStock[$compact] = true;
+            }
+        }
+
+        $kept = [];
+        foreach ($normalized as $sku => $_) {
+            $compact = str_replace(' ', '', $sku);
+            if (isset($inStock[$sku]) || ($compact !== '' && isset($inStock[$compact]))) {
+                $kept[$sku] = true;
+            }
+        }
+
+        return $kept;
     }
 
     /**

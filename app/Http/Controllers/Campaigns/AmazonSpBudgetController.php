@@ -229,7 +229,7 @@ class AmazonSpBudgetController extends Controller
         return $data['targetingClauses'] ?? [];
     }
 
-    public function updateAutoCampaignKeywordsBid(array $campaignIds, array $newBids)
+    public function updateAutoCampaignKeywordsBid(array $campaignIds, array $newBids, bool $persistLocalBids = true)
     {
         ini_set('max_execution_time', 600);
         ini_set('memory_limit', '512M');
@@ -289,10 +289,12 @@ class AmazonSpBudgetController extends Controller
                     $targetResult = $this->updateAutoCampaignTargetsBid([$campaignId], [$newBid]);
                     if (is_array($targetResult) && ($targetResult['status'] ?? 0) === 200) {
                         $allResults = array_merge($allResults, $targetResult['data'] ?? []);
-                        AmazonSpCampaignReport::where('campaign_id', $campaignId)
-                            ->where('ad_type', 'SPONSORED_PRODUCTS')
-                            ->whereIn('report_date_range', ['L7', 'L1', 'L30'])
-                            ->update(['sbid' => $newBid, 'last_sbid' => $newBid]);
+                        if ($persistLocalBids) {
+                            AmazonSpCampaignReport::where('campaign_id', $campaignId)
+                                ->where('ad_type', 'SPONSORED_PRODUCTS')
+                                ->whereIn('report_date_range', ['L7', 'L1', 'L30'])
+                                ->update(['sbid' => $newBid, 'last_sbid' => $newBid]);
+                        }
                     } else {
                         $skipped[] = ['campaign_id' => $campaignId, 'reason' => 'targets_update_failed', 'error' => $targetResult['error'] ?? 'Unknown'];
                     }
@@ -330,11 +332,12 @@ class AmazonSpBudgetController extends Controller
                     }
                     $allResults = array_merge($allResults, $chunkResults);
                     $campaignSucceeded = true;
-                    // Sync sbid and last_sbid to DB so frontend displays actual bid
-                    AmazonSpCampaignReport::where('campaign_id', $campaignId)
-                        ->where('ad_type', 'SPONSORED_PRODUCTS')
-                        ->whereIn('report_date_range', ['L7', 'L1', 'L30'])
-                        ->update(['sbid' => $newBid, 'last_sbid' => $newBid]);
+                    if ($persistLocalBids) {
+                        AmazonSpCampaignReport::where('campaign_id', $campaignId)
+                            ->where('ad_type', 'SPONSORED_PRODUCTS')
+                            ->whereIn('report_date_range', ['L7', 'L1', 'L30'])
+                            ->update(['sbid' => $newBid, 'last_sbid' => $newBid]);
+                    }
                     break;
                 } catch (\Exception $e) {
                     $lastChunkError = $e->getMessage();

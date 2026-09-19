@@ -6,6 +6,8 @@ use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Services\AmazonAdsLiveBidBgtSyncService;
+use App\Models\AmazonAdsLiveSyncState;
 use App\Models\AmazonAdsPauseRuleState;
 use App\Services\AmazonAdsPauseRuleApplicator;
 use App\Support\AmazonAdsBgtCvrRule;
@@ -17,6 +19,7 @@ use App\Support\AmazonAdsCampaignSkuMetrics;
 use App\Support\AmazonAdsCampaignSkuSync;
 use App\Support\AmazonAdsPauseRule;
 use App\Support\AmazonAdsSbidRule;
+use App\Support\AmazonAdsLiveSyncStatus;
 use App\Support\AmazonAdsSbgt;
 use App\Support\AmazonAcosSbgtRule;
 use Illuminate\Database\Query\Builder;
@@ -2411,6 +2414,9 @@ class AmazonAdsController extends Controller
         self::applyCampaignStatusFilter($query, $table, $request);
         self::applyAcosColorFilter($query, $table, $request);
         self::applyAdsCvrColorFilter($query, $table, $request);
+        if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
+            self::applyLiveSyncStatusFilters($query, $table, $request);
+        }
 
         return $query;
     }
@@ -2784,6 +2790,186 @@ class AmazonAdsController extends Controller
             .' WHEN ('.$cvrExpr.') > 13 THEN 3'
             .' ELSE -1 END';
         $query->whereRaw('('.$case.') = ?', [$idx]);
+    }
+
+    /**
+     * @param  list<string>  $dbColumns
+     */
+    private static function tableSupportsLiveSyncStatus(string $table, array $dbColumns): bool
+    {
+        return in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)
+            && in_array('campaign_id', $dbColumns, true);
+    }
+
+    private static function liveSyncChannelForTable(string $table): string
+    {
+        return $table === 'amazon_sb_campaign_reports' ? 'sb' : 'sp';
+    }
+
+    /**
+     * @return array{green: int, yellow: int, red: int}
+     */
+    private static function emptyLiveSyncCounts(): array
+    {
+        return ['green' => 0, 'yellow' => 0, 'red' => 0];
+    }
+
+    /**
+     * Faceted counts for one field: apply the other field's color filter, not this field's.
+     *
+     * @return array{green: int, yellow: int, red: int}
+     */
+    private static function liveSyncStatusCounts(Builder $query, string $table, string $field, Request $request): array
+    {
+        $field = $field === 'bid' ? 'bid' : 'bgt';
+        try {
+            $q = $query->clone();
+            $otherField = $field === 'bgt' ? 'bid' : 'bgt';
+            $otherInput = $otherField === 'bgt' ? 'filter_bgt_sync' : 'filter_bid_sync';
+            self::applyOneLiveSyncStatusFilter($q, $table, $request, $otherField, $otherInput);
+
+            $total = (int) $q->clone()->count();
+            if ($total < 1) {
+                return self::emptyLiveSyncCounts();
+            }
+            if (! Schema::hasTable('amazon_ads_live_sync_states')) {
+                return ['green' => 0, 'yellow' => $total, 'red' => 0];
+            }
+
+            $green = (int) $q->clone()->where(function (Builder $w) use ($table, $field) {
+                self::constrainLiveSyncColor($w, $table, $field, AmazonAdsLiveSyncStatus::GREEN);
+            })->count();
+            $red = (int) $q->clone()->where(function (Builder $w) use ($table, $field) {
+                self::constrainLiveSyncColor($w, $table, $field, AmazonAdsLiveSyncStatus::RED);
+            })->count();
+
+            return [
+                'green' => $green,
+                'yellow' => max(0, $total - $green - $red),
+                'red' => $red,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('amazon-ads live sync status counts failed', [
+                'table' => $table,
+                'field' => $field,
+                'error' => $e->getMessage(),
+            ]);
+
+            return self::emptyLiveSyncCounts();
+        }
+    }
+
+    private static function applyLiveSyncStatusFilters(Builder $query, string $table, Request $request): void
+    {
+        self::applyOneLiveSyncStatusFilter($query, $table, $request, 'bgt', 'filter_bgt_sync');
+        self::applyOneLiveSyncStatusFilter($query, $table, $request, 'bid', 'filter_bid_sync');
+    }
+
+    private static function applyOneLiveSyncStatusFilter(
+        Builder $query,
+        string $table,
+        Request $request,
+        string $field,
+        string $input
+    ): void {
+        $color = AmazonAdsLiveSyncStatus::normalizeColor((string) $request->input($input, ''));
+        if ($color === null) {
+            return;
+        }
+        if (! Schema::hasTable('amazon_ads_live_sync_states')) {
+            if ($color !== AmazonAdsLiveSyncStatus::YELLOW) {
+                $query->whereRaw('0 = 1');
+            }
+
+            return;
+        }
+        self::constrainLiveSyncColor($query, $table, $field, $color);
+    }
+
+    private static function constrainLiveSyncColor(Builder $query, string $table, string $field, string $color): void
+    {
+        $field = $field === 'bid' ? 'bid' : 'bgt';
+        $channel = self::liveSyncChannelForTable($table);
+        $exists = function ($q) use ($table, $channel, $field) {
+            $q->select(DB::raw('1'))
+                ->from('amazon_ads_live_sync_states as s')
+                ->whereColumn('s.campaign_id', $table.'.campaign_id')
+                ->where('s.channel', $channel)
+                ->where('s.field', $field);
+        };
+
+        if ($color === AmazonAdsLiveSyncStatus::GREEN) {
+            $query->whereExists(function ($q) use ($exists) {
+                $exists($q);
+                $q->where('s.status', 'synced');
+            });
+
+            return;
+        }
+        if ($color === AmazonAdsLiveSyncStatus::RED) {
+            $query->whereExists(function ($q) use ($exists) {
+                $exists($q);
+                $q->where('s.status', 'failed');
+            });
+
+            return;
+        }
+
+        $query->where(function (Builder $outer) use ($exists) {
+            $outer->whereNotExists(function ($q) use ($exists) {
+                $exists($q);
+            })->orWhereExists(function ($q) use ($exists) {
+                $exists($q);
+                $q->whereNotIn('s.status', ['synced', 'failed']);
+            });
+        });
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $data
+     * @return list<array<string, mixed>>
+     */
+    private static function attachLiveSyncStatusesToRows(array $data, string $table): array
+    {
+        if ($data === []) {
+            return $data;
+        }
+        $states = ['bgt' => [], 'bid' => []];
+        try {
+            if (Schema::hasTable('amazon_ads_live_sync_states')) {
+                $channel = self::liveSyncChannelForTable($table);
+                $ids = [];
+                foreach ($data as $row) {
+                    $cid = trim((string) ($row['campaign_id'] ?? ''));
+                    if ($cid !== '') {
+                        $ids[] = $cid;
+                    }
+                    $digits = preg_replace('/\D+/', '', $cid) ?: '';
+                    if ($digits !== '' && $digits !== $cid) {
+                        $ids[] = $digits;
+                    }
+                }
+                $ids = array_values(array_unique($ids));
+                if ($ids !== []) {
+                    $found = AmazonAdsLiveSyncState::query()
+                        ->where('channel', $channel)
+                        ->whereIn('field', ['bgt', 'bid'])
+                        ->whereIn('campaign_id', $ids)
+                        ->get();
+                    foreach ($found as $state) {
+                        $field = $state->field === 'bid' ? 'bid' : 'bgt';
+                        $states[$field][(string) $state->campaign_id] = $state;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('amazon-ads live sync status attach failed', [
+                'table' => $table,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return AmazonAdsLiveSyncStatus::attachToRows($data, $states);
     }
 
     private static function normalizeAdsCvrColorFilterIndex(string $raw): ?int
@@ -3685,6 +3871,14 @@ class AmazonAdsController extends Controller
         self::applyAcosColorFilter($query, $table, $request);
         self::applyAdsCvrColorFilter($query, $table, $request);
 
+        $bgtSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
+        $bidSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
+        if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
+            $bgtSyncCounts = self::liveSyncStatusCounts($query, $table, 'bgt', $request);
+            $bidSyncCounts = self::liveSyncStatusCounts($query, $table, 'bid', $request);
+            self::applyLiveSyncStatusFilters($query, $table, $request);
+        }
+
         $recordsFiltered = (int) $query->clone()->count();
 
         $queryForAggregates = $query->clone();
@@ -4197,11 +4391,17 @@ class AmazonAdsController extends Controller
             $data = array_values(array_slice($data, $start, $length));
         }
 
+        if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
+            $data = self::attachLiveSyncStatusesToRows($data, $table);
+        }
+
         $payload = [
             'draw' => $draw,
             'recordsTotal' => $recordsTotal,
             'recordsFiltered' => $recordsFiltered,
             'data' => $data,
+            'bgt_sync_counts' => $bgtSyncCounts,
+            'bid_sync_counts' => $bidSyncCounts,
         ];
         if ($distinctCampaignCount !== null) {
             $payload['distinctCampaignCount'] = $distinctCampaignCount;
@@ -4276,6 +4476,8 @@ class AmazonAdsController extends Controller
         $haveSpend = false;
         $haveClicks = false;
         $haveSold = false;
+        $bgtSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
+        $bidSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
 
         foreach ($sources as $table) {
             $part = $this->rawDataSingleSourcePayload($request, $table, 0, $fetchLen);
@@ -4310,6 +4512,10 @@ class AmazonAdsController extends Controller
                 $soldSum += (int) $part['soldTotal'];
                 $haveSold = true;
             }
+            foreach (['green', 'yellow', 'red'] as $color) {
+                $bgtSyncCounts[$color] += (int) ($part['bgt_sync_counts'][$color] ?? 0);
+                $bidSyncCounts[$color] += (int) ($part['bid_sync_counts'][$color] ?? 0);
+            }
         }
 
         usort($rows, static function ($a, $b) use ($orderKey, $orderDir) {
@@ -4328,6 +4534,8 @@ class AmazonAdsController extends Controller
             'recordsTotal' => $recordsTotal,
             'recordsFiltered' => $recordsFiltered,
             'data' => array_values($pageRows),
+            'bgt_sync_counts' => $bgtSyncCounts,
+            'bid_sync_counts' => $bidSyncCounts,
         ];
         if ($haveDistinct) {
             $payload['distinctCampaignCount'] = $distinctCampaignCount;
@@ -4968,6 +5176,50 @@ class AmazonAdsController extends Controller
         }
 
         return $payload;
+    }
+
+    /**
+     * Pull live Amazon BGT/BID, compare to grid SBGT/SBID, push mismatches, verify live match.
+     *
+     * Expects JSON: { "rows": [ { "campaign_id", "channel"|"ad_type", "sbgt", "sbid", "campaignName" } ] }
+     */
+    public function syncLiveBidBgt(Request $request, AmazonAdsLiveBidBgtSyncService $sync): JsonResponse
+    {
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '0');
+        set_time_limit(0);
+
+        $rows = $request->input('rows');
+        if (! is_array($rows) || $rows === []) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Provide a non-empty rows array with campaign_id and sbgt/sbid.',
+                'status' => 400,
+            ], 400);
+        }
+        if (count($rows) > 100) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'At most 100 rows per request.',
+                'status' => 422,
+            ], 422);
+        }
+
+        $out = $sync->syncRows($rows, 'web');
+        $failed = (int) ($out['failed'] ?? 0);
+        $synced = (int) ($out['synced'] ?? 0);
+
+        return response()->json([
+            'ok' => $failed === 0,
+            'message' => $failed === 0
+                ? ('Live sync verified '.$synced.' campaign(s).')
+                : ('Live sync finished with '.$failed.' unverified campaign(s).'),
+            'synced' => $synced,
+            'failed' => $failed,
+            'skipped' => (int) ($out['skipped'] ?? 0),
+            'in_progress' => (int) ($out['in_progress'] ?? 0),
+            'results' => $out['results'] ?? [],
+        ], $failed === 0 ? 200 : 207);
     }
 
     /**

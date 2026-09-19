@@ -125,7 +125,8 @@ class AutoUpdateAmzUnderKwBids extends Command
             $stats = $this->pushAmazonAdsIdMapInChunks(
                 $monitor,
                 $campaignBudgetMap,
-                fn (array $ids, array $bids) => $updateKwBids->updateAutoCampaignKeywordsBid($ids, $bids)
+                fn (array $ids, array $bids) => app(\App\Services\AmazonAdsLiveBidBgtSyncService::class)
+                    ->syncBidChunk('sp', $ids, $bids, 'cron-kw-under')
             );
 
             $persistedRows = 0;

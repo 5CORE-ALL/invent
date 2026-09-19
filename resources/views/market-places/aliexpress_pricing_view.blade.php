@@ -1471,7 +1471,7 @@
 
             if (opts.skipBadges !== true) {
                 if (lmpMissingFilterActive && window.LmpMissingBadge) {
-                    if (LmpMissingBadge.isParentRow(d) || LmpMissingBadge.hasLmp(d)) return false;
+                    if (!LmpMissingBadge.isMissingLmp(d)) return false;
                 }
                 if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                     if (!PriceGtLmpBadge.hasRedTriangle(d, 'price')) return false;

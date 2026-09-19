@@ -135,7 +135,8 @@
                 return chPushSpriceRound2(d['A Price'] != null ? d['A Price'] : (d.a_price || d.amazon_price));
             }
             function chPushSpriceCapMacysToAmz(d, price) {
-                if (CH_PUSH_SPRICE_CHANNEL !== 'macys' && CH_PUSH_SPRICE_CHANNEL !== 'macy') {
+                if (CH_PUSH_SPRICE_CHANNEL !== 'macys' && CH_PUSH_SPRICE_CHANNEL !== 'macy'
+                    && CH_PUSH_SPRICE_CHANNEL !== 'newegg') {
                     return chPushSpriceRound2(price);
                 }
                 const p = chPushSpriceRound2(price);

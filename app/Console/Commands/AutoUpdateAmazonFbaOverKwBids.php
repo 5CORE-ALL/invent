@@ -247,7 +247,8 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
             $stats = $this->pushAmazonAdsIdMapInChunks(
                 $monitor,
                 $campaignBudgetMap,
-                fn (array $ids, array $bids) => $amazon->updateAutoCampaignKeywordsBid($ids, $bids)
+                fn (array $ids, array $bids) => app(\App\Services\AmazonAdsLiveBidBgtSyncService::class)
+                    ->syncBidChunk('sp', $ids, $bids, 'cron-fba-kw-over')
             );
 
             $status = ($stats['failed'] ?? 0) > 0 ? 'PARTIAL_FAILURE' : 'SUCCESS';

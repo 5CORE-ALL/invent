@@ -2,24 +2,22 @@
 
 namespace App\Console\Concerns;
 
-use App\Console\Commands\Concerns\PushesAmazonAdsUpdatesInChunks;
-use App\Models\AmazonAdsPushLog;
+use App\Services\AmazonAdsLiveBidBgtSyncService;
+use App\Support\AmazonAdsDesiredSbgtResolver;
+use App\Support\AmazonAdsSbgt;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 /**
- * Shared guards for Amazon KW/PT/HL SBGT budget crons:
- * skip already-applied budgets, parse API outcome, persist local BGT, log Fail Cpg rows.
+ * KW/PT/HL SBGT crons: pull live Amazon BGT, compare to 6-part SBGT, push+verify.
+ * Local campaignBudgetAmount is written only after a verified live match.
  */
 trait AppliesAmazonBudgetCronUpdates
 {
-    use PushesAmazonAdsUpdatesInChunks;
-
     /**
      * @param  Collection<int, object>  $validCampaigns  rows with campaign_id, campaignName, sbgt, optional current_bgt
-     * @param  callable(list<string>, list<float>): array  $updater
+     * @param  callable(list<string>, list<float>): array  $updater  unused; kept for existing cron call sites
      * @return array{exit_code: int, pushed: int, unchanged: int, failed: int}
      */
     protected function applyAmazonBudgetCronUpdates(
@@ -30,160 +28,76 @@ trait AppliesAmazonBudgetCronUpdates
         string $sourceLabel,
         bool $dryRun
     ): array {
-        $toPush = [];
-        $unchanged = 0;
-        $pushLogs = [];
+        unset($updater, $reportTable);
+        $channel = str_starts_with($pushType, 'sb_') ? 'sb' : 'sp';
+        $desiredByCid = [];
+        try {
+            $desiredByCid = AmazonAdsDesiredSbgtResolver::sbgtForCampaigns($validCampaigns);
+        } catch (Throwable $e) {
+            Log::warning('amazon-ads live sync: 6-part SBGT resolver failed, using cron SBGT', [
+                'source' => $sourceLabel,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
+        $idToBgt = [];
+        $names = [];
         foreach ($validCampaigns as $campaign) {
             $cid = trim((string) ($campaign->campaign_id ?? ''));
-            $name = (string) ($campaign->campaignName ?? '');
-            $sbgt = (float) ($campaign->sbgt ?? 0);
-            $current = isset($campaign->current_bgt) ? (float) $campaign->current_bgt : null;
-
-            if ($cid === '' || $sbgt <= 0) {
+            if ($cid === '') {
                 continue;
             }
-
-            if ($current !== null && abs($current - $sbgt) < 0.005) {
-                $unchanged++;
-                $pushLogs[] = [
-                    'campaign_id' => $cid,
-                    'campaign_name' => $name,
-                    'value' => $sbgt,
-                    'status' => 'skipped',
-                    'reason' => 'Already at SBGT (current BGT $'.number_format($current, 2).')',
-                ];
+            $resolved = $desiredByCid[$cid] ?? null;
+            $sbgt = $resolved !== null ? $resolved : ($campaign->sbgt ?? null);
+            if ($sbgt === null || $sbgt === '') {
                 continue;
             }
-
-            $toPush[] = (object) [
-                'campaign_id' => $cid,
-                'campaignName' => $name,
-                'sbgt' => $sbgt,
-                'current_bgt' => $current,
-            ];
-        }
-
-        if ($toPush === []) {
-            $this->info("No budget deltas to push ({$unchanged} already at SBGT).");
-            if ($pushLogs !== []) {
-                AmazonAdsPushLog::logBatch($pushType, $pushLogs, $sourceLabel);
+            if (AmazonAdsSbgt::isExplicitZero($sbgt)) {
+                $idToBgt[$cid] = 0.0;
+            } elseif (AmazonAdsSbgt::parsePushableBudget($sbgt) !== null) {
+                $idToBgt[$cid] = (float) AmazonAdsSbgt::parsePushableBudget($sbgt);
+            } else {
+                continue;
             }
-
-            return ['exit_code' => 0, 'pushed' => 0, 'unchanged' => $unchanged, 'failed' => 0];
+            $names[$cid] = (string) ($campaign->campaignName ?? '');
         }
 
-        $this->info('Budgets to change: '.count($toPush).' | Already at SBGT: '.$unchanged);
+        if ($idToBgt === []) {
+            $this->info('No campaigns with a pushable SBGT.');
+
+            return ['exit_code' => 0, 'pushed' => 0, 'unchanged' => 0, 'failed' => 0];
+        }
+
+        $this->info('Live BGT sync candidates: '.count($idToBgt));
 
         if ($dryRun) {
-            foreach ($toPush as $c) {
-                $from = $c->current_bgt !== null ? '$'.number_format((float) $c->current_bgt, 2) : 'n/a';
-                $this->line("  {$c->campaignName}: {$from} → \${$c->sbgt}");
+            foreach ($idToBgt as $cid => $sbgt) {
+                $this->line('  '.($names[$cid] ?? $cid).': SBGT $'.$sbgt);
             }
             $this->warn('DRY RUN - No updates were made to Amazon.');
 
-            return ['exit_code' => 0, 'pushed' => 0, 'unchanged' => $unchanged, 'failed' => 0];
+            return ['exit_code' => 0, 'pushed' => 0, 'unchanged' => 0, 'failed' => 0];
         }
 
-        $byId = [];
-        $idToBgt = [];
-        foreach ($toPush as $c) {
-            $cid = (string) $c->campaign_id;
-            $byId[$cid] = $c;
-            $idToBgt[$cid] = (float) $c->sbgt;
+        $outcome = app(AmazonAdsLiveBidBgtSyncService::class)->syncBudgetMap($channel, $idToBgt, $names, $sourceLabel);
+        $pushed = count($outcome['updated_ids'] ?? []);
+        $failed = count($outcome['failed'] ?? []);
+        $unchanged = count($outcome['skipped'] ?? []);
+        foreach ($outcome['failed'] ?? [] as $f) {
+            $this->error('FAILED '.($f['campaign_id'] ?? '').': '.($f['reason'] ?? $f['error'] ?? 'sync failed'));
         }
-
-        // Push in chunks so large SBGT syncs do not overwhelm Amazon Ads APIs
-        $chunked = $this->pushAmazonAdsIdMapInChunksPlain($idToBgt, $updater);
-        $successIds = array_map('strval', $chunked['updated_ids'] ?? []);
-        $failedRows = is_array($chunked['failed'] ?? null) ? $chunked['failed'] : [];
-        $status = $failedRows === [] ? 200 : 500;
-
-        if ($successIds !== []) {
-            $this->persistLocalCampaignBudgets($reportTable, $successIds, $byId);
-        }
-
-        foreach ($successIds as $cid) {
-            $c = $byId[$cid] ?? null;
-            $pushLogs[] = [
-                'campaign_id' => $cid,
-                'campaign_name' => $c->campaignName ?? null,
-                'value' => $c->sbgt ?? null,
-                'status' => 'success',
-                'reason' => 'Budget updated to SBGT',
-                'http_status' => $status,
-                'response_data' => ['source' => $sourceLabel],
-            ];
-        }
-
-        foreach ($failedRows as $f) {
-            $cid = (string) ($f['campaign_id'] ?? '');
-            $c = $byId[$cid] ?? null;
-            $reason = (string) ($f['reason'] ?? $f['error'] ?? 'Unknown Amazon error');
-            $pushLogs[] = [
-                'campaign_id' => $cid,
-                'campaign_name' => $c->campaignName ?? null,
-                'value' => $c->sbgt ?? null,
-                'status' => 'failed',
-                'reason' => $reason,
-                'http_status' => $status,
-                'response_data' => $f,
-            ];
-            $this->error("FAILED {$cid} ".($c->campaignName ?? '').": {$reason}");
-        }
-
-        if ($pushLogs !== []) {
-            AmazonAdsPushLog::logBatch($pushType, $pushLogs, $sourceLabel);
-        }
-
-        $pushed = count($successIds);
-        $failed = count($failedRows);
-        $this->info("Pushed: {$pushed} | Unchanged: {$unchanged} | Failed: {$failed}");
+        $this->info("Verified: {$pushed} | Skipped: {$unchanged} | Failed: {$failed}");
 
         if ($failed > 0) {
-            Log::error("{$sourceLabel}: budget cron finished with failures", [
+            Log::error("{$sourceLabel}: live BGT sync finished with failures", [
                 'pushed' => $pushed,
                 'failed' => $failed,
-                'failed_ids' => array_column($failedRows, 'campaign_id'),
+                'failed_ids' => array_column($outcome['failed'] ?? [], 'campaign_id'),
             ]);
 
             return ['exit_code' => 1, 'pushed' => $pushed, 'unchanged' => $unchanged, 'failed' => $failed];
         }
 
         return ['exit_code' => 0, 'pushed' => $pushed, 'unchanged' => $unchanged, 'failed' => 0];
-    }
-
-    /**
-     * @param  list<string>  $successIds
-     * @param  array<string, object>  $byId
-     */
-    protected function persistLocalCampaignBudgets(string $reportTable, array $successIds, array $byId): void
-    {
-        if ($successIds === [] || ! Schema::hasTable($reportTable) || ! Schema::hasColumn($reportTable, 'campaignBudgetAmount')) {
-            return;
-        }
-
-        $ranges = ['L30', 'L15', 'L7', 'L1'];
-        $latestDaily = DB::table($reportTable)
-            ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
-            ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
-            ->max(DB::raw('LEFT(TRIM(report_date_range), 10)'));
-        if (is_string($latestDaily) && $latestDaily !== '') {
-            $ranges[] = $latestDaily;
-        }
-
-        foreach ($successIds as $cid) {
-            $bgt = isset($byId[$cid]) ? round((float) $byId[$cid]->sbgt, 2) : null;
-            if ($bgt === null || $bgt <= 0) {
-                continue;
-            }
-            DB::table($reportTable)
-                ->where('campaign_id', $cid)
-                ->whereIn('report_date_range', $ranges)
-                ->update([
-                    'campaignBudgetAmount' => $bgt,
-                    'updated_at' => now(),
-                ]);
-        }
     }
 }

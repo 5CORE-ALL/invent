@@ -810,7 +810,7 @@
         }
 
         function neShownSprice(data) {
-            return neDisplayedSpriceRaw(data);
+            return neApplyAmzFloor(data, neDisplayedSpriceRaw(data));
         }
         window.neShownSprice = neShownSprice;
 
@@ -855,9 +855,17 @@
 
         function neHasAmzFloor(data) {
             if (!data || !data.sku) return false;
-            const before = nePriceBeforeAmzFloor(data);
+            let discounted = 0;
+            if (typeof ebayDilGroiMetaForRow === 'function') {
+                const meta = ebayDilGroiMetaForRow(data);
+                const raw = Number(meta && meta.rawSprc);
+                if (raw > 0) discounted = Math.round(raw * 100) / 100;
+            }
+            if (!(discounted > 0)) discounted = nePriceBeforeAmzFloor(data);
             const amz = neAmzPrice(data);
-            return before > 0 && amz > 0 && before < amz;
+            if (!(discounted > 0) || !(amz > 0) || discounted >= amz - 0.0001) return false;
+            const shown = neApplyAmzFloor(data, discounted);
+            return shown > 0 && Math.abs(shown - amz) <= 0.015;
         }
 
         function neShowAmzLabel(data) {
@@ -867,7 +875,12 @@
         function neAmzLabelHtml(data) {
             if (!neShowAmzLabel(data)) return '';
             const amz = neAmzPrice(data);
-            const before = nePriceBeforeAmzFloor(data);
+            let before = 0;
+            if (typeof ebayDilGroiMetaForRow === 'function') {
+                const meta = ebayDilGroiMetaForRow(data);
+                before = Number(meta && meta.rawSprc) || 0;
+            }
+            if (!(before > 0)) before = nePriceBeforeAmzFloor(data);
             const title = 'S PRC $' + before.toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — raised to Amz';
             return '<span class="newegg-sprice-amz-lbl" title="' + title + '">Amz</span>';
         }

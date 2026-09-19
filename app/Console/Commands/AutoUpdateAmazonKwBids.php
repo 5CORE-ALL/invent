@@ -205,10 +205,15 @@ class AutoUpdateAmazonKwBids extends Command
             }
 
             $monitor->markApiConnected();
+            $nameMap = [];
+            foreach ($campaignDetails as $cid => $details) {
+                $nameMap[(string) $cid] = (string) ($details['name'] ?? '');
+            }
             $stats = $this->pushAmazonAdsIdMapInChunks(
                 $monitor,
                 $campaignBudgetMap,
-                fn (array $ids, array $bids) => $updateKwBids->updateAutoCampaignKeywordsBid($ids, $bids)
+                fn (array $ids, array $bids) => app(\App\Services\AmazonAdsLiveBidBgtSyncService::class)
+                    ->syncBidChunk('sp', $ids, $bids, 'cron-kw-over', $nameMap)
             );
 
             $persistedRows = 0;

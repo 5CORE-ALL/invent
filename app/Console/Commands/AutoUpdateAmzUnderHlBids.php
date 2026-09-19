@@ -183,7 +183,8 @@ class AutoUpdateAmzUnderHlBids extends Command
             $stats = $this->pushAmazonAdsIdMapInChunks(
                 $monitor,
                 $campaignBudgetMap,
-                fn (array $ids, array $bids) => $updateKwBids->updateAutoCampaignSbKeywordsBid($ids, $bids)
+                fn (array $ids, array $bids) => app(\App\Services\AmazonAdsLiveBidBgtSyncService::class)
+                    ->syncBidChunk('sb', $ids, $bids, 'cron-hl-under')
             );
 
             $persistedRows = 0;

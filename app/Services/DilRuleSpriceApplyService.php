@@ -58,12 +58,13 @@ use Throwable;
  * their own nightly save cron (eBay / Amazon / Shopify B2C / Macys / PP do).
  *
  * Same cell math as ebay-sprc-dil: listing Dil, Target NROI (Ads%=0 → GROI), 0-sold min (except
- * Temu 2/3 and Shein). Temu 1 0 Sold uses temu_orders L30 (same as
+ * Temu 2/3). Temu 1 0 Sold uses temu_orders L30 (same as
  * /temu1-data), not temu_metrics.quantity_purchased_l30. Dil stays Shopify
  * OV L30. CVR overlay where the page uses it, ship excluded on
  * Wayfair / Faire / TopDawg / FB, Newegg / Best Buy Amz floor, LMP cap at SGROI ≥ 20%.
  * AliExpress: AL30 = 0 uses min Target NROI; AL30 > 0 uses Dil slab, else Std then LMP if Std > LMP; Stop < N% skips.
- * Shein: Dil-matching including 0 Sold, nearest slab, level-only CVR overlay when views > 0.
+ * Shein: AL30 = 0 uses min Target NROI; AL30 > 0 uses Dil slab or nearest slab. Dil is Shopify OV L30 ÷ INV.
+ * Level-only CVR overlay when views > 0.
  */
 class DilRuleSpriceApplyService
 {
@@ -313,9 +314,11 @@ class DilRuleSpriceApplyService
             return null;
         }
 
-        $sold = array_key_exists('temu_l30', $row)
-            ? (float) $row['temu_l30']
-            : (float) ($row['ov_l30'] ?? 0);
+        $sold = $this->channel === 'shein'
+            ? (float) ($row['al30'] ?? $row['ov_l30'] ?? 0)
+            : (array_key_exists('temu_l30', $row)
+                ? (float) $row['temu_l30']
+                : (float) ($row['ov_l30'] ?? 0));
         $dil = (float) ($row['dil'] ?? 0);
         $groi = null;
 
@@ -338,12 +341,15 @@ class DilRuleSpriceApplyService
         if (! empty($cfg['cvr_adj']) && ! $skipTiktokZeroSoldCvr) {
             $views = (float) ($row['views'] ?? 0);
             if (empty($cfg['cvr_adj_requires_views']) || $views > 0) {
-                $groi = AmazonDilGroiRule::adjustGroiForCvrArrow(
-                    $groi,
-                    (float) ($row['cvr'] ?? 0),
-                    (float) ($row['cvr_60'] ?? $row['cvr60'] ?? 0),
-                    $cvrAdj
-                );
+                $cvr = (float) ($row['cvr'] ?? 0);
+                $groi = $this->channel === 'shein'
+                    ? AmazonDilGroiRule::adjustGroiForCvrLevel($groi, $cvr, $cvrAdj)
+                    : AmazonDilGroiRule::adjustGroiForCvrArrow(
+                        $groi,
+                        $cvr,
+                        (float) ($row['cvr_60'] ?? $row['cvr60'] ?? 0),
+                        $cvrAdj
+                    );
             }
         }
 
@@ -606,6 +612,9 @@ class DilRuleSpriceApplyService
             if ($this->channel === 'aliexpress') {
                 $ov = (float) ($shopify->quantity ?? 0);
                 $al30 = (float) ($metric->l30 ?? 0);
+            } elseif ($this->channel === 'shein') {
+                $ov = (float) ($shopify->quantity ?? 0);
+                $al30 = (float) ($l30Overlay[$sku] ?? 0);
             } elseif ($this->channel === 'temu' || $this->channel === 'temu2') {
                 // Dil = Shopify OV L30, same as /temu1-data. Do not use temu_metrics sales.
                 $ov = (float) ($shopify->quantity ?? 0);
@@ -645,7 +654,7 @@ class DilRuleSpriceApplyService
                 'cvr' => $views > 0
                     ? round(((($this->channel === 'temu' || $this->channel === 'temu2')
                         ? (float) ($l30Overlay[$sku] ?? 0)
-                        : $ov) / $views) * 100, 2)
+                        : ($this->channel === 'shein' ? $al30 : $ov)) / $views) * 100, 2)
                     : 0.0,
                 'lmp' => $aeLmpBySku[$sku] ?? ($lmpBySku[$sku] ?? 0.0),
                 'std_price' => $stdBySku[$sku] ?? 0.0,
@@ -657,7 +666,7 @@ class DilRuleSpriceApplyService
 
         $dilByKey = $this->listingDilByKey($draft);
         foreach ($draft as $i => $row) {
-            if ($this->channel === 'aliexpress') {
+            if ($this->channel === 'aliexpress' || $this->channel === 'shein') {
                 $draft[$i]['dil'] = $row['inv'] > 0
                     ? round(($row['ov_l30'] / $row['inv']) * 100, 2)
                     : 0.0;
@@ -1275,7 +1284,7 @@ class DilRuleSpriceApplyService
                 'price' => 'price',
                 'l30' => null,
                 'views' => 'views',
-                'zero_sold_min_groi' => false,
+                'zero_sold_min_groi' => true,
                 'match_or_nearest' => true,
                 'cvr_adj' => true,
                 'cvr_adj_requires_views' => true,
