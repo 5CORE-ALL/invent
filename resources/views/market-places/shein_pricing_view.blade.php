@@ -305,6 +305,10 @@
                         <button type="button" id="sync-pricing-api-btn" class="btn btn-sm btn-warning pricing-filter-item" title="Pull price/stock from Shein API">
                             <i class="fas fa-cloud-download-alt"></i> Sync API
                         </button>
+                        <button type="button" id="shein-push-price-btn" class="btn btn-sm btn-dark pricing-filter-item"
+                            title="Push each selected SKU's Sprice live to Shein">
+                            <i class="fas fa-cloud-upload-alt"></i> Push
+                        </button>
 
                         <div class="btn-group align-items-center pricing-filter-item" role="group" aria-label="Parent navigation">
                             <button type="button" id="play-backward" class="btn btn-sm btn-light" title="Previous parent" disabled>
@@ -630,6 +634,91 @@
             return sheinRuleSpriceRaw(data);
         }
         window.sheinVisibleSprice = sheinVisibleSprice;
+        function sheinNormSku(sku) {
+            return String(sku || '').replace(/[\u00A0\u202F]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+        }
+        function sheinStoredSprice(data) {
+            return Math.round((parseFloat(data && (data.sprice || data.SPRICE)) || 0) * 100) / 100;
+        }
+        function sheinPushablePrice(data) {
+            return sheinVisibleSprice(data) || sheinStoredSprice(data) || 0;
+        }
+        window.sheinPushablePrice = sheinPushablePrice;
+        function sheinSpricePushed(data) {
+            if (!data || sheinIsParentRow(data)) return false;
+            const stored = sheinStoredSprice(data);
+            const visible = sheinVisibleSprice(data);
+            const live = parseFloat(data.special_offer) || 0;
+            if (stored > 0 && live > 0 && Math.round(stored * 100) === Math.round(live * 100)) return true;
+            if (visible > 0 && live > 0 && Math.round(visible * 100) === Math.round(live * 100)) return true;
+            const st = String(data.SPRICE_STATUS || '').toLowerCase();
+            const pv = parseFloat(data.SPRICE_PUSHED_VALUE);
+            if ((st === 'pushed' || st === 'applied') && pv > 0) {
+                if (stored > 0 && Math.round(pv * 100) === Math.round(stored * 100)) return true;
+                if (visible > 0 && Math.round(pv * 100) === Math.round(visible * 100)) return true;
+                if (live > 0 && Math.round(pv * 100) === Math.round(live * 100)) return true;
+            }
+            return false;
+        }
+        function sheinReformatPushRow(row) {
+            if (!row || typeof row.reformat !== 'function') return;
+            try { row.reformat(); } catch (e) { /* ignore */ }
+        }
+        function sheinWalkTableRows(fn) {
+            const walk = function(rows) {
+                (rows || []).forEach(function(row) {
+                    if (!row) return;
+                    fn(row);
+                    if (typeof row.getTreeChildren === 'function') {
+                        try { walk(row.getTreeChildren() || []); } catch (e) { /* ignore */ }
+                    }
+                });
+            };
+            try {
+                if (table && typeof table.getRows === 'function') walk(table.getRows());
+            } catch (e) { /* ignore */ }
+        }
+        function sheinApplyPushPatchToSku(sku, patch) {
+            const want = sheinNormSku(sku);
+            if (!want || !patch) return;
+            const price = parseFloat(patch.price != null ? patch.price : patch.SPRICE_PUSHED_VALUE);
+            const full = Object.assign({}, patch);
+            if (full.SPRICE_STATUS === 'pushed' && price > 0) {
+                if (full.special_offer == null) full.special_offer = price;
+                if (full.SPRICE_PUSHED_VALUE == null) full.SPRICE_PUSHED_VALUE = price;
+            }
+            full._push = String(full.SPRICE_STATUS || 'updated') + ':' + (price > 0 ? price : Date.now());
+            const walkData = function(arr) {
+                if (!Array.isArray(arr)) return;
+                arr.forEach(function(row) {
+                    if (!row) return;
+                    if (sheinNormSku(row.sku) === want) Object.assign(row, full);
+                    if (Array.isArray(row._children)) walkData(row._children);
+                });
+            };
+            walkData(typeof allTableData !== 'undefined' ? allTableData : null);
+            sheinWalkTableRows(function(row) {
+                const d = (typeof row.getData === 'function') ? (row.getData() || {}) : {};
+                if (sheinNormSku(d.sku) !== want) return;
+                try {
+                    const p = row.update(full);
+                    if (p && typeof p.then === 'function') {
+                        p.then(function() { sheinReformatPushRow(row); }).catch(function() { sheinReformatPushRow(row); });
+                    } else {
+                        sheinReformatPushRow(row);
+                    }
+                } catch (e) {
+                    sheinReformatPushRow(row);
+                }
+            });
+            if (window.ParentExpand && typeof ParentExpand.captureDataset === 'function') {
+                ParentExpand.captureDataset(allTableData);
+            }
+            if (typeof updateSummary === 'function') {
+                try { updateSummary(); } catch (e) { /* ignore */ }
+            }
+        }
+        window.sheinApplyPushPatchToSku = sheinApplyPushPatchToSku;
         function sheinSpriceMetrics(data, spriceOpt) {
             const sprice = spriceOpt != null ? Number(spriceOpt) : sheinVisibleSprice(data);
             if (!(sprice > 0)) return { sgpft: 0, sroi: 0 };
@@ -2058,9 +2147,6 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + sprice.toFixed(2) + ' ≠ Sp. Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            if (!atOrAboveLmp && live > 0 && Math.round(live * 100) === Math.round(sprice * 100)) {
-                                return '<span style="color:#adb5bd;" title="Same as Shein Price">-</span>';
-                            }
                             const formatted = '$' + sprice.toFixed(2);
                             const priceHtml = atOrAboveLmp
                                 ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
@@ -2070,8 +2156,71 @@
                         }
                     },
                     {
-                        title: "SGPFT%",
+                        title: "Push",
+                        field: "_push",
+                        hozAlign: "center",
+                        headerSort: false,
+                        width: 52,
+                        headerTooltip: "Double tick = Sprice is live on Shein. Cross = not pushed. Click a cross to push that SKU.",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (sheinIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                            const sku = String(d.sku || '').replace(/"/g, '&quot;');
+                            const status = String(d.SPRICE_STATUS || '').toLowerCase();
+                            if (status === 'processing') {
+                                return '<i class="fas fa-spinner fa-spin" style="color:#ffc107;" title="Pushing…"></i>';
+                            }
+                            if (sheinSpricePushed(d)) {
+                                return '<i class="fa-solid fa-check-double" style="color:#28a745;font-size:16px;" title="Price pushed — live Sp. Price matches Sprice"></i>';
+                            }
+                            const shown = sheinPushablePrice(d);
+                            if (!(shown > 0)) {
+                                return '<span style="color:#adb5bd;" title="Not pushed — set Sprice first">-</span>';
+                            }
+                            const title = 'Not pushed — click to push $' + shown.toFixed(2);
+                            return '<button type="button" class="btn btn-sm shein-push-row-btn" data-sku="' + sku
+                                + '" title="' + title.replace(/"/g, '&quot;')
+                                + '" style="border:none;background:none;color:#dc3545;padding:0;cursor:pointer;font-size:16px;">'
+                                + '<i class="fa-solid fa-xmark"></i></button>';
+                        },
+                        cellClick: function(e, cell) {
+                            const $t = $(e.target);
+                            if (!$t.closest('.shein-push-row-btn').length) return;
+                            e.stopPropagation();
+                            const d = cell.getRow().getData() || {};
+                            if (sheinIsParentRow(d) || sheinSpricePushed(d)) return;
+                            const sku = d.sku;
+                            const price = sheinPushablePrice(d);
+                            if (!sku || !(price > 0)) {
+                                sheinLinksNotify('Set Sprice first', 'warning');
+                                return;
+                            }
+                            sheinApplyPushPatchToSku(sku, { SPRICE_STATUS: 'processing' });
+                            sheinPushUpdatesInChunks([{ sku: sku, price: price }], $t.closest('.shein-push-row-btn'));
+                        }
+                    },
+                    {
+                        title: "SGROI",
+                        field: "sroi",
+                        headerTooltip: "SGROI from Sprice. Shein has no Ads%.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
+                            const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
+                            return av - bv;
+                        },
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = sheinSpriceMetrics(d).sroi;
+                            if (isNaN(v)) return '0%';
+                            return sheinPctHtml(v, 'groi');
+                        }
+                    },
+                    {
+                        title: "SGPFT",
                         field: "sgpft",
+                        headerTooltip: "SGPFT from Sprice. Shein has no Ads%.",
                         sorter: function(a, b, aRow, bRow) {
                             const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sgpft;
                             const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sgpft;
@@ -2087,8 +2236,9 @@
                         }
                     },
                     {
-                        title: "SGroi",
-                        field: "sroi",
+                        title: "SNROI",
+                        field: "SNROI",
+                        headerTooltip: "SNROI = SGROI on Shein (no Ads%).",
                         sorter: function(a, b, aRow, bRow) {
                             const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
                             const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
@@ -2101,6 +2251,24 @@
                             const v = sheinSpriceMetrics(d).sroi;
                             if (isNaN(v)) return '0%';
                             return sheinPctHtml(v, 'groi');
+                        }
+                    },
+                    {
+                        title: "SNPFT",
+                        field: "SNPFT",
+                        headerTooltip: "SNPFT = SGPFT on Shein (no Ads%).",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sgpft;
+                            const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sgpft;
+                            return av - bv;
+                        },
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = sheinSpriceMetrics(d).sgpft;
+                            if (isNaN(v)) return '0%';
+                            return sheinPctHtml(v, 'gpft');
                         }
                     },
                 ],
@@ -2184,6 +2352,148 @@
                 if ($(this).prop('checked')) selectedSkus.add(sku); else selectedSkus.delete(sku);
                 updateSelectedCount();
             });
+
+            const SHEIN_PUSH_CHUNK_SIZE = 50;
+
+            function sheinPushUpdatesInChunks(updates, $btn) {
+                if (!updates || updates.length === 0) {
+                    sheinLinksNotify('Nothing to push', 'error');
+                    return;
+                }
+
+                const $progressBtn = ($btn && $btn.length && !$btn.hasClass('shein-push-row-btn')) ? $btn : $();
+                const origHtml = $progressBtn.length ? $progressBtn.html() : '';
+                if ($progressBtn.length) {
+                    $progressBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing 0/' + updates.length + '…');
+                }
+
+                const chunks = [];
+                for (let i = 0; i < updates.length; i += SHEIN_PUSH_CHUNK_SIZE) {
+                    chunks.push(updates.slice(i, i + SHEIN_PUSH_CHUNK_SIZE));
+                }
+
+                let totalPushed = 0;
+                let totalFailed = 0;
+                const allFails = [];
+
+                function next(idx) {
+                    if (idx >= chunks.length) {
+                        if ($progressBtn.length) {
+                            $progressBtn.prop('disabled', false).html(origHtml);
+                        }
+                        const msgType = totalFailed > 0 ? (totalPushed > 0 ? 'warning' : 'error') : 'success';
+                        sheinLinksNotify('Shein push: ' + totalPushed + ' ok, ' + totalFailed + ' failed', msgType);
+                        if (allFails.length) {
+                            console.warn('Shein push failures:', allFails);
+                            const sample = allFails.slice(0, 3).map(f => '• ' + f.sku + ': ' + (f.error || 'failed')).join('\n');
+                            const more = allFails.length > 3 ? '\n…and ' + (allFails.length - 3) + ' more (see console)' : '';
+                            sheinLinksNotify('Failed:\n' + sample + more, 'error');
+                        }
+                        return;
+                    }
+
+                    if ($progressBtn.length) {
+                        $progressBtn.html('<i class="fas fa-spinner fa-spin"></i> Pushing '
+                            + Math.min((idx + 1) * SHEIN_PUSH_CHUNK_SIZE, updates.length) + '/' + updates.length + '…');
+                    }
+
+                    const payload = chunks[idx].map(function(u) {
+                        return { sku: u.sku, price: u.price };
+                    });
+
+                    $.ajax({
+                        url: '{{ route("shein.pricing.push") }}',
+                        type: 'POST',
+                        timeout: 0,
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        data: {
+                            _token: '{{ csrf_token() }}',
+                            updates: payload
+                        },
+                        success: function(res) {
+                            totalPushed += (res.pushed || 0);
+                            totalFailed += (res.failed || 0);
+                            (res.results || []).filter(r => r.success).forEach(r => {
+                                sheinApplyPushPatchToSku(r.sku, {
+                                    special_offer: r.price,
+                                    SPRICE_STATUS: 'pushed',
+                                    SPRICE_PUSHED_VALUE: r.price,
+                                    price: r.price
+                                });
+                            });
+                            (res.results || []).filter(r => !r.success).forEach(r => {
+                                allFails.push(r);
+                                sheinApplyPushPatchToSku(r.sku, { SPRICE_STATUS: 'error' });
+                            });
+                        },
+                        error: function(xhr) {
+                            const r = xhr.responseJSON || {};
+                            const err = r.message || r.error || ('HTTP ' + xhr.status);
+                            chunks[idx].forEach(u => {
+                                allFails.push({ sku: u.sku, error: err });
+                                sheinApplyPushPatchToSku(u.sku, { SPRICE_STATUS: 'error' });
+                            });
+                            totalFailed += chunks[idx].length;
+                        },
+                        complete: function() {
+                            if (typeof updateSummary === 'function') {
+                                try { updateSummary(); } catch (e) { /* ignore */ }
+                            }
+                            next(idx + 1);
+                        }
+                    });
+                }
+
+                next(0);
+            }
+
+            function sheinPushSelectedPrices() {
+                if (!selectedSkus || selectedSkus.size === 0) {
+                    sheinLinksNotify('Select SKUs first (use the checkboxes)', 'warning');
+                    return;
+                }
+
+                const updates = [];
+                const skipped = [];
+                selectedSkus.forEach(sku => {
+                    let d = null;
+                    try {
+                        const rows = table.searchRows('sku', '=', sku);
+                        if (rows.length) d = rows[0].getData();
+                    } catch (e) { /* ignore */ }
+                    if (!d) {
+                        const want = sheinNormSku(sku);
+                        d = (allTableData || []).find(function(row) { return sheinNormSku(row.sku) === want; }) || null;
+                    }
+                    if (!d || sheinIsParentRow(d)) return;
+                    const price = sheinPushablePrice(d);
+                    if (!(price > 0)) {
+                        skipped.push(sku);
+                        return;
+                    }
+                    updates.push({ sku: sku, price: +price.toFixed(2) });
+                });
+
+                if (updates.length === 0) {
+                    sheinLinksNotify('No selected SKU has a positive Sprice to push', 'error');
+                    return;
+                }
+
+                const extra = skipped.length ? '\n(' + skipped.length + ' skipped — no Sprice)' : '';
+                if (!confirm('Push ' + updates.length + ' price' + (updates.length !== 1 ? 's' : '') + ' live to Shein?' + extra)) {
+                    return;
+                }
+                updates.forEach(function(u) {
+                    sheinApplyPushPatchToSku(u.sku, { SPRICE_STATUS: 'processing' });
+                });
+                sheinPushUpdatesInChunks(updates, $('#shein-push-price-btn'));
+            }
+
+            $('#shein-push-price-btn').on('click', sheinPushSelectedPrices);
 
             // SPRICE cell edited – save immediately, recalculate SGPFT + SROI with proper margin
             table.on('cellEdited', function(cell) {
@@ -2869,7 +3179,9 @@
         // ===== Edit Links (Buyer / Seller) =====
         function sheinLinksNotify(message, type) {
             if (window.toastr) {
-                (type === 'error' ? toastr.error : toastr.success)(message);
+                if (type === 'error') toastr.error(message);
+                else if (type === 'warning') toastr.warning(message);
+                else toastr.success(message);
                 return;
             }
             let container = document.getElementById('sheinToastContainer');
@@ -2881,7 +3193,7 @@
                 document.body.appendChild(container);
             }
             const toast = document.createElement('div');
-            const bg = type === 'error' ? '#dc3545' : '#198754';
+            const bg = type === 'error' ? '#dc3545' : (type === 'warning' ? '#f59e0b' : '#198754');
             toast.style.cssText =
                 'min-width:220px;max-width:340px;color:#fff;background:' + bg +
                 ';padding:12px 16px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.18);font-size:14px;opacity:0;transition:opacity .25s ease;';
