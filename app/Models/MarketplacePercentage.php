@@ -74,6 +74,7 @@ class MarketplacePercentage extends Model
             'fb_marketplace' => ['FB Marketplace', 'FBMarketplace'],
             'vinted' => ['Vinted'],
             'depop' => ['Depop'],
+            'instagram' => ['Instagram Shop', 'InstagramShop', 'Instagram'],
             default => [],
         };
     }

@@ -4090,6 +4090,22 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/vinted/pricing/column-visibility', [\App\Http\Controllers\MarketPlace\VintedController::class, 'getColumnVisibility'])->name('vinted.pricing.column.get');
     Route::post('/vinted/pricing/column-visibility', [\App\Http\Controllers\MarketPlace\VintedController::class, 'setColumnVisibility'])->name('vinted.pricing.column.set');
 
+    // Vinted Analytics — Depop-style Tabulator + CSV template (parent, sku, price, l30)
+    Route::get('/vinted/analytics', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'pricingView'])->name('vinted.analytics');
+    Route::get('/vinted/analytics/data', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'getPricingData'])->name('vinted.analytics.data');
+    Route::get('/vinted/analytics/export', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'exportCsv'])->name('vinted.analytics.export');
+    Route::get('/vinted/analytics/sample', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'downloadSample'])->name('vinted.analytics.sample');
+    Route::post('/vinted/analytics/import', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'importCsv'])->name('vinted.analytics.import');
+    Route::post('/vinted/analytics/save-sprice', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'saveSprice'])->name('vinted.analytics.save.sprice');
+
+    // Instagram Shop Analytics — Depop-style Tabulator + CSV template (parent, sku, price, l30)
+    Route::get('/instagram/analytics', [\App\Http\Controllers\MarketPlace\InstagramAnalyticsController::class, 'pricingView'])->name('instagram.analytics');
+    Route::get('/instagram/analytics/data', [\App\Http\Controllers\MarketPlace\InstagramAnalyticsController::class, 'getPricingData'])->name('instagram.analytics.data');
+    Route::get('/instagram/analytics/export', [\App\Http\Controllers\MarketPlace\InstagramAnalyticsController::class, 'exportCsv'])->name('instagram.analytics.export');
+    Route::get('/instagram/analytics/sample', [\App\Http\Controllers\MarketPlace\InstagramAnalyticsController::class, 'downloadSample'])->name('instagram.analytics.sample');
+    Route::post('/instagram/analytics/import', [\App\Http\Controllers\MarketPlace\InstagramAnalyticsController::class, 'importCsv'])->name('instagram.analytics.import');
+    Route::post('/instagram/analytics/save-sprice', [\App\Http\Controllers\MarketPlace\InstagramAnalyticsController::class, 'saveSprice'])->name('instagram.analytics.save.sprice');
+
     // Missing Listing — channel_master rows (image + channel) plus DAR submissions
     Route::get('/missing-listing',              [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'index'])->name('missing.listing');
     Route::get('/missing-listing/data',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'getData'])->name('missing.listing.data');

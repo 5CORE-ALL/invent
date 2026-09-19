@@ -37,6 +37,26 @@ class AmazonAdsLiveBidBgtSyncServiceTest extends TestCase
         $this->assertSame([['sp', 'bgt', '111', 12.0]], $persisted);
     }
 
+    public function test_successful_pull_with_no_amazon_bid_does_not_push(): void
+    {
+        $pushed = [];
+        $svc = $this->service([
+            'pullBids' => fn () => ['111' => null],
+            'pushBid' => function () use (&$pushed) {
+                $pushed[] = true;
+
+                return ['status' => 200];
+            },
+        ]);
+
+        $out = $svc->syncField('sp', 'bid', '111', 'SKU KW', 0.75, 'test');
+
+        $this->assertSame('failed', $out['status']);
+        $this->assertStringContainsString('no live Amazon keyword/target bid', $out['reason']);
+        $this->assertSame([], $pushed);
+        $this->assertSame('red', $out['sync_color']);
+    }
+
     public function test_pull_failure_retries_and_does_not_mark_synced(): void
     {
         $attempts = 0;

@@ -368,6 +368,14 @@ class AmazonAdsLiveBidBgtSyncService
         $oldLive = $pull['map'][$campaignId] ?? null;
         $base['old_live'] = $oldLive;
 
+        if ($oldLive === null || ! is_numeric($oldLive)) {
+            $why = $field === 'bid'
+                ? 'pull_failed: no live Amazon keyword/target bid found'
+                : 'pull_failed: campaign budget not returned by Amazon';
+
+            return $this->finish($base, 'failed', $why, $source, $campaignName, $desired, null);
+        }
+
         if ($field === 'bgt' && AmazonAdsSbgt::isExplicitZero($desired)) {
             return $this->syncPause($channel, $campaignId, $campaignName, $oldLive, $base, $source);
         }
