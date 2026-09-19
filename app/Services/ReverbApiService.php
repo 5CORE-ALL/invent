@@ -1721,6 +1721,11 @@ class ReverbApiService
             $payload['has_inventory'] = filter_var($fields['has_inventory'] ?? true, FILTER_VALIDATE_BOOLEAN);
         }
 
+        if (($payload['publish'] ?? false) === true) {
+            $payload['inventory'] = max(1, (int) ($payload['inventory'] ?? 1));
+            $payload['has_inventory'] = true;
+        }
+
         $payload['offers_enabled'] = array_key_exists('offers_enabled', $fields)
             ? filter_var($fields['offers_enabled'], FILTER_VALIDATE_BOOLEAN)
             : true;

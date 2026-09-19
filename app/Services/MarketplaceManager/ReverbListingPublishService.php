@@ -608,9 +608,17 @@ class ReverbListingPublishService
 
     private function shopifyInv(string $sku): int
     {
-        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
+        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku)
+            ?? ShopifySku::firstForProductSku($sku);
+        if (! $shopify) {
+            return 0;
+        }
+        $available = $shopify->available_to_sell ?? null;
+        if ($available !== null && $available !== '' && is_numeric($available) && (int) $available > 0) {
+            return (int) $available;
+        }
 
-        return max(0, (int) ($shopify->available_to_sell ?? $shopify->inv ?? 0));
+        return max(0, (int) ($shopify->inv ?? 0));
     }
 
     private function publishInventory(string $sku, string $conditionName): int
@@ -620,10 +628,11 @@ class ReverbListingPublishService
             || str_contains(strtolower($conditionName), 'brand new')
             || str_contains(strtolower($conditionName), 'mint');
         if (! $allowsMulti) {
-            return min(1, $inv);
+            $inv = min(1, $inv);
         }
 
-        return $inv;
+        // Reverb HTTP 400: "inventory cannot be 0 if publish is true".
+        return max(1, $inv);
     }
 
     private function resolveDescription(ProductMaster $product, string $title): string
