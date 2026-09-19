@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AmazonAdsMissingLink;
+use App\Models\AmazonDatasheet;
 use App\Models\ShopifySku;
 use App\Services\AmazonAdsService;
 use App\Support\Marketplace\AmazonAdsMissingLinks;
@@ -280,9 +281,10 @@ class AmazonAdsMissingController extends Controller
                     'message' => 'No Amazon ASIN found for SKU: '.$targetSku.'. Add it in Amazon datasheets first.',
                 ], 422);
             }
-            $sellerSkus[] = $targetSku;
+            $sellerSku = AmazonDatasheet::resolveSellerMskuByProductKey($targetSku) ?: $targetSku;
+            $sellerSkus[] = $sellerSku;
             $resolvedChildren[] = [
-                'target_sku' => $targetSku,
+                'target_sku' => $sellerSku,
                 'asin' => $asin,
             ];
         }
@@ -1318,6 +1320,9 @@ PROMPT;
     }
 
     /**
+     * Same amazon_datsheets match as /amazon-tabulator-view (case / spaces / PCS fold).
+     * Keys the map with the Product Master SKU so the create modal can find the ASIN.
+     *
      * @param  list<string>  $skus
      * @return array<string, string> sku => ASIN
      */
@@ -1331,40 +1336,34 @@ PROMPT;
             return [];
         }
 
-        $out = [];
-        if (Schema::hasTable('amazon_datsheets')) {
-            DB::table('amazon_datsheets')
-                ->whereIn('sku', $skus)
-                ->whereNotNull('asin')
-                ->where('asin', '!=', '')
-                ->orderByDesc('id')
-                ->get(['sku', 'asin'])
-                ->each(function ($row) use (&$out) {
-                    $sku = trim((string) ($row->sku ?? ''));
-                    $asin = strtoupper(trim((string) ($row->asin ?? '')));
-                    if ($sku === '' || $asin === '' || isset($out[$sku])) {
-                        return;
-                    }
-                    $out[$sku] = $asin;
-                });
-        }
+        $out = Schema::hasTable('amazon_datsheets')
+            ? AmazonDatasheet::asinsByProductSkus($skus)
+            : [];
 
         $missing = array_values(array_filter($skus, static fn ($s) => ! isset($out[$s])));
         if ($missing !== [] && Schema::hasTable('amazon_sp_product_ads')) {
-            DB::table('amazon_sp_product_ads')
+            $adRows = DB::table('amazon_sp_product_ads')
                 ->whereIn('sku', $missing)
                 ->whereNotNull('asin')
                 ->where('asin', '!=', '')
                 ->orderByDesc('id')
-                ->get(['sku', 'asin'])
-                ->each(function ($row) use (&$out) {
-                    $sku = trim((string) ($row->sku ?? ''));
-                    $asin = strtoupper(trim((string) ($row->asin ?? '')));
-                    if ($sku === '' || $asin === '' || isset($out[$sku])) {
-                        return;
-                    }
-                    $out[$sku] = $asin;
-                });
+                ->get(['sku', 'asin']);
+
+            $byNorm = [];
+            foreach ($adRows as $row) {
+                $key = AmazonDatasheet::normalizeSkuForLookup((string) ($row->sku ?? ''));
+                $asin = strtoupper(trim((string) ($row->asin ?? '')));
+                if ($key === '' || $asin === '' || isset($byNorm[$key])) {
+                    continue;
+                }
+                $byNorm[$key] = $asin;
+            }
+            foreach ($missing as $sku) {
+                $key = AmazonDatasheet::normalizeSkuForLookup($sku);
+                if ($key !== '' && isset($byNorm[$key])) {
+                    $out[$sku] = $byNorm[$key];
+                }
+            }
         }
 
         return $out;
