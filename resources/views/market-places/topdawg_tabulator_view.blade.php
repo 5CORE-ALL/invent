@@ -224,13 +224,12 @@
                          filter/action row so search inputs are nearest to the
                          table they affect (per the user's "interchange rows" ask). --}}
                     <div class="px-2 py-1 bg-light border-bottom">
-                        <div class="row g-1">
-                            <div class="col-6">
-                                <input type="text" id="parent-search" class="form-control form-control-sm w-100" placeholder="Search Parent...">
-                            </div>
-                        <div class="col-6">
-                                <input type="text" id="sku-search" class="form-control form-control-sm w-100" placeholder="Search SKU...">
-                            </div>
+                        <div class="d-flex gap-1 align-items-center">
+                            <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="flex:1;">
+                            <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="flex:1;">
+                            <button type="button" id="td-search-btn" class="btn btn-sm btn-primary" title="Search Parent / SKU">
+                                <i class="fas fa-search"></i> Search
+                            </button>
                         </div>
                     </div>
                     <div id="topdawg-pricing-table" style="flex:1;"></div>
@@ -769,11 +768,27 @@
         }
         table.clearFilter();
 
-        const invF = $('#inventory-filter').val();
+        const skuSearch = ($('#sku-search').val() || '').trim().toLowerCase();
+        const parentSearch = ($('#parent-search').val() || '').trim().toLowerCase();
+        if (skuSearch) {
+            table.addFilter(function(data) {
+                const sku = String(data['(Child) sku'] || data.sku || '').toLowerCase();
+                return sku.indexOf(skuSearch) !== -1;
+            });
+        }
+        if (parentSearch) {
+            table.addFilter(function(data) {
+                const parent = String(data.Parent || data.parent || '').toLowerCase();
+                return parent.indexOf(parentSearch) !== -1;
+            });
+        }
+
+        // Searching a published SKU should find it even when INV is 0 / NRL is REQ.
+        const invF = (skuSearch || parentSearch) ? 'all' : $('#inventory-filter').val();
         if (invF === 'zero') table.addFilter('INV', '=', 0);
         if (invF === 'more') table.addFilter('INV', '>', 0);
 
-        const nrl = $('#nrl-filter').val();
+        const nrl = (skuSearch || parentSearch) ? 'all' : $('#nrl-filter').val();
         if (nrl !== 'all') table.addFilter('nr_req', '=', nrl);
 
         const gpft = $('#gpft-filter').val();
@@ -1537,12 +1552,14 @@
             setActiveBadges();
             applyFilters();
         });
-        $('#sku-search, #parent-search').on('keyup', function() {
-            table.setFilter([
-                { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
-                { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
-            ]);
-            updateSummary();
+        $('#sku-search, #parent-search').on('keyup input', function(e) {
+            if (e.type === 'keyup' && e.key === 'Enter') {
+                e.preventDefault();
+            }
+            applyFilters();
+        });
+        $('#td-search-btn').on('click', function() {
+            applyFilters();
         });
 
         // Sold badges just toggle the #sold-filter dropdown so the dropdown stays the

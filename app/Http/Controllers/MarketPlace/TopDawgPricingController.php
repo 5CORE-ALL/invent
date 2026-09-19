@@ -13,6 +13,7 @@ use App\Models\TopDawgOrderMetric;
 use App\Models\TopDawgProduct;
 use App\Services\ChannelPromoPricingService;
 use App\Services\TopDawgApiService;
+use App\Support\PushedListingPrice;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -152,6 +153,11 @@ class TopDawgPricingController extends Controller
 
             $td = $topdawgData[$skuNorm] ?? null;
             $tdPrice = $td ? (float) ($td->price ?? 0) : 0;
+            // TopDawg list API often stores the live amount in cost/msrp and
+            // leaves price at 0 — still show the published storefront price.
+            if ($tdPrice <= 0 && $td) {
+                $tdPrice = (float) ($td->msrp ?? 0);
+            }
             $tdStock = $td ? (int) ($td->remaining_inventory ?? 0) : 0;
             $storedL30 = $td ? (int) ($td->r_l30 ?? 0) : 0;
             $tdL60 = $td ? (int) ($td->r_l60 ?? 0) : 0;
@@ -206,6 +212,13 @@ class TopDawgPricingController extends Controller
                     $row['SPRICE_PUSHED_VALUE'] = $dvValue['SPRICE_PUSHED_VALUE'] ?? null;
                     $row['SPRICE_STATUS_UPDATED_AT'] = $dvValue['SPRICE_STATUS_UPDATED_AT'] ?? $dvValue['PUSH_STATUS_UPDATED_AT'] ?? null;
                     $row['SPRICE_PUSHED_BY'] = $dvValue['SPRICE_PUSHED_BY'] ?? null;
+                    if ($tdPrice <= 0) {
+                        $pushed = PushedListingPrice::fromValue($dvValue);
+                        if ($pushed !== null) {
+                            $tdPrice = $pushed;
+                            $row['TD Price'] = $tdPrice;
+                        }
+                    }
                 }
             }
 

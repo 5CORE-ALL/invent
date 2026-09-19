@@ -177,9 +177,12 @@ class TopDawgLinkMapSyncService
                 'tdid' => $item['tdid'] ?? null,
                 'product_title' => $item['product_name'] ?? $item['product_title'] ?? $item['title'] ?? null,
                 'listing_state' => TopDawgApiService::listingStateFromItem($item),
-                'price' => $item['cost'] ?? $item['price'] ?? null,
-                'msrp' => $item['msrp'] ?? null,
+                'msrp' => TopDawgApiService::positiveMoneyValue($item['msrp'] ?? null),
             ];
+            $price = TopDawgApiService::extractListingPrice($item);
+            if ($price !== null) {
+                $payload['price'] = $price;
+            }
             if (! empty($item['picture_url'])) {
                 $urls = explode(',', (string) $item['picture_url']);
                 $first = trim($urls[0] ?? '');

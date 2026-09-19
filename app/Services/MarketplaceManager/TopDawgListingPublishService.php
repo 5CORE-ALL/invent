@@ -256,11 +256,12 @@ class TopDawgListingPublishService
     private function persistListed(string $sku, string $listingId, string $tdid, string $title, float $price, int $inv): void
     {
         try {
-            if (Schema::hasTable('topdawg_products') && $listingId !== '') {
+            if (Schema::hasTable('topdawg_products')) {
                 $payload = [
-                    'topdawg_listing_id' => $listingId,
+                    'topdawg_listing_id' => $listingId !== '' ? $listingId : $sku,
                     'product_title' => $title,
                     'price' => $price,
+                    'msrp' => $price,
                     'remaining_inventory' => max(0, $inv),
                     'listing_state' => 'pending',
                 ];

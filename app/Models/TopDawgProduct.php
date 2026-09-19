@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Marketplace\ListingCountsEngine;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -78,6 +79,45 @@ class TopDawgProduct extends Model
 
                 return count($missing) > 0;
             });
+
+        if ($missing === []) {
+            return $lookup;
+        }
+
+        // Pack / family aliases (same rules as listedTopDawg) so a published
+        // product_code like "HW 405 BLK 2PCS" fills Price on "HW 405 BLK".
+        $wantedAliasToKey = [];
+        foreach (array_keys($missing) as $key) {
+            foreach (ListingCountsEngine::skuAliasBases($key) as $base) {
+                if ($base !== '' && ! isset($wantedAliasToKey[$base])) {
+                    $wantedAliasToKey[$base] = $key;
+                }
+            }
+        }
+
+        if ($wantedAliasToKey !== []) {
+            self::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->orderBy('id')
+                ->chunkById(1000, function ($rows) use (&$lookup, &$missing, $wantedAliasToKey) {
+                    foreach ($rows as $row) {
+                        if ($missing === []) {
+                            return false;
+                        }
+                        foreach (ListingCountsEngine::skuAliasBases((string) $row->sku) as $base) {
+                            $target = $wantedAliasToKey[$base] ?? null;
+                            if ($target !== null && isset($missing[$target]) && ! isset($lookup[$target])) {
+                                $lookup[$target] = $row;
+                                unset($missing[$target]);
+                                break;
+                            }
+                        }
+                    }
+
+                    return count($missing) > 0;
+                });
+        }
 
         return $lookup;
     }
