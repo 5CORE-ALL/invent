@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Temu3Metric;
 use App\Models\Temu3Pricing;
+use App\Services\Temu3AdsApiReportService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -381,7 +382,11 @@ class FetchTemu3Metrics extends Command
                                 'quantity_purchased_l60' => 0,
                             ];
                         }
-                        $finalSkuQuantities[$skuId]['quantity_purchased_l'.strtolower($label)] += $qty;
+                        if ($label === 'L30') {
+                            $finalSkuQuantities[$skuId]['quantity_purchased_l30'] += $qty;
+                        } elseif ($label === 'L60') {
+                            $finalSkuQuantities[$skuId]['quantity_purchased_l60'] += $qty;
+                        }
                     }
                 }
 
@@ -560,68 +565,18 @@ class FetchTemu3Metrics extends Command
 
     private function fetchProductAnalyticsData(): void
     {
-        $goodsIds = Temu3Metric::whereNotNull('goods_id')->pluck('goods_id')->unique()->values()->all();
-        if ($goodsIds === []) {
+        $service = app(Temu3AdsApiReportService::class);
+        if ($service->resolveGoodsIds() === []) {
             $this->warn('No goods_id found. Run goods fetch first.');
 
             return;
         }
 
-        $ranges = [
-            'L30' => [
-                'startTs' => Carbon::now()->subDays(29)->startOfDay()->timestamp * 1000,
-                'endTs' => Carbon::now()->endOfDay()->timestamp * 1000,
-            ],
-            'L60' => [
-                'startTs' => Carbon::now()->subDays(59)->startOfDay()->timestamp * 1000,
-                'endTs' => Carbon::now()->subDays(30)->endOfDay()->timestamp * 1000,
-            ],
-        ];
-
-        $this->info('Fetching ads analytics for '.count($goodsIds).' goods...');
-        foreach ($goodsIds as $goodId) {
-            $metrics = [
-                'product_impressions_l30' => 0,
-                'product_clicks_l30' => 0,
-                'product_impressions_l60' => 0,
-                'product_clicks_l60' => 0,
-            ];
-
-            foreach ($ranges as $label => $range) {
-                $response = Http::timeout(30)
-                    ->withHeaders(['Content-Type' => 'application/json'])
-                    ->post($this->openApiUrl(), $this->generateSignValue([
-                        'type' => 'temu.searchrec.ad.reports.goods.query',
-                        'goodsId' => $goodId,
-                        'startTs' => $range['startTs'],
-                        'endTs' => $range['endTs'],
-                    ]));
-
-                $data = $response->json();
-                if (! ($data['success'] ?? false)) {
-                    continue;
-                }
-
-                $reportInfo = $data['result']['reportInfo'] ?? [];
-                $overall = is_array($reportInfo['summary'] ?? null) ? $reportInfo['summary'] : [];
-                $adOnly = is_array($reportInfo['reportsSummary'] ?? null) ? $reportInfo['reportsSummary'] : [];
-                $impr = $overall['imprCnt']['total']['val'] ?? $adOnly['imprCntAll']['val'] ?? 0;
-                $clicks = $overall['clkCnt']['total']['val'] ?? $adOnly['clkCntAll']['val'] ?? 0;
-
-                if ($label === 'L30') {
-                    $metrics['product_impressions_l30'] = $impr;
-                    $metrics['product_clicks_l30'] = $clicks;
-                } else {
-                    $metrics['product_impressions_l60'] = $impr;
-                    $metrics['product_clicks_l60'] = $clicks;
-                }
-                usleep(150000);
-            }
-
-            Temu3Metric::where('goods_id', $goodId)->update($metrics);
+        foreach (['L30', 'L60'] as $period) {
+            $this->info("Fetching Temu 3 ads reports ({$period})...");
+            $stats = $service->fetchAll($period);
+            $this->info("{$period}: {$stats['ok']}/{$stats['total']} ok, {$stats['fail']} fail");
         }
-
-        $this->info('Ads analytics updated.');
     }
 
     private function mirrorPricingCache(string $sku, array $payload): void

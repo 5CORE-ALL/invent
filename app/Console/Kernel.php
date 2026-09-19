@@ -2701,6 +2701,10 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('temu2:fetch-ads-data --period=L60', 'temu2-ads-data-sync-l60', '16:25');
         $retryFiveTimesUntil('temu2:fetch-ads-api-reports --period=L7', 'temu2-ads-api-reports-l7', '16:30');
         $retryFiveTimesUntil('temu2:auto-pause-ads', 'temu2-ads-auto-pause', '16:40');
+        $retryFiveTimesUntil('temu3:fetch-ads-data --period=L30', 'temu3-ads-data-sync-l30', '16:45');
+        $retryFiveTimesUntil('temu3:fetch-ads-data --period=L60', 'temu3-ads-data-sync-l60', '16:55');
+        $retryFiveTimesUntil('temu3:fetch-ads-api-reports --period=L7', 'temu3-ads-api-reports-l7', '17:00');
+        $retryFiveTimesUntil('temu3:refresh-ad-status', 'temu3-ads-refresh-status', '19:40');
 
         /*
         |--------------------------------------------------------------------------
