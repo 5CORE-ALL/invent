@@ -4,9 +4,10 @@
   Master page /master-dil-rules writes the same existing store on every site.
   A slab add/remove/value change on one site also updates that slab on the others.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup / Shein: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Shein / Temu 3 also have a 0–0 slab on top for Dil = 0.
-  AliExpress / Faire / TikTok / Mercari / PLS / Best Buy / Newegg / Reverb / Wayfair / Depop: 0–0 slab on top for Dil = 0. Channel L30 = 0 uses min Target NROI (same as other 0 Sold pages). Sold rows use the Dil-matching slab;
-  Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
+  Amazon / eBay 1–3 / Temu 2–3 / Doba Pickup: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold). Temu 3 also has a 0–0 slab on top for Dil = 0.
+  AliExpress / Shein / Faire / TikTok / Mercari / PLS / Best Buy / Newegg / Reverb / Wayfair / Depop: 0–0 slab on top for Dil = 0. Channel L30 = 0 uses min Target NROI (same as other 0 Sold pages). Sold rows use the Dil-matching slab.
+  AliExpress only: Dil outside every From–To → S PRC = Std Prc, then cap at LMP if Std > LMP.
+  Shein sold rows: Dil below the first slab or above the last uses the nearest slab.
   eBay 1–3: 0–0 slab on top for Dil = 0. Dil below the first remaining slab or above the last uses the nearest slab.
   Temu 1 / New Temu One / New Temu Two: 0–0 slab on top for Dil = 0. Temu L30 = 0 uses the minimum Target NROI (not the Dil-matching slab). Dil is still OV L30 ÷ INV. New Temu Two uses Temu 2 L30 and the same Temu Dil store.
   CVR overlay Count and Adj: Down = down-arrow CVR and CVR < threshold; Up = up-arrow CVR and CVR > threshold.
@@ -17,6 +18,7 @@
   Purchasing Power / Best Buy / TopDawg / Doba: 0–0 slab on top for Dil = 0. Dil-matching when sold > 0; 0 Sold uses the minimum Target.
   Purchasing Power Target is SNROI (Ads%=0 → same $ as SROI). Dil is OV L30 ÷ INV. If that Dil / min-ROI S PRC is below A Price, S PRC = A Price.
   Best Buy also caps S PRC at LMP (including 0 Sold) after the A Price floor.
+  Newegg: if Dil / min-ROI S PRC is below A Price, S PRC = A Price.
   Shopify B2C: 0–0 slab on top for Dil = 0. Dil-matching when B2C L30 > 0, including Dil below the first slab or above
   the last (nearest slab). 0 Sold uses the minimum Target NROI and skips the CVR overlay.
   Shopify B2B: 0–0 slab on top for Dil = 0. Dil-matching when B2B L30 > 0, including Dil below the first slab or above
@@ -35,12 +37,12 @@
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     $ebaySprcDilZeroSoldUsesMinGroi = $ebaySprcDilZeroSoldUsesMinGroi
-        ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3', 'shein'], true);
+        ?? !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'doba_withoutship', 'temu2', 'temu3'], true);
     $ebaySprcDilCvrGroiAdj = in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu', 'temu2', 'temu3', 'reverb', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'shopify_b2b', 'shein'], true);
     $ebaySprcDilClampToNearest = $ebaySprcDilClampToNearest
         ?? in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'mercari_wship', 'mercari_woship', 'shopify_b2c', 'shopify_b2b'], true);
     $ebaySprcDilIsMacys = in_array($ebaySprcDilChannel, ['macys', 'macy'], true);
-    $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true);
+    $ebaySprcDilUsesAmzFloor = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'bestbuy', 'newegg'], true);
     $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'bestbuy', 'newegg', 'topdawg', 'walmart', 'pls', 'depop', 'vinted', 'mercari_wship', 'mercari_woship'], true);
     $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace', 'shopify_b2b', 'mercari_woship', 'depop'], true);
     $ebaySprcDilSoldLabel = match ($ebaySprcDilChannel) {
@@ -107,7 +109,7 @@
     }
     if ($ebaySprcDilZeroSoldUsesMinGroi) {
         $ebaySprcDilBtnTitle .= ' '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target '.$ebaySprcDilTargetLabel.' from the slabs.';
-        if (in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'doba'], true)) {
+        if (in_array($ebaySprcDilChannel, ['aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'doba'], true)) {
             $ebaySprcDilBtnTitle .= ' Dil = 0 uses the 0–0 slab.';
         }
         if (!empty($ebaySprcDilUsesAmzFloor)) {
@@ -288,7 +290,7 @@
                             take the <strong>minimum Target {{ $ebaySprcDilTargetLabel }} from the slabs</strong>
                             (not the Dil-matching slab).
                         </li>
-                        @if(in_array($ebaySprcDilChannel, ['aliexpress', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'doba'], true))
+                        @if(in_array($ebaySprcDilChannel, ['aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'mercari_wship', 'mercari_woship', 'pls', 'bestbuy', 'newegg', 'reverb', 'wayfair', 'depop', 'macys', 'macy', 'shopify_b2c', 'shopify_b2b', 'purchasing_power', 'topdawg', 'temu', 'newtemuone', 'newtemutwo', 'doba'], true))
                         <li>
                             <strong>When</strong> Dil = 0 (INV &gt; 0):
                             use the <strong>0–0</strong> slab’s Target {{ $ebaySprcDilTargetLabel }}.
@@ -298,12 +300,21 @@
                             <strong>When</strong> {{ $ebaySprcDilSoldLabel }} &gt; 0 and Dil sits in a From–To range:
                             use that slab’s Target {{ $ebaySprcDilTargetLabel }} (first match; last slab includes the To value).
                         </li>
+                        @if($ebaySprcDilChannel === 'shein')
+                        <li>
+                            <strong>When</strong> {{ $ebaySprcDilSoldLabel }} &gt; 0 and Dil is below the first From or above the last To:
+                            use the <strong>nearest slab</strong> so high-Dil SKUs still get a Target {{ $ebaySprcDilTargetLabel }}.
+                        </li>
+                        @endif
                         @if(!empty($ebaySprcDilCvrGroiAdj))
                         <li>
                             <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table
                             (Down = down-arrow CVR and CVR &lt; threshold; Up = up-arrow CVR and CVR &gt; threshold;
-                            horizontal / opposite arrows are excluded):
-                            apply that Adj {{ $ebaySprcDilTargetLabel }} to the Target {{ $ebaySprcDilTargetLabel }} (Count updates as you edit).
+                            horizontal / opposite arrows are excluded)
+                            @if($ebaySprcDilChannel === 'shein')
+                            — only when the SKU has <strong>views</strong>
+                            @endif
+                            : apply that Adj {{ $ebaySprcDilTargetLabel }} to the Target {{ $ebaySprcDilTargetLabel }} (Count updates as you edit).
                         </li>
                         @endif
                         @if(!empty($ebaySprcDilUsesAmzFloor))
@@ -340,7 +351,7 @@
                         </li>
                         @endif
 @else
-                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'shein', 'temu3'], true))
+                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3', 'temu3'], true))
                         <li>
                             <strong>When</strong> Dil = 0 (INV &gt; 0):
                             use the <strong>0–0</strong> slab’s Target {{ $ebaySprcDilTargetLabel }}.
@@ -350,7 +361,7 @@
                             <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
                             use that slab’s Target {{ $ebaySprcDilTargetLabel }} (first match; last slab includes the To value).
                         </li>
-                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'shein'], true))
+                        @if(in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true))
                         <li>
                             <strong>When</strong> Dil is below the first From or above the last To (INV &gt; 0):
                             use the <strong>nearest slab</strong> so high-Dil SKUs still get a Target {{ $ebaySprcDilTargetLabel }}.
@@ -444,11 +455,11 @@
                             @elseif($ebaySprcDilChannel === 'pls')
                             Dil = OV L30 ÷ INV. 0 Sold is P L30 = 0.
                             @elseif($ebaySprcDilChannel === 'shein')
-                            Dil = OV L30 ÷ INV. Every INV > 0 SKU Dil-matches, including AL30 = 0.
+                            Dil = OV L30 ÷ INV. 0 Sold is AL30 = 0 (min Target NROI). AL30 &gt; 0 Dil-matches, including the nearest slab.
                             @elseif($ebaySprcDilChannel === 'bestbuy')
                             Dil = OV L30 ÷ INV. 0 Sold is BB L30 = 0. If S PRC < A Price, use A Price, then cap at LMP.
                             @elseif($ebaySprcDilChannel === 'newegg')
-                            Dil = OV L30 ÷ INV. 0 Sold is L30 = 0.
+                            Dil = OV L30 ÷ INV. 0 Sold is L30 = 0. If S PRC < A Price, use A Price.
                             @endif
                         </li>
                     </ul>
@@ -545,7 +556,7 @@
             return EBAY_DIL_GROI_CHANNEL === 'purchasing_power';
         }
         function ebayDgUsesAmzFloor() {
-            return ebayDgIsMacys() || ebayDgIsPurchasingPower() || ebayDgIsBestbuy();
+            return ebayDgIsMacys() || ebayDgIsPurchasingPower() || ebayDgIsBestbuy() || ebayDgIsNewegg();
         }
         function ebayDgIsWayfair() {
             return EBAY_DIL_GROI_CHANNEL === 'wayfair';
@@ -954,7 +965,7 @@
                 || (d.cvr_45 != null && d.cvr_45 !== '')));
             // Shopify B2C / B2B have no L60 CVR. Do not treat CVR>0 as Up vs a missing 0% L60.
             // Down / Up follow the editable CVR overlay thresholds (default <7% / >10%).
-            if ((ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b() || ebayDgIsNewegg()) && !hasCvr60) {
+            if ((ebayDgIsShopifyB2c() || ebayDgIsShopifyB2b() || ebayDgIsNewegg() || ebayDgIsShein()) && !hasCvr60) {
                 const cfg = ebayCvrGroiAdjNow();
                 if (cvr < cfg.down_lt) return 'down';
                 if (cvr > cfg.up_gt) return 'up';
@@ -1010,6 +1021,11 @@
             if (EBAY_DIL_GROI_CHANNEL === 'temu') {
                 if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
                 return !(Number(d && d.temu_l30) > 0);
+            }
+            // AliExpress / Shein: 0 Sold is AL30 (channel orders), not Shopify OV L30 / Dil.
+            if (ebayDgIsAliexpress() || ebayDgIsShein()) {
+                if (!ebayDgIsChild(d) || !(ebayDgInv(d) > 0)) return false;
+                return !(Number(d && (d.al30 != null ? d.al30 : d.AL30)) > 0);
             }
             // Mercari Dil column is 0% when INV is 0. Still apply the 0 Sold
             // min Target NROI so S PRC is not left at Std.

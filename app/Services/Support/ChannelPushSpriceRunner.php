@@ -261,7 +261,7 @@ class ChannelPushSpriceRunner
                             throw new \RuntimeException($block);
                         }
                     }
-                    if (in_array($this->channel, ['macys', 'macy', 'purchasing_power', 'bestbuy'], true)) {
+                    if (in_array($this->channel, ['macys', 'macy', 'purchasing_power', 'bestbuy', 'newegg'], true)) {
                         $floored = MacysAmazonPriceCap::capForSku($sku, $price);
                         if ($floored > 0 && abs($floored - $price) >= 0.005) {
                             $logger->info('S PRC raised to Amazon price', [

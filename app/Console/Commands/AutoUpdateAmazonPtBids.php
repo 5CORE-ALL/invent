@@ -127,7 +127,8 @@ class AutoUpdateAmazonPtBids extends Command
             $stats = $this->pushAmazonAdsIdMapInChunks(
                 $monitor,
                 $campaignBudgetMap,
-                fn (array $ids, array $bids) => $controller->updateAutoCampaignTargetsBid($ids, $bids)
+                fn (array $ids, array $bids) => app(\App\Services\AmazonAdsLiveBidBgtSyncService::class)
+                    ->syncBidChunk('sp', $ids, $bids, 'cron-pt-over')
             );
 
             foreach ($stats['updated_map'] as $cid => $bid) {

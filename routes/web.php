@@ -3608,6 +3608,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/push-sb-sbids', [AmazonAdsController::class, 'pushSbSbids'])->name('amazon.ads.push-sb-sbids');
     Route::post('/amazon-ads/push-sp-sbgts', [AmazonAdsController::class, 'pushSpSbgts'])->name('amazon.ads.push-sp-sbgts');
     Route::post('/amazon-ads/push-sb-sbgts', [AmazonAdsController::class, 'pushSbSbgts'])->name('amazon.ads.push-sb-sbgts');
+    Route::post('/amazon-ads/sync-live-bid-bgt', [AmazonAdsController::class, 'syncLiveBidBgt'])->name('amazon.ads.sync-live-bid-bgt');
     Route::get('/amazon-ads/bgt-rule', [AmazonAdsController::class, 'getBgtRule'])->name('amazon.ads.bgt-rule');
     Route::post('/amazon-ads/bgt-rule', [AmazonAdsController::class, 'saveBgtRule'])->name('amazon.ads.bgt-rule.save');
     Route::get('/amazon-ads/bgt-views-rule', [AmazonAdsController::class, 'getBgtViewsRule'])->name('amazon.ads.bgt-views-rule');

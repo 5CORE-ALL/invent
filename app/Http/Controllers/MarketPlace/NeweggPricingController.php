@@ -16,6 +16,7 @@ use App\Models\ShopifySku;
 use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
 use App\Services\NeweggApiService;
+use App\Support\MacysAmazonPriceCap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -201,7 +202,7 @@ class NeweggPricingController extends Controller
         //    Purchasing-Power / Macys / etc. pages use for the "A Price" column).
         $amazonBySku = AmazonDatasheet::whereIn('sku', $skus)
             ->get(['sku', 'price'])
-            ->keyBy(fn ($r) => strtoupper((string) $r->sku));
+            ->keyBy(fn ($r) => $this->exactSkuKey((string) $r->sku));
 
         $promoService = app(ChannelPromoPricingService::class);
         $promoMap = $promoService->mapForSkus('newegg', $skus);
@@ -308,7 +309,9 @@ class NeweggPricingController extends Controller
                 ?: ($pm->getAttribute('image_path') ?? null)
                 ?: ($shopify->image_src ?? null);
 
-            $amazon = $amazonBySku[strtoupper((string) $sku)] ?? null;
+            $amazon = $amazonBySku[$this->exactSkuKey((string) $sku)]
+                ?? $amazonBySku[strtoupper((string) $sku)]
+                ?? null;
             $aPrice = $amazon && (float) ($amazon->price ?? 0) > 0
                 ? round((float) $amazon->price, 2)
                 : null;
@@ -474,7 +477,7 @@ class NeweggPricingController extends Controller
                     $values['SPRICE'] = 0;
                 }
             } else {
-                $sprice = (float) $sprice;
+                $sprice = $this->applyAmazonFloor((string) $sku, (float) $sprice);
                 $profit = ($sprice * $factor) - $lp - $ship;
                 $values['SPRICE'] = round($sprice, 2);
                 $values['SPFT']   = $sprice > 0 ? round(($profit / $sprice) * 100, 1) : 0;
@@ -581,7 +584,7 @@ class NeweggPricingController extends Controller
                             unset($values['SPRICE']);
                         }
                     } else {
-                        $spriceF = round((float) $sprice, 2);
+                        $spriceF = $this->applyAmazonFloor((string) $sku, (float) $sprice);
                         $profit  = ($spriceF * $factor) - $lp - $ship;
                         $values['SPRICE'] = $spriceF;
                         $values['SPFT']   = $spriceF > 0 ? round(($profit / $spriceF) * 100, 1) : 0;
@@ -783,6 +786,7 @@ class NeweggPricingController extends Controller
                     $errors[] = ['sku' => $sku, 'success' => false, 'error' => 'Price must be > 0'];
                     continue;
                 }
+                $price = $this->applyAmazonFloor($sku, $price);
                 $exact = $this->exactSkuKey($sku);
                 $norm = $this->normalizeSkuKey($sku);
                 $spn = $spnByExact[$exact] ?? $spnByNorm[$norm] ?? null;
@@ -961,6 +965,19 @@ class NeweggPricingController extends Controller
             Log::error('Error saving Newegg B/S links: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => 'Failed to save'], 500);
         }
+    }
+
+    /**
+     * Dil / push must not go below Amazon datasheet A Price (same floor as Best Buy / Macys).
+     */
+    private function applyAmazonFloor(string $sku, float $sprice): float
+    {
+        $sprice = round($sprice, 2);
+        if (! ($sprice > 0)) {
+            return $sprice;
+        }
+
+        return MacysAmazonPriceCap::capForSku($sku, $sprice);
     }
 
     /**

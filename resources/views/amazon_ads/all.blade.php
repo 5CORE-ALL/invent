@@ -115,6 +115,37 @@
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="ruleStatus"] .tabulator-col-title { white-space: nowrap !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="activeAgain"] .tabulator-col-title { white-space: nowrap !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-cell .amz-raw-status-cell { white-space: nowrap; }
+        #amz-ads-raw-wrap .amz-sync-cell {
+            display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap;
+        }
+        #amz-ads-raw-wrap .amz-sync-dot {
+            width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+        }
+        #amz-ads-raw-wrap .amz-sync-dot.is-green { background: #16a34a; }
+        #amz-ads-raw-wrap .amz-sync-dot.is-yellow { background: #f59e0b; }
+        #amz-ads-raw-wrap .amz-sync-dot.is-red { background: #dc2626; }
+        #amz-ads-raw-wrap .amz-sync-head {
+            display: flex; flex-direction: column; align-items: center; gap: 3px; line-height: 1.15;
+        }
+        #amz-ads-raw-wrap .amz-sync-head-title { font-weight: 700; }
+        #amz-ads-raw-wrap .amz-sync-head-badges { display: inline-flex; align-items: center; gap: 3px; flex-wrap: nowrap; }
+        #amz-ads-raw-wrap .amz-sync-badge {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 1px 5px; border-radius: 999px; font-size: 10px; font-weight: 700;
+            line-height: 1.2; border: 1px solid transparent; cursor: pointer;
+            user-select: none; background: #fff;
+        }
+        #amz-ads-raw-wrap .amz-sync-badge .amz-sync-dot { width: 6px; height: 6px; }
+        #amz-ads-raw-wrap .amz-sync-badge.is-green { color: #166534; border-color: #86efac; background: #f0fdf4; }
+        #amz-ads-raw-wrap .amz-sync-badge.is-yellow { color: #92400e; border-color: #fcd34d; background: #fffbeb; }
+        #amz-ads-raw-wrap .amz-sync-badge.is-red { color: #991b1b; border-color: #fca5a5; background: #fef2f2; }
+        #amz-ads-raw-wrap .amz-sync-badge.is-active { box-shadow: 0 0 0 2px currentColor; }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="bgt"] .tabulator-col-title,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="last_sbid"] .tabulator-col-title,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="sbid"] .tabulator-col-title {
+            overflow: visible;
+        }
         #amz-ads-raw-wrap .amz-camp-skus-btn {
             display: inline-flex; align-items: center; justify-content: center;
             width: 16px; height: 16px; padding: 0; margin-left: 4px; flex-shrink: 0;
@@ -1009,6 +1040,7 @@
             var pushSbSbidsUrl = @json(route('amazon.ads.push-sb-sbids'));
             var pushSpSbgtsUrl = @json(route('amazon.ads.push-sp-sbgts'));
             var pushSbSbgtsUrl = @json(route('amazon.ads.push-sb-sbgts'));
+            var syncLiveBidBgtUrl = @json(route('amazon.ads.sync-live-bid-bgt'));
             var bgtRuleGetUrl = @json(route('amazon.ads.bgt-rule'));
             var bgtRuleSaveUrl = @json(route('amazon.ads.bgt-rule.save'));
             var bgtViewsRuleGetUrl = @json(route('amazon.ads.bgt-views-rule'));
@@ -1680,9 +1712,35 @@
                 if (c === 'acosClicks14d') { col.title = 'ACOS14'; col.formatter = fmtAcos; return; }
                 if (c === 'purchases30d') { col.title = 'Ads Sold'; col.formatter = fmtDashInt; return; }
                 if (c === 'impressions') { col.title = 'Impr'; col.formatter = fmtDashInt; return; }
-                if (c === 'last_sbid') { col.title = 'Lbid'; col.formatter = fmtSbid; return; }
-                if (c === 'sbid') { col.title = 'SBID'; col.formatter = fmtSbid; return; }
-                if (c === 'bgt') { col.title = 'BGT'; col.formatter = fmtDashNumberRaw; return; }
+                if (c === 'last_sbid') {
+                    col.title = 'Lbid';
+                    col.formatter = function (cell) { return amzFmtMoneyWithSync(cell, 'bid'); };
+                    col.titleFormatter = function () { return amzSyncHeaderHtml('Lbid', 'bid'); };
+                    col.headerTooltip = 'Live Amazon BID sync vs SBID. Green = verified live match. Click a count to filter.';
+                    col.minWidth = 96;
+                    col.width = 108;
+                    return;
+                }
+                if (c === 'sbid') {
+                    col.title = 'SBID';
+                    col.formatter = fmtSbid;
+                    if (!amzSourceHasColumn('last_sbid')) {
+                        col.formatter = function (cell) { return amzFmtMoneyWithSync(cell, 'bid'); };
+                        col.titleFormatter = function () { return amzSyncHeaderHtml('SBID', 'bid'); };
+                        col.headerTooltip = 'Amazon BID sync vs SBID. Green = verified live match. Click a count to filter.';
+                        col.minWidth = 96;
+                    }
+                    return;
+                }
+                if (c === 'bgt') {
+                    col.title = 'BGT';
+                    col.formatter = function (cell) { return amzFmtMoneyWithSync(cell, 'bgt'); };
+                    col.titleFormatter = function () { return amzSyncHeaderHtml('BGT', 'bgt'); };
+                    col.headerTooltip = 'Live Amazon BGT sync vs SBGT. Green = verified live match. Click a count to filter.';
+                    col.minWidth = 96;
+                    col.width = 108;
+                    return;
+                }
                 if (c === 'bgtAcos') {
                     col.title = 'BGT ACOS';
                     col.headerTooltip = 'Suggested budget from BGT Vs ACOS Rule — same ACOS% as the ACOS column (spend + Ads Sold 0 is 100%)';
@@ -1821,6 +1879,149 @@
                 var v = String(el.value || '').replace(/\s+/g, ' ').trim();
                 return v.length > 100 ? v.slice(0, 100) : v;
             }
+            var amzSyncFilters = { bgt: '', bid: '' };
+            var amzSyncHeaderCounts = {
+                bgt: { green: 0, yellow: 0, red: 0 },
+                bid: { green: 0, yellow: 0, red: 0 }
+            };
+            function amzSourceHasColumn(field) {
+                var cols = (rawSources[activeRawSourceKey] && rawSources[activeRawSourceKey].columns) ? rawSources[activeRawSourceKey].columns : [];
+                return cols.indexOf(field) !== -1;
+            }
+            function amzSyncDotHtml(color, tip) {
+                var c = color === 'green' || color === 'red' ? color : 'yellow';
+                return '<span class="amz-sync-dot is-' + c + '" title="' + amzEsc(tip || '') + '"></span>';
+            }
+            function amzFmtMoneyWithSync(cell, field) {
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var color = (row && row[field + '_sync_color']) ? String(row[field + '_sync_color']) : 'yellow';
+                var tip = (row && row[field + '_sync_tip'])
+                    ? String(row[field + '_sync_tip'])
+                    : (field === 'bid'
+                        ? 'Pending — BID has not been pulled from Amazon and verified yet'
+                        : 'Pending — BGT has not been pulled from Amazon and verified yet');
+                var valueHtml = field === 'bid' ? fmtSbid(cell) : fmtDashNumberRaw(cell);
+                return '<span class="amz-sync-cell">' + amzSyncDotHtml(color, tip) + valueHtml + '</span>';
+            }
+            function amzSyncBadgeHtml(color, count, field, active) {
+                var label = color === 'green' ? 'Updated' : (color === 'red' ? 'Not updated' : 'Pending');
+                var tip = label + ' ' + (field === 'bid' ? 'BID' : 'BGT') + ' rows — click to filter, click again to clear';
+                return '<button type="button" class="amz-sync-badge is-' + color + (active === color ? ' is-active' : '') + '"'
+                    + ' data-sync-field="' + field + '" data-sync-color="' + color + '"'
+                    + ' title="' + amzEsc(tip) + '" aria-pressed="' + (active === color ? 'true' : 'false') + '">'
+                    + '<span class="amz-sync-dot is-' + color + '"></span>' + (Number(count) || 0)
+                    + '</button>';
+            }
+            function amzSyncHeaderHtml(label, field) {
+                var counts = amzSyncHeaderCounts[field] || { green: 0, yellow: 0, red: 0 };
+                var active = amzSyncFilters[field] || '';
+                return '<div class="amz-sync-head">'
+                    + '<div class="amz-sync-head-title">' + amzEsc(label) + '</div>'
+                    + '<div class="amz-sync-head-badges" data-sync-field="' + field + '">'
+                    + amzSyncBadgeHtml('green', counts.green, field, active)
+                    + amzSyncBadgeHtml('yellow', counts.yellow, field, active)
+                    + amzSyncBadgeHtml('red', counts.red, field, active)
+                    + '</div></div>';
+            }
+            function amzNormalizeSyncCounts(raw) {
+                return {
+                    green: Number(raw && raw.green) || 0,
+                    yellow: Number(raw && raw.yellow) || 0,
+                    red: Number(raw && raw.red) || 0
+                };
+            }
+            function amzPaintSyncHeaders() {
+                document.querySelectorAll('#amz-ads-raw-wrap .amz-sync-head-badges').forEach(function (el) {
+                    var field = el.getAttribute('data-sync-field') === 'bid' ? 'bid' : 'bgt';
+                    var counts = amzSyncHeaderCounts[field] || { green: 0, yellow: 0, red: 0 };
+                    var active = amzSyncFilters[field] || '';
+                    el.innerHTML = amzSyncBadgeHtml('green', counts.green, field, active)
+                        + amzSyncBadgeHtml('yellow', counts.yellow, field, active)
+                        + amzSyncBadgeHtml('red', counts.red, field, active);
+                });
+            }
+            function amzApplyServerSyncCounts(json) {
+                amzSyncHeaderCounts.bgt = amzNormalizeSyncCounts(json && json.bgt_sync_counts);
+                amzSyncHeaderCounts.bid = amzNormalizeSyncCounts(json && json.bid_sync_counts);
+                amzPaintSyncHeaders();
+            }
+            function amzToggleSyncFilter(field, color) {
+                field = field === 'bid' ? 'bid' : 'bgt';
+                color = color === 'green' || color === 'red' || color === 'yellow' ? color : '';
+                amzSyncFilters[field] = (amzSyncFilters[field] === color) ? '' : color;
+                amzPaintSyncHeaders();
+                amzReloadGridForFilters();
+            }
+            function amzClearSyncFilters() {
+                amzSyncFilters.bgt = '';
+                amzSyncFilters.bid = '';
+                amzPaintSyncHeaders();
+            }
+            function amzColorFromStatus(status) {
+                var s = String(status || '').toLowerCase();
+                if (s === 'synced') return 'green';
+                if (s === 'failed') return 'red';
+                return 'yellow';
+            }
+            function amzMarkChunkPending(chunkRows) {
+                if (!table || !chunkRows || !chunkRows.length) return;
+                var want = {};
+                chunkRows.forEach(function (r) {
+                    if (r && r.campaign_id != null) want[String(r.campaign_id)] = r;
+                });
+                (table.getRows() || []).forEach(function (row) {
+                    var d = row.getData ? row.getData() : null;
+                    if (!d) return;
+                    var src = want[String(d.campaign_id || '')];
+                    if (!src) return;
+                    var patch = {};
+                    if (src.sbgt != null) {
+                        patch.bgt_sync_color = 'yellow';
+                        patch.bgt_sync_status = 'pending';
+                        patch.bgt_sync_tip = 'Pending — Pulling live Amazon BGT for verification against SBGT $'
+                            + Number(src.sbgt).toFixed(2);
+                    }
+                    if (src.sbid != null) {
+                        patch.bid_sync_color = 'yellow';
+                        patch.bid_sync_status = 'pending';
+                        patch.bid_sync_tip = 'Pending — Pulling live Amazon BID for verification against SBID $'
+                            + Number(src.sbid).toFixed(2);
+                    }
+                    if (Object.keys(patch).length) row.update(patch);
+                });
+            }
+            function amzPatchRowsFromLiveSync(results) {
+                if (!table || !results || !results.length) return;
+                var byCid = {};
+                results.forEach(function (r) {
+                    if (r && r.campaign_id != null) byCid[String(r.campaign_id)] = r;
+                });
+                (table.getRows() || []).forEach(function (row) {
+                    var d = row.getData ? row.getData() : null;
+                    if (!d) return;
+                    var r = byCid[String(d.campaign_id || '')];
+                    if (!r || !r.fields) return;
+                    var patch = {};
+                    if (r.fields.bgt) {
+                        patch.bgt_sync_color = r.fields.bgt.sync_color || amzColorFromStatus(r.fields.bgt.status);
+                        patch.bgt_sync_tip = r.fields.bgt.sync_tip || '';
+                        patch.bgt_sync_status = r.fields.bgt.status || '';
+                        if (r.fields.bgt.status === 'synced' && r.fields.bgt.verified_live != null) {
+                            patch.bgt = r.fields.bgt.verified_live;
+                        }
+                        if (r.fields.bgt.reason === 'paused_zero_sbgt') patch.campaignStatus = 'PAUSED';
+                    }
+                    if (r.fields.bid) {
+                        patch.bid_sync_color = r.fields.bid.sync_color || amzColorFromStatus(r.fields.bid.status);
+                        patch.bid_sync_tip = r.fields.bid.sync_tip || '';
+                        patch.bid_sync_status = r.fields.bid.status || '';
+                        if (r.fields.bid.status === 'synced' && r.fields.bid.verified_live != null) {
+                            patch.last_sbid = r.fields.bid.verified_live;
+                        }
+                    }
+                    if (Object.keys(patch).length) row.update(patch);
+                });
+            }
             function amzFilterPayload() {
                 var g = function (id) { var e = document.getElementById(id); return e ? (e.value || '') : ''; };
                 return {
@@ -1832,7 +2033,9 @@
                     filter_u1: g('amazonAdsFilterU1'),
                     filter_campaign_status: g('amazonAdsFilterCampaignStatus'),
                     filter_acos: g('amazonAdsFilterAcos'),
-                    filter_ads_cvr: g('amazonAdsFilterAdsCvr')
+                    filter_ads_cvr: g('amazonAdsFilterAdsCvr'),
+                    filter_bgt_sync: amzSyncFilters.bgt || '',
+                    filter_bid_sync: amzSyncFilters.bid || ''
                 };
             }
 
@@ -1934,6 +2137,7 @@
                     if (!response || typeof response !== 'object') {
                         amzUpdateTotalBadge(0);
                         amzClearBadges();
+                        amzApplyServerSyncCounts({});
                         return { last_page: 1, data: [] };
                     }
                     var size = parseInt(params.size, 10) || 100;
@@ -1941,6 +2145,7 @@
                     if (!isFinite(filtered) || filtered < 0) filtered = 0;
                     var lastPage = Math.max(1, Math.ceil(filtered / size));
                     amzUpdateBadges(response);
+                    amzApplyServerSyncCounts(response);
                     amzUpdateTotalBadge(filtered);
                     amzRefreshUiSoon();
                     amzRefreshU7PieDebounced();
@@ -2284,16 +2489,18 @@
             function amzUpdatePushButtons() {
                 var sbidBtn = document.getElementById('amazonAdsPushSbidBtn');
                 var sbgtBtn = document.getElementById('amazonAdsPushSbgtBtn');
-                var isSp = activeRawSourceKey === 'sp_reports';
-                var isSb = activeRawSourceKey === 'sb_reports';
-                var ok = isSp || isSb;
+                var ok = activeRawSourceKey === 'sp_reports' || activeRawSourceKey === 'sb_reports' || activeRawSourceKey === 'all_reports';
                 if (sbidBtn) {
                     sbidBtn.disabled = !ok;
-                    sbidBtn.title = ok ? ('Pushes the SBID shown on this page for each row (' + (isSp ? 'SP keywords/targets' : 'SB keywords') + ' API)') : 'Switch to SP or SB reports to push SBID';
+                    sbidBtn.title = ok
+                        ? 'Pulls live Amazon bid, compares to SBID, pushes only if different, then verifies.'
+                        : 'Switch to All / SP / SB reports to sync SBID';
                 }
                 if (sbgtBtn) {
                     sbgtBtn.disabled = !ok;
-                    sbgtBtn.title = ok ? ('Sets ' + (isSp ? 'SP' : 'SB') + ' daily budget on Amz to each row SBGT (Views + CVR + ACOS + PRC). Changed SBGT auto-pushes. SBGT 0 pauses the campaign.') : 'Switch to SP or SB reports to push SBGT';
+                    sbgtBtn.title = ok
+                        ? 'Pulls live Amazon BGT, compares to SBGT, pushes only if different, then verifies. SBGT 0 pauses.'
+                        : 'Switch to All / SP / SB reports to sync SBGT';
                 }
             }
             function amzUpdatePieButton() {
@@ -2347,6 +2554,7 @@
                     var s = document.getElementById('amz-filter-search'); if (s) s.value = '';
                     amzTintAcosFilterSelect();
                     amzTintAdsCvrFilterSelect();
+                    amzClearSyncFilters();
                     amzReloadGridForFilters();
                 });
             }
@@ -2374,6 +2582,13 @@
             document.getElementById('amz-raw-refresh').addEventListener('click', function () {
                 Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
             });
+            document.getElementById('amz-ads-raw-wrap').addEventListener('click', function (e) {
+                var btn = e.target && e.target.closest ? e.target.closest('.amz-sync-badge') : null;
+                if (!btn || !this.contains(btn)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                amzToggleSyncFilter(btn.getAttribute('data-sync-field'), btn.getAttribute('data-sync-color'));
+            }, true);
             document.getElementById('amazonAdsSectionExportBtn').addEventListener('click', function () {
                 var tbl = (rawSources[activeRawSourceKey] && rawSources[activeRawSourceKey].table) ? rawSources[activeRawSourceKey].table : 'export';
                 var d = new Date().toISOString().slice(0, 10);
@@ -2563,28 +2778,64 @@
             }
             var amzSbgtAutoPushBusy = false;
             var amzSbgtAutoPushedKey = {};
+            function amzRowChannel(row) {
+                if (activeRawSourceKey === 'sb_reports') return 'sb';
+                if (activeRawSourceKey === 'sp_reports') return 'sp';
+                var t = String((row && row.ad_type) || '').toUpperCase();
+                return t.indexOf('BRAND') !== -1 ? 'sb' : 'sp';
+            }
+            function amzCollectLiveSyncRows(kind) {
+                if (activeRawSourceKey !== 'sp_reports' && activeRawSourceKey !== 'sb_reports' && activeRawSourceKey !== 'all_reports') return [];
+                var sourceRows = amzCurrentPushRows();
+                var out = [];
+                var seen = {};
+                sourceRows.forEach(function (row) {
+                    if (!row) return;
+                    var cid = row.campaign_id == null ? '' : String(row.campaign_id).trim();
+                    if (!cid || seen[cid]) return;
+                    var payload = {
+                        campaign_id: cid,
+                        channel: amzRowChannel(row),
+                        campaignName: row.campaignName != null ? String(row.campaignName) : '',
+                        ad_type: row.ad_type != null ? String(row.ad_type) : ''
+                    };
+                    if (kind === 'bgt' || kind === 'both') {
+                        var sbgt = amzPickSbgtTierFromRow(row);
+                        if (sbgt !== null) payload.sbgt = sbgt;
+                    }
+                    if (kind === 'bid' || kind === 'both') {
+                        var bid = amzPickBidFromRow(row);
+                        if (bid !== null) payload.sbid = bid;
+                    }
+                    if (payload.sbgt == null && payload.sbid == null) return;
+                    seen[cid] = true;
+                    out.push(payload);
+                });
+                return out;
+            }
             function amzCollectChangedSbgtRows() {
-                if (activeRawSourceKey !== 'sp_reports' && activeRawSourceKey !== 'sb_reports') return [];
+                if (activeRawSourceKey !== 'sp_reports' && activeRawSourceKey !== 'sb_reports' && activeRawSourceKey !== 'all_reports') return [];
                 if (!table) return [];
                 var out = [];
                 (table.getData() || []).forEach(function (row) {
                     if (!row) return;
                     var cid = row.campaign_id == null ? '' : String(row.campaign_id).trim();
                     var sbgt = amzPickSbgtTierFromRow(row);
-                    if (!cid || sbgt === null) return;
+                    var bid = amzPickBidFromRow(row);
+                    if (!cid || (sbgt === null && bid === null)) return;
                     var status = String(row.campaignStatus || '').toUpperCase();
-                    if (sbgt === 0) {
-                        if (status === 'PAUSED' || status === 'ARCHIVED') return;
-                        var zeroKey = cid + ':0';
-                        if (amzSbgtAutoPushedKey[zeroKey]) return;
-                        out.push({ campaign_id: cid, sbgt: 0 });
-                        return;
-                    }
-                    var bgt = parseFloat(row.bgt);
-                    if (isFinite(bgt) && Math.round(bgt) === sbgt) return;
-                    var key = cid + ':' + sbgt;
+                    if (sbgt === 0 && (status === 'PAUSED' || status === 'ARCHIVED') && bid === null) return;
+                    var key = cid + ':' + (sbgt == null ? '' : sbgt) + ':' + (bid == null ? '' : bid);
                     if (amzSbgtAutoPushedKey[key]) return;
-                    out.push({ campaign_id: cid, sbgt: sbgt });
+                    var payload = {
+                        campaign_id: cid,
+                        channel: amzRowChannel(row),
+                        campaignName: row.campaignName != null ? String(row.campaignName) : '',
+                        ad_type: row.ad_type != null ? String(row.ad_type) : ''
+                    };
+                    if (sbgt !== null) payload.sbgt = sbgt;
+                    if (bid !== null) payload.sbid = bid;
+                    out.push(payload);
                 });
                 return out;
             }
@@ -2598,61 +2849,68 @@
                     r.update({ campaignStatus: 'PAUSED' });
                 });
             }
+            function amzPostLiveSyncChunk(chunkRows) {
+                return fetch(syncLiveBidBgtUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ rows: chunkRows })
+                }).then(function (res) {
+                    return res.json().then(function (body) { return { ok: res.ok, body: body }; }).catch(function () {
+                        return { ok: false, body: { message: 'Chunk returned non-JSON HTTP ' + res.status } };
+                    });
+                });
+            }
             function amzAutoPushChangedSbgt() {
                 if (amzSbgtAutoPushBusy) return;
-                if (activeRawSourceKey !== 'sp_reports' && activeRawSourceKey !== 'sb_reports') return;
+                if (activeRawSourceKey !== 'sp_reports' && activeRawSourceKey !== 'sb_reports' && activeRawSourceKey !== 'all_reports') return;
                 var rows = amzCollectChangedSbgtRows();
                 if (!rows.length) return;
-                rows.forEach(function (r) { amzSbgtAutoPushedKey[r.campaign_id + ':' + r.sbgt] = true; });
+                rows.forEach(function (r) {
+                    amzSbgtAutoPushedKey[r.campaign_id + ':' + (r.sbgt == null ? '' : r.sbgt) + ':' + (r.sbid == null ? '' : r.sbid)] = true;
+                });
                 amzSbgtAutoPushBusy = true;
-                var url = activeRawSourceKey === 'sb_reports' ? pushSbSbgtsUrl : pushSpSbgtsUrl;
                 var chunkSize = (typeof AMZ_PUSH_CHUNK_SIZE === 'number' && AMZ_PUSH_CHUNK_SIZE > 0) ? AMZ_PUSH_CHUNK_SIZE : 5;
                 var chunks = [];
                 for (var i = 0; i < rows.length; i += chunkSize) chunks.push(rows.slice(i, i + chunkSize));
                 var messages = [];
-                function postChunk(chunkRows) {
-                    return fetch(url, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            Accept: 'application/json',
-                            'X-CSRF-TOKEN': csrfToken,
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        credentials: 'same-origin',
-                        body: JSON.stringify({ rows: chunkRows })
-                    }).then(function (res) {
-                        return res.json().then(function (body) { return { ok: res.ok, body: body }; }).catch(function () {
-                            return { ok: true, body: { message: 'Chunk accepted (non-JSON).' } };
-                        });
-                    });
-                }
+                var synced = 0;
+                var failed = 0;
                 function runNext(index) {
                     if (index >= chunks.length) {
                         amzSbgtAutoPushBusy = false;
-                        var n = rows.length;
-                        var pauseN = 0;
-                        rows.forEach(function (r) { if (r && r.sbgt === 0) pauseN++; });
-                        var title = pauseN === n
-                            ? ('SBGT 0 pause — ' + pauseN + ' campaign(s)')
-                            : (pauseN > 0
-                                ? ('SBGT auto-push — ' + n + ' campaign(s), paused ' + pauseN)
-                                : ('SBGT auto-push — ' + n + ' campaign(s)'));
                         amzShowPushResult(
-                            title,
-                            'Pushed new SBGT only (Views + CVR + ACOS + PRC) where it differed from BGT. SBGT 0 pauses (cannot push $0).\n' + messages.join('\n'),
-                            'success'
+                            failed > 0
+                                ? ('Live sync — ' + synced + ' verified, ' + failed + ' not synced')
+                                : ('Live sync — ' + synced + ' campaign(s) verified'),
+                            'Pulled live Amazon BGT/BID, pushed only mismatches, marked synced only after verify.\n' + messages.join('\n'),
+                            failed > 0 ? 'error' : 'success'
                         );
+                        if (table) Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
                         return;
                     }
-                    postChunk(chunks[index])
+                    amzMarkChunkPending(chunks[index]);
+                    amzPostLiveSyncChunk(chunks[index])
                         .then(function (out) {
                             var b = (out && out.body) || {};
+                            synced += Number(b.synced) || 0;
+                            failed += Number(b.failed) || 0;
                             messages.push('[chunk ' + (index + 1) + '/' + chunks.length + '] ' + (b.message || 'finished'));
-                            if (b.paused_zero_sbgt_ids) amzMarkPausedZeroSbgtRows(b.paused_zero_sbgt_ids);
+                            amzPatchRowsFromLiveSync(b.results || []);
+                            (b.results || []).forEach(function (r) {
+                                if (r && r.status === 'synced' && r.fields && r.fields.bgt && r.fields.bgt.reason === 'paused_zero_sbgt') {
+                                    amzMarkPausedZeroSbgtRows([r.campaign_id]);
+                                }
+                            });
                             runNext(index + 1);
                         })
                         .catch(function (err) {
+                            failed += chunks[index].length;
                             messages.push('[chunk ' + (index + 1) + '/' + chunks.length + '] ' + String(err && err.message ? err.message : err));
                             runNext(index + 1);
                         });
@@ -2727,12 +2985,14 @@
                 function finish() {
                     var title = opts.label + ' — finished';
                     title += ' (' + total + ' row(s) in ' + chunkCount + ' chunk(s))';
+                    var failedN = 0;
+                    bodies.forEach(function (b) { failedN += Number(b && b.failed) || 0; });
                     var text = (messages.length ? messages.join('\n') + '\n\n' : '')
                         + bodies.map(function (b, idx) {
                             return '--- chunk ' + (idx + 1) + '/' + chunkCount + ' ---\n'
                                 + JSON.stringify(b, null, 2);
                         }).join('\n\n');
-                    amzShowPushResult(title, text || '(no response body)', 'success');
+                    amzShowPushResult(title, text || '(no response body)', failedN > 0 ? 'error' : 'success');
                     if (table) Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
                     btn.innerHTML = origHtml;
                     btn.disabled = false;
@@ -2746,6 +3006,7 @@
 
                     var chunk = chunks[index];
                     doneCount += chunk.length;
+                    amzMarkChunkPending(chunk);
                     btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Pushing '
                         + doneCount + '/' + total + '…';
                     amzShowPushResult(
@@ -2766,6 +3027,7 @@
                             }
                             bodies.push(b);
                             if (b.paused_zero_sbgt_ids) amzMarkPausedZeroSbgtRows(b.paused_zero_sbgt_ids);
+                            amzPatchRowsFromLiveSync(b.results || []);
                             runNext(index + 1);
                         })
                         .catch(function (err) {
@@ -2784,40 +3046,37 @@
             var pushSbidBtn = document.getElementById('amazonAdsPushSbidBtn');
             if (pushSbidBtn) {
                 pushSbidBtn.addEventListener('click', function () {
-                    var isSp = activeRawSourceKey === 'sp_reports';
-                    var rows = amzCollectSbidRows();
+                    var rows = amzCollectLiveSyncRows('bid');
                     var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
                     var scope = nSel > 0 ? ('the ' + rows.length + ' checked row(s)') : ('all ' + rows.length + ' eligible row(s) on this page');
                     var chunks = Math.ceil(rows.length / AMZ_PUSH_CHUNK_SIZE) || 1;
                     amzRunPush({
-                        url: isSp ? pushSpSbidsUrl : pushSbSbidsUrl,
+                        url: syncLiveBidBgtUrl,
                         btn: pushSbidBtn,
                         rows: rows,
                         chunkSize: AMZ_PUSH_CHUNK_SIZE,
-                        label: 'SBID push',
-                        confirmMsg: 'Push SBID to ' + scope + '? Sends in chunks of ' + AMZ_PUSH_CHUNK_SIZE + ' (' + chunks + ' request(s)). Each row uses the SBID shown in the grid (Lbid fallback).',
-                        loadingTitle: 'Pushing SBID…',
-                        loadingDetail: 'Updating SBIDs for ' + rows.length + ' row(s) in chunks of ' + AMZ_PUSH_CHUNK_SIZE + '.'
+                        label: 'SBID live sync',
+                        confirmMsg: 'Sync SBID for ' + scope + '? Pulls live Amazon bid first, pushes only mismatches, and marks synced only after verify.',
+                        loadingTitle: 'Verifying SBID…',
+                        loadingDetail: 'Pull → compare → push → verify for ' + rows.length + ' row(s) in chunks of ' + AMZ_PUSH_CHUNK_SIZE + '.'
                     });
                 });
             }
             var pushSbgtBtn = document.getElementById('amazonAdsPushSbgtBtn');
             if (pushSbgtBtn) {
                 pushSbgtBtn.addEventListener('click', function () {
-                    var isSp = activeRawSourceKey === 'sp_reports';
-                    var rows = amzCollectSbgtRows();
+                    var rows = amzCollectLiveSyncRows('bgt');
                     var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
                     var scope = nSel > 0 ? ('the ' + rows.length + ' checked row(s)') : ('all ' + rows.length + ' eligible row(s) on this page');
-                    var chunks = Math.ceil(rows.length / AMZ_PUSH_CHUNK_SIZE) || 1;
                     amzRunPush({
-                        url: isSp ? pushSpSbgtsUrl : pushSbSbgtsUrl,
+                        url: syncLiveBidBgtUrl,
                         btn: pushSbgtBtn,
                         rows: rows,
                         chunkSize: AMZ_PUSH_CHUNK_SIZE,
-                        label: 'SBGT push',
-                        confirmMsg: 'Push SBGT to ' + scope + '? Sends in chunks of ' + AMZ_PUSH_CHUNK_SIZE + ' (' + chunks + ' request(s)). Each row sets the daily budget to SBGT (Views + CVR + ACOS + PRC). Rows with SBGT 0 are paused instead ($0 cannot be pushed).',
-                        loadingTitle: 'Pushing SBGT…',
-                        loadingDetail: 'Updating budgets for ' + rows.length + ' row(s) in chunks of ' + AMZ_PUSH_CHUNK_SIZE + '.'
+                        label: 'SBGT live sync',
+                        confirmMsg: 'Sync SBGT for ' + scope + '? Pulls live Amazon BGT first, pushes only mismatches, and marks synced only after verify. SBGT 0 pauses.',
+                        loadingTitle: 'Verifying SBGT…',
+                        loadingDetail: 'Pull → compare → push → verify for ' + rows.length + ' row(s) in chunks of ' + AMZ_PUSH_CHUNK_SIZE + '.'
                     });
                 });
             }

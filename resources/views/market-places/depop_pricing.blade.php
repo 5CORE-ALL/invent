@@ -278,6 +278,8 @@
     let dpUniqueParents = [];
     let isDpPlayActive = false;
     let currentDpParentIndex = -1;
+    let dpApplyingFilters = false;
+    let dpFilterSeq = 0;
 
     function showToast(message, type) {
         type = type || 'info';
@@ -328,7 +330,89 @@
         return parseInt(d && (d.al30 != null ? d.al30 : d.l30), 10) || 0;
     }
     function dpInv(d) {
-        return parseInt(d && (d.inv != null ? d.inv : d.INV), 10) || 0;
+        if (!d) return 0;
+        const raw = (d.inv != null && d.inv !== '') ? d.inv : d.INV;
+        const n = parseInt(raw, 10);
+        // Shopify untracked / negative stock displays as 0 and is not "more than 0".
+        if (!Number.isFinite(n) || n < 0) return 0;
+        return n;
+    }
+    function dpRowMatchesFilters(d) {
+        if (!d) return false;
+        if (typeof d.getData === 'function') {
+            try { d = d.getData() || {}; } catch (e) { /* use original */ }
+        }
+        if (!d) return false;
+
+        if (isDpPlayActive && dpUniqueParents.length > 0 && currentDpParentIndex >= 0) {
+            const currentKey = dpUniqueParents[currentDpParentIndex];
+            if (currentKey) {
+                const p = normalizeDpParentKey(d.parent);
+                if (p !== currentKey && p !== ('PARENT ' + currentKey)) return false;
+            }
+        }
+
+        const invF = $('#dp-inv-filter').val() || 'more';
+        const inv = dpInv(d);
+        if (invF === 'zero' && inv !== 0) return false;
+        if (invF === 'more' && inv <= 0) return false;
+
+        const soldF = $('#dp-sold-filter').val();
+        if (soldF === 'zero' && !(inv > 0 && dpSoldQty(d) === 0)) return false;
+        if (soldF === 'more' && !(inv > 0 && dpSoldQty(d) > 0)) return false;
+
+        const gpftF = $('#dp-gpft-filter').val();
+        if (gpftF && gpftF !== 'all') {
+            const v = parseFloat(d.gpft) || 0;
+            if (gpftF === 'negative' && !(v < 0)) return false;
+            else if (gpftF === '0-10' && !(v >= 0 && v < 10)) return false;
+            else if (gpftF === '10-20' && !(v >= 10 && v < 20)) return false;
+            else if (gpftF === '20-30' && !(v >= 20 && v < 30)) return false;
+            else if (gpftF === '30-40' && !(v >= 30 && v < 40)) return false;
+            else if (gpftF === '40-50' && !(v >= 40 && v < 50)) return false;
+            else if (gpftF === '50plus' && !(v >= 50)) return false;
+        }
+
+        const cvrF = $('#dp-cvr-filter').val();
+        if (cvrF && cvrF !== 'all') {
+            const v = parseFloat(d.cvr) || 0;
+            if (cvrF === '0-0' && v !== 0) return false;
+            else if (cvrF === '0-3' && !(v > 0 && v < 3)) return false;
+            else if (cvrF === '3-7' && !(v >= 3 && v < 7)) return false;
+            else if (cvrF === '7-13' && !(v >= 7 && v < 13)) return false;
+            else if (cvrF === '13plus' && !(v >= 13)) return false;
+        }
+
+        const roiF = $('#dp-roi-filter').val();
+        if (roiF && roiF !== 'all') {
+            const v = parseFloat(d.groi) || 0;
+            if (roiF === 'lt40' && !(v < 40)) return false;
+            else if (roiF === '40-75' && !(v >= 40 && v < 75)) return false;
+            else if (roiF === '75-125' && !(v >= 75 && v < 125)) return false;
+            else if (roiF === 'gt125' && !(v >= 125)) return false;
+        }
+
+        if (dpDilFilter !== 'all') {
+            const ov = parseFloat(d.ov_l30) || 0;
+            const dil = inv > 0 ? (ov / inv) * 100 : 0;
+            if (dpDilFilter === 'red' && !(dil < 25)) return false;
+            else if (dpDilFilter === 'green' && !(dil >= 25 && dil < 50)) return false;
+            else if (dpDilFilter === 'pink' && !(dil >= 50)) return false;
+        }
+
+        const q = ($('#sku-search').val() || '').trim().toLowerCase();
+        if (q) {
+            const hay = (String(d.parent || '') + ' ' + String(d.sku || '')).toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        if (priceGtLmpFilterActive && window.PriceGtLmpBadge && !PriceGtLmpBadge.hasRedTriangle(d, 'price')) {
+            return false;
+        }
+        if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge && !PriceLt80LmpBadge.hasPurpleTriangle(d, 'price')) {
+            return false;
+        }
+        if (blueTriangleFilterActive && !dpHasBlueTriangle(d)) return false;
+        return true;
     }
     function dpRowSprice(data) {
         if (!data) return 0;
@@ -448,10 +532,12 @@
         return String(val).trim().replace(/\s+/g, ' ').replace(/^PARENT\s+/i, '');
     }
     function buildDpUniqueParents() {
-        if (!table) return [];
         const seen = {};
         const list = [];
-        (table.getData('all') || []).forEach(function(r) {
+        const rows = (Array.isArray(allTableData) && allTableData.length)
+            ? allTableData
+            : ((table && typeof table.getData === 'function' ? table.getData('all') : []) || []);
+        rows.forEach(function(r) {
             const p = normalizeDpParentKey(r.parent);
             if (p && !seen[p]) { seen[p] = true; list.push(p); }
         });
@@ -463,110 +549,45 @@
         $('#play-forward').prop('disabled', !isDpPlayActive || currentDpParentIndex >= dpUniqueParents.length - 1);
     }
     function applyDepopFilters() {
-        if (!table) return;
+        if (!table || dpApplyingFilters) return;
         if (window.ParentExpand && ParentExpand.isExpanded()) {
             ParentExpand.beforeFilters(function() { applyDepopFilters(); });
             return;
         }
-        table.clearFilter(true);
 
-        if (isDpPlayActive && dpUniqueParents.length > 0 && currentDpParentIndex >= 0) {
-            const currentKey = dpUniqueParents[currentDpParentIndex];
-            if (currentKey) {
-                table.addFilter(function(d) {
-                    const p = normalizeDpParentKey(d.parent);
-                    return p === currentKey || p === ('PARENT ' + currentKey);
-                });
-            }
-        }
+        const source = (Array.isArray(allTableData) && allTableData.length)
+            ? allTableData
+            : ((typeof table.getData === 'function' ? table.getData('all') : []) || []);
+        if (!source.length) return;
 
-        const invF = $('#dp-inv-filter').val();
-        if (invF === 'zero') table.addFilter(function(d) { return dpInv(d) === 0; });
-        if (invF === 'more') table.addFilter(function(d) { return dpInv(d) > 0; });
-
+        const filtered = source.filter(dpRowMatchesFilters);
         const soldF = $('#dp-sold-filter').val();
-        if (soldF === 'zero') table.addFilter(function(d) { return dpInv(d) > 0 && dpSoldQty(d) === 0; });
-        if (soldF === 'more') table.addFilter(function(d) { return dpInv(d) > 0 && dpSoldQty(d) > 0; });
-
-        const gpftF = $('#dp-gpft-filter').val();
-        if (gpftF !== 'all') {
-            table.addFilter(function(d) {
-                const v = parseFloat(d.gpft) || 0;
-                if (gpftF === 'negative') return v < 0;
-                if (gpftF === '0-10') return v >= 0 && v < 10;
-                if (gpftF === '10-20') return v >= 10 && v < 20;
-                if (gpftF === '20-30') return v >= 20 && v < 30;
-                if (gpftF === '30-40') return v >= 30 && v < 40;
-                if (gpftF === '40-50') return v >= 40 && v < 50;
-                if (gpftF === '50plus') return v >= 50;
-                return true;
-            });
-        }
-
-        const cvrF = $('#dp-cvr-filter').val();
-        if (cvrF !== 'all') {
-            table.addFilter(function(d) {
-                const v = parseFloat(d.cvr) || 0;
-                if (cvrF === '0-0') return v === 0;
-                if (cvrF === '0-3') return v > 0 && v < 3;
-                if (cvrF === '3-7') return v >= 3 && v < 7;
-                if (cvrF === '7-13') return v >= 7 && v < 13;
-                if (cvrF === '13plus') return v >= 13;
-                return true;
-            });
-        }
-
-        const roiF = $('#dp-roi-filter').val();
-        if (roiF !== 'all') {
-            table.addFilter(function(d) {
-                const v = parseFloat(d.groi) || 0;
-                if (roiF === 'lt40') return v < 40;
-                if (roiF === '40-75') return v >= 40 && v < 75;
-                if (roiF === '75-125') return v >= 75 && v < 125;
-                if (roiF === 'gt125') return v >= 125;
-                return true;
-            });
-        }
-
-        if (dpDilFilter !== 'all') {
-            table.addFilter(function(d) {
-                const inv = dpInv(d);
-                const ov = parseFloat(d.ov_l30) || 0;
-                const dil = inv > 0 ? (ov / inv) * 100 : 0;
-                if (dpDilFilter === 'red') return dil < 25;
-                if (dpDilFilter === 'green') return dil >= 25 && dil < 50;
-                if (dpDilFilter === 'pink') return dil >= 50;
-                return true;
-            });
-        }
-
-        const q = ($('#sku-search').val() || '').trim().toLowerCase();
-        if (q) {
-            table.addFilter(function(row) {
-                return (String(row.parent || '').toLowerCase().includes(q))
-                    || (String(row.sku || '').toLowerCase().includes(q));
-            });
-        }
-        if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
-            table.addFilter(function(data) { return PriceGtLmpBadge.hasRedTriangle(data, 'price'); });
-        }
-        if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
-            table.addFilter(function(data) { return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price'); });
-        }
-        if (blueTriangleFilterActive) {
-            table.addFilter(function(data) { return dpHasBlueTriangle(data); });
-        }
         $('.dp-filter-badge').removeClass('active-filter');
         if (soldF === 'more') $('#dp-sold-pct-badge').addClass('active-filter');
         if (soldF === 'zero') $('#dp-zero-sold-badge').addClass('active-filter');
+
+        const seq = ++dpFilterSeq;
+        dpApplyingFilters = true;
+        Promise.resolve(table.setData(filtered)).then(function() {
+            if (seq !== dpFilterSeq) return;
+            try { table.clearFilter(true); } catch (e) { /* ignore */ }
+            try { table.setPage(1); } catch (e) { /* ignore */ }
+            updateSummary(filtered);
+        }).catch(function() {
+            /* keep last good view */
+        }).then(function() {
+            if (seq === dpFilterSeq) dpApplyingFilters = false;
+        });
     }
     function updateSummary(rowsInput) {
-        let rows = Array.isArray(rowsInput) ? rowsInput : [];
+        let rows = Array.isArray(rowsInput) ? rowsInput.slice() : [];
         if (!rows.length && table) {
-            const active = table.getData('active') || [];
-            rows = active.length ? active : (table.getData() || []);
+            try {
+                rows = table.getData('active') || table.getData() || [];
+            } catch (e) {
+                rows = [];
+            }
         }
-        if (!rows.length) rows = allTableData || [];
 
         let totalSales = 0, totalProfit = 0, totalCogs = 0, zeroSold = 0, moreSold = 0, visible = 0;
         rows.forEach(function(row) {
@@ -595,14 +616,15 @@
         $('#dp-avg-roi-badge').text('GROI: ' + groi + '%');
         $('#dp-more-sold-count').text(moreSold.toLocaleString());
         $('#dp-zero-sold-count').text(zeroSold.toLocaleString());
+        const lmpRows = (allTableData && allTableData.length) ? allTableData : rows;
         if (window.PriceGtLmpBadge) {
-            PriceGtLmpBadge.update('#depop-price-gt-lmp-badge', table ? table.getData() : rows, 'depop', 'price');
+            PriceGtLmpBadge.update('#depop-price-gt-lmp-badge', lmpRows, 'depop', 'price');
             if (window.PriceLt80LmpBadge) {
-                PriceLt80LmpBadge.update('#depop-price-lt80-lmp-badge', table ? table.getData() : rows, 'depop', 'price');
+                PriceLt80LmpBadge.update('#depop-price-lt80-lmp-badge', lmpRows, 'depop', 'price');
             }
         }
         if (window.LmpMissingBadge) {
-            LmpMissingBadge.update('#depop-lmp-missing-badge', rows, 'depop');
+            LmpMissingBadge.update('#depop-lmp-missing-badge', lmpRows, 'depop');
         }
         let blue = 0;
         rows.forEach(function(row) { if (dpHasBlueTriangle(row)) blue++; });
@@ -691,7 +713,7 @@
                     hozAlign: "center",
                     width: 55,
                     formatter: function(cell) {
-                        const val = parseInt(cell.getValue(), 10) || 0;
+                        const val = dpInv(cell.getRow().getData());
                         if (val === 0) return `<span style="color:#dc3545;font-weight:600;">0</span>`;
                         return `<span style="font-weight:600;">${val}</span>`;
                     }
@@ -871,12 +893,13 @@
                 },
             ],
             dataLoaded: function() {
+                if (dpApplyingFilters) return;
+                if (window.ParentExpand && ParentExpand.isExpanded()) return;
                 if (typeof ebayScheduleSprcDilAutoApply === 'function') ebayScheduleSprcDilAutoApply();
                 setTimeout(function() {
                     applyDepopFilters();
-                    updateSummary();
                     if (typeof window.chPromoAutofitColumns === 'function') window.chPromoAutofitColumns(table);
-                }, 0);
+                }, 100);
             },
             dataFiltered: function(_f, rows) {
                 updateSummary((rows || []).map(function(r) { return r.getData ? r.getData() : r; }));
@@ -898,6 +921,12 @@
             });
             ParentExpand.bind();
         }
+
+        table.on('tableBuilt', function() {
+            setTimeout(function() {
+                if (!dpApplyingFilters && allTableData.length) applyDepopFilters();
+            }, 100);
+        });
 
         $('#dp-inv-filter, #dp-sold-filter, #dp-gpft-filter, #dp-cvr-filter, #dp-roi-filter').on('change', applyDepopFilters);
         $('#sku-search').on('input', applyDepopFilters);

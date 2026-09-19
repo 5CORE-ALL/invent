@@ -6,7 +6,7 @@
     data-lmp-channel="{{ $lmpChannelKey }}"
     data-metric="lmp_missing_count" data-invert="1" data-live-value="0" data-format="number"
     style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
-    title="LMP M.: SKUs with no LMP data. Green = 0 missing. Click badge to filter. Click dot for rolling history.">
+    title="LMP M.: INV &gt; 0 SKUs with no LMP data. INV = 0 is not counted. Green = 0 missing. Click badge to filter. Click dot for rolling history.">
     <span class="summary-trend-dot none" data-metric="lmp_missing_count" title="Rolling history"></span>LMP M. 0
 </span>
 @once
@@ -27,7 +27,7 @@
     .summary-trend-dot.flat,
     .summary-trend-dot.none { background: #9ca3af; }
 </style>
-<script src="{{ asset('js/lmp-missing-badge.js') }}?v=5"></script>
+<script src="{{ asset('js/lmp-missing-badge.js') }}?v=6"></script>
 <script>
     window.LMP_MISSING_REPORT_URL = @json(route('lmp.missing.report'));
 </script>

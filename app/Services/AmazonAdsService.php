@@ -271,11 +271,76 @@ class AmazonAdsService
     }
 
     /**
+     * Live SP campaigns for specific IDs (POST /sp/campaigns/list + campaignIdFilter).
+     *
+     * @param  list<string>  $campaignIds
+     * @param  list<string>  $states
+     * @return list<array<string, mixed>>
+     */
+    public function listSpCampaignsByIds(array $campaignIds, array $states = ['ENABLED', 'PAUSED']): array
+    {
+        return $this->listCampaignsByIds(
+            '/sp/campaigns/list',
+            $campaignIds,
+            $states,
+            [
+                'Content-Type' => 'application/vnd.spCampaign.v3+json',
+                'Accept' => 'application/vnd.spCampaign.v3+json',
+            ]
+        );
+    }
+
+    /**
+     * Live SB campaigns for specific IDs (POST /sb/v4/campaigns/list + campaignIdFilter).
+     *
+     * @param  list<string>  $campaignIds
+     * @param  list<string>  $states
+     * @return list<array<string, mixed>>
+     */
+    public function listSbCampaignsByIds(array $campaignIds, array $states = ['ENABLED', 'PAUSED']): array
+    {
+        return $this->listCampaignsByIds(
+            '/sb/v4/campaigns/list',
+            $campaignIds,
+            $states,
+            [
+                'Content-Type' => 'application/vnd.sbcampaignresource.v4+json',
+                'Accept' => 'application/vnd.sbcampaignresource.v4+json',
+            ]
+        );
+    }
+
+    /**
+     * @param  list<string>  $campaignIds
      * @param  list<string>  $states
      * @param  array<string, string>  $headers
      * @return list<array<string, mixed>>
      */
-    protected function paginateCampaignList(string $path, array $states, array $headers, int $maxPages = 50): array
+    protected function listCampaignsByIds(string $path, array $campaignIds, array $states, array $headers): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $campaignIds
+        ), static fn (string $id) => $id !== '')));
+        if ($ids === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach (array_chunk($ids, 100) as $chunk) {
+            $out = array_merge($out, $this->paginateCampaignList($path, $states, $headers, 20, $chunk));
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $states
+     * @param  array<string, string>  $headers
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    protected function paginateCampaignList(string $path, array $states, array $headers, int $maxPages = 50, array $campaignIds = []): array
     {
         $out = [];
         $nextToken = null;
@@ -291,6 +356,9 @@ class AmazonAdsService
                 'stateFilter' => ['include' => $states],
                 'maxResults' => 100,
             ];
+            if ($campaignIds !== []) {
+                $body['campaignIdFilter'] = ['include' => array_values($campaignIds)];
+            }
             if (is_string($nextToken) && $nextToken !== '') {
                 $body['nextToken'] = $nextToken;
             }

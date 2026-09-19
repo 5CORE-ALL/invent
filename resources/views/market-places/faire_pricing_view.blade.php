@@ -581,24 +581,70 @@
                 sroi: lp > 0 ? Math.round(((s * margin - lp) / lp) * 100) : 0,
             };
         }
-        function frRowSpriceForAlert(data) {
-            if (frIsParentRow(data)) return 0;
+        function frRowData(row) {
+            if (!row) return null;
+            if (typeof row.getData === 'function') {
+                try { return row.getData(); } catch (e) { return null; }
+            }
+            return row;
+        }
+        function frRowInv(data) {
+            data = frRowData(data);
+            if (!data) return 0;
+            if (typeof chPromoInv === 'function') {
+                const n = Number(chPromoInv(data));
+                if (isFinite(n) && n > 0) return n;
+            }
+            const raw = (data.inv != null && data.inv !== '') ? data.inv
+                : (data.INV != null && data.INV !== '' ? data.INV : data.inventory);
+            const n = parseFloat(raw);
+            return isFinite(n) ? n : 0;
+        }
+        function frDisplayedSprice(data) {
+            data = frRowData(data);
+            if (!data || frIsParentRow(data)) return 0;
+            // Same as Amazon S PRC: paint the live Dil / rule $, not only saved SPRICE.
+            if (typeof frRuleSprice === 'function') {
+                const live = Number(frRuleSprice(data)) || 0;
+                if (live > 0) return +live.toFixed(2);
+            }
+            if (typeof ebaySprcDilForRow === 'function') {
+                const dil = Number(ebaySprcDilForRow(data)) || 0;
+                if (dil > 0) return +dil.toFixed(2);
+            }
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(data)) || 0;
                 if (saved > 0) return saved;
             }
-            return parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
+            const stored = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice);
+            return (isFinite(stored) && stored > 0) ? +stored.toFixed(2) : 0;
+        }
+        function frRowSpriceForAlert(data) {
+            return frDisplayedSprice(data);
         }
         function frPushSprice(d) {
-            return frRowSpriceForAlert(d);
+            return frDisplayedSprice(d);
         }
+        window.frDisplayedSprice = frDisplayedSprice;
         window.frPushSprice = frPushSprice;
+        function frListingPrice(data) {
+            data = frRowData(data);
+            if (!data) return 0;
+            const n = parseFloat(data && data.price);
+            return isFinite(n) && n > 0 ? n : 0;
+        }
+        function frSpriceDiffersFromPrice(data, spriceOverride) {
+            data = frRowData(data);
+            const sprice = spriceOverride != null ? Number(spriceOverride) : frDisplayedSprice(data);
+            const price = frListingPrice(data);
+            return sprice > 0 && price > 0 && sprice.toFixed(2) !== price.toFixed(2);
+        }
         function frHasBlueTriangle(data) {
-            if (frIsParentRow(data)) return false;
-            if (!(parseFloat(data && (data.INV != null ? data.INV : data.inv)) > 0)) return false;
-            const sprice = frRowSpriceForAlert(data);
-            const price = parseFloat(data && data.price) || 0;
-            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+            data = frRowData(data);
+            if (!data || frIsParentRow(data)) return false;
+            // Same as Amazon badge: INV > 0 and visible S PRC ≠ Price.
+            if (!(frRowInv(data) > 0)) return false;
+            return frSpriceDiffersFromPrice(data);
         }
         window.frHasBlueTriangle = frHasBlueTriangle;
         function syncFrTriangleBadgeState() {
@@ -606,6 +652,10 @@
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: blueTriangleFilterActive ? '2px' : ''
             });
+        }
+        function frSyncFilterBadgeActiveClasses() {
+            $('#fr-zero-sold-badge').toggleClass('active-filter', frZeroSoldActive);
+            $('#fr-more-sold-badge').toggleClass('active-filter', frMoreSoldActive);
         }
 
         let frDecreaseModeActive = false;
@@ -1663,8 +1713,11 @@
             $('#fr-avg-roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
             $('#fr-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
             $('#fr-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
+            const blueSrc = (allTableData && allTableData.length)
+                ? allTableData
+                : (table && typeof table.getData === 'function' ? (table.getData('all') || table.getData() || []) : rows);
             let blueTriangleCount = 0;
-            (table ? table.getData() : rows).forEach(function(row) {
+            (blueSrc || []).forEach(function(row) {
                 if (frHasBlueTriangle(row)) blueTriangleCount++;
             });
             $('#faire-blue-triangle-badge').html(
@@ -1740,9 +1793,8 @@
             if (!d) return false;
             if (d.is_parent === true || d.is_parent === 1 || d.is_parent === '1' || d.is_parent === 'true') return true;
             const sku = String(d.sku || '').trim().toUpperCase();
-            if (/^PARENT\b/.test(sku)) return true;
-            const p = String(d.parent || '').trim().toUpperCase();
-            return /^PARENT\b/.test(p);
+            // Child SKUs store the parent name in `parent` ("PARENT GSTOOL I") — that is not a parent row.
+            return /^PARENT\b/.test(sku);
         }
 
         function frCurrentRowType() {
@@ -1759,6 +1811,20 @@
 
         let frSyncingRowType = false;
 
+        function frCurrentTableRows() {
+            if (!table || typeof table.getData !== 'function') return [];
+            try { return table.getData('all') || []; } catch (e) { return []; }
+        }
+        function frNeedsRowTypeSwap(rowType, source) {
+            const current = frCurrentTableRows();
+            if (!source.length) return false;
+            const hasParent = current.some(frIsParentRow);
+            const hasChild = current.some(function(d) { return !frIsParentRow(d); });
+            if (rowType === 'skus') return hasParent;
+            if (rowType === 'parents') return hasChild;
+            if (rowType === 'all') return current.length !== source.length;
+            return false;
+        }
         function applyFilters() {
             if (frSyncingRowType) return;
             if (window.ParentExpand && ParentExpand.isExpanded()) {
@@ -1767,7 +1833,7 @@
             }
             if (!table) return;
 
-            const source = (allTableData && allTableData.length) ? allTableData : (table.getData('all') || []);
+            const source = (allTableData && allTableData.length) ? allTableData : frCurrentTableRows();
 
             if (isFrPlayActive && frUniqueParents.length > 0 && currentFrParentIndex >= 0) {
                 const currentKey = frUniqueParents[currentFrParentIndex];
@@ -1784,14 +1850,8 @@
             }
 
             const rowType = frCurrentRowType();
-            const desired = frRowsForRowType(source, rowType);
-            const currentAll = (typeof table.getData === 'function' ? table.getData('all') : []) || [];
-            const needsSwap = currentAll.length !== desired.length
-                || (rowType === 'skus' && currentAll.some(frIsParentRow))
-                || (rowType === 'parents' && currentAll.some(function(d) { return !frIsParentRow(d); }))
-                || (rowType === 'all' && currentAll.length !== source.length);
-
-            if (needsSwap && source.length) {
+            if (frNeedsRowTypeSwap(rowType, source)) {
+                const desired = frRowsForRowType(source, rowType);
                 frSyncingRowType = true;
                 table.setData(desired).then(function() {
                     frSyncingRowType = false;
@@ -1839,12 +1899,12 @@
             if (invFilter === 'zero') {
                 table.addFilter(function(d) {
                     if (frIsParentRow(d)) return rowType !== 'skus';
-                    return (parseInt(d.inv, 10) || 0) === 0;
+                    return frRowInv(d) === 0;
                 });
             } else if (invFilter === 'more') {
                 table.addFilter(function(d) {
                     if (frIsParentRow(d)) return rowType !== 'skus';
-                    return (parseInt(d.inv, 10) || 0) > 0;
+                    return frRowInv(d) > 0;
                 });
             }
             if (stockFilter === 'zero') {
@@ -1889,7 +1949,7 @@
             }
             if (fqtyFilter !== 'all') {
                 table.addFilter(function(d) {
-                    if ((parseInt(d.inv, 10) || 0) <= 0) return false;
+                    if (frRowInv(d) <= 0) return false;
                     const fqty = parseFloat(d.al30) || 0;
                     if (fqtyFilter === '0') return fqty === 0;
                     if (fqtyFilter === '0-10') return fqty > 0 && fqty <= 10;
@@ -1899,7 +1959,7 @@
             }
             if (dilColor !== 'all') {
                 table.addFilter(function(d) {
-                    const inv = parseFloat(d.inv) || 0;
+                    const inv = frRowInv(d);
                     const ovL30 = parseFloat(d.ov_l30) || 0;
                     const dil = inv === 0 ? 0 : (ovL30 / inv) * 100;
                     if (dilColor === 'red') return dil < 25;
@@ -1908,14 +1968,16 @@
                     return true;
                 });
             }
-            frSyncFilterBadgeActiveClasses();
+            if (typeof frSyncFilterBadgeActiveClasses === 'function') frSyncFilterBadgeActiveClasses();
             if (frZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (frMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
             if (blueTriangleFilterActive) {
                 table.addFilter(function(data) {
-                    return frHasBlueTriangle(data);
+                    return frHasBlueTriangle(frRowData(data) || data);
                 });
             }
+            try { table.setPage(1); } catch (e) {}
+            if (typeof syncFrTriangleBadgeState === 'function') syncFrTriangleBadgeState();
         }
 
         function frBuildColumnDropdown() {
@@ -2436,14 +2498,13 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
-                            let value = (typeof chPromoTableSprice === 'function')
-                                ? Number(chPromoTableSprice(d)) || 0
-                                : parseFloat(cell.getValue() || 0);
+                            let value = frDisplayedSprice(d);
                             if (!(value > 0)) value = parseFloat(cell.getValue() || 0) || 0;
                             if (!(value > 0)) return '<span style="color:#6c757d;">–</span>';
-                            const live = parseFloat(d.price) || 0;
+                            const live = frListingPrice(d);
                             const formatted = money(value);
-                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            // Same as Amazon S PRC cell: blue triangle when painted S PRC ≠ Price.
+                            const blueTri = (value > 0 && live > 0 && value.toFixed(2) !== live.toFixed(2))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
@@ -2560,11 +2621,6 @@
                     onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
                 });
                 ParentExpand.bind();
-            }
-
-            function frSyncFilterBadgeActiveClasses() {
-                $('#fr-zero-sold-badge').toggleClass('active-filter', frZeroSoldActive);
-                $('#fr-more-sold-badge').toggleClass('active-filter', frMoreSoldActive);
             }
 
             function frApplyBadgeFilterFromUrl() {
@@ -2776,10 +2832,18 @@
                 frUpdateSelectedCount();
             });
 
-            $('#faire-blue-triangle-badge').on('click', function() {
-                blueTriangleFilterActive = !blueTriangleFilterActive;
-                applyFilters();
-            });
+            $(document).off('click.frBlueAlert', '#faire-blue-triangle-badge')
+                .on('click.frBlueAlert', '#faire-blue-triangle-badge', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    blueTriangleFilterActive = !blueTriangleFilterActive;
+                    if (blueTriangleFilterActive) {
+                        frZeroSoldActive = false;
+                        frMoreSoldActive = false;
+                    }
+                    if (typeof frSyncFilterBadgeActiveClasses === 'function') frSyncFilterBadgeActiveClasses();
+                    applyFilters();
+                });
 
             table.on('cellEdited', function(cell) {
                 if (cell.getField() === 'standard_price' || cell.getField() === 'STANDARD_PRICE') {
@@ -2810,11 +2874,13 @@
             $('#fr-zero-sold-badge').on('click', function() {
                 frZeroSoldActive = !frZeroSoldActive;
                 frMoreSoldActive = false;
+                if (frZeroSoldActive) blueTriangleFilterActive = false;
                 applyFilters();
             });
             $('#fr-more-sold-badge').on('click', function() {
                 frMoreSoldActive = !frMoreSoldActive;
                 frZeroSoldActive = false;
+                if (frMoreSoldActive) blueTriangleFilterActive = false;
                 applyFilters();
             });
 

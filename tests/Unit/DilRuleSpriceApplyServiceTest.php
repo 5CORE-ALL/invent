@@ -261,7 +261,7 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         ]));
     }
 
-    public function test_shein_zero_sold_uses_dil_slab_not_min_groi(): void
+    public function test_shein_zero_sold_uses_min_nroi_not_dil_slab(): void
     {
         $rules = [
             AmazonDilGroiRule::make(0.1, 5.0, 80),
@@ -285,10 +285,61 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         );
 
         $this->assertNotNull($out);
-        // Dil 0 clamps to first slab GROI 80, not min GROI 40. No views → no CVR adj.
-        // (20 * 1.80) / 0.80 = 45.00
-        $this->assertEqualsWithDelta(45.00, $out['sprice'], 0.01);
-        $this->assertEqualsWithDelta(80.0, $out['groi'], 0.01);
+        // AL30 = 0 → min Target NROI 40, not the Dil 0 / first-slab 80. No views → no CVR adj.
+        // (20 * 1.40) / 0.80 = 35.00
+        $this->assertEqualsWithDelta(35.00, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
+    }
+
+    public function test_shein_zero_sold_uses_min_nroi_even_when_dil_matches(): void
+    {
+        $rules = [
+            AmazonDilGroiRule::make(0.1, 5.0, 40),
+            AmazonDilGroiRule::make(5.0, 25.0, 80),
+        ];
+        $out = DilRuleSpriceApplyService::for('shein')->computeTarget(
+            [
+                'inv' => 9,
+                'dil' => 22,
+                'ov_l30' => 2,
+                'al30' => 0,
+                'cvr' => 0,
+                'views' => 0,
+                'lp' => 10,
+                'ship' => 6,
+                'lmp' => 40,
+            ],
+            $rules,
+            AmazonDilGroiRule::defaultCvrAdj(),
+            0.80
+        );
+
+        $this->assertNotNull($out);
+        // Shopify Dil 22% would be the 80 slab, but AL30 = 0 uses min NROI 40.
+        // (10 * 1.40 + 6) / 0.80 = 25.00
+        $this->assertEqualsWithDelta(25.00, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
+    }
+
+    public function test_shein_sold_uses_dil_slab(): void
+    {
+        $out = $this->compute('shein', [
+            'inv' => 9,
+            'dil' => 22,
+            'ov_l30' => 2,
+            'al30' => 2,
+            'cvr' => 8,
+            'views' => 0,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 0,
+        ]);
+
+        $this->assertNotNull($out);
+        // AL30 > 0 → 20–25 slab NROI 70. No views → no CVR adj.
+        // (20 * 1.70) / 0.80 = 42.50
+        $this->assertEqualsWithDelta(42.50, $out['sprice'], 0.01);
+        $this->assertEqualsWithDelta(70.0, $out['groi'], 0.01);
     }
 
     public function test_shein_high_dil_clamps_to_last_slab(): void
@@ -317,8 +368,8 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $out = $this->compute('shein', [
             'inv' => 10,
             'dil' => 3,
-            'ov_l30' => 0,
-            'al30' => 0,
+            'ov_l30' => 1,
+            'al30' => 1,
             'cvr' => 0,
             'views' => 0,
             'lp' => 20,
@@ -327,7 +378,7 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         ]);
 
         $this->assertNotNull($out);
-        // 0.1–5 slab GROI 50. CVR 0 would be −10 if views existed.
+        // AL30 > 0 → 0.1–5 slab GROI 50. CVR 0 would be −10 if views existed.
         $this->assertEqualsWithDelta(50.0, $out['groi'], 0.01);
         $this->assertEqualsWithDelta(37.50, $out['sprice'], 0.01);
     }

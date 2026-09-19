@@ -45,11 +45,29 @@
         return false;
     }
 
+    function invOf(row) {
+        if (!row) return null;
+        var fields = ['inventory', 'INV', 'inv', 'Inv', 'QTY AVAIL', 'qty_avail'];
+        for (var i = 0; i < fields.length; i++) {
+            if (row[fields[i]] == null || row[fields[i]] === '') continue;
+            var n = num(row[fields[i]]);
+            if (isFinite(n)) return n;
+        }
+        return null;
+    }
+
+    /** INV > 0 child SKU with no LMP. INV = 0 is not in the LMP M. badge. */
+    function isMissingLmp(row) {
+        if (!row || isParentRow(row)) return false;
+        var inv = invOf(row);
+        if (inv !== null && !(inv > 0)) return false;
+        return !hasLmp(row);
+    }
+
     function count(rows) {
         var n = 0;
         (rows || []).forEach(function (row) {
-            if (isParentRow(row)) return;
-            if (!hasLmp(row)) n++;
+            if (isMissingLmp(row)) n++;
         });
         return n;
     }
@@ -169,6 +187,8 @@
     window.LmpMissingBadge = {
         isParentRow: isParentRow,
         hasLmp: hasLmp,
+        invOf: invOf,
+        isMissingLmp: isMissingLmp,
         count: count,
         paint: paint,
         report: report,

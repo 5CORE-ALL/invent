@@ -23,6 +23,16 @@
             line-height: 1.2;
             white-space: nowrap;
             color: #fff;
+            cursor: pointer;
+            user-select: none;
+            border: 2px solid transparent;
+        }
+        .amz-ads-audit .amz-ads-audit-badge:hover {
+            filter: brightness(1.08);
+        }
+        .amz-ads-audit .amz-ads-audit-badge.is-active {
+            border-color: #0f172a;
+            box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.15);
         }
         .amz-ads-audit .amz-ads-audit-badge-red {
             background-color: #dc2626;
@@ -87,19 +97,19 @@
             <div class="card">
                 <div class="card-body p-2">
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <div class="amz-ads-audit-badge amz-ads-audit-badge-red" id="amzAdsAuditPendingWrap" title="Pending Audit: number of campaigns with a red dot (not audited in the last 30 days).">
+                        <div class="amz-ads-audit-badge amz-ads-audit-badge-red" id="amzAdsAuditPendingWrap" data-status="pending" role="button" tabindex="0" aria-pressed="false" title="Pending: campaigns not audited in the last 30 days. Click to show only these; click again to clear.">
                             <span>Pending</span>
                             <span class="tabular-nums" id="amzAdsAuditPendingValue">0</span>
                         </div>
-                        <div class="amz-ads-audit-badge amz-ads-audit-badge-green" id="amzAdsAuditAuditedWrap" title="Audited: number of campaigns with a Status green dot (audited in the last 30 days).">
+                        <div class="amz-ads-audit-badge amz-ads-audit-badge-green" id="amzAdsAuditAuditedWrap" data-status="audited" role="button" tabindex="0" aria-pressed="false" title="Audited: campaigns audited in the last 30 days. Click to show only these; click again to clear.">
                             <span>Audited</span>
                             <span class="tabular-nums" id="amzAdsAuditAuditedValue">0</span>
                         </div>
-                        <div class="amz-ads-audit-badge amz-ads-audit-badge-green" id="amzAdsAuditGreenWrap" title="Green: number of campaigns that have any audit history (Green column).">
+                        <div class="amz-ads-audit-badge amz-ads-audit-badge-green" id="amzAdsAuditGreenWrap" data-status="green" role="button" tabindex="0" aria-pressed="false" title="Green: campaigns that have any audit history. Click to show only these; click again to clear.">
                             <span>Green</span>
                             <span class="tabular-nums" id="amzAdsAuditGreenValue">0</span>
                         </div>
-                        <div class="amz-ads-audit-badge amz-ads-audit-badge-amber" id="amzAdsAuditStaleWrap" title="30 days ago: number of campaigns whose last audit is older than 30 days.">
+                        <div class="amz-ads-audit-badge amz-ads-audit-badge-amber" id="amzAdsAuditStaleWrap" data-status="stale" role="button" tabindex="0" aria-pressed="false" title="30 days ago: last audit is older than 30 days. Click to show only these; click again to clear.">
                             <span>30 days ago</span>
                             <span class="tabular-nums" id="amzAdsAuditStaleValue">0</span>
                         </div>
@@ -242,12 +252,54 @@
                 ]
             });
 
+            var adTypeFilter = 'ALL';
+            var statusFilter = '';
+
+            // Classify a campaign from its name: PT = name ends with " PT" (product targeting), else KW.
+            function adTypeFromName(name) {
+                var n = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().toUpperCase().replace(/\.+$/, '');
+                return /\sPT$/.test(n) ? 'PT' : 'KW';
+            }
+
+            function rowMatchesAdType(data) {
+                if (adTypeFilter === 'ALL') { return true; }
+                return adTypeFromName(data.campaign_name) === adTypeFilter;
+            }
+
+            function rowMatchesStatus(data) {
+                if (!statusFilter) { return true; }
+                if (statusFilter === 'pending') { return data.dot !== 'green'; }
+                if (statusFilter === 'audited') { return data.dot === 'green'; }
+                if (statusFilter === 'green') { return data.green === 'green'; }
+                if (statusFilter === 'stale') { return !!data.stale; }
+                return true;
+            }
+
+            function applyFilters() {
+                if (adTypeFilter === 'ALL' && !statusFilter) {
+                    // Clears programmatic filters only; the Campaign header filter is unaffected.
+                    table.clearFilter();
+                } else {
+                    table.setFilter(function (data) {
+                        return rowMatchesAdType(data) && rowMatchesStatus(data);
+                    });
+                }
+            }
+
+            function syncStatusBadgeState() {
+                document.querySelectorAll('.amz-ads-audit-badge[data-status]').forEach(function (el) {
+                    var on = el.getAttribute('data-status') === statusFilter;
+                    el.classList.toggle('is-active', on);
+                    el.setAttribute('aria-pressed', on ? 'true' : 'false');
+                });
+            }
+
             function updatePending() {
-                // Count only the rows currently visible under the active ad-type filter.
-                var rows = table.getData('active');
+                // Counts follow All / KW / PT only, so clicking a status badge does not shrink the numbers.
+                var rows = table.getData();
                 var pending = 0, audited = 0, green = 0, stale = 0;
                 rows.forEach(function (r) {
-                    if (!r) { return; }
+                    if (!r || !rowMatchesAdType(r)) { return; }
                     if (r.dot === 'green') { audited++; } else { pending++; }
                     if (r.green === 'green') { green++; }
                     if (r.stale) { stale++; }
@@ -260,15 +312,10 @@
                 if (gEl) { gEl.textContent = Number(green).toLocaleString('en-US'); }
                 var sEl = document.getElementById('amzAdsAuditStaleValue');
                 if (sEl) { sEl.textContent = Number(stale).toLocaleString('en-US'); }
+                syncStatusBadgeState();
             }
             table.on('dataProcessed', updatePending);
             table.on('dataFiltered', updatePending);
-
-            // Classify a campaign from its name: PT = name ends with " PT" (product targeting), else KW.
-            function adTypeFromName(name) {
-                var n = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().toUpperCase().replace(/\.+$/, '');
-                return /\sPT$/.test(n) ? 'PT' : 'KW';
-            }
 
             // Ad-type filter (All / KW / PT) derived from the campaign name.
             (function () {
@@ -277,7 +324,7 @@
                 wrap.addEventListener('click', function (e) {
                     var btn = e.target.closest('button[data-adtype]');
                     if (!btn) { return; }
-                    var type = btn.getAttribute('data-adtype');
+                    adTypeFilter = btn.getAttribute('data-adtype') || 'ALL';
 
                     wrap.querySelectorAll('button[data-adtype]').forEach(function (b) {
                         var active = b === btn;
@@ -285,16 +332,27 @@
                         b.classList.toggle('btn-outline-primary', !active);
                     });
 
-                    if (type === 'ALL') {
-                        // Clears programmatic filters only; the Campaign header filter is unaffected.
-                        table.clearFilter();
-                    } else {
-                        table.setFilter(function (data) {
-                            return adTypeFromName(data.campaign_name) === type;
-                        });
-                    }
-                    // Refresh the Pending / Audited counts for the newly filtered subset immediately.
+                    applyFilters();
                     updatePending();
+                });
+            })();
+
+            // Status badges filter the grid (toggle off by clicking the same badge again).
+            (function () {
+                function setStatus(next) {
+                    statusFilter = (statusFilter === next) ? '' : next;
+                    applyFilters();
+                    updatePending();
+                }
+                document.querySelectorAll('.amz-ads-audit-badge[data-status]').forEach(function (el) {
+                    el.addEventListener('click', function () {
+                        setStatus(el.getAttribute('data-status') || '');
+                    });
+                    el.addEventListener('keydown', function (e) {
+                        if (e.key !== 'Enter' && e.key !== ' ') { return; }
+                        e.preventDefault();
+                        setStatus(el.getAttribute('data-status') || '');
+                    });
                 });
             })();
 
@@ -343,7 +401,10 @@
                     btn.disabled = false;
                     if (out.ok && out.body && out.body.ok) {
                         bootstrap.Modal.getOrCreateInstance(document.getElementById('amzAdsAuditModal')).hide();
-                        table.setData(auditDataUrl).then(updatePending);
+                        table.setData(auditDataUrl).then(function () {
+                            applyFilters();
+                            updatePending();
+                        });
                     } else {
                         var msg = 'Failed to save.';
                         if (out.body && out.body.errors) {
