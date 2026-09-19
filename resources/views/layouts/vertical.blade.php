@@ -4,6 +4,7 @@
     data-topbar-color="{{ $topbarColor ?? 'light' }}">
 
 <head>
+    @include('layouts.shared.invent-chat-pwa-boot')
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     @unless($skipHighcharts ?? false)
     <script src="https://cdn.jsdelivr.net/npm/highcharts@11/highcharts.js"></script>

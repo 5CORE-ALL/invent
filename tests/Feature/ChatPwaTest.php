@@ -15,6 +15,10 @@ class ChatPwaTest extends TestCase
         $this->assertSame('/chat', $manifest['start_url'] ?? null);
         $this->assertSame('standalone', $manifest['display'] ?? null);
         $this->assertNotEmpty($manifest['icons'] ?? []);
+        $shortcutUrls = array_map(static fn ($s) => $s['url'] ?? '', $manifest['shortcuts'] ?? []);
+        $this->assertSame(['/chat'], $shortcutUrls);
+        $this->assertStringNotContainsString('/incoming-view', json_encode($manifest));
+        $this->assertStringNotContainsString('/wms/', json_encode($manifest));
     }
 
     public function test_service_worker_does_not_cache_private_chat(): void
@@ -33,6 +37,13 @@ class ChatPwaTest extends TestCase
         $this->assertStringContainsString('Invent Chat', $html);
         $this->assertStringNotContainsString('csrf', strtolower($html));
         $this->assertStringNotContainsString('/chat/sync', $html);
+    }
+
+    public function test_standalone_app_boot_sends_inventory_to_chat(): void
+    {
+        $boot = (string) file_get_contents(resource_path('views/layouts/shared/invent-chat-pwa-boot.blade.php'));
+        $this->assertStringContainsString("display-mode: standalone", $boot);
+        $this->assertStringContainsString("location.replace('/chat')", $boot);
     }
 
     public function test_asset_links_are_public(): void
