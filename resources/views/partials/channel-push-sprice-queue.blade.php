@@ -770,6 +770,7 @@
                     // listed SKU whose live Price differs from S PRC. Missing
                     // (live = 0) and already-matching prices are skipped.
                     if (!(live > 0) || chPushSpriceNearlyEqual(p, live)) return false;
+                    if (chPushSpriceAlreadyPushedToSaved(d, p)) return false;
                     if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return false;
                 }
                 try {
@@ -1190,6 +1191,10 @@
                     if (!(saved > 0)) return;
                     const live = chPushSpriceLiveFromRow(d);
                     if (!(live > 0) || chPushSpriceNearlyEqual(saved, live)) return;
+                    // TopDawg (and other review-queue channels) accept a push with
+                    // 200 "submitted for review" while live Price stays old. Do not
+                    // re-queue the same S PRC or reload keeps sending 21/30 forever.
+                    if (chPushSpriceAlreadyPushedToSaved(d, saved)) return;
                     jobs.push({ sku: sku, price: saved, row: row, data: d });
                 }
                 if (tbl) chPushSpriceWalkRows(tbl, consider);

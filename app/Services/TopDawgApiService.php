@@ -55,6 +55,55 @@ class TopDawgApiService
     }
 
     /**
+     * Live storefront / portal price from a SupplierProduct row.
+     *
+     * TopDawg create/list uses `cost` (and often `msrp`) as the listing price.
+     * The `price` key is frequently 0 or omitted, so `??` must not win on 0.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    public static function extractListingPrice(array $item): ?float
+    {
+        $bags = [$item];
+        if (isset($item['product']) && is_array($item['product'])) {
+            $bags[] = $item['product'];
+        }
+
+        foreach ($bags as $bag) {
+            foreach (['price', 'selling_price', 'retail_price', 'unit_price', 'cost', 'list_price', 'msrp'] as $key) {
+                $n = self::positiveMoneyValue($bag[$key] ?? null);
+                if ($n !== null) {
+                    return $n;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    public static function positiveMoneyValue(mixed $value): ?float
+    {
+        if (is_array($value)) {
+            $value = $value['amount']
+                ?? $value['value']
+                ?? $value['price']
+                ?? $value['cost']
+                ?? (isset($value['amount_cents']) && is_numeric($value['amount_cents'])
+                    ? ((float) $value['amount_cents']) / 100
+                    : null);
+        }
+        if (is_string($value)) {
+            $value = str_replace([',', '$', ' '], '', trim($value));
+        }
+        if (! is_numeric($value)) {
+            return null;
+        }
+        $n = round((float) $value, 2);
+
+        return $n > 0 ? $n : null;
+    }
+
+    /**
      * Seller-portal listing state from a SupplierProduct/list row.
      * Missing status is null (not "active") so Inactive is never invented.
      *

@@ -82,7 +82,16 @@ class FetchTopDawgData extends Command
             if ($sku === null || $sku === '') {
                 continue;
             }
-            $bulkData[] = [
+            $incomingPrice = TopDawgApiService::extractListingPrice($item);
+            $price = ChannelLivePriceSync::preferIncoming(
+                'topdawg',
+                (string) $sku,
+                $incomingPrice,
+                $this->topdawgPushedLookup()
+            );
+            $msrp = TopDawgApiService::positiveMoneyValue($item['msrp'] ?? null);
+
+            $row = [
                 'sku' => (string) $sku,
                 'topdawg_listing_id' => $item['id'] ?? $item['tdid'] ?? null,
                 'tdid' => $item['tdid'] ?? null,
@@ -91,20 +100,20 @@ class FetchTopDawgData extends Command
                 'product_title' => $item['product_name'] ?? $item['product_title'] ?? $item['title'] ?? null,
                 'r_l30' => $rL30[$sku] ?? 0,
                 'r_l60' => $rL60[$sku] ?? 0,
-                'price' => ChannelLivePriceSync::preferIncoming(
-                    'topdawg',
-                    (string) $sku,
-                    is_numeric($item['price'] ?? $item['cost'] ?? null)
-                        ? (float) ($item['price'] ?? $item['cost'])
-                        : null,
-                    $this->topdawgPushedLookup()
-                ),
-                'msrp' => $item['msrp'] ?? null,
+                'msrp' => $msrp,
                 'views' => $item['views'] ?? null,
                 'remaining_inventory' => $item['qty_available'] ?? $item['remaining_inventory'] ?? $item['inventory'] ?? null,
                 'updated_at' => now(),
                 'created_at' => now(),
             ];
+            // Do not write price=null/0 — that wipes a price saved at publish time
+            // when the list API returns price:0 and the live amount is in cost/msrp.
+            if ($price !== null && $price > 0) {
+                $row['price'] = $price;
+            } elseif ($msrp !== null) {
+                $row['price'] = $msrp;
+            }
+            $bulkData[] = $row;
         }
         return $bulkData;
     }

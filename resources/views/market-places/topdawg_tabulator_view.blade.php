@@ -71,7 +71,7 @@
                         <span class="badge bg-danger text-center" id="missing-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="REQ + INV&gt;0 + TD Price=0">Missing L: 0</span>
                         <span class="badge text-center" id="topdawg-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
-                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
+                            title="Blue triangle: S PRC ≠ Price and not yet submitted at this S PRC. Click to show only those rows. Already-pushed SKUs stay yellow until TopDawg approves the review (1–24h).">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'topdawg'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'topdawg-price-gt-lmp-badge', 'pglChannelKey' => 'topdawg', 'pglPriceField' => 'TD Price'])
@@ -224,13 +224,12 @@
                          filter/action row so search inputs are nearest to the
                          table they affect (per the user's "interchange rows" ask). --}}
                     <div class="px-2 py-1 bg-light border-bottom">
-                        <div class="row g-1">
-                            <div class="col-6">
-                                <input type="text" id="parent-search" class="form-control form-control-sm w-100" placeholder="Search Parent...">
-                            </div>
-                        <div class="col-6">
-                                <input type="text" id="sku-search" class="form-control form-control-sm w-100" placeholder="Search SKU...">
-                            </div>
+                        <div class="d-flex gap-1 align-items-center">
+                            <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="flex:1;">
+                            <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="flex:1;">
+                            <button type="button" id="td-search-btn" class="btn btn-sm btn-primary" title="Search Parent / SKU">
+                                <i class="fas fa-search"></i> Search
+                            </button>
                         </div>
                     </div>
                     <div id="topdawg-pricing-table" style="flex:1;"></div>
@@ -314,7 +313,17 @@
         if (!(parseFloat(data && data.INV) > 0)) return false;
         const sprice = tdRowSpriceForAlert(data);
         const price = parseFloat(data && data['TD Price']) || 0;
-        return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        if (!(sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100))) {
+            return false;
+        }
+        // Already submitted to TopDawg review at this S PRC — waiting on TD,
+        // not another push. Yellow SPRICE cell shows "queued in review".
+        const status = String((data && (data.SPRICE_STATUS || data.push_status)) || '').toLowerCase();
+        const pushed = parseFloat(data && (data.SPRICE_PUSHED_VALUE != null ? data.SPRICE_PUSHED_VALUE : data.CHANNEL_PUSHED_PRICE)) || 0;
+        if (status === 'pushed' && pushed > 0 && Math.round(pushed * 100) === Math.round(sprice * 100)) {
+            return false;
+        }
+        return true;
     }
     window.tdHasBlueTriangle = tdHasBlueTriangle;
     function syncTdTriangleBadgeState() {
@@ -769,11 +778,27 @@
         }
         table.clearFilter();
 
-        const invF = $('#inventory-filter').val();
+        const skuSearch = ($('#sku-search').val() || '').trim().toLowerCase();
+        const parentSearch = ($('#parent-search').val() || '').trim().toLowerCase();
+        if (skuSearch) {
+            table.addFilter(function(data) {
+                const sku = String(data['(Child) sku'] || data.sku || '').toLowerCase();
+                return sku.indexOf(skuSearch) !== -1;
+            });
+        }
+        if (parentSearch) {
+            table.addFilter(function(data) {
+                const parent = String(data.Parent || data.parent || '').toLowerCase();
+                return parent.indexOf(parentSearch) !== -1;
+            });
+        }
+
+        // Searching a published SKU should find it even when INV is 0 / NRL is REQ.
+        const invF = (skuSearch || parentSearch) ? 'all' : $('#inventory-filter').val();
         if (invF === 'zero') table.addFilter('INV', '=', 0);
         if (invF === 'more') table.addFilter('INV', '>', 0);
 
-        const nrl = $('#nrl-filter').val();
+        const nrl = (skuSearch || parentSearch) ? 'all' : $('#nrl-filter').val();
         if (nrl !== 'all') table.addFilter('nr_req', '=', nrl);
 
         const gpft = $('#gpft-filter').val();
@@ -1537,12 +1562,14 @@
             setActiveBadges();
             applyFilters();
         });
-        $('#sku-search, #parent-search').on('keyup', function() {
-            table.setFilter([
-                { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
-                { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
-            ]);
-            updateSummary();
+        $('#sku-search, #parent-search').on('keyup input', function(e) {
+            if (e.type === 'keyup' && e.key === 'Enter') {
+                e.preventDefault();
+            }
+            applyFilters();
+        });
+        $('#td-search-btn').on('click', function() {
+            applyFilters();
         });
 
         // Sold badges just toggle the #sold-filter dropdown so the dropdown stays the

@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\TopDawgProduct;
+use App\Services\TopDawgApiService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
@@ -146,7 +147,8 @@ class TopDawgLiveListingsService
             'state' => $state !== '' ? $state : 'other',
             'inventory' => $row->remaining_inventory !== null ? (int) $row->remaining_inventory : null,
             'title' => $row->product_title !== null ? (string) $row->product_title : null,
-            'price' => $row->price !== null ? (float) $row->price : null,
+            'price' => TopDawgApiService::positiveMoneyValue($row->price)
+                ?? TopDawgApiService::positiveMoneyValue($row->msrp),
         ];
     }
 }
