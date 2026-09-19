@@ -1400,7 +1400,7 @@ class ListingManagerController extends Controller
             $channelName = (string) ($channelMap[$channelId] ?? '');
             foreach ($skus as $sku) {
                 try {
-                $hydrated = ListingManagerAmazonHydrator::hydrate($sku);
+                $hydrated = ListingManagerAmazonHydrator::hydrate($sku, false, $channelName);
                 if (! empty($hydrated['images'])) {
                     $hydrated['images'] = ListingManagerImageStore::localizeMany($hydrated['images'], $sku);
                     $hydrated['thumbnail'] = $hydrated['images'][0] ?? $hydrated['thumbnail'];
@@ -2670,9 +2670,13 @@ class ListingManagerController extends Controller
             || $desc === ''
             || (! str_contains($desc, '<img') && ! str_contains($desc, 'shopify') && mb_strlen(strip_tags($desc)) < 2500);
 
-        $hydrated = ListingManagerAmazonHydrator::hydrate((string) $draft->seller_sku, $needsMainStoreDesc);
+        $hydrated = ListingManagerAmazonHydrator::hydrate((string) $draft->seller_sku, $needsMainStoreDesc, $channelName);
 
-        $needsTitle = $force || trim((string) $draft->title) === '';
+        $currentTitle = trim((string) $draft->title);
+        $titleLimit = (int) (ListingManagerAmazonHydrator::limitsForChannel($channelName)['title'] ?? 200);
+        $isFaire = ListingChannelCounts::normalize($channelName) === 'faire';
+        $needsTitle = $force || $currentTitle === ''
+            || ($isFaire && $titleLimit > 0 && mb_strlen($currentTitle) > $titleLimit);
         $needsDesc = $needsMainStoreDesc;
         $needsImages = $force || $images === [];
         $needsPrice = $force || $draft->price === null || (float) $draft->price <= 0;

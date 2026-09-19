@@ -112,7 +112,7 @@ class ListingManagerAmazonHydrator
      *   snapshot: array<string, mixed>
      * }
      */
-    public static function hydrate(string $sku, bool $withLiveMainStore = false): array
+    public static function hydrate(string $sku, bool $withLiveMainStore = false, ?string $channelName = null): array
     {
         $sku = trim($sku);
         $listing = AmazonListingRaw::query()->where('seller_sku', $sku)->first();
@@ -123,16 +123,20 @@ class ListingManagerAmazonHydrator
             ? self::fetchMainStoreDescription($sku, true)
             : ['html' => '', 'images' => [], 'title' => '', 'source' => 'none'];
 
-        $title = self::firstNonEmpty([
-            $pm['title80'] ?? null,
-            $pm['title100'] ?? null,
-            $pm['title150'] ?? null,
-            $pm['title60'] ?? null,
+        $titleFallbacks = [
             $listing?->item_name,
             self::rawGet($raw, 'item-name', 'item_name', 'title'),
             $mainStore['title'] ?? null,
             $sku,
-        ]);
+        ];
+        $title = $channelName
+            ? self::titleFromProductMaster($pm, $channelName, $titleFallbacks)
+            : self::firstNonEmpty(array_merge([
+                $pm['title80'] ?? null,
+                $pm['title100'] ?? null,
+                $pm['title150'] ?? null,
+                $pm['title60'] ?? null,
+            ], $titleFallbacks));
 
         $description = self::firstNonEmpty([
             self::descriptionMasterFromMetrics($sku),
@@ -616,6 +620,52 @@ class ListingManagerAmazonHydrator
         }
 
         return (string) (preg_replace('/\s+/', '', $code) ?? '');
+    }
+
+    /**
+     * Title Master columns in preference order for a channel's character limit.
+     * Faire (60) uses title60 first; eBay (80) uses title80; longer channels use title150/100.
+     *
+     * @return list<string>
+     */
+    public static function titleColumnsForLimit(int $limit): array
+    {
+        if ($limit <= 60) {
+            return ['title60', 'title75', 'title80', 'title100', 'title150'];
+        }
+        if ($limit <= 75) {
+            return ['title75', 'title80', 'title60', 'title100', 'title150'];
+        }
+        if ($limit <= 80) {
+            return ['title80', 'title75', 'title60', 'title100', 'title150'];
+        }
+        if ($limit <= 100) {
+            return ['title100', 'title80', 'title75', 'title150', 'title60'];
+        }
+
+        return ['title150', 'title100', 'title80', 'title75', 'title60'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $pm
+     * @param  list<mixed>  $fallbacks
+     */
+    public static function titleFromProductMaster(array $pm, ?string $channelName, array $fallbacks = []): string
+    {
+        $limit = (int) (self::limitsForChannel($channelName)['title'] ?? 80);
+        $values = [];
+        foreach (self::titleColumnsForLimit($limit) as $col) {
+            $values[] = $pm[$col] ?? null;
+        }
+        foreach ($fallbacks as $fallback) {
+            $values[] = $fallback;
+        }
+        $title = self::firstNonEmpty($values);
+        if ($title !== '' && $limit > 0 && mb_strlen($title) > $limit) {
+            $title = mb_substr($title, 0, $limit);
+        }
+
+        return $title;
     }
 
     /**

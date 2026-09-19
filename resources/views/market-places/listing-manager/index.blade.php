@@ -2826,7 +2826,8 @@
         applyEditorProfile(draft, pane);
         const d = draft.listing_details || {};
         const snap = draft.amazon_snapshot || {};
-        titleLimit = Number((draft.limits && draft.limits.title) || 80);
+        const editorFamilyName = String((draft.editor && draft.editor.family) || editorProfileForChannel(draft.channel || '').family || '');
+        titleLimit = Number((draft.limits && draft.limits.title) || (editorFamilyName === 'faire' ? 60 : 80));
         descLimit = Number((draft.limits && draft.limits.description) || 500000);
         $('#lc-draft-id').val(draft.id);
         $('#lc-editor-title').text(draft.title || draft.sku || 'Listing');

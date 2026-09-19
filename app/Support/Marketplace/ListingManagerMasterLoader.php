@@ -217,19 +217,7 @@ class ListingManagerMasterLoader
     private static function title(string $sku, ?string $channelName): array
     {
         $pm = self::productMaster($sku);
-        $limit = (int) (ListingManagerAmazonHydrator::limitsForChannel($channelName)['title'] ?? 80);
-        $candidates = $limit <= 75
-            ? ['title75', 'title80', 'title60', 'title100', 'title150']
-            : ($limit <= 80
-                ? ['title80', 'title75', 'title60', 'title100', 'title150']
-                : ($limit <= 100 ? ['title100', 'title80', 'title75', 'title150', 'title60'] : ['title150', 'title100', 'title80', 'title75', 'title60']));
-        $title = '';
-        foreach ($candidates as $col) {
-            $title = trim((string) ($pm[$col] ?? ''));
-            if ($title !== '') {
-                break;
-            }
-        }
+        $title = ListingManagerAmazonHydrator::titleFromProductMaster($pm, $channelName);
         if ($title === '') {
             return ['success' => false, 'message' => 'No title found on Title Master for this SKU.', 'source' => 'title'];
         }
