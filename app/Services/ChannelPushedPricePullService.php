@@ -79,6 +79,10 @@ class ChannelPushedPricePullService
             return $this->pullMacys($skus, $expected);
         }
 
+        if ($channel === 'topdawg') {
+            return $this->pullTopDawg($skus, $expected);
+        }
+
         return array_map(static fn ($sku) => [
             'success' => false,
             'sku' => $sku,
@@ -209,6 +213,74 @@ class ChannelPushedPricePullService
                 'sprice' => null,
                 'message' => 'Pulled Temu base $'.number_format($live, 2),
             ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Live TopDawg listing price via SupplierProduct/list (same source as TD Price).
+     *
+     * @param  list<string>  $skus
+     * @param  array<string, float>  $expectedBySku
+     * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string}>
+     */
+    private function pullTopDawg(array $skus, array $expectedBySku = []): array
+    {
+        $api = app(TopDawgApiService::class);
+        $out = [];
+        foreach ($skus as $i => $sku) {
+            try {
+                $expected = $expectedBySku[strtoupper(trim($sku))] ?? null;
+                $live = $api->pullLiveListedPrice($sku, $expected);
+                $price = is_array($live) ? (float) ($live['price'] ?? 0) : 0.0;
+                $stale = is_array($live) && ! empty($live['stale']);
+                if (! ($price > 0)) {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $sku,
+                        'marketplace' => 'topdawg',
+                        'price' => null,
+                        'sprice' => null,
+                        'message' => 'Live TopDawg price not returned',
+                    ];
+                } elseif ($stale) {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $sku,
+                        'marketplace' => 'topdawg',
+                        'price' => $price,
+                        'sprice' => null,
+                        'message' => 'TopDawg still catching up',
+                    ];
+                } else {
+                    $out[] = [
+                        'success' => true,
+                        'sku' => $sku,
+                        'marketplace' => 'topdawg',
+                        'price' => $price,
+                        'sprice' => null,
+                        'message' => 'Pulled TopDawg Price $'.number_format($price, 2),
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Channel pushed-price TopDawg pull failed', [
+                    'sku' => $sku,
+                    'error' => $e->getMessage(),
+                ]);
+                $out[] = [
+                    'success' => false,
+                    'sku' => $sku,
+                    'marketplace' => 'topdawg',
+                    'price' => null,
+                    'sprice' => null,
+                    'message' => $e->getMessage(),
+                ];
+            }
+
+            if ($i < count($skus) - 1) {
+                usleep(150000);
+            }
         }
 
         return $out;

@@ -123,17 +123,7 @@ class AmazonAdsAuditController extends Controller
             }
 
             $history = $historyByCampaign->get($campaignId, collect());
-            $historyArr = [];
-            foreach ($history as $h) {
-                $historyArr[] = [
-                    'fixed' => (bool) $h->fixed,
-                    'details' => (string) $h->details,
-                    'created_at' => optional($h->created_at)->format('Y-m-d H:i'),
-                ];
-            }
-            $latest = $history->last();
-            $latestAt = $latest && $latest->created_at ? $latest->created_at : null;
-            $isGreen = $latestAt !== null && $latestAt->gt($now->copy()->subDays(self::GREEN_WINDOW_DAYS));
+            $state = $this->auditState($history, $now);
 
             $data[] = [
                 'campaign_id' => $campaignId,
@@ -143,10 +133,12 @@ class AmazonAdsAuditController extends Controller
                 'cpc' => $cpc,
                 'acos' => $acos,
                 'link' => $this->amazonAdsConsoleCampaignUrl($campaignId),
-                'dot' => $isGreen ? 'green' : 'red',
-                'latest_audit_at' => $latestAt ? $latestAt->format('Y-m-d H:i') : null,
-                'latest_audit_ts' => $latestAt ? $latestAt->getTimestamp() : 0,
-                'history' => $historyArr,
+                'dot' => $state['dot'],
+                'green' => $state['green'],
+                'stale' => $state['stale'],
+                'latest_audit_at' => $state['latest_audit_at'],
+                'latest_audit_ts' => $state['latest_audit_ts'],
+                'history' => $state['history'],
             ];
         }
 
@@ -227,21 +219,49 @@ class AmazonAdsAuditController extends Controller
             ->orderBy('created_at')
             ->get();
 
-        $historyArr = $history->map(fn ($h) => [
-            'fixed' => (bool) $h->fixed,
-            'details' => (string) $h->details,
-            'created_at' => optional($h->created_at)->format('Y-m-d H:i'),
-        ])->all();
-
-        $latest = $history->last();
-        $latestAt = $latest && $latest->created_at ? $latest->created_at : null;
-        $isGreen = $latestAt !== null && $latestAt->gt(Carbon::now()->subDays(self::GREEN_WINDOW_DAYS));
+        $state = $this->auditState($history);
 
         return response()->json([
             'ok' => true,
-            'dot' => $isGreen ? 'green' : 'red',
-            'latest_audit_at' => $latestAt ? $latestAt->format('Y-m-d H:i') : null,
-            'history' => $historyArr,
+            'dot' => $state['dot'],
+            'green' => $state['green'],
+            'stale' => $state['stale'],
+            'latest_audit_at' => $state['latest_audit_at'],
+            'history' => $state['history'],
         ]);
+    }
+
+    /**
+     * Status (dot) = green only while the latest audit is inside the 30-day window.
+     * Green column = green whenever the campaign has any audit history.
+     * Stale = has history, but the latest entry is older than 30 days.
+     *
+     * @param  \Illuminate\Support\Collection<int, AmazonAdsAuditHistory>  $history
+     * @return array{history: list<array{fixed: bool, details: string, created_at: string|null}>, dot: string, green: string, stale: bool, latest_audit_at: string|null, latest_audit_ts: int}
+     */
+    private function auditState($history, ?Carbon $now = null): array
+    {
+        $now = $now ?? Carbon::now();
+        $historyArr = [];
+        foreach ($history as $h) {
+            $historyArr[] = [
+                'fixed' => (bool) $h->fixed,
+                'details' => (string) $h->details,
+                'created_at' => optional($h->created_at)->format('Y-m-d H:i'),
+            ];
+        }
+        $latest = $history->last();
+        $latestAt = $latest && $latest->created_at ? $latest->created_at : null;
+        $hasHistory = $latestAt !== null;
+        $isRecent = $hasHistory && $latestAt->gt($now->copy()->subDays(self::GREEN_WINDOW_DAYS));
+
+        return [
+            'history' => $historyArr,
+            'dot' => $isRecent ? 'green' : 'red',
+            'green' => $hasHistory ? 'green' : 'red',
+            'stale' => $hasHistory && ! $isRecent,
+            'latest_audit_at' => $latestAt ? $latestAt->format('Y-m-d H:i') : null,
+            'latest_audit_ts' => $latestAt ? $latestAt->getTimestamp() : 0,
+        ];
     }
 }

@@ -1701,18 +1701,27 @@
                     const byFail = new Set(results.filter(function(r) { return !r.ok; }).map(function(r) { return String(r.sku); }));
                     items.forEach(function(it) {
                         if (byOk.has(it.sku)) {
-                            tdMarkPushStatus(it.row, 'pushed', { SPRICE_PUSHED_VALUE: it.price, 'TD Price': it.price });
+                            const pulled = results.find(function(r) { return r && String(r.sku) === String(it.sku) && r.ok; }) || {};
+                            const live = Number(pulled.live_price) > 0 ? Number(pulled.live_price) : it.price;
+                            tdMarkPushStatus(it.row, 'pushed', { SPRICE_PUSHED_VALUE: it.price, 'TD Price': live });
                         } else if (byFail.has(it.sku)) {
                             tdMarkPushStatus(it.row, 'failed');
                         }
                     });
                     const tdReply = (results.find(function(r) { return r.ok && r.message; }) || {}).message
                         || 'Product submitted successfully for review.';
+                    const fromLive = results.filter(function(r) { return r && r.ok && r.from_live; }).length;
                     const kind = (fail === 0) ? 'success' : (ok > 0 ? 'warning' : 'error');
                     const msg  = (fail === 0)
-                        ? 'TopDawg accepted ' + ok + ' SKU(s) into REVIEW QUEUE. TD said: "' + tdReply + '" — storefront price updates after TD approval (usually 1–24h).'
+                        ? (fromLive === ok
+                            ? 'Pushed and pulled live Price for ' + ok + ' SKU(s).'
+                            : 'TopDawg accepted ' + ok + ' SKU(s). Pulled live Price for ' + fromLive + ' — others still in review. TD said: "' + tdReply + '"')
                         : 'Pushed ' + ok + ' / ' + (ok + fail) + ' — ' + fail + ' failed. ' + (ok > 0 ? 'Accepted SKUs are in TopDawg review queue.' : '');
                     tdShowToast(msg, kind);
+                    const retrySkus = results.filter(function(r) { return r && r.ok && !r.from_live; }).map(function(r) { return r.sku; });
+                    if (retrySkus.length && typeof chPushSpricePullAfterPush === 'function') {
+                        chPushSpricePullAfterPush(retrySkus);
+                    }
                     if (typeof updateSummary === 'function') {
                         try { updateSummary(); } catch (e) { /* ignore */ }
                     }

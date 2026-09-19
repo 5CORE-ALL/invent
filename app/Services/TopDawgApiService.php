@@ -104,6 +104,53 @@ class TopDawgApiService
     }
 
     /**
+     * After an S PRC push, read live listing price from SupplierProduct/list.
+     * Targeted lookup only (no full-catalog page walk).
+     *
+     * @return array{price: float, stale: bool}|null
+     */
+    public function pullLiveListedPrice(string $sku, ?float $expected = null): ?array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $row = $this->fetchLiveProductRow($sku, false);
+        if ($row === null) {
+            return null;
+        }
+
+        $price = self::extractListingPrice($row);
+        if ($price === null || $price < 0.01) {
+            return null;
+        }
+
+        if ($expected === null || $expected < 0.01) {
+            $expected = ChannelLivePriceSync::lookupPushed('topdawg', $sku);
+        }
+        $expected = $expected !== null && $expected > 0 ? round((float) $expected, 2) : null;
+        $stale = $expected !== null && abs($price - $expected) >= 0.05;
+
+        // Review-queue list/cost must not overwrite the just-pushed S PRC.
+        if (! $stale) {
+            try {
+                ChannelLivePriceSync::writeLive('topdawg', $sku, $price);
+            } catch (\Throwable $e) {
+                Log::warning('TopDawg live price persist after pull failed', [
+                    'sku' => $sku,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return [
+            'price' => $price,
+            'stale' => $stale,
+        ];
+    }
+
+    /**
      * Seller-portal listing state from a SupplierProduct/list row.
      * Missing status is null (not "active") so Inactive is never invented.
      *
@@ -662,6 +709,8 @@ class TopDawgApiService
                 ]
                 : [
                     ['product_code' => $code, 'per_page' => 50, 'page' => 1],
+                    ['sku' => $code, 'per_page' => 50, 'page' => 1],
+                    ['search' => $code, 'per_page' => 50, 'page' => 1],
                 ];
             foreach ($filters as $body) {
                 $found = $this->firstMatchingTopDawgListRow($url, $body, $codes, $listTimeout);

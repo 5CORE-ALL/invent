@@ -1524,10 +1524,6 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('app:ebay3-campaign-reports', 'ebay3-campaign-reports', '19:20');
 
         
-        // Campaign-ads sync: single daily run (not $retryFiveTimesUntil — 5 named
-        // mutexes let the same job fire 5×/day and confuse cron-monitor "missed").
-        // Intentionally NOT wrapped in $ist() — slots are after IST_WINDOW_END (20:00).
-        // withoutOverlapping(90): typical runtime ~10–12 min; TTL clears stale locks.
         $schedule->command('ebay:sync-campaign-listings')
             ->dailyAt('20:30')
             ->timezone('Asia/Kolkata')

@@ -11,7 +11,9 @@ use App\Models\ShopifySku;
 use App\Models\TopDawgDataView;
 use App\Models\TopDawgOrderMetric;
 use App\Models\TopDawgProduct;
+use App\Services\ChannelLivePriceSync;
 use App\Services\ChannelPromoPricingService;
+use App\Services\ChannelPushedPricePullService;
 use App\Services\TopDawgApiService;
 use App\Support\PushedListingPrice;
 use Carbon\Carbon;
@@ -660,6 +662,43 @@ class TopDawgPricingController extends Controller
         }
     }
 
+    /**
+     * Amazon-style: stamp S PRC into TD Price, then confirm with a live list pull.
+     *
+     * @return array{price: float, from_live: bool}
+     */
+    private function confirmAndPullAfterPush(string $sku, float $price): array
+    {
+        $price = round($price, 2);
+        $out = ['price' => $price, 'from_live' => false];
+        try {
+            ChannelLivePriceSync::confirmAfterPush('topdawg', $sku, $price);
+        } catch (\Throwable $e) {
+            Log::warning('TopDawg confirmAfterPush failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            $rows = app(ChannelPushedPricePullService::class)
+                ->pullSkus('topdawg', [$sku], [strtoupper(trim($sku)) => $price]);
+            $row = $rows[0] ?? [];
+            $live = (float) ($row['price'] ?? 0);
+            if (! empty($row['success']) && $live > 0 && abs($live - $price) < 0.05) {
+                $out['price'] = round($live, 2);
+                $out['from_live'] = true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TopDawg live price pull after push failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $out;
+    }
+
     private function persistPushStatus(string $sku, string $status, $price = null): void
     {
         try {
@@ -737,11 +776,14 @@ class TopDawgPricingController extends Controller
                 $okCount   += $r['ok'] ? 1 : 0;
                 $failCount += $r['ok'] ? 0 : 1;
                 $this->persistPushStatus($sku, $r['ok'] ? 'pushed' : 'failed', $price);
+                $pulled = $r['ok'] ? $this->confirmAndPullAfterPush($sku, $price) : [];
                 $results[] = [
                     'sku'     => $sku,
                     'price'   => $price,
                     'ok'      => $r['ok'],
                     'status'  => $r['status'],
+                    'live_price' => $pulled['price'] ?? null,
+                    'from_live' => $pulled['from_live'] ?? false,
                     'message' => is_array($r['response'])
                         ? ($r['response']['message']
                             ?? ($r['response']['error'] ?? json_encode($r['response'])))
