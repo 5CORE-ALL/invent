@@ -103,6 +103,11 @@ class AmazonAdsPullAdGroups extends Command
             $this->info('Pruned stale ad groups: '.$pruned.'.');
         }
 
+        $named = AmazonAdsAdGroupSync::backfillCampaignNames($names);
+        if ($named > 0) {
+            $this->info('Filled campaign names: '.$named.'.');
+        }
+
         Log::info('amazon:ads-pull-ad-groups finished', [
             'sp_upserted' => $spUpserted,
             'sb_upserted' => $sbUpserted,

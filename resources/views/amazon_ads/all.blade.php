@@ -2536,6 +2536,14 @@
                 if (!sourceKey || !rawSources[sourceKey]) sourceKey = 'all_reports';
                 activeRawSourceKey = sourceKey;
                 amzSetDatesToLatestForSource(sourceKey);
+                if (sourceKey === 'ad_groups' || sourceKey === 'sp_negatives') {
+                    var fromEl = document.getElementById('amazonAdsFilterDateFrom');
+                    var toEl = document.getElementById('amazonAdsFilterDateTo');
+                    if (fromEl) fromEl.value = '';
+                    if (toEl) toEl.value = '';
+                    var rangeEl = document.getElementById('amazonAdsFilterSummaryRange');
+                    if (rangeEl) rangeEl.value = '';
+                }
                 amzClearBadges();
                 amzUpdatePushButtons();
                 amzUpdatePieButton();

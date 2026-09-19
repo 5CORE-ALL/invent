@@ -125,6 +125,41 @@ class AmazonAdsAdGroupSync
     }
 
     /**
+     * Fill blank campaignName from the name map (report + live campaign lists).
+     *
+     * @param  array<string, string>  $campaignNames
+     */
+    public static function backfillCampaignNames(array $campaignNames): int
+    {
+        if ($campaignNames === [] || ! Schema::hasTable('amazon_ads_ad_groups')) {
+            return 0;
+        }
+
+        $updated = 0;
+        AmazonAdsAdGroup::query()
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->where(function ($q) {
+                $q->whereNull('campaignName')->orWhere('campaignName', '');
+            })
+            ->select(['id', 'campaign_id'])
+            ->orderBy('id')
+            ->chunkById(500, function ($rows) use ($campaignNames, &$updated) {
+                foreach ($rows as $row) {
+                    $id = preg_replace('/\D+/', '', trim((string) $row->campaign_id)) ?: '';
+                    $name = $id !== '' ? trim((string) ($campaignNames[$id] ?? '')) : '';
+                    if ($name === '') {
+                        continue;
+                    }
+                    AmazonAdsAdGroup::query()->where('id', $row->id)->update(['campaignName' => $name]);
+                    $updated++;
+                }
+            });
+
+        return $updated;
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $rows
      */
     public static function persist(array $rows): int
