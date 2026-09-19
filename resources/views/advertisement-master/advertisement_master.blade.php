@@ -184,7 +184,8 @@
             background: #e0f7fa;
         }
 
-        #advertisement-master-wrap .tabulator .tabulator-row .tabulator-cell.adm-edit-cell {
+        #advertisement-master-wrap .tabulator .tabulator-row .tabulator-cell.adm-edit-cell,
+        #advertisement-master-wrap .tabulator .tabulator-row .tabulator-cell.adm-task-cell {
             cursor: pointer;
         }
 
@@ -212,6 +213,34 @@
             width: 13px;
             height: 13px;
             flex-shrink: 0;
+        }
+
+        .adm-task-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.4rem;
+            min-width: 1.4rem;
+            height: 1.4rem;
+            padding: 0;
+            margin: 0;
+            border: none;
+            border-radius: 7px;
+            background: linear-gradient(135deg, #0d9488, #14b8a6);
+            color: #fff;
+            font-size: 0.6rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(13, 148, 136, 0.4), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+            transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+        }
+        .adm-task-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(13, 148, 136, 0.5), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+            background: linear-gradient(135deg, #0f766e, #0d9488);
+            color: #fff;
         }
 
         .adm-rn-switch {
@@ -449,6 +478,44 @@
                     <div class="modal-footer py-2">
                         <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Cancel</button>
                         <button type="submit" class="btn btn-sm btn-primary" id="adm-edit-save">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="admTaskModal" tabindex="-1" aria-labelledby="admTaskLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title mb-0" id="admTaskLabel">Assign Task</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="adm-task-form">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="adm-task-group">Group</label>
+                            <input type="text" class="form-control" id="adm-task-group" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="adm-task-title">Task <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="adm-task-title" placeholder="Enter Task" maxlength="1000" autocomplete="off" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="adm-task-page-link">Page Link</label>
+                            <input type="text" class="form-control" id="adm-task-page-link" placeholder="" autocomplete="off">
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label fw-semibold" for="adm-task-assignee">Assign to <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="adm-task-assignee-search" list="adm-task-assignee-list" placeholder="Search user…" autocomplete="off" required>
+                                <datalist id="adm-task-assignee-list"></datalist>
+                                <button type="submit" class="btn btn-primary" id="adm-task-assign">Assign</button>
+                            </div>
+                            <input type="hidden" id="adm-task-assignee-id" value="">
+                        </div>
+                        <p class="text-danger small mb-0 mt-2 d-none" id="adm-task-error"></p>
+                        <p class="text-success small mb-0 mt-2 d-none" id="adm-task-success"></p>
                     </div>
                 </form>
             </div>
@@ -862,6 +929,10 @@
                     + '</svg></button>';
             }
 
+            function taskFormatter() {
+                return '<button type="button" class="adm-task-btn" title="Assign Task" aria-label="Assign Task">TM</button>';
+            }
+
             function rnFormatter(cell) {
                 const row = cell.getRow().getData() || {};
                 const isReq = String(row.nr_req || 'REQ').toUpperCase() !== 'NR';
@@ -955,6 +1026,7 @@
                     { title: 'CVR', field: 'cvr', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
                     { title: 'ACOS', field: 'acos', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
                     { title: 'Tcos', field: 'tcos', hozAlign: 'center', formatter: tcosFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admTcosCellChart, visible: false },
+                    { title: '', field: '_task', width: 42, minWidth: 42, hozAlign: 'center', headerSort: false, formatter: taskFormatter, cssClass: 'adm-task-cell', cellClick: openAdmTaskFromCell },
                     { title: '', field: '_edit', width: 42, minWidth: 42, hozAlign: 'center', headerSort: false, formatter: editFormatter, cssClass: 'adm-edit-cell', cellClick: openAdmEditFromCell },
                 ],
             });
@@ -1167,6 +1239,211 @@
 
             document.getElementById('adm-add-row').addEventListener('click', function () {
                 openAdmEditModal({ _is_add: true });
+            });
+
+            const admTaskStoreUrl = "{{ route('tasks.store') }}";
+            const admAssignorId = {{ (int) (Auth::id() ?? 0) }};
+            const admPageLink = @json(url('/advertisement-master'));
+            let admTaskRow = {};
+            let admTaskUsers = [];
+
+            function admTaskGroupLabel(row) {
+                return String((row && row.channel_group) || (row && row.channel) || '').trim();
+            }
+
+            function admShowTaskModal() {
+                const modalEl = document.getElementById('admTaskModal');
+                if (!modalEl) return;
+                if (window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    return;
+                }
+                modalEl.classList.add('show');
+                modalEl.style.display = 'block';
+                modalEl.removeAttribute('aria-hidden');
+                modalEl.setAttribute('aria-modal', 'true');
+                document.body.classList.add('modal-open');
+            }
+
+            function admHideTaskModal() {
+                const modalEl = document.getElementById('admTaskModal');
+                if (!modalEl) return;
+                if (window.bootstrap && bootstrap.Modal) {
+                    const inst = bootstrap.Modal.getInstance(modalEl);
+                    if (inst) { inst.hide(); return; }
+                }
+                modalEl.classList.remove('show');
+                modalEl.style.display = 'none';
+                modalEl.setAttribute('aria-hidden', 'true');
+                modalEl.removeAttribute('aria-modal');
+                document.body.classList.remove('modal-open');
+            }
+
+            function admFillTaskAssignees(users) {
+                admTaskUsers = Array.isArray(users) ? users : [];
+                const list = document.getElementById('adm-task-assignee-list');
+                if (!list) return;
+                list.innerHTML = admTaskUsers.map(function (u) {
+                    const name = String(u.name || '').trim();
+                    return name ? '<option value="' + admEsc(name) + '"></option>' : '';
+                }).join('');
+            }
+
+            function admLoadTaskUsers(cb) {
+                if (admTaskUsers.length) {
+                    cb(admTaskUsers);
+                    return;
+                }
+                const dataEl = document.getElementById('quick-assignee-users-data');
+                if (dataEl) {
+                    try {
+                        const parsed = JSON.parse(dataEl.textContent || '[]');
+                        if (Array.isArray(parsed) && parsed.length) {
+                            admFillTaskAssignees(parsed);
+                            cb(admTaskUsers);
+                            return;
+                        }
+                    } catch (e) { /* fall through */ }
+                }
+                fetch("{{ route('tasks.usersList') }}", {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (users) {
+                        admFillTaskAssignees(users);
+                        cb(admTaskUsers);
+                    })
+                    .catch(function () {
+                        admFillTaskAssignees([]);
+                        cb([]);
+                    });
+            }
+
+            function admResolveAssigneeId(label) {
+                const q = String(label || '').trim().toLowerCase();
+                if (!q) return 0;
+                const exact = admTaskUsers.find(function (u) {
+                    return String(u.name || '').trim().toLowerCase() === q;
+                });
+                if (exact) return parseInt(exact.id, 10) || 0;
+                const partial = admTaskUsers.filter(function (u) {
+                    return String(u.name || '').toLowerCase().indexOf(q) !== -1;
+                });
+                return partial.length === 1 ? (parseInt(partial[0].id, 10) || 0) : 0;
+            }
+
+            function openAdmTaskModal(data) {
+                admTaskRow = data || {};
+                const groupEl = document.getElementById('adm-task-group');
+                const titleEl = document.getElementById('adm-task-title');
+                const linkEl = document.getElementById('adm-task-page-link');
+                const searchEl = document.getElementById('adm-task-assignee-search');
+                const idEl = document.getElementById('adm-task-assignee-id');
+                const err = document.getElementById('adm-task-error');
+                const ok = document.getElementById('adm-task-success');
+                if (groupEl) groupEl.value = admTaskGroupLabel(admTaskRow);
+                if (titleEl) titleEl.value = '';
+                if (linkEl) linkEl.value = '';
+                if (searchEl) searchEl.value = '';
+                if (idEl) idEl.value = '';
+                if (err) { err.textContent = ''; err.classList.add('d-none'); }
+                if (ok) { ok.textContent = ''; ok.classList.add('d-none'); }
+                admLoadTaskUsers(function () {
+                    admShowTaskModal();
+                    setTimeout(function () {
+                        if (titleEl) titleEl.focus();
+                    }, 150);
+                });
+            }
+
+            function openAdmTaskFromCell(e, cell) {
+                if (e && e.stopPropagation) e.stopPropagation();
+                openAdmTaskModal(cell.getRow().getData() || {});
+            }
+
+            const admTaskAssigneeSearch = document.getElementById('adm-task-assignee-search');
+            if (admTaskAssigneeSearch) {
+                admTaskAssigneeSearch.addEventListener('input', function () {
+                    const idEl = document.getElementById('adm-task-assignee-id');
+                    if (idEl) idEl.value = String(admResolveAssigneeId(this.value) || '');
+                });
+                admTaskAssigneeSearch.addEventListener('change', function () {
+                    const idEl = document.getElementById('adm-task-assignee-id');
+                    if (idEl) idEl.value = String(admResolveAssigneeId(this.value) || '');
+                });
+            }
+
+            document.getElementById('adm-task-form').addEventListener('submit', function (e) {
+                e.preventDefault();
+                const err = document.getElementById('adm-task-error');
+                const ok = document.getElementById('adm-task-success');
+                const saveBtn = document.getElementById('adm-task-assign');
+                const group = String((document.getElementById('adm-task-group') || {}).value || '').trim();
+                const title = String((document.getElementById('adm-task-title') || {}).value || '').trim();
+                const pageLink = String((document.getElementById('adm-task-page-link') || {}).value || '').trim() || admPageLink;
+                const assigneeLabel = String((document.getElementById('adm-task-assignee-search') || {}).value || '').trim();
+                const assigneeId = admResolveAssigneeId(assigneeLabel)
+                    || parseInt((document.getElementById('adm-task-assignee-id') || {}).value || '0', 10);
+
+                if (ok) { ok.textContent = ''; ok.classList.add('d-none'); }
+                if (!group) {
+                    if (err) { err.textContent = 'Group is required.'; err.classList.remove('d-none'); }
+                    return;
+                }
+                if (!title) {
+                    if (err) { err.textContent = 'Task is required.'; err.classList.remove('d-none'); }
+                    return;
+                }
+                if (!assigneeId) {
+                    if (err) { err.textContent = 'Select a user to assign.'; err.classList.remove('d-none'); }
+                    return;
+                }
+                if (!admAssignorId) {
+                    if (err) { err.textContent = 'You must be signed in to assign a task.'; err.classList.remove('d-none'); }
+                    return;
+                }
+                if (err) { err.textContent = ''; err.classList.add('d-none'); }
+
+                const body = new FormData();
+                body.append('title', title);
+                body.append('group', group);
+                body.append('priority', 'normal');
+                body.append('assignor_id', String(admAssignorId));
+                body.append('assignee_id', String(assigneeId));
+                body.append('etc_minutes', '10');
+                body.append('tid', new Date().toISOString().slice(0, 16));
+                body.append('l1', pageLink);
+                body.append('quick_create_more', '1');
+
+                if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Assigning…'; }
+                fetch(admTaskStoreUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': admCsrf ? admCsrf.getAttribute('content') : '',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: body,
+                })
+                    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+                    .then(function (res) {
+                        if (!res.ok || (res.data && res.data.success === false)) {
+                            throw new Error((res.data && (res.data.message || res.data.error)) || 'Could not assign task.');
+                        }
+                        if (ok) {
+                            ok.textContent = (res.data && res.data.message) || 'Task assigned.';
+                            ok.classList.remove('d-none');
+                        }
+                        setTimeout(admHideTaskModal, 700);
+                    })
+                    .catch(function (ex) {
+                        if (err) { err.textContent = ex.message || 'Could not assign task.'; err.classList.remove('d-none'); }
+                    })
+                    .finally(function () {
+                        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Assign'; }
+                    });
             });
 
             function admInsertCustomRow(payload) {

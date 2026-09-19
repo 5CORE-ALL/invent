@@ -462,13 +462,13 @@ class TaskController extends Controller
      * Does not apply {@see Session::get('selected_user_name')} — Task Summary stays global within that visibility;
      * the /tasks page keeps its own session + UI filters.
      *
-     * @return list<array{team_member: string, email: string, avatar: mixed, designation: mixed, task: int, assignor_task: int, overdue: int, a_task: int, a_task_h: int, need_approval: int, done: int}> assignor_task excludes tasks where assignor appears in assign_to (self-assigned). a_task_h is rounded total ETC hours for automated (is_automate_task) assignee tasks.
+     * @return list<array{team_member: string, email: string, avatar: mixed, designation: mixed, task: int, assignor_task: int, overdue: int, a_task: int, a_task_h: int, need_approval: int, done: int, atc_l30_h: int, etc_l30_h: int}> assignor_task excludes tasks where assignor appears in assign_to (self-assigned). a_task_h is rounded total ETC hours for automated (is_automate_task) assignee tasks. atc_l30_h / etc_l30_h are last-30-days actual/estimated hours.
      */
     protected function getTaskSummaryMemberRows(): array
     {
         $tasksQuery = $this->taskManagerVisibilityQuery();
 
-        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date', 'created_at', 'completion_date', 'is_automate_task', 'is_missed', 'eta_time', 'schedule_type']);
+        $tasks = (clone $tasksQuery)->get(['id', 'assign_to', 'assignor', 'status', 'start_date', 'created_at', 'updated_at', 'completion_date', 'is_automate_task', 'is_missed', 'eta_time', 'etc_done', 'schedule_type']);
 
         // tat_sum_days + tat_count are used to compute the average L30 TAT
         // (Turn-Around Time, in calendar days) for tasks the user closed
@@ -476,11 +476,15 @@ class TaskController extends Controller
         // Missed is last 30 days vs days 31–60, keyed by start_date.
         // A deleted task counts as missed unless it was already Done
         // (same rule as /tasks/deleted). Live is_missed rows are included too.
+        // etc_l30 / atc_l30 are minutes for work closed in the last 30 days:
+        // live Done (completion_date, else updated_at) plus archived
+        // deleted_tasks (deleted_at), same 30-day cutoff as TAT / /tasks L30 badges.
         $defaultCounts = [
             'task' => 0, 'overdue' => 0, 'a_task' => 0, 'a_task_h' => 0,
             'need_approval' => 0, 'assignor_task' => 0, 'done' => 0,
             'tat_sum_days' => 0.0, 'tat_count' => 0,
             'missed_l30' => 0, 'missed_p30' => 0,
+            'etc_l30' => 0.0, 'atc_l30' => 0.0,
         ];
 
         $now = \Carbon\Carbon::now();
@@ -579,6 +583,22 @@ class TaskController extends Controller
                     }
                 }
 
+                // L30 ETC / ATC: live Done tasks closed in the last 30 days.
+                if (($task->status ?? '') === 'Done') {
+                    $closedRaw = $task->completion_date ?: $task->updated_at;
+                    if (! empty($closedRaw)) {
+                        try {
+                            $closed = \Carbon\Carbon::parse($closedRaw);
+                            if ($closed->greaterThanOrEqualTo($tatCutoff)) {
+                                $byEmail[$email]['etc_l30'] += (float) ($task->eta_time ?? 0);
+                                $byEmail[$email]['atc_l30'] += (float) ($task->etc_done ?? 0);
+                            }
+                        } catch (\Throwable $e) {
+                            // Malformed timestamp — skip this row's L30 time.
+                        }
+                    }
+                }
+
                 // Live is_missed (rare after nightly expire) — last 30 vs prior 30.
                 if (! empty($task->is_missed)) {
                     $this->addMissedPeriodCount($byEmail, $defaultCounts, $email, $task->start_date, $now);
@@ -587,6 +607,7 @@ class TaskController extends Controller
         }
 
         $this->addArchivedMissedPeriodCounts($byEmail, $defaultCounts, $missedLookback, $now);
+        $this->addArchivedEtcAtcLast30($byEmail, $defaultCounts, $tatCutoff);
 
         $members = $this->activeTeamUsersQuery()
             ->orderBy('name')
@@ -733,6 +754,10 @@ class TaskController extends Controller
                 'dar_l30_series' => $darMetrics['dar_l30_series'],
                 'tat_l30_days' => $tatAvgDays,
                 'tat_l30_count' => $tatCount,
+                'atc_l30_min' => (int) round($counts['atc_l30']),
+                'etc_l30_min' => (int) round($counts['etc_l30']),
+                'atc_l30_h' => (int) round($counts['atc_l30'] / 60),
+                'etc_l30_h' => (int) round($counts['etc_l30'] / 60),
                 'missed_l30' => (int) $counts['missed_l30'],
                 'missed_p30' => (int) $counts['missed_p30'],
                 'score_clrr' => (int) ($scoresByUser[$member->id]['clrr'] ?? 0),
@@ -823,6 +848,48 @@ class TaskController extends Controller
             }
             foreach (array_map('trim', explode(',', $assignTo)) as $email) {
                 $this->addMissedPeriodCount($byEmail, $defaultCounts, $email, $when, $now);
+            }
+        }
+    }
+
+    /**
+     * Sum ETC (eta_time) and ATC (etc_done) minutes from deleted_tasks
+     * archived in the last 30 days, credited to each assignee email.
+     * Matches the /tasks ETC L30 D / ATC L30 badges (deleted_at window).
+     *
+     * @param  array<string, array<string, mixed>>  $byEmail
+     * @param  array<string, mixed>  $defaultCounts
+     */
+    protected function addArchivedEtcAtcLast30(array &$byEmail, array $defaultCounts, \Carbon\Carbon $cutoff): void
+    {
+        if (! Schema::hasTable('deleted_tasks')) {
+            return;
+        }
+
+        $archived = DeletedTask::query()
+            ->where('deleted_at', '>=', $cutoff)
+            ->get(['assign_to', 'eta_time', 'etc_done']);
+
+        foreach ($archived as $row) {
+            $assignTo = trim((string) ($row->assign_to ?? ''));
+            if ($assignTo === '') {
+                continue;
+            }
+            $etc = (float) ($row->eta_time ?? 0);
+            $atc = (float) ($row->etc_done ?? 0);
+            if ($etc == 0.0 && $atc == 0.0) {
+                continue;
+            }
+            foreach (array_map('trim', explode(',', $assignTo)) as $email) {
+                $email = trim($email);
+                if ($email === '') {
+                    continue;
+                }
+                if (! isset($byEmail[$email])) {
+                    $byEmail[$email] = $defaultCounts;
+                }
+                $byEmail[$email]['etc_l30'] += $etc;
+                $byEmail[$email]['atc_l30'] += $atc;
             }
         }
     }
@@ -7613,6 +7680,8 @@ class TaskController extends Controller
                 'overdue' => (int) ($row['overdue'] ?? 0),
                 'tat_l30_days' => $row['tat_l30_days'] ?? null,
                 'tat_l30_count' => (int) ($row['tat_l30_count'] ?? 0),
+                'atc_l30_h' => (int) ($row['atc_l30_h'] ?? 0),
+                'etc_l30_h' => (int) ($row['etc_l30_h'] ?? 0),
                 'missed_l30' => (int) ($row['missed_l30'] ?? 0),
                 'missed_p30' => (int) ($row['missed_p30'] ?? 0),
                 'a_task' => (int) ($row['a_task'] ?? 0),
@@ -7621,6 +7690,7 @@ class TaskController extends Controller
             ] : [
                 'task' => 0, 'l30_hrs' => 0, 'att_l30_pct' => 0, 'att_l30_target' => 200, 'assignor_task' => 0,
                 'done' => 0, 'overdue' => 0, 'tat_l30_days' => null, 'tat_l30_count' => 0,
+                'atc_l30_h' => 0, 'etc_l30_h' => 0,
                 'missed_l30' => 0, 'missed_p30' => 0, 'a_task' => 0, 'a_task_h' => 0, 'need_approval' => 0,
             ],
             'scores' => [

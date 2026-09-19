@@ -139,6 +139,21 @@
             color: #831843 !important;
             font-weight: 600;
         }
+        /* ATC / ETC last 30 days (hours). ATC teal, ETC amber — same language as /tasks badges. */
+        .task-summary-col-atc,
+        .task-summary-col-etc {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .task-summary-col-atc {
+            color: #0f766e !important;
+        }
+        .task-summary-col-etc {
+            color: #b45309 !important;
+        }
+        .task-summary-col-atc.is-atc-over {
+            color: #dc2626 !important;
+        }
         /* DAR (days/25) — last 30 days.
              > 90%  → pink
              80–90% → green
@@ -1127,6 +1142,12 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="tat_l30" data-sort-type="float" title="TAT — average Turn-Around Time in days (task start → completion) over the last 30 days" role="button" tabindex="0">
                                         TAT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="atc_l30" data-sort-type="number" title="ATC — actual time to complete (hours) for work closed in the last 30 days" role="button" tabindex="0">
+                                        ATC <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="etc_l30" data-sort-type="number" title="ETC — estimated time to complete (hours) for work closed in the last 30 days" role="button" tabindex="0">
+                                        ETC <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="missed_l30" data-sort-type="number" title="Miss — last 30 days vs days 31–60. Deleted unfinished tasks in that window count as missed." role="button" tabindex="0">
                                         Miss <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
@@ -1170,6 +1191,8 @@
                                         data-sort-overdue="{{ (int) ($row['overdue'] ?? 0) }}"
                                         data-sort-dar_l30="{{ (int) ($row['dar_l30_pct'] ?? 0) }}"
                                         data-sort-tat_l30="{{ $row['tat_l30_days'] !== null ? (float) $row['tat_l30_days'] : -1 }}"
+                                        data-sort-atc_l30="{{ (int) ($row['atc_l30_h'] ?? 0) }}"
+                                        data-sort-etc_l30="{{ (int) ($row['etc_l30_h'] ?? 0) }}"
                                         data-sort-missed_l30="{{ (int) ($row['missed_l30'] ?? 0) }}"
                                         data-sort-a_task_h="{{ (int) ($row['a_task_h'] ?? 0) }}"
                                         data-sort-done="{{ (int) ($row['done'] ?? 0) }}"
@@ -1430,6 +1453,21 @@
                                             {{ $tatDisplay }}
                                         </td>
                                         @php
+                                            $atcL30h = (int) ($row['atc_l30_h'] ?? 0);
+                                            $etcL30h = (int) ($row['etc_l30_h'] ?? 0);
+                                            $atcL30min = (int) ($row['atc_l30_min'] ?? 0);
+                                            $etcL30min = (int) ($row['etc_l30_min'] ?? 0);
+                                            $atcOverClass = ($atcL30h > $etcL30h && $etcL30h > 0) ? 'is-atc-over' : '';
+                                        @endphp
+                                        <td class="task-summary-num task-summary-col-atc {{ $atcOverClass }}"
+                                            title="ATC last 30 days · {{ $atcL30min }} min · {{ $atcL30h }}h">
+                                            {{ $atcL30h }}h
+                                        </td>
+                                        <td class="task-summary-num task-summary-col-etc"
+                                            title="ETC last 30 days · {{ $etcL30min }} min · {{ $etcL30h }}h">
+                                            {{ $etcL30h }}h
+                                        </td>
+                                        @php
                                             $missL30 = (int) ($row['missed_l30'] ?? 0);
                                             $missP30 = (int) ($row['missed_p30'] ?? 0);
                                             $missClass = 'is-miss-zero';
@@ -1513,7 +1551,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="24" class="text-center text-muted py-4">
+                                        <td colspan="26" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -1524,7 +1562,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="24" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="26" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -3244,7 +3282,9 @@
                 tr.setAttribute('data-level', level); // 'director' | 'mgr' | 'others'
                 tr.setAttribute('data-collapsed', 'false');
                 var td = document.createElement('td');
-                td.setAttribute('colspan', '24');
+                var tsTable = tbody && tbody.closest ? tbody.closest('table') : document.querySelector('.task-summary-table');
+                var tsColspan = tsTable ? tsTable.querySelectorAll('thead tr:first-child th').length : 26;
+                td.setAttribute('colspan', String(tsColspan || 26));
                 td.innerHTML =
                     '<div class="task-summary-group-header-inner">'
                     + '<button type="button" class="task-summary-group-chevron" data-action="toggle-group" aria-label="Toggle group">'
@@ -6411,6 +6451,8 @@
                     + renderMetricTile('Done', m.done || 0, 'is-done')
                     + renderMetricTile('O-Due', m.overdue || 0, 'is-overdue')
                     + renderMetricTile('TAT', tat)
+                    + renderMetricTile('ATC', (m.atc_l30_h || 0) + 'h')
+                    + renderMetricTile('ETC', (m.etc_l30_h || 0) + 'h')
                     + renderMetricTile('Miss', (m.missed_l30 || 0) + ' / ' + (m.missed_p30 || 0), 'is-overdue');
                 return html;
             }
@@ -7008,6 +7050,8 @@
                     + renderTile('Done', m.done || 0, 'is-done')
                     + renderTile('O-Due', m.overdue || 0, 'is-overdue')
                     + renderTile('TAT', tat)
+                    + renderTile('ATC', (m.atc_l30_h || 0) + 'h')
+                    + renderTile('ETC', (m.etc_l30_h || 0) + 'h')
                     + renderTile('Miss', (m.missed_l30 || 0) + ' / ' + (m.missed_p30 || 0), 'is-overdue');
             }
 
