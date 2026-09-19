@@ -118,29 +118,40 @@
         #amz-ads-raw-wrap .amz-sync-cell {
             display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap;
         }
-        #amz-ads-raw-wrap .amz-sync-dot {
+        .amz-sync-dot {
             width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
             box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
         }
-        #amz-ads-raw-wrap .amz-sync-dot.is-green { background: #16a34a; }
-        #amz-ads-raw-wrap .amz-sync-dot.is-yellow { background: #f59e0b; }
-        #amz-ads-raw-wrap .amz-sync-dot.is-red { background: #dc2626; }
-        #amz-ads-raw-wrap .amz-sync-head {
+        .amz-sync-dot.is-green { background: #16a34a; }
+        .amz-sync-dot.is-yellow { background: #f59e0b; }
+        .amz-sync-dot.is-red { background: #dc2626; }
+        .amz-sync-head {
             display: flex; flex-direction: column; align-items: center; gap: 3px; line-height: 1.15;
         }
-        #amz-ads-raw-wrap .amz-sync-head-title { font-weight: 700; }
-        #amz-ads-raw-wrap .amz-sync-head-badges { display: inline-flex; align-items: center; gap: 3px; flex-wrap: nowrap; }
+        .amz-sync-head-title { font-weight: 700; }
+        .amz-sync-head-badges { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
+        .amz-sync-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700;
+            line-height: 1.2; border: 1px solid #e2e8f0; cursor: pointer;
+            user-select: none; background: #fff; color: #334155;
+        }
+        .amz-sync-badge .amz-sync-dot { width: 7px; height: 7px; }
+        .amz-sync-badge.is-green { color: #166534; border-color: #86efac; background: #f0fdf4; }
+        .amz-sync-badge.is-yellow { color: #92400e; border-color: #fcd34d; background: #fffbeb; }
+        .amz-sync-badge.is-red { color: #991b1b; border-color: #fca5a5; background: #fef2f2; }
+        .amz-sync-badge.is-active { box-shadow: 0 0 0 2px currentColor; }
+        .amz-sync-toolbar-group {
+            display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 4px; padding: 6px 10px; border-radius: 8px;
+            background: #fff; border: 1px solid #e2e8f0; line-height: 1.15;
+        }
+        .amz-sync-toolbar-label { font-size: 12px; font-weight: 800; color: #0f172a; letter-spacing: 0.02em; }
         #amz-ads-raw-wrap .amz-sync-badge {
-            display: inline-flex; align-items: center; gap: 3px;
-            padding: 1px 5px; border-radius: 999px; font-size: 10px; font-weight: 700;
-            line-height: 1.2; border: 1px solid transparent; cursor: pointer;
-            user-select: none; background: #fff;
+            padding: 1px 5px; font-size: 10px; gap: 3px;
         }
         #amz-ads-raw-wrap .amz-sync-badge .amz-sync-dot { width: 6px; height: 6px; }
-        #amz-ads-raw-wrap .amz-sync-badge.is-green { color: #166534; border-color: #86efac; background: #f0fdf4; }
-        #amz-ads-raw-wrap .amz-sync-badge.is-yellow { color: #92400e; border-color: #fcd34d; background: #fffbeb; }
-        #amz-ads-raw-wrap .amz-sync-badge.is-red { color: #991b1b; border-color: #fca5a5; background: #fef2f2; }
-        #amz-ads-raw-wrap .amz-sync-badge.is-active { box-shadow: 0 0 0 2px currentColor; }
+        #amz-ads-raw-wrap .amz-sync-head-badges { gap: 3px; }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="bgt"] .tabulator-col-title,
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="last_sbid"] .tabulator-col-title,
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="sbid"] .tabulator-col-title {
@@ -405,6 +416,14 @@
                             <span id="amazonAdsCvrBadgeWrap" class="amz-stat-badge amz-stat-badge--cvr" title="Ads CVR = Ads Sold / Ads Clicks (L30)">CVR:<span id="amazonAdsCvrBadgeValue">0%</span></span>
                             <span id="amazonAdsCpcBadgeWrap" class="amz-stat-badge amz-stat-badge--cpc" title="CPC = Spend / Clicks">CPC:<span id="amazonAdsCpcBadgeValue">$0</span></span>
                             <span id="amazonAdsSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Sales (L30) — same Amazon L30 universe as Spend">SALES:<span id="amazonAdsSalesBadgeValue">$0</span></span>
+                            <div class="amz-sync-toolbar-group" title="Click a BGT color to show only those rows. Click again to clear.">
+                                <span class="amz-sync-toolbar-label">BGT</span>
+                                <div class="amz-sync-head-badges" data-sync-field="bgt"></div>
+                            </div>
+                            <div class="amz-sync-toolbar-group" title="Click a BID color to show only those rows. Click again to clear.">
+                                <span class="amz-sync-toolbar-label">BID</span>
+                                <div class="amz-sync-head-badges" data-sync-field="bid"></div>
+                            </div>
                         </div>
 
                         <div class="amz-ads-toolbar-actions">
@@ -1931,7 +1950,7 @@
                 };
             }
             function amzPaintSyncHeaders() {
-                document.querySelectorAll('#amz-ads-raw-wrap .amz-sync-head-badges').forEach(function (el) {
+                document.querySelectorAll('.amz-ads-all .amz-sync-head-badges').forEach(function (el) {
                     var field = el.getAttribute('data-sync-field') === 'bid' ? 'bid' : 'bgt';
                     var counts = amzSyncHeaderCounts[field] || { green: 0, yellow: 0, red: 0 };
                     var active = amzSyncFilters[field] || '';
@@ -2130,7 +2149,7 @@
                 paginationButtonCount: 10,
                 paginationInitialPage: 1,
                 sortMode: 'remote',
-                headerSortClickElement: 'header',
+                headerSortClickElement: 'icon',
                 placeholder: 'No rows for this source.',
                 selectableRows: true,
                 ajaxResponse: function (url, params, response) {
@@ -2582,13 +2601,14 @@
             document.getElementById('amz-raw-refresh').addEventListener('click', function () {
                 Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
             });
-            document.getElementById('amz-ads-raw-wrap').addEventListener('click', function (e) {
+            document.querySelector('.amz-ads-all').addEventListener('click', function (e) {
                 var btn = e.target && e.target.closest ? e.target.closest('.amz-sync-badge') : null;
                 if (!btn || !this.contains(btn)) return;
                 e.preventDefault();
                 e.stopPropagation();
                 amzToggleSyncFilter(btn.getAttribute('data-sync-field'), btn.getAttribute('data-sync-color'));
             }, true);
+            amzPaintSyncHeaders();
             document.getElementById('amazonAdsSectionExportBtn').addEventListener('click', function () {
                 var tbl = (rawSources[activeRawSourceKey] && rawSources[activeRawSourceKey].table) ? rawSources[activeRawSourceKey].table : 'export';
                 var d = new Date().toISOString().slice(0, 10);
