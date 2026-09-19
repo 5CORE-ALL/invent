@@ -30,6 +30,9 @@
         .amz-ads-audit .amz-ads-audit-badge-green {
             background-color: #16a34a;
         }
+        .amz-ads-audit .amz-ads-audit-badge-amber {
+            background-color: #d97706;
+        }
         .amz-ads-audit .amz-ads-audit-badge .audit-dot {
             cursor: default;
             border-color: rgba(255, 255, 255, 0.6);
@@ -48,6 +51,12 @@
         }
         .amz-ads-audit .audit-dot-green {
             background-color: #16a34a;
+        }
+        .amz-ads-audit .audit-dot-amber {
+            background-color: #d97706;
+        }
+        .amz-ads-audit .audit-dot-gray {
+            background-color: #cbd5e1;
         }
         .amz-ads-audit .audit-history {
             font-size: 0.72rem;
@@ -82,9 +91,17 @@
                             <span>Pending</span>
                             <span class="tabular-nums" id="amzAdsAuditPendingValue">0</span>
                         </div>
-                        <div class="amz-ads-audit-badge amz-ads-audit-badge-green" id="amzAdsAuditAuditedWrap" title="Audited: number of campaigns with a green dot (audited in the last 30 days).">
+                        <div class="amz-ads-audit-badge amz-ads-audit-badge-green" id="amzAdsAuditAuditedWrap" title="Audited: number of campaigns with a Status green dot (audited in the last 30 days).">
                             <span>Audited</span>
                             <span class="tabular-nums" id="amzAdsAuditAuditedValue">0</span>
+                        </div>
+                        <div class="amz-ads-audit-badge amz-ads-audit-badge-green" id="amzAdsAuditGreenWrap" title="Green: number of campaigns that have any audit history (Green column).">
+                            <span>Green</span>
+                            <span class="tabular-nums" id="amzAdsAuditGreenValue">0</span>
+                        </div>
+                        <div class="amz-ads-audit-badge amz-ads-audit-badge-amber" id="amzAdsAuditStaleWrap" title="30 days ago: number of campaigns whose last audit is older than 30 days.">
+                            <span>30 days ago</span>
+                            <span class="tabular-nums" id="amzAdsAuditStaleValue">0</span>
                         </div>
                         <div class="btn-group btn-group-sm ms-auto" role="group" aria-label="Filter by ad type" id="amzAdsAuditTypeFilter">
                             <button type="button" class="btn btn-primary" data-adtype="ALL">All</button>
@@ -199,6 +216,28 @@
                             openAuditModal(cell.getData());
                         }
                     },
+                    {
+                        title: 'Green', field: 'green', headerSort: true, hozAlign: 'center', headerHozAlign: 'center', width: 80,
+                        formatter: function (c) {
+                            var d = c.getData();
+                            var hasHistory = d.green === 'green';
+                            var cls = hasHistory ? 'audit-dot-green' : 'audit-dot-gray';
+                            var title = hasHistory
+                                ? ('Has audit history' + (d.latest_audit_at ? (' (last ' + d.latest_audit_at + ')') : '') + '.')
+                                : 'No audit history yet.';
+                            return '<span class="audit-dot ' + cls + '" title="' + esc(title) + '"></span>';
+                        }
+                    },
+                    {
+                        title: '30 days ago', field: 'stale', headerSort: true, hozAlign: 'center', headerHozAlign: 'center', width: 170,
+                        formatter: function (c) {
+                            var d = c.getData();
+                            if (!d.stale) { return '<span class="text-muted">—</span>'; }
+                            var when = d.latest_audit_at || '';
+                            return '<span class="audit-dot audit-dot-amber" title="' + esc('Last audit ' + when + ' (older than 30 days).') + '"></span>'
+                                + (when ? ' <span class="small">' + esc(when) + '</span>' : '');
+                        }
+                    },
                     { title: 'History', field: 'history', headerSort: false, widthGrow: 3, formatter: function (c) { return renderHistory(c.getValue()); } }
                 ]
             });
@@ -206,15 +245,21 @@
             function updatePending() {
                 // Count only the rows currently visible under the active ad-type filter.
                 var rows = table.getData('active');
-                var pending = 0, audited = 0;
+                var pending = 0, audited = 0, green = 0, stale = 0;
                 rows.forEach(function (r) {
                     if (!r) { return; }
                     if (r.dot === 'green') { audited++; } else { pending++; }
+                    if (r.green === 'green') { green++; }
+                    if (r.stale) { stale++; }
                 });
                 var pEl = document.getElementById('amzAdsAuditPendingValue');
                 if (pEl) { pEl.textContent = Number(pending).toLocaleString('en-US'); }
                 var aEl = document.getElementById('amzAdsAuditAuditedValue');
                 if (aEl) { aEl.textContent = Number(audited).toLocaleString('en-US'); }
+                var gEl = document.getElementById('amzAdsAuditGreenValue');
+                if (gEl) { gEl.textContent = Number(green).toLocaleString('en-US'); }
+                var sEl = document.getElementById('amzAdsAuditStaleValue');
+                if (sEl) { sEl.textContent = Number(stale).toLocaleString('en-US'); }
             }
             table.on('dataProcessed', updatePending);
             table.on('dataFiltered', updatePending);
