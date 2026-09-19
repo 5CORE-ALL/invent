@@ -39,13 +39,6 @@ class ChatPwaTest extends TestCase
         $this->assertStringNotContainsString('/chat/sync', $html);
     }
 
-    public function test_standalone_app_boot_sends_inventory_to_chat(): void
-    {
-        $boot = (string) file_get_contents(resource_path('views/layouts/shared/invent-chat-pwa-boot.blade.php'));
-        $this->assertStringContainsString("display-mode: standalone", $boot);
-        $this->assertStringContainsString("location.replace('/chat')", $boot);
-    }
-
     public function test_asset_links_are_public(): void
     {
         $res = $this->get('/.well-known/assetlinks.json');

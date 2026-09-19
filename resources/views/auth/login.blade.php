@@ -2,7 +2,6 @@
 <html lang="en">
 
 <head>
-    @include('layouts.shared.invent-chat-pwa-boot')
     @include('layouts.shared/title-meta', ['title' => 'Log In'])
 
     @include('layouts.shared/head-css', ['mode' => $mode ?? '', 'demo' => $demo ?? ''])
