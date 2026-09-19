@@ -285,4 +285,17 @@ class ChatProductionTest extends TestCase
         $bodies = collect($res->json('messages'))->pluck('body')->implode(' ');
         $this->assertStringContainsString('Complete task', $bodies);
     }
+
+    public function test_notification_tone_pref_can_be_saved(): void
+    {
+        [$a] = $this->dmPair();
+        $this->actingAs($a)->postJson('/chat/prefs', [
+            'mode' => 'mentions',
+            'tone' => 'knock',
+        ])->assertOk()->assertJson(['ok' => true, 'tone' => 'knock']);
+
+        $this->actingAs($a)->getJson('/chat/prefs')
+            ->assertOk()
+            ->assertJson(['mode' => 'mentions', 'tone' => 'knock']);
+    }
 }

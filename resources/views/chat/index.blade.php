@@ -485,12 +485,24 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <label class="form-label" for="slackNotifyMode">Notify me about</label>
                     <select class="form-select" id="slackNotifyMode">
                         <option value="all">All messages</option>
                         <option value="mentions">Mentions and threads</option>
                         <option value="dms">Direct messages only</option>
                         <option value="none">None</option>
                     </select>
+                    <label class="form-label mt-3" for="slackNotifyTone">Notification tone</label>
+                    <div class="d-flex gap-2">
+                        <select class="form-select" id="slackNotifyTone">
+                            <option value="default">Default</option>
+                            <option value="soft">Soft</option>
+                            <option value="bright">Bright</option>
+                            <option value="knock">Knock</option>
+                            <option value="off">Off</option>
+                        </select>
+                        <button type="button" class="btn btn-light" id="slackTonePreview">Preview</button>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-success">Save</button>
@@ -555,6 +567,8 @@
     if (statusSel) statusSel.value = @json($presenceStatus ?? 'active');
     const notifyModeEl = document.getElementById('slackNotifyMode');
     if (notifyModeEl) notifyModeEl.value = @json($notifyMode ?? 'all');
+    const notifyToneEl = document.getElementById('slackNotifyTone');
+    if (notifyToneEl) notifyToneEl.value = @json($notifyTone ?? 'default');
 
     function esc(s) {
         return String(s == null ? '' : s)
@@ -580,19 +594,42 @@
         localStorage.setItem(OUTBOX_KEY, JSON.stringify(rows.slice(-40)));
     }
 
-    function playTone() {
+    function currentTone() {
+        const sel = document.getElementById('slackNotifyTone');
+        return (sel && sel.value) || 'default';
+    }
+
+    function playTone(name) {
+        const tone = name || currentTone();
+        if (tone === 'off') return;
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const o = ctx.createOscillator();
-            const g = ctx.createGain();
-            o.type = 'sine';
-            o.frequency.setValueAtTime(880, ctx.currentTime);
-            o.frequency.linearRampToValueAtTime(1175, ctx.currentTime + 0.07);
-            g.gain.setValueAtTime(0.0001, ctx.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.07, ctx.currentTime + 0.02);
-            g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
-            o.connect(g); g.connect(ctx.destination);
-            o.start(); o.stop(ctx.currentTime + 0.24);
+            const now = ctx.currentTime;
+            const beep = function (freq, start, dur, type, vol) {
+                const o = ctx.createOscillator();
+                const g = ctx.createGain();
+                o.type = type || 'sine';
+                o.frequency.setValueAtTime(freq, now + start);
+                g.gain.setValueAtTime(0.0001, now + start);
+                g.gain.exponentialRampToValueAtTime(vol || 0.07, now + start + 0.015);
+                g.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+                o.connect(g);
+                g.connect(ctx.destination);
+                o.start(now + start);
+                o.stop(now + start + dur + 0.02);
+            };
+            if (tone === 'soft') {
+                beep(660, 0, 0.28, 'sine', 0.035);
+            } else if (tone === 'bright') {
+                beep(1200, 0, 0.08, 'triangle', 0.055);
+                beep(1600, 0.09, 0.1, 'triangle', 0.045);
+            } else if (tone === 'knock') {
+                beep(520, 0, 0.07, 'square', 0.03);
+                beep(520, 0.12, 0.07, 'square', 0.03);
+            } else {
+                beep(880, 0, 0.12, 'sine', 0.07);
+                beep(1175, 0.07, 0.16, 'sine', 0.055);
+            }
         } catch (e) {}
     }
 
@@ -1400,9 +1437,15 @@
         await api('/chat/prefs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: document.getElementById('slackNotifyMode').value })
+            body: JSON.stringify({
+                mode: document.getElementById('slackNotifyMode').value,
+                tone: document.getElementById('slackNotifyTone').value
+            })
         });
         window.bootstrap.Modal.getOrCreateInstance(document.getElementById('slackPrefsModal')).hide();
+    });
+    document.getElementById('slackTonePreview').addEventListener('click', function () {
+        playTone(document.getElementById('slackNotifyTone').value);
     });
     document.getElementById('slackStatusSel').addEventListener('change', function () {
         fetch('/chat/presence', {
