@@ -138,6 +138,7 @@ class ReverbListingPublishService
         }
 
         $inv = $this->publishInventory($sku, $condition['name']);
+        $outOfStock = $inv <= 0;
         $shippingProfileId = $this->resolveShippingProfileId($product, $sku);
 
         $fields = [
@@ -152,7 +153,7 @@ class ReverbListingPublishService
             'description' => $this->resolveDescription($product, $title),
             'price_amount' => $price,
             'price_currency' => 'USD',
-            'inventory' => $inv,
+            'inventory' => $outOfStock ? 1 : $inv,
             'has_inventory' => true,
             'offers_enabled' => true,
             'condition_uuid' => $condition['uuid'],
@@ -194,12 +195,28 @@ class ReverbListingPublishService
                 ]);
             }
         }
-        $this->persistListed($sku, $listingId, $title, $price, $inv, (string) ($res['web_url'] ?? ''));
+        $state = 'live';
+        if ($outOfStock && $listingId !== '') {
+            $oos = $this->api->markListingOutOfStock($listingId);
+            if (empty($oos['success'])) {
+                Log::warning('Reverb publish: listing created but out-of-stock update failed', [
+                    'sku' => $sku,
+                    'listing_id' => $listingId,
+                    'message' => $oos['message'] ?? '',
+                ]);
+            } else {
+                $state = 'out_of_stock';
+                $inv = 0;
+            }
+        }
+        $this->persistListed($sku, $listingId, $title, $price, $inv, (string) ($res['web_url'] ?? ''), $state);
         $this->forgetListingCaches();
+
+        $stateNote = $state === 'out_of_stock' ? ' as out of stock' : '';
 
         return [
             'success' => true,
-            'message' => 'Published '.$sku.' to Reverb'.($listingId !== '' ? ' (#'.$listingId.')' : '')
+            'message' => 'Published '.$sku.' to Reverb'.$stateNote.($listingId !== '' ? ' (#'.$listingId.')' : '')
                 .' with '.count($images).' photo'.(count($images) === 1 ? '' : 's').'.',
             'goods_id' => $listingId !== '' ? $listingId : null,
             'sku_id' => $listingId !== '' ? $listingId : null,
@@ -631,8 +648,7 @@ class ReverbListingPublishService
             $inv = min(1, $inv);
         }
 
-        // Reverb HTTP 400: "inventory cannot be 0 if publish is true".
-        return max(1, $inv);
+        return max(0, $inv);
     }
 
     private function resolveDescription(ProductMaster $product, string $title): string
@@ -955,18 +971,19 @@ class ReverbListingPublishService
         return $base.'/'.ltrim($raw, '/');
     }
 
-    private function persistListed(string $sku, string $listingId, string $title, float $price, int $inv, string $webUrl): void
+    private function persistListed(string $sku, string $listingId, string $title, float $price, int $inv, string $webUrl, string $state = 'live'): void
     {
+        $state = strtolower(trim($state)) !== '' ? strtolower(trim($state)) : 'live';
         try {
             if (Schema::hasTable('reverb_products')) {
                 $payload = [
                     'reverb_listing_id' => $listingId !== '' ? $listingId : null,
-                    'listing_state' => 'live',
+                    'listing_state' => $state,
                     'product_title' => $title,
                     'price' => $price,
                     'remaining_inventory' => $inv,
                     'last_synced_at' => now(),
-                    'status' => 'live',
+                    'status' => $state,
                 ];
                 $existing = ReverbProduct::query()->where('sku', $sku)->first()
                     ?: ReverbProduct::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
@@ -1003,7 +1020,7 @@ class ReverbListingPublishService
                 $value = $status && is_array($status->value) ? $status->value : [];
                 $value['listed'] = 'Listed';
                 $value['listing_id'] = $listingId;
-                $value['state'] = 'live';
+                $value['state'] = $state;
                 $value['buyer_link'] = $webUrl !== '' ? $webUrl : ($listingId !== '' ? 'https://reverb.com/item/'.$listingId : ($value['buyer_link'] ?? ''));
                 $value['seller_link'] = $listingId !== ''
                     ? 'https://reverb.com/my/selling/listings/'.$listingId

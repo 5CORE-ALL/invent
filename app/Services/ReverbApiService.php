@@ -1663,6 +1663,60 @@ class ReverbApiService
     }
 
     /**
+     * Reverb cannot stay published with inventory 0. After create/publish, PUT qty 0
+     * so the listing moves to out_of_stock instead of staying live with fake qty 1.
+     *
+     * @return array{success: bool, message: string, listing_id?: string}
+     */
+    public function markListingOutOfStock(string $listingId): array
+    {
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'Reverb API token not configured.'];
+        }
+
+        $listingId = trim($listingId);
+        if ($listingId === '') {
+            return ['success' => false, 'message' => 'Listing id is required.'];
+        }
+
+        $payloads = [
+            [
+                'inventory' => 0,
+                'has_inventory' => true,
+                'state' => ['slug' => 'out_of_stock'],
+            ],
+            [
+                'inventory' => 0,
+                'has_inventory' => true,
+            ],
+        ];
+
+        $lastMessage = 'Could not mark listing out of stock.';
+        foreach ($payloads as $payload) {
+            try {
+                $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
+                if ($response->successful()) {
+                    return [
+                        'success' => true,
+                        'message' => 'Listing set to out of stock.',
+                        'listing_id' => $listingId,
+                    ];
+                }
+                $lastMessage = 'Reverb API error (HTTP '.$response->status().'): '.mb_substr($response->body(), 0, 2000);
+            } catch (\Throwable $e) {
+                $lastMessage = $e->getMessage();
+            }
+        }
+
+        return [
+            'success' => false,
+            'message' => $lastMessage,
+            'listing_id' => $listingId,
+        ];
+    }
+
+    /**
      * Create a new Reverb listing (POST /api/listings).
      *
      * @param  array<string, mixed>  $fields  Same editor-shaped fields as {@see updateListing()}
