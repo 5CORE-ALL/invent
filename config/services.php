@@ -835,6 +835,14 @@ return [
         'currency' => env('TEMU2_CURRENCY', 'USD'),
     ],
 
+    'temu3' => [
+        'app_key' => env('TEMU3_APP_KEY'),
+        'secret_key' => env('TEMU3_SECRET_KEY'),
+        'access_token' => env('TEMU3_ACCESS_TOKEN'),
+        'shop_id' => env('TEMU3_SHOP_ID'),
+        'openapi_router_url' => env('TEMU3_OPENAPI_ROUTER_URL', 'https://openapi-b-us.temu.com/openapi/router'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Shein
