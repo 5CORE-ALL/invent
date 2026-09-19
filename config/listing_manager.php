@@ -22,6 +22,7 @@ return [
         'temu2' => ['title' => 250, 'description' => 5000],
         'temutwo' => ['title' => 250, 'description' => 5000],
         'faire' => ['title' => 60, 'description' => 5000],
+        'wayfair' => ['title' => 200, 'description' => 5000],
         'shopify' => ['title' => 255, 'description' => 65535],
         'default' => ['title' => 200, 'description' => 5000],
     ],

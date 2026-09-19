@@ -19,6 +19,7 @@ use App\Services\ReverbApiService;
 use App\Services\SheinApiService;
 use App\Services\WayfairApiService;
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
+use App\Services\MarketplaceManager\WayfairListingPublishService;
 use App\Services\MarketplaceManager\Temu2ListingPublishService;
 use App\Services\MarketplaceManager\TemuListingPublishService;
 use App\Services\ShopifyApiService;
@@ -2333,6 +2334,9 @@ class ListingManagerController extends Controller
         );
         $channelName = (string) ($draft->channel->channel ?? '');
         $details = $this->applyLiveEbayPolicies($details, $channelName);
+        if (ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName)) === 'wayfair') {
+            $details = $this->applyWayfairSuggestedClass($details, (string) $draft->seller_sku);
+        }
         $draft->listing_details = $details;
         $draft->save();
 
@@ -2992,6 +2996,38 @@ class ListingManagerController extends Controller
         return $details;
     }
 
+    /**
+     * @param  array<string, mixed>  $details
+     * @return array<string, mixed>
+     */
+    private function applyWayfairSuggestedClass(array $details, string $sku): array
+    {
+        $classId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
+        if ($classId !== '' && preg_match('/^\d+$/', $classId)) {
+            return $details;
+        }
+        try {
+            $suggested = app(WayfairListingPublishService::class)->suggestClassForSku($sku);
+        } catch (\Throwable $e) {
+            Log::warning('Wayfair class suggest failed: '.$e->getMessage());
+
+            return $details;
+        }
+        $id = (int) ($suggested['id'] ?? 0);
+        if ($id <= 0) {
+            return $details;
+        }
+        $details['primary_category_id'] = (string) $id;
+        $details['category_id'] = (string) $id;
+        $path = trim((string) ($suggested['path'] ?? $suggested['name'] ?? ''));
+        if ($path !== '') {
+            $details['primary_category_path'] = $path;
+            $details['category_name'] = trim((string) ($suggested['name'] ?? $path));
+        }
+
+        return $details;
+    }
+
     private function applyFaireDraftTitle(ListingManagerChannelDraft $draft, string $channelName): void
     {
         if (! ListingManagerAmazonHydrator::isFaireChannel($channelName) || (string) $draft->status === 'listed') {
@@ -3033,6 +3069,9 @@ class ListingManagerController extends Controller
             if ($full) {
                 $this->applyFaireDraftTitle($d, $channelName);
             }
+        }
+        if ($full && ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName)) === 'wayfair') {
+            $details = $this->applyWayfairSuggestedClass($details, (string) $d->seller_sku);
         }
         $ready = ListingManagerPublishStatus::readiness(
             $d->title,
