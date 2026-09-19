@@ -16,6 +16,7 @@ return [
     'repricer.bestbuy-search.*' => 'repricer',
     'ai.title.manager' => 'ai_title',
     'users.add' => 'team',
+    'indeed' => 'team',
     'payroll.*' => 'team',
     'home' => 'dashboard',
     'all.marketplace.master' => 'marketplace',

@@ -8,6 +8,7 @@ return [
     // User
     ['value' => 'roles', 'text' => 'Roles', 'group' => 'User'],
     ['value' => 'permissions', 'text' => 'Permission', 'group' => 'User'],
+    ['value' => 'indeed', 'text' => 'Indeed', 'group' => 'User'],
 
     // Purchase Masters
     ['value' =>'purchase_master_categories', 'text' => 'Categories', 'group' => 'Purchase Masters'],

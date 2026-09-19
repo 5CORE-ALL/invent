@@ -67,6 +67,9 @@
                                 <li>
                                     <a href="{{ route('users.rr-checklist.index') }}" class="{{ request()->routeIs('users.rr-checklist.*') ? 'active' : '' }}">R&amp;R Checklist</a>
                                 </li>
+                                <li>
+                                    <a href="{{ route('indeed') }}" class="{{ request()->routeIs('indeed') ? 'active' : '' }}">Indeed</a>
+                                </li>
                         </ul>
                     </div>
                 </li>

@@ -13,6 +13,7 @@ use App\Http\Controllers\PricingContainerController;
 use App\Http\Controllers\InvVerifyContainerController;
 use App\Http\Controllers\Auth\UserController;
 use App\Http\Controllers\Auth\UserSettingsController;
+use App\Http\Controllers\IndeedController;
 use App\Http\Controllers\Kpi\KpiShippingController;
 use App\Http\Controllers\Campaigns\AmazonAdRunningController;
 use App\Http\Controllers\Campaigns\AmazonCPCZeroController;
@@ -7188,6 +7189,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/users/add', [UserController::class, 'index'])
         ->middleware('auth')
         ->name('users.add');
+
+    Route::get('/indeed', [IndeedController::class, 'index'])
+        ->middleware('auth')
+        ->name('indeed');
 
     Route::put('/users/{user}', [UserController::class, 'update'])
         ->middleware('auth')

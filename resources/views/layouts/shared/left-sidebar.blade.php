@@ -3016,7 +3016,8 @@
                     || request()->routeIs('attendance.employee')
                     || request()->routeIs('attendance.summary*')
                     || request()->routeIs('attendance.payroll*')
-                    || request()->routeIs('attendance.agent');
+                    || request()->routeIs('attendance.agent')
+                    || request()->routeIs('indeed');
             @endphp
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPages1" aria-expanded="{{ $userMenuActive ? 'true' : 'false' }}" aria-controls="sidebarPages1"
@@ -3063,6 +3064,11 @@
                         <li>
                             <a href="{{ route('attendance.agent') }}" class="{{ request()->routeIs('attendance.agent') ? 'active' : '' }}">
                                 <i class="ri-computer-line me-2"></i>Desktop Agent
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('indeed') }}" class="{{ request()->routeIs('indeed') ? 'active' : '' }}">
+                                <i class="ri-briefcase-4-line me-2"></i>Indeed
                             </a>
                         </li>
                     </ul>
