@@ -4,6 +4,7 @@ namespace App\Services;
 
 use GuzzleHttp\Client;
 use InvalidArgumentException;
+use RuntimeException;
 
 class AmazonAdsService
 {
@@ -425,7 +426,7 @@ class AmazonAdsService
      * @param  list<string>  $campaignIds
      * @return list<array<string, mixed>>
      */
-    public function listTargetsByCampaignIds(array $campaignIds, int $maxPages = 20): array
+    public function listTargetsByCampaignIds(array $campaignIds, int $maxPages = 80): array
     {
         return $this->listSpEntitiesByCampaignIds(
             '/sp/targets/list',
@@ -442,7 +443,7 @@ class AmazonAdsService
      * @param  list<string>  $campaignIds
      * @return list<array<string, mixed>>
      */
-    public function listKeywordsByCampaignIds(array $campaignIds, int $maxPages = 20): array
+    public function listKeywordsByCampaignIds(array $campaignIds, int $maxPages = 80): array
     {
         return $this->listSpEntitiesByCampaignIds(
             '/sp/keywords/list',
@@ -474,36 +475,42 @@ class AmazonAdsService
         }
 
         $out = [];
-        $nextToken = null;
-        $pages = 0;
-        do {
-            $pages++;
-            $body = [
-                'campaignIdFilter' => ['include' => $ids],
-                'stateFilter' => ['include' => ['ENABLED', 'PAUSED']],
-                'maxResults' => 100,
-            ];
+        foreach (array_chunk($ids, 8) as $chunk) {
+            $nextToken = null;
+            $pages = 0;
+            do {
+                $pages++;
+                $body = [
+                    'campaignIdFilter' => ['include' => $chunk],
+                    'stateFilter' => ['include' => ['ENABLED', 'PAUSED']],
+                    'maxResults' => 100,
+                ];
+                if (is_string($nextToken) && $nextToken !== '') {
+                    $body['nextToken'] = $nextToken;
+                }
+                $response = $this->post($path, $body, [
+                    'Content-Type' => $accept,
+                    'Accept' => $accept,
+                ]);
+                $batch = [];
+                foreach ($listKeys as $key) {
+                    if (isset($response[$key]) && is_array($response[$key])) {
+                        $batch = $response[$key];
+                        break;
+                    }
+                }
+                foreach ($batch as $row) {
+                    if (is_array($row)) {
+                        $out[] = $row;
+                    }
+                }
+                $nextToken = $response['nextToken'] ?? null;
+            } while (is_string($nextToken) && $nextToken !== '' && $pages < $maxPages);
+
             if (is_string($nextToken) && $nextToken !== '') {
-                $body['nextToken'] = $nextToken;
+                throw new RuntimeException('Amazon Ads '.$path.' list truncated after '.$pages.' pages');
             }
-            $response = $this->post($path, $body, [
-                'Content-Type' => $accept,
-                'Accept' => $accept,
-            ]);
-            $batch = [];
-            foreach ($listKeys as $key) {
-                if (isset($response[$key]) && is_array($response[$key])) {
-                    $batch = $response[$key];
-                    break;
-                }
-            }
-            foreach ($batch as $row) {
-                if (is_array($row)) {
-                    $out[] = $row;
-                }
-            }
-            $nextToken = $response['nextToken'] ?? null;
-        } while (is_string($nextToken) && $nextToken !== '' && $pages < $maxPages);
+        }
 
         return $out;
     }

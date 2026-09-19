@@ -84,7 +84,8 @@ final class AmazonAdsApiRetry
             || str_contains($msg, '503')
             || str_contains($msg, '504')
             || str_contains($msg, 'bad gateway')
-            || str_contains($msg, 'unavailable');
+            || str_contains($msg, 'unavailable')
+            || str_contains($msg, 'truncated');
     }
 
     public static function httpStatus(Throwable $e): ?int

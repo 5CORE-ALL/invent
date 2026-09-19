@@ -6,7 +6,6 @@ use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Support\AmazonAdsApiRetry;
 use App\Support\AmazonAdsEnabledCampaignSync;
 use RuntimeException;
-use Throwable;
 
 /**
  * Live GET of Amazon campaign daily budget and keyword/target bid.
@@ -110,21 +109,11 @@ class AmazonAdsLiveValuePuller
     private function pullSpBids(array $campaignIds): array
     {
         $out = array_fill_keys($campaignIds, null);
-        try {
-            $keywords = $this->ads->listKeywordsByCampaignIds($campaignIds);
-        } catch (Throwable $e) {
-            $keywords = [];
-            if (AmazonAdsApiRetry::isRetryable($e)) {
-                throw $e;
-            }
-        }
-        try {
-            $targets = $this->ads->listTargetsByCampaignIds($campaignIds);
-        } catch (Throwable $e) {
-            $targets = [];
-            if (AmazonAdsApiRetry::isRetryable($e)) {
-                throw $e;
-            }
+        $keywords = [];
+        $targets = [];
+        foreach (array_chunk($campaignIds, 8) as $chunk) {
+            $keywords = array_merge($keywords, $this->ads->listKeywordsByCampaignIds($chunk));
+            $targets = array_merge($targets, $this->ads->listTargetsByCampaignIds($chunk));
         }
 
         foreach (array_merge($keywords, $targets) as $row) {
