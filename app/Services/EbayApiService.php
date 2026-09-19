@@ -2894,9 +2894,26 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
      */
     public function policyIds(): array
     {
-        return EbaySellAccountPolicies::resolve(
+        return EbaySellAccountPolicies::resolveValid(
             $this->generateBearerToken(),
             EbaySellAccountPolicies::defaultsForChannel('ebay')
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{shipping: string, payment: string, return: string}
+     */
+    public function policyIdsForPayload(array $payload): array
+    {
+        return EbaySellAccountPolicies::resolveValid(
+            $this->generateBearerToken(),
+            EbaySellAccountPolicies::defaultsForChannel('ebay'),
+            [
+                'shipping' => $payload['shipping_policy_id'] ?? '',
+                'payment' => $payload['payment_policy_id'] ?? '',
+                'return' => $payload['return_policy_id'] ?? '',
+            ]
         );
     }
 }

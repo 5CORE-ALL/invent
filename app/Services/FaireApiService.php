@@ -245,7 +245,7 @@ class FaireApiService
 
     /**
      * @param  array<string, mixed>  $json
-     * @return list<array{id: string}>
+     * @return list<array{id: string, name: string}>
      */
     private function extractTaxonomyTypes(array $json): array
     {
@@ -256,15 +256,17 @@ class FaireApiService
                 return;
             }
             $id = trim((string) ($node['id'] ?? $node['taxonomy_type_id'] ?? $node['taxonomyTypeId'] ?? ''));
+            $name = trim((string) ($node['name'] ?? $node['display_name'] ?? $node['label'] ?? $node['title'] ?? ''));
             $looksLikeType = $id !== '' && (
-                isset($node['name'])
+                $name !== ''
+                || isset($node['name'])
                 || isset($node['display_name'])
                 || str_contains(strtolower($id), 'taxonomy')
                 || preg_match('/^[a-z0-9_-]{8,}$/i', $id)
             );
             if ($looksLikeType && ! isset($seen[$id])) {
                 $seen[$id] = true;
-                $out[] = ['id' => $id];
+                $out[] = ['id' => $id, 'name' => $name !== '' ? $name : $id];
             }
             foreach ($node as $child) {
                 if (is_array($child)) {
@@ -282,6 +284,97 @@ class FaireApiService
         }
 
         return $out;
+    }
+
+    /**
+     * @return array{success: bool, categories: list<array{id: string, path: string}>, message?: string}
+     */
+    public function searchTaxonomyTypes(string $q = ''): array
+    {
+        $res = $this->getTaxonomyTypes();
+        $types = $res['types'] ?? [];
+        if ($types === []) {
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => $res['message'] ?? 'Could not load Faire product types.',
+            ];
+        }
+
+        $needle = strtolower(trim($q));
+        $categories = [];
+        foreach ($types as $type) {
+            $id = trim((string) ($type['id'] ?? ''));
+            $name = trim((string) ($type['name'] ?? $id));
+            if ($id === '') {
+                continue;
+            }
+            if ($needle !== ''
+                && ! str_contains(strtolower($name), $needle)
+                && ! str_contains(strtolower($id), $needle)) {
+                continue;
+            }
+            $categories[] = ['id' => $id, 'path' => $name !== '' ? $name : $id];
+        }
+
+        return [
+            'success' => true,
+            'categories' => array_slice($categories, 0, 80),
+        ];
+    }
+
+    /**
+     * Replace brand-portal organization tags on a Faire product.
+     *
+     * @param  list<string>  $names
+     * @return array{success: bool, message?: string}
+     */
+    public function replaceProductCustomTags(string $productId, array $names): array
+    {
+        $productId = trim($productId);
+        if ($productId === '') {
+            return ['success' => false, 'message' => 'Faire product id is required.'];
+        }
+
+        $tags = [];
+        foreach ($names as $name) {
+            $name = mb_substr(trim((string) $name), 0, 20);
+            if ($name === '') {
+                continue;
+            }
+            $key = strtolower($name);
+            if (isset($tags[$key])) {
+                continue;
+            }
+            $tags[$key] = $name;
+            if (count($tags) >= 250) {
+                break;
+            }
+        }
+        $list = array_values($tags);
+        $bodies = [
+            ['custom_tags' => array_map(static fn (string $name) => ['name' => $name], $list)],
+            ['custom_tags' => $list],
+            ['tags' => $list],
+        ];
+        $attempts = [
+            ['PUT', '/products/'.$productId.'/custom-tags'],
+            ['PATCH', '/products/'.$productId.'/custom-tags'],
+            ['PUT', '/products/'.$productId.'/tags'],
+            ['POST', '/products/'.$productId.'/custom-tags'],
+        ];
+        $last = ['success' => false, 'message' => 'Faire custom tags update failed.'];
+        foreach ($attempts as [$method, $path]) {
+            foreach ($bodies as $body) {
+                $res = $this->request($method, $path, [], $body);
+                if (! empty($res['ok'])) {
+                    return ['success' => true, 'message' => 'Organization tags saved.'];
+                }
+                $last = ['success' => false, 'message' => $this->errorFromResponse($res)];
+            }
+        }
+
+        return $last;
     }
 
     /**

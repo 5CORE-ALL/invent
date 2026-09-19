@@ -44,6 +44,7 @@ class ListingManagerEbayTradingPublisher
             $svc = new EbayApiService();
 
             return [
+                'channel' => 'ebay',
                 'label' => 'Ebay 1',
                 'configured' => method_exists($svc, 'isConfigured') ? $svc->isConfigured() : true,
                 'token' => $svc->generateBearerToken(),
@@ -111,6 +112,8 @@ class ListingManagerEbayTradingPublisher
         $payload = self::stripUpcFromPayload($payload);
         if (($ctx['channel'] ?? '') === 'ebaythree') {
             $payload = self::applyEbay3Policies($payload);
+        } elseif (($ctx['channel'] ?? '') === 'ebay') {
+            $payload = self::applyEbay1Policies($payload);
         }
         $variations = self::normalizeVariations($payload['variations'] ?? []);
 
@@ -506,6 +509,30 @@ class ListingManagerEbayTradingPublisher
             'X-EBAY-API-SITEID' => (string) ($ctx['site_id'] ?? '0'),
             'Content-Type' => 'text/xml',
         ];
+    }
+
+    /**
+     * Ebay 1 must use this store's business policies, not Ebay 2 IDs.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private static function applyEbay1Policies(array $payload): array
+    {
+        try {
+            $svc = new EbayApiService();
+            if (! $svc->isConfigured()) {
+                return $payload;
+            }
+            $resolved = $svc->policyIdsForPayload($payload);
+            $payload['shipping_policy_id'] = $resolved['shipping'];
+            $payload['payment_policy_id'] = $resolved['payment'];
+            $payload['return_policy_id'] = $resolved['return'];
+        } catch (\Throwable $e) {
+            Log::warning('Ebay 1 policy resolve failed: '.$e->getMessage());
+        }
+
+        return $payload;
     }
 
     /**
