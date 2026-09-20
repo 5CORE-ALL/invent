@@ -448,7 +448,7 @@ class WayfairListingPublishService
     {
         $sku = $row['sku'];
         $product = $row['product'];
-        $collection = trim((string) ($product->parent ?? '')) ?: $sku;
+        $collection = trim((string) ($this->overrides['collection'] ?? '')) ?: (trim((string) ($product->parent ?? '')) ?: $sku);
         $bullets = $this->featureBullets($product, $row['title']);
         $part = [
             'productName' => $row['title'],
@@ -510,6 +510,11 @@ class WayfairListingPublishService
             if (($question['isActive'] ?? true) === false) {
                 continue;
             }
+            $fromDraft = $this->overrideAnswer($question);
+            if ($fromDraft !== []) {
+                $answers = array_merge($answers, $fromDraft);
+                continue;
+            }
             $mapped = $this->mapQuestionAnswer($question, $ctx);
             if ($mapped !== []) {
                 $answers = array_merge($answers, $mapped);
@@ -522,6 +527,22 @@ class WayfairListingPublishService
         }
 
         return $answers;
+    }
+
+    /**
+     * @param  array<string, mixed>  $question
+     * @return list<array<string, mixed>>
+     */
+    private function overrideAnswer(array $question): array
+    {
+        $id = (string) ($question['id'] ?? '');
+        $saved = is_array($this->overrides['answers'] ?? null) ? $this->overrides['answers'] : [];
+        $value = trim((string) ($saved[$id] ?? ''));
+        if ($value === '') {
+            return [];
+        }
+
+        return [$this->answer($id, $value)];
     }
 
     private function isCoreAutoQuestion(string $id): bool

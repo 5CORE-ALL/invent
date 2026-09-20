@@ -61,6 +61,8 @@ class ListingManagerPublishDispatcher
                     'package_height' => $details['package_height'] ?? '',
                     'package_weight_lb' => $details['package_weight_lb'] ?? '',
                     'package_weight_oz' => $details['package_weight_oz'] ?? '',
+                    'collection' => trim((string) ($details['wayfair_collection'] ?? '')),
+                    'answers' => is_array($details['wayfair_answers'] ?? null) ? $details['wayfair_answers'] : [],
                 ];
             }
             $result = app(ListingVariationPreviewService::class)->publishSkus(
