@@ -3320,44 +3320,85 @@ XML;
      */
     private function productAdditionGraphql(string $query, array $variables = []): array
     {
-        $token = $this->getTokenForCatalog();
-        $supplierId = (string) config('services.wayfair.supplier_id');
         $url = (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
-
+        $supplierId = (string) $this->liveSupplierId();
+        $tokens = [];
         try {
-            $response = $this->lookupHttpClient()
-                ->timeout(25)
-                ->withToken($token)
-                ->withHeaders([
-                    'X-SELECTED-SUPPLIER-ID' => $supplierId,
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json',
-                ])
-                ->post($url, [
-                    'query' => $query,
-                    'variables' => $variables,
-                ]);
-        } catch (\Throwable $e) {
-            Log::warning('Wayfair product addition GraphQL timeout', [
-                'url' => $url,
-                'error' => $e->getMessage(),
-            ]);
-
-            return ['data' => [], 'message' => 'Wayfair product addition timed out. Refresh Missing L — the listing may already be created.'];
+            $unscoped = $this->authenticate();
+            if ($unscoped !== '') {
+                $tokens[] = $unscoped;
+            }
+        } catch (\Throwable) {
+        }
+        try {
+            $catalog = $this->getTokenForCatalog();
+            if ($catalog !== '' && ! in_array($catalog, $tokens, true)) {
+                $tokens[] = $catalog;
+            }
+        } catch (\Throwable) {
+        }
+        if ($tokens === []) {
+            return ['data' => [], 'message' => 'Wayfair authentication failed.'];
         }
 
-        $json = $response->json();
-        $json = is_array($json) ? $json : [];
-        if (! empty($json['errors'])) {
-            $lastMessage = $this->formatWayfairGraphqlErrors($json['errors']);
+        $lastMessage = '';
+        $headerVariants = ($supplierId !== '' && $supplierId !== '0') ? [true, false] : [false];
+        foreach ($tokens as $token) {
+            foreach ($headerVariants as $withSupplierHeader) {
+                $headers = [
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ];
+                if ($withSupplierHeader) {
+                    $headers['X-SELECTED-SUPPLIER-ID'] = $supplierId;
+                }
+                try {
+                    $response = $this->apiHttpClient()
+                        ->timeout(60)
+                        ->withToken($token)
+                        ->withHeaders($headers)
+                        ->post($url, $variables === [] ? ['query' => $query] : ['query' => $query, 'variables' => $variables]);
+                } catch (\Throwable $e) {
+                    $lastMessage = 'Wayfair product addition timed out. Refresh Missing L — the listing may already be created.';
+                    Log::warning('Wayfair product addition GraphQL timeout', [
+                        'url' => $url,
+                        'error' => $e->getMessage(),
+                    ]);
+                    continue;
+                }
+                $json = $response->json();
+                $json = is_array($json) ? $json : [];
+                if (empty($json['errors']) && ($json['data'] ?? null) !== null) {
+                    return ['data' => is_array($json['data']) ? $json['data'] : [], 'message' => ''];
+                }
+                $lastMessage = $this->formatWayfairGraphqlErrors(is_array($json['errors'] ?? null) ? $json['errors'] : []);
+                if ($this->graphqlDenied($json)) {
+                    continue;
+                }
+                if (! empty($json['errors'])) {
+                    Log::warning('Wayfair product addition GraphQL error', [
+                        'url' => $url,
+                        'message' => $lastMessage,
+                    ]);
+
+                    return [
+                        'data' => is_array($json['data'] ?? null) ? $json['data'] : [],
+                        'message' => $lastMessage,
+                    ];
+                }
+            }
+        }
+
+        if ($lastMessage !== '') {
             Log::warning('Wayfair product addition GraphQL error', [
                 'url' => $url,
                 'message' => $lastMessage,
             ]);
-
-            return ['data' => [], 'message' => $lastMessage];
         }
 
-        return ['data' => is_array($json['data'] ?? null) ? $json['data'] : [], 'message' => ''];
+        return [
+            'data' => [],
+            'message' => $lastMessage !== '' ? $lastMessage : 'Wayfair product addition failed.',
+        ];
     }
 }

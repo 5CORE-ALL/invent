@@ -166,21 +166,42 @@ class WayfairListingPublishService
         }
 
         $resolvedClass = $this->resolveClassId($publishSkus, $classId, $className);
-        if ($resolvedClass <= 0) {
-            return [
-                'success' => false,
-                'message' => 'Wayfair class is required. Type a class name in the publish window and pick one from the list.',
-            ];
-        }
-
-        $questionRes = $this->api->getProductAdditionQuestions($resolvedClass);
+        $questionRes = $resolvedClass > 0
+            ? $this->api->getProductAdditionQuestions($resolvedClass)
+            : ['questions' => [], 'message' => ''];
         $questions = $questionRes['questions'] ?? [];
         if ($questions === []) {
+            $fallbackName = trim((string) $className);
+            $fallback = $fallbackName !== ''
+                ? $this->api->resolveListingClass($fallbackName, ['sku' => (string) ($publishSkus[0] ?? '')])
+                : null;
+            $fallbackId = (int) ($fallback['id'] ?? 0);
+            if ($fallbackId <= 0) {
+                $hit = $this->api->lookupCatalogClassForSkus($publishSkus);
+                $fallbackId = (int) ($hit['class_id'] ?? 0);
+            }
+            if ($fallbackId > 0 && $fallbackId !== $resolvedClass) {
+                $resolvedClass = $fallbackId;
+                $questionRes = $this->api->getProductAdditionQuestions($resolvedClass);
+                $questions = $questionRes['questions'] ?? [];
+            }
+        }
+        if ($questions === [] && $resolvedClass <= 0) {
             return [
                 'success' => false,
-                'message' => ($questionRes['message'] ?? '') !== ''
-                    ? $questionRes['message']
-                    : 'Wayfair returned no product-addition questions for class '.$resolvedClass.'. Check the class ID and WRITE-PRODUCT-ADDITION-SUBMIT access.',
+                'message' => 'Wayfair class is required. Pick a class in the listing editor, then publish again.',
+            ];
+        }
+        if ($questions === []) {
+            $raw = trim((string) ($questionRes['message'] ?? ''));
+            $message = $raw !== '' ? $raw : 'Wayfair returned no product-addition questions for class '.$resolvedClass.'.';
+            if (stripos($message, 'access denied') !== false) {
+                $message = 'Wayfair blocked product addition for class '.$resolvedClass.'. The app retried with the full API token. Publish again in a moment.';
+            }
+
+            return [
+                'success' => false,
+                'message' => $message,
             ];
         }
 
