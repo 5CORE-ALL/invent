@@ -1913,6 +1913,27 @@ class ListingManagerController extends Controller
         return response()->json($result, ($result['questions'] ?? []) !== [] || ($result['message'] ?? '') === '' ? 200 : 422);
     }
 
+    public function wayfairResolveClass(Request $request)
+    {
+        $name = trim((string) $request->input('name', ''));
+        $typedId = trim((string) $request->input('id', ''));
+        $svc = app(WayfairApiService::class);
+        $row = $typedId !== '' && preg_match('/^\d{2,}$/', $typedId)
+            ? $svc->resolveListingClass($typedId)
+            : $svc->resolveListingClass($name);
+
+        if ($row === null) {
+            return response()->json([
+                'success' => false,
+                'id' => '',
+                'name' => $name,
+                'message' => 'No Wayfair class ID found for this name.',
+            ], 422);
+        }
+
+        return response()->json(['success' => true] + $row);
+    }
+
     public function businessPolicies(Request $request)
     {
         $channelKey = ListingChannelCounts::normalize((string) $request->input('channel', ''));

@@ -2138,10 +2138,14 @@ XML;
             return $this->classResultFromTypedId((int) $q);
         }
 
-        $picker = WayfairPartnerClassCatalog::search($q, $group);
+        $ids = $this->classNameToIdMap();
+        $picker = WayfairPartnerClassCatalog::search($q, $group, $ids);
         $merged = [];
         foreach ($picker['classes'] as $row) {
-            $key = strtolower($row['name']).'|'.$row['id'];
+            $key = mb_strtolower(trim((string) ($row['name'] ?? '')));
+            if ($key === '') {
+                continue;
+            }
             $merged[$key] = $row;
         }
 
@@ -2170,8 +2174,11 @@ XML;
                     if ($group !== '' && strcasecmp((string) ($row['category'] ?? ''), $group) !== 0) {
                         continue;
                     }
-                    $key = strtolower((string) $row['name']).'|'.$row['id'];
-                    if (! isset($merged[$key])) {
+                    $key = mb_strtolower(trim((string) ($row['name'] ?? '')));
+                    if ($key === '') {
+                        continue;
+                    }
+                    if (! isset($merged[$key]) || trim((string) ($merged[$key]['id'] ?? '')) === '') {
                         $merged[$key] = $row;
                     }
                 }
@@ -2180,14 +2187,94 @@ XML;
 
         $classes = array_values($merged);
         if ($q === '' && $group === '') {
-            $classes = array_map(
-                static fn (array $row) => WayfairPartnerClassCatalog::present($row),
-                WayfairPartnerClassCatalog::classes()
+            $classes = WayfairPartnerClassCatalog::applyIds(
+                array_map(static fn (array $row) => WayfairPartnerClassCatalog::present($row), WayfairPartnerClassCatalog::classes()),
+                $ids
             );
-            $picker = WayfairPartnerClassCatalog::search('', '');
+            $picker = WayfairPartnerClassCatalog::search('', '', $ids);
         }
 
         return $this->classPickerResult($classes, $picker['groups']);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function classNameToIdMap(): array
+    {
+        $map = [];
+        foreach (WayfairPartnerClassCatalog::classes() as $row) {
+            $name = mb_strtolower(trim((string) ($row['name'] ?? '')));
+            $id = trim((string) ($row['id'] ?? ''));
+            if ($name !== '' && $id !== '') {
+                $map[$name] = $id;
+            }
+        }
+        foreach ($this->listingStatusClassDirectory() as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $name = mb_strtolower(trim((string) ($row['name'] ?? $row['className'] ?? '')));
+            $id = (int) ($row['classId'] ?? $row['taxonomyCategoryId'] ?? 0);
+            if ($name !== '' && $id > 0) {
+                $map[$name] = (string) $id;
+            }
+        }
+        $cached = Cache::get('wayfair.catalog_class_directory');
+        foreach (is_array($cached) ? $cached : [] as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $name = mb_strtolower(trim((string) ($row['name'] ?? $row['className'] ?? '')));
+            $id = (int) ($row['classId'] ?? $row['taxonomyCategoryId'] ?? 0);
+            if ($name !== '' && $id > 0) {
+                $map[$name] = (string) $id;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @return array{id: string, name: string, category: string, definition: string, path: string}|null
+     */
+    public function resolveListingClass(string $name): ?array
+    {
+        $name = trim($name);
+        if ($name === '') {
+            return null;
+        }
+        if (preg_match('/^\d{2,}$/', $name)) {
+            return $this->classResultFromTypedId((int) $name)['classes'][0] ?? null;
+        }
+        $known = WayfairPartnerClassCatalog::findByName($name);
+        $id = trim((string) ($known['id'] ?? ''));
+        if ($id === '') {
+            $id = $this->classNameToIdMap()[mb_strtolower($name)] ?? '';
+        }
+        if ($id === '') {
+            foreach ($this->catalogClassDirectory() as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $rowName = trim((string) ($row['name'] ?? $row['className'] ?? ''));
+                $rowId = (int) ($row['classId'] ?? $row['taxonomyCategoryId'] ?? 0);
+                if ($rowId > 0 && strcasecmp($rowName, $name) === 0) {
+                    $id = (string) $rowId;
+                    break;
+                }
+            }
+        }
+        if ($known === null && $id === '') {
+            return null;
+        }
+
+        return WayfairPartnerClassCatalog::present([
+            'id' => $id,
+            'name' => (string) ($known['name'] ?? $name),
+            'category' => (string) ($known['category'] ?? ''),
+            'definition' => (string) ($known['definition'] ?? ''),
+        ]);
     }
 
     /**

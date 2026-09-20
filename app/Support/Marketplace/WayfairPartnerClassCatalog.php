@@ -97,14 +97,15 @@ class WayfairPartnerClassCatalog
     }
 
     /**
+     * @param  array<string, string>  $ids
      * @return array{groups: list<array{name: string, count: int}>, classes: list<array{id: string, name: string, category: string, definition: string, path: string}>}
      */
-    public static function search(string $query = '', string $group = ''): array
+    public static function search(string $query = '', string $group = '', array $ids = []): array
     {
         $query = trim($query);
         $group = trim($group);
         $q = mb_strtolower($query);
-        $all = self::classes();
+        $all = self::applyIds(array_map(static fn (array $row) => self::present($row), self::classes()), $ids);
         $matched = [];
         foreach ($all as $row) {
             if ($group !== '' && strcasecmp($row['category'], $group) !== 0) {
@@ -131,7 +132,40 @@ class WayfairPartnerClassCatalog
             $groups[] = ['name' => $name, 'count' => $count];
         }
 
-        return ['groups' => $groups, 'classes' => $matched];
+        return ['groups' => $groups, 'classes' => self::applyIds($matched, $ids)];
+    }
+
+    /**
+     * Fill missing class IDs from a name → ID map (listed catalog, Partner Home CLIDs).
+     *
+     * @param  list<array{id: string, name: string, category: string, definition: string, path: string}>  $classes
+     * @param  array<string, string>  $ids
+     * @return list<array{id: string, name: string, category: string, definition: string, path: string}>
+     */
+    public static function applyIds(array $classes, array $ids = []): array
+    {
+        if ($ids === []) {
+            return $classes;
+        }
+        $out = [];
+        foreach ($classes as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $id = trim((string) ($row['id'] ?? ''));
+            if ($id === '') {
+                $key = mb_strtolower(trim((string) ($row['name'] ?? '')));
+                $id = trim((string) ($ids[$key] ?? ''));
+            }
+            $out[] = self::present([
+                'id' => $id,
+                'name' => (string) ($row['name'] ?? ''),
+                'category' => (string) ($row['category'] ?? ''),
+                'definition' => (string) ($row['definition'] ?? ''),
+            ]);
+        }
+
+        return $out;
     }
 
     /**

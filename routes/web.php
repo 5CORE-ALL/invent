@@ -4165,6 +4165,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing-manager/drafts/{id}/optimize-description', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'optimizeDescription'])->name('listing.manager.drafts.optimize');
     Route::match(['get', 'post'], '/listing-manager/ebay/categories', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'searchCategories'])->name('listing.manager.ebay.categories');
     Route::get('/listing-manager/wayfair/questions', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'wayfairQuestions'])->name('listing.manager.wayfair.questions');
+    Route::get('/listing-manager/wayfair/resolve-class', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'wayfairResolveClass'])->name('listing.manager.wayfair.resolve-class');
     Route::get('/listing-manager/ebay/policies', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'businessPolicies'])->name('listing.manager.ebay.policies');
     Route::post('/listing-manager/drafts/refresh-status', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'refreshDraftStatuses'])->name('listing.manager.drafts.refresh');
     Route::delete('/listing-manager/drafts/{id}', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'deleteDraft'])->name('listing.manager.drafts.delete');

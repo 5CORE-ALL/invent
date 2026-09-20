@@ -927,8 +927,8 @@
                     <div class="lc-wayfair-only d-none mb-3" id="lc-wayfair-class-picker">
                         <div class="mb-2 d-none" id="wf-class-id-fallback">
                             <label class="form-label" for="lc-wayfair-class-id">Class ID <span class="lc-req">*</span></label>
-                            <input type="text" id="lc-wayfair-class-id" class="form-control" placeholder="Numeric class ID from Partner Home" inputmode="numeric">
-                            <p class="lc-help mb-0 mt-1">This class name is selected. Type the numeric class ID shown in Partner Home to publish.</p>
+                            <input type="text" id="lc-wayfair-class-id" class="form-control" placeholder="Numeric class ID" inputmode="numeric">
+                            <p class="lc-help mb-0 mt-1" id="wf-class-id-help">Filled when you select a class.</p>
                         </div>
                         <div class="wf-picker">
                             <div class="wf-picker-search">
@@ -2989,8 +2989,9 @@
             return;
         }
         $('#wf-selected-count').text('1');
+        const chip = (name || ('Class ' + id)) + (id ? ' · ' + id : '');
         $('#wf-selected-chips').html(
-            '<span class="wf-chip">' + escapeHtml(name || ('Class ' + id)) +
+            '<span class="wf-chip">' + escapeHtml(chip) +
             ' <button type="button" id="wf-clear-class" aria-label="Clear class">&times;</button></span>'
         );
     }
@@ -3018,7 +3019,7 @@
                 const checked = active ? ' checked' : '';
                 return '<button type="button" class="wf-row wf-class-row' + active + '" data-id="' + escapeHtml(id) +
                     '" data-name="' + escapeHtml(name) + '">' +
-                    '<span>' + escapeHtml(name) + '</span>' +
+                    '<span>' + escapeHtml(name) + (id ? ' <span class="text-muted">(' + escapeHtml(id) + ')</span>' : '') + '</span>' +
                     '<input type="radio" class="wf-radio" tabindex="-1"' + checked + '></button>';
             }).join(''));
         }
@@ -3031,10 +3032,10 @@
         renderWayfairSelectedChip();
     }
 
-    function applyWayfairClass(row) {
+    function applyWayfairClass(row, opts) {
         const id = String((row && row.id) || '').trim();
         const name = String((row && row.name) || '').trim();
-        const path = String((row && row.path) || name).trim();
+        const path = String((row && row.path) || (id ? (name + ' (' + id + ')') : name)).trim();
         $('#lc-category-id').val(id);
         $('#lc-category-path-input').val(path);
         $('#lc-category-id-visible').val(id);
@@ -3042,10 +3043,34 @@
         if (row && row.definition) {
             $('#wf-definition').text(row.definition);
         }
-        $('#wf-class-id-fallback').toggleClass('d-none', !(name && !id));
+        $('#wf-class-id-fallback').toggleClass('d-none', !(name || id));
         $('#lc-wayfair-class-id').val(id);
+        $('#wf-class-id-help').text(id
+            ? 'Class ID ' + id + ' from the selected Wayfair class.'
+            : 'Looking up the numeric class ID…');
         renderWayfairSelectedChip();
-        loadWayfairQuestions(id, collectWayfairAnswers());
+        if (id) {
+            loadWayfairQuestions(id, collectWayfairAnswers());
+        }
+        if (!id && name && !(opts && opts.resolved)) {
+            $.ajax({
+                url: "{{ route('listing.manager.wayfair.resolve-class') }}",
+                method: 'GET',
+                data: { name },
+                dataType: 'json',
+                timeout: 20000,
+                success: function (res) {
+                    if (res && res.id) {
+                        applyWayfairClass(Object.assign({}, row, res), { resolved: true });
+                    } else {
+                        $('#wf-class-id-help').text('Type the numeric class ID from Partner Home to publish.');
+                    }
+                },
+                error: function () {
+                    $('#wf-class-id-help').text('Type the numeric class ID from Partner Home to publish.');
+                }
+            });
+        }
         dirty = true;
         refreshEditorUi(currentDraft);
     }

@@ -54,4 +54,17 @@ class WayfairPartnerClassCatalogTest extends TestCase
         $this->assertContains('Microphone Stands', $names);
         $this->assertNotContains('Nightstands', $names);
     }
+
+    #[Test]
+    public function it_fills_missing_class_ids_from_a_name_map(): void
+    {
+        $result = WayfairPartnerClassCatalog::search('stands', '', [
+            'carts & stands' => '18521',
+        ]);
+        $row = collect($result['classes'])->firstWhere('name', 'Carts & Stands');
+
+        $this->assertNotNull($row);
+        $this->assertSame('18521', $row['id']);
+        $this->assertStringContainsString('18521', $row['path']);
+    }
 }
