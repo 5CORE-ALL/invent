@@ -358,6 +358,17 @@ class ListingManagerPublishStatus
             if (($weightLb + ($weightOz / 16)) <= 0) {
                 $tabErrors['logistics'][] = 'Package weight is required.';
             }
+            $answers = is_array($details['wayfair_answers'] ?? null) ? $details['wayfair_answers'] : [];
+            foreach (is_array($details['wayfair_required_ids'] ?? null) ? $details['wayfair_required_ids'] : [] as $questionId) {
+                $questionId = trim((string) $questionId);
+                if ($questionId === '') {
+                    continue;
+                }
+                if (trim((string) ($answers[$questionId] ?? '')) === '') {
+                    $tabErrors['category'][] = 'Complete all required Wayfair class questions.';
+                    break;
+                }
+            }
         }
 
         if ($isAmazon) {

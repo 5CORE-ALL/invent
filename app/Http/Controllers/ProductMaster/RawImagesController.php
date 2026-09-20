@@ -9,6 +9,7 @@ use App\Models\ProductRawImage;
 use App\Models\ProductRawImageAiPrompt;
 use App\Models\ShopifySku;
 use App\Services\BatchCooStampService;
+use App\Services\Hero2EbayImagePushService;
 use App\Services\RawImagesAiImageService;
 use App\Services\Support\AllMarketplaceChannelRegistry;
 use App\Support\Badges\RawImagesBadgeCalculator;
@@ -62,6 +63,9 @@ class RawImagesController extends Controller
 
         $hasBarcodeColumn = Schema::hasColumn('product_master', 'barcode');
         $ebayGalleryBySku = $this->ebayGalleryBySku();
+        $hero2PushesBySku = $kind === ProductRawImage::KIND_HERO_2
+            ? app(Hero2EbayImagePushService::class)->stampsBySku()
+            : [];
 
         $pmExtra = [];
         if ($hasBarcodeColumn) {
@@ -111,6 +115,7 @@ class RawImagesController extends Controller
             $row['raw_ai_image_count'] = $aiImages->count();
             $row['has_raw_ai_image'] = $aiImages->isNotEmpty();
             $row['raw_ai_image_url'] = $aiImages->first()?->url;
+            $row['hero2_ebay_pushes'] = $hero2PushesBySku[$normalizedSku] ?? new \stdClass();
 
             $upc = $this->extractUpcFromValues($row);
             $storedBarcode = $hasBarcodeColumn
@@ -270,69 +275,37 @@ class RawImagesController extends Controller
             'account' => 'required|string|in:ebay,ebay2,ebay3',
         ]);
 
-        $sku = $this->normalizeSku($validated['sku']);
-        $url = trim((string) $validated['url']);
-        $account = $validated['account'];
-        $labels = [
-            'ebay' => 'eBay 1',
-            'ebay2' => 'eBay 2',
-            'ebay3' => 'eBay 3',
-        ];
-        $label = $labels[$account] ?? $account;
-
-        if ($sku === '' || $url === '') {
-            return response()->json(['success' => false, 'message' => 'SKU and image URL are required.'], 422);
-        }
-
         @set_time_limit(180);
 
-        $imageMaster = app(ImageMasterController::class);
-        $live = $imageMaster->fetchEbayGallery($sku, $account);
-        $existing = ($live['success'] ?? false)
-            ? array_values($live['images'] ?? [])
-            : $imageMaster->existingImageUrls($account, $sku);
+        $result = app(Hero2EbayImagePushService::class)->push(
+            $this->normalizeSku($validated['sku']),
+            $validated['account'],
+            $this->absoluteImageUrl((string) $validated['url'])
+        );
 
-        if ($existing === [] && ! ($live['success'] ?? false) && empty($live['item_id'])) {
-            return response()->json([
-                'success' => false,
-                'message' => $live['message'] ?? ('No '.$label.' listing found for this SKU.'),
-                'account' => $account,
-                'label' => $label,
-            ], 422);
+        return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+    }
+
+    public function pushHero2ToEbayBulk(Request $request): JsonResponse
+    {
+        if ($this->kindFromRequest($request) !== ProductRawImage::KIND_HERO_2) {
+            return response()->json(['success' => false, 'message' => 'eBay push is only available on Hero Image 2.'], 422);
         }
 
-        $images = $this->prependAsEbayMainImage($url, $existing);
+        $validated = $request->validate([
+            'account' => 'required|string|in:ebay,ebay2,ebay3',
+            'skus' => 'required|array|min:1|max:50',
+            'skus.*' => 'required|string|max:255',
+        ]);
 
-        try {
-            $result = $imageMaster->runQueuedMarketplacePush(
-                $sku,
-                $account,
-                $images,
-                'replace',
-                [$account => 0]
-            );
-        } catch (\Throwable $e) {
-            Log::warning('Hero Image 2 eBay push failed', [
-                'sku' => $sku,
-                'account' => $account,
-                'error' => $e->getMessage(),
-            ]);
+        @set_time_limit(max(180, count($validated['skus']) * 45));
 
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
+        $result = app(Hero2EbayImagePushService::class)->pushMany(
+            array_map(fn ($sku) => $this->normalizeSku((string) $sku), $validated['skus']),
+            $validated['account']
+        );
 
-        $ok = (bool) ($result['success'] ?? false);
-        $message = $result['message'] ?? ($ok ? 'Updated main image on '.$label.'.' : 'Could not update main image on '.$label.'.');
-        if ($ok && ! str_contains(strtolower($message), 'main image')) {
-            $message = 'Updated main image on '.$label.'. '.$message;
-        }
-
-        return response()->json([
-            'success' => $ok,
-            'message' => trim($message),
-            'account' => $account,
-            'label' => $label,
-        ], $ok ? 200 : 422);
+        return response()->json($result, ($result['ok'] ?? 0) > 0 ? 200 : 422);
     }
 
     public function destroy(Request $request, int $id): JsonResponse
@@ -1335,6 +1308,9 @@ class RawImagesController extends Controller
                 'savedAiLogos' => $this->savedAiLogos($kind),
                 'pushEbayUrl' => \Illuminate\Support\Facades\Route::has('raw.images.hero.2.push.ebay')
                     ? route('raw.images.hero.2.push.ebay')
+                    : route('raw.images.hero.2.upload'),
+                'bulkPushEbayUrl' => \Illuminate\Support\Facades\Route::has('raw.images.hero.2.push.ebay.bulk')
+                    ? route('raw.images.hero.2.push.ebay.bulk')
                     : route('raw.images.hero.2.upload'),
             ]);
         }

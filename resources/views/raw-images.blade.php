@@ -304,6 +304,31 @@
     .ri-ebay-push button[data-account="ebay2"]:hover:not(:disabled) { background: #fef3c7; }
     .ri-ebay-push button[data-account="ebay3"] { border-color: #c4b5fd; background: #f5f3ff; color: #5b21b6; }
     .ri-ebay-push button[data-account="ebay3"]:hover:not(:disabled) { background: #ede9fe; }
+    .ri-ebay-push button.is-pushed { box-shadow: inset 0 0 0 2px currentColor; font-weight: 800; }
+    .ri-ebay-stamps { display: flex; justify-content: center; gap: 3px; flex-wrap: wrap; }
+    .ri-ebay-stamp {
+        display: inline-block;
+        min-width: 28px;
+        padding: 2px 5px;
+        border-radius: 4px;
+        border: 1px dashed #cbd5e1;
+        color: #94a3b8;
+        background: #f8fafc;
+        font-size: 9px;
+        font-weight: 700;
+        line-height: 1.3;
+        letter-spacing: .02em;
+    }
+    .ri-ebay-stamp.is-pushed.ri-ebay-stamp-ebay { border-style: solid; border-color: #93c5fd; background: #dbeafe; color: #1d4ed8; }
+    .ri-ebay-stamp.is-pushed.ri-ebay-stamp-ebay2 { border-style: solid; border-color: #fcd34d; background: #fef3c7; color: #92400e; }
+    .ri-ebay-stamp.is-pushed.ri-ebay-stamp-ebay3 { border-style: solid; border-color: #c4b5fd; background: #ede9fe; color: #5b21b6; }
+    .ri-ebay-push-status {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+    }
+    .ri-ebay-push-status .ri-ebay-stamp { font-size: 10px; min-width: 36px; padding: 3px 7px; }
 
     #rainbow-loader { display: none; text-align: center; padding: 40px; }
 
@@ -499,6 +524,18 @@
                             <i class="fas fa-cloud-upload-alt me-1"></i> Upload to Channel
                         </button>
                         @endif
+                        @if($isHero2)
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Push Hero Image 2 of selected SKUs to one eBay account">
+                                <i class="fas fa-cloud-upload-alt"></i> Bulk Push
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item js-bulk-push-ebay" href="#" data-account="ebay">eBay 1</a></li>
+                                <li><a class="dropdown-item js-bulk-push-ebay" href="#" data-account="ebay2">eBay 2</a></li>
+                                <li><a class="dropdown-item js-bulk-push-ebay" href="#" data-account="ebay3">eBay 3</a></li>
+                            </ul>
+                        </div>
+                        @endif
                         <div class="dropdown">
                             <button class="btn btn-sm btn-warning dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="fas fa-layer-group"></i> Bulk Update
@@ -604,7 +641,8 @@
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
                     <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuText"></span></div>
-                    <div class="mb-3 text-muted small">Parent: <span id="modalParentText">—</span></div>
+                    <div class="mb-2 text-muted small">Parent: <span id="modalParentText">—</span></div>
+                    <div id="hero2EbayPushStatus" class="ri-ebay-push-status mb-3" style="display:none;"></div>
                     <div id="rawImageGrid" class="ri-modal-grid"></div>
                     <input type="file" id="rawImageFileInput" class="d-none" accept="image/*,.dng,.cr2,.cr3,.nef,.arw,.raf,.orf,.rw2,.tif,.tiff,.heic" multiple>
                     <div class="small text-muted mt-3" id="rawUploadHint">
@@ -892,6 +930,12 @@
         const rawImagesStampCooUrl = @json($stampCooUrl);
         const rawImagesPushChannelsUrl = @json($pushChannelsUrl);
         const rawImagesPushEbayUrl = @json($pushEbayUrl ?? '');
+        const rawImagesBulkPushEbayUrl = @json($bulkPushEbayUrl ?? '');
+        const hero2EbayAccounts = [
+            { id: 'ebay', short: 'EB1', label: 'eBay 1' },
+            { id: 'ebay2', short: 'EB2', label: 'eBay 2' },
+            { id: 'ebay3', short: 'EB3', label: 'eBay 3' }
+        ];
         const rawImagesZipFileName = @json($zipFileName);
         const riImageWarm = new Set();
 
@@ -972,6 +1016,70 @@
             const url = (row && row.ebay_hero_image) || '';
             if (!url) return [];
             return [{ url: url, thumb_url: (row && row.ebay_hero_thumb) || url }];
+        }
+
+        function hero2EbayPushes(row) {
+            const raw = row && row.hero2_ebay_pushes;
+            if (!raw || typeof raw !== 'object') return {};
+            return raw;
+        }
+
+        function hero2EbayPushCellHtml(row) {
+            const pushes = hero2EbayPushes(row);
+            return '<div class="ri-ebay-stamps">' + hero2EbayAccounts.map(function (a) {
+                const p = pushes[a.id];
+                if (p && p.pushed_at) {
+                    let title = a.label + ' updated ' + (p.pushed_at_label || '');
+                    if (p.variation_value) title += ' — ' + p.variation_value;
+                    return '<span class="ri-ebay-stamp is-pushed ri-ebay-stamp-' + a.id + '" title="' + escapeHtml(title) + '">' + a.short + '</span>';
+                }
+                return '<span class="ri-ebay-stamp" title="' + escapeHtml(a.label) + ' not pushed yet">' + a.short + '</span>';
+            }).join('') + '</div>';
+        }
+
+        function renderHero2EbayPushStatus(row) {
+            const el = document.getElementById('hero2EbayPushStatus');
+            if (!el) return;
+            if (!rawImagesIsHero2) {
+                el.style.display = 'none';
+                el.innerHTML = '';
+                return;
+            }
+            const pushes = hero2EbayPushes(row);
+            const parts = ['<span class="small text-muted me-1">Pushed to:</span>'];
+            let any = false;
+            hero2EbayAccounts.forEach(function (a) {
+                const p = pushes[a.id];
+                if (p && p.pushed_at) {
+                    any = true;
+                    let title = p.pushed_at_label || '';
+                    if (p.variation_value) title += ' · ' + p.variation_value;
+                    parts.push('<span class="ri-ebay-stamp is-pushed ri-ebay-stamp-' + a.id + '" title="' + escapeHtml(title) + '">' + a.label + (p.pushed_at_label ? ' · ' + p.pushed_at_label : '') + '</span>');
+                }
+            });
+            if (!any) {
+                el.innerHTML = '<span class="small text-muted">Not pushed to any eBay account yet.</span>';
+            } else {
+                el.innerHTML = parts.join('');
+            }
+            el.style.display = 'flex';
+        }
+
+        function applyHero2PushStamp(sku, account, stamp) {
+            if (!stamp || !account) return;
+            const item = findDataItemBySku(sku);
+            const current = Object.assign({}, hero2EbayPushes(item || {}));
+            current[account] = stamp;
+            patchRowsBySku(sku, { hero2_ebay_pushes: current });
+            if (document.getElementById('modalSku') && skuKey(document.getElementById('modalSku').value) === skuKey(sku)) {
+                renderHero2EbayPushStatus(findDataItemBySku(sku));
+                const grid = document.getElementById('rawImageGrid');
+                if (grid) {
+                    grid.querySelectorAll('.js-push-ebay[data-account="' + account + '"]').forEach(function (btn) {
+                        btn.classList.add('is-pushed');
+                    });
+                }
+            }
         }
 
         function ebayHeroCellHtml(row) {
@@ -1556,7 +1664,17 @@
                         formatter: function (cell) {
                             return rawImageCellHtml(cell.getData(), 'manual');
                         }
-                    }
+                    },
+                    ...(rawImagesIsHero2 ? [{
+                        title: 'eBay Push',
+                        field: 'hero2_ebay_pushes',
+                        width: 118,
+                        hozAlign: 'center',
+                        headerSort: false,
+                        formatter: function (cell) {
+                            return hero2EbayPushCellHtml(cell.getData());
+                        }
+                    }] : [])
                 ]
             });
         }
@@ -1716,6 +1834,7 @@
             document.getElementById('modalSkuLabel').textContent = sku || '';
             document.getElementById('modalSkuText').textContent = sku || '';
             document.getElementById('modalParentText').textContent = (item && item.Parent) ? item.Parent : '—';
+            renderHero2EbayPushStatus(item);
             const kindLabel = document.getElementById('modalKindLabel');
             if (kindLabel) {
                 kindLabel.textContent = currentModalSource === 'ai' ? rawImagesAiColumnTitle : rawImagesPageTitle;
@@ -1724,7 +1843,9 @@
             if (hint) {
                 hint.textContent = currentModalSource === 'ai'
                     ? 'These images are created by the AI button on selected rows.'
-                    : 'JPG, PNG, WEBP, or camera RAW files. Max 50 MB each.';
+                    : (rawImagesIsHero2
+                        ? 'eBay 2/3 variation listings update this SKU only. Parent and sibling pictures stay as they are.'
+                        : 'JPG, PNG, WEBP, or camera RAW files. Max 50 MB each.');
             }
             renderModalGrid(images);
             setUploadMsg('');
@@ -1753,10 +1874,17 @@
                 html += '<a href="' + escapeHtml(url) + '" download="' + escapeHtml(name) + '" title="Download"><i class="fas fa-download"></i> Save</a>';
                 html += '<button type="button" class="js-copy-image-url" data-url="' + escapeHtml(url) + '" title="Copy URL"><i class="fas fa-copy"></i> Copy</button>';
                 if (rawImagesIsHero2 && url) {
+                    const sku = document.getElementById('modalSku').value;
+                    const item = findDataItemBySku(sku);
+                    const pushes = hero2EbayPushes(item || {});
                     html += '<div class="ri-ebay-push">';
-                    html += '<button type="button" class="js-push-ebay" data-account="ebay" data-url="' + escapeHtml(url) + '" title="Set this image as the eBay 1 main product photo">eBay 1</button>';
-                    html += '<button type="button" class="js-push-ebay" data-account="ebay2" data-url="' + escapeHtml(url) + '" title="Set this image as the eBay 2 main product photo">eBay 2</button>';
-                    html += '<button type="button" class="js-push-ebay" data-account="ebay3" data-url="' + escapeHtml(url) + '" title="Set this image as the eBay 3 main product photo">eBay 3</button>';
+                    hero2EbayAccounts.forEach(function (a) {
+                        const pushed = !!(pushes[a.id] && pushes[a.id].pushed_at);
+                        const title = pushed
+                            ? (a.label + ' already updated ' + (pushes[a.id].pushed_at_label || '') + '. Click to push again for this SKU only.')
+                            : ('Push this image to ' + a.label + ' for this SKU only (not the parent).');
+                        html += '<button type="button" class="js-push-ebay' + (pushed ? ' is-pushed' : '') + '" data-account="' + a.id + '" data-url="' + escapeHtml(url) + '" title="' + escapeHtml(title) + '">' + a.label + '</button>';
+                    });
                     html += '</div>';
                 }
                 html += '</div></div>';
@@ -2044,6 +2172,12 @@
             document.getElementById('copySelectedUrlsBtn').addEventListener('click', function (e) {
                 e.preventDefault();
                 copySelectedUrls();
+            });
+            document.querySelectorAll('.js-bulk-push-ebay').forEach(function (el) {
+                el.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    bulkPushHero2ToEbay(el.getAttribute('data-account') || '');
+                });
             });
         }
 
@@ -2870,7 +3004,7 @@
             const row = btn.closest('.ri-ebay-push');
             const buttons = row ? row.querySelectorAll('button') : [btn];
             buttons.forEach(function (b) { b.disabled = true; });
-            setUploadMsg('Updating main image on ' + label + '…');
+            setUploadMsg('Updating ' + sku + ' on ' + label + '…');
             setUploadErr('');
 
             fetch(rawImagesPushEbayUrl, {
@@ -2891,7 +3025,10 @@
                     return;
                 }
                 setUploadErr('');
-                setUploadMsg(result.data.message || ('Pushed to ' + label + '.'));
+                setUploadMsg(result.data.message || ('Pushed ' + sku + ' to ' + label + '.'));
+                if (result.data.stamp) {
+                    applyHero2PushStamp(sku, account, result.data.stamp);
+                }
             })
             .catch(function (err) {
                 setUploadMsg('');
@@ -2899,6 +3036,67 @@
             })
             .finally(function () {
                 buttons.forEach(function (b) { b.disabled = false; });
+            });
+        }
+
+        function bulkPushHero2ToEbay(account) {
+            const labels = { ebay: 'eBay 1', ebay2: 'eBay 2', ebay3: 'eBay 3' };
+            const label = labels[account] || account;
+            const skus = selectedSkus().filter(function (sku) {
+                return sku && String(sku).toUpperCase().indexOf('PARENT') === -1;
+            });
+            if (!rawImagesBulkPushEbayUrl || !account) {
+                alert('Bulk push is not available.');
+                return;
+            }
+            if (!skus.length) {
+                alert('Select at least one SKU first.');
+                return;
+            }
+            if (skus.length > 50) {
+                alert('Select at most 50 SKUs at a time.');
+                return;
+            }
+            if (!confirm('Push Hero Image 2 for ' + skus.length + ' selected SKU' + (skus.length === 1 ? '' : 's') + ' to ' + label + '?\n\nVariation listings update that SKU only, not the parent or siblings.')) {
+                return;
+            }
+
+            flashAction('Pushing ' + skus.length + ' to ' + label + '…');
+            document.querySelectorAll('.js-bulk-push-ebay').forEach(function (el) { el.classList.add('disabled'); });
+
+            fetch(rawImagesBulkPushEbayUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ account: account, skus: skus })
+            })
+            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+                const rows = Array.isArray(result.data.results) ? result.data.results : [];
+                rows.forEach(function (row) {
+                    if (row && row.success && row.stamp && row.sku) {
+                        applyHero2PushStamp(row.sku, account, row.stamp);
+                    }
+                });
+                const failed = rows.filter(function (row) { return !row.success; });
+                flashAction(result.data.message || ('Pushed to ' + label + '.'));
+                if (failed.length) {
+                    alert((result.data.message || ('Push to ' + label + ' finished.')) + '\n\n' + failed.slice(0, 12).map(function (row) {
+                        return (row.sku || '') + ': ' + (row.message || 'failed');
+                    }).join('\n'));
+                }
+            })
+            .catch(function (err) {
+                flashAction('Bulk push failed');
+                alert('Bulk push to ' + label + ' failed: ' + err.message);
+            })
+            .finally(function () {
+                document.querySelectorAll('.js-bulk-push-ebay').forEach(function (el) { el.classList.remove('disabled'); });
+                setTimeout(updateSelectedCount, 2200);
             });
         }
 

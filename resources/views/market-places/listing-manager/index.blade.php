@@ -276,6 +276,11 @@
         .wf-def { padding: .85rem; overflow: auto; max-height: 420px; color: #374151; font-size: .8rem; line-height: 1.45; white-space: pre-wrap; }
         .wf-def-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #6b7280; min-height: 280px; padding: 1.5rem; }
         .wf-def-empty i { font-size: 2.4rem; color: #7c3aed; margin-bottom: .75rem; }
+        .wf-q-group { font-weight: 700; font-size: .86rem; margin: 1rem 0 .45rem; }
+        .wf-q-row { display: grid; grid-template-columns: minmax(180px, 240px) 1fr; gap: .65rem; align-items: start; margin-bottom: .7rem; }
+        @media (max-width: 700px) { .wf-q-row { grid-template-columns: 1fr; } }
+        .wf-q-label { font-size: .8rem; font-weight: 600; color: #374151; padding-top: .35rem; }
+        .wf-q-help { font-size: .72rem; color: #6b7280; font-weight: 400; margin-top: .15rem; }
         .lc-primary-path { color: var(--lc-blue); font-weight: 600; font-size: .9rem; }
         .lc-policy-row { display: grid; grid-template-columns: 160px 1fr auto; gap: .65rem; align-items: center; margin-bottom: .75rem; }
         .lc-location-row { display: grid; grid-template-columns: 160px 1fr 1fr 1fr; gap: .65rem; align-items: center; }
@@ -702,6 +707,10 @@
                                     <option value="CA">Canada (CA)</option>
                                 </select>
                             </div>
+                            <div class="col-md-4 lc-wayfair-only d-none">
+                                <label class="form-label">Collection name</label>
+                                <input id="lc-wayfair-collection" class="form-control" placeholder="Product collection / parent group">
+                            </div>
                             <div class="col-md-4 lc-amazon-dgr-only">
                                 <label class="form-label">Dangerous goods <span class="lc-req">*</span></label>
                                 <select id="lc-amazon-dgr" class="form-select">
@@ -876,9 +885,13 @@
                             <label class="form-label">Price <span class="lc-req">*</span></label>
                             <input type="number" step="0.01" min="0" id="lc-price" class="form-control">
                         </div>
-                        <div class="col-md-4 lc-amazon-only d-none">
-                            <label class="form-label">List price <span class="lc-req">*</span></label>
-                            <input type="number" step="0.01" min="0" id="lc-list-price" class="form-control" placeholder="MSRP shown on Amazon">
+                        <div class="col-md-4 lc-amazon-only lc-wayfair-share d-none">
+                            <label class="form-label">List price / MSRP</label>
+                            <input type="number" step="0.01" min="0" id="lc-list-price" class="form-control" placeholder="MSRP">
+                        </div>
+                        <div class="col-md-4 lc-wayfair-only d-none">
+                            <label class="form-label">MAP</label>
+                            <input type="number" step="0.01" min="0" id="lc-wayfair-map" class="form-control" placeholder="Minimum advertised price">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Quantity <span class="lc-req">*</span> <span class="text-muted fw-normal">(Shopify)</span></label>
@@ -946,6 +959,11 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                    <div class="lc-wayfair-only d-none mt-4" id="lc-wayfair-questions-wrap">
+                        <div class="lc-section-title mb-1">Product form</div>
+                        <p class="lc-help">These are the same required and recommended fields Wayfair shows after you pick a class. Fill every required question before publish.</p>
+                        <div id="lc-wayfair-questions"><div class="text-muted small">Select a class to load Wayfair questions.</div></div>
                     </div>
 
                     <div class="lc-amazon-only d-none mb-3">
@@ -1159,6 +1177,22 @@
                         <div class="col-md-4"><input id="lc-pkg-l" class="form-control" placeholder="Length (in)"></div>
                         <div class="col-md-4"><input id="lc-pkg-w" class="form-control" placeholder="Width (in)"></div>
                         <div class="col-md-4"><input id="lc-pkg-h" class="form-control" placeholder="Height (in)"></div>
+                    </div>
+                    <div class="lc-wayfair-only d-none row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Lead time (days)</label>
+                            <input type="number" min="0" id="lc-wayfair-lead" class="form-control" placeholder="e.g. 3">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Number of boxes</label>
+                            <input type="number" min="1" id="lc-wayfair-boxes" class="form-control" placeholder="1">
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end pb-1">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="lc-wayfair-sioc">
+                                <label class="form-check-label" for="lc-wayfair-sioc">Ships in own container</label>
+                            </div>
+                        </div>
                     </div>
                     <div class="lc-section-title">Package Weight <span class="lc-req lc-weight-req" style="display:none">*</span></div>
                     <div class="d-flex gap-2 align-items-center mb-3" style="max-width:360px">
@@ -2423,7 +2457,109 @@
             variation_skus: selectedVariationSkus(),
             parent_group: String($('#lc-parent-group').val() || (currentDraft && currentDraft.family && currentDraft.family.parent) || '').trim(),
             faire_tags: faireTags.slice(),
+            wayfair_collection: $('#lc-wayfair-collection').val() || '',
+            wayfair_map_price: $('#lc-wayfair-map').val() || '',
+            wayfair_lead_time: $('#lc-wayfair-lead').val() || '',
+            wayfair_box_count: $('#lc-wayfair-boxes').val() || '',
+            wayfair_sioc: $('#lc-wayfair-sioc').is(':checked'),
+            wayfair_answers: collectWayfairAnswers(),
+            wayfair_required_ids: wayfairRequiredIds.slice(),
         };
+    }
+
+    let wayfairRequiredIds = [];
+    let wayfairQuestionRows = [];
+
+    function collectWayfairAnswers() {
+        const out = {};
+        $('#lc-wayfair-questions [data-wf-qid]').each(function () {
+            const id = String($(this).attr('data-wf-qid') || '');
+            if (!id) return;
+            let value = '';
+            if ($(this).is(':checkbox')) {
+                const checked = [];
+                $('#lc-wayfair-questions [data-wf-qid="' + id.replace(/"/g, '\\"') + '"]:checked').each(function () {
+                    checked.push(String($(this).val() || ''));
+                });
+                value = checked.filter(Boolean).join('|');
+            } else if ($(this).is(':radio')) {
+                if (!$(this).is(':checked')) return;
+                value = String($(this).val() || '');
+            } else {
+                value = String($(this).val() || '');
+            }
+            if (value !== '') out[id] = value;
+        });
+        return out;
+    }
+
+    function loadWayfairQuestions(classId, saved) {
+        const id = parseInt(classId, 10) || 0;
+        const $box = $('#lc-wayfair-questions');
+        if (id <= 0) {
+            wayfairRequiredIds = [];
+            wayfairQuestionRows = [];
+            $box.html('<div class="text-muted small">Select a class to load Wayfair questions.</div>');
+            return;
+        }
+        $box.html('<div class="text-muted small">Loading Wayfair required fields…</div>');
+        $.ajax({
+            url: "{{ route('listing.manager.wayfair.questions') }}",
+            method: 'GET',
+            data: { class_id: id },
+            dataType: 'json',
+            timeout: 25000,
+            success: function (res) {
+                wayfairQuestionRows = res.questions || [];
+                wayfairRequiredIds = res.required_ids || [];
+                renderWayfairQuestions(saved || {});
+            },
+            error: function (xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Wayfair questions failed to load.';
+                $box.html('<div class="text-danger small">' + escapeHtml(msg) + '</div>');
+            }
+        });
+    }
+
+    function renderWayfairQuestions(saved) {
+        saved = saved || {};
+        const $box = $('#lc-wayfair-questions');
+        const rows = wayfairQuestionRows || [];
+        if (!rows.length) {
+            $box.html('<div class="text-muted small">No extra class questions for this class. Fill Color, origin, package, title, images, and price.</div>');
+            return;
+        }
+        $box.html(rows.map(function (q) {
+            if (q.group) {
+                return '<div class="wf-q-group">' + escapeHtml(q.label || '') + '</div>';
+            }
+            const req = q.required ? ' <span class="lc-req">*</span>' : (q.recommended ? ' <span class="text-muted small">recommended</span>' : '');
+            const help = q.help ? '<div class="wf-q-help">' + escapeHtml(q.help) + '</div>' : '';
+            const current = String(saved[q.id] || '');
+            let field = '';
+            const options = Array.isArray(q.options) ? q.options.slice() : [];
+            if (q.na && options.indexOf('Does Not Apply') < 0) options.push('Does Not Apply');
+            if (q.unavailable && options.indexOf('Unavailable') < 0) options.push('Unavailable');
+            if (options.length && q.multi) {
+                field = options.map(function (opt) {
+                    const checked = current.split('|').indexOf(opt) >= 0 ? ' checked' : '';
+                    return '<label class="form-check"><input type="checkbox" class="form-check-input" data-wf-qid="' + escapeHtml(q.id) + '" value="' + escapeHtml(opt) + '"' + checked + '> ' + escapeHtml(opt) + '</label>';
+                }).join('');
+            } else if (options.length && (q.type === 'BOOLEAN' || options.length <= 6)) {
+                field = options.map(function (opt) {
+                    const checked = current === opt ? ' checked' : '';
+                    return '<label class="form-check form-check-inline"><input type="radio" class="form-check-input" name="wfq-' + escapeHtml(q.id) + '" data-wf-qid="' + escapeHtml(q.id) + '" value="' + escapeHtml(opt) + '"' + checked + '> ' + escapeHtml(opt) + '</label>';
+                }).join('');
+            } else if (options.length) {
+                field = '<select class="form-select" data-wf-qid="' + escapeHtml(q.id) + '"><option value="">Select</option>' +
+                    options.map(function (opt) {
+                        return '<option value="' + escapeHtml(opt) + '"' + (current === opt ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
+                    }).join('') + '</select>';
+            } else {
+                field = '<input class="form-control" data-wf-qid="' + escapeHtml(q.id) + '" value="' + escapeHtml(current) + '" placeholder="' + escapeHtml(q.label || '') + '">';
+            }
+            return '<div class="wf-q-row"><div class="wf-q-label">' + escapeHtml(q.label || q.id) + req + help + '</div><div>' + field + '</div></div>';
+        }).join(''));
     }
 
     function renderFaireTags() {
@@ -2644,6 +2780,11 @@
             if (!((parseFloat(d.package_weight_lb) || 0) + ((parseFloat(d.package_weight_oz) || 0) / 16) > 0)) {
                 errors.policies.push('Weight');
             }
+            const answers = d.wayfair_answers || {};
+            const missingQ = (d.wayfair_required_ids || []).some(function (qid) {
+                return !String(answers[qid] || '').trim();
+            });
+            if (missingQ) errors.category.push('Class questions');
         }
         if (isTiktok || isTemu) {
             if (!d.primary_category_id) errors.category.push('Category');
@@ -2904,6 +3045,7 @@
         $('#wf-class-id-fallback').toggleClass('d-none', !(name && !id));
         $('#lc-wayfair-class-id').val(id);
         renderWayfairSelectedChip();
+        loadWayfairQuestions(id, collectWayfairAnswers());
         dirty = true;
         refreshEditorUi(currentDraft);
     }
@@ -3092,6 +3234,11 @@
         $('#lc-bullets').val(loadedBullets.join('\n'));
         $('#lc-amazon-color').val(d.color || colorFromSku(sku));
         $('#lc-amazon-origin').val(d.country_of_origin || 'CN');
+        $('#lc-wayfair-collection').val(d.wayfair_collection || d.parent_group || '');
+        $('#lc-wayfair-map').val(d.wayfair_map_price || '');
+        $('#lc-wayfair-lead').val(d.wayfair_lead_time || '');
+        $('#lc-wayfair-boxes').val(d.wayfair_box_count || '');
+        $('#lc-wayfair-sioc').prop('checked', !!d.wayfair_sioc);
         $('#lc-amazon-dgr').val(d.dangerous_goods_regulations || 'not_applicable');
         $('#lc-list-price').val(d.list_price || (draft.price != null ? draft.price : ''));
         setDescMode('code');
@@ -3195,6 +3342,7 @@
                 $('#wf-definition').html(wayfairEmptyDefinition());
                 renderWayfairSelectedChip();
                 searchCategories(String($('#lc-wayfair-class-search').val() || '').trim());
+                loadWayfairQuestions($('#lc-category-id').val(), d.wayfair_answers || {});
             } else if (family === 'reverb' || family === 'amazon' || family === 'temu' || family === 'newegg' || family === 'faire') {
                 const amazonQ = String($('#lc-category-search').val() || $('#lc-amazon-product-type').val() || $('#lc-title').val() || '').trim();
                 searchCategories(family === 'amazon' ? amazonQ : String($('#lc-category-search').val() || $('#lc-title').val() || '').trim());

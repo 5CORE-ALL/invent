@@ -1885,6 +1885,22 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
     }
 
     /**
+     * @return array{endpoint: string, compatLevel: string, devId: string, appId: string, certId: string, siteId: string, authToken: string}
+     */
+    public function tradingReviseContext(): array
+    {
+        return [
+            'endpoint' => (string) $this->endpoint,
+            'compatLevel' => (string) $this->compatLevel,
+            'devId' => (string) $this->devId,
+            'appId' => (string) $this->appId,
+            'certId' => (string) $this->certId,
+            'siteId' => (string) $this->siteId,
+            'authToken' => (string) $this->generateBearerToken(),
+        ];
+    }
+
+    /**
      * @return array{success: bool, message: string}
      */
     public function updateDescription(string $identifier, string $description): array

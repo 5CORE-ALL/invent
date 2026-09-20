@@ -38,6 +38,7 @@ use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\ListingManagerMasterLoader;
 use App\Support\Marketplace\ListingManagerProductPublisher;
 use App\Support\Marketplace\ListingManagerPublishStatus;
+use App\Support\Marketplace\WayfairClassQuestionForm;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -1893,6 +1894,23 @@ class ListingManagerController extends Controller
         $result = $ebay->getCategorySuggestions($q);
 
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+    }
+
+    public function wayfairQuestions(Request $request)
+    {
+        $classId = (int) $request->input('class_id', 0);
+        if ($classId <= 0) {
+            return response()->json([
+                'success' => false,
+                'questions' => [],
+                'required_ids' => [],
+                'message' => 'Select a Wayfair class first.',
+            ], 422);
+        }
+
+        $result = WayfairClassQuestionForm::forClass($classId);
+
+        return response()->json($result, ($result['questions'] ?? []) !== [] || ($result['message'] ?? '') === '' ? 200 : 422);
     }
 
     public function businessPolicies(Request $request)

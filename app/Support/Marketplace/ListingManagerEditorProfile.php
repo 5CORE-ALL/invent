@@ -164,8 +164,8 @@ class ListingManagerEditorProfile
                 'title_heading' => 'Title & Description',
                 'identifier_help' => 'Brand is always 5 Core. Model/MPN is the SKU. Color and country of origin are sent with the Wayfair class questions.',
                 'images_help' => 'Load photos from Image Master. Wayfair uses the first 8 HTTPS images.',
-                'category_help' => 'Search categories or product classes, then pick a class. Publish uses the selected Wayfair class ID.',
-                'policies_help' => 'Package size and weight come from Dim/Wt Master and are required for Wayfair class questions.',
+                'category_help' => 'Search categories or product classes, pick a class, then complete every required Wayfair product-form question.',
+                'policies_help' => 'Package size, weight, lead time, and box count come from Dim/Wt Master and the Wayfair shipping form.',
             ],
             'newegg' => [
                 'tabs' => [

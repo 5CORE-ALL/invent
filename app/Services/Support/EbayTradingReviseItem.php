@@ -2,6 +2,7 @@
 
 namespace App\Services\Support;
 
+use App\Services\MarketplaceManager\EbayLiveListingMapper;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -415,6 +416,452 @@ final class EbayTradingReviseItem
         }
 
         return array_slice(array_values(array_unique($out)), 0, 12);
+    }
+
+    /**
+     * True when GetItem contains at least one Variations.Variation node.
+     *
+     * @param  array<string, mixed>  $getItemResponse
+     */
+    public static function listingHasVariations(array $getItemResponse): bool
+    {
+        $item = self::itemFromGetItem($getItemResponse);
+        $vars = $item['Variations']['Variation'] ?? null;
+
+        return is_array($vars) && $vars !== [];
+    }
+
+    /**
+     * Plan a SKU-only VariationSpecificPictureSet update. Does not touch parent PictureDetails.
+     *
+     * @param  array<string, mixed>  $getItemResponse
+     * @param  list<string>  $newImageUrls
+     * @return array{
+     *   ok: bool,
+     *   message?: string,
+     *   not_variation?: bool,
+     *   item_id?: string,
+     *   name?: string,
+     *   variation_value?: string,
+     *   sets?: list<array{value: string, urls: list<string>}>,
+     *   new_urls?: list<string>
+     * }
+     */
+    public static function variationPicturePlan(array $getItemResponse, string $sku, array $newImageUrls): array
+    {
+        $sku = trim($sku);
+        $urls = [];
+        foreach ($newImageUrls as $u) {
+            $t = trim((string) $u);
+            if ($t !== '') {
+                $urls[] = $t;
+            }
+        }
+        $urls = array_values(array_unique($urls));
+        if ($sku === '' || $urls === []) {
+            return ['ok' => false, 'message' => 'SKU and image URL are required.'];
+        }
+
+        $item = self::itemFromGetItem($getItemResponse);
+        $itemId = self::xmlText($item['ItemID'] ?? '');
+        if ($itemId === '') {
+            return ['ok' => false, 'message' => 'GetItem response missing ItemID.'];
+        }
+
+        if (! self::listingHasVariations($item)) {
+            return [
+                'ok' => false,
+                'not_variation' => true,
+                'item_id' => $itemId,
+                'message' => 'Listing has no variations.',
+            ];
+        }
+
+        $variation = self::findVariationForSku($item, $sku);
+        if ($variation === null) {
+            return [
+                'ok' => false,
+                'item_id' => $itemId,
+                'message' => 'SKU was not found as a child variation on this eBay listing. Parent image was not changed.',
+            ];
+        }
+
+        $specifics = EbayLiveListingMapper::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null);
+        $state = self::extractVariationPictureState($item);
+        $name = $state['name'];
+        if ($name === '') {
+            foreach (['Color', 'Colour', 'color'] as $pref) {
+                if (isset($specifics[$pref]) && trim((string) $specifics[$pref]) !== '') {
+                    $name = $pref;
+                    break;
+                }
+            }
+            if ($name === '' && $specifics !== []) {
+                $name = (string) array_key_first($specifics);
+            }
+        }
+        if ($name === '') {
+            return [
+                'ok' => false,
+                'item_id' => $itemId,
+                'message' => 'Could not determine the variation picture aspect (Color) for this SKU.',
+            ];
+        }
+
+        $value = '';
+        foreach ($specifics as $aspect => $aspectValue) {
+            if (strcasecmp((string) $aspect, $name) === 0) {
+                $name = (string) $aspect;
+                $value = trim((string) $aspectValue);
+                break;
+            }
+        }
+        if ($value === '') {
+            return [
+                'ok' => false,
+                'item_id' => $itemId,
+                'message' => 'This SKU has no "'.$name.'" value, so its variation picture cannot be updated.',
+            ];
+        }
+
+        $sets = $state['sets'];
+        foreach (self::allVariationValuesForName($item, $name) as $otherValue) {
+            $exists = false;
+            foreach ($sets as $set) {
+                if (strcasecmp((string) ($set['value'] ?? ''), $otherValue) === 0) {
+                    $exists = true;
+                    break;
+                }
+            }
+            if (! $exists) {
+                $sets[] = ['value' => $otherValue, 'urls' => []];
+            }
+        }
+
+        return [
+            'ok' => true,
+            'item_id' => $itemId,
+            'name' => $name,
+            'variation_value' => $value,
+            'sets' => $sets,
+            'new_urls' => $urls,
+        ];
+    }
+
+    /**
+     * Replace PictureURL list for one VariationSpecificValue and keep every sibling set.
+     *
+     * @param  list<array{value: string, urls: list<string>}>  $sets
+     * @param  list<string>  $newUrls
+     * @return list<array{value: string, urls: list<string>}>
+     */
+    public static function mergeVariationPictureSets(array $sets, string $value, array $newUrls): array
+    {
+        $value = trim($value);
+        $newUrls = array_values(array_filter(array_map('trim', $newUrls), fn ($u) => $u !== ''));
+        $found = false;
+        $out = [];
+        foreach ($sets as $set) {
+            $setValue = trim((string) ($set['value'] ?? ''));
+            $urls = is_array($set['urls'] ?? null) ? $set['urls'] : [];
+            if ($setValue !== '' && strcasecmp($setValue, $value) === 0) {
+                $kept = [];
+                foreach ($urls as $u) {
+                    $t = trim((string) $u);
+                    if ($t === '' || in_array($t, $newUrls, true)) {
+                        continue;
+                    }
+                    $kept[] = $t;
+                }
+                $out[] = ['value' => $setValue, 'urls' => array_slice(array_merge($newUrls, $kept), 0, 12)];
+                $found = true;
+            } else {
+                $out[] = ['value' => $setValue, 'urls' => array_values(array_filter(array_map('trim', $urls), fn ($u) => $u !== ''))];
+            }
+        }
+        if (! $found && $value !== '') {
+            $out[] = ['value' => $value, 'urls' => array_slice($newUrls, 0, 12)];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Update only this SKU's variation picture via ReviseFixedPriceItem.
+     * Does not send Item.PictureDetails (parent gallery stays unchanged).
+     *
+     * @param  array<string, mixed>  $getItemResponse
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string, is_variation?: bool, variation_value?: string, item_id?: string}
+     */
+    public static function reviseVariationSpecificPictures(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        array $getItemResponse,
+        string $sku,
+        array $imageUrls,
+    ): array {
+        $plan = self::variationPicturePlan($getItemResponse, $sku, $imageUrls);
+        if (! ($plan['ok'] ?? false)) {
+            return [
+                'success' => false,
+                'message' => $plan['message'] ?? 'Could not plan variation picture update.',
+                'not_variation' => (bool) ($plan['not_variation'] ?? false),
+                'item_id' => $plan['item_id'] ?? null,
+            ];
+        }
+
+        $epsUrls = [];
+        $epsErrors = [];
+        foreach ($plan['new_urls'] as $i => $srcUrl) {
+            $name = 'var_'.($i + 1).'_'.substr(md5($srcUrl), 0, 8);
+            $result = self::uploadImageToEps($endpoint, $devId, $appId, $certId, $authToken, $srcUrl, $name);
+            if ($result['success'] ?? false) {
+                $epsUrls[] = $result['url'];
+            } else {
+                $epsErrors[] = 'Image '.($i + 1).': '.($result['message'] ?? 'upload failed');
+                Log::warning('eBay EPS upload failed (variation picture)', ['url' => $srcUrl, 'error' => $result['message'] ?? '']);
+            }
+        }
+        if ($epsUrls === []) {
+            return ['success' => false, 'message' => 'All image uploads to eBay EPS failed. '.implode(' | ', $epsErrors)];
+        }
+
+        $sets = self::mergeVariationPictureSets($plan['sets'], $plan['variation_value'], $epsUrls);
+        $xmlBody = self::buildReviseVariationPicturesRequestXml(
+            $authToken,
+            $plan['item_id'],
+            $plan['name'],
+            $sets,
+            'ReviseFixedPriceItem'
+        );
+        $result = self::postTradingCall(
+            $endpoint,
+            $compatLevel,
+            $devId,
+            $appId,
+            $certId,
+            $siteId,
+            $plan['item_id'],
+            $xmlBody,
+            'ReviseFixedPriceItem',
+            'variation pictures'
+        );
+
+        if (! ($result['success'] ?? false) && self::isWrongListingTypeError((string) ($result['message'] ?? ''))) {
+            $xmlBody = self::buildReviseVariationPicturesRequestXml(
+                $authToken,
+                $plan['item_id'],
+                $plan['name'],
+                $sets,
+                'ReviseItem'
+            );
+            $result = self::postTradingCall(
+                $endpoint,
+                $compatLevel,
+                $devId,
+                $appId,
+                $certId,
+                $siteId,
+                $plan['item_id'],
+                $xmlBody,
+                'ReviseItem',
+                'variation pictures'
+            );
+        }
+
+        if ($result['success'] ?? false) {
+            $result['message'] = 'Updated '.$sku.' variation image ('.$plan['name'].': '.$plan['variation_value'].'). Parent and sibling pictures were not replaced.';
+            if ($epsErrors) {
+                $result['message'] .= ' Note: '.count($epsErrors).' image(s) could not be uploaded.';
+            }
+            $result['is_variation'] = true;
+            $result['variation_value'] = $plan['variation_value'];
+            $result['variation_name'] = $plan['name'];
+            $result['item_id'] = $plan['item_id'];
+            $result['normalized_urls'] = $epsUrls;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  list<array{value: string, urls: list<string>}>  $sets
+     */
+    public static function buildReviseVariationPicturesRequestXml(
+        string $authToken,
+        string $itemId,
+        string $variationSpecificName,
+        array $sets,
+        string $callName = 'ReviseFixedPriceItem',
+    ): string {
+        $root = $callName === 'ReviseItem' ? 'ReviseItemRequest' : 'ReviseFixedPriceItemRequest';
+        $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><'.$root.' xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+        $creds = $xml->addChild('RequesterCredentials');
+        $creds->addChild('eBayAuthToken', self::escapeXmlElementText($authToken));
+        $xml->addChild('ErrorLanguage', 'en_US');
+        $xml->addChild('WarningLevel', 'High');
+        $itemNode = $xml->addChild('Item');
+        $itemNode->addChild('ItemID', self::escapeXmlElementText($itemId));
+        $variations = $itemNode->addChild('Variations');
+        $pictures = $variations->addChild('Pictures');
+        $pictures->addChild('VariationSpecificName', self::escapeXmlElementText($variationSpecificName));
+        foreach ($sets as $set) {
+            $value = trim((string) ($set['value'] ?? ''));
+            if ($value === '') {
+                continue;
+            }
+            $setNode = $pictures->addChild('VariationSpecificPictureSet');
+            $setNode->addChild('VariationSpecificValue', self::escapeXmlElementText($value));
+            $urls = is_array($set['urls'] ?? null) ? $set['urls'] : [];
+            foreach (array_slice($urls, 0, 12) as $url) {
+                $t = trim((string) $url);
+                if ($t !== '') {
+                    $setNode->addChild('PictureURL', self::escapeXmlElementText($t));
+                }
+            }
+        }
+
+        $xmlBody = $xml->asXML();
+
+        return $xmlBody === false ? '' : $xmlBody;
+    }
+
+    /**
+     * @param  array<string, mixed>  $itemOrGetItem
+     * @return array{name: string, sets: list<array{value: string, urls: list<string>}>}
+     */
+    public static function extractVariationPictureState(array $itemOrGetItem): array
+    {
+        $item = self::itemFromGetItem($itemOrGetItem);
+        $pictures = $item['Variations']['Pictures'] ?? null;
+        if (! is_array($pictures)) {
+            return ['name' => '', 'sets' => []];
+        }
+
+        $name = self::xmlText($pictures['VariationSpecificName'] ?? '');
+        $rawSets = $pictures['VariationSpecificPictureSet'] ?? [];
+        if (isset($rawSets['VariationSpecificValue']) || isset($rawSets['PictureURL'])) {
+            $rawSets = [$rawSets];
+        }
+        $sets = [];
+        if (is_array($rawSets)) {
+            foreach ($rawSets as $set) {
+                if (! is_array($set)) {
+                    continue;
+                }
+                $value = self::xmlText($set['VariationSpecificValue'] ?? '');
+                if ($value === '') {
+                    continue;
+                }
+                $sets[] = [
+                    'value' => $value,
+                    'urls' => self::extractPictureUrlsFromGetItem(['Item' => ['PictureDetails' => ['PictureURL' => $set['PictureURL'] ?? []]]]),
+                ];
+            }
+        }
+
+        return ['name' => $name, 'sets' => $sets];
+    }
+
+    /**
+     * @param  array<string, mixed>  $itemOrGetItem
+     * @return array<string, mixed>|null
+     */
+    public static function findVariationForSku(array $itemOrGetItem, string $sku): ?array
+    {
+        $item = self::itemFromGetItem($itemOrGetItem);
+        $vars = $item['Variations']['Variation'] ?? null;
+        if (! is_array($vars) || $vars === []) {
+            return null;
+        }
+        if (isset($vars['SKU']) || isset($vars['Quantity']) || isset($vars['VariationSpecifics'])) {
+            $vars = [$vars];
+        }
+        foreach ($vars as $variation) {
+            if (! is_array($variation)) {
+                continue;
+            }
+            $vSku = self::xmlText($variation['SKU'] ?? '');
+            if ($vSku !== '' && EbayLiveListingMapper::skuEquals($vSku, $sku)) {
+                return $variation;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $getItemResponse
+     * @return array<string, mixed>
+     */
+    public static function itemFromGetItem(array $getItemResponse): array
+    {
+        $item = $getItemResponse['Item'] ?? null;
+
+        return is_array($item) ? $item : $getItemResponse;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return list<string>
+     */
+    private static function allVariationValuesForName(array $item, string $name): array
+    {
+        $vars = $item['Variations']['Variation'] ?? null;
+        if (! is_array($vars) || $vars === []) {
+            return [];
+        }
+        if (isset($vars['SKU']) || isset($vars['VariationSpecifics'])) {
+            $vars = [$vars];
+        }
+        $out = [];
+        $seen = [];
+        foreach ($vars as $variation) {
+            if (! is_array($variation)) {
+                continue;
+            }
+            $map = EbayLiveListingMapper::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null);
+            foreach ($map as $aspect => $value) {
+                if (strcasecmp((string) $aspect, $name) !== 0) {
+                    continue;
+                }
+                $value = trim((string) $value);
+                $key = strtolower($value);
+                if ($value === '' || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $out[] = $value;
+            }
+        }
+
+        return $out;
+    }
+
+    private static function xmlText(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+        if (is_array($value)) {
+            if (isset($value[0]) && ! is_array($value[0])) {
+                return trim((string) $value[0]);
+            }
+            if (isset($value['#text'])) {
+                return trim((string) $value['#text']);
+            }
+            $first = reset($value);
+
+            return is_scalar($first) ? trim((string) $first) : '';
+        }
+
+        return trim((string) $value);
     }
 
     /**
