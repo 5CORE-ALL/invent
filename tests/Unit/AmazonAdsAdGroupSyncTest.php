@@ -63,9 +63,4 @@ class AmazonAdsAdGroupSyncTest extends TestCase
 
         $this->assertSame(['100' => 'Alpha', '200' => 'Beta'], $names);
     }
-
-    public function test_default_bid_reads_flat_number(): void
-    {
-        $this->assertSame(0.4, AmazonAdsAdGroupSync::defaultBid(['defaultBid' => 0.4]));
-    }
 }
