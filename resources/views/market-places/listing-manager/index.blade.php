@@ -2491,7 +2491,7 @@
     }
 
     function loadWayfairQuestions(classId, saved) {
-        const id = parseInt(classId, 10) || 0;
+        const id = isUsableWayfairClassId(classId) ? (parseInt(classId, 10) || 0) : 0;
         const $box = $('#lc-wayfair-questions');
         if (id <= 0) {
             wayfairRequiredIds = [];
@@ -3029,8 +3029,14 @@
         renderWayfairSelectedChip();
     }
 
+    function isUsableWayfairClassId(id) {
+        const raw = String(id || '').trim();
+        const browse = ['416547', '431590', '416504', '1868409', '1780385', '1773657', '414585'];
+        return /^\d{2,}$/.test(raw) && browse.indexOf(raw) < 0;
+    }
+
     function applyWayfairClass(row, opts) {
-        const id = String((row && row.id) || '').trim();
+        const id = isUsableWayfairClassId((row && row.id) || '') ? String(row.id).trim() : '';
         const name = String((row && row.name) || '').trim();
         const path = String((row && row.path) || (id ? (name + ' (' + id + ')') : name)).trim();
         $('#lc-category-id').val(id);
@@ -3367,7 +3373,13 @@
                 searchCategories(family === 'reverb' ? String($('#lc-title').val() || '').trim() : '');
             } else if (family === 'wayfair') {
                 const savedName = String($('#lc-category-path-input').val() || '').replace(/\s+\(\d+\)$/, '').trim();
-                const savedId = String($('#lc-category-id').val() || '').trim();
+                let savedId = String($('#lc-category-id').val() || '').trim();
+                if (!isUsableWayfairClassId(savedId)) {
+                    savedId = '';
+                    $('#lc-category-id').val('');
+                    $('#lc-category-id-visible').val('');
+                    $('#lc-wayfair-class-id').val('');
+                }
                 $('#wf-definition').html(wayfairEmptyDefinition());
                 if (savedName || savedId) {
                     applyWayfairClass({ id: savedId, name: savedName, path: savedName, definition: '' });

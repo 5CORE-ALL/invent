@@ -10,6 +10,7 @@ use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerEbayTradingPublisher;
 use App\Support\Marketplace\ListingManagerFamily;
+use App\Support\Marketplace\WayfairPartnerClassCatalog;
 use Illuminate\Support\Facades\Schema;
 
 class ListingManagerPublishDispatcher
@@ -456,7 +457,7 @@ class ListingManagerPublishDispatcher
     private function categoryIdFromDetails(array $details): ?int
     {
         $raw = trim((string) ($details['primary_category_id'] ?? $details['category_uuid'] ?? ''));
-        if ($raw !== '' && ctype_digit($raw)) {
+        if (WayfairPartnerClassCatalog::isUsableClassId($raw)) {
             return (int) $raw;
         }
 

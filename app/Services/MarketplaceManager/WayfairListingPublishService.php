@@ -12,6 +12,7 @@ use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use App\Support\Marketplace\WayfairPartnerClassCatalog;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -62,7 +63,7 @@ class WayfairListingPublishService
         }
         $candidates = array_values(array_unique(array_filter($candidates)));
 
-        $cached = $this->classIdFromListingStatuses($candidates);
+        $cached = $this->usableClassId($this->classIdFromListingStatuses($candidates));
         if ($cached > 0) {
             return ['id' => $cached, 'path' => 'Class '.$cached.' (from a listed sibling)', 'name' => ''];
         }
@@ -73,20 +74,28 @@ class WayfairListingPublishService
             array_slice($candidates, 0, 12)
         )));
         $hit = $this->api->lookupCatalogClassForSkus(array_slice($catalogSkus, 0, 12));
-        if ($hit && ($hit['class_id'] ?? 0) > 0) {
+        $hitId = $this->usableClassId((int) ($hit['class_id'] ?? 0));
+        if ($hit && $hitId > 0) {
             $name = trim((string) ($hit['class_name'] ?? ''));
-            $this->rememberClassId($candidates, (int) $hit['class_id'], $name);
+            $this->rememberClassId($candidates, $hitId, $name);
 
             return [
-                'id' => (int) $hit['class_id'],
-                'path' => $name !== '' ? $name.' ('.$hit['class_id'].')' : 'Class '.$hit['class_id'],
+                'id' => $hitId,
+                'path' => $name !== '' ? $name.' ('.$hitId.')' : 'Class '.$hitId,
                 'name' => $name,
             ];
         }
 
+        $fromSubmission = $this->usableClassId($this->classIdFromProductAdditionSubmissions($candidates));
+        if ($fromSubmission > 0) {
+            $this->rememberClassId($candidates, $fromSubmission);
+
+            return ['id' => $fromSubmission, 'path' => 'Class '.$fromSubmission.' (from a prior submission)', 'name' => ''];
+        }
+
         $title = $this->resolveTitleForClass($product, $sku, $candidates);
         $parent = trim((string) ($product->parent ?? ''));
-        $default = (int) config('services.wayfair.default_class_id', 0);
+        $default = $this->usableClassId((int) config('services.wayfair.default_class_id', 0));
         if ($default > 0) {
             return ['id' => $default, 'path' => 'Configured Wayfair class '.$default, 'name' => ''];
         }
@@ -165,7 +174,11 @@ class WayfairListingPublishService
             ];
         }
 
-        $resolvedClass = $this->resolveClassId($publishSkus, $classId, $className);
+        $resolvedClass = $this->usableClassId($this->resolveClassId($publishSkus, $classId, $className));
+        if ($resolvedClass <= 0) {
+            $suggested = $this->suggestClassForSku((string) ($publishSkus[0] ?? ''));
+            $resolvedClass = $this->usableClassId((int) ($suggested['id'] ?? 0));
+        }
         $questionRes = $resolvedClass > 0
             ? $this->api->getProductAdditionQuestions($resolvedClass)
             : ['questions' => [], 'message' => ''];
@@ -175,10 +188,10 @@ class WayfairListingPublishService
             $fallback = $fallbackName !== ''
                 ? $this->api->resolveListingClass($fallbackName, ['sku' => (string) ($publishSkus[0] ?? '')])
                 : null;
-            $fallbackId = (int) ($fallback['id'] ?? 0);
+            $fallbackId = $this->usableClassId((int) ($fallback['id'] ?? 0));
             if ($fallbackId <= 0) {
                 $hit = $this->api->lookupCatalogClassForSkus($publishSkus);
-                $fallbackId = (int) ($hit['class_id'] ?? 0);
+                $fallbackId = $this->usableClassId((int) ($hit['class_id'] ?? 0));
             }
             if ($fallbackId > 0 && $fallbackId !== $resolvedClass) {
                 $resolvedClass = $fallbackId;
@@ -186,22 +199,10 @@ class WayfairListingPublishService
                 $questions = $questionRes['questions'] ?? [];
             }
         }
-        if ($questions === [] && $resolvedClass <= 0) {
-            return [
-                'success' => false,
-                'message' => 'Wayfair class is required. Pick a class in the listing editor, then publish again.',
-            ];
-        }
         if ($questions === []) {
-            $raw = trim((string) ($questionRes['message'] ?? ''));
-            $message = $raw !== '' ? $raw : 'Wayfair returned no product-addition questions for class '.$resolvedClass.'.';
-            if (stripos($message, 'access denied') !== false) {
-                $message = 'Wayfair blocked product addition for class '.$resolvedClass.'. The app retried with the full API token. Publish again in a moment.';
-            }
-
             return [
                 'success' => false,
-                'message' => $message,
+                'message' => 'Wayfair did not accept the previous class for this SKU. The app looks up the listing class from your catalog family. Publish again in a moment.',
             ];
         }
 
@@ -290,22 +291,34 @@ class WayfairListingPublishService
      */
     private function resolveClassId(array $skus, ?int $classId, ?string $className): int
     {
-        if ($classId !== null && $classId > 0) {
+        if ($classId !== null && $this->usableClassId($classId) > 0) {
             return $classId;
         }
         $name = trim((string) $className);
         if ($name !== '' && preg_match('/^\d{2,}$/', $name)) {
-            return (int) $name;
+            $typed = $this->usableClassId((int) $name);
+            if ($typed > 0) {
+                return $typed;
+            }
         }
         if ($name !== '' && preg_match('/\((\d{2,})\)\s*$/', $name, $match)) {
-            return (int) $match[1];
+            $typed = $this->usableClassId((int) $match[1]);
+            if ($typed > 0) {
+                return $typed;
+            }
         }
         $suggested = $this->suggestClassForSku($skus[0] ?? '');
-        if ((int) ($suggested['id'] ?? 0) > 0) {
-            return (int) $suggested['id'];
+        $suggestedId = $this->usableClassId((int) ($suggested['id'] ?? 0));
+        if ($suggestedId > 0) {
+            return $suggestedId;
         }
 
         return 0;
+    }
+
+    private function usableClassId(int $classId): int
+    {
+        return WayfairPartnerClassCatalog::isUsableClassId((string) $classId) ? $classId : 0;
     }
 
     /**
@@ -334,7 +347,7 @@ class WayfairListingPublishService
             if ($want !== [] && ! isset($want[$norm])) {
                 continue;
             }
-            $id = $this->classIdFromStatusValue(is_array($row->value) ? $row->value : []);
+            $id = $this->usableClassId($this->classIdFromStatusValue(is_array($row->value) ? $row->value : []));
             if ($id > 0) {
                 return $id;
             }
@@ -349,20 +362,20 @@ class WayfairListingPublishService
     private function classIdFromStatusValue(array $value): int
     {
         foreach (['class_id', 'wayfair_class_id', 'classId', 'taxonomy_category_id', 'taxonomyCategoryId'] as $key) {
-            $id = (int) ($value[$key] ?? 0);
+            $id = $this->usableClassId((int) ($value[$key] ?? 0));
             if ($id > 0) {
                 return $id;
             }
         }
         $class = $value['class'] ?? null;
         if (is_array($class)) {
-            $id = (int) ($class['class_id'] ?? $class['classId'] ?? 0);
+            $id = $this->usableClassId((int) ($class['class_id'] ?? $class['classId'] ?? 0));
             if ($id > 0) {
                 return $id;
             }
         }
         foreach (['seller_link', 'buyer_link', 'listing_url', 'url'] as $key) {
-            $id = $this->classIdFromUrl((string) ($value[$key] ?? ''));
+            $id = $this->usableClassId($this->classIdFromUrl((string) ($value[$key] ?? '')));
             if ($id > 0) {
                 return $id;
             }
@@ -416,7 +429,7 @@ class WayfairListingPublishService
         }
         try {
             foreach ($this->api->getProductAdditionSubmissions(array_slice($ids, 0, 10)) as $row) {
-                $classId = (int) ($row['classId'] ?? $row['class_id'] ?? 0);
+                $classId = $this->usableClassId((int) ($row['classId'] ?? $row['class_id'] ?? 0));
                 if ($classId > 0) {
                     return $classId;
                 }
@@ -432,7 +445,7 @@ class WayfairListingPublishService
      */
     private function rememberClassId(array $skus, int $classId, string $className = ''): void
     {
-        if ($classId <= 0 || ! Schema::hasTable('wayfair_listing_statuses')) {
+        if ($this->usableClassId($classId) <= 0 || ! Schema::hasTable('wayfair_listing_statuses')) {
             return;
         }
         foreach (array_slice($skus, 0, 8) as $sku) {

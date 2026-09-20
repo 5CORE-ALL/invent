@@ -1726,7 +1726,7 @@ XML;
      */
     public function getProductAdditionQuestions(int $classId): array
     {
-        if ($classId <= 0) {
+        if ($classId <= 0 || ! WayfairPartnerClassCatalog::isUsableClassId((string) $classId)) {
             return ['questions' => [], 'message' => 'Wayfair class ID is required.'];
         }
 
@@ -1954,11 +1954,16 @@ XML;
         }
 
         $fromWorking = $this->lookupClassFromWorkingCatalog($parts);
-        if ($fromWorking !== null) {
+        if ($fromWorking !== null && WayfairPartnerClassCatalog::isUsableClassId((string) ($fromWorking['class_id'] ?? ''))) {
             return $fromWorking;
         }
 
-        return $this->lookupClassFromSupplierCatalogItems($parts);
+        $fromItems = $this->lookupClassFromSupplierCatalogItems($parts);
+        if ($fromItems !== null && WayfairPartnerClassCatalog::isUsableClassId((string) ($fromItems['class_id'] ?? ''))) {
+            return $fromItems;
+        }
+
+        return null;
     }
 
     /**
@@ -2202,11 +2207,12 @@ XML;
      */
     public function classNameToIdMap(): array
     {
+        $this->forgetUnusableResolvedClassIds();
         $map = [];
         foreach (WayfairPartnerClassCatalog::classes() as $row) {
             $name = mb_strtolower(trim((string) ($row['name'] ?? '')));
             $id = trim((string) ($row['id'] ?? ''));
-            if ($name !== '' && $id !== '') {
+            if ($name !== '' && WayfairPartnerClassCatalog::isUsableClassId($id)) {
                 $map[$name] = $id;
             }
         }
@@ -2216,7 +2222,7 @@ XML;
             }
             $name = mb_strtolower(trim((string) ($row['name'] ?? $row['className'] ?? '')));
             $id = (int) ($row['classId'] ?? $row['taxonomyCategoryId'] ?? 0);
-            if ($name !== '' && $id > 0) {
+            if ($name !== '' && WayfairPartnerClassCatalog::isUsableClassId((string) $id)) {
                 $map[$name] = (string) $id;
             }
         }
@@ -2227,7 +2233,7 @@ XML;
             }
             $name = mb_strtolower(trim((string) ($row['name'] ?? $row['className'] ?? '')));
             $id = (int) ($row['classId'] ?? $row['taxonomyCategoryId'] ?? 0);
-            if ($name !== '' && $id > 0) {
+            if ($name !== '' && WayfairPartnerClassCatalog::isUsableClassId((string) $id)) {
                 $map[$name] = (string) $id;
             }
         }
@@ -2235,7 +2241,7 @@ XML;
         foreach (is_array($resolved) ? $resolved : [] as $name => $id) {
             $name = mb_strtolower(trim((string) $name));
             $id = trim((string) $id);
-            if ($name !== '' && preg_match('/^\d+$/', $id)) {
+            if ($name !== '' && WayfairPartnerClassCatalog::isUsableClassId($id)) {
                 $map[$name] = $id;
             }
         }
@@ -2285,19 +2291,23 @@ XML;
             }
         }
         if ($id === '' && $sku !== '') {
-            $hit = $this->lookupCatalogClassForSkus([$sku]);
-            if (is_array($hit) && (int) ($hit['class_id'] ?? 0) > 0) {
-                $id = (string) $hit['class_id'];
-                if ($known === null) {
-                    $hitName = trim((string) ($hit['class_name'] ?? ''));
-                    $known = ($hitName !== '' ? WayfairPartnerClassCatalog::findByName($hitName) : null)
-                        ?: WayfairPartnerClassCatalog::present([
-                            'id' => $id,
-                            'name' => $hitName !== '' ? $hitName : $name,
-                            'category' => 'Your catalog',
-                            'definition' => '',
-                        ]);
+            try {
+                $suggested = app(\App\Services\MarketplaceManager\WayfairListingPublishService::class)->suggestClassForSku($sku);
+                $suggestedId = trim((string) ($suggested['id'] ?? ''));
+                if (WayfairPartnerClassCatalog::isUsableClassId($suggestedId)) {
+                    $id = $suggestedId;
+                    $hitName = trim((string) ($suggested['name'] ?? ''));
+                    if ($known === null) {
+                        $known = ($hitName !== '' ? WayfairPartnerClassCatalog::findByName($hitName) : null)
+                            ?: WayfairPartnerClassCatalog::present([
+                                'id' => $id,
+                                'name' => $hitName !== '' ? $hitName : $name,
+                                'category' => 'Your catalog',
+                                'definition' => '',
+                            ]);
+                    }
                 }
+            } catch (\Throwable) {
             }
         }
         if ($id === '') {
@@ -2310,6 +2320,9 @@ XML;
                     break;
                 }
             }
+        }
+        if ($id !== '' && ! WayfairPartnerClassCatalog::isUsableClassId($id)) {
+            $id = '';
         }
         if ($known === null && $id === '') {
             return null;
@@ -2351,11 +2364,38 @@ XML;
         return $this->classIdFromProductAdditionSearch($name);
     }
 
+    private function forgetUnusableResolvedClassIds(): void
+    {
+        $map = Cache::get('wayfair.resolved_class_ids');
+        if (is_array($map)) {
+            $clean = [];
+            foreach ($map as $name => $id) {
+                if (WayfairPartnerClassCatalog::isUsableClassId((string) $id)) {
+                    $clean[$name] = (string) $id;
+                }
+            }
+            if ($clean !== $map) {
+                Cache::put('wayfair.resolved_class_ids', $clean, 86400 * 30);
+            }
+        }
+        $directory = Cache::get('wayfair.catalog_class_directory');
+        if (! is_array($directory) || $directory === []) {
+            return;
+        }
+        foreach ($directory as $row) {
+            $id = (string) ($row['classId'] ?? $row['taxonomyCategoryId'] ?? $row['class_id'] ?? '');
+            if ($id !== '' && ! WayfairPartnerClassCatalog::isUsableClassId($id)) {
+                Cache::forget('wayfair.catalog_class_directory');
+                break;
+            }
+        }
+    }
+
     private function rememberResolvedClassId(string $name, string $id): void
     {
         $lower = mb_strtolower(trim($name));
         $id = trim($id);
-        if ($lower === '' || ! preg_match('/^\d+$/', $id)) {
+        if ($lower === '' || ! WayfairPartnerClassCatalog::isUsableClassId($id)) {
             return;
         }
         $map = Cache::get('wayfair.resolved_class_ids');
@@ -2580,6 +2620,9 @@ XML;
      */
     private function classResultFromTypedId(int $classId): array
     {
+        if (! WayfairPartnerClassCatalog::isUsableClassId((string) $classId)) {
+            return $this->classPickerResult([], WayfairPartnerClassCatalog::search('', '')['groups']);
+        }
         $known = WayfairPartnerClassCatalog::findById((string) $classId);
         if ($known !== null) {
             return $this->classPickerResult([$known], WayfairPartnerClassCatalog::search('', '')['groups']);
@@ -3281,7 +3324,7 @@ XML;
         $class = is_array($row['class'] ?? null) ? $row['class'] : [];
         $classId = (int) ($class['classId'] ?? $row['classId'] ?? $row['class_id'] ?? $row['taxonomyCategoryId'] ?? $row['taxonomy_category_id'] ?? 0);
         $className = trim((string) ($class['className'] ?? $row['className'] ?? $row['class_name'] ?? $row['name'] ?? ''));
-        if ($classId > 0) {
+        if ($classId > 0 && WayfairPartnerClassCatalog::isUsableClassId((string) $classId)) {
             return ['class_id' => $classId, 'class_name' => $className];
         }
 

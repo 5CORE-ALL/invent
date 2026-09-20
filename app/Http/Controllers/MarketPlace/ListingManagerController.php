@@ -39,6 +39,7 @@ use App\Support\Marketplace\ListingManagerMasterLoader;
 use App\Support\Marketplace\ListingManagerProductPublisher;
 use App\Support\Marketplace\ListingManagerPublishStatus;
 use App\Support\Marketplace\WayfairClassQuestionForm;
+use App\Support\Marketplace\WayfairPartnerClassCatalog;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -1899,7 +1900,7 @@ class ListingManagerController extends Controller
     public function wayfairQuestions(Request $request)
     {
         $classId = (int) $request->input('class_id', 0);
-        if ($classId <= 0) {
+        if ($classId <= 0 || ! WayfairPartnerClassCatalog::isUsableClassId((string) $classId)) {
             return response()->json([
                 'success' => false,
                 'questions' => [],
@@ -1919,8 +1920,8 @@ class ListingManagerController extends Controller
         $typedId = trim((string) $request->input('id', ''));
         $sku = trim((string) $request->input('sku', ''));
         $svc = app(WayfairApiService::class);
-        $row = $typedId !== '' && preg_match('/^\d{2,}$/', $typedId)
-            ? $svc->resolveListingClass($typedId)
+        $row = $typedId !== '' && WayfairPartnerClassCatalog::isUsableClassId($typedId)
+            ? $svc->resolveListingClass($typedId, ['sku' => $sku])
             : $svc->resolveListingClass($name, ['sku' => $sku]);
 
         if ($row === null) {
@@ -3044,8 +3045,12 @@ class ListingManagerController extends Controller
     private function applyWayfairSuggestedClass(array $details, string $sku): array
     {
         $classId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
-        if ($classId !== '' && preg_match('/^\d+$/', $classId)) {
+        if (WayfairPartnerClassCatalog::isUsableClassId($classId)) {
             return $details;
+        }
+        if ($classId !== '') {
+            $details['primary_category_id'] = '';
+            $details['category_id'] = '';
         }
         try {
             $suggested = app(WayfairListingPublishService::class)->suggestClassForSku($sku);
@@ -3055,7 +3060,7 @@ class ListingManagerController extends Controller
             return $details;
         }
         $id = (int) ($suggested['id'] ?? 0);
-        if ($id <= 0) {
+        if ($id <= 0 || ! WayfairPartnerClassCatalog::isUsableClassId((string) $id)) {
             return $details;
         }
         $details['primary_category_id'] = (string) $id;

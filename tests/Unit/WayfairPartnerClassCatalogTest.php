@@ -69,12 +69,13 @@ class WayfairPartnerClassCatalogTest extends TestCase
     }
 
     #[Test]
-    public function it_assigns_a_numeric_id_to_light_stands(): void
+    public function it_does_not_use_storefront_browse_ids_as_class_ids(): void
     {
         $row = WayfairPartnerClassCatalog::findByName('Light Stands & Tripods');
 
         $this->assertNotNull($row);
-        $this->assertSame('416547', $row['id']);
-        $this->assertStringContainsString('416547', $row['path']);
+        $this->assertSame('', $row['id']);
+        $this->assertFalse(WayfairPartnerClassCatalog::isUsableClassId('416547'));
+        $this->assertTrue(WayfairPartnerClassCatalog::isUsableClassId('38'));
     }
 }
