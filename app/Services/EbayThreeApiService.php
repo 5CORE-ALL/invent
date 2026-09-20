@@ -1476,6 +1476,22 @@ class EbayThreeApiService
     }
 
     /**
+     * @return array{endpoint: string, compatLevel: string, devId: string, appId: string, certId: string, siteId: string, authToken: string}
+     */
+    public function tradingReviseContext(): array
+    {
+        return [
+            'endpoint' => (string) $this->endpoint,
+            'compatLevel' => (string) $this->compatLevel,
+            'devId' => (string) $this->devId,
+            'appId' => (string) $this->appId,
+            'certId' => (string) $this->certId,
+            'siteId' => (string) $this->siteId,
+            'authToken' => (string) $this->generateBearerToken(),
+        ];
+    }
+
+    /**
      * Description Master: return the eBay3 listing's raw Description HTML for one SKU (no parsing). Read-only.
      *
      * @return array{success: bool, message: string, html?: string}
