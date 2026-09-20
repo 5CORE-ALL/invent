@@ -67,4 +67,16 @@ class WayfairPartnerClassCatalogTest extends TestCase
         $this->assertSame('18521', $row['id']);
         $this->assertStringContainsString('18521', $row['path']);
     }
+
+    #[Test]
+    public function it_fills_light_stands_id_from_the_name_map(): void
+    {
+        $result = WayfairPartnerClassCatalog::search('light stands', '', [
+            'light stands & tripods' => '41680',
+        ]);
+        $row = collect($result['classes'])->firstWhere('name', 'Light Stands & Tripods');
+
+        $this->assertNotNull($row);
+        $this->assertSame('41680', $row['id']);
+    }
 }

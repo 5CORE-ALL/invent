@@ -925,11 +925,8 @@
                     <p class="lc-help" id="lc-category-help">Search and select a marketplace category.</p>
 
                     <div class="lc-wayfair-only d-none mb-3" id="lc-wayfair-class-picker">
-                        <div class="mb-2 d-none" id="wf-class-id-fallback">
-                            <label class="form-label" for="lc-wayfair-class-id">Class ID <span class="lc-req">*</span></label>
-                            <input type="text" id="lc-wayfair-class-id" class="form-control" placeholder="Numeric class ID" inputmode="numeric">
-                            <p class="lc-help mb-0 mt-1" id="wf-class-id-help">Filled when you select a class.</p>
-                        </div>
+                        <input type="hidden" id="lc-wayfair-class-id">
+                        <p class="lc-help d-none mb-2" id="wf-class-id-help"></p>
                         <div class="wf-picker">
                             <div class="wf-picker-search">
                                 <i class="fas fa-search"></i>
@@ -2989,7 +2986,7 @@
             return;
         }
         $('#wf-selected-count').text('1');
-        const chip = (name || ('Class ' + id)) + (id ? ' · ' + id : '');
+        const chip = name || ('Class ' + id);
         $('#wf-selected-chips').html(
             '<span class="wf-chip">' + escapeHtml(chip) +
             ' <button type="button" id="wf-clear-class" aria-label="Clear class">&times;</button></span>'
@@ -3019,7 +3016,7 @@
                 const checked = active ? ' checked' : '';
                 return '<button type="button" class="wf-row wf-class-row' + active + '" data-id="' + escapeHtml(id) +
                     '" data-name="' + escapeHtml(name) + '">' +
-                    '<span>' + escapeHtml(name) + (id ? ' <span class="text-muted">(' + escapeHtml(id) + ')</span>' : '') + '</span>' +
+                    '<span>' + escapeHtml(name) + '</span>' +
                     '<input type="radio" class="wf-radio" tabindex="-1"' + checked + '></button>';
             }).join(''));
         }
@@ -3043,11 +3040,8 @@
         if (row && row.definition) {
             $('#wf-definition').text(row.definition);
         }
-        $('#wf-class-id-fallback').toggleClass('d-none', !(name || id));
         $('#lc-wayfair-class-id').val(id);
-        $('#wf-class-id-help').text(id
-            ? 'Class ID ' + id + ' from the selected Wayfair class.'
-            : 'Looking up the numeric class ID…');
+        $('#wf-class-id-help').addClass('d-none').text('');
         renderWayfairSelectedChip();
         if (id) {
             loadWayfairQuestions(id, collectWayfairAnswers());
@@ -3058,16 +3052,22 @@
                 method: 'GET',
                 data: { name },
                 dataType: 'json',
-                timeout: 20000,
+                timeout: 25000,
                 success: function (res) {
                     if (res && res.id) {
                         applyWayfairClass(Object.assign({}, row, res), { resolved: true });
+                    } else if (!(opts && opts.retry)) {
+                        applyWayfairClass(row, { resolved: false, retry: true });
                     } else {
-                        $('#wf-class-id-help').text('Type the numeric class ID from Partner Home to publish.');
+                        toast('Could not load this Wayfair class yet. Select it again.', 'error');
                     }
                 },
                 error: function () {
-                    $('#wf-class-id-help').text('Type the numeric class ID from Partner Home to publish.');
+                    if (!(opts && opts.retry)) {
+                        applyWayfairClass(row, { resolved: false, retry: true });
+                    } else {
+                        toast('Could not load this Wayfair class yet. Select it again.', 'error');
+                    }
                 }
             });
         }
@@ -3201,10 +3201,10 @@
         $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon || ed.wayfair));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
         $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.faire ? 'Faire Product Type' : (ed.wayfair ? 'Wayfair Class' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.newegg ? 'Newegg Subcategory' : (ed.reverb ? 'Reverb Category' : 'Category')))))));
-        $('#lc-category-id-visible').attr('placeholder', ed.wayfair ? 'Numeric class ID from Partner Home' : (ed.category_placeholder || 'Category ID'));
-        $('#lc-category-manual-id-label').html((ed.wayfair ? 'Class ID' : 'Category ID') + ' <span class="lc-req">*</span>');
-        $('#lc-category-manual-path-label').text(ed.wayfair ? 'Class name' : 'Category path / name');
-        $('#lc-category-path-visible').attr('placeholder', ed.wayfair ? 'Optional class name' : 'Optional category name');
+        $('#lc-category-id-visible').attr('placeholder', ed.category_placeholder || 'Category ID');
+        $('#lc-category-manual-id-label').html('Category ID <span class="lc-req">*</span>');
+        $('#lc-category-manual-path-label').text('Category path / name');
+        $('#lc-category-path-visible').attr('placeholder', 'Optional category name');
         $('#lc-category-search').attr('placeholder', ed.category_placeholder || 'Search categories');
         $('#lc-optimize-desc-label').text(ed.optimize_label || 'Optimize Description');
         $('#lc-policies-title').text(
@@ -3364,10 +3364,18 @@
             if ((family === 'tiktok' || family === 'reverb') && !String($('#lc-category-id').val() || '').trim()) {
                 searchCategories(family === 'reverb' ? String($('#lc-title').val() || '').trim() : '');
             } else if (family === 'wayfair') {
+                const savedName = String($('#lc-category-path-input').val() || '').replace(/\s+\(\d+\)$/, '').trim();
+                const savedId = String($('#lc-category-id').val() || '').trim();
                 $('#wf-definition').html(wayfairEmptyDefinition());
-                renderWayfairSelectedChip();
+                if (savedName || savedId) {
+                    applyWayfairClass({ id: savedId, name: savedName, path: savedName, definition: '' });
+                } else {
+                    renderWayfairSelectedChip();
+                }
                 searchCategories(String($('#lc-wayfair-class-search').val() || '').trim());
-                loadWayfairQuestions($('#lc-category-id').val(), d.wayfair_answers || {});
+                if (savedId) {
+                    loadWayfairQuestions(savedId, d.wayfair_answers || {});
+                }
             } else if (family === 'reverb' || family === 'amazon' || family === 'temu' || family === 'newegg' || family === 'faire') {
                 const amazonQ = String($('#lc-category-search').val() || $('#lc-amazon-product-type').val() || $('#lc-title').val() || '').trim();
                 searchCategories(family === 'amazon' ? amazonQ : String($('#lc-category-search').val() || $('#lc-title').val() || '').trim());

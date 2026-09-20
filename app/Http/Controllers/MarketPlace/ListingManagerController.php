@@ -1927,7 +1927,7 @@ class ListingManagerController extends Controller
                 'success' => false,
                 'id' => '',
                 'name' => $name,
-                'message' => 'No Wayfair class ID found for this name.',
+                'message' => 'Wayfair did not return this class yet. Select it again in a moment.',
             ], 422);
         }
 

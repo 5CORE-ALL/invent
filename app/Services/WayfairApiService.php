@@ -2231,6 +2231,14 @@ XML;
                 $map[$name] = (string) $id;
             }
         }
+        $resolved = Cache::get('wayfair.resolved_class_ids');
+        foreach (is_array($resolved) ? $resolved : [] as $name => $id) {
+            $name = mb_strtolower(trim((string) $name));
+            $id = trim((string) $id);
+            if ($name !== '' && preg_match('/^\d+$/', $id)) {
+                $map[$name] = $id;
+            }
+        }
 
         return $map;
     }
@@ -2250,7 +2258,16 @@ XML;
         $known = WayfairPartnerClassCatalog::findByName($name);
         $id = trim((string) ($known['id'] ?? ''));
         if ($id === '') {
-            $id = $this->classNameToIdMap()[mb_strtolower($name)] ?? '';
+            $map = $this->classNameToIdMap();
+            $id = $map[mb_strtolower($name)] ?? '';
+            if ($id === '') {
+                foreach ($map as $mapName => $mapId) {
+                    if ($this->classNamesMatch((string) $mapName, $name)) {
+                        $id = (string) $mapId;
+                        break;
+                    }
+                }
+            }
         }
         if ($id === '') {
             foreach ($this->catalogClassDirectory() as $row) {
@@ -2259,14 +2276,20 @@ XML;
                 }
                 $rowName = trim((string) ($row['name'] ?? $row['className'] ?? ''));
                 $rowId = (int) ($row['classId'] ?? $row['taxonomyCategoryId'] ?? 0);
-                if ($rowId > 0 && strcasecmp($rowName, $name) === 0) {
+                if ($rowId > 0 && $this->classNamesMatch($rowName, $name)) {
                     $id = (string) $rowId;
                     break;
                 }
             }
         }
+        if ($id === '') {
+            $id = $this->discoverClassIdByName($name);
+        }
         if ($known === null && $id === '') {
             return null;
+        }
+        if ($id !== '') {
+            $this->rememberResolvedClassId((string) ($known['name'] ?? $name), $id);
         }
 
         return WayfairPartnerClassCatalog::present([
@@ -2275,6 +2298,174 @@ XML;
             'category' => (string) ($known['category'] ?? ''),
             'definition' => (string) ($known['definition'] ?? ''),
         ]);
+    }
+
+    private function classNamesMatch(string $left, string $right): bool
+    {
+        return $this->normalizeClassName($left) === $this->normalizeClassName($right);
+    }
+
+    private function normalizeClassName(string $name): string
+    {
+        $name = mb_strtolower(trim($name));
+        $name = str_replace(['&', '+'], ' and ', $name);
+        $name = preg_replace('/[^a-z0-9]+/', ' ', $name) ?? $name;
+
+        return trim(preg_replace('/\s+/', ' ', $name) ?? $name);
+    }
+
+    private function discoverClassIdByName(string $name): string
+    {
+        $lower = mb_strtolower(trim($name));
+        $resolved = Cache::get('wayfair.resolved_class_ids');
+        if (is_array($resolved) && isset($resolved[$lower]) && preg_match('/^\d+$/', (string) $resolved[$lower])) {
+            return (string) $resolved[$lower];
+        }
+
+        return $this->classIdFromProductAdditionSearch($name);
+    }
+
+    private function rememberResolvedClassId(string $name, string $id): void
+    {
+        $lower = mb_strtolower(trim($name));
+        $id = trim($id);
+        if ($lower === '' || ! preg_match('/^\d+$/', $id)) {
+            return;
+        }
+        $map = Cache::get('wayfair.resolved_class_ids');
+        $map = is_array($map) ? $map : [];
+        $map[$lower] = $id;
+        Cache::put('wayfair.resolved_class_ids', $map, 86400 * 30);
+    }
+
+    private function classIdFromProductAdditionSearch(string $name): string
+    {
+        $url = (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
+        $candidates = $this->productAdditionClassSearchQueries($name);
+        $preferred = Cache::get('wayfair.product_addition_class_search_field');
+        if (is_string($preferred) && isset($candidates[$preferred])) {
+            $candidates = [$preferred => $candidates[$preferred]] + $candidates;
+        }
+
+        foreach ($candidates as $key => $payload) {
+            $json = $this->catalogGraphqlRequest($url, $payload['query'], $payload['variables']);
+            if ($json === [] || $this->graphqlDenied($json) || ! empty($json['errors'])) {
+                continue;
+            }
+            $id = $this->firstClassIdMatchingName($json['data'] ?? [], $name);
+            if ($id !== '') {
+                Cache::put('wayfair.product_addition_class_search_field', $key, 86400 * 7);
+
+                return $id;
+            }
+        }
+
+        return $this->classIdFromIntrospectedClassSearch($name);
+    }
+
+    /**
+     * @return array<string, array{query: string, variables: array<string, mixed>}>
+     */
+    private function productAdditionClassSearchQueries(string $name): array
+    {
+        $q = trim($name);
+
+        return [
+            'productAddition.classes' => [
+                'query' => 'query ($q: String!) { productAddition { classes(search: $q) { classId className name } } }',
+                'variables' => ['q' => $q],
+            ],
+            'productAddition.classSearch' => [
+                'query' => 'query ($q: String!) { productAddition { classSearch(query: $q) { classId className name } } }',
+                'variables' => ['q' => $q],
+            ],
+            'productAddition.suggestedClasses' => [
+                'query' => 'query ($q: String!) { productAddition { suggestedClasses(query: $q) { classId className name } } }',
+                'variables' => ['q' => $q],
+            ],
+            'productClasses' => [
+                'query' => 'query ($q: String!) { productClasses(search: $q) { classId className name } }',
+                'variables' => ['q' => $q],
+            ],
+            'classes' => [
+                'query' => 'query ($q: String!) { classes(search: $q) { classId className name } }',
+                'variables' => ['q' => $q],
+            ],
+        ];
+    }
+
+    private function classIdFromIntrospectedClassSearch(string $name): string
+    {
+        $url = (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
+        $fields = Cache::get('wayfair.product_addition_query_fields');
+        if (! is_array($fields) || $fields === []) {
+            $json = $this->catalogGraphqlRequest($url, 'query { __type(name: "ProductAdditionQueries") { fields { name } } }');
+            $rows = $json['data']['__type']['fields'] ?? [];
+            $fields = [];
+            foreach (is_array($rows) ? $rows : [] as $row) {
+                $field = trim((string) ($row['name'] ?? ''));
+                if ($field !== '' && str_contains(mb_strtolower($field), 'class')) {
+                    $fields[] = $field;
+                }
+            }
+            Cache::put('wayfair.product_addition_query_fields', $fields, 86400);
+        }
+
+        foreach ($fields as $field) {
+            $field = preg_replace('/[^A-Za-z0-9_]/', '', (string) $field) ?? '';
+            if ($field === '') {
+                continue;
+            }
+            $json = $this->catalogGraphqlRequest(
+                $url,
+                'query ($q: String!) { productAddition { '.$field.'(search: $q) { classId className name } } }',
+                ['q' => $name]
+            );
+            if ($json === [] || $this->graphqlDenied($json) || ! empty($json['errors'])) {
+                continue;
+            }
+            $id = $this->firstClassIdMatchingName($json['data'] ?? [], $name);
+            if ($id !== '') {
+                return $id;
+            }
+        }
+
+        return '';
+    }
+
+    private function firstClassIdMatchingName(mixed $node, string $name): string
+    {
+        $want = $this->normalizeClassName($name);
+        $fallback = '';
+        $walk = function ($node) use (&$walk, &$fallback, $want) {
+            if (! is_array($node)) {
+                return '';
+            }
+            $id = (int) ($node['classId'] ?? $node['taxonomyCategoryId'] ?? $node['class_id'] ?? 0);
+            $label = trim((string) ($node['className'] ?? $node['name'] ?? $node['displayName'] ?? ''));
+            if ($id > 0 && $label !== '') {
+                if ($this->normalizeClassName($label) === $want) {
+                    return (string) $id;
+                }
+                if ($fallback === '' && str_contains($this->normalizeClassName($label), $want)) {
+                    $fallback = (string) $id;
+                }
+            }
+            foreach ($node as $child) {
+                if (! is_array($child)) {
+                    continue;
+                }
+                $hit = $walk($child);
+                if ($hit !== '') {
+                    return $hit;
+                }
+            }
+
+            return '';
+        };
+        $exact = $walk($node);
+
+        return $exact !== '' ? $exact : $fallback;
     }
 
     /**
@@ -2376,7 +2567,7 @@ XML;
             'id' => (string) $classId,
             'name' => $name,
             'category' => 'Typed class ID',
-            'definition' => 'Numeric class ID '.$classId.' from Partner Home. Select this class if this is the ID shown in the Wayfair class picker.',
+            'definition' => 'Wayfair class '.$classId.'.',
         ]);
 
         return $this->classPickerResult([$row], WayfairPartnerClassCatalog::search('', '')['groups']);
@@ -2616,6 +2807,9 @@ XML;
         if ($byId === []) {
             $byId = $this->paginatedSupplierCatalogClasses();
         }
+        if ($byId === []) {
+            $byId = $this->paginatedSupplierCatalogItemsClasses();
+        }
 
         $rows = array_values($byId);
         if ($rows !== []) {
@@ -2625,12 +2819,21 @@ XML;
         return $rows;
     }
 
+    private function hasListingStatusTable(): bool
+    {
+        try {
+            return Schema::hasTable('wayfair_listing_statuses');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     /**
      * @return array<int, array<string, mixed>>
      */
     private function listingStatusClassDirectory(): array
     {
-        if (! Schema::hasTable('wayfair_listing_statuses')) {
+        if (! $this->hasListingStatusTable()) {
             return [];
         }
 
@@ -2666,7 +2869,7 @@ XML;
      */
     private function listedWayfairPartNumbers(): array
     {
-        if (! Schema::hasTable('wayfair_listing_statuses')) {
+        if (! $this->hasListingStatusTable()) {
             return [];
         }
 
@@ -2773,6 +2976,52 @@ XML;
             $products = $json['data']['supplierCatalog']['products'] ?? [];
             $byId += $this->collectClassesFromCatalogProducts(is_array($products) ? $products : []);
             if (! is_array($products) || count($products) < 50) {
+                break;
+            }
+        }
+
+        return $byId;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function paginatedSupplierCatalogItemsClasses(): array
+    {
+        $query = <<<'GRAPHQL'
+        query ($input: SupplierCatalogItemsInput!) {
+          supplierCatalogItems(input: $input) {
+            ... on SupplierCatalogItems {
+              paginationInfo { page hasNextPage }
+              catalogItems {
+                class { classId className }
+              }
+            }
+          }
+        }
+        GRAPHQL;
+        $byId = [];
+        $url = (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
+        for ($page = 1; $page <= 20; $page++) {
+            $json = $this->catalogGraphqlRequest($url, $query, [
+                'input' => [
+                    'paginationOptions' => ['page' => $page, 'pageSize' => 50],
+                ],
+            ]);
+            if ($this->graphqlDenied($json) || ! empty($json['errors'])) {
+                break;
+            }
+            $items = $json['data']['supplierCatalogItems']['catalogItems'] ?? [];
+            foreach (is_array($items) ? $items : [] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $hit = $this->classFromAssoc($row);
+                if ($hit !== null) {
+                    $byId[$hit['class_id']] = $this->classDirectoryRow($hit);
+                }
+            }
+            if (empty($json['data']['supplierCatalogItems']['paginationInfo']['hasNextPage'])) {
                 break;
             }
         }

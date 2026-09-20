@@ -244,7 +244,7 @@ class WayfairPartnerClassCatalog
 
     private static function defaultDefinition(string $name): string
     {
-        return 'CLASS OVERVIEW: Select this class for '.$name.'. Use this class when the product is sold and merchandised as '.$name.' on Wayfair. Review the class definition in Partner Home if you are unsure.';
+        return 'CLASS OVERVIEW: Select this class for '.$name.'. Use this class when the product is sold and merchandised as '.$name.' on Wayfair.';
     }
 
     /**
